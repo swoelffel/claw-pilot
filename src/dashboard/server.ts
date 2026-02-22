@@ -12,9 +12,13 @@ import { HealthChecker } from "../core/health.js";
 import { Lifecycle } from "../core/lifecycle.js";
 import { Monitor } from "./monitor.js";
 
-// Resolve the dist/ui directory relative to this file's location
+// Resolve dist/ui relative to this chunk's location.
+// When bundled, this chunk lives at <install>/dist/server-*.mjs
+// so __dirname = <install>/dist/ and UI_DIST = <install>/dist/ui/
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const UI_DIST = path.resolve(__dirname, "../../dist/ui");
+const UI_DIST =
+  process.env["CLAW_PILOT_UI_DIST"] ??
+  path.resolve(__dirname, "ui");
 
 export interface DashboardOptions {
   port: number;
@@ -102,13 +106,15 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       const injection = `<script>window.__CP_TOKEN__=${JSON.stringify(token)};</script>`;
       html = html.replace("</head>", `${injection}\n</head>`);
       return c.html(html);
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       return c.html(`<!DOCTYPE html>
 <html>
 <head><title>Claw Pilot Dashboard</title></head>
 <body>
 <h1>Claw Pilot Dashboard</h1>
 <p>UI not built. Run <code>pnpm build:ui</code> to build the dashboard.</p>
+<p><small>UI path: ${UI_DIST} — ${msg}</small></p>
 <p><a href="/api/instances">API: /api/instances</a></p>
 </body>
 </html>`);
