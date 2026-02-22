@@ -3,11 +3,18 @@ import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { WebSocketServer } from "ws";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Registry } from "../core/registry.js";
 import type { ServerConnection } from "../server/connection.js";
 import { HealthChecker } from "../core/health.js";
 import { Lifecycle } from "../core/lifecycle.js";
 import { Monitor } from "./monitor.js";
+
+// Resolve the dist/ui directory relative to this file's location
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const UI_DIST = path.resolve(__dirname, "../../dist/ui");
 
 export interface DashboardOptions {
   port: number;
@@ -85,12 +92,21 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     return c.json({ ok: true, instances: registry.listInstances().length });
   });
 
-  // Static files (Lit UI)
+  // Static files (Lit UI) — serve assets (JS, CSS, etc.) directly
   app.use("/*", serveStatic({ root: "./dist/ui" }));
 
-  // Fallback: minimal HTML if UI not built
-  app.get("*", (c) => {
-    return c.html(`<!DOCTYPE html>
+  // SPA fallback: serve index.html with injected token for any non-API route
+  app.get("*", async (c) => {
+    const indexPath = path.join(UI_DIST, "index.html");
+    try {
+      let html = await fs.readFile(indexPath, "utf-8");
+      // Inject token as a global before </head>
+      const injection = `<script>window.__CP_TOKEN__=${JSON.stringify(token)};</script>`;
+      html = html.replace("</head>", `${injection}\n</head>`);
+      return c.html(html);
+    } catch {
+      // UI not built yet — serve a minimal fallback
+      return c.html(`<!DOCTYPE html>
 <html>
 <head><title>Claw Pilot Dashboard</title></head>
 <body>
@@ -99,6 +115,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
 <p><a href="/api/instances">API: /api/instances</a></p>
 </body>
 </html>`);
+    }
   });
 
   // Start HTTP server

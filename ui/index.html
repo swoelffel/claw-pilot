@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claw Pilot Dashboard</title>
+    <script>
+      // Read token from URL hash: #token=xxx
+      (function () {
+        var hash = window.location.hash.slice(1);
+        var params = new URLSearchParams(hash);
+        var token = params.get("token");
+        if (token) {
+          window.__CP_TOKEN__ = token;
+        }
+      })();
+    </script>
+    <script type="module" src="/src/app.ts"></script>
+  </head>
+  <body style="margin:0;background:#0f1117;">
+    <cp-app></cp-app>
+  </body>
+</html>

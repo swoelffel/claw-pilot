@@ -100,6 +100,7 @@ if [ -d "$INSTALL_DIR/.git" ]; then
   log "Rebuilding after update..."
   pnpm install --dir "$INSTALL_DIR" --frozen-lockfile
   pnpm --dir "$INSTALL_DIR" run build:cli
+  pnpm --dir "$INSTALL_DIR" run build:ui
   log "claw-pilot $(node "$INSTALL_DIR/dist/index.mjs" --version 2>/dev/null) updated successfully!"
   exit 0
 else
@@ -126,6 +127,9 @@ pnpm install --dir "$INSTALL_DIR" --frozen-lockfile
 
 log "Building CLI..."
 pnpm --dir "$INSTALL_DIR" run build:cli
+
+log "Building UI..."
+pnpm --dir "$INSTALL_DIR" run build:ui
 
 # 9. Link binary globally
 log "Linking claw-pilot binary..."
