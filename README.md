@@ -23,12 +23,10 @@ and device pairing bootstrapping.
 curl -fsSL https://raw.githubusercontent.com/swoelffel/claw-pilot/main/install.sh | sh
 ```
 
-Or via npm/pnpm:
+The script clones the repo to `/opt/claw-pilot` (override with `CLAW_PILOT_INSTALL_DIR`),
+builds the CLI locally, and links the binary into your PATH.
 
-```sh
-pnpm install -g claw-pilot
-claw-pilot init
-```
+> **Note:** `claw-pilot` is not published on npm — it must be installed from source.
 
 ## Usage
 

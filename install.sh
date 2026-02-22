@@ -4,8 +4,9 @@
 set -e
 
 REPO="swoelffel/claw-pilot"
+REPO_URL="https://github.com/${REPO}.git"
 MIN_NODE_VERSION=22
-PACKAGE_NAME="claw-pilot"
+INSTALL_DIR="${CLAW_PILOT_INSTALL_DIR:-/opt/claw-pilot}"
 OPENCLAW_INSTALL_URL="${OPENCLAW_INSTALL_URL:-https://openclaw.ai/install.sh}"
 
 # Colors
@@ -32,24 +33,37 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 NODE_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
 if [ "$NODE_VERSION" -lt "$MIN_NODE_VERSION" ]; then
-  error "Node.js >= $MIN_NODE_VERSION required (found v$(node -v))"
+  error "Node.js >= $MIN_NODE_VERSION required (found $(node -v))"
 fi
 log "Node.js $(node -v)"
 
-# 3. Check pnpm (install if missing)
+# 3. Check git
+if ! command -v git >/dev/null 2>&1; then
+  error "git not found. Install git first."
+fi
+
+# 4. Check pnpm (install if missing, configure if needed)
 if ! command -v pnpm >/dev/null 2>&1; then
   warn "pnpm not found, installing via npm..."
   npm install -g pnpm
 fi
+# Ensure pnpm global bin dir exists and is in PATH
+if ! pnpm bin --global >/dev/null 2>&1; then
+  warn "pnpm global bin dir not configured, running 'pnpm setup'..."
+  pnpm setup
+  # Source the updated shell config if possible
+  # shellcheck disable=SC1090
+  [ -f "$HOME/.bashrc" ]  && . "$HOME/.bashrc"  2>/dev/null || true
+  [ -f "$HOME/.profile" ] && . "$HOME/.profile" 2>/dev/null || true
+fi
 log "pnpm $(pnpm --version)"
 
-# 4. Check OpenClaw (optional — claw-pilot can install it automatically)
+# 5. Check OpenClaw (optional — claw-pilot can install it automatically)
 OPENCLAW_FOUND=0
 if command -v openclaw >/dev/null 2>&1; then
   log "OpenClaw $(openclaw --version 2>/dev/null || echo 'unknown')"
   OPENCLAW_FOUND=1
 else
-  # Check common non-PATH locations
   for p in "/opt/openclaw/.npm-global/bin/openclaw" "$HOME/.npm-global/bin/openclaw"; do
     if [ -x "$p" ]; then
       log "OpenClaw found at $p (not in PATH)"
@@ -65,20 +79,75 @@ if [ "$OPENCLAW_FOUND" -eq 0 ]; then
   warn "To install it now manually: curl -fsSL $OPENCLAW_INSTALL_URL | sh"
 fi
 
-# 5. Install claw-pilot
-log "Installing $PACKAGE_NAME..."
-pnpm install -g $PACKAGE_NAME 2>/dev/null || npm install -g $PACKAGE_NAME
-
-# 6. Verify
-if ! command -v claw-pilot >/dev/null 2>&1; then
-  error "Installation failed. claw-pilot not found in PATH."
+# 6. Clone or update the repository
+log "Installing claw-pilot from ${REPO_URL}..."
+if [ -d "$INSTALL_DIR/.git" ]; then
+  log "Updating existing installation at $INSTALL_DIR..."
+  git -C "$INSTALL_DIR" pull --ff-only
+else
+  if [ -d "$INSTALL_DIR" ]; then
+    error "$INSTALL_DIR already exists but is not a git repo. Remove it first or set CLAW_PILOT_INSTALL_DIR."
+  fi
+  # Try to clone as current user; use sudo only if needed
+  if git clone "$REPO_URL" "$INSTALL_DIR" 2>/dev/null; then
+    : # success
+  elif command -v sudo >/dev/null 2>&1; then
+    warn "Cloning to $INSTALL_DIR requires elevated privileges..."
+    sudo git clone "$REPO_URL" "$INSTALL_DIR"
+    sudo chown -R "$(id -u):$(id -g)" "$INSTALL_DIR"
+  else
+    error "Cannot clone to $INSTALL_DIR. Set CLAW_PILOT_INSTALL_DIR to a writable path."
+  fi
 fi
-log "claw-pilot $(claw-pilot --version) installed successfully!"
 
-# 7. Initialize (includes automatic discovery)
+# 7. Install dependencies and build
+log "Installing dependencies..."
+pnpm install --dir "$INSTALL_DIR" --frozen-lockfile
+
+log "Building..."
+pnpm --dir "$INSTALL_DIR" run build:cli
+
+# 8. Link binary globally
+log "Linking claw-pilot binary..."
+PNPM_GLOBAL_BIN=$(pnpm bin --global 2>/dev/null || echo "")
+
+if [ -n "$PNPM_GLOBAL_BIN" ]; then
+  ln -sf "$INSTALL_DIR/dist/index.mjs" "$PNPM_GLOBAL_BIN/claw-pilot"
+  chmod +x "$INSTALL_DIR/dist/index.mjs"
+  LINK_PATH="$PNPM_GLOBAL_BIN/claw-pilot"
+else
+  # Fallback: /usr/local/bin (may need sudo)
+  LINK_TARGET="/usr/local/bin/claw-pilot"
+  if ln -sf "$INSTALL_DIR/dist/index.mjs" "$LINK_TARGET" 2>/dev/null; then
+    chmod +x "$INSTALL_DIR/dist/index.mjs"
+    LINK_PATH="$LINK_TARGET"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo ln -sf "$INSTALL_DIR/dist/index.mjs" "$LINK_TARGET"
+    sudo chmod +x "$INSTALL_DIR/dist/index.mjs"
+    LINK_PATH="$LINK_TARGET"
+  else
+    error "Cannot create symlink in /usr/local/bin. Add $(dirname "$INSTALL_DIR/dist/index.mjs") to PATH manually."
+  fi
+fi
+
+# 9. Verify
+if command -v claw-pilot >/dev/null 2>&1; then
+  log "claw-pilot $(claw-pilot --version) installed successfully! (linked at $LINK_PATH)"
+else
+  warn "claw-pilot not found in PATH yet."
+  warn "Add the following to your shell profile and restart your session:"
+  warn "  export PATH=\"$(dirname "$LINK_PATH"):\$PATH\""
+  warn "Or run directly: node $INSTALL_DIR/dist/index.mjs"
+fi
+
+# 10. Initialize
 echo ""
 log "Running 'claw-pilot init' to set up the registry..."
-claw-pilot init
+if command -v claw-pilot >/dev/null 2>&1; then
+  claw-pilot init
+else
+  node "$INSTALL_DIR/dist/index.mjs" init
+fi
 
 echo ""
 log "Done! Run 'claw-pilot --help' to see available commands."
