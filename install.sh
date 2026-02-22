@@ -111,10 +111,12 @@ else
 fi
 
 # 8. Install dependencies and build
-log "Installing dependencies..."
+# Note: better-sqlite3 native bindings are compiled automatically via
+# pnpm.onlyBuiltDependencies in package.json (requires python3 + make + g++)
+log "Installing dependencies (includes compiling better-sqlite3 native bindings)..."
 pnpm install --dir "$INSTALL_DIR" --frozen-lockfile
 
-log "Building..."
+log "Building CLI..."
 pnpm --dir "$INSTALL_DIR" run build:cli
 
 # 9. Link binary globally
