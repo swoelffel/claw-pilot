@@ -22,8 +22,8 @@ CREATE TABLE IF NOT EXISTS servers (
   openclaw_bin    TEXT,
   openclaw_version TEXT,
   os              TEXT,
-  created_at      TEXT DEFAULT (datetime('now')),
-  updated_at      TEXT DEFAULT (datetime('now'))
+  created_at      TEXT,
+  updated_at      TEXT
 );
 
 -- OpenClaw instance
@@ -41,8 +41,8 @@ CREATE TABLE IF NOT EXISTS instances (
   nginx_domain    TEXT,
   default_model   TEXT,
   discovered      INTEGER DEFAULT 0,
-  created_at      TEXT DEFAULT (datetime('now')),
-  updated_at      TEXT DEFAULT (datetime('now'))
+  created_at      TEXT,
+  updated_at      TEXT
 );
 
 -- Instance agents
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS events (
   instance_slug   TEXT,
   event_type      TEXT NOT NULL,
   detail          TEXT,
-  created_at      TEXT DEFAULT (datetime('now'))
+  created_at      TEXT
 );
 `;
 

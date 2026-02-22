@@ -1,6 +1,10 @@
 // src/core/registry.ts
 import type Database from "better-sqlite3";
 
+function now(): string {
+  return new Date().toISOString().replace("T", " ").slice(0, 19);
+}
+
 export interface ServerRecord {
   id: number;
   hostname: string;
@@ -58,15 +62,15 @@ export class Registry {
     if (existing) {
       this.db
         .prepare(
-          `UPDATE servers SET hostname=?, openclaw_home=?, ip=?, updated_at=datetime('now') WHERE id=1`,
+          `UPDATE servers SET hostname=?, openclaw_home=?, ip=?, updated_at=? WHERE id=1`,
         )
-        .run(hostname, openclawHome, ip ?? null);
+        .run(hostname, openclawHome, ip ?? null, now());
     } else {
       this.db
         .prepare(
-          "INSERT INTO servers (hostname, openclaw_home, ip) VALUES (?, ?, ?)",
+          "INSERT INTO servers (hostname, openclaw_home, ip, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
         )
-        .run(hostname, openclawHome, ip ?? null);
+        .run(hostname, openclawHome, ip ?? null, now(), now());
     }
     return this.getLocalServer()!;
   }
@@ -74,9 +78,9 @@ export class Registry {
   updateServerBin(bin: string, version: string): void {
     this.db
       .prepare(
-        `UPDATE servers SET openclaw_bin=?, openclaw_version=?, updated_at=datetime('now') WHERE id=1`,
+        `UPDATE servers SET openclaw_bin=?, openclaw_version=?, updated_at=? WHERE id=1`,
       )
-      .run(bin, version);
+      .run(bin, version, now());
   }
 
   // --- Instances ---
@@ -109,8 +113,8 @@ export class Registry {
     this.db
       .prepare(
         `INSERT INTO instances (server_id, slug, display_name, port, config_path, state_dir,
-         systemd_unit, telegram_bot, nginx_domain, default_model, discovered)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         systemd_unit, telegram_bot, nginx_domain, default_model, discovered, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         data.serverId,
@@ -124,6 +128,8 @@ export class Registry {
         data.nginxDomain ?? null,
         data.defaultModel ?? null,
         data.discovered ? 1 : 0,
+        now(),
+        now(),
       );
     return this.getInstance(data.slug)!;
   }
@@ -131,9 +137,9 @@ export class Registry {
   updateInstanceState(slug: string, state: InstanceRecord["state"]): void {
     this.db
       .prepare(
-        `UPDATE instances SET state=?, updated_at=datetime('now') WHERE slug=?`,
+        `UPDATE instances SET state=?, updated_at=? WHERE slug=?`,
       )
-      .run(state, slug);
+      .run(state, now(), slug);
   }
 
   updateInstance(
@@ -166,7 +172,8 @@ export class Registry {
     }
 
     if (sets.length === 0) return;
-    sets.push("updated_at=datetime('now')");
+    sets.push("updated_at=?");
+    values.push(now());
     values.push(slug);
 
     this.db
@@ -273,9 +280,9 @@ export class Registry {
   ): void {
     this.db
       .prepare(
-        "INSERT INTO events (instance_slug, event_type, detail) VALUES (?, ?, ?)",
+        "INSERT INTO events (instance_slug, event_type, detail, created_at) VALUES (?, ?, ?, ?)",
       )
-      .run(instanceSlug, eventType, detail ?? null);
+      .run(instanceSlug, eventType, detail ?? null, now());
   }
 
   listEvents(instanceSlug?: string, limit = 50): Array<{
