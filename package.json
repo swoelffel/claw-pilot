@@ -1,0 +1,52 @@
+{
+  "name": "claw-pilot",
+  "version": "0.1.0",
+  "description": "Orchestrator for OpenClaw multi-instance clusters",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "claw-pilot": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsdown --watch",
+    "build": "tsdown && pnpm build:ui",
+    "build:cli": "tsdown",
+    "build:ui": "vite build ui/",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "lint": "oxlint src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "files": [
+    "dist/",
+    "templates/",
+    "install.sh"
+  ],
+  "dependencies": {
+    "@inquirer/prompts": "^7",
+    "better-sqlite3": "^11",
+    "chalk": "^5",
+    "cli-table3": "^0.6",
+    "commander": "^13",
+    "handlebars": "^4",
+    "hono": "^4",
+    "nanoid": "^5",
+    "ora": "^8",
+    "ws": "^8"
+  },
+  "devDependencies": {
+    "@hono/node-server": "^1",
+    "@types/better-sqlite3": "^7",
+    "@types/node": "^22",
+    "@types/ws": "^8",
+    "lit": "^3",
+    "oxlint": "latest",
+    "tsdown": "latest",
+    "typescript": "~5.7",
+    "vite": "^6",
+    "vitest": "^3"
+  }
+}
