@@ -98,9 +98,7 @@ if [ -d "$INSTALL_DIR/.git" ]; then
   log "Updating existing installation at $INSTALL_DIR..."
   git -C "$INSTALL_DIR" pull --ff-only
   log "Rebuilding after update..."
-  pnpm install --dir "$INSTALL_DIR" --frozen-lockfile
-  pnpm --dir "$INSTALL_DIR" run build:cli
-  pnpm --dir "$INSTALL_DIR" run build:ui
+  ( cd "$INSTALL_DIR" && pnpm install --frozen-lockfile && pnpm run build:cli && pnpm run build:ui )
   log "claw-pilot $(node "$INSTALL_DIR/dist/index.mjs" --version 2>/dev/null) updated successfully!"
   exit 0
 else
@@ -123,13 +121,10 @@ fi
 # Note: better-sqlite3 native bindings are compiled automatically via
 # pnpm.onlyBuiltDependencies in package.json (requires python3 + make + g++)
 log "Installing dependencies (includes compiling better-sqlite3 native bindings)..."
-pnpm install --dir "$INSTALL_DIR" --frozen-lockfile
+( cd "$INSTALL_DIR" && pnpm install --frozen-lockfile )
 
-log "Building CLI..."
-pnpm --dir "$INSTALL_DIR" run build:cli
-
-log "Building UI..."
-pnpm --dir "$INSTALL_DIR" run build:ui
+log "Building CLI and UI..."
+( cd "$INSTALL_DIR" && pnpm run build:cli && pnpm run build:ui )
 
 # 9. Link binary globally
 log "Linking claw-pilot binary..."

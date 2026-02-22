@@ -115,8 +115,12 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     }
   });
 
-  // Static assets (JS, CSS, etc.) — served directly from dist/ui/
-  app.use("/*", serveStatic({ root: "./dist/ui" }));
+  // Static assets (JS, CSS, etc.) — served from absolute path dist/ui/
+  // Use path relative to this file's location, not cwd.
+  app.use(
+    "/*",
+    serveStatic({ root: path.relative(process.cwd(), UI_DIST) }),
+  );
 
   // Start HTTP server
   const server = serve({ fetch: app.fetch, port });
