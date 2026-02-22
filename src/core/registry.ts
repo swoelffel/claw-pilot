@@ -110,27 +110,33 @@ export class Registry {
     defaultModel?: string;
     discovered?: boolean;
   }): InstanceRecord {
+    const instanceValues = [
+      data.serverId,
+      data.slug,
+      data.displayName ?? null,
+      data.port,
+      data.configPath,
+      data.stateDir,
+      data.systemdUnit,
+      data.telegramBot ?? null,
+      data.nginxDomain ?? null,
+      data.defaultModel ?? null,
+      data.discovered ? 1 : 0,
+      now(),
+      now(),
+    ];
+    if (process.env["DEBUG"]) {
+      process.stderr.write(
+        `[debug] createInstance values (${instanceValues.length}): ${JSON.stringify(instanceValues)}\n`,
+      );
+    }
     this.db
       .prepare(
         `INSERT INTO instances (server_id, slug, display_name, port, config_path, state_dir,
          systemd_unit, telegram_bot, nginx_domain, default_model, discovered, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(
-        data.serverId,
-        data.slug,
-        data.displayName ?? null,
-        data.port,
-        data.configPath,
-        data.stateDir,
-        data.systemdUnit,
-        data.telegramBot ?? null,
-        data.nginxDomain ?? null,
-        data.defaultModel ?? null,
-        data.discovered ? 1 : 0,
-        now(),
-        now(),
-      );
+      .run(...instanceValues);
     return this.getInstance(data.slug)!;
   }
 

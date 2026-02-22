@@ -164,9 +164,9 @@ fi
 echo ""
 log "Running 'claw-pilot init' to set up the registry..."
 if command -v claw-pilot >/dev/null 2>&1; then
-  claw-pilot init
+  claw-pilot init --yes
 else
-  node "$INSTALL_DIR/dist/index.mjs" init
+  node "$INSTALL_DIR/dist/index.mjs" init --yes
 fi
 
 echo ""
