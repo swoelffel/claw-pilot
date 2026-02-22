@@ -7,8 +7,12 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Registry } from "../core/registry.js";
 import type { ServerConnection } from "../server/connection.js";
+import type { WizardAnswers } from "../core/config-generator.js";
 import { HealthChecker } from "../core/health.js";
 import { Lifecycle } from "../core/lifecycle.js";
+import { Provisioner } from "../core/provisioner.js";
+import { PortAllocator } from "../core/port-allocator.js";
+import { PairingManager } from "../core/pairing.js";
 import { Monitor } from "./monitor.js";
 
 // Resolve dist/ui/ relative to this bundle chunk.
@@ -107,6 +111,95 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
 
   app.get("/api/health", (c) => {
     return c.json({ ok: true, instances: registry.listInstances().length });
+  });
+
+  // GET /api/next-port — suggest next free port in the configured range
+  app.get("/api/next-port", async (c) => {
+    const server = registry.getLocalServer();
+    if (!server) return c.json({ error: "Server not initialized. Run claw-pilot init first." }, 500);
+    try {
+      const portAllocator = new PortAllocator(registry, conn);
+      const nextPort = await portAllocator.findFreePort(server.id);
+      return c.json({ port: nextPort });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : "No free port available" }, 500);
+    }
+  });
+
+  // POST /api/instances — provision a new instance
+  app.post("/api/instances", async (c) => {
+    const server = registry.getLocalServer();
+    if (!server) return c.json({ error: "Server not initialized. Run claw-pilot init first." }, 500);
+
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    // Basic validation
+    const slug = body["slug"];
+    const port = body["port"];
+    const defaultModel = body["defaultModel"];
+    const anthropicApiKey = body["anthropicApiKey"];
+
+    if (typeof slug !== "string" || !/^[a-z][a-z0-9-]*$/.test(slug) || slug.length < 2 || slug.length > 30) {
+      return c.json({ error: "Invalid slug: must be 2-30 lowercase alphanumeric chars with hyphens" }, 400);
+    }
+    if (typeof port !== "number" || port < 1024 || port > 65535) {
+      return c.json({ error: "Invalid port: must be 1024-65535" }, 400);
+    }
+    if (typeof defaultModel !== "string" || !defaultModel) {
+      return c.json({ error: "defaultModel is required" }, 400);
+    }
+    if (typeof anthropicApiKey !== "string" || !anthropicApiKey) {
+      return c.json({ error: "anthropicApiKey is required (or 'reuse')" }, 400);
+    }
+
+    // Build WizardAnswers from simplified web form
+    const rawAgents = Array.isArray(body["agents"]) ? body["agents"] : [];
+    const agents: WizardAnswers["agents"] = rawAgents.length > 0
+      ? (rawAgents as Array<{ id: string; name: string; model?: string; isDefault?: boolean }>)
+      : [{ id: "main", name: "Main", isDefault: true }];
+
+    // Ensure main agent is always present
+    if (!agents.some((a) => a.id === "main" || a.isDefault)) {
+      agents.unshift({ id: "main", name: "Main", isDefault: true });
+    }
+
+    const answers: WizardAnswers = {
+      slug,
+      displayName: typeof body["displayName"] === "string" && body["displayName"]
+        ? body["displayName"]
+        : slug.charAt(0).toUpperCase() + slug.slice(1),
+      port,
+      agents,
+      defaultModel,
+      anthropicApiKey,
+      telegram: { enabled: false },
+      nginx: { enabled: false },
+      mem0: { enabled: false },
+    };
+
+    try {
+      const portAllocator = new PortAllocator(registry, conn);
+      const provisioner = new Provisioner(conn, registry, portAllocator);
+      const result = await provisioner.provision(answers, server.id);
+
+      // Attempt device pairing bootstrap (non-fatal)
+      try {
+        const pairing = new PairingManager(conn, registry);
+        await pairing.bootstrapDevicePairing(slug);
+      } catch {
+        // Pairing is best-effort — don't fail the whole request
+      }
+
+      return c.json(result, 201);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Provisioning failed";
+      return c.json({ error: msg }, 500);
+    }
   });
 
   // --- Static file serving ---

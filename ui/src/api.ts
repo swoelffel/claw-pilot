@@ -1,4 +1,4 @@
-import type { InstanceInfo, AgentInfo } from "./types.js";
+import type { InstanceInfo, AgentInfo, CreateInstanceRequest } from "./types.js";
 
 declare global {
   interface Window {
@@ -58,4 +58,16 @@ export async function stopInstance(slug: string): Promise<void> {
 
 export async function restartInstance(slug: string): Promise<void> {
   await apiFetch(`/instances/${slug}/restart`, { method: "POST" });
+}
+
+export async function fetchNextPort(): Promise<number> {
+  const data = await apiFetch<{ port: number }>("/next-port");
+  return data.port;
+}
+
+export async function createInstance(data: CreateInstanceRequest): Promise<unknown> {
+  return apiFetch("/instances", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }

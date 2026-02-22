@@ -3,6 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import type { InstanceInfo } from "../types.js";
 import { fetchInstances } from "../api.js";
 import "./instance-card.js";
+import "./create-dialog.js";
 
 @customElement("cp-cluster-view")
 export class ClusterView extends LitElement {
@@ -55,12 +56,36 @@ export class ClusterView extends LitElement {
       font-size: 13px;
       margin-bottom: 20px;
     }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .btn-new {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #6c63ff;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-new:hover { background: #7c73ff; }
   `;
 
   @property({ type: Array }) instances: InstanceInfo[] = [];
 
   @state() private _loading = true;
   @state() private _error = "";
+  @state() private _showCreateDialog = false;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -109,8 +134,13 @@ export class ClusterView extends LitElement {
         ? html`<div class="error-banner">${this._error}</div>`
         : ""}
 
-      <div class="section-title">
-        ${this.instances.length} instance${this.instances.length !== 1 ? "s" : ""}
+      <div class="section-header">
+        <div class="section-title">
+          ${this.instances.length} instance${this.instances.length !== 1 ? "s" : ""}
+        </div>
+        <button class="btn-new" @click=${() => { this._showCreateDialog = true; }}>
+          + New Instance
+        </button>
       </div>
 
       ${this.instances.length === 0
@@ -132,6 +162,18 @@ export class ClusterView extends LitElement {
               )}
             </div>
           `}
+
+      ${this._showCreateDialog
+        ? html`
+            <cp-create-dialog
+              @close-dialog=${() => { this._showCreateDialog = false; }}
+              @instance-created=${() => {
+                this._showCreateDialog = false;
+                this._load();
+              }}
+            ></cp-create-dialog>
+          `
+        : ""}
     `;
   }
 }

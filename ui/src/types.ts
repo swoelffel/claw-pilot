@@ -41,3 +41,19 @@ export interface WsMessage {
   type: string;
   payload: unknown;
 }
+
+export interface AgentDefinition {
+  id: string;
+  name: string;
+  model?: string;
+  isDefault?: boolean;
+}
+
+export interface CreateInstanceRequest {
+  slug: string;
+  displayName: string;
+  port: number;
+  defaultModel: string;
+  anthropicApiKey: string;
+  agents: AgentDefinition[];
+}
