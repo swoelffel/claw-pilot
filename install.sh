@@ -94,6 +94,11 @@ log "Installing claw-pilot from ${REPO_URL}..."
 if [ -d "$INSTALL_DIR/.git" ]; then
   log "Updating existing installation at $INSTALL_DIR..."
   git -C "$INSTALL_DIR" pull --ff-only
+  log "Rebuilding after update..."
+  pnpm install --dir "$INSTALL_DIR" --frozen-lockfile
+  pnpm --dir "$INSTALL_DIR" run build:cli
+  log "claw-pilot $(node "$INSTALL_DIR/dist/index.mjs" --version 2>/dev/null) updated successfully!"
+  exit 0
 else
   if [ -d "$INSTALL_DIR" ]; then
     error "$INSTALL_DIR already exists but is not a git repo. Remove it first or set CLAW_PILOT_INSTALL_DIR."
