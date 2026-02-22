@@ -92,20 +92,17 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     return c.json({ ok: true, instances: registry.listInstances().length });
   });
 
-  // Static files (Lit UI) — serve assets (JS, CSS, etc.) directly
-  app.use("/*", serveStatic({ root: "./dist/ui" }));
-
-  // SPA fallback: serve index.html with injected token for any non-API route
-  app.get("*", async (c) => {
+  // SPA entry point: serve index.html with injected token
+  // Must be registered BEFORE serveStatic so Hono injects the token
+  // instead of serving the raw file from disk.
+  app.get("/", async (c) => {
     const indexPath = path.join(UI_DIST, "index.html");
     try {
       let html = await fs.readFile(indexPath, "utf-8");
-      // Inject token as a global before </head>
       const injection = `<script>window.__CP_TOKEN__=${JSON.stringify(token)};</script>`;
       html = html.replace("</head>", `${injection}\n</head>`);
       return c.html(html);
     } catch {
-      // UI not built yet — serve a minimal fallback
       return c.html(`<!DOCTYPE html>
 <html>
 <head><title>Claw Pilot Dashboard</title></head>
@@ -117,6 +114,9 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
 </html>`);
     }
   });
+
+  // Static assets (JS, CSS, etc.) — served directly from dist/ui/
+  app.use("/*", serveStatic({ root: "./dist/ui" }));
 
   // Start HTTP server
   const server = serve({ fetch: app.fetch, port });
