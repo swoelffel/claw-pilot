@@ -24,9 +24,9 @@ export function isDarwin(): boolean {
 }
 
 export function getOpenClawHome(): string {
-  // Production (Linux): /opt/openclaw
-  // Dev (macOS): ~/
-  return isLinux() ? constants.OPENCLAW_HOME : os.homedir();
+  // Use OPENCLAW_HOME env var if set, otherwise default to current user's home.
+  // ~/.openclaw-<slug>/ and ~/.openclaw/ (legacy) live under the home directory.
+  return process.env["OPENCLAW_HOME"] ?? os.homedir();
 }
 
 export function getStateDir(slug: string): string {
