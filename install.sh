@@ -5,9 +5,15 @@ set -e
 
 REPO="swoelffel/claw-pilot"
 REPO_URL="https://github.com/${REPO}.git"
+RAW_BASE="https://raw.githubusercontent.com/${REPO}/main"
 MIN_NODE_VERSION=22
 INSTALL_DIR="${CLAW_PILOT_INSTALL_DIR:-/opt/claw-pilot}"
 OPENCLAW_INSTALL_URL="${OPENCLAW_INSTALL_URL:-https://openclaw.ai/install.sh}"
+
+# Resolve version from package.json on GitHub
+CLAW_PILOT_VERSION=$(curl -fsSL "${RAW_BASE}/package.json" 2>/dev/null \
+  | grep '"version"' | head -1 | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/') \
+  || CLAW_PILOT_VERSION="unknown"
 
 # Colors
 RED='\033[0;31m'
@@ -19,7 +25,11 @@ log()   { printf "${GREEN}[+]${NC} %s\n" "$1"; }
 warn()  { printf "${YELLOW}[!]${NC} %s\n" "$1"; }
 error() { printf "${RED}[x]${NC} %s\n" "$1"; exit 1; }
 
-# 1. Check OS
+# 1. Banner
+log "Installing claw-pilot v${CLAW_PILOT_VERSION} from ${REPO_URL}"
+echo ""
+
+# 2. Check OS
 OS=$(uname -s)
 case "$OS" in
   Linux)  log "Detected Linux" ;;
@@ -27,7 +37,7 @@ case "$OS" in
   *)      error "Unsupported OS: $OS" ;;
 esac
 
-# 2. Check Node.js
+# 3. Check Node.js
 if ! command -v node >/dev/null 2>&1; then
   error "Node.js not found. Install Node.js >= $MIN_NODE_VERSION first: https://nodejs.org"
 fi
@@ -37,12 +47,12 @@ if [ "$NODE_VERSION" -lt "$MIN_NODE_VERSION" ]; then
 fi
 log "Node.js $(node -v)"
 
-# 3. Check git
+# 4. Check git
 if ! command -v git >/dev/null 2>&1; then
   error "git not found. Install git first."
 fi
 
-# 4. Check pnpm (install if missing, configure if needed)
+# 5. Check pnpm (install if missing, configure if needed)
 if ! command -v pnpm >/dev/null 2>&1; then
   warn "pnpm not found, installing via npm..."
   npm install -g pnpm
@@ -58,7 +68,7 @@ if ! pnpm bin --global >/dev/null 2>&1; then
 fi
 log "pnpm $(pnpm --version)"
 
-# 5. Check OpenClaw (optional — claw-pilot can install it automatically)
+# 6. Check OpenClaw (optional — claw-pilot can install it automatically)
 OPENCLAW_FOUND=0
 if command -v openclaw >/dev/null 2>&1; then
   log "OpenClaw $(openclaw --version 2>/dev/null || echo 'unknown')"
@@ -79,7 +89,7 @@ if [ "$OPENCLAW_FOUND" -eq 0 ]; then
   warn "To install it now manually: curl -fsSL $OPENCLAW_INSTALL_URL | sh"
 fi
 
-# 6. Clone or update the repository
+# 7. Clone or update the repository
 log "Installing claw-pilot from ${REPO_URL}..."
 if [ -d "$INSTALL_DIR/.git" ]; then
   log "Updating existing installation at $INSTALL_DIR..."
@@ -100,14 +110,14 @@ else
   fi
 fi
 
-# 7. Install dependencies and build
+# 8. Install dependencies and build
 log "Installing dependencies..."
 pnpm install --dir "$INSTALL_DIR" --frozen-lockfile
 
 log "Building..."
 pnpm --dir "$INSTALL_DIR" run build:cli
 
-# 8. Link binary globally
+# 9. Link binary globally
 log "Linking claw-pilot binary..."
 PNPM_GLOBAL_BIN=$(pnpm bin --global 2>/dev/null || echo "")
 
@@ -130,7 +140,7 @@ else
   fi
 fi
 
-# 9. Verify
+# 10. Verify
 if command -v claw-pilot >/dev/null 2>&1; then
   log "claw-pilot $(claw-pilot --version) installed successfully! (linked at $LINK_PATH)"
 else
@@ -140,7 +150,7 @@ else
   warn "Or run directly: node $INSTALL_DIR/dist/index.mjs"
 fi
 
-# 10. Initialize
+# 11. Initialize
 echo ""
 log "Running 'claw-pilot init' to set up the registry..."
 if command -v claw-pilot >/dev/null 2>&1; then
