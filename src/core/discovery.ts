@@ -250,8 +250,14 @@ export class InstanceDiscovery {
     const agentsList = (agentsConf?.["list"] ?? []) as Array<
       Record<string, unknown>
     >;
-    const defaultModel =
-      (agentsDefaults?.["model"] as string | undefined) ?? null;
+    // model can be a string or an object like {"primary": "..."}
+    const rawModel = agentsDefaults?.["model"];
+    const defaultModel: string | null =
+      typeof rawModel === "string"
+        ? rawModel
+        : rawModel !== null && typeof rawModel === "object"
+          ? JSON.stringify(rawModel)
+          : null;
 
     // Main agent
     agents.push({
@@ -267,7 +273,10 @@ export class InstanceDiscovery {
       agents.push({
         id: agent["id"] as string,
         name: (agent["name"] as string | undefined) ?? (agent["id"] as string),
-        model: (agent["model"] as string | undefined) ?? defaultModel,
+        model: (() => {
+          const m = agent["model"];
+          return typeof m === "string" ? m : m !== null && typeof m === "object" ? JSON.stringify(m) : defaultModel;
+        })(),
         workspacePath: `${stateDir}/workspaces/${(agent["workspace"] as string | undefined) ?? agent["id"]}`,
         isDefault: false,
       });
