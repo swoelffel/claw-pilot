@@ -35,7 +35,6 @@ program.addCommand(doctorCommand());
 process.on("unhandledRejection", (err) => {
   if (err instanceof Error) {
     console.error(`Error: ${err.message}`);
-    if (process.env["DEBUG"]) console.error(err.stack);
   } else {
     console.error("Unknown error:", err);
   }
@@ -47,7 +46,6 @@ try {
 } catch (err) {
   if (err instanceof Error && err.message !== "(outputHelp)") {
     console.error(`Error: ${err.message}`);
-    if (process.env["DEBUG"]) console.error(err.stack);
     process.exit(1);
   }
 }
