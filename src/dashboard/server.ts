@@ -1,7 +1,6 @@
 // src/dashboard/server.ts
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { serveStatic } from "@hono/node-server/serve-static";
 import { WebSocketServer } from "ws";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -12,13 +11,27 @@ import { HealthChecker } from "../core/health.js";
 import { Lifecycle } from "../core/lifecycle.js";
 import { Monitor } from "./monitor.js";
 
-// Resolve dist/ui relative to this chunk's location.
-// When bundled, this chunk lives at <install>/dist/server-*.mjs
+// Resolve dist/ui/ relative to this bundle chunk.
+// When bundled: this file is at <install>/dist/server-*.mjs
 // so __dirname = <install>/dist/ and UI_DIST = <install>/dist/ui/
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_DIST =
-  process.env["CLAW_PILOT_UI_DIST"] ??
-  path.resolve(__dirname, "ui");
+  process.env["CLAW_PILOT_UI_DIST"] ?? path.resolve(__dirname, "ui");
+
+// Minimal MIME type map for static asset serving
+const MIME: Record<string, string> = {
+  ".html": "text/html; charset=UTF-8",
+  ".js": "application/javascript",
+  ".mjs": "application/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".ttf": "font/ttf",
+};
 
 export interface DashboardOptions {
   port: number;
@@ -96,37 +109,58 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     return c.json({ ok: true, instances: registry.listInstances().length });
   });
 
-  // SPA entry point: serve index.html with injected token
-  // Must be registered BEFORE serveStatic so Hono injects the token
-  // instead of serving the raw file from disk.
-  app.get("/", async (c) => {
+  // --- Static file serving ---
+  // Serve index.html with injected token (all non-asset routes → SPA)
+  const serveIndex = async () => {
     const indexPath = path.join(UI_DIST, "index.html");
+    let html = await fs.readFile(indexPath, "utf-8");
+    const injection = `<script>window.__CP_TOKEN__=${JSON.stringify(token)};</script>`;
+    html = html.replace("</head>", `${injection}\n</head>`);
+    return html;
+  };
+
+  // SPA root
+  app.get("/", async (c) => {
     try {
-      let html = await fs.readFile(indexPath, "utf-8");
-      const injection = `<script>window.__CP_TOKEN__=${JSON.stringify(token)};</script>`;
-      html = html.replace("</head>", `${injection}\n</head>`);
-      return c.html(html);
+      return c.html(await serveIndex());
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return c.html(`<!DOCTYPE html>
-<html>
-<head><title>Claw Pilot Dashboard</title></head>
-<body>
-<h1>Claw Pilot Dashboard</h1>
-<p>UI not built. Run <code>pnpm build:ui</code> to build the dashboard.</p>
-<p><small>UI path: ${UI_DIST} — ${msg}</small></p>
-<p><a href="/api/instances">API: /api/instances</a></p>
-</body>
-</html>`);
+      return c.html(`<!DOCTYPE html><html><head><title>Claw Pilot</title></head>
+<body><h1>Claw Pilot Dashboard</h1>
+<p>UI not built. Run <code>pnpm build:ui</code> in <code>${path.resolve(UI_DIST, "..")}</code></p>
+<p><small>${msg}</small></p>
+<p><a href="/api/instances">API: /api/instances</a></p></body></html>`);
     }
   });
 
-  // Static assets (JS, CSS, etc.) — served from absolute path dist/ui/
-  // Use path relative to this file's location, not cwd.
-  app.use(
-    "/*",
-    serveStatic({ root: path.relative(process.cwd(), UI_DIST) }),
-  );
+  // Static assets — served by reading from absolute UI_DIST path
+  app.get("/assets/*", async (c) => {
+    const url = new URL(c.req.url, "http://localhost");
+    const filePath = path.join(UI_DIST, url.pathname);
+    // Prevent path traversal
+    if (!filePath.startsWith(UI_DIST)) {
+      return c.text("Forbidden", 403);
+    }
+    try {
+      const data = await fs.readFile(filePath);
+      const ext = path.extname(filePath);
+      const mime = MIME[ext] ?? "application/octet-stream";
+      return new Response(data, {
+        headers: { "content-type": mime, "cache-control": "public, max-age=31536000, immutable" },
+      });
+    } catch {
+      return c.text("Not found", 404);
+    }
+  });
+
+  // SPA fallback for all other routes
+  app.get("*", async (c) => {
+    try {
+      return c.html(await serveIndex());
+    } catch {
+      return c.redirect("/");
+    }
+  });
 
   // Start HTTP server
   const server = serve({ fetch: app.fetch, port });
@@ -135,7 +169,6 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const wss = new WebSocketServer({ server: server as any });
   wss.on("connection", (ws, req) => {
-    // Validate token from query string
     const url = new URL(req.url ?? "/", `http://localhost`);
     const wsToken = url.searchParams.get("token");
     if (wsToken !== token) {
