@@ -3,6 +3,9 @@
 # Usage: curl -fsSL https://raw.githubusercontent.com/swoelffel/claw-pilot/main/install.sh | sh
 set -e
 
+# Ensure we have a valid working directory (cwd may have been deleted)
+cd "${HOME:-/tmp}" 2>/dev/null || true
+
 REPO="swoelffel/claw-pilot"
 REPO_URL="https://github.com/${REPO}.git"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/main"
