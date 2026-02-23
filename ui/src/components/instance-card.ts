@@ -180,6 +180,25 @@ export class InstanceCard extends LitElement {
       background: #6c63ff30;
     }
 
+    .btn-ui {
+      flex: none;
+      padding: 7px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid #f59e0b40;
+      background: #f59e0b20;
+      color: #f59e0b;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      transition: background 0.15s;
+    }
+
+    .btn-ui:hover {
+      background: #f59e0b30;
+    }
+
     .error-msg {
       margin-top: 8px;
       font-size: 11px;
@@ -286,6 +305,15 @@ export class InstanceCard extends LitElement {
           >
             Restart
           </button>
+          ${inst.state === "running"
+            ? html`<a
+                class="btn-ui"
+                href="http://localhost:${inst.port}"
+                target="_blank"
+                rel="noopener"
+                @click=${(e: Event) => e.stopPropagation()}
+              >⎋ UI</a>`
+            : ""}
         </div>
 
         ${this._error
