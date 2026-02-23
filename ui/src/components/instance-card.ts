@@ -270,7 +270,7 @@ export class InstanceCard extends LitElement {
             ? html`
                 <div class="meta-item">
                   <span class="meta-label">${inst.agentCount === 1 ? "Agent" : "Agents"}</span>
-                  <span class="meta-value">${inst.agentCount}</span>
+                  <span class="meta-value">:${inst.agentCount}</span>
                 </div>
               `
             : ""}
