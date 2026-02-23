@@ -96,8 +96,12 @@ export class HealthChecker {
     }
 
     if (telegramConfigured) {
+      // OpenClaw logs are JSONL in /tmp/openclaw/openclaw-YYYY-MM-DD.log
+      // Look for "Telegram: ok" in today's log (last 200 lines is enough)
+      const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      const logPath = `/tmp/openclaw/openclaw-${today}.log`;
       const logResult = await this.conn.exec(
-        `tail -50 ${shellEscape(instance.state_dir)}/logs/gateway.log 2>/dev/null | grep -c "telegram.*connected" || echo 0`,
+        `tail -200 ${shellEscape(logPath)} 2>/dev/null | grep -c "Telegram: ok" || echo 0`,
       );
       const connected = parseInt(logResult.stdout.trim()) > 0;
       status.telegram = connected ? "connected" : "disconnected";
