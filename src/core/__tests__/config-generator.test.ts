@@ -29,26 +29,42 @@ describe("generateConfig", () => {
 
   it("uses variable reference for API key (not literal)", () => {
     const config = JSON.parse(generateConfig(baseAnswers));
-    expect(config.models.providers.anthropic.apiKey).toBe(
-      "${ANTHROPIC_API_KEY}",
-    );
+    expect(config.models.providers.anthropic.apiKey).toBe("${ANTHROPIC_API_KEY}");
+  });
+
+  it("includes baseUrl and models array for anthropic (v2026.2.14)", () => {
+    const config = JSON.parse(generateConfig(baseAnswers));
+    expect(config.models.providers.anthropic.baseUrl).toBe("https://api.anthropic.com");
+    expect(Array.isArray(config.models.providers.anthropic.models)).toBe(true);
   });
 
   it("uses correct provider block for openai", () => {
     const answers: WizardAnswers = { ...baseAnswers, provider: "openai", apiKey: "sk-openai-test" };
     const config = JSON.parse(generateConfig(answers));
     expect(config.models.providers.openai.apiKey).toBe("${OPENAI_API_KEY}");
+    expect(config.models.providers.openai.baseUrl).toBe("https://api.openai.com/v1");
     expect(config.models.providers.anthropic).toBeUndefined();
   });
 
-  it("uses opencode block when provider is opencode", () => {
+  it("uses opencode auth.profiles when provider is opencode (no models.providers)", () => {
     const answers: WizardAnswers = { ...baseAnswers, provider: "opencode", apiKey: "" };
     const config = JSON.parse(generateConfig(answers));
-    expect(config.models.providers.opencode.enabled).toBe(true);
-    expect(config.models.providers.anthropic).toBeUndefined();
+    expect(config.auth.profiles["opencode:default"].provider).toBe("opencode");
+    expect(config.models).toBeUndefined();
   });
 
-  it("includes multi-agent setup with agentToAgent", () => {
+  it("uses model as object { primary } (v2026.2.14)", () => {
+    const config = JSON.parse(generateConfig(baseAnswers));
+    expect(config.agents.defaults.model).toEqual({ primary: "anthropic/claude-sonnet-4-6" });
+  });
+
+  it("does NOT include cache or heartbeat in agents.defaults", () => {
+    const config = JSON.parse(generateConfig(baseAnswers));
+    expect(config.agents.defaults.cache).toBeUndefined();
+    expect(config.agents.defaults.heartbeat).toBeUndefined();
+  });
+
+  it("includes multi-agent setup with agentToAgent allow array (v2026.2.14)", () => {
     const answers: WizardAnswers = {
       ...baseAnswers,
       agents: [
@@ -58,8 +74,35 @@ describe("generateConfig", () => {
     };
     const config = JSON.parse(generateConfig(answers));
     expect(config.tools.agentToAgent.enabled).toBe(true);
-    expect(config.tools.agentToAgent.agents.main.enabled).toBe(true);
-    expect(config.tools.agentToAgent.agents.pm.enabled).toBe(true);
+    expect(config.tools.agentToAgent.allow).toContain("main");
+    expect(config.tools.agentToAgent.allow).toContain("pm");
+    expect(config.tools.agentToAgent.agents).toBeUndefined();
+  });
+
+  it("uses bindings with match.channel + match.accountId (v2026.2.14)", () => {
+    const answers: WizardAnswers = {
+      ...baseAnswers,
+      agents: [
+        { id: "main", name: "Main", isDefault: true },
+        { id: "agent1", name: "Agent One" },
+      ],
+    };
+    const config = JSON.parse(generateConfig(answers));
+    expect(config.bindings).toHaveLength(1);
+    expect(config.bindings[0].agentId).toBe("agent1");
+    expect(config.bindings[0].match.channel).toBe("webchat");
+    expect(config.bindings[0].match.accountId).toBe("agent1");
+    expect(config.bindings[0].type).toBeUndefined();
+    expect(config.bindings[0].path).toBeUndefined();
+  });
+
+  it("uses gateway.bind=loopback and auth.mode=token (v2026.2.14)", () => {
+    const config = JSON.parse(generateConfig(baseAnswers));
+    expect(config.gateway.bind).toBe("loopback");
+    expect(config.gateway.mode).toBe("local");
+    expect(config.gateway.auth.mode).toBe("token");
+    expect(config.gateway.auth.type).toBeUndefined();
+    expect(config.gateway.host).toBeUndefined();
   });
 
   it("includes telegram config when enabled", () => {
@@ -86,9 +129,10 @@ describe("generateConfig", () => {
     expect(config.channels).toBeUndefined();
   });
 
-  it("includes slug in meta", () => {
+  it("does NOT include slug in meta (v2026.2.14)", () => {
     const config = JSON.parse(generateConfig(baseAnswers));
-    expect(config.meta.slug).toBe("demo1");
+    expect(config.meta.slug).toBeUndefined();
+    expect(config.meta.lastTouchedVersion).toBe("2026.2.14");
   });
 });
 

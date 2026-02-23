@@ -45,8 +45,9 @@ export const PROVIDER_ENV_VARS: Record<string, string> = {
 
 export function generateConfig(answers: WizardAnswers): string {
   const nonMainAgents = answers.agents.filter((a) => !a.isDefault && a.id !== "main");
+  const allAgentIds = answers.agents.map((a) => a.id);
 
-  // Build agents list
+  // Build agents list (v2026.2.14 format)
   const agentsList = nonMainAgents.map((agent) => {
     const entry: Record<string, unknown> = {
       id: agent.id,
@@ -54,60 +55,71 @@ export function generateConfig(answers: WizardAnswers): string {
       workspace: agent.workspace ?? `workspace-${agent.id}`,
     };
     if (agent.model) {
-      entry["model"] = agent.model;
+      // model as object: { primary: "provider/model" }
+      entry["model"] = { primary: agent.model };
     }
     return entry;
   });
 
-  // Build agentToAgent tools (all agents can talk to each other)
-  const allAgentIds = answers.agents.map((a) => a.id);
-  const agentToAgentConfig = allAgentIds.reduce(
-    (acc, id) => {
-      acc[id] = { enabled: true };
-      return acc;
-    },
-    {} as Record<string, { enabled: boolean }>,
-  );
-
-  // Build bindings (webchat per non-main agent)
+  // Build bindings (v2026.2.14: match.channel + match.accountId)
   const bindings: Record<string, unknown>[] = nonMainAgents.map((agent) => ({
-    type: "webchat",
     agentId: agent.id,
-    path: `/${agent.id}`,
+    match: {
+      channel: "webchat",
+      accountId: agent.id,
+    },
   }));
 
-  // Build provider config block
+  // Build provider config block (v2026.2.14: baseUrl + models array required)
   const envVar = PROVIDER_ENV_VARS[answers.provider] ?? "";
   const providerBlock: Record<string, unknown> = {};
 
   if (answers.provider === "opencode") {
-    providerBlock["opencode"] = { enabled: true };
+    // opencode uses auth.profiles, no providers block needed
   } else if (envVar) {
+    const providerDefaults: Record<string, { baseUrl: string }> = {
+      anthropic:  { baseUrl: "https://api.anthropic.com" },
+      openai:     { baseUrl: "https://api.openai.com/v1" },
+      openrouter: { baseUrl: "https://openrouter.ai/api/v1" },
+      gemini:     { baseUrl: "https://generativelanguage.googleapis.com/v1beta" },
+      mistral:    { baseUrl: "https://api.mistral.ai/v1" },
+    };
     providerBlock[answers.provider] = {
       apiKey: `\${${envVar}}`,
+      baseUrl: providerDefaults[answers.provider]?.baseUrl ?? "",
+      models: [],
     };
   }
 
+  // model default as object (v2026.2.14)
+  const defaultModelObj = { primary: answers.defaultModel };
+
+  // auth block: opencode uses profiles, others use providers
+  const authBlock: Record<string, unknown> = answers.provider === "opencode"
+    ? {
+        profiles: {
+          "opencode:default": {
+            provider: "opencode",
+            mode: "api_key",
+          },
+        },
+      }
+    : {};
+
   const config: Record<string, unknown> = {
     meta: {
-      slug: answers.slug,
-      name: answers.displayName,
-      version: "1",
+      lastTouchedVersion: "2026.2.14",
+      lastTouchedAt: new Date().toISOString(),
     },
-    env: {
-      file: ".env",
-    },
-    models: {
-      providers: providerBlock,
-    },
+    ...(Object.keys(authBlock).length > 0 ? { auth: authBlock } : {}),
+    ...(Object.keys(providerBlock).length > 0 ? { models: { providers: providerBlock } } : {}),
     agents: {
       defaults: {
-        model: answers.defaultModel,
+        model: defaultModelObj,
         workspace: "workspace",
-        cache: true,
-        heartbeat: {
-          enabled: true,
-          intervalMs: 30000,
+        subagents: {
+          maxConcurrent: 4,
+          archiveAfterMinutes: 60,
         },
       },
       ...(agentsList.length > 0 ? { list: agentsList } : {}),
@@ -116,15 +128,16 @@ export function generateConfig(answers: WizardAnswers): string {
       profile: "coding",
       agentToAgent: {
         enabled: true,
-        agents: agentToAgentConfig,
+        allow: allAgentIds,
       },
     },
     ...(bindings.length > 0 ? { bindings } : {}),
     gateway: {
       port: answers.port,
-      host: "127.0.0.1",
+      mode: "local",
+      bind: "loopback",
       auth: {
-        type: "token",
+        mode: "token",
         token: "${OPENCLAW_GW_AUTH_TOKEN}",
       },
       trustedProxies: ["127.0.0.1"],
@@ -136,7 +149,10 @@ export function generateConfig(answers: WizardAnswers): string {
     config["channels"] = {
       telegram: {
         enabled: true,
+        dmPolicy: "pairing",
         botToken: "${TELEGRAM_BOT_TOKEN}",
+        groupPolicy: "allowlist",
+        streamMode: "partial",
       },
     };
   }
