@@ -116,6 +116,10 @@ export class Provisioner {
       );
     }
 
+    // Resolve current user UID for XDG_RUNTIME_DIR in systemd service
+    const uidResult = await this.conn.exec("id -u");
+    const uid = parseInt(uidResult.stdout.trim(), 10) || 1000;
+
     // Step 2: Create directory structure
     logger.step("Creating directories...");
     await this.conn.mkdir(stateDir, { mode: constants.DIR_MODE });
@@ -167,6 +171,7 @@ export class Provisioner {
       configPath,
       openclawHome,
       openclawBin: openclaw.bin,
+      uid,
     });
     await this.conn.mkdir(systemdDir);
     await this.conn.writeFile(serviceFile, serviceContent);

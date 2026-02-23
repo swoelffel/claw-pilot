@@ -10,6 +10,7 @@ const opts = {
   configPath: "/opt/openclaw/.openclaw-demo1/openclaw.json",
   openclawHome: "/opt/openclaw",
   openclawBin: "/opt/openclaw/.npm-global/bin/openclaw",
+  uid: 1000,
 };
 
 describe("generateSystemdService", () => {
@@ -41,5 +42,15 @@ describe("generateSystemdService", () => {
   it("uses the provided binary path", () => {
     const service = generateSystemdService(opts);
     expect(service).toContain(opts.openclawBin);
+  });
+
+  it("sets XDG_RUNTIME_DIR based on uid", () => {
+    const service = generateSystemdService(opts);
+    expect(service).toContain("XDG_RUNTIME_DIR=/run/user/1000");
+  });
+
+  it("computes correct XDG_RUNTIME_DIR for different UIDs", () => {
+    const service = generateSystemdService({ ...opts, uid: 996 });
+    expect(service).toContain("XDG_RUNTIME_DIR=/run/user/996");
   });
 });

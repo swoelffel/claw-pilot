@@ -1,6 +1,4 @@
 // src/core/systemd-generator.ts
-import { constants } from "../lib/constants.js";
-
 export interface SystemdOptions {
   slug: string;
   displayName: string;
@@ -9,6 +7,7 @@ export interface SystemdOptions {
   configPath: string;
   openclawHome: string;
   openclawBin: string;
+  uid: number;
 }
 
 export function generateSystemdService(options: SystemdOptions): string {
@@ -20,6 +19,7 @@ export function generateSystemdService(options: SystemdOptions): string {
     configPath,
     openclawHome,
     openclawBin,
+    uid,
   } = options;
 
   return `[Unit]
@@ -43,7 +43,7 @@ Environment=OPENCLAW_GATEWAY_PORT=${port}
 Environment=OPENCLAW_SYSTEMD_UNIT=openclaw-${slug}.service
 Environment=OPENCLAW_SERVICE_MARKER=openclaw
 Environment=OPENCLAW_SERVICE_KIND=gateway
-Environment=XDG_RUNTIME_DIR=${constants.XDG_RUNTIME_DIR}
+Environment=XDG_RUNTIME_DIR=/run/user/${uid}
 
 [Install]
 WantedBy=default.target

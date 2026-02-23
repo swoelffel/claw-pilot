@@ -26,18 +26,24 @@ export class OpenClawCLI {
 
   /** Detect openclaw binary path and version */
   async detect(): Promise<{ bin: string; version: string } | null> {
-    const paths = [
+    const candidates = [
       "openclaw",
       "/opt/openclaw/.npm-global/bin/openclaw",
       `${process.env["HOME"] ?? ""}/.npm-global/bin/openclaw`,
     ];
 
-    for (const bin of paths) {
+    for (const candidate of candidates) {
       const result = await this.conn.exec(
-        `${bin} --version 2>/dev/null || true`,
+        `${candidate} --version 2>/dev/null || true`,
       );
       if (result.exitCode === 0 && result.stdout.trim()) {
-        return { bin, version: result.stdout.trim() };
+        const version = result.stdout.trim();
+        // Resolve to absolute path so systemd ExecStart works without PATH lookup
+        const absResult = await this.conn.exec(
+          `command -v ${candidate} 2>/dev/null || readlink -f $(which ${candidate} 2>/dev/null) 2>/dev/null || echo ${candidate}`,
+        );
+        const bin = absResult.stdout.trim() || candidate;
+        return { bin, version };
       }
     }
     return null;
