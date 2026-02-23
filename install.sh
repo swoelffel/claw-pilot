@@ -100,6 +100,14 @@ if [ -d "$INSTALL_DIR/.git" ]; then
   log "Rebuilding after update..."
   ( cd "$INSTALL_DIR" && pnpm install --frozen-lockfile && pnpm run build:cli && pnpm run build:ui )
   log "claw-pilot $(node "$INSTALL_DIR/dist/index.mjs" --version 2>/dev/null) updated successfully!"
+  # Restart dashboard service if it's running (to load new code)
+  if [ "$(uname)" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
+    if XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user is-active claw-pilot-dashboard.service >/dev/null 2>&1; then
+      log "Restarting dashboard service to load updated code..."
+      XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user restart claw-pilot-dashboard.service
+      log "Dashboard service restarted."
+    fi
+  fi
   exit 0
 else
   if [ -d "$INSTALL_DIR" ]; then
@@ -163,9 +171,38 @@ fi
 echo ""
 log "Running 'claw-pilot init' to set up the registry..."
 if command -v claw-pilot >/dev/null 2>&1; then
-  claw-pilot init --yes
+  CLAW_PILOT_CMD="claw-pilot"
 else
-  node "$INSTALL_DIR/dist/index.mjs" init --yes
+  CLAW_PILOT_CMD="node $INSTALL_DIR/dist/index.mjs"
+fi
+$CLAW_PILOT_CMD init --yes
+
+# 12. Install dashboard as systemd service (Linux only)
+if [ "$(uname)" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
+  echo ""
+  log "Setting up dashboard as a systemd service..."
+
+  # Kill any manually-started dashboard process on port 19000
+  DASHBOARD_PID=$(lsof -ti:19000 2>/dev/null || true)
+  if [ -n "$DASHBOARD_PID" ]; then
+    warn "Stopping manual dashboard process (PID $DASHBOARD_PID) on port 19000..."
+    kill "$DASHBOARD_PID" 2>/dev/null || true
+    sleep 2
+  fi
+
+  # Install the service (this also enables + starts it)
+  if $CLAW_PILOT_CMD service install; then
+    log "Dashboard service installed and started."
+    log "View logs: journalctl --user -u claw-pilot-dashboard.service -f"
+  else
+    warn "Dashboard service installation failed. You can start it manually:"
+    warn "  claw-pilot dashboard"
+    warn "  or: claw-pilot service install"
+  fi
+else
+  echo ""
+  log "Skipping systemd service setup (not Linux or systemd not available)."
+  log "Start the dashboard manually: claw-pilot dashboard"
 fi
 
 echo ""

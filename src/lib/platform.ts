@@ -47,3 +47,10 @@ export function getSystemdDir(): string {
 export function getSystemdUnit(slug: string): string {
   return `openclaw-${slug}.service`;
 }
+
+export const DASHBOARD_SERVICE_UNIT = "claw-pilot-dashboard.service";
+
+export function getDashboardServicePath(): string {
+  // Uses getSystemdDir() which follows the same home as other systemd units
+  return path.join(getSystemdDir(), DASHBOARD_SERVICE_UNIT);
+}

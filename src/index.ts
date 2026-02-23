@@ -11,6 +11,7 @@ import { statusCommand } from "./commands/status.js";
 import { logsCommand } from "./commands/logs.js";
 import { dashboardCommand } from "./commands/dashboard.js";
 import { doctorCommand } from "./commands/doctor.js";
+import { serviceCommand } from "./commands/service.js";
 
 const program = new Command();
 
@@ -30,6 +31,7 @@ program.addCommand(statusCommand());
 program.addCommand(logsCommand());
 program.addCommand(dashboardCommand());
 program.addCommand(doctorCommand());
+program.addCommand(serviceCommand());
 
 // Global error handler for unhandled async errors
 process.on("unhandledRejection", (err) => {
