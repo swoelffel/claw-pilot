@@ -9,7 +9,7 @@ import {
   promptPort,
   promptAgents,
   promptModel,
-  promptApiKey,
+  promptProvider,
   promptTelegram,
   promptNginx,
   promptMem0,
@@ -36,9 +36,9 @@ export async function runWizard(
   // Step 4: Default model
   const defaultModel = await promptModel();
 
-  // Step 5: Anthropic API key
+  // Step 5: Provider + API key
   const existingInstances = registry.listInstances();
-  const anthropicApiKey = await promptApiKey(existingInstances);
+  const { provider, apiKey } = await promptProvider(existingInstances);
 
   // Step 6: Telegram
   const telegram = await promptTelegram();
@@ -56,8 +56,9 @@ export async function runWizard(
   console.log(`  Port:        ${port}`);
   console.log(`  Agents:      ${agents.map((a) => a.id).join(", ")}`);
   console.log(`  Model:       ${defaultModel}`);
+  console.log(`  Provider:    ${provider}`);
   console.log(
-    `  API key:     ${anthropicApiKey === "reuse" ? "reuse from existing" : "new key"}`,
+    `  API key:     ${apiKey === "reuse" ? "reuse from existing" : apiKey ? "new key" : "none (not required)"}`,
   );
   console.log(`  Telegram:    ${telegram.enabled ? "yes" : "no"}`);
   console.log(`  Nginx:       ${nginx.enabled ? nginx.domain : "no"}`);
@@ -79,7 +80,8 @@ export async function runWizard(
     port,
     agents,
     defaultModel,
-    anthropicApiKey,
+    provider,
+    apiKey,
     telegram,
     nginx,
     mem0,

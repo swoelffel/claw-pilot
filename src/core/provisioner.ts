@@ -5,7 +5,7 @@ import type { ServerConnection } from "../server/connection.js";
 import type { Registry } from "./registry.js";
 import type { PortAllocator } from "./port-allocator.js";
 import type { WizardAnswers } from "./config-generator.js";
-import { generateConfig, generateEnv } from "./config-generator.js";
+import { generateConfig, generateEnv, PROVIDER_ENV_VARS } from "./config-generator.js";
 import { generateSystemdService } from "./systemd-generator.js";
 import { generateNginxVhost } from "./nginx-generator.js";
 import { generateGatewayToken } from "./secrets.js";
@@ -24,6 +24,52 @@ export interface ProvisionResult {
   agentCount: number;
   telegramBot?: string;
   nginxDomain?: string;
+}
+
+/** Exported for testing: resolve the API key from answers, reading from existing instance if needed */
+export async function resolveApiKey(
+  answers: Pick<WizardAnswers, "provider" | "apiKey">,
+  registry: Registry,
+  conn: ServerConnection,
+): Promise<string> {
+  let resolvedApiKey = answers.apiKey;
+
+  if (resolvedApiKey === "reuse") {
+    const envVar = PROVIDER_ENV_VARS[answers.provider] ?? "";
+
+    if (!envVar) {
+      // Provider needs no API key (e.g. opencode) — nothing to reuse
+      return "";
+    }
+
+    const existing = registry.listInstances();
+    if (existing.length === 0) {
+      throw new ClawPilotError("No existing instance to reuse API key from", "NO_EXISTING_INSTANCE");
+    }
+    const existingInst = existing[0]!;
+    const existingEnvPath = path.join(existingInst.state_dir, ".env");
+
+    let envContent: string;
+    try {
+      envContent = await conn.readFile(existingEnvPath);
+    } catch (err) {
+      throw new ClawPilotError(
+        `Could not read .env from existing instance "${existingInst.slug}": ${err instanceof Error ? err.message : String(err)}`,
+        "ENV_READ_FAILED",
+      );
+    }
+
+    const match = envContent.match(new RegExp(`${envVar}=(.+)`));
+    resolvedApiKey = match?.[1]?.trim() ?? "";
+    if (!resolvedApiKey) {
+      throw new ClawPilotError(
+        `Could not find ${envVar} in existing instance "${existingInst.slug}" .env`,
+        "API_KEY_READ_FAILED",
+      );
+    }
+  }
+
+  return resolvedApiKey;
 }
 
 export class Provisioner {
@@ -80,32 +126,12 @@ export class Provisioner {
     logger.step("Generating secrets...");
     const gatewayToken = generateGatewayToken();
 
-    // Resolve API key (reuse from first existing instance)
-    let anthropicApiKey = answers.anthropicApiKey;
-    if (anthropicApiKey === "reuse") {
-      const existing = this.registry.listInstances();
-      if (existing.length === 0) {
-        throw new ClawPilotError(
-          "No existing instance to reuse API key from",
-          "NO_EXISTING_INSTANCE",
-        );
-      }
-      // Read API key from existing .env
-      const existingInst = existing[0]!;
-      const existingEnvPath = path.join(existingInst.state_dir, ".env");
-      const envContent = await this.conn.readFile(existingEnvPath);
-      const match = envContent.match(/ANTHROPIC_API_KEY=(.+)/);
-      anthropicApiKey = match?.[1]?.trim() ?? "";
-      if (!anthropicApiKey) {
-        throw new ClawPilotError(
-          "Could not read ANTHROPIC_API_KEY from existing instance",
-          "API_KEY_READ_FAILED",
-        );
-      }
-    }
+    // Resolve API key
+    const resolvedApiKey = await resolveApiKey(answers, this.registry, this.conn);
 
     const envContent = generateEnv({
-      anthropicApiKey,
+      provider: answers.provider,
+      apiKey: resolvedApiKey,
       gatewayToken,
       telegramBotToken: answers.telegram.botToken,
     });

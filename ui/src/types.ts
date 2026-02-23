@@ -49,11 +49,26 @@ export interface AgentDefinition {
   isDefault?: boolean;
 }
 
+export interface ProviderInfo {
+  id: string;
+  label: string;
+  requiresKey: boolean;
+  isDefault?: boolean;
+}
+
+export interface ProvidersResponse {
+  canReuseCredentials: boolean;
+  sourceInstance: string | null;
+  providers: ProviderInfo[];
+  models: string[];
+}
+
 export interface CreateInstanceRequest {
   slug: string;
   displayName: string;
   port: number;
   defaultModel: string;
-  anthropicApiKey: string;
+  provider: string;
+  apiKey: string;
   agents: AgentDefinition[];
 }

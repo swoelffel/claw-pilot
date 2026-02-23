@@ -14,7 +14,8 @@ export interface WizardAnswers {
   port: number;
   agents: AgentDefinition[];
   defaultModel: string;
-  anthropicApiKey: "reuse" | string;
+  provider: string;   // e.g. "anthropic" | "openai" | "openrouter" | "gemini" | "mistral" | "opencode"
+  apiKey: string;     // literal key, "reuse", or "" for opencode
   telegram: {
     enabled: boolean;
     botToken?: string;
@@ -32,6 +33,15 @@ export interface WizardAnswers {
     qdrantPort?: number;
   };
 }
+
+export const PROVIDER_ENV_VARS: Record<string, string> = {
+  anthropic:  "ANTHROPIC_API_KEY",
+  openai:     "OPENAI_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
+  gemini:     "GEMINI_API_KEY",
+  mistral:    "MISTRAL_API_KEY",
+  opencode:   "",
+};
 
 export function generateConfig(answers: WizardAnswers): string {
   const nonMainAgents = answers.agents.filter((a) => !a.isDefault && a.id !== "main");
@@ -66,6 +76,18 @@ export function generateConfig(answers: WizardAnswers): string {
     path: `/${agent.id}`,
   }));
 
+  // Build provider config block
+  const envVar = PROVIDER_ENV_VARS[answers.provider] ?? "";
+  const providerBlock: Record<string, unknown> = {};
+
+  if (answers.provider === "opencode") {
+    providerBlock["opencode"] = { enabled: true };
+  } else if (envVar) {
+    providerBlock[answers.provider] = {
+      apiKey: `\${${envVar}}`,
+    };
+  }
+
   const config: Record<string, unknown> = {
     meta: {
       slug: answers.slug,
@@ -76,16 +98,7 @@ export function generateConfig(answers: WizardAnswers): string {
       file: ".env",
     },
     models: {
-      providers: {
-        anthropic: {
-          apiKey: "${ANTHROPIC_API_KEY}",
-          models: [
-            "claude-sonnet-4-6",
-            "claude-opus-4-6",
-            "claude-haiku-4-5-20251001",
-          ],
-        },
-      },
+      providers: providerBlock,
     },
     agents: {
       defaults: {
@@ -154,14 +167,17 @@ export function generateConfig(answers: WizardAnswers): string {
 
 /** Generate .env content */
 export function generateEnv(options: {
-  anthropicApiKey: string;
+  provider: string;
+  apiKey: string;
   gatewayToken: string;
   telegramBotToken?: string;
 }): string {
-  const lines = [
-    `ANTHROPIC_API_KEY=${options.anthropicApiKey}`,
-    `OPENCLAW_GW_AUTH_TOKEN=${options.gatewayToken}`,
-  ];
+  const lines: string[] = [];
+  const envVar = PROVIDER_ENV_VARS[options.provider] ?? "";
+  if (envVar && options.apiKey) {
+    lines.push(`${envVar}=${options.apiKey}`);
+  }
+  lines.push(`OPENCLAW_GW_AUTH_TOKEN=${options.gatewayToken}`);
   if (options.telegramBotToken) {
     lines.push(`TELEGRAM_BOT_TOKEN=${options.telegramBotToken}`);
   }

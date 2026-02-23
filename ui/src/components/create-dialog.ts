@@ -1,13 +1,7 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
-import type { AgentDefinition, CreateInstanceRequest } from "../types.js";
-import { fetchNextPort, createInstance } from "../api.js";
-
-const MODELS = [
-  { value: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6 (recommended)" },
-  { value: "anthropic/claude-opus-4-6", label: "Claude Opus 4.6" },
-  { value: "anthropic/claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
-];
+import type { AgentDefinition, CreateInstanceRequest, ProviderInfo, ProvidersResponse } from "../types.js";
+import { fetchNextPort, createInstance, fetchProviders } from "../api.js";
 
 @customElement("cp-create-dialog")
 export class CreateDialog extends LitElement {
@@ -143,25 +137,6 @@ export class CreateDialog extends LitElement {
     .field-error {
       font-size: 11px;
       color: #ef4444;
-    }
-
-    /* API key toggle */
-    .radio-group {
-      display: flex;
-      gap: 12px;
-    }
-
-    .radio-option {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      cursor: pointer;
-      font-size: 13px;
-      color: #94a3b8;
-    }
-    .radio-option input[type="radio"] {
-      accent-color: #6c63ff;
-      width: auto;
     }
 
     /* Agents section */
@@ -320,8 +295,13 @@ export class CreateDialog extends LitElement {
   @state() private _port = 0;
   @state() private _portLoading = true;
   @state() private _portError = "";
-  @state() private _model = "anthropic/claude-sonnet-4-6";
-  @state() private _apiKeyMode: "reuse" | "new" = "reuse";
+  @state() private _model = "";
+  @state() private _providers: ProviderInfo[] = [];
+  @state() private _models: string[] = [];
+  @state() private _canReuseCredentials = false;
+  @state() private _providersLoading = true;
+  @state() private _providersError = "";
+  @state() private _selectedProvider: ProviderInfo | null = null;
   @state() private _apiKey = "";
   @state() private _agentMode: "minimal" | "custom" = "minimal";
   @state() private _customAgents: Array<{ id: string; name: string }> = [];
@@ -333,6 +313,7 @@ export class CreateDialog extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this._loadNextPort();
+    this._loadProviders();
   }
 
   private async _loadNextPort(): Promise<void> {
@@ -345,6 +326,30 @@ export class CreateDialog extends LitElement {
       this._port = 18790;
     } finally {
       this._portLoading = false;
+    }
+  }
+
+  private async _loadProviders(): Promise<void> {
+    this._providersLoading = true;
+    this._providersError = "";
+    try {
+      const data: ProvidersResponse = await fetchProviders();
+      this._providers = data.providers;
+      this._models = data.models;
+      this._canReuseCredentials = data.canReuseCredentials;
+      const defaultProvider = data.providers.find((p) => p.isDefault) ?? data.providers[0] ?? null;
+      this._selectedProvider = defaultProvider;
+      if (data.models.length > 0) {
+        this._model = data.models[0]!;
+      }
+    } catch (err) {
+      this._providersError = err instanceof Error ? err.message : "Could not load providers";
+      this._providers = [{ id: "anthropic", label: "Anthropic", requiresKey: true }];
+      this._models = ["anthropic/claude-sonnet-4-6"];
+      this._model = "anthropic/claude-sonnet-4-6";
+      this._selectedProvider = this._providers[0]!;
+    } finally {
+      this._providersLoading = false;
     }
   }
 
@@ -399,7 +404,8 @@ export class CreateDialog extends LitElement {
     if (this._validateSlug(this._slug)) return false;
     if (!this._port || this._port < 1024 || this._port > 65535) return false;
     if (!this._model) return false;
-    if (this._apiKeyMode === "new" && !this._apiKey.trim()) return false;
+    if (!this._selectedProvider) return false;
+    if (this._selectedProvider.requiresKey && !this._apiKey.trim()) return false;
     if (this._agentMode === "custom") {
       for (const a of this._customAgents) {
         if (!a.id || !a.name) return false;
@@ -420,7 +426,8 @@ export class CreateDialog extends LitElement {
       displayName: this._displayName || this._slug.charAt(0).toUpperCase() + this._slug.slice(1),
       port: this._port,
       defaultModel: this._model,
-      anthropicApiKey: this._apiKeyMode === "reuse" ? "reuse" : this._apiKey.trim(),
+      provider: this._selectedProvider?.id ?? "anthropic",
+      apiKey: this._selectedProvider?.requiresKey ? this._apiKey.trim() : "",
       agents: this._buildAgents(),
     };
 
@@ -443,6 +450,78 @@ export class CreateDialog extends LitElement {
         <div class="spinner-msg">This may take 20-30 seconds (systemd start + health check)</div>
       </div>
     `;
+  }
+
+  private _renderProviderSection() {
+    if (this._providersLoading) {
+      return html`
+        <div class="section">
+          <div class="section-label">Provider</div>
+          <span class="field-hint">Loading providers...</span>
+        </div>
+      `;
+    }
+
+    const selected = this._selectedProvider;
+
+    return html`
+      <div class="section">
+        <div class="section-label">Provider</div>
+
+        ${this._providersError
+          ? html`<span class="field-error">${this._providersError}</span>`
+          : ""}
+
+        <div class="field">
+          <label for="provider">AI Provider *</label>
+          <select
+            id="provider"
+            @change=${(e: Event) => {
+              const id = (e.target as HTMLSelectElement).value;
+              this._selectedProvider = this._providers.find((p) => p.id === id) ?? null;
+              this._apiKey = "";
+            }}
+          >
+            ${this._providers.map((p) => html`
+              <option value=${p.id} ?selected=${selected?.id === p.id}>${p.label}</option>
+            `)}
+          </select>
+        </div>
+
+        ${selected?.requiresKey
+          ? html`
+              <div class="field">
+                <label for="api-key">API Key *</label>
+                <input
+                  id="api-key"
+                  type="password"
+                  placeholder=${this._getApiKeyPlaceholder(selected.id)}
+                  .value=${this._apiKey}
+                  @input=${(e: Event) => { this._apiKey = (e.target as HTMLInputElement).value; }}
+                />
+                <span class="field-hint">Your ${selected.label} API key</span>
+              </div>
+            `
+          : html`
+              <span class="field-hint">
+                ${selected?.id === "opencode"
+                  ? "Uses the OpenCode runtime — no API key required"
+                  : "Credentials will be reused from the existing instance"}
+              </span>
+            `}
+      </div>
+    `;
+  }
+
+  private _getApiKeyPlaceholder(providerId: string): string {
+    const placeholders: Record<string, string> = {
+      anthropic:  "sk-ant-...",
+      openai:     "sk-...",
+      openrouter: "sk-or-...",
+      gemini:     "AIza...",
+      mistral:    "...",
+    };
+    return placeholders[providerId] ?? "API key";
   }
 
   private _renderForm() {
@@ -509,8 +588,8 @@ export class CreateDialog extends LitElement {
                 .value=${this._model}
                 @change=${(e: Event) => { this._model = (e.target as HTMLSelectElement).value; }}
               >
-                ${MODELS.map((m) => html`
-                  <option value=${m.value} ?selected=${this._model === m.value}>${m.label}</option>
+                ${this._models.map((m) => html`
+                  <option value=${m} ?selected=${this._model === m}>${m}</option>
                 `)}
               </select>
             </div>
@@ -519,44 +598,8 @@ export class CreateDialog extends LitElement {
 
         <hr class="divider" />
 
-        <!-- API Key -->
-        <div class="section">
-          <div class="section-label">Anthropic API Key</div>
-          <div class="radio-group">
-            <label class="radio-option">
-              <input
-                type="radio"
-                name="apikey"
-                value="reuse"
-                ?checked=${this._apiKeyMode === "reuse"}
-                @change=${() => { this._apiKeyMode = "reuse"; }}
-              />
-              Reuse from existing instance
-            </label>
-            <label class="radio-option">
-              <input
-                type="radio"
-                name="apikey"
-                value="new"
-                ?checked=${this._apiKeyMode === "new"}
-                @change=${() => { this._apiKeyMode = "new"; }}
-              />
-              Enter new key
-            </label>
-          </div>
-          ${this._apiKeyMode === "new"
-            ? html`
-                <div class="field">
-                  <input
-                    type="password"
-                    placeholder="sk-ant-..."
-                    .value=${this._apiKey}
-                    @input=${(e: Event) => { this._apiKey = (e.target as HTMLInputElement).value; }}
-                  />
-                </div>
-              `
-            : html`<span class="field-hint">Will copy ANTHROPIC_API_KEY from the first registered instance</span>`}
-        </div>
+        <!-- Provider + API Key -->
+        ${this._renderProviderSection()}
 
         <hr class="divider" />
 

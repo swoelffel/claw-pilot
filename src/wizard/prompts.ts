@@ -3,6 +3,7 @@ import { input, select, confirm, password } from "@inquirer/prompts";
 import type { Registry, InstanceRecord } from "../core/registry.js";
 import type { PortAllocator } from "../core/port-allocator.js";
 import type { AgentDefinition } from "../core/config-generator.js";
+import { PROVIDER_ENV_VARS } from "../core/config-generator.js";
 
 export async function promptSlug(
   registry: Registry,
@@ -122,6 +123,54 @@ export async function promptModel(): Promise<string> {
   });
 }
 
+export async function promptProvider(
+  existingInstances: InstanceRecord[],
+): Promise<{ provider: string; apiKey: string }> {
+  // Build provider choices
+  const providerChoices = [
+    { value: "anthropic",  name: "Anthropic (Claude)" },
+    { value: "openai",     name: "OpenAI (GPT)" },
+    { value: "openrouter", name: "OpenRouter" },
+    { value: "gemini",     name: "Google Gemini" },
+    { value: "mistral",    name: "Mistral" },
+    { value: "opencode",   name: "OpenCode (no API key needed)" },
+  ];
+
+  const provider = await select<string>({
+    message: "AI provider:",
+    choices: providerChoices,
+  });
+
+  // opencode needs no API key
+  if (provider === "opencode") {
+    return { provider, apiKey: "" };
+  }
+
+  const envVar = PROVIDER_ENV_VARS[provider] ?? "";
+
+  // Offer reuse if there are existing instances
+  if (existingInstances.length > 0) {
+    const source = await select<"reuse" | "new">({
+      message: `${provider.charAt(0).toUpperCase() + provider.slice(1)} API key:`,
+      choices: [
+        {
+          value: "reuse",
+          name: `Reuse from existing instance (${existingInstances[0]?.slug})`,
+        },
+        { value: "new", name: "Enter new key" },
+      ],
+    });
+    if (source === "reuse") return { provider, apiKey: "reuse" };
+  }
+
+  const apiKey = await password({
+    message: `${envVar || "API"} key:`,
+  });
+
+  return { provider, apiKey };
+}
+
+/** @deprecated Use promptProvider instead */
 export async function promptApiKey(
   existingInstances: InstanceRecord[],
 ): Promise<"reuse" | string> {

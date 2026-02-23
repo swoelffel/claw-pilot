@@ -14,6 +14,7 @@ import { Provisioner } from "../core/provisioner.js";
 import { PortAllocator } from "../core/port-allocator.js";
 import { PairingManager } from "../core/pairing.js";
 import { Monitor } from "./monitor.js";
+import { ClawPilotError } from "../lib/errors.js";
 
 // Resolve dist/ui/ relative to this bundle chunk.
 // When bundled: this file is at <install>/dist/server-*.mjs
@@ -43,6 +44,27 @@ export interface DashboardOptions {
   registry: Registry;
   conn: ServerConnection;
 }
+
+interface ProviderInfo {
+  id: string;
+  label: string;
+  requiresKey: boolean;
+  isDefault?: boolean;
+}
+
+const DEFAULT_PROVIDERS: ProviderInfo[] = [
+  { id: "anthropic",  label: "Anthropic",     requiresKey: true },
+  { id: "openai",     label: "OpenAI",         requiresKey: true },
+  { id: "openrouter", label: "OpenRouter",     requiresKey: true },
+  { id: "gemini",     label: "Google Gemini",  requiresKey: true },
+  { id: "mistral",    label: "Mistral",        requiresKey: true },
+];
+
+const DEFAULT_MODELS: string[] = [
+  "anthropic/claude-sonnet-4-6",
+  "anthropic/claude-opus-4-6",
+  "anthropic/claude-haiku-4-5-20251001",
+];
 
 export async function startDashboard(options: DashboardOptions): Promise<void> {
   const { port, token, registry, conn } = options;
@@ -126,6 +148,61 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     }
   });
 
+  // GET /api/providers — list available providers + detect reuse capability
+  app.get("/api/providers", async (c) => {
+    const existing = registry.listInstances();
+    let canReuseCredentials = false;
+    let sourceInstance: string | null = null;
+    let models: string[] = [...DEFAULT_MODELS];
+    const providers: ProviderInfo[] = [];
+
+    if (existing.length > 0) {
+      const source = existing[0]!;
+      sourceInstance = source.slug;
+
+      try {
+        const raw = await conn.readFile(source.config_path);
+        const cfg = JSON.parse(raw) as {
+          models?: { providers?: Record<string, unknown> };
+          agents?: { defaults?: { model?: string } };
+        };
+
+        const cfgProviders = Object.keys(cfg.models?.providers ?? {});
+        if (cfgProviders.length > 0) {
+          canReuseCredentials = true;
+
+          for (const pid of cfgProviders) {
+            providers.push({
+              id: pid,
+              label: pid === "opencode"
+                ? "OpenCode (via existing instance)"
+                : `${pid.charAt(0).toUpperCase() + pid.slice(1)} (reuse from ${source.slug})`,
+              requiresKey: false,
+              isDefault: providers.length === 0,
+            });
+          }
+
+          const srcModel = cfg.agents?.defaults?.model;
+          if (srcModel) {
+            models = [srcModel, ...DEFAULT_MODELS.filter((m) => m !== srcModel)];
+          }
+        }
+      } catch {
+        // Non-fatal: source config unreadable → fall through to defaults
+      }
+    }
+
+    // Always append the full default provider list (skip duplicates)
+    const existingIds = new Set(providers.map((p) => p.id));
+    for (const p of DEFAULT_PROVIDERS) {
+      if (!existingIds.has(p.id)) {
+        providers.push(p);
+      }
+    }
+
+    return c.json({ canReuseCredentials, sourceInstance, providers, models });
+  });
+
   // POST /api/instances — provision a new instance
   app.post("/api/instances", async (c) => {
     const server = registry.getLocalServer();
@@ -142,7 +219,8 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     const slug = body["slug"];
     const port = body["port"];
     const defaultModel = body["defaultModel"];
-    const anthropicApiKey = body["anthropicApiKey"];
+    const provider = body["provider"];
+    const apiKey   = body["apiKey"];
 
     if (typeof slug !== "string" || !/^[a-z][a-z0-9-]*$/.test(slug) || slug.length < 2 || slug.length > 30) {
       return c.json({ error: "Invalid slug: must be 2-30 lowercase alphanumeric chars with hyphens" }, 400);
@@ -153,8 +231,11 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     if (typeof defaultModel !== "string" || !defaultModel) {
       return c.json({ error: "defaultModel is required" }, 400);
     }
-    if (typeof anthropicApiKey !== "string" || !anthropicApiKey) {
-      return c.json({ error: "anthropicApiKey is required (or 'reuse')" }, 400);
+    if (typeof provider !== "string" || !provider) {
+      return c.json({ error: "provider is required" }, 400);
+    }
+    if (typeof apiKey !== "string") {
+      return c.json({ error: "apiKey must be a string (use '' for providers that need no key)" }, 400);
     }
 
     // Build WizardAnswers from simplified web form
@@ -176,10 +257,11 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       port,
       agents,
       defaultModel,
-      anthropicApiKey,
+      provider,
+      apiKey,
       telegram: { enabled: false },
-      nginx: { enabled: false },
-      mem0: { enabled: false },
+      nginx:    { enabled: false },
+      mem0:     { enabled: false },
     };
 
     try {
@@ -198,6 +280,13 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       return c.json(result, 201);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Provisioning failed";
+      if (err instanceof ClawPilotError && (
+        err.code === "NO_EXISTING_INSTANCE" ||
+        err.code === "ENV_READ_FAILED" ||
+        err.code === "API_KEY_READ_FAILED"
+      )) {
+        return c.json({ error: msg }, 400);
+      }
       return c.json({ error: msg }, 500);
     }
   });

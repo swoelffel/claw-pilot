@@ -9,7 +9,8 @@ const baseAnswers: WizardAnswers = {
   port: 18789,
   agents: [{ id: "main", name: "Main", isDefault: true }],
   defaultModel: "anthropic/claude-sonnet-4-6",
-  anthropicApiKey: "sk-ant-test123",
+  provider: "anthropic",
+  apiKey: "sk-ant-test123",
   telegram: { enabled: false },
   nginx: { enabled: false },
   mem0: { enabled: false },
@@ -31,6 +32,20 @@ describe("generateConfig", () => {
     expect(config.models.providers.anthropic.apiKey).toBe(
       "${ANTHROPIC_API_KEY}",
     );
+  });
+
+  it("uses correct provider block for openai", () => {
+    const answers: WizardAnswers = { ...baseAnswers, provider: "openai", apiKey: "sk-openai-test" };
+    const config = JSON.parse(generateConfig(answers));
+    expect(config.models.providers.openai.apiKey).toBe("${OPENAI_API_KEY}");
+    expect(config.models.providers.anthropic).toBeUndefined();
+  });
+
+  it("uses opencode block when provider is opencode", () => {
+    const answers: WizardAnswers = { ...baseAnswers, provider: "opencode", apiKey: "" };
+    const config = JSON.parse(generateConfig(answers));
+    expect(config.models.providers.opencode.enabled).toBe(true);
+    expect(config.models.providers.anthropic).toBeUndefined();
   });
 
   it("includes multi-agent setup with agentToAgent", () => {
@@ -80,7 +95,8 @@ describe("generateConfig", () => {
 describe("generateEnv", () => {
   it("includes all required vars", () => {
     const env = generateEnv({
-      anthropicApiKey: "sk-ant-test",
+      provider: "anthropic",
+      apiKey: "sk-ant-test",
       gatewayToken: "abcdef123456",
       telegramBotToken: "123:abc",
     });
@@ -90,10 +106,20 @@ describe("generateEnv", () => {
   });
 
   it("omits telegram token when not provided", () => {
-    const env = generateEnv({
-      anthropicApiKey: "sk-ant-test",
-      gatewayToken: "token",
-    });
+    const env = generateEnv({ provider: "anthropic", apiKey: "sk-ant-test", gatewayToken: "token" });
     expect(env).not.toContain("TELEGRAM_BOT_TOKEN");
+  });
+
+  it("writes correct env var for openai", () => {
+    const env = generateEnv({ provider: "openai", apiKey: "sk-openai-x", gatewayToken: "token" });
+    expect(env).toContain("OPENAI_API_KEY=sk-openai-x");
+    expect(env).not.toContain("ANTHROPIC_API_KEY");
+  });
+
+  it("omits API key line for opencode", () => {
+    const env = generateEnv({ provider: "opencode", apiKey: "", gatewayToken: "token" });
+    expect(env).not.toContain("ANTHROPIC_API_KEY");
+    expect(env).not.toContain("OPENAI_API_KEY");
+    expect(env).toContain("OPENCLAW_GW_AUTH_TOKEN=token");
   });
 });
