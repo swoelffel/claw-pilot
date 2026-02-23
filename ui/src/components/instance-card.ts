@@ -308,7 +308,9 @@ export class InstanceCard extends LitElement {
           ${inst.state === "running"
             ? html`<a
                 class="btn-ui"
-                href="http://localhost:${inst.port}"
+                href=${inst.gatewayToken
+                  ? `http://localhost:${inst.port}/#token=${inst.gatewayToken}`
+                  : `http://localhost:${inst.port}`}
                 target="_blank"
                 rel="noopener"
                 @click=${(e: Event) => e.stopPropagation()}

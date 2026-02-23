@@ -16,6 +16,8 @@ export interface InstanceInfo {
   // health (from WS updates)
   gateway?: "healthy" | "unhealthy" | "unknown";
   systemd?: "active" | "inactive" | "failed" | "unknown";
+  // gateway token for zero-friction Control UI login
+  gatewayToken?: string | null;
 }
 
 export interface AgentInfo {

@@ -74,7 +74,17 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
 
   app.get("/api/instances", async (c) => {
     const statuses = await health.checkAll();
-    return c.json(statuses);
+    // Enrich each status with gatewayToken (parallel reads)
+    const enriched = await Promise.all(
+      statuses.map(async (s) => {
+        const instance = registry.getInstance(s.slug);
+        const gatewayToken = instance
+          ? await readGatewayToken(conn, instance.state_dir)
+          : null;
+        return { ...s, gatewayToken };
+      }),
+    );
+    return c.json(enriched);
   });
 
   app.get("/api/instances/:slug", async (c) => {
