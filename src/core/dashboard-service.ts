@@ -98,13 +98,14 @@ async function ensureLinger(): Promise<void> {
   }
 }
 
-/** Check if port is responding */
+/** Check if port is responding (any HTTP response = server is up, even 401) */
 async function isPortResponding(port: number): Promise<boolean> {
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
+    await fetch(`http://127.0.0.1:${port}/api/health`, {
       signal: AbortSignal.timeout(3_000),
     });
-    return res.ok;
+    // Any response (including 401 Unauthorized) means the server is up
+    return true;
   } catch {
     return false;
   }
