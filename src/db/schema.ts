@@ -95,7 +95,7 @@ export function initDatabase(dbPath: string): Database.Database {
   try {
     mkdirSync(dirPath, { recursive: true, mode: 0o700 });
   } catch {
-    // Ignore if already exists
+    // Directory already exists
   }
 
   const db = new Database(dbPath);

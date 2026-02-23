@@ -6,6 +6,7 @@ import type { ServerConnection } from "../../server/connection.js";
 function makeConn(stdout: string): ServerConnection {
   return {
     exec: async () => ({ stdout, stderr: "", exitCode: 0 }),
+    execFile: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
     readFile: async () => "",
     writeFile: async () => {},
     mkdir: async () => {},
@@ -38,6 +39,7 @@ describe("resolveXdgRuntimeDir", () => {
   it("falls back to /run/user/1000 when exec throws", async () => {
     const conn: ServerConnection = {
       exec: async () => { throw new Error("exec failed"); },
+      execFile: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
       readFile: async () => "",
       writeFile: async () => {},
       mkdir: async () => {},

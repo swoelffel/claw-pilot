@@ -2,6 +2,8 @@
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
 import { constants } from "../lib/constants.js";
+import { shellEscape } from "../lib/shell.js";
+import { logger } from "../lib/logger.js";
 
 export interface DiscoveredAgent {
   id: string;
@@ -75,6 +77,7 @@ export class InstanceDiscovery {
     try {
       entries = await this.conn.readdir(this.openclawHome);
     } catch {
+      // Directory not accessible — skip
       return;
     }
 
@@ -103,8 +106,10 @@ export class InstanceDiscovery {
   private async scanSystemdUnits(
     found: Map<string, DiscoveredInstance>,
   ): Promise<void> {
-    const result = await this.conn.exec(
-      `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user list-units 'openclaw-*' --no-pager --plain --no-legend 2>/dev/null || true`,
+    const result = await this.conn.execFile(
+      "systemctl",
+      ["--user", "list-units", "openclaw-*", "--no-pager", "--plain", "--no-legend"],
+      { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
     );
 
     for (const line of result.stdout.split("\n")) {
@@ -128,8 +133,10 @@ export class InstanceDiscovery {
       }
 
       // Instance found via systemd only — try to find state dir from Environment
-      const showResult = await this.conn.exec(
-        `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user show openclaw-${slug}.service --property=Environment --value 2>/dev/null || true`,
+      const showResult = await this.conn.execFile(
+        "systemctl",
+        ["--user", "show", `openclaw-${slug}.service`, "--property=Environment", "--value"],
+        { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
       );
       const stateDirMatch = showResult.stdout.match(
         /OPENCLAW_STATE_DIR=(\S+)/,
@@ -189,7 +196,7 @@ export class InstanceDiscovery {
         );
         if (instance) found.set(slug, instance);
       } catch {
-        // Port not responding — skip
+        // Expected: port not responding
       }
     }
   }
@@ -227,14 +234,16 @@ export class InstanceDiscovery {
     let configRaw: string;
     try {
       configRaw = await this.conn.readFile(configPath);
-    } catch {
+    } catch (err) {
+      logger.dim(`[discovery] Cannot read config at ${configPath}: ${err}`);
       return null;
     }
 
     let config: Record<string, unknown>;
     try {
       config = JSON.parse(configRaw) as Record<string, unknown>;
-    } catch {
+    } catch (err) {
+      logger.dim(`[discovery] Invalid JSON in ${configPath}: ${err}`);
       return null;
     }
 
@@ -301,15 +310,17 @@ export class InstanceDiscovery {
       });
       gatewayHealthy = res.ok;
     } catch {
-      // not healthy
+      // Expected: gateway not responding
     }
 
     // Systemd status
     let systemdUnit: string | null = null;
     let systemdState: DiscoveredInstance["systemdState"] = null;
     const unitName = `openclaw-${slug}.service`;
-    const systemdResult = await this.conn.exec(
-      `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user is-active ${unitName} 2>/dev/null || true`,
+    const systemdResult = await this.conn.execFile(
+      "systemctl",
+      ["--user", "is-active", unitName],
+      { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
     );
     const sysState = systemdResult.stdout.trim();
     if (["active", "inactive", "failed"].includes(sysState)) {
@@ -320,7 +331,7 @@ export class InstanceDiscovery {
     // Nginx vhost
     let nginxDomain: string | null = null;
     const nginxResult = await this.conn.exec(
-      `ls /etc/nginx/sites-enabled/ 2>/dev/null | grep -i "${slug}" || true`,
+      `ls /etc/nginx/sites-enabled/ 2>/dev/null | grep -i ${shellEscape(slug)} || true`,
     );
     const nginxFile = nginxResult.stdout.trim();
     if (nginxFile) {
@@ -447,6 +458,7 @@ export class InstanceDiscovery {
           return entry.slice(prefix.length);
         }
       } catch {
+        // Config unreadable or invalid JSON — skip this entry
         continue;
       }
     }

@@ -17,6 +17,9 @@ import { PairingManager } from "../core/pairing.js";
 import { Monitor } from "./monitor.js";
 import { ClawPilotError, InstanceNotFoundError } from "../lib/errors.js";
 import { resolveXdgRuntimeDir } from "../lib/xdg.js";
+import { PROVIDER_CATALOG } from "../lib/provider-catalog.js";
+import type { ProviderInfo } from "../lib/provider-catalog.js";
+import { readGatewayToken } from "../lib/env-reader.js";
 
 // Resolve dist/ui/ relative to this bundle chunk.
 // When bundled: this file is at <install>/dist/server-*.mjs
@@ -46,108 +49,6 @@ export interface DashboardOptions {
   registry: Registry;
   conn: ServerConnection;
 }
-
-interface ProviderInfo {
-  id: string;
-  label: string;
-  requiresKey: boolean;
-  isDefault?: boolean;
-  defaultModel: string;
-  models: string[];
-}
-
-/**
- * Provider catalog — kept in sync with OpenClaw model registry.
- * Source: src/openclaw/node_modules/@mariozechner/pi-ai/dist/models.generated.js
- * OpenClaw version reference: 2026.2.14
- * Update this catalog on each OpenClaw release (see docs/OPENCLAW-COMPAT.md).
- */
-const PROVIDER_CATALOG: ProviderInfo[] = [
-  {
-    id: "anthropic",
-    label: "Anthropic",
-    requiresKey: true,
-    defaultModel: "anthropic/claude-sonnet-4-6",
-    models: [
-      "anthropic/claude-opus-4-6",
-      "anthropic/claude-opus-4-5",
-      "anthropic/claude-sonnet-4-6",
-      "anthropic/claude-sonnet-4-5",
-      "anthropic/claude-haiku-4-5",
-    ],
-  },
-  {
-    id: "openai",
-    label: "OpenAI",
-    requiresKey: true,
-    defaultModel: "openai/gpt-5.1-codex",
-    models: [
-      "openai/gpt-5.2",
-      "openai/gpt-5.1-codex",
-      "openai/gpt-5.1",
-      "openai/gpt-5",
-      "openai/gpt-4.1",
-      "openai/o3",
-      "openai/o4-mini",
-    ],
-  },
-  {
-    id: "google",
-    label: "Google Gemini",
-    requiresKey: true,
-    defaultModel: "google/gemini-3-pro-preview",
-    models: [
-      "google/gemini-3-pro-preview",
-      "google/gemini-3-flash-preview",
-      "google/gemini-2.5-pro",
-      "google/gemini-2.5-flash",
-    ],
-  },
-  {
-    id: "mistral",
-    label: "Mistral",
-    requiresKey: true,
-    defaultModel: "mistral/mistral-large-latest",
-    models: [
-      "mistral/mistral-large-latest",
-    ],
-  },
-  {
-    id: "xai",
-    label: "xAI (Grok)",
-    requiresKey: true,
-    defaultModel: "xai/grok-4",
-    models: [
-      "xai/grok-4",
-    ],
-  },
-  {
-    id: "openrouter",
-    label: "OpenRouter",
-    requiresKey: true,
-    defaultModel: "openrouter/auto",
-    models: [
-      "openrouter/auto",
-    ],
-  },
-  {
-    id: "opencode",
-    label: "OpenCode Zen (no key)",
-    requiresKey: false,
-    defaultModel: "opencode/claude-opus-4-6",
-    models: [
-      "opencode/gpt-5.1-codex",
-      "opencode/claude-opus-4-6",
-      "opencode/claude-opus-4-5",
-      "opencode/gemini-3-pro",
-      "opencode/gpt-5.1-codex-mini",
-      "opencode/gpt-5.1",
-      "opencode/glm-4.7",
-      "opencode/gemini-3-flash",
-      "opencode/gpt-5.2",
-    ],
-  },
-];
 
 export async function startDashboard(options: DashboardOptions): Promise<void> {
   const { port, token, registry, conn } = options;
@@ -180,8 +81,11 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     const slug = c.req.param("slug");
     const instance = registry.getInstance(slug);
     if (!instance) return c.json({ error: "Not found" }, 404);
-    const status = await health.check(slug);
-    return c.json({ instance, status });
+    const [status, gatewayToken] = await Promise.all([
+      health.check(slug),
+      readGatewayToken(conn, instance.state_dir),
+    ]);
+    return c.json({ instance, status, gatewayToken });
   });
 
   app.get("/api/instances/:slug/agents", (c) => {

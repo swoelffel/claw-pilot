@@ -15,6 +15,8 @@ import { constants } from "../lib/constants.js";
 import { getOpenClawHome, getSystemdDir, getSystemdUnit } from "../lib/platform.js";
 import { InstanceAlreadyExistsError, ClawPilotError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
+import { shellEscape } from "../lib/shell.js";
+import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 
 export interface ProvisionResult {
   slug: string;
@@ -117,8 +119,9 @@ export class Provisioner {
     }
 
     // Resolve current user UID for XDG_RUNTIME_DIR in systemd service
-    const uidResult = await this.conn.exec("id -u");
-    const uid = parseInt(uidResult.stdout.trim(), 10) || 1000;
+    const xdgRuntimeDir = await resolveXdgRuntimeDir(this.conn);
+    // Extract uid from xdgRuntimeDir for the systemd service template
+    const uid = parseInt(xdgRuntimeDir.split("/").pop() ?? "1000", 10) || 1000;
 
     // Step 2: Create directory structure
     logger.step("Creating directories...");
@@ -176,7 +179,6 @@ export class Provisioner {
     await this.conn.mkdir(systemdDir);
     await this.conn.writeFile(serviceFile, serviceContent);
 
-    const xdgRuntimeDir = `/run/user/${uid}`;
     const lifecycle = new Lifecycle(this.conn, this.registry, xdgRuntimeDir);
 
     // Register in registry BEFORE start (lifecycle.start needs registry entry)
@@ -240,7 +242,7 @@ export class Provisioner {
       const vhostPath = `/etc/nginx/sites-available/${answers.nginx.domain}`;
       const enabledPath = `/etc/nginx/sites-enabled/${answers.nginx.domain}`;
       await this.conn.writeFile(vhostPath, vhostContent);
-      await this.conn.exec(`sudo ln -sf ${vhostPath} ${enabledPath}`);
+      await this.conn.exec(`sudo ln -sf ${shellEscape(vhostPath)} ${shellEscape(enabledPath)}`);
       await this.conn.exec("sudo nginx -t && sudo systemctl reload nginx");
     }
 

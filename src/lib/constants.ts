@@ -8,9 +8,6 @@ export const constants = {
   DASHBOARD_TOKEN_FILE: "dashboard-token",
 
   // OpenClaw defaults
-  // OPENCLAW_HOME is only used as fallback when the env var is not set.
-  // In practice, getOpenClawHome() uses os.homedir() unless OPENCLAW_HOME is overridden.
-  OPENCLAW_HOME: "/opt/openclaw",
   OPENCLAW_STATE_PREFIX: ".openclaw-", // ~/.openclaw-<slug>/
   OPENCLAW_LEGACY_DIR: ".openclaw", // legacy single-instance directory
   OPENCLAW_USER: "openclaw",

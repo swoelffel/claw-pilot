@@ -16,6 +16,9 @@ export interface ServerConnection {
   /** Execute a shell command */
   exec(command: string, options?: ExecOptions): Promise<ExecResult>;
 
+  /** Execute a command with explicit args array (no shell interpolation) */
+  execFile(file: string, args: string[], options?: ExecOptions): Promise<ExecResult>;
+
   /** Read file contents as UTF-8 */
   readFile(path: string): Promise<string>;
 

@@ -3,6 +3,7 @@ import type { ServerConnection } from "../server/connection.js";
 import type { Registry } from "./registry.js";
 import { InstanceNotFoundError } from "../lib/errors.js";
 import { constants } from "../lib/constants.js";
+import { shellEscape } from "../lib/shell.js";
 
 export interface HealthStatus {
   slug: string;
@@ -35,8 +36,10 @@ export class HealthChecker {
     };
 
     // 1. Systemd status
-    const systemdResult = await this.conn.exec(
-      `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user is-active ${instance.systemd_unit} 2>/dev/null || true`,
+    const systemdResult = await this.conn.execFile(
+      "systemctl",
+      ["--user", "is-active", instance.systemd_unit],
+      { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
     );
     const systemdState = systemdResult.stdout.trim();
     status.systemd = (
@@ -58,11 +61,15 @@ export class HealthChecker {
     // 3. PID and uptime
     if (status.systemd === "active") {
       const [pidResult, uptimeResult] = await Promise.all([
-        this.conn.exec(
-          `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user show ${instance.systemd_unit} --property=MainPID --value`,
+        this.conn.execFile(
+          "systemctl",
+          ["--user", "show", instance.systemd_unit, "--property=MainPID", "--value"],
+          { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
         ),
-        this.conn.exec(
-          `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user show ${instance.systemd_unit} --property=ActiveEnterTimestamp --value`,
+        this.conn.execFile(
+          "systemctl",
+          ["--user", "show", instance.systemd_unit, "--property=ActiveEnterTimestamp", "--value"],
+          { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
         ),
       ]);
       status.pid =
@@ -77,7 +84,7 @@ export class HealthChecker {
     // 5. Telegram status
     if (instance.telegram_bot) {
       const logResult = await this.conn.exec(
-        `tail -50 ${instance.state_dir}/logs/gateway.log 2>/dev/null | grep -c "telegram.*connected" || echo 0`,
+        `tail -50 ${shellEscape(instance.state_dir)}/logs/gateway.log 2>/dev/null | grep -c "telegram.*connected" || echo 0`,
       );
       const connected = parseInt(logResult.stdout.trim()) > 0;
       status.telegram = connected ? "connected" : "disconnected";

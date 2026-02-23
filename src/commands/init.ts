@@ -30,6 +30,7 @@ export function initCommand(): Command {
       // 2. Initialize database
       const db = initDatabase(getDbPath());
       const registry = new Registry(db);
+      try {
 
       // 3. Detect OpenClaw (offer to install if missing)
       const cli = new OpenClawCLI(conn);
@@ -183,7 +184,8 @@ export function initCommand(): Command {
         `\n${totalInstances} instance(s) in registry.`,
       );
       logger.info("Ready. Run 'claw-pilot create' to provision a new instance.");
-
-      db.close();
+      } finally {
+        db.close();
+      }
     });
 }

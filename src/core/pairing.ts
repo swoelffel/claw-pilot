@@ -3,6 +3,7 @@ import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
 import { constants } from "../lib/constants.js";
 import { InstanceNotFoundError, ClawPilotError } from "../lib/errors.js";
+import { shellEscape } from "../lib/shell.js";
 
 export class PairingManager {
   constructor(
@@ -24,13 +25,13 @@ export class PairingManager {
         signal: AbortSignal.timeout(5_000),
       });
     } catch {
-      // Expected: connection rejected or 1008, but pairing request is now pending
+      // Expected: connection rejected or 1008, pairing request is now pending
     }
 
     // Step 2: List pending device requests
     const envVars = this.getOpenClawEnv(instance);
     const listResult = await this.conn.exec(
-      `${envVars} openclaw --profile ${slug} devices list --json 2>/dev/null || true`,
+      `${envVars} openclaw --profile ${shellEscape(slug)} devices list --json 2>/dev/null || true`,
     );
 
     // Step 3: Parse the pending request ID
@@ -44,7 +45,7 @@ export class PairingManager {
 
     // Step 4: Approve the request
     const approveResult = await this.conn.exec(
-      `${envVars} openclaw --profile ${slug} devices approve ${requestId}`,
+      `${envVars} openclaw --profile ${shellEscape(slug)} devices approve ${shellEscape(requestId)}`,
     );
     if (approveResult.exitCode !== 0) {
       throw new ClawPilotError(
@@ -71,13 +72,13 @@ export class PairingManager {
 
     while (Date.now() - start < timeoutMs) {
       const result = await this.conn.exec(
-        `tail -20 ${logPath} 2>/dev/null | grep "pairing.*telegram" || true`,
+        `tail -20 ${shellEscape(logPath)} 2>/dev/null | grep "pairing.*telegram" || true`,
       );
 
       const code = this.parseTelegramPairingCode(result.stdout);
       if (code) {
         await this.conn.exec(
-          `${envVars} openclaw --profile ${slug} pairing approve telegram ${code}`,
+          `${envVars} openclaw --profile ${shellEscape(slug)} pairing approve telegram ${shellEscape(code)}`,
         );
         return code;
       }
@@ -92,7 +93,7 @@ export class PairingManager {
   }
 
   private getOpenClawEnv(instance: InstanceRecord): string {
-    return `OPENCLAW_STATE_DIR=${instance.state_dir} OPENCLAW_CONFIG_PATH=${instance.config_path}`;
+    return `OPENCLAW_STATE_DIR=${shellEscape(instance.state_dir)} OPENCLAW_CONFIG_PATH=${shellEscape(instance.config_path)}`;
   }
 
   private parsePendingRequestId(output: string): string | null {
@@ -104,7 +105,7 @@ export class PairingManager {
       const pending = data.find?.((d) => d.status === "pending");
       return pending?.id ?? null;
     } catch {
-      // Fallback regex
+      // Not valid JSON — fall through to regex fallback
       const match = output.match(/id[:\s]+(\S+).*pending/i);
       return match?.[1] ?? null;
     }

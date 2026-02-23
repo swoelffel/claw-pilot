@@ -1,6 +1,7 @@
 // src/core/openclaw-cli.ts
 import type { ServerConnection, ExecResult } from "../server/connection.js";
 import { constants } from "../lib/constants.js";
+import { shellEscape } from "../lib/shell.js";
 
 export class OpenClawCLI {
   constructor(private conn: ServerConnection) {}
@@ -57,12 +58,12 @@ export class OpenClawCLI {
     args: string,
   ): Promise<ExecResult> {
     const env = [
-      `OPENCLAW_STATE_DIR=${stateDir}`,
-      `OPENCLAW_CONFIG_PATH=${configPath}`,
+      `OPENCLAW_STATE_DIR=${shellEscape(stateDir)}`,
+      `OPENCLAW_CONFIG_PATH=${shellEscape(configPath)}`,
       `PATH=/opt/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin`,
     ].join(" ");
 
-    return this.conn.exec(`${env} openclaw --profile ${slug} ${args}`);
+    return this.conn.exec(`${env} openclaw --profile ${shellEscape(slug)} ${args}`);
   }
 
   /** Install a plugin for an instance */

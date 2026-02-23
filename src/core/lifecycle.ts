@@ -1,8 +1,10 @@
 // src/core/lifecycle.ts
 import type { ServerConnection, ExecResult } from "../server/connection.js";
+// ExecResult is used as the return type of the private systemctl() method
 import type { Registry } from "./registry.js";
 import { InstanceNotFoundError, GatewayUnhealthyError } from "../lib/errors.js";
 import { constants } from "../lib/constants.js";
+import { pollUntilReady } from "../lib/poll.js";
 
 export class Lifecycle {
   constructor(
@@ -12,9 +14,9 @@ export class Lifecycle {
   ) {}
 
   private systemctl(action: string, unit: string): Promise<ExecResult> {
-    return this.conn.exec(
-      `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user ${action} ${unit}`,
-    );
+    return this.conn.execFile("systemctl", ["--user", action, unit], {
+      env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir },
+    });
   }
 
   async start(slug: string): Promise<void> {
@@ -53,9 +55,9 @@ export class Lifecycle {
   }
 
   async daemonReload(): Promise<void> {
-    await this.conn.exec(
-      `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user daemon-reload`,
-    );
+    await this.conn.execFile("systemctl", ["--user", "daemon-reload"], {
+      env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir },
+    });
   }
 
   private async waitForHealth(
@@ -63,18 +65,19 @@ export class Lifecycle {
     slug: string,
     timeoutMs: number,
   ): Promise<void> {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-      try {
-        const res = await fetch(`http://127.0.0.1:${port}/health`, {
-          signal: AbortSignal.timeout(2_000),
-        });
-        if (res.ok) return;
-      } catch {
-        // not ready yet
-      }
-      await new Promise((r) => setTimeout(r, 1_000));
+    try {
+      await pollUntilReady({
+        check: async () => {
+          const res = await fetch(`http://127.0.0.1:${port}/health`, {
+            signal: AbortSignal.timeout(2_000),
+          });
+          return res.ok;
+        },
+        timeoutMs,
+        label: `gateway ${slug}:${port}`,
+      });
+    } catch {
+      throw new GatewayUnhealthyError(slug, port);
     }
-    throw new GatewayUnhealthyError(slug, port);
   }
 }

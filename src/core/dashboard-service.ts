@@ -7,6 +7,8 @@ import { spawnSync } from "node:child_process";
 import { isLinux, getSystemdDir, getDashboardServicePath, DASHBOARD_SERVICE_UNIT } from "../lib/platform.js";
 import { generateDashboardService } from "./systemd-generator.js";
 import { constants } from "../lib/constants.js";
+import { logger } from "../lib/logger.js";
+import { pollUntilReady } from "../lib/poll.js";
 
 export interface DashboardServiceStatus {
   installed: boolean;
@@ -23,13 +25,17 @@ function resolveNodeBin(): string {
     const result = spawnSync("which", ["node"], { encoding: "utf-8" });
     const bin = result.stdout.trim();
     if (bin) return bin;
-  } catch { /* ignore */ }
+  } catch {
+    // which not available — try fallback paths
+  }
   // Fallback common paths
   for (const p of ["/usr/local/bin/node", "/usr/bin/node"]) {
     try {
       spawnSync(p, ["--version"], { encoding: "utf-8" });
       return p;
-    } catch { /* ignore */ }
+    } catch {
+      // Path not available
+    }
   }
   throw new Error("Cannot find node binary. Ensure Node.js is in PATH.");
 }
@@ -48,14 +54,18 @@ function resolveClawPilotBin(): string {
     try {
       statSync(c);
       return c;
-    } catch { /* ignore */ }
+    } catch {
+      // Candidate path not found
+    }
   }
   // Last resort: use the symlink in PATH
   try {
     const result = spawnSync("which", ["claw-pilot"], { encoding: "utf-8" });
     const bin = result.stdout.trim();
     if (bin) return bin;
-  } catch { /* ignore */ }
+  } catch {
+    // which not available
+  }
   throw new Error("Cannot find claw-pilot binary. Ensure it is installed.");
 }
 
@@ -92,8 +102,8 @@ async function ensureLinger(): Promise<void> {
       stdio: "inherit",
     });
     if (sudoResult.status !== 0) {
-      console.warn(`[!] Could not enable linger for ${username}. The dashboard service may stop on logout.`);
-      console.warn(`    Run manually: sudo loginctl enable-linger ${username}`);
+      logger.warn(`Could not enable linger for ${username}. The dashboard service may stop on logout.`);
+      logger.dim(`Run manually: sudo loginctl enable-linger ${username}`);
     }
   }
 }
@@ -111,17 +121,7 @@ async function isPortResponding(port: number): Promise<boolean> {
   }
 }
 
-/** Wait for port to respond, with timeout */
-async function waitForPort(port: number, timeoutMs: number): Promise<boolean> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (await isPortResponding(port)) return true;
-    await new Promise((r) => setTimeout(r, 1_000));
-  }
-  return false;
-}
-
-export async function installDashboardService(port = constants.DASHBOARD_PORT): Promise<void> {
+export async function installDashboardService(port: number = constants.DASHBOARD_PORT): Promise<void> {
   if (!isLinux()) {
     throw new Error("systemd services are only supported on Linux.");
   }
@@ -141,7 +141,7 @@ export async function installDashboardService(port = constants.DASHBOARD_PORT): 
   // Write service file
   const servicePath = getDashboardServicePath();
   await fs.writeFile(servicePath, serviceContent, { mode: 0o644 });
-  console.log(`[+] Service file written: ${servicePath}`);
+  logger.success(`Service file written: ${servicePath}`);
 
   // Ensure linger is enabled
   await ensureLinger();
@@ -165,13 +165,17 @@ export async function installDashboardService(port = constants.DASHBOARD_PORT): 
   }
 
   // Wait for port to respond
-  console.log(`[+] Waiting for dashboard to be ready on port ${port}...`);
-  const ready = await waitForPort(port, 15_000);
-  if (!ready) {
-    console.warn(`[!] Dashboard service started but port ${port} is not responding yet.`);
-    console.warn(`    Check logs: journalctl --user -u ${DASHBOARD_SERVICE_UNIT} -n 50`);
-  } else {
-    console.log(`[+] Dashboard is ready at http://localhost:${port}`);
+  logger.info(`Waiting for dashboard to be ready on port ${port}...`);
+  try {
+    await pollUntilReady({
+      check: () => isPortResponding(port),
+      timeoutMs: 15_000,
+      label: `dashboard port ${port}`,
+    });
+    logger.success(`Dashboard is ready at http://localhost:${port}`);
+  } catch {
+    logger.warn(`Dashboard service started but port ${port} is not responding yet.`);
+    logger.dim(`Check logs: journalctl --user -u ${DASHBOARD_SERVICE_UNIT} -n 50`);
   }
 }
 
@@ -190,15 +194,15 @@ export async function uninstallDashboardService(): Promise<void> {
   const servicePath = getDashboardServicePath();
   try {
     await fs.unlink(servicePath);
-    console.log(`[+] Service file removed: ${servicePath}`);
-  } catch (err: any) {
-    if (err.code !== "ENOENT") throw err;
-    console.log(`[!] Service file not found (already removed): ${servicePath}`);
+    logger.success(`Service file removed: ${servicePath}`);
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    logger.info(`Service file not found (already removed): ${servicePath}`);
   }
 
   // daemon-reload
   systemctlUser(["daemon-reload"]);
-  console.log(`[+] Dashboard service uninstalled.`);
+  logger.success(`Dashboard service uninstalled.`);
 }
 
 export async function restartDashboardService(): Promise<void> {
@@ -209,7 +213,7 @@ export async function restartDashboardService(): Promise<void> {
   if (result.code !== 0) {
     throw new Error(`systemctl restart failed: ${result.stderr}`);
   }
-  console.log(`[+] Dashboard service restarted.`);
+  logger.success(`Dashboard service restarted.`);
 }
 
 export async function getDashboardServiceStatus(port = constants.DASHBOARD_PORT): Promise<DashboardServiceStatus> {
@@ -222,7 +226,9 @@ export async function getDashboardServiceStatus(port = constants.DASHBOARD_PORT)
   try {
     await fs.access(servicePath);
     installed = true;
-  } catch { /* not installed */ }
+  } catch {
+    // Service file not installed
+  }
 
   const activeResult = systemctlUser(["is-active", DASHBOARD_SERVICE_UNIT]);
   const active = activeResult.code === 0;
@@ -234,15 +240,15 @@ export async function getDashboardServiceStatus(port = constants.DASHBOARD_PORT)
   let pid: number | undefined;
   const showResult = systemctlUser(["show", DASHBOARD_SERVICE_UNIT, "--property=MainPID"]);
   const pidMatch = showResult.stdout.match(/MainPID=(\d+)/);
-  if (pidMatch && pidMatch[1] !== "0") {
-    pid = parseInt(pidMatch[1]);
+  if (pidMatch && pidMatch[1] != null && pidMatch[1] !== "0") {
+    pid = parseInt(pidMatch[1], 10);
   }
 
   // Get uptime
   let uptime: string | undefined;
   const uptimeResult = systemctlUser(["show", DASHBOARD_SERVICE_UNIT, "--property=ActiveEnterTimestamp"]);
   const tsMatch = uptimeResult.stdout.match(/ActiveEnterTimestamp=(.+)/);
-  if (tsMatch) {
+  if (tsMatch && tsMatch[1] != null) {
     uptime = tsMatch[1].trim();
   }
 

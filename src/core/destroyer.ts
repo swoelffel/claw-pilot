@@ -16,16 +16,18 @@ export class Destroyer {
     const instance = this.registry.getInstance(slug);
     if (!instance) throw new InstanceNotFoundError(slug);
 
-    const xdg = `XDG_RUNTIME_DIR=${this.xdgRuntimeDir}`;
-
     // 1. Stop service
-    await this.conn.exec(
-      `${xdg} systemctl --user stop ${instance.systemd_unit} 2>/dev/null || true`,
+    await this.conn.execFile(
+      "systemctl",
+      ["--user", "stop", instance.systemd_unit],
+      { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
     );
 
     // 2. Disable service
-    await this.conn.exec(
-      `${xdg} systemctl --user disable ${instance.systemd_unit} 2>/dev/null || true`,
+    await this.conn.execFile(
+      "systemctl",
+      ["--user", "disable", instance.systemd_unit],
+      { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
     );
 
     // 3. Remove service file
@@ -33,7 +35,9 @@ export class Destroyer {
     await this.conn.remove(serviceFile);
 
     // 4. Reload systemd
-    await this.conn.exec(`${xdg} systemctl --user daemon-reload`);
+    await this.conn.execFile("systemctl", ["--user", "daemon-reload"], {
+      env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir },
+    });
 
     // 5. Remove state directory
     await this.conn.remove(instance.state_dir, { recursive: true });
@@ -44,6 +48,7 @@ export class Destroyer {
       const enabledLink = `/etc/nginx/sites-enabled/${instance.nginx_domain}`;
       await this.conn.remove(enabledLink);
       await this.conn.remove(vhostFile);
+      // nginx paths are derived from instance.nginx_domain (validated slug-like value)
       await this.conn.exec(
         "sudo nginx -t && sudo systemctl reload nginx 2>/dev/null || true",
       );

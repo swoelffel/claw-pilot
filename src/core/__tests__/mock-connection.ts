@@ -25,6 +25,22 @@ export class MockConnection implements ServerConnection {
     return { stdout: "", stderr: "", exitCode: 0 };
   }
 
+  async execFile(file: string, args: string[], options?: ExecOptions): Promise<ExecResult> {
+    // Reconstruct a command string for pattern matching (same as exec).
+    // Prepend env vars so tests that check for XDG_RUNTIME_DIR= still pass.
+    const envPrefix = options?.env
+      ? Object.entries(options.env)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(" ") + " "
+      : "";
+    const command = envPrefix + [file, ...args].join(" ");
+    this.commands.push(command);
+    for (const [pattern, result] of this.execResponses) {
+      if (command.includes(pattern)) return result;
+    }
+    return { stdout: "", stderr: "", exitCode: 0 };
+  }
+
   async readFile(path: string): Promise<string> {
     const content = this.files.get(path);
     if (content === undefined) throw new Error(`File not found: ${path}`);

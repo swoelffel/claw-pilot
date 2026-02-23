@@ -38,8 +38,8 @@ export async function fetchInstances(): Promise<InstanceInfo[]> {
 
 export async function fetchInstance(
   slug: string,
-): Promise<{ instance: InstanceInfo; status: unknown }> {
-  return apiFetch<{ instance: InstanceInfo; status: unknown }>(
+): Promise<{ instance: InstanceInfo; status: unknown; gatewayToken: string | null }> {
+  return apiFetch<{ instance: InstanceInfo; status: unknown; gatewayToken: string | null }>(
     `/instances/${slug}`,
   );
 }

@@ -8,6 +8,7 @@ import {
   getDashboardServiceStatus,
 } from "../core/dashboard-service.js";
 import { constants } from "../lib/constants.js";
+import { parsePositiveInt } from "../lib/validate.js";
 
 export function serviceCommand(): Command {
   const cmd = new Command("service")
@@ -23,7 +24,7 @@ export function serviceCommand(): Command {
         process.exit(1);
       }
       try {
-        await installDashboardService(parseInt(opts.port));
+        await installDashboardService(parsePositiveInt(opts.port, "--port"));
         console.log("[+] Dashboard service installed successfully.");
         console.log(`    View logs: journalctl --user -u claw-pilot-dashboard.service -f`);
       } catch (err: any) {

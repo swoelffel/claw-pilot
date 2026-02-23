@@ -18,7 +18,7 @@ export async function resolveXdgRuntimeDir(
       return `/run/user/${uid}`;
     }
   } catch {
-    // fall through to default
+    // id -u failed — fall through to default UID 1000
   }
   return "/run/user/1000";
 }

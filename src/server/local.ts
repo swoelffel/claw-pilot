@@ -1,5 +1,5 @@
 // src/server/local.ts
-import { exec as execCb } from "node:child_process";
+import { exec as execCb, execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -25,6 +25,31 @@ export class LocalConnection implements ServerConnection {
         exitCode: err.code ?? 1,
       };
     }
+  }
+
+  async execFile(file: string, args: string[], options?: ExecOptions): Promise<ExecResult> {
+    return new Promise((resolve) => {
+      execFileCb(
+        file,
+        args,
+        {
+          cwd: options?.cwd,
+          env: { ...process.env, ...options?.env },
+          timeout: options?.timeout ?? 30_000,
+        },
+        (err, stdout, stderr) => {
+          if (err) {
+            resolve({
+              stdout: stdout ?? "",
+              stderr: stderr ?? (err.message ?? ""),
+              exitCode: (err as NodeJS.ErrnoException & { code?: number }).code ?? 1,
+            });
+          } else {
+            resolve({ stdout, stderr, exitCode: 0 });
+          }
+        },
+      );
+    });
   }
 
   async readFile(filePath: string): Promise<string> {

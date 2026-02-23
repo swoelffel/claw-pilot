@@ -4,6 +4,7 @@ import type { Registry, InstanceRecord } from "../core/registry.js";
 import type { PortAllocator } from "../core/port-allocator.js";
 import type { AgentDefinition } from "../core/config-generator.js";
 import { PROVIDER_ENV_VARS } from "../core/config-generator.js";
+import { PROVIDER_CATALOG } from "../lib/provider-catalog.js";
 
 export async function promptSlug(
   registry: Registry,
@@ -106,20 +107,18 @@ export async function promptAgents(): Promise<{
   return { mode, agents };
 }
 
-export async function promptModel(): Promise<string> {
+export async function promptModel(provider: string = "anthropic"): Promise<string> {
+  const catalog = PROVIDER_CATALOG.find((p) => p.id === provider);
+  const choices = catalog
+    ? catalog.models.map((m) => ({
+        value: m,
+        name: m === catalog.defaultModel ? `${m} (recommended)` : m,
+      }))
+    : [{ value: `${provider}/default`, name: `${provider}/default` }];
+
   return select<string>({
     message: "Default model for agents:",
-    choices: [
-      {
-        value: "anthropic/claude-sonnet-4-6",
-        name: "Claude Sonnet 4.6 (recommended)",
-      },
-      { value: "anthropic/claude-opus-4-6", name: "Claude Opus 4.6" },
-      {
-        value: "anthropic/claude-haiku-4-5-20251001",
-        name: "Claude Haiku 4.5",
-      },
-    ],
+    choices,
   });
 }
 
@@ -131,7 +130,7 @@ export async function promptProvider(
     { value: "anthropic",  name: "Anthropic (Claude)" },
     { value: "openai",     name: "OpenAI (GPT)" },
     { value: "openrouter", name: "OpenRouter" },
-    { value: "gemini",     name: "Google Gemini" },
+    { value: "google",     name: "Google Gemini" },
     { value: "mistral",    name: "Mistral" },
     { value: "opencode",   name: "OpenCode (no API key needed)" },
   ];
@@ -168,27 +167,6 @@ export async function promptProvider(
   });
 
   return { provider, apiKey };
-}
-
-/** @deprecated Use promptProvider instead */
-export async function promptApiKey(
-  existingInstances: InstanceRecord[],
-): Promise<"reuse" | string> {
-  if (existingInstances.length > 0) {
-    const source = await select<"reuse" | "new">({
-      message: "Anthropic API key:",
-      choices: [
-        {
-          value: "reuse",
-          name: `Reuse from existing instance (${existingInstances[0]?.slug})`,
-        },
-        { value: "new", name: "Enter new key" },
-      ],
-    });
-    if (source === "reuse") return "reuse";
-  }
-
-  return password({ message: "Anthropic API key:" });
 }
 
 export async function promptTelegram(): Promise<{

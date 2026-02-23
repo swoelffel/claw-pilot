@@ -7,6 +7,7 @@ import { logger } from "../lib/logger.js";
 import { generateDashboardToken } from "../core/secrets.js";
 import { constants } from "../lib/constants.js";
 import { LocalConnection } from "../server/local.js";
+import { parsePositiveInt } from "../lib/validate.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
@@ -22,7 +23,7 @@ export function dashboardCommand(): Command {
       const db = initDatabase(getDbPath());
       const registry = new Registry(db);
       const conn = new LocalConnection();
-      const port = parseInt(opts.port);
+      const port = parsePositiveInt(opts.port, "--port");
 
       // Get or generate dashboard token
       const tokenPath = getDashboardTokenPath();

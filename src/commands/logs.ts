@@ -1,10 +1,8 @@
 // src/commands/logs.ts
 import { Command } from "commander";
-import { getDbPath } from "../lib/platform.js";
-import { initDatabase } from "../db/schema.js";
-import { Registry } from "../core/registry.js";
-import { LocalConnection } from "../server/local.js";
 import { InstanceNotFoundError } from "../lib/errors.js";
+import { shellEscape } from "../lib/shell.js";
+import { withContext } from "./_context.js";
 
 export function logsCommand(): Command {
   return new Command("logs")
@@ -13,33 +11,32 @@ export function logsCommand(): Command {
     .option("-n, --lines <n>", "Number of lines to show", "50")
     .option("-f, --follow", "Follow log output (tail -f)")
     .action(async (slug: string, opts: { lines: string; follow?: boolean }) => {
-      const db = initDatabase(getDbPath());
-      const registry = new Registry(db);
-      const instance = registry.getInstance(slug);
-
-      if (!instance) throw new InstanceNotFoundError(slug);
-
-      const logPath = `${instance.state_dir}/logs/gateway.log`;
-      const conn = new LocalConnection();
-
-      if (opts.follow) {
-        // Stream logs using tail -f (spawns child process)
-        const { spawn } = await import("node:child_process");
-        const child = spawn("tail", ["-f", "-n", opts.lines, logPath], {
-          stdio: "inherit",
-        });
-        process.on("SIGINT", () => {
-          child.kill();
-          db.close();
-        });
-        await new Promise((resolve) => child.on("exit", resolve));
-      } else {
-        const result = await conn.exec(
-          `tail -n ${opts.lines} ${logPath} 2>/dev/null || echo "(no log file found)"`,
-        );
-        console.log(result.stdout);
+      const lines = parseInt(opts.lines, 10);
+      if (isNaN(lines) || lines < 1 || lines > 100_000) {
+        throw new Error(`Invalid --lines value: "${opts.lines}" (expected 1-100000)`);
       }
 
-      db.close();
+      await withContext(async ({ conn, registry }) => {
+        const instance = registry.getInstance(slug);
+        if (!instance) throw new InstanceNotFoundError(slug);
+
+        const logPath = `${instance.state_dir}/logs/gateway.log`;
+
+        if (opts.follow) {
+          const { spawn } = await import("node:child_process");
+          const child = spawn("tail", ["-f", "-n", String(lines), logPath], {
+            stdio: "inherit",
+          });
+          process.on("SIGINT", () => {
+            child.kill();
+          });
+          await new Promise((resolve) => child.on("exit", resolve));
+        } else {
+          const result = await conn.exec(
+            `tail -n ${lines} ${shellEscape(logPath)} 2>/dev/null || echo "(no log file found)"`,
+          );
+          console.log(result.stdout);
+        }
+      });
     });
 }

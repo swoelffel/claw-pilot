@@ -387,6 +387,7 @@ export class InstanceDetail extends LitElement {
 
   @state() private _instance: InstanceInfo | null = null;
   @state() private _agents: AgentInfo[] = [];
+  @state() private _gatewayToken: string | null = null;
   @state() private _loading = true;
   @state() private _error = "";
   @state() private _actionLoading = false;
@@ -412,11 +413,12 @@ export class InstanceDetail extends LitElement {
     this._loading = true;
     this._error = "";
     try {
-      const [{ instance }, agents] = await Promise.all([
+      const [{ instance, gatewayToken }, agents] = await Promise.all([
         fetchInstance(this.slug),
         fetchAgents(this.slug),
       ]);
       this._instance = instance;
+      this._gatewayToken = gatewayToken;
       this._agents = agents;
     } catch (err) {
       this._error =
@@ -474,10 +476,12 @@ export class InstanceDetail extends LitElement {
 
   private _controlUrl(): string {
     if (!this._instance) return "#";
-    if (this._instance.nginx_domain) {
-      return `https://${this._instance.nginx_domain}`;
-    }
-    return `http://localhost:${this._instance.port}`;
+    const base = this._instance.nginx_domain
+      ? `https://${this._instance.nginx_domain}`
+      : `http://localhost:${this._instance.port}`;
+    // Inject gateway token as hash fragment — Control UI reads it, saves to localStorage,
+    // then removes it from the URL bar (no server-side leak).
+    return this._gatewayToken ? `${base}/#token=${this._gatewayToken}` : base;
   }
 
   override render() {

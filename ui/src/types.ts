@@ -30,11 +30,18 @@ export interface AgentInfo {
 
 export interface HealthUpdate {
   type: "health_update";
-  payload: Array<{
-    slug: string;
-    gateway: "healthy" | "unhealthy" | "unknown";
-    systemd: "active" | "inactive" | "failed" | "unknown";
-  }>;
+  payload: {
+    instances: Array<{
+      slug: string;
+      port: number;
+      gateway: "healthy" | "unhealthy" | "unknown";
+      systemd: "active" | "inactive" | "failed" | "unknown";
+      pid?: number;
+      uptime?: string;
+      agentCount?: number;
+      telegram?: "connected" | "disconnected" | "not_configured";
+    }>;
+  };
 }
 
 export interface WsMessage {
