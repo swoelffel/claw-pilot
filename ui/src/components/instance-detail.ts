@@ -607,12 +607,6 @@ export class InstanceDetail extends LitElement {
             <span class="info-value">:${inst.port}</span>
           </div>
           <div class="info-item">
-            <span class="info-label">Control UI</span>
-            <a class="info-link" href=${this._controlUrl()} target="_blank" rel="noopener">
-              ${this._controlUrl()}
-            </a>
-          </div>
-          <div class="info-item">
             <span class="info-label">Systemd Unit</span>
             <span class="info-value">${inst.systemd_unit}</span>
           </div>
