@@ -8,6 +8,7 @@ declare global {
   interface Window {
     __CP_TOKEN__?: string;
   }
+  const __APP_VERSION__: string;
 }
 
 type Route =
@@ -101,7 +102,74 @@ export class CpApp extends LitElement {
     }
 
     main {
-      min-height: calc(100vh - 56px);
+      min-height: calc(100vh - 56px - 48px);
+    }
+
+    footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 0 24px;
+      height: 48px;
+      background: #1a1d27;
+      border-top: 1px solid #2a2d3a;
+      font-size: 12px;
+      color: #4a5568;
+    }
+
+    .footer-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .footer-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .footer-brand {
+      font-weight: 600;
+      color: #64748b;
+      letter-spacing: -0.01em;
+    }
+
+    .footer-brand span {
+      color: #6c63ff;
+    }
+
+    .footer-version {
+      background: #6c63ff18;
+      color: #6c63ff;
+      border: 1px solid #6c63ff30;
+      border-radius: 4px;
+      padding: 1px 7px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: "Fira Mono", monospace;
+    }
+
+    .footer-sep {
+      color: #2a2d3a;
+    }
+
+    .footer-link {
+      color: #4a5568;
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .footer-link:hover {
+      color: #94a3b8;
+    }
+
+    .footer-powered {
+      display: flex;
+      align-items: center;
+      gap: 5px;
     }
   `;
 
@@ -277,6 +345,40 @@ export class CpApp extends LitElement {
       <main>
         ${this._renderMain()}
       </main>
+
+      <footer>
+        <div class="footer-left">
+          <span class="footer-brand">Claw<span>Pilot</span></span>
+          <span class="footer-version">v${__APP_VERSION__}</span>
+          <span class="footer-sep">·</span>
+          <a
+            class="footer-link"
+            href="https://github.com/swoelffel/claw-pilot"
+            target="_blank"
+            rel="noopener"
+          >GitHub</a>
+          <span class="footer-sep">·</span>
+          <a
+            class="footer-link"
+            href="https://github.com/swoelffel/claw-pilot/issues"
+            target="_blank"
+            rel="noopener"
+          >Issues</a>
+        </div>
+        <div class="footer-right">
+          <span class="footer-powered">
+            Powered by
+            <a
+              class="footer-link"
+              href="https://openclaw.ai"
+              target="_blank"
+              rel="noopener"
+            >OpenClaw</a>
+          </span>
+          <span class="footer-sep">·</span>
+          <span>© ${new Date().getFullYear()} Stéphane Woelffel</span>
+        </div>
+      </footer>
     `;
   }
 }
