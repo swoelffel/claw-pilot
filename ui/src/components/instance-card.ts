@@ -134,10 +134,10 @@ export class InstanceCard extends LitElement {
     }
 
     .btn {
-      flex: 1;
-      padding: 7px 0;
+      flex: none;
+      padding: 5px 10px;
       border-radius: 6px;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
       cursor: pointer;
       border: 1px solid transparent;
@@ -266,6 +266,14 @@ export class InstanceCard extends LitElement {
             <span class="meta-label">Port</span>
             <span class="meta-value">:${inst.port}</span>
           </div>
+          ${inst.agentCount !== undefined
+            ? html`
+                <div class="meta-item">
+                  <span class="meta-label">${inst.agentCount === 1 ? "Agent" : "Agents"}</span>
+                  <span class="meta-value">${inst.agentCount}</span>
+                </div>
+              `
+            : ""}
           ${inst.telegram_bot
             ? html`
                 <div class="meta-item">

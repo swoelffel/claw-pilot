@@ -13,9 +13,10 @@ export interface InstanceInfo {
   discovered: number;
   created_at: string;
   updated_at: string;
-  // health (from WS updates)
+  // health (from WS updates or /api/instances)
   gateway?: "healthy" | "unhealthy" | "unknown";
   systemd?: "active" | "inactive" | "failed" | "unknown";
+  agentCount?: number;
   // gateway token for zero-friction Control UI login
   gatewayToken?: string | null;
 }
