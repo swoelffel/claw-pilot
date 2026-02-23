@@ -1,9 +1,10 @@
 import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import type { InstanceInfo, AgentInfo } from "../types.js";
+import type { InstanceInfo, AgentInfo, ConversationEntry } from "../types.js";
 import {
   fetchInstance,
   fetchAgents,
+  fetchConversations,
   startInstance,
   stopInstance,
   restartInstance,
@@ -110,6 +111,8 @@ export class InstanceDetail extends LitElement {
       display: flex;
       gap: 10px;
       margin-bottom: 28px;
+      align-items: center;
+      flex-wrap: wrap;
     }
 
     .btn {
@@ -155,6 +158,25 @@ export class InstanceDetail extends LitElement {
 
     .btn-restart:hover:not(:disabled) {
       background: #6c63ff30;
+    }
+
+    .btn-ui {
+      padding: 8px 20px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid #f59e0b40;
+      background: #f59e0b20;
+      color: #f59e0b;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-ui:hover {
+      background: #f59e0b30;
     }
 
     .section {
@@ -381,6 +403,94 @@ export class InstanceDetail extends LitElement {
     .btn-cancel-delete:hover {
       background: #363a4a;
     }
+
+    /* Conversation log */
+    .conv-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .conv-entry {
+      display: grid;
+      grid-template-columns: 76px 1fr 2fr;
+      gap: 12px;
+      align-items: baseline;
+      padding: 8px 4px;
+      border-bottom: 1px solid #1e2130;
+      font-size: 12px;
+    }
+
+    .conv-entry:last-child {
+      border-bottom: none;
+    }
+
+    .conv-time {
+      font-family: "Fira Mono", monospace;
+      color: #4a5568;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .conv-route {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .conv-from {
+      color: #6c63ff;
+      font-family: "Fira Mono", monospace;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100px;
+    }
+
+    .conv-arrow {
+      color: #4a5568;
+      flex-shrink: 0;
+    }
+
+    .conv-to {
+      color: #10b981;
+      font-family: "Fira Mono", monospace;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100px;
+    }
+
+    .conv-msg {
+      color: #94a3b8;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .conv-status-dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      margin-right: 4px;
+      flex-shrink: 0;
+    }
+
+    .conv-status-dot.running {
+      background: #f59e0b;
+    }
+
+    .conv-status-dot.done {
+      background: #10b981;
+    }
+
+    .conv-status-dot.failed {
+      background: #ef4444;
+    }
   `;
 
   @property({ type: String }) slug = "";
@@ -396,6 +506,8 @@ export class InstanceDetail extends LitElement {
   @state() private _deleteSlugInput = "";
   @state() private _deleting = false;
   @state() private _deleteError = "";
+  @state() private _conversations: ConversationEntry[] = [];
+  @state() private _convLoading = true;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -411,6 +523,7 @@ export class InstanceDetail extends LitElement {
   private async _load(): Promise<void> {
     if (!this.slug) return;
     this._loading = true;
+    this._convLoading = true;
     this._error = "";
     try {
       const [{ instance, gatewayToken }, agents] = await Promise.all([
@@ -425,6 +538,14 @@ export class InstanceDetail extends LitElement {
         err instanceof Error ? err.message : "Failed to load instance";
     } finally {
       this._loading = false;
+    }
+    // Load conversations separately (non-blocking for main content)
+    try {
+      this._conversations = await fetchConversations(this.slug, 10);
+    } catch {
+      this._conversations = [];
+    } finally {
+      this._convLoading = false;
     }
   }
 
@@ -443,7 +564,6 @@ export class InstanceDetail extends LitElement {
     this._actionError = "";
     try {
       await fn(this.slug);
-      // Reload to reflect new state
       await this._load();
     } catch (err) {
       this._actionError =
@@ -459,7 +579,6 @@ export class InstanceDetail extends LitElement {
     this._deleteError = "";
     try {
       await deleteInstance(this.slug);
-      // Navigate back to list and signal refresh
       this.dispatchEvent(
         new CustomEvent("instance-deleted", {
           detail: { slug: this.slug },
@@ -479,9 +598,103 @@ export class InstanceDetail extends LitElement {
     const base = this._instance.nginx_domain
       ? `https://${this._instance.nginx_domain}`
       : `http://localhost:${this._instance.port}`;
-    // Inject gateway token as hash fragment — Control UI reads it, saves to localStorage,
-    // then removes it from the URL bar (no server-side leak).
     return this._gatewayToken ? `${base}/#token=${this._gatewayToken}` : base;
+  }
+
+  private _formatTime(ts: number): string {
+    return new Date(ts).toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  }
+
+  private _renderActions(inst: InstanceInfo) {
+    const state = inst.state ?? "unknown";
+    const dis = this._actionLoading || this._deleting;
+
+    const showStart = state === "stopped" || state === "error" || state === "unknown";
+    const showStop = state === "running";
+    const showRestart = state === "running" || state === "error" || state === "unknown";
+    const showUI = state === "running";
+
+    return html`
+      <div class="actions">
+        ${showStart
+          ? html`<button
+              class="btn btn-start"
+              ?disabled=${dis}
+              @click=${() => this._action(startInstance)}
+            >Start</button>`
+          : ""}
+        ${showStop
+          ? html`<button
+              class="btn btn-stop"
+              ?disabled=${dis}
+              @click=${() => this._action(stopInstance)}
+            >Stop</button>`
+          : ""}
+        ${showRestart
+          ? html`<button
+              class="btn btn-restart"
+              ?disabled=${dis}
+              @click=${() => this._action(restartInstance)}
+            >Restart</button>`
+          : ""}
+        ${showUI
+          ? html`<a
+              class="btn-ui"
+              href=${this._controlUrl()}
+              target="_blank"
+              rel="noopener"
+            >⎋ Open UI</a>`
+          : ""}
+        <button
+          class="btn btn-delete"
+          ?disabled=${dis}
+          @click=${() => {
+            this._showDeleteConfirm = true;
+            this._deleteSlugInput = "";
+            this._deleteError = "";
+          }}
+        >Delete</button>
+      </div>
+      ${this._actionError
+        ? html`<div class="action-error">${this._actionError}</div>`
+        : ""}
+    `;
+  }
+
+  private _renderConversations() {
+    return html`
+      <div class="section">
+        <div class="section-title">Recent Conversations</div>
+        ${this._convLoading
+          ? html`<div class="empty-agents">Loading…</div>`
+          : this._conversations.length === 0
+            ? html`<div class="empty-agents">No conversations yet</div>`
+            : html`
+                <ul class="conv-list">
+                  ${this._conversations.map(
+                    (entry) => html`
+                      <li class="conv-entry">
+                        <span class="conv-time">${this._formatTime(entry.timestamp)}</span>
+                        <span class="conv-route">
+                          <span
+                            class="conv-status-dot ${entry.status ?? "done"}"
+                          ></span>
+                          <span class="conv-from" title=${entry.from}>${entry.from}</span>
+                          <span class="conv-arrow">→</span>
+                          <span class="conv-to" title=${entry.to}>${entry.to}</span>
+                        </span>
+                        <span class="conv-msg" title=${entry.message}>${entry.message}</span>
+                      </li>
+                    `,
+                  )}
+                </ul>
+              `}
+      </div>
+    `;
   }
 
   override render() {
@@ -518,43 +731,7 @@ export class InstanceDetail extends LitElement {
         </span>
       </div>
 
-      <div class="actions">
-        <button
-          class="btn btn-start"
-          ?disabled=${this._actionLoading || this._deleting}
-          @click=${() => this._action(startInstance)}
-        >
-          Start
-        </button>
-        <button
-          class="btn btn-stop"
-          ?disabled=${this._actionLoading || this._deleting}
-          @click=${() => this._action(stopInstance)}
-        >
-          Stop
-        </button>
-        <button
-          class="btn btn-restart"
-          ?disabled=${this._actionLoading || this._deleting}
-          @click=${() => this._action(restartInstance)}
-        >
-          Restart
-        </button>
-        <button
-          class="btn btn-delete"
-          ?disabled=${this._actionLoading || this._deleting}
-          @click=${() => {
-            this._showDeleteConfirm = true;
-            this._deleteSlugInput = "";
-            this._deleteError = "";
-          }}
-        >
-          Delete
-        </button>
-      </div>
-      ${this._actionError
-        ? html`<div class="action-error">${this._actionError}</div>`
-        : ""}
+      ${this._renderActions(inst)}
 
       ${this._showDeleteConfirm
         ? html`
@@ -676,6 +853,7 @@ export class InstanceDetail extends LitElement {
             `}
       </div>
 
+      ${this._renderConversations()}
     `;
   }
 }

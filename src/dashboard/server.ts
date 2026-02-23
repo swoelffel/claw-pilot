@@ -104,6 +104,49 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     return c.json(agents);
   });
 
+  app.get("/api/instances/:slug/conversations", async (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    if (!instance) return c.json({ error: "Not found" }, 404);
+
+    const limit = Math.min(parseInt(c.req.query("limit") ?? "10", 10), 100);
+
+    try {
+      const runsPath = `${instance.state_dir}/subagents/runs.json`;
+      const raw = await conn.readFile(runsPath);
+      const data = JSON.parse(raw) as {
+        version: number;
+        runs: Record<string, {
+          createdAt: number;
+          requesterDisplayKey: string;
+          childSessionKey: string;
+          label?: string;
+          task: string;
+          endedAt?: number;
+          outcome?: string;
+        }>;
+      };
+
+      const entries = Object.values(data.runs ?? {})
+        .map((run) => ({
+          timestamp: run.createdAt,
+          from: run.requesterDisplayKey || "unknown",
+          to: run.label || run.childSessionKey || "agent",
+          message: run.task || "",
+          type: "agent-agent" as const,
+          status: run.endedAt
+            ? run.outcome === "completed" ? "done" : "failed"
+            : "running",
+        }))
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, limit);
+
+      return c.json({ entries });
+    } catch {
+      return c.json({ entries: [] });
+    }
+  });
+
   app.get("/api/instances/:slug/health", async (c) => {
     const slug = c.req.param("slug");
     try {

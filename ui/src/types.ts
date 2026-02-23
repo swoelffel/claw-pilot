@@ -83,3 +83,18 @@ export interface CreateInstanceRequest {
   apiKey: string;
   agents: AgentDefinition[];
 }
+
+export interface ConversationEntry {
+  /** Unix timestamp in ms */
+  timestamp: number;
+  /** Display name of the sender (agent name or channel id) */
+  from: string;
+  /** Display name of the receiver (agent label or session key) */
+  to: string;
+  /** Task or message text */
+  message: string;
+  /** "agent-agent" for subagent dispatches, "agent-human" for channel replies */
+  type: "agent-agent" | "agent-human";
+  /** Current status of the dispatch */
+  status?: "running" | "done" | "failed";
+}

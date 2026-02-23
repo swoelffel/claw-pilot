@@ -1,4 +1,4 @@
-import type { InstanceInfo, AgentInfo, CreateInstanceRequest, ProvidersResponse } from "./types.js";
+import type { InstanceInfo, AgentInfo, CreateInstanceRequest, ProvidersResponse, ConversationEntry } from "./types.js";
 
 declare global {
   interface Window {
@@ -78,4 +78,14 @@ export async function createInstance(data: CreateInstanceRequest): Promise<unkno
 
 export async function deleteInstance(slug: string): Promise<void> {
   await apiFetch(`/instances/${slug}`, { method: "DELETE" });
+}
+
+export async function fetchConversations(
+  slug: string,
+  limit = 10,
+): Promise<ConversationEntry[]> {
+  const data = await apiFetch<{ entries: ConversationEntry[] }>(
+    `/instances/${slug}/conversations?limit=${limit}`,
+  );
+  return data.entries;
 }
