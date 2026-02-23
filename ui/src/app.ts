@@ -166,11 +166,6 @@ export class CpApp extends LitElement {
       color: #94a3b8;
     }
 
-    .footer-powered {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
   `;
 
   @state() private _route: Route = { view: "cluster" };
@@ -366,17 +361,7 @@ export class CpApp extends LitElement {
           >Issues</a>
         </div>
         <div class="footer-right">
-          <span class="footer-powered">
-            Powered by
-            <a
-              class="footer-link"
-              href="https://openclaw.ai"
-              target="_blank"
-              rel="noopener"
-            >OpenClaw</a>
-          </span>
-          <span class="footer-sep">·</span>
-          <span>© ${new Date().getFullYear()} Stéphane Woelffel</span>
+          <span>© ${new Date().getFullYear()} Stéphane Woelffel — MIT License</span>
         </div>
       </footer>
     `;
