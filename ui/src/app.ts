@@ -361,7 +361,7 @@ export class CpApp extends LitElement {
           >Issues</a>
         </div>
         <div class="footer-right">
-          <span>© ${new Date().getFullYear()} Stéphane Woelffel — MIT License</span>
+          <span>© ${new Date().getFullYear()} SWO — MIT License</span>
         </div>
       </footer>
     `;
