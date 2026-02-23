@@ -81,8 +81,21 @@ export class HealthChecker {
     const agents = this.registry.listAgents(slug);
     status.agentCount = agents.length;
 
-    // 5. Telegram status
-    if (instance.telegram_bot) {
+    // 5. Telegram status — check registry field OR openclaw.json channels.telegram.enabled
+    let telegramConfigured = !!instance.telegram_bot;
+    if (!telegramConfigured) {
+      try {
+        const raw = await this.conn.readFile(instance.config_path);
+        const cfg = JSON.parse(raw) as {
+          channels?: { telegram?: { enabled?: boolean } };
+        };
+        telegramConfigured = cfg.channels?.telegram?.enabled === true;
+      } catch {
+        // config unreadable — fall through
+      }
+    }
+
+    if (telegramConfigured) {
       const logResult = await this.conn.exec(
         `tail -50 ${shellEscape(instance.state_dir)}/logs/gateway.log 2>/dev/null | grep -c "telegram.*connected" || echo 0`,
       );
