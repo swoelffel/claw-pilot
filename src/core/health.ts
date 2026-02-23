@@ -2,6 +2,7 @@
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry } from "./registry.js";
 import { InstanceNotFoundError } from "../lib/errors.js";
+import { constants } from "../lib/constants.js";
 
 export interface HealthStatus {
   slug: string;
