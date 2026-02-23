@@ -54,13 +54,14 @@ export interface ProviderInfo {
   label: string;
   requiresKey: boolean;
   isDefault?: boolean;
+  defaultModel: string;
+  models: string[];
 }
 
 export interface ProvidersResponse {
   canReuseCredentials: boolean;
   sourceInstance: string | null;
   providers: ProviderInfo[];
-  models: string[];
 }
 
 export interface CreateInstanceRequest {

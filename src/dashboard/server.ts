@@ -50,20 +50,101 @@ interface ProviderInfo {
   label: string;
   requiresKey: boolean;
   isDefault?: boolean;
+  defaultModel: string;
+  models: string[];
 }
 
-const DEFAULT_PROVIDERS: ProviderInfo[] = [
-  { id: "anthropic",  label: "Anthropic",     requiresKey: true },
-  { id: "openai",     label: "OpenAI",         requiresKey: true },
-  { id: "openrouter", label: "OpenRouter",     requiresKey: true },
-  { id: "gemini",     label: "Google Gemini",  requiresKey: true },
-  { id: "mistral",    label: "Mistral",        requiresKey: true },
-];
-
-const DEFAULT_MODELS: string[] = [
-  "anthropic/claude-sonnet-4-6",
-  "anthropic/claude-opus-4-6",
-  "anthropic/claude-haiku-4-5-20251001",
+/**
+ * Provider catalog — kept in sync with OpenClaw model registry.
+ * Source: src/openclaw/node_modules/@mariozechner/pi-ai/dist/models.generated.js
+ * OpenClaw version reference: 2026.2.14
+ * Update this catalog on each OpenClaw release (see docs/OPENCLAW-COMPAT.md).
+ */
+const PROVIDER_CATALOG: ProviderInfo[] = [
+  {
+    id: "anthropic",
+    label: "Anthropic",
+    requiresKey: true,
+    defaultModel: "anthropic/claude-sonnet-4-6",
+    models: [
+      "anthropic/claude-opus-4-6",
+      "anthropic/claude-opus-4-5",
+      "anthropic/claude-sonnet-4-6",
+      "anthropic/claude-sonnet-4-5",
+      "anthropic/claude-haiku-4-5",
+    ],
+  },
+  {
+    id: "openai",
+    label: "OpenAI",
+    requiresKey: true,
+    defaultModel: "openai/gpt-5.1-codex",
+    models: [
+      "openai/gpt-5.2",
+      "openai/gpt-5.1-codex",
+      "openai/gpt-5.1",
+      "openai/gpt-5",
+      "openai/gpt-4.1",
+      "openai/o3",
+      "openai/o4-mini",
+    ],
+  },
+  {
+    id: "google",
+    label: "Google Gemini",
+    requiresKey: true,
+    defaultModel: "google/gemini-3-pro-preview",
+    models: [
+      "google/gemini-3-pro-preview",
+      "google/gemini-3-flash-preview",
+      "google/gemini-2.5-pro",
+      "google/gemini-2.5-flash",
+    ],
+  },
+  {
+    id: "mistral",
+    label: "Mistral",
+    requiresKey: true,
+    defaultModel: "mistral/mistral-large-latest",
+    models: [
+      "mistral/mistral-large-latest",
+    ],
+  },
+  {
+    id: "xai",
+    label: "xAI (Grok)",
+    requiresKey: true,
+    defaultModel: "xai/grok-4",
+    models: [
+      "xai/grok-4",
+    ],
+  },
+  {
+    id: "openrouter",
+    label: "OpenRouter",
+    requiresKey: true,
+    defaultModel: "openrouter/auto",
+    models: [
+      "openrouter/auto",
+    ],
+  },
+  {
+    id: "opencode",
+    label: "OpenCode Zen (no key)",
+    requiresKey: false,
+    defaultModel: "opencode/claude-opus-4-6",
+    models: [
+      "opencode/gpt-5.1-codex",
+      "opencode/claude-opus-4-6",
+      "opencode/claude-opus-4-5",
+      "opencode/gemini-3-pro",
+      "opencode/gpt-5.1-codex-mini",
+      "opencode/gpt-5.1",
+      "opencode/glm-4.7",
+      "opencode/gemini-3-flash",
+      "opencode/gpt-5.2",
+    ],
+  },
 ];
 
 export async function startDashboard(options: DashboardOptions): Promise<void> {
@@ -148,14 +229,16 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     }
   });
 
-  // GET /api/providers — list available providers + detect reuse capability
+  // GET /api/providers — list available providers with their model catalogs
   app.get("/api/providers", async (c) => {
     const existing = registry.listInstances();
     let canReuseCredentials = false;
     let sourceInstance: string | null = null;
-    let models: string[] = [...DEFAULT_MODELS];
-    const providers: ProviderInfo[] = [];
 
+    // Start from the full catalog (deep copy to allow per-request mutation)
+    const providers: ProviderInfo[] = PROVIDER_CATALOG.map((p) => ({ ...p, models: [...p.models] }));
+
+    // Detect reuse capability from existing instance config
     if (existing.length > 0) {
       const source = existing[0]!;
       sourceInstance = source.slug;
@@ -164,27 +247,29 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
         const raw = await conn.readFile(source.config_path);
         const cfg = JSON.parse(raw) as {
           models?: { providers?: Record<string, unknown> };
-          agents?: { defaults?: { model?: string } };
+          auth?: { profiles?: Record<string, { provider?: string }> };
         };
 
-        const cfgProviders = Object.keys(cfg.models?.providers ?? {});
-        if (cfgProviders.length > 0) {
+        // Detect providers from models.providers block
+        const cfgProviderIds = new Set(Object.keys(cfg.models?.providers ?? {}));
+
+        // Also detect opencode from auth.profiles
+        const profiles = cfg.auth?.profiles ?? {};
+        for (const profile of Object.values(profiles)) {
+          if (profile.provider === "opencode") cfgProviderIds.add("opencode");
+        }
+
+        if (cfgProviderIds.size > 0) {
           canReuseCredentials = true;
-
-          for (const pid of cfgProviders) {
-            providers.push({
-              id: pid,
-              label: pid === "opencode"
-                ? "OpenCode (via existing instance)"
-                : `${pid.charAt(0).toUpperCase() + pid.slice(1)} (reuse from ${source.slug})`,
-              requiresKey: false,
-              isDefault: providers.length === 0,
-            });
-          }
-
-          const srcModel = cfg.agents?.defaults?.model;
-          if (srcModel) {
-            models = [srcModel, ...DEFAULT_MODELS.filter((m) => m !== srcModel)];
+          // Mark matching providers as reusable (no key required)
+          for (const p of providers) {
+            if (cfgProviderIds.has(p.id)) {
+              p.requiresKey = false;
+              p.label = p.id === "opencode"
+                ? `${p.label} (via ${source.slug})`
+                : `${p.label} (reuse from ${source.slug})`;
+              p.isDefault = true;
+            }
           }
         }
       } catch {
@@ -192,15 +277,12 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       }
     }
 
-    // Always append the full default provider list (skip duplicates)
-    const existingIds = new Set(providers.map((p) => p.id));
-    for (const p of DEFAULT_PROVIDERS) {
-      if (!existingIds.has(p.id)) {
-        providers.push(p);
-      }
+    // Mark first provider as default if none marked yet
+    if (!providers.some((p) => p.isDefault)) {
+      providers[0]!.isDefault = true;
     }
 
-    return c.json({ canReuseCredentials, sourceInstance, providers, models });
+    return c.json({ canReuseCredentials, sourceInstance, providers });
   });
 
   // POST /api/instances — provision a new instance

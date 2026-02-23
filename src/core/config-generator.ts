@@ -14,7 +14,7 @@ export interface WizardAnswers {
   port: number;
   agents: AgentDefinition[];
   defaultModel: string;
-  provider: string;   // e.g. "anthropic" | "openai" | "openrouter" | "gemini" | "mistral" | "opencode"
+  provider: string;   // e.g. "anthropic" | "openai" | "openrouter" | "google" | "mistral" | "xai" | "opencode"
   apiKey: string;     // literal key, "reuse", or "" for opencode
   telegram: {
     enabled: boolean;
@@ -38,8 +38,9 @@ export const PROVIDER_ENV_VARS: Record<string, string> = {
   anthropic:  "ANTHROPIC_API_KEY",
   openai:     "OPENAI_API_KEY",
   openrouter: "OPENROUTER_API_KEY",
-  gemini:     "GEMINI_API_KEY",
+  google:     "GOOGLE_API_KEY",
   mistral:    "MISTRAL_API_KEY",
+  xai:        "XAI_API_KEY",
   opencode:   "",
 };
 
@@ -81,8 +82,9 @@ export function generateConfig(answers: WizardAnswers): string {
       anthropic:  { baseUrl: "https://api.anthropic.com" },
       openai:     { baseUrl: "https://api.openai.com/v1" },
       openrouter: { baseUrl: "https://openrouter.ai/api/v1" },
-      gemini:     { baseUrl: "https://generativelanguage.googleapis.com/v1beta" },
+      google:     { baseUrl: "https://generativelanguage.googleapis.com/v1beta" },
       mistral:    { baseUrl: "https://api.mistral.ai/v1" },
+      xai:        { baseUrl: "https://api.x.ai/v1" },
     };
     providerBlock[answers.provider] = {
       apiKey: `\${${envVar}}`,

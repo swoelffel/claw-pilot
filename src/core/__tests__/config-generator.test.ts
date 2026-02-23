@@ -46,6 +46,21 @@ describe("generateConfig", () => {
     expect(config.models.providers.anthropic).toBeUndefined();
   });
 
+  it("uses correct provider block for google (not gemini)", () => {
+    const answers: WizardAnswers = { ...baseAnswers, provider: "google", apiKey: "AIza-test" };
+    const config = JSON.parse(generateConfig(answers));
+    expect(config.models.providers.google.apiKey).toBe("${GOOGLE_API_KEY}");
+    expect(config.models.providers.google.baseUrl).toBe("https://generativelanguage.googleapis.com/v1beta");
+    expect(config.models.providers.gemini).toBeUndefined();
+  });
+
+  it("uses correct provider block for xai", () => {
+    const answers: WizardAnswers = { ...baseAnswers, provider: "xai", apiKey: "xai-test" };
+    const config = JSON.parse(generateConfig(answers));
+    expect(config.models.providers.xai.apiKey).toBe("${XAI_API_KEY}");
+    expect(config.models.providers.xai.baseUrl).toBe("https://api.x.ai/v1");
+  });
+
   it("uses opencode auth.profiles when provider is opencode (no models.providers)", () => {
     const answers: WizardAnswers = { ...baseAnswers, provider: "opencode", apiKey: "" };
     const config = JSON.parse(generateConfig(answers));
@@ -158,6 +173,17 @@ describe("generateEnv", () => {
     const env = generateEnv({ provider: "openai", apiKey: "sk-openai-x", gatewayToken: "token" });
     expect(env).toContain("OPENAI_API_KEY=sk-openai-x");
     expect(env).not.toContain("ANTHROPIC_API_KEY");
+  });
+
+  it("writes GOOGLE_API_KEY for google provider (not GEMINI_API_KEY)", () => {
+    const env = generateEnv({ provider: "google", apiKey: "AIza-test", gatewayToken: "token" });
+    expect(env).toContain("GOOGLE_API_KEY=AIza-test");
+    expect(env).not.toContain("GEMINI_API_KEY");
+  });
+
+  it("writes XAI_API_KEY for xai provider", () => {
+    const env = generateEnv({ provider: "xai", apiKey: "xai-test", gatewayToken: "token" });
+    expect(env).toContain("XAI_API_KEY=xai-test");
   });
 
   it("omits API key line for opencode", () => {

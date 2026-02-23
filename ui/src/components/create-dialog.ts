@@ -297,7 +297,6 @@ export class CreateDialog extends LitElement {
   @state() private _portError = "";
   @state() private _model = "";
   @state() private _providers: ProviderInfo[] = [];
-  @state() private _models: string[] = [];
   @state() private _canReuseCredentials = false;
   @state() private _providersLoading = true;
   @state() private _providersError = "";
@@ -335,22 +334,34 @@ export class CreateDialog extends LitElement {
     try {
       const data: ProvidersResponse = await fetchProviders();
       this._providers = data.providers;
-      this._models = data.models;
       this._canReuseCredentials = data.canReuseCredentials;
       const defaultProvider = data.providers.find((p) => p.isDefault) ?? data.providers[0] ?? null;
       this._selectedProvider = defaultProvider;
-      if (data.models.length > 0) {
-        this._model = data.models[0]!;
-      }
+      this._model = defaultProvider?.defaultModel ?? defaultProvider?.models[0] ?? "";
     } catch (err) {
       this._providersError = err instanceof Error ? err.message : "Could not load providers";
-      this._providers = [{ id: "anthropic", label: "Anthropic", requiresKey: true }];
-      this._models = ["anthropic/claude-sonnet-4-6"];
-      this._model = "anthropic/claude-sonnet-4-6";
+      this._providers = [{
+        id: "anthropic",
+        label: "Anthropic",
+        requiresKey: true,
+        defaultModel: "anthropic/claude-sonnet-4-6",
+        models: ["anthropic/claude-sonnet-4-6"],
+      }];
       this._selectedProvider = this._providers[0]!;
+      this._model = "anthropic/claude-sonnet-4-6";
     } finally {
       this._providersLoading = false;
     }
+  }
+
+  /** Called when the user picks a different provider — resets model to provider default */
+  private _onProviderChange(e: Event): void {
+    const id = (e.target as HTMLSelectElement).value;
+    const provider = this._providers.find((p) => p.id === id) ?? null;
+    this._selectedProvider = provider;
+    this._apiKey = "";
+    // Auto-select the default model for this provider
+    this._model = provider?.defaultModel ?? provider?.models[0] ?? "";
   }
 
   private _close(): void {
@@ -474,14 +485,7 @@ export class CreateDialog extends LitElement {
 
         <div class="field">
           <label for="provider">AI Provider *</label>
-          <select
-            id="provider"
-            @change=${(e: Event) => {
-              const id = (e.target as HTMLSelectElement).value;
-              this._selectedProvider = this._providers.find((p) => p.id === id) ?? null;
-              this._apiKey = "";
-            }}
-          >
+          <select id="provider" @change=${this._onProviderChange}>
             ${this._providers.map((p) => html`
               <option value=${p.id} ?selected=${selected?.id === p.id}>${p.label}</option>
             `)}
@@ -588,8 +592,8 @@ export class CreateDialog extends LitElement {
                 .value=${this._model}
                 @change=${(e: Event) => { this._model = (e.target as HTMLSelectElement).value; }}
               >
-                ${this._models.map((m) => html`
-                  <option value=${m} ?selected=${this._model === m}>${m}</option>
+                ${(this._selectedProvider?.models ?? []).map((m) => html`
+                  <option value=${m} ?selected=${this._model === m}>${m.split("/")[1] ?? m}</option>
                 `)}
               </select>
             </div>
