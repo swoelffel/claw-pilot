@@ -292,6 +292,8 @@ export class CreateDialog extends LitElement {
   @state() private _slug = "";
   @state() private _slugError = "";
   @state() private _displayName = "";
+  // Track last auto-generated display name to detect manual edits
+  private _autoDisplayName = "";
   @state() private _port = 0;
   @state() private _portLoading = true;
   @state() private _portError = "";
@@ -379,9 +381,11 @@ export class CreateDialog extends LitElement {
     const val = (e.target as HTMLInputElement).value.toLowerCase().replace(/[^a-z0-9-]/g, "");
     this._slug = val;
     this._slugError = this._validateSlug(val);
-    // Auto-fill display name if not manually set
-    if (!this._displayName || this._displayName === this._slug.slice(0, -1)) {
-      this._displayName = val.charAt(0).toUpperCase() + val.slice(1);
+    // Auto-fill display name only if user hasn't manually edited it
+    const auto = val.charAt(0).toUpperCase() + val.slice(1).replace(/-/g, " ");
+    if (!this._displayName || this._displayName === this._autoDisplayName) {
+      this._autoDisplayName = auto;
+      this._displayName = auto;
     }
   }
 
@@ -492,6 +496,19 @@ export class CreateDialog extends LitElement {
           </select>
         </div>
 
+        <div class="field">
+          <label for="model">Default model *</label>
+          <select
+            id="model"
+            .value=${this._model}
+            @change=${(e: Event) => { this._model = (e.target as HTMLSelectElement).value; }}
+          >
+            ${(selected?.models ?? []).map((m) => html`
+              <option value=${m} ?selected=${this._model === m}>${m.split("/")[1] ?? m}</option>
+            `)}
+          </select>
+        </div>
+
         ${selected?.requiresKey
           ? html`
               <div class="field">
@@ -565,38 +582,24 @@ export class CreateDialog extends LitElement {
 
         <hr class="divider" />
 
-        <!-- Port + Model -->
+        <!-- Port -->
         <div class="section">
           <div class="section-label">Configuration</div>
-          <div class="field-row">
-            <div class="field">
-              <label for="port">Gateway port *</label>
-              <input
-                id="port"
-                type="number"
-                min="1024"
-                max="65535"
-                .value=${this._portLoading ? "" : String(this._port)}
-                ?disabled=${this._portLoading}
-                placeholder=${this._portLoading ? "Loading..." : ""}
-                @input=${(e: Event) => { this._port = parseInt((e.target as HTMLInputElement).value) || 0; }}
-              />
-              ${this._portError
-                ? html`<span class="field-error">${this._portError}</span>`
-                : html`<span class="field-hint">Auto-suggested from free range</span>`}
-            </div>
-            <div class="field">
-              <label for="model">Default model *</label>
-              <select
-                id="model"
-                .value=${this._model}
-                @change=${(e: Event) => { this._model = (e.target as HTMLSelectElement).value; }}
-              >
-                ${(this._selectedProvider?.models ?? []).map((m) => html`
-                  <option value=${m} ?selected=${this._model === m}>${m.split("/")[1] ?? m}</option>
-                `)}
-              </select>
-            </div>
+          <div class="field">
+            <label for="port">Gateway port *</label>
+            <input
+              id="port"
+              type="number"
+              min="1024"
+              max="65535"
+              .value=${this._portLoading ? "" : String(this._port)}
+              ?disabled=${this._portLoading}
+              placeholder=${this._portLoading ? "Loading..." : ""}
+              @input=${(e: Event) => { this._port = parseInt((e.target as HTMLInputElement).value) || 0; }}
+            />
+            ${this._portError
+              ? html`<span class="field-error">${this._portError}</span>`
+              : html`<span class="field-hint">Auto-suggested from free range</span>`}
           </div>
         </div>
 
