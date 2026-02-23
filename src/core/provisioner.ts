@@ -12,7 +12,7 @@ import { generateGatewayToken } from "./secrets.js";
 import { OpenClawCLI } from "./openclaw-cli.js";
 import { Lifecycle } from "./lifecycle.js";
 import { constants } from "../lib/constants.js";
-import { getSystemdDir, getSystemdUnit } from "../lib/platform.js";
+import { getOpenClawHome, getSystemdDir, getSystemdUnit } from "../lib/platform.js";
 import { InstanceAlreadyExistsError, ClawPilotError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
 
@@ -48,7 +48,7 @@ export class Provisioner {
       );
     }
 
-    const openclawHome = await this.getOpenClawHome();
+    const openclawHome = getOpenClawHome();
     const stateDir = path.join(
       openclawHome,
       `${constants.OPENCLAW_STATE_PREFIX}${slug}`,
@@ -228,14 +228,6 @@ export class Provisioner {
       telegramBot: answers.telegram.enabled ? "pending" : undefined,
       nginxDomain: answers.nginx.domain,
     };
-  }
-
-  private async getOpenClawHome(): Promise<string> {
-    const result = await this.conn.exec("echo $HOME");
-    const home = result.stdout.trim();
-    // On Linux production, prefer /opt/openclaw
-    const platform = await this.conn.platform();
-    return platform === "linux" ? constants.OPENCLAW_HOME : home;
   }
 
   private async provisionWorkspaceFiles(
