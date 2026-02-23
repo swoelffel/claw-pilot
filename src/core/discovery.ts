@@ -38,6 +38,7 @@ export class InstanceDiscovery {
     private conn: ServerConnection,
     private registry: Registry,
     private openclawHome: string,
+    private xdgRuntimeDir: string,
   ) {}
 
   /**
@@ -103,7 +104,7 @@ export class InstanceDiscovery {
     found: Map<string, DiscoveredInstance>,
   ): Promise<void> {
     const result = await this.conn.exec(
-      `XDG_RUNTIME_DIR=${constants.XDG_RUNTIME_DIR} systemctl --user list-units 'openclaw-*' --no-pager --plain --no-legend 2>/dev/null || true`,
+      `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user list-units 'openclaw-*' --no-pager --plain --no-legend 2>/dev/null || true`,
     );
 
     for (const line of result.stdout.split("\n")) {
@@ -128,7 +129,7 @@ export class InstanceDiscovery {
 
       // Instance found via systemd only — try to find state dir from Environment
       const showResult = await this.conn.exec(
-        `XDG_RUNTIME_DIR=${constants.XDG_RUNTIME_DIR} systemctl --user show openclaw-${slug}.service --property=Environment --value 2>/dev/null || true`,
+        `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user show openclaw-${slug}.service --property=Environment --value 2>/dev/null || true`,
       );
       const stateDirMatch = showResult.stdout.match(
         /OPENCLAW_STATE_DIR=(\S+)/,
@@ -308,7 +309,7 @@ export class InstanceDiscovery {
     let systemdState: DiscoveredInstance["systemdState"] = null;
     const unitName = `openclaw-${slug}.service`;
     const systemdResult = await this.conn.exec(
-      `XDG_RUNTIME_DIR=${constants.XDG_RUNTIME_DIR} systemctl --user is-active ${unitName} 2>/dev/null || true`,
+      `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user is-active ${unitName} 2>/dev/null || true`,
     );
     const sysState = systemdResult.stdout.trim();
     if (["active", "inactive", "failed"].includes(sysState)) {

@@ -7,6 +7,7 @@ import {
   startInstance,
   stopInstance,
   restartInstance,
+  deleteInstance,
 } from "../api.js";
 import "./log-viewer.js";
 
@@ -286,6 +287,100 @@ export class InstanceDetail extends LitElement {
       color: #ef4444;
       margin-top: 8px;
     }
+
+    .btn-delete {
+      background: #ef444415;
+      color: #ef4444;
+      border-color: #ef444440;
+      margin-left: auto;
+    }
+
+    .btn-delete:hover:not(:disabled) {
+      background: #ef444425;
+    }
+
+    /* Inline delete confirmation */
+    .delete-confirm {
+      background: #ef444410;
+      border: 1px solid #ef444440;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .delete-confirm-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #ef4444;
+    }
+
+    .delete-confirm-hint {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    .delete-confirm-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .delete-confirm-row input {
+      flex: 1;
+      background: #0f1117;
+      border: 1px solid #ef444440;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 13px;
+      padding: 7px 10px;
+      outline: none;
+      font-family: "Fira Mono", monospace;
+    }
+
+    .delete-confirm-row input:focus {
+      border-color: #ef4444;
+    }
+
+    .btn-confirm-delete {
+      background: #ef4444;
+      color: #fff;
+      border: none;
+      padding: 7px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+
+    .btn-confirm-delete:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .btn-confirm-delete:hover:not(:disabled) {
+      background: #dc2626;
+    }
+
+    .btn-cancel-delete {
+      background: #2a2d3a;
+      color: #94a3b8;
+      border: none;
+      padding: 7px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-cancel-delete:hover {
+      background: #363a4a;
+    }
   `;
 
   @property({ type: String }) slug = "";
@@ -296,6 +391,10 @@ export class InstanceDetail extends LitElement {
   @state() private _error = "";
   @state() private _actionLoading = false;
   @state() private _actionError = "";
+  @state() private _showDeleteConfirm = false;
+  @state() private _deleteSlugInput = "";
+  @state() private _deleting = false;
+  @state() private _deleteError = "";
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -352,6 +451,27 @@ export class InstanceDetail extends LitElement {
     }
   }
 
+  private async _confirmDelete(): Promise<void> {
+    if (this._deleteSlugInput !== this.slug || this._deleting) return;
+    this._deleting = true;
+    this._deleteError = "";
+    try {
+      await deleteInstance(this.slug);
+      // Navigate back to list and signal refresh
+      this.dispatchEvent(
+        new CustomEvent("instance-deleted", {
+          detail: { slug: this.slug },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+      this._back();
+    } catch (err) {
+      this._deleteError = err instanceof Error ? err.message : "Delete failed";
+      this._deleting = false;
+    }
+  }
+
   private _controlUrl(): string {
     if (!this._instance) return "#";
     if (this._instance.nginx_domain) {
@@ -397,28 +517,82 @@ export class InstanceDetail extends LitElement {
       <div class="actions">
         <button
           class="btn btn-start"
-          ?disabled=${this._actionLoading}
+          ?disabled=${this._actionLoading || this._deleting}
           @click=${() => this._action(startInstance)}
         >
           Start
         </button>
         <button
           class="btn btn-stop"
-          ?disabled=${this._actionLoading}
+          ?disabled=${this._actionLoading || this._deleting}
           @click=${() => this._action(stopInstance)}
         >
           Stop
         </button>
         <button
           class="btn btn-restart"
-          ?disabled=${this._actionLoading}
+          ?disabled=${this._actionLoading || this._deleting}
           @click=${() => this._action(restartInstance)}
         >
           Restart
         </button>
+        <button
+          class="btn btn-delete"
+          ?disabled=${this._actionLoading || this._deleting}
+          @click=${() => {
+            this._showDeleteConfirm = true;
+            this._deleteSlugInput = "";
+            this._deleteError = "";
+          }}
+        >
+          Delete
+        </button>
       </div>
       ${this._actionError
         ? html`<div class="action-error">${this._actionError}</div>`
+        : ""}
+
+      ${this._showDeleteConfirm
+        ? html`
+            <div class="delete-confirm">
+              <div class="delete-confirm-title">Permanently destroy "${inst.slug}"?</div>
+              <div class="delete-confirm-hint">
+                This will stop the service, remove all files and the registry entry.
+                Type the instance slug to confirm.
+              </div>
+              <div class="delete-confirm-row">
+                <input
+                  type="text"
+                  placeholder=${inst.slug}
+                  .value=${this._deleteSlugInput}
+                  @input=${(e: Event) => {
+                    this._deleteSlugInput = (e.target as HTMLInputElement).value;
+                  }}
+                  @keydown=${(e: KeyboardEvent) => {
+                    if (e.key === "Enter") this._confirmDelete();
+                    if (e.key === "Escape") this._showDeleteConfirm = false;
+                  }}
+                />
+                <button
+                  class="btn-confirm-delete"
+                  ?disabled=${this._deleteSlugInput !== inst.slug || this._deleting}
+                  @click=${this._confirmDelete}
+                >
+                  ${this._deleting ? "Deleting…" : "Destroy"}
+                </button>
+                <button
+                  class="btn-cancel-delete"
+                  ?disabled=${this._deleting}
+                  @click=${() => { this._showDeleteConfirm = false; }}
+                >
+                  Cancel
+                </button>
+              </div>
+              ${this._deleteError
+                ? html`<div class="action-error">${this._deleteError}</div>`
+                : ""}
+            </div>
+          `
         : ""}
 
       <div class="section">

@@ -217,6 +217,14 @@ export class CpApp extends LitElement {
     this._route = { view: "cluster" };
   }
 
+  private _onInstanceDeleted(e: Event): void {
+    const { slug } = (e as CustomEvent<{ slug: string }>).detail;
+    // Remove from local instances list immediately (optimistic update)
+    this._instances = this._instances.filter((i) => i.slug !== slug);
+    // Navigate back to cluster view
+    this._route = { view: "cluster" };
+  }
+
   private _renderMain() {
     if (this._route.view === "cluster") {
       return html`
@@ -234,6 +242,7 @@ export class CpApp extends LitElement {
       <cp-instance-detail
         .slug=${this._route.slug}
         @navigate=${this._navigate}
+        @instance-deleted=${this._onInstanceDeleted}
       ></cp-instance-detail>
     `;
   }

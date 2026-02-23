@@ -10,11 +10,13 @@ import type { ServerConnection } from "../server/connection.js";
 import type { WizardAnswers } from "../core/config-generator.js";
 import { HealthChecker } from "../core/health.js";
 import { Lifecycle } from "../core/lifecycle.js";
+import { Destroyer } from "../core/destroyer.js";
 import { Provisioner } from "../core/provisioner.js";
 import { PortAllocator } from "../core/port-allocator.js";
 import { PairingManager } from "../core/pairing.js";
 import { Monitor } from "./monitor.js";
-import { ClawPilotError } from "../lib/errors.js";
+import { ClawPilotError, InstanceNotFoundError } from "../lib/errors.js";
+import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 
 // Resolve dist/ui/ relative to this bundle chunk.
 // When bundled: this file is at <install>/dist/server-*.mjs
@@ -150,8 +152,12 @@ const PROVIDER_CATALOG: ProviderInfo[] = [
 export async function startDashboard(options: DashboardOptions): Promise<void> {
   const { port, token, registry, conn } = options;
   const app = new Hono();
-  const health = new HealthChecker(conn, registry);
-  const lifecycle = new Lifecycle(conn, registry);
+
+  // Resolve XDG_RUNTIME_DIR once at startup for the current user
+  const xdgRuntimeDir = await resolveXdgRuntimeDir(conn);
+
+  const health = new HealthChecker(conn, registry, xdgRuntimeDir);
+  const lifecycle = new Lifecycle(conn, registry, xdgRuntimeDir);
   const monitor = new Monitor(health);
 
   // Auth middleware for API routes
@@ -210,6 +216,23 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   app.post("/api/instances/:slug/restart", async (c) => {
     await lifecycle.restart(c.req.param("slug"));
     return c.json({ ok: true });
+  });
+
+  app.delete("/api/instances/:slug", async (c) => {
+    const slug = c.req.param("slug");
+    try {
+      const destroyer = new Destroyer(conn, registry, xdgRuntimeDir);
+      await destroyer.destroy(slug);
+      return c.json({ ok: true, slug });
+    } catch (err) {
+      if (err instanceof InstanceNotFoundError) {
+        return c.json({ error: err.message }, 404);
+      }
+      return c.json(
+        { error: err instanceof Error ? err.message : "Destroy failed" },
+        500,
+      );
+    }
   });
 
   app.get("/api/health", (c) => {

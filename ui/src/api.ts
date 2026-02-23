@@ -75,3 +75,7 @@ export async function createInstance(data: CreateInstanceRequest): Promise<unkno
     body: JSON.stringify(data),
   });
 }
+
+export async function deleteInstance(slug: string): Promise<void> {
+  await apiFetch(`/instances/${slug}`, { method: "DELETE" });
+}

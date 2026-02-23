@@ -14,7 +14,6 @@ export const constants = {
   OPENCLAW_STATE_PREFIX: ".openclaw-", // ~/.openclaw-<slug>/
   OPENCLAW_LEGACY_DIR: ".openclaw", // legacy single-instance directory
   OPENCLAW_USER: "openclaw",
-  OPENCLAW_UID: 996,
 
   // Ports
   PORT_RANGE_START: 18789,
@@ -34,9 +33,6 @@ export const constants = {
   DIR_MODE: 0o700,
   ENV_FILE_MODE: 0o600,
   CONFIG_FILE_MODE: 0o644,
-
-  // Systemd
-  XDG_RUNTIME_DIR: "/run/user/996",
 
   // Templates
   WORKSPACE_FILES: ["AGENTS.md", "SOUL.md", "TOOLS.md", "USER.md", "MEMORY.md"],

@@ -5,6 +5,7 @@ import { initDatabase } from "../db/schema.js";
 import { Registry } from "../core/registry.js";
 import { Lifecycle } from "../core/lifecycle.js";
 import { LocalConnection } from "../server/local.js";
+import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 import { logger } from "../lib/logger.js";
 
 export function restartCommand(): Command {
@@ -15,7 +16,8 @@ export function restartCommand(): Command {
       const db = initDatabase(getDbPath());
       const registry = new Registry(db);
       const conn = new LocalConnection();
-      const lifecycle = new Lifecycle(conn, registry);
+      const xdgRuntimeDir = await resolveXdgRuntimeDir(conn);
+      const lifecycle = new Lifecycle(conn, registry, xdgRuntimeDir);
 
       logger.info(`Restarting ${slug}...`);
       await lifecycle.restart(slug);

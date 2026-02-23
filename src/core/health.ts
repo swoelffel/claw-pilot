@@ -1,7 +1,6 @@
 // src/core/health.ts
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry } from "./registry.js";
-import { constants } from "../lib/constants.js";
 import { InstanceNotFoundError } from "../lib/errors.js";
 
 export interface HealthStatus {
@@ -20,6 +19,7 @@ export class HealthChecker {
   constructor(
     private conn: ServerConnection,
     private registry: Registry,
+    private xdgRuntimeDir: string,
   ) {}
 
   async check(slug: string): Promise<HealthStatus> {
@@ -35,7 +35,7 @@ export class HealthChecker {
 
     // 1. Systemd status
     const systemdResult = await this.conn.exec(
-      `XDG_RUNTIME_DIR=${constants.XDG_RUNTIME_DIR} systemctl --user is-active ${instance.systemd_unit} 2>/dev/null || true`,
+      `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user is-active ${instance.systemd_unit} 2>/dev/null || true`,
     );
     const systemdState = systemdResult.stdout.trim();
     status.systemd = (
@@ -58,10 +58,10 @@ export class HealthChecker {
     if (status.systemd === "active") {
       const [pidResult, uptimeResult] = await Promise.all([
         this.conn.exec(
-          `XDG_RUNTIME_DIR=${constants.XDG_RUNTIME_DIR} systemctl --user show ${instance.systemd_unit} --property=MainPID --value`,
+          `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user show ${instance.systemd_unit} --property=MainPID --value`,
         ),
         this.conn.exec(
-          `XDG_RUNTIME_DIR=${constants.XDG_RUNTIME_DIR} systemctl --user show ${instance.systemd_unit} --property=ActiveEnterTimestamp --value`,
+          `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user show ${instance.systemd_unit} --property=ActiveEnterTimestamp --value`,
         ),
       ]);
       status.pid =

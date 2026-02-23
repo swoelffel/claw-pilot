@@ -1,18 +1,18 @@
 // src/core/lifecycle.ts
 import type { ServerConnection, ExecResult } from "../server/connection.js";
 import type { Registry } from "./registry.js";
-import { constants } from "../lib/constants.js";
 import { InstanceNotFoundError, GatewayUnhealthyError } from "../lib/errors.js";
 
 export class Lifecycle {
   constructor(
     private conn: ServerConnection,
     private registry: Registry,
+    private xdgRuntimeDir: string,
   ) {}
 
   private systemctl(action: string, unit: string): Promise<ExecResult> {
     return this.conn.exec(
-      `XDG_RUNTIME_DIR=${constants.XDG_RUNTIME_DIR} systemctl --user ${action} ${unit}`,
+      `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user ${action} ${unit}`,
     );
   }
 
@@ -53,7 +53,7 @@ export class Lifecycle {
 
   async daemonReload(): Promise<void> {
     await this.conn.exec(
-      `XDG_RUNTIME_DIR=${constants.XDG_RUNTIME_DIR} systemctl --user daemon-reload`,
+      `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user daemon-reload`,
     );
   }
 

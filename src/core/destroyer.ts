@@ -2,7 +2,6 @@
 import * as path from "node:path";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry } from "./registry.js";
-import { constants } from "../lib/constants.js";
 import { InstanceNotFoundError } from "../lib/errors.js";
 import { getSystemdDir } from "../lib/platform.js";
 
@@ -10,13 +9,14 @@ export class Destroyer {
   constructor(
     private conn: ServerConnection,
     private registry: Registry,
+    private xdgRuntimeDir: string,
   ) {}
 
   async destroy(slug: string): Promise<void> {
     const instance = this.registry.getInstance(slug);
     if (!instance) throw new InstanceNotFoundError(slug);
 
-    const xdg = `XDG_RUNTIME_DIR=${constants.XDG_RUNTIME_DIR}`;
+    const xdg = `XDG_RUNTIME_DIR=${this.xdgRuntimeDir}`;
 
     // 1. Stop service
     await this.conn.exec(

@@ -176,7 +176,8 @@ export class Provisioner {
     await this.conn.mkdir(systemdDir);
     await this.conn.writeFile(serviceFile, serviceContent);
 
-    const lifecycle = new Lifecycle(this.conn, this.registry);
+    const xdgRuntimeDir = `/run/user/${uid}`;
+    const lifecycle = new Lifecycle(this.conn, this.registry, xdgRuntimeDir);
 
     // Register in registry BEFORE start (lifecycle.start needs registry entry)
     const instance = this.registry.createInstance({

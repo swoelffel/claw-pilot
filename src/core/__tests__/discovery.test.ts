@@ -63,7 +63,7 @@ describe("InstanceDiscovery — directory scan", () => {
     const configPath = `${stateDir}/openclaw.json`;
     conn.files.set(configPath, makeConfig(18789));
 
-    const discovery = new InstanceDiscovery(conn, registry, HOME);
+    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
     const result = await discovery.scan();
 
     expect(result.instances).toHaveLength(1);
@@ -75,7 +75,7 @@ describe("InstanceDiscovery — directory scan", () => {
   it("skips directories without openclaw.json", async () => {
     conn.dirs.add(`${HOME}/.openclaw-empty`);
 
-    const discovery = new InstanceDiscovery(conn, registry, HOME);
+    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
     const result = await discovery.scan();
     expect(result.instances).toHaveLength(0);
   });
@@ -83,7 +83,7 @@ describe("InstanceDiscovery — directory scan", () => {
   it("skips malformed openclaw.json", async () => {
     conn.files.set(`${HOME}/.openclaw-bad/openclaw.json`, "not json {{{");
 
-    const discovery = new InstanceDiscovery(conn, registry, HOME);
+    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
     const result = await discovery.scan();
     expect(result.instances).toHaveLength(0);
   });
@@ -94,7 +94,7 @@ describe("InstanceDiscovery — directory scan", () => {
       JSON.stringify({ gateway: {} }),
     );
 
-    const discovery = new InstanceDiscovery(conn, registry, HOME);
+    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
     const result = await discovery.scan();
     expect(result.instances).toHaveLength(0);
   });
@@ -105,7 +105,7 @@ describe("InstanceDiscovery — directory scan", () => {
       makeConfig(18789, [{ id: "pm", name: "Project Manager" }]),
     );
 
-    const discovery = new InstanceDiscovery(conn, registry, HOME);
+    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
     const result = await discovery.scan();
     expect(result.instances[0]?.agents).toHaveLength(2); // main + pm
     expect(result.instances[0]?.agents[1]?.id).toBe("pm");
@@ -116,7 +116,7 @@ describe("InstanceDiscovery — legacy scan", () => {
   it("discovers legacy .openclaw directory", async () => {
     conn.files.set(`${HOME}/.openclaw/openclaw.json`, makeConfig(18789));
 
-    const discovery = new InstanceDiscovery(conn, registry, HOME);
+    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
     const result = await discovery.scan();
 
     expect(result.instances).toHaveLength(1);
@@ -129,7 +129,7 @@ describe("InstanceDiscovery — reconciliation", () => {
   it("identifies new instances", async () => {
     conn.files.set(`${HOME}/.openclaw-demo1/openclaw.json`, makeConfig(18789));
 
-    const discovery = new InstanceDiscovery(conn, registry, HOME);
+    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
     const result = await discovery.scan();
 
     expect(result.newInstances).toHaveLength(1);
@@ -150,7 +150,7 @@ describe("InstanceDiscovery — reconciliation", () => {
 
     conn.files.set(`${HOME}/.openclaw-demo1/openclaw.json`, makeConfig(18789));
 
-    const discovery = new InstanceDiscovery(conn, registry, HOME);
+    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
     const result = await discovery.scan();
 
     expect(result.newInstances).toHaveLength(0);
@@ -169,7 +169,7 @@ describe("InstanceDiscovery — reconciliation", () => {
     });
 
     // No files on disk for "ghost"
-    const discovery = new InstanceDiscovery(conn, registry, HOME);
+    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
     const result = await discovery.scan();
 
     expect(result.removedSlugs).toContain("ghost");
@@ -184,7 +184,7 @@ describe("InstanceDiscovery — adopt", () => {
     );
 
     const server = registry.getLocalServer()!;
-    const discovery = new InstanceDiscovery(conn, registry, HOME);
+    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
     const result = await discovery.scan();
 
     await discovery.adopt(result.newInstances[0]!, server.id);
@@ -208,7 +208,7 @@ describe("InstanceDiscovery — adopt", () => {
     );
 
     const server = registry.getLocalServer()!;
-    const discovery = new InstanceDiscovery(conn, registry, HOME);
+    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
     const result = await discovery.scan();
     await discovery.adopt(result.newInstances[0]!, server.id);
 

@@ -6,6 +6,7 @@ import { initDatabase } from "../db/schema.js";
 import { Registry } from "../core/registry.js";
 import { Destroyer } from "../core/destroyer.js";
 import { LocalConnection } from "../server/local.js";
+import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 import { logger } from "../lib/logger.js";
 import { InstanceNotFoundError } from "../lib/errors.js";
 import chalk from "chalk";
@@ -62,7 +63,8 @@ export function destroyCommand(): Command {
       }
 
       const conn = new LocalConnection();
-      const destroyer = new Destroyer(conn, registry);
+      const xdgRuntimeDir = await resolveXdgRuntimeDir(conn);
+      const destroyer = new Destroyer(conn, registry, xdgRuntimeDir);
 
       logger.info(`Destroying ${slug}...`);
       await destroyer.destroy(slug);

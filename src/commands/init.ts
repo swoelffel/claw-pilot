@@ -11,6 +11,7 @@ import { Registry } from "../core/registry.js";
 import { InstanceDiscovery } from "../core/discovery.js";
 import { OpenClawCLI } from "../core/openclaw-cli.js";
 import { LocalConnection } from "../server/local.js";
+import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 import { logger } from "../lib/logger.js";
 import { constants } from "../lib/constants.js";
 
@@ -80,7 +81,8 @@ export function initCommand(): Command {
 
       // 5. Discover existing instances
       logger.info("\nScanning for existing OpenClaw instances...");
-      const discovery = new InstanceDiscovery(conn, registry, openclawHome);
+      const xdgRuntimeDir = await resolveXdgRuntimeDir(conn);
+      const discovery = new InstanceDiscovery(conn, registry, openclawHome, xdgRuntimeDir);
       const result = await discovery.scan();
 
       // 5a. Display results

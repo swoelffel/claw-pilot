@@ -5,6 +5,7 @@ import { initDatabase } from "../db/schema.js";
 import { Registry } from "../core/registry.js";
 import { HealthChecker } from "../core/health.js";
 import { LocalConnection } from "../server/local.js";
+import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 import { logger } from "../lib/logger.js";
 import chalk from "chalk";
 
@@ -17,7 +18,8 @@ export function statusCommand(): Command {
       const db = initDatabase(getDbPath());
       const registry = new Registry(db);
       const conn = new LocalConnection();
-      const health = new HealthChecker(conn, registry);
+      const xdgRuntimeDir = await resolveXdgRuntimeDir(conn);
+      const health = new HealthChecker(conn, registry, xdgRuntimeDir);
 
       const status = await health.check(slug);
       const instance = registry.getInstance(slug);
