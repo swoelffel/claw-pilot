@@ -9,7 +9,7 @@ import {
   restartInstance,
   deleteInstance,
 } from "../api.js";
-import "./log-viewer.js";
+
 
 @customElement("cp-instance-detail")
 export class InstanceDetail extends LitElement {
@@ -678,9 +678,6 @@ export class InstanceDetail extends LitElement {
             `}
       </div>
 
-      <div class="section">
-        <cp-log-viewer .slug=${this.slug}></cp-log-viewer>
-      </div>
     `;
   }
 }
