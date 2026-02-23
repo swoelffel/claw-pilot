@@ -204,18 +204,42 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   });
 
   app.post("/api/instances/:slug/start", async (c) => {
-    await lifecycle.start(c.req.param("slug"));
-    return c.json({ ok: true });
+    const slug = c.req.param("slug");
+    try {
+      await lifecycle.start(slug);
+      return c.json({ ok: true });
+    } catch (err) {
+      if (err instanceof InstanceNotFoundError) {
+        return c.json({ error: err.message }, 404);
+      }
+      return c.json({ error: err instanceof Error ? err.message : "Start failed" }, 500);
+    }
   });
 
   app.post("/api/instances/:slug/stop", async (c) => {
-    await lifecycle.stop(c.req.param("slug"));
-    return c.json({ ok: true });
+    const slug = c.req.param("slug");
+    try {
+      await lifecycle.stop(slug);
+      return c.json({ ok: true });
+    } catch (err) {
+      if (err instanceof InstanceNotFoundError) {
+        return c.json({ error: err.message }, 404);
+      }
+      return c.json({ error: err instanceof Error ? err.message : "Stop failed" }, 500);
+    }
   });
 
   app.post("/api/instances/:slug/restart", async (c) => {
-    await lifecycle.restart(c.req.param("slug"));
-    return c.json({ ok: true });
+    const slug = c.req.param("slug");
+    try {
+      await lifecycle.restart(slug);
+      return c.json({ ok: true });
+    } catch (err) {
+      if (err instanceof InstanceNotFoundError) {
+        return c.json({ error: err.message }, 404);
+      }
+      return c.json({ error: err instanceof Error ? err.message : "Restart failed" }, 500);
+    }
   });
 
   app.delete("/api/instances/:slug", async (c) => {

@@ -2,6 +2,7 @@
 import type { ServerConnection, ExecResult } from "../server/connection.js";
 import type { Registry } from "./registry.js";
 import { InstanceNotFoundError, GatewayUnhealthyError } from "../lib/errors.js";
+import { constants } from "../lib/constants.js";
 
 export class Lifecycle {
   constructor(
