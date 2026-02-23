@@ -100,12 +100,35 @@ if [ -d "$INSTALL_DIR/.git" ]; then
   log "Rebuilding after update..."
   ( cd "$INSTALL_DIR" && pnpm install --frozen-lockfile && pnpm run build:cli && pnpm run build:ui )
   log "claw-pilot $(node "$INSTALL_DIR/dist/index.mjs" --version 2>/dev/null) updated successfully!"
-  # Restart dashboard service if it's running (to load new code)
+  # Manage dashboard service (Linux only)
   if [ "$(uname)" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
+    CLAW_PILOT_BIN="node $INSTALL_DIR/dist/index.mjs"
+    if command -v claw-pilot >/dev/null 2>&1; then
+      CLAW_PILOT_BIN="claw-pilot"
+    fi
     if XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user is-active claw-pilot-dashboard.service >/dev/null 2>&1; then
       log "Restarting dashboard service to load updated code..."
       XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user restart claw-pilot-dashboard.service
       log "Dashboard service restarted."
+    else
+      # Service not running — install it if not already installed
+      SERVICE_FILE="$HOME/.config/systemd/user/claw-pilot-dashboard.service"
+      if [ ! -f "$SERVICE_FILE" ]; then
+        log "Installing dashboard as systemd service..."
+        # Kill any manually-started dashboard process on port 19000
+        DASHBOARD_PID=$(lsof -ti:19000 2>/dev/null || true)
+        if [ -n "$DASHBOARD_PID" ]; then
+          warn "Stopping manual dashboard process (PID $DASHBOARD_PID) on port 19000..."
+          kill "$DASHBOARD_PID" 2>/dev/null || true
+          sleep 2
+        fi
+        if $CLAW_PILOT_BIN service install; then
+          log "Dashboard service installed and started."
+          log "View logs: journalctl --user -u claw-pilot-dashboard.service -f"
+        else
+          warn "Dashboard service installation failed. Run manually: claw-pilot service install"
+        fi
+      fi
     fi
   fi
   exit 0
