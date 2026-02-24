@@ -3,7 +3,7 @@ import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo, AgentLink, AgentFileContent } from "../types.js";
-import { fetchAgentFile } from "../api.js";
+import { fetchAgentFile, updateSpawnLinks } from "../api.js";
 
 const EDITABLE_FILES = new Set(["AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md", "USER.md", "HEARTBEAT.md"]);
 
@@ -208,6 +208,77 @@ export class AgentDetailPanel extends LitElement {
       color: #94a3b8;
     }
 
+    .link-badge.spawn-editable {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: default;
+    }
+
+    .link-badge.spawn-editable.pending-removal {
+      text-decoration: line-through;
+      opacity: 0.45;
+    }
+
+    .spawn-remove-btn {
+      background: none;
+      border: none;
+      color: #4a5568;
+      font-size: 10px;
+      cursor: pointer;
+      padding: 0 1px;
+      line-height: 1;
+      border-radius: 2px;
+      transition: color 0.12s;
+      font-family: inherit;
+    }
+
+    .spawn-remove-btn:hover {
+      color: #ef4444;
+    }
+
+    .pending-removal .spawn-remove-btn {
+      color: #6c63ff;
+    }
+
+    .pending-removal .spawn-remove-btn:hover {
+      color: #a78bfa;
+    }
+
+    .spawn-save-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .btn-save-spawn {
+      background: #6c63ff20;
+      border: 1px solid #6c63ff40;
+      color: #6c63ff;
+      border-radius: 5px;
+      padding: 4px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      font-family: inherit;
+    }
+
+    .btn-save-spawn:hover:not(:disabled) {
+      background: #6c63ff35;
+    }
+
+    .btn-save-spawn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .save-hint {
+      font-size: 10px;
+      color: #4a5568;
+    }
+
     .file-content {
       font-family: "Fira Mono", monospace;
       font-size: 12px;
@@ -268,6 +339,8 @@ export class AgentDetailPanel extends LitElement {
   @state() private _fileCache = new Map<string, AgentFileContent>();
   @state() private _loadingFile = false;
   @state() private _expanded = false;
+  @state() private _pendingRemovals = new Set<string>();
+  @state() private _saving = false;
 
   private async _loadFile(filename: string): Promise<void> {
     if (this._fileCache.has(filename)) return;
@@ -298,11 +371,12 @@ export class AgentDetailPanel extends LitElement {
     }
   }
 
-  // Reset tab when agent changes
+  // Reset tab and pending state when agent changes
   override updated(changed: Map<string, unknown>): void {
     if (changed.has("agent")) {
       this._activeTab = "info";
       this._fileCache = new Map();
+      this._pendingRemovals = new Set();
     }
   }
 
@@ -317,6 +391,38 @@ export class AgentDetailPanel extends LitElement {
       }
     }
     return raw;
+  }
+
+  private _toggleSpawnRemoval(targetId: string): void {
+    const next = new Set(this._pendingRemovals);
+    if (next.has(targetId)) {
+      next.delete(targetId);
+    } else {
+      next.add(targetId);
+    }
+    this._pendingRemovals = next;
+  }
+
+  private async _saveSpawnLinks(spawnLinks: { target_agent_id: string }[]): Promise<void> {
+    this._saving = true;
+    try {
+      const remaining = spawnLinks
+        .map(l => l.target_agent_id)
+        .filter(id => !this._pendingRemovals.has(id));
+      const result = await updateSpawnLinks(this.slug, this.agent.agent_id, remaining);
+      // Propagate updated links to parent (agents-builder will re-fetch)
+      this.dispatchEvent(new CustomEvent("spawn-links-updated", {
+        detail: { links: result.links },
+        bubbles: true,
+        composed: true,
+      }));
+      this._pendingRemovals = new Set();
+    } catch (err) {
+      // Surface error briefly — non-blocking
+      console.error("Failed to save spawn links:", err);
+    } finally {
+      this._saving = false;
+    }
   }
 
   private _renderInfo() {
@@ -364,8 +470,32 @@ export class AgentDetailPanel extends LitElement {
           <div class="info-item">
             <span class="info-label">${msg("Can spawn", { id: "adp-label-can-spawn" })}</span>
             <div class="links-list">
-              ${spawnLinks.map(l => html`<span class="link-badge spawn">→ ${l.target_agent_id}</span>`)}
+              ${spawnLinks.map(l => {
+                const isPending = this._pendingRemovals.has(l.target_agent_id);
+                return html`
+                  <span class="link-badge spawn spawn-editable ${isPending ? "pending-removal" : ""}">
+                    → ${l.target_agent_id}
+                    <button
+                      class="spawn-remove-btn"
+                      title=${isPending ? "Restore" : "Remove"}
+                      @click=${() => this._toggleSpawnRemoval(l.target_agent_id)}
+                    >${isPending ? "↩" : "✕"}</button>
+                  </span>
+                `;
+              })}
             </div>
+            ${this._pendingRemovals.size > 0 ? html`
+              <div class="spawn-save-bar">
+                <button
+                  class="btn-save-spawn"
+                  ?disabled=${this._saving}
+                  @click=${() => void this._saveSpawnLinks(spawnLinks)}
+                >${this._saving
+                  ? msg("Saving...", { id: "adp-saving" })
+                  : msg("Save", { id: "adp-btn-save" })}</button>
+                <span class="save-hint">${this._pendingRemovals.size} removal${this._pendingRemovals.size > 1 ? "s" : ""} pending</span>
+              </div>
+            ` : ""}
           </div>
         ` : ""}
         ${receivedSpawn.length > 0 ? html`

@@ -369,6 +369,7 @@ export class AgentsBuilder extends LitElement {
             .links=${data?.links ?? []}
             .slug=${this.slug}
             @panel-close=${() => { this._selectedAgentId = null; }}
+            @spawn-links-updated=${() => void this._syncAndLoad()}
           ></cp-agent-detail-panel>
         ` : ""}
       </div>

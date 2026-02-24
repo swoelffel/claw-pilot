@@ -131,4 +131,6 @@ export const templates = {
   "adp-btn-expand": "Ampliar",
   "adp-btn-collapse": "Reducir",
   "adp-btn-close": "Cerrar",
+  "adp-btn-save": "Guardar",
+  "adp-saving": "Guardando...",
 };

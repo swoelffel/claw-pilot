@@ -1,4 +1,4 @@
-import type { InstanceInfo, AgentInfo, CreateInstanceRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent } from "./types.js";
+import type { InstanceInfo, AgentInfo, CreateInstanceRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink } from "./types.js";
 
 declare global {
   interface Window {
@@ -100,4 +100,15 @@ export async function fetchBuilderData(slug: string): Promise<BuilderData> {
 
 export async function fetchAgentFile(slug: string, agentId: string, filename: string): Promise<AgentFileContent> {
   return apiFetch<AgentFileContent>(`/instances/${slug}/agents/${agentId}/files/${filename}`);
+}
+
+export async function updateSpawnLinks(
+  slug: string,
+  agentId: string,
+  targets: string[],
+): Promise<{ ok: boolean; links: AgentLink[] }> {
+  return apiFetch<{ ok: boolean; links: AgentLink[] }>(
+    `/instances/${slug}/agents/${agentId}/spawn-links`,
+    { method: "PATCH", body: JSON.stringify({ targets }) },
+  );
 }
