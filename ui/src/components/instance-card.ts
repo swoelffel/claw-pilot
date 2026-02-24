@@ -2,7 +2,7 @@ import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { InstanceInfo } from "../types.js";
-import { startInstance, stopInstance, restartInstance } from "../api.js";
+import { startInstance, stopInstance } from "../api.js";
 
 @localized()
 @customElement("cp-instance-card")
@@ -29,9 +29,17 @@ export class InstanceCard extends LitElement {
 
     .card-header {
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       justify-content: space-between;
       margin-bottom: 12px;
+      gap: 10px;
+    }
+
+    .card-header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
     }
 
     .slug {
@@ -172,16 +180,6 @@ export class InstanceCard extends LitElement {
       background: #ef444430;
     }
 
-    .btn-restart {
-      background: #6c63ff20;
-      color: #6c63ff;
-      border-color: #6c63ff40;
-    }
-
-    .btn-restart:hover:not(:disabled) {
-      background: #6c63ff30;
-    }
-
     .btn-ui {
       flex: none;
       padding: 7px 10px;
@@ -274,10 +272,23 @@ export class InstanceCard extends LitElement {
               ? html`<div class="display-name">${inst.display_name}</div>`
               : ""}
           </div>
-          <span class="state-badge ${stateClass}">
-            <span class="state-dot"></span>
-            ${stateClass}
-          </span>
+          <div class="card-header-right">
+            <span class="state-badge ${stateClass}">
+              <span class="state-dot"></span>
+              ${stateClass}
+            </span>
+            ${inst.state === "running"
+              ? html`<a
+                  class="btn-ui"
+                  href=${inst.gatewayToken
+                    ? `http://localhost:${inst.port}/#token=${inst.gatewayToken}`
+                    : `http://localhost:${inst.port}`}
+                  target="_blank"
+                  rel="noopener"
+                  @click=${(e: Event) => e.stopPropagation()}
+                >⎋ UI</a>`
+              : ""}
+          </div>
         </div>
 
         <div class="meta">
@@ -315,36 +326,18 @@ export class InstanceCard extends LitElement {
         <div class="actions">
           <button
             class="btn btn-start"
-            ?disabled=${this._loading}
+            ?disabled=${this._loading || inst.state === "running"}
             @click=${(e: Event) => this._action(e, startInstance)}
           >
             ${msg("Start", { id: "btn-start" })}
           </button>
           <button
             class="btn btn-stop"
-            ?disabled=${this._loading}
+            ?disabled=${this._loading || inst.state !== "running"}
             @click=${(e: Event) => this._action(e, stopInstance)}
           >
             ${msg("Stop", { id: "btn-stop" })}
           </button>
-          <button
-            class="btn btn-restart"
-            ?disabled=${this._loading}
-            @click=${(e: Event) => this._action(e, restartInstance)}
-          >
-            ${msg("Restart", { id: "btn-restart" })}
-          </button>
-          ${inst.state === "running"
-            ? html`<a
-                class="btn-ui"
-                href=${inst.gatewayToken
-                  ? `http://localhost:${inst.port}/#token=${inst.gatewayToken}`
-                  : `http://localhost:${inst.port}`}
-                target="_blank"
-                rel="noopener"
-                @click=${(e: Event) => e.stopPropagation()}
-              >${msg("⎋ UI", { id: "btn-open-ui" })}</a>`
-            : ""}
           ${(inst.state === "running" || (inst.agentCount ?? 0) > 0)
             ? html`<button
                 class="btn-builder"
