@@ -338,18 +338,28 @@ export class AgentsBuilder extends LitElement {
               .positions=${this._positions}
             ></cp-agent-links-svg>
 
-            ${data.agents.map(agent => {
-              const pos = this._positions.get(agent.agent_id);
-              if (!pos) return "";
-              return html`
-                <cp-agent-card-mini
-                  .agent=${agent}
-                  .selected=${this._selectedAgentId === agent.agent_id}
-                  style="left: ${pos.x}px; top: ${pos.y}px;"
-                  @agent-select=${(e: Event) => this._selectAgent((e as CustomEvent<{ agentId: string }>).detail.agentId)}
-                ></cp-agent-card-mini>
-              `;
-            })}
+            ${(() => {
+              const a2aAgentIds = new Set<string>();
+              for (const link of data.links) {
+                if (link.link_type === "a2a") {
+                  a2aAgentIds.add(link.source_agent_id);
+                  a2aAgentIds.add(link.target_agent_id);
+                }
+              }
+              return data.agents.map(agent => {
+                const pos = this._positions.get(agent.agent_id);
+                if (!pos) return "";
+                return html`
+                  <cp-agent-card-mini
+                    .agent=${agent}
+                    .selected=${this._selectedAgentId === agent.agent_id}
+                    .isA2A=${a2aAgentIds.has(agent.agent_id)}
+                    style="left: ${pos.x}px; top: ${pos.y}px;"
+                    @agent-select=${(e: Event) => this._selectAgent((e as CustomEvent<{ agentId: string }>).detail.agentId)}
+                  ></cp-agent-card-mini>
+                `;
+              });
+            })()}
           ` : ""}
         </div>
 

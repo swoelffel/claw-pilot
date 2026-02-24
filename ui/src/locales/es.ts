@@ -112,6 +112,7 @@ export const templates = {
 
   // agent-card-mini.ts
   "acm-badge-default": "Predeterminado",
+  "acm-badge-a2a": "A2A",
   "acm-files": "archivos",
 
   // agent-detail-panel.ts

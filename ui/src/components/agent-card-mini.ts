@@ -16,7 +16,7 @@ export class AgentCardMini extends LitElement {
 
     .card {
       background: #1a1a2e;
-      border: 1px solid #2a2a4a;
+      border: 1px solid #2a2d3a;
       border-radius: 8px;
       padding: 8px 10px;
       cursor: pointer;
@@ -24,6 +24,10 @@ export class AgentCardMini extends LitElement {
       user-select: none;
       min-width: 130px;
       max-width: 160px;
+    }
+
+    .card.is-a2a {
+      border-color: #6c63ff40;
     }
 
     .card:hover {
@@ -54,6 +58,18 @@ export class AgentCardMini extends LitElement {
       letter-spacing: 0.06em;
       color: #6c63ff;
       background: #6c63ff20;
+      border: 1px solid #6c63ff40;
+      border-radius: 3px;
+      padding: 1px 5px;
+    }
+
+    .badge-a2a {
+      font-size: 8px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #6c63ff;
+      background: #6c63ff15;
       border: 1px solid #6c63ff40;
       border-radius: 3px;
       padding: 1px 5px;
@@ -110,6 +126,7 @@ export class AgentCardMini extends LitElement {
 
   @property({ type: Object }) agent!: AgentBuilderInfo;
   @property({ type: Boolean }) selected = false;
+  @property({ type: Boolean }) isA2A = false;
 
   private _truncate(str: string, max: number): string {
     return str.length > max ? str.slice(0, max) + "…" : str;
@@ -136,11 +153,15 @@ export class AgentCardMini extends LitElement {
 
     return html`
       <div
-        class="card ${a.is_default ? "is-default" : ""} ${this.selected ? "selected" : ""}"
+        class="card ${a.is_default ? "is-default" : ""} ${this.selected ? "selected" : ""} ${this.isA2A ? "is-a2a" : ""}"
         @click=${() => this.dispatchEvent(new CustomEvent("agent-select", { detail: { agentId: a.agent_id }, bubbles: true, composed: true }))}
       >
         <div class="card-top">
-          ${a.is_default ? html`<span class="badge-default">${msg("Default", { id: "acm-badge-default" })}</span>` : html`<span></span>`}
+          ${a.is_default
+            ? html`<span class="badge-default">${msg("Default", { id: "acm-badge-default" })}</span>`
+            : this.isA2A
+              ? html`<span class="badge-a2a">${msg("A2A", { id: "acm-badge-a2a" })}</span>`
+              : html`<span></span>`}
           <span class="file-count">${a.files.length} ${msg("files", { id: "acm-files" })}</span>
         </div>
         <div class="agent-name" title=${a.name}>${this._truncate(a.name, 25)}</div>

@@ -34,22 +34,13 @@ export class AgentLinksSvg extends LitElement {
             <path d="M0,0 L0,6 L8,3 z" fill="#666" />
           </marker>
         </defs>
-        ${this.links.map(link => {
-          const src = this.positions.get(link.source_agent_id);
-          const tgt = this.positions.get(link.target_agent_id);
-          if (!src || !tgt) return "";
+        ${this.links
+          .filter(link => link.link_type === "spawn")
+          .map(link => {
+            const src = this.positions.get(link.source_agent_id);
+            const tgt = this.positions.get(link.target_agent_id);
+            if (!src || !tgt) return "";
 
-          if (link.link_type === "a2a") {
-            return svg`
-              <line
-                x1=${src.x} y1=${src.y}
-                x2=${tgt.x} y2=${tgt.y}
-                stroke="#6c63ff"
-                stroke-width="2"
-                stroke-opacity="0.6"
-              />
-            `;
-          } else {
             return svg`
               <line
                 x1=${src.x} y1=${src.y}
@@ -60,8 +51,7 @@ export class AgentLinksSvg extends LitElement {
                 marker-end="url(#arrow-spawn)"
               />
             `;
-          }
-        })}
+          })}
       </svg>
     `;
   }
