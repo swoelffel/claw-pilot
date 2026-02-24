@@ -1,8 +1,10 @@
 // ui/src/components/agent-card-mini.ts
 import { LitElement, html, css } from "lit";
 import { customElement, property } from "lit/decorators.js";
+import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo } from "../types.js";
 
+@localized()
 @customElement("cp-agent-card-mini")
 export class AgentCardMini extends LitElement {
   static styles = css`
@@ -123,8 +125,8 @@ export class AgentCardMini extends LitElement {
         @click=${() => this.dispatchEvent(new CustomEvent("agent-select", { detail: { agentId: a.agent_id }, bubbles: true, composed: true }))}
       >
         <div class="card-top">
-          ${a.is_default ? html`<span class="badge-default">Default</span>` : html`<span></span>`}
-          <span class="file-count">${a.files.length} files</span>
+          ${a.is_default ? html`<span class="badge-default">${msg("Default", { id: "acm-badge-default" })}</span>` : html`<span></span>`}
+          <span class="file-count">${a.files.length} ${msg("files", { id: "acm-files" })}</span>
         </div>
         <div class="agent-name" title=${a.name}>${this._truncate(a.name, 25)}</div>
         <div class="agent-id">${a.agent_id}</div>

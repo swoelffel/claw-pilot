@@ -1,11 +1,13 @@
 // ui/src/components/agent-detail-panel.ts
 import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo, AgentLink, AgentFileContent } from "../types.js";
 import { fetchAgentFile } from "../api.js";
 
 const EDITABLE_FILES = new Set(["AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md", "USER.md", "HEARTBEAT.md"]);
 
+@localized()
 @customElement("cp-agent-detail-panel")
 export class AgentDetailPanel extends LitElement {
   static styles = css`
@@ -290,23 +292,23 @@ export class AgentDetailPanel extends LitElement {
       <div class="info-row">
         ${a.model ? html`
           <div class="info-item">
-            <span class="info-label">Model</span>
+            <span class="info-label">${msg("Model", { id: "adp-label-model" })}</span>
             <span class="info-value">${a.model}</span>
           </div>
         ` : ""}
         <div class="info-item">
-          <span class="info-label">Workspace</span>
+          <span class="info-label">${msg("Workspace", { id: "adp-label-workspace" })}</span>
           <span class="info-value">${a.workspace_path}</span>
         </div>
         ${a.synced_at ? html`
           <div class="info-item">
-            <span class="info-label">Last sync</span>
+            <span class="info-label">${msg("Last sync", { id: "adp-label-last-sync" })}</span>
             <span class="info-value">${a.synced_at}</span>
           </div>
         ` : ""}
         ${a2aLinks.length > 0 ? html`
           <div class="info-item">
-            <span class="info-label">A2A links (bidirectional)</span>
+            <span class="info-label">${msg("A2A links (bidirectional)", { id: "adp-label-a2a" })}</span>
             <div class="links-list">
               ${a2aLinks.map(l => {
                 const peer = l.source_agent_id === a.agent_id ? l.target_agent_id : l.source_agent_id;
@@ -317,7 +319,7 @@ export class AgentDetailPanel extends LitElement {
         ` : ""}
         ${spawnLinks.length > 0 ? html`
           <div class="info-item">
-            <span class="info-label">Can spawn</span>
+            <span class="info-label">${msg("Can spawn", { id: "adp-label-can-spawn" })}</span>
             <div class="links-list">
               ${spawnLinks.map(l => html`<span class="link-badge spawn">→ ${l.target_agent_id}</span>`)}
             </div>
@@ -325,7 +327,7 @@ export class AgentDetailPanel extends LitElement {
         ` : ""}
         ${receivedSpawn.length > 0 ? html`
           <div class="info-item">
-            <span class="info-label">Spawned by</span>
+            <span class="info-label">${msg("Spawned by", { id: "adp-label-spawned-by" })}</span>
             <div class="links-list">
               ${receivedSpawn.map(l => html`<span class="link-badge spawn">← ${l.source_agent_id}</span>`)}
             </div>
@@ -333,7 +335,7 @@ export class AgentDetailPanel extends LitElement {
         ` : ""}
         ${a.notes ? html`
           <div class="info-item">
-            <span class="info-label">Notes</span>
+            <span class="info-label">${msg("Notes", { id: "adp-label-notes" })}</span>
             <p class="notes-text">${a.notes}</p>
           </div>
         ` : ""}
@@ -346,17 +348,19 @@ export class AgentDetailPanel extends LitElement {
     const isEditable = EDITABLE_FILES.has(filename);
 
     if (this._loadingFile && !cached) {
-      return html`<p class="loading-text">Loading ${filename}…</p>`;
+      return html`<p class="loading-text">${msg("Loading", { id: "adp-loading-file" })} ${filename}…</p>`;
     }
 
     if (!cached) {
-      return html`<p class="loading-text">File not available.</p>`;
+      return html`<p class="loading-text">${msg("File not available.", { id: "adp-file-not-available" })}</p>`;
     }
 
     return html`
       <div class="file-badge">
         <span class="${isEditable ? "badge-editable" : "badge-readonly"}">
-          ${isEditable ? "editable" : "read-only"}
+          ${isEditable
+            ? msg("editable", { id: "adp-badge-editable" })
+            : msg("read-only", { id: "adp-badge-readonly" })}
         </span>
       </div>
       <pre class="file-content">${cached.content}</pre>
@@ -373,7 +377,7 @@ export class AgentDetailPanel extends LitElement {
         <div class="agent-name">${a.name}</div>
         <div class="agent-meta-row">
           <span class="agent-id-label">${a.agent_id}</span>
-          ${a.is_default ? html`<span class="badge-default">Default</span>` : ""}
+          ${a.is_default ? html`<span class="badge-default">${msg("Default", { id: "acm-badge-default" })}</span>` : ""}
           ${a.role ? html`<span class="badge-role">${a.role}</span>` : ""}
         </div>
       </div>
@@ -382,7 +386,7 @@ export class AgentDetailPanel extends LitElement {
         <button
           class="tab ${this._activeTab === "info" ? "active" : ""}"
           @click=${() => this._selectTab("info")}
-        >Info</button>
+        >${msg("Info", { id: "adp-tab-info" })}</button>
         ${fileTabs.map(f => html`
           <button
             class="tab ${this._activeTab === f ? "active" : ""}"

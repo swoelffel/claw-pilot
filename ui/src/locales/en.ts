@@ -101,4 +101,31 @@ export const templates = {
   "error-provisioning": "Provisioning failed",
   "btn-cancel-dialog": "Cancel",
   "btn-create-instance": "Create Instance",
+
+  // agents-builder.ts
+  "ab-btn-back": "← Back",
+  "ab-title": "Agents Builder",
+  "ab-btn-sync": "↻ Sync",
+  "ab-syncing": "Syncing agents…",
+  "ab-error-load": "Failed to load agents",
+  "ab-empty-title": "No agents found",
+  "ab-empty-sub": "Click Sync to refresh from disk",
+
+  // agent-card-mini.ts
+  "acm-badge-default": "Default",
+  "acm-files": "files",
+
+  // agent-detail-panel.ts
+  "adp-tab-info": "Info",
+  "adp-label-model": "Model",
+  "adp-label-workspace": "Workspace",
+  "adp-label-last-sync": "Last sync",
+  "adp-label-a2a": "A2A links (bidirectional)",
+  "adp-label-can-spawn": "Can spawn",
+  "adp-label-spawned-by": "Spawned by",
+  "adp-label-notes": "Notes",
+  "adp-loading-file": "Loading",
+  "adp-file-not-available": "File not available.",
+  "adp-badge-editable": "editable",
+  "adp-badge-readonly": "read-only",
 };

@@ -1,6 +1,7 @@
 // ui/src/components/agents-builder.ts
 import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo, BuilderData } from "../types.js";
 import { syncAgents, fetchBuilderData } from "../api.js";
 import "./agent-card-mini.js";
@@ -39,6 +40,7 @@ function computePositions(
   return positions;
 }
 
+@localized()
 @customElement("cp-agents-builder")
 export class AgentsBuilder extends LitElement {
   static styles = css`
@@ -268,7 +270,7 @@ export class AgentsBuilder extends LitElement {
       this._data = data;
       this._recomputePositions();
     } catch (err) {
-      this._error = err instanceof Error ? err.message : "Failed to load agents";
+      this._error = err instanceof Error ? err.message : msg("Failed to load agents", { id: "ab-error-load" });
     } finally {
       this._syncing = false;
     }
@@ -297,8 +299,8 @@ export class AgentsBuilder extends LitElement {
 
     return html`
       <div class="builder-header">
-        <button class="btn-back" @click=${this._goBack}>← Back</button>
-        <span class="header-title">Agents Builder</span>
+        <button class="btn-back" @click=${this._goBack}>${msg("← Back", { id: "ab-btn-back" })}</button>
+        <span class="header-title">${msg("Agents Builder", { id: "ab-title" })}</span>
         ${inst ? html`
           <span class="header-slug">${inst.slug}</span>
           <span class="state-badge ${inst.state}">${inst.state}</span>
@@ -307,7 +309,7 @@ export class AgentsBuilder extends LitElement {
           class="btn-sync"
           ?disabled=${this._syncing}
           @click=${() => void this._syncAndLoad()}
-        >↻ Sync</button>
+        >${msg("↻ Sync", { id: "ab-btn-sync" })}</button>
       </div>
 
       <div class="builder-body">
@@ -315,7 +317,7 @@ export class AgentsBuilder extends LitElement {
           ${this._syncing ? html`
             <div class="spinner-overlay">
               <div class="spinner"></div>
-              <span class="spinner-label">Syncing agents…</span>
+              <span class="spinner-label">${msg("Syncing agents…", { id: "ab-syncing" })}</span>
             </div>
           ` : ""}
 
@@ -325,8 +327,8 @@ export class AgentsBuilder extends LitElement {
 
           ${data && data.agents.length === 0 ? html`
             <div class="empty-state">
-              <div class="empty-state-title">No agents found</div>
-              <div class="empty-state-sub">Click Sync to refresh from disk</div>
+              <div class="empty-state-title">${msg("No agents found", { id: "ab-empty-title" })}</div>
+              <div class="empty-state-sub">${msg("Click Sync to refresh from disk", { id: "ab-empty-sub" })}</div>
             </div>
           ` : ""}
 
