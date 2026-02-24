@@ -246,10 +246,17 @@ export class AgentDetailPanel extends LitElement {
     }
 
     .spawn-save-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-top: 8px;
+      gap: 10px;
+      padding: 10px 20px;
+      background: #1a1d27;
+      border-top: 1px solid #2a2d3a;
+      z-index: 5;
     }
 
     .btn-save-spawn {
@@ -257,7 +264,7 @@ export class AgentDetailPanel extends LitElement {
       border: 1px solid #6c63ff40;
       color: #6c63ff;
       border-radius: 5px;
-      padding: 4px 12px;
+      padding: 5px 14px;
       font-size: 11px;
       font-weight: 600;
       cursor: pointer;
@@ -401,6 +408,11 @@ export class AgentDetailPanel extends LitElement {
       next.add(targetId);
     }
     this._pendingRemovals = next;
+    this.dispatchEvent(new CustomEvent("pending-removals-changed", {
+      detail: { pendingRemovals: new Set(next) },
+      bubbles: true,
+      composed: true,
+    }));
   }
 
   private async _saveSpawnLinks(spawnLinks: { target_agent_id: string }[]): Promise<void> {
@@ -410,15 +422,20 @@ export class AgentDetailPanel extends LitElement {
         .map(l => l.target_agent_id)
         .filter(id => !this._pendingRemovals.has(id));
       const result = await updateSpawnLinks(this.slug, this.agent.agent_id, remaining);
+      this._pendingRemovals = new Set();
+      // Notify canvas: no more pending removals
+      this.dispatchEvent(new CustomEvent("pending-removals-changed", {
+        detail: { pendingRemovals: new Set() },
+        bubbles: true,
+        composed: true,
+      }));
       // Propagate updated links to parent (agents-builder will re-fetch)
       this.dispatchEvent(new CustomEvent("spawn-links-updated", {
         detail: { links: result.links },
         bubbles: true,
         composed: true,
       }));
-      this._pendingRemovals = new Set();
     } catch (err) {
-      // Surface error briefly — non-blocking
       console.error("Failed to save spawn links:", err);
     } finally {
       this._saving = false;
@@ -484,18 +501,6 @@ export class AgentDetailPanel extends LitElement {
                 `;
               })}
             </div>
-            ${this._pendingRemovals.size > 0 ? html`
-              <div class="spawn-save-bar">
-                <button
-                  class="btn-save-spawn"
-                  ?disabled=${this._saving}
-                  @click=${() => void this._saveSpawnLinks(spawnLinks)}
-                >${this._saving
-                  ? msg("Saving...", { id: "adp-saving" })
-                  : msg("Save", { id: "adp-btn-save" })}</button>
-                <span class="save-hint">${this._pendingRemovals.size} removal${this._pendingRemovals.size > 1 ? "s" : ""} pending</span>
-              </div>
-            ` : ""}
           </div>
         ` : ""}
         ${receivedSpawn.length > 0 ? html`
@@ -543,6 +548,9 @@ export class AgentDetailPanel extends LitElement {
   override render() {
     const a = this.agent;
     const fileTabs = a.files.map(f => f.filename);
+    const spawnLinks = this.links.filter(l =>
+      l.link_type === "spawn" && l.source_agent_id === a.agent_id
+    );
 
     return html`
       <div class="panel-header">
@@ -581,11 +589,24 @@ export class AgentDetailPanel extends LitElement {
         `)}
       </div>
 
-      <div class="panel-body">
+      <div class="panel-body" style=${this._pendingRemovals.size > 0 ? "padding-bottom: 52px;" : ""}>
         ${this._activeTab === "info"
           ? this._renderInfo()
           : this._renderFileTab(this._activeTab)}
       </div>
+
+      ${this._pendingRemovals.size > 0 ? html`
+        <div class="spawn-save-bar">
+          <button
+            class="btn-save-spawn"
+            ?disabled=${this._saving}
+            @click=${() => void this._saveSpawnLinks(spawnLinks)}
+          >${this._saving
+            ? msg("Saving...", { id: "adp-saving" })
+            : msg("Save", { id: "adp-btn-save" })}</button>
+          <span class="save-hint">${this._pendingRemovals.size} removal${this._pendingRemovals.size > 1 ? "s" : ""} pending</span>
+        </div>
+      ` : ""}
     `;
   }
 }

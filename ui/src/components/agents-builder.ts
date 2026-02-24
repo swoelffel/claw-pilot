@@ -228,6 +228,7 @@ export class AgentsBuilder extends LitElement {
   @state() private _positions = new Map<string, { x: number; y: number }>();
   @state() private _canvasWidth = 800;
   @state() private _canvasHeight = 600;
+  @state() private _pendingRemovals = new Set<string>();
 
   private _resizeObserver: ResizeObserver | null = null;
 
@@ -336,6 +337,7 @@ export class AgentsBuilder extends LitElement {
             <cp-agent-links-svg
               .links=${data.links}
               .positions=${this._positions}
+              .pendingRemovals=${this._pendingRemovals}
             ></cp-agent-links-svg>
 
             ${(() => {
@@ -370,6 +372,9 @@ export class AgentsBuilder extends LitElement {
             .slug=${this.slug}
             @panel-close=${() => { this._selectedAgentId = null; }}
             @spawn-links-updated=${() => void this._syncAndLoad()}
+            @pending-removals-changed=${(e: Event) => {
+              this._pendingRemovals = (e as CustomEvent<{ pendingRemovals: Set<string> }>).detail.pendingRemovals;
+            }}
           ></cp-agent-detail-panel>
         ` : ""}
       </div>

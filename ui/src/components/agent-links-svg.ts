@@ -25,6 +25,7 @@ export class AgentLinksSvg extends LitElement {
 
   @property({ type: Array }) links: AgentLink[] = [];
   @property({ type: Object }) positions: Map<string, { x: number; y: number }> = new Map();
+  @property({ type: Object }) pendingRemovals: Set<string> = new Set();
 
   override render() {
     return html`
@@ -32,6 +33,9 @@ export class AgentLinksSvg extends LitElement {
         <defs>
           <marker id="arrow-spawn" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
             <path d="M0,0 L0,6 L8,3 z" fill="#666" />
+          </marker>
+          <marker id="arrow-spawn-pending" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#ef4444" />
           </marker>
         </defs>
         ${this.links
@@ -41,14 +45,19 @@ export class AgentLinksSvg extends LitElement {
             const tgt = this.positions.get(link.target_agent_id);
             if (!src || !tgt) return "";
 
+            const isPending = this.pendingRemovals.has(link.target_agent_id);
+            const color = isPending ? "#ef4444" : "#666";
+            const marker = isPending ? "url(#arrow-spawn-pending)" : "url(#arrow-spawn)";
+
             return svg`
               <line
                 x1=${src.x} y1=${src.y}
                 x2=${tgt.x} y2=${tgt.y}
-                stroke="#666"
+                stroke=${color}
                 stroke-width="1.5"
                 stroke-dasharray="6 4"
-                marker-end="url(#arrow-spawn)"
+                stroke-opacity=${isPending ? "0.8" : "1"}
+                marker-end=${marker}
               />
             `;
           })}
