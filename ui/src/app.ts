@@ -7,8 +7,8 @@ import type { InstanceInfo, WsMessage } from "./types.js";
 import "./components/cluster-view.js";
 import "./components/instance-detail.js";
 
-// Initialize locale once at module load (async, non-blocking)
-initLocale();
+// Initialize locale — resolved before first render via localeReady promise
+export const localeReady = initLocale();
 
 declare global {
   interface Window {
@@ -279,6 +279,12 @@ export class CpApp extends LitElement {
       this._langOpen = false;
     }
   };
+  private _onLocaleStatus = (e: Event) => {
+    const detail = (e as CustomEvent<{ status: string; readyLocale?: string }>).detail;
+    if (detail.status === "ready") {
+      this._locale = getLocale() as SupportedLocale;
+    }
+  };
 
   private _ws: WebSocket | null = null;
   private _wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -287,6 +293,7 @@ export class CpApp extends LitElement {
     super.connectedCallback();
     this._connectWs();
     document.addEventListener("click", this._onDocClick);
+    window.addEventListener("lit-localize-status", this._onLocaleStatus);
   }
 
   override disconnectedCallback(): void {
@@ -294,6 +301,7 @@ export class CpApp extends LitElement {
     this._ws?.close();
     if (this._wsReconnectTimer) clearTimeout(this._wsReconnectTimer);
     document.removeEventListener("click", this._onDocClick);
+    window.removeEventListener("lit-localize-status", this._onLocaleStatus);
   }
 
   private _connectWs(): void {
