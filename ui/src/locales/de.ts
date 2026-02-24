@@ -133,4 +133,5 @@ export const templates = {
   "adp-btn-close": "Schließen",
   "adp-btn-save": "Speichern",
   "adp-saving": "Speichern...",
+  "adp-btn-cancel-spawn": "Abbrechen",
 };

@@ -284,6 +284,25 @@ export class AgentDetailPanel extends LitElement {
     .save-hint {
       font-size: 10px;
       color: #4a5568;
+      flex: 1;
+    }
+
+    .btn-cancel-spawn {
+      background: none;
+      border: 1px solid #2a2d3a;
+      color: #64748b;
+      border-radius: 5px;
+      padding: 5px 14px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+      font-family: inherit;
+    }
+
+    .btn-cancel-spawn:hover {
+      border-color: #ef4444;
+      color: #ef4444;
     }
 
     .file-content {
@@ -398,6 +417,15 @@ export class AgentDetailPanel extends LitElement {
       }
     }
     return raw;
+  }
+
+  private _cancelPendingRemovals(): void {
+    this._pendingRemovals = new Set();
+    this.dispatchEvent(new CustomEvent("pending-removals-changed", {
+      detail: { pendingRemovals: new Set() },
+      bubbles: true,
+      composed: true,
+    }));
   }
 
   private _toggleSpawnRemoval(targetId: string): void {
@@ -605,6 +633,11 @@ export class AgentDetailPanel extends LitElement {
             ? msg("Saving...", { id: "adp-saving" })
             : msg("Save", { id: "adp-btn-save" })}</button>
           <span class="save-hint">${this._pendingRemovals.size} removal${this._pendingRemovals.size > 1 ? "s" : ""} pending</span>
+          <button
+            class="btn-cancel-spawn"
+            ?disabled=${this._saving}
+            @click=${this._cancelPendingRemovals}
+          >${msg("Cancel", { id: "adp-btn-cancel-spawn" })}</button>
         </div>
       ` : ""}
     `;
