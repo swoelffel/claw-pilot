@@ -2,6 +2,7 @@ import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { initLocale, switchLocale, getLocale, allLocales, type SupportedLocale } from "./localization.js";
+import { createRef, ref, type Ref } from "lit/directives/ref.js";
 import type { InstanceInfo, WsMessage } from "./types.js";
 import "./components/cluster-view.js";
 import "./components/instance-detail.js";
@@ -172,38 +173,95 @@ export class CpApp extends LitElement {
       color: #94a3b8;
     }
 
-    .lang-switcher {
-      display: flex;
+    .lang-trigger {
+      display: inline-flex;
       align-items: center;
-      gap: 2px;
-    }
-
-    .lang-btn {
+      gap: 5px;
       background: none;
-      border: none;
-      color: #4a5568;
+      border: 1px solid #2a2d3a;
+      border-radius: 5px;
+      color: #64748b;
       font-size: 11px;
       font-weight: 600;
       cursor: pointer;
-      padding: 2px 5px;
-      border-radius: 3px;
+      padding: 3px 8px;
       letter-spacing: 0.04em;
-      transition: color 0.15s, background 0.15s;
+      transition: border-color 0.15s, color 0.15s;
       font-family: inherit;
+      position: relative;
     }
 
-    .lang-btn:hover {
+    .lang-trigger:hover {
+      border-color: #6c63ff60;
       color: #94a3b8;
     }
 
-    .lang-btn.active {
-      color: #6c63ff;
-      background: #6c63ff18;
+    .lang-trigger .chevron {
+      font-size: 8px;
+      opacity: 0.6;
+      transition: transform 0.15s;
     }
 
-    .lang-sep {
-      color: #2a2d3a;
-      font-size: 10px;
+    .lang-trigger.open .chevron {
+      transform: rotate(180deg);
+    }
+
+    .lang-dropdown {
+      position: absolute;
+      bottom: calc(100% + 8px);
+      right: 0;
+      background: #1a1d27;
+      border: 1px solid #2a2d3a;
+      border-radius: 8px;
+      box-shadow: 0 -8px 32px rgba(0,0,0,0.5);
+      min-width: 160px;
+      overflow: hidden;
+      z-index: 200;
+    }
+
+    .lang-option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 9px 14px;
+      background: none;
+      border: none;
+      color: #94a3b8;
+      font-size: 13px;
+      cursor: pointer;
+      text-align: left;
+      transition: background 0.1s, color 0.1s;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+
+    .lang-option:hover {
+      background: #2a2d3a;
+      color: #e2e8f0;
+    }
+
+    .lang-option.active {
+      color: #6c63ff;
+    }
+
+    .lang-option .check {
+      margin-left: auto;
+      font-size: 11px;
+      opacity: 0;
+    }
+
+    .lang-option.active .check {
+      opacity: 1;
+    }
+
+    .lang-option .flag {
+      font-size: 15px;
+      line-height: 1;
+    }
+
+    .lang-wrapper {
+      position: relative;
     }
 
   `;
@@ -212,6 +270,15 @@ export class CpApp extends LitElement {
   @state() private _instances: InstanceInfo[] = [];
   @state() private _wsConnected = false;
   @state() private _locale: SupportedLocale = getLocale() as SupportedLocale;
+  @state() private _langOpen = false;
+
+  private _langWrapperRef: Ref<HTMLElement> = createRef();
+  private _onDocClick = (e: MouseEvent) => {
+    const wrapper = this._langWrapperRef.value;
+    if (wrapper && !wrapper.contains(e.target as Node)) {
+      this._langOpen = false;
+    }
+  };
 
   private _ws: WebSocket | null = null;
   private _wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -219,12 +286,14 @@ export class CpApp extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this._connectWs();
+    document.addEventListener("click", this._onDocClick);
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this._ws?.close();
     if (this._wsReconnectTimer) clearTimeout(this._wsReconnectTimer);
+    document.removeEventListener("click", this._onDocClick);
   }
 
   private _connectWs(): void {
@@ -412,14 +481,28 @@ export class CpApp extends LitElement {
           >${msg("Issues", { id: "footer-issues" })}</a>
         </div>
         <div class="footer-right">
-          <div class="lang-switcher">
-            ${allLocales.map((l, i) => html`
-              ${i > 0 ? html`<span class="lang-sep">|</span>` : ""}
-              <button
-                class="lang-btn ${this._locale === l.code ? "active" : ""}"
-                @click=${() => this._switchLocale(l.code)}
-              >${l.label}</button>
-            `)}
+          <div class="lang-wrapper" ${ref(this._langWrapperRef)}>
+            <button
+              class="lang-trigger ${this._langOpen ? "open" : ""}"
+              @click=${(e: Event) => { e.stopPropagation(); this._langOpen = !this._langOpen; }}
+            >
+              🌐 ${allLocales.find(l => l.code === this._locale)?.label ?? "EN"}
+              <span class="chevron">▼</span>
+            </button>
+            ${this._langOpen ? html`
+              <div class="lang-dropdown">
+                ${allLocales.map(l => html`
+                  <button
+                    class="lang-option ${this._locale === l.code ? "active" : ""}"
+                    @click=${(e: Event) => { e.stopPropagation(); this._switchLocale(l.code); this._langOpen = false; }}
+                  >
+                    <span class="flag">${l.flag}</span>
+                    ${l.name}
+                    <span class="check">✓</span>
+                  </button>
+                `)}
+              </div>
+            ` : ""}
           </div>
           <span class="footer-sep">·</span>
           <span>© ${new Date().getFullYear()} SWO — ${msg("MIT License", { id: "footer-license" })}</span>
