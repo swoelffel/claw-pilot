@@ -127,4 +127,7 @@ export const templates = {
   "adp-file-not-available": "Arquivo não disponível.",
   "adp-badge-editable": "editável",
   "adp-badge-readonly": "somente leitura",
+  "adp-btn-expand": "Expandir",
+  "adp-btn-collapse": "Recolher",
+  "adp-btn-close": "Fechar",
 };
