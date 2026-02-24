@@ -12,7 +12,8 @@ const EDITABLE_FILES = new Set(["AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md
 export class AgentDetailPanel extends LitElement {
   static styles = css`
     :host {
-      display: block;
+      display: flex;
+      flex-direction: column;
       position: absolute;
       top: 0;
       right: 0;
@@ -21,32 +22,49 @@ export class AgentDetailPanel extends LitElement {
       background: #1a1d27;
       border-left: 1px solid #2a2d3a;
       overflow: hidden;
-      display: flex;
-      flex-direction: column;
       z-index: 10;
+      transition: width 0.25s ease;
+    }
+
+    :host(.expanded) {
+      width: 100%;
+      border-left: none;
     }
 
     .panel-header {
-      padding: 16px 20px;
+      padding: 14px 16px;
       border-bottom: 1px solid #2a2d3a;
+      flex-shrink: 0;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .panel-header-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .panel-controls {
+      display: flex;
+      align-items: center;
+      gap: 4px;
       flex-shrink: 0;
     }
 
-    .panel-close {
-      position: absolute;
-      top: 12px;
-      right: 16px;
+    .panel-btn {
       background: none;
       border: none;
       color: #4a5568;
-      font-size: 18px;
+      font-size: 14px;
       cursor: pointer;
-      padding: 4px 8px;
+      padding: 4px 7px;
       border-radius: 4px;
       transition: color 0.15s, background 0.15s;
+      line-height: 1;
     }
 
-    .panel-close:hover {
+    .panel-btn:hover {
       color: #e2e8f0;
       background: #2a2d3a;
     }
@@ -56,7 +74,9 @@ export class AgentDetailPanel extends LitElement {
       font-weight: 700;
       color: #e2e8f0;
       margin-bottom: 4px;
-      padding-right: 32px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .agent-meta-row {
@@ -247,6 +267,7 @@ export class AgentDetailPanel extends LitElement {
   @state() private _activeTab = "info";
   @state() private _fileCache = new Map<string, AgentFileContent>();
   @state() private _loadingFile = false;
+  @state() private _expanded = false;
 
   private async _loadFile(filename: string): Promise<void> {
     if (this._fileCache.has(filename)) return;
@@ -265,6 +286,15 @@ export class AgentDetailPanel extends LitElement {
     this._activeTab = tab;
     if (tab !== "info") {
       void this._loadFile(tab);
+    }
+  }
+
+  private _toggleExpand(): void {
+    this._expanded = !this._expanded;
+    if (this._expanded) {
+      this.classList.add("expanded");
+    } else {
+      this.classList.remove("expanded");
     }
   }
 
@@ -373,12 +403,25 @@ export class AgentDetailPanel extends LitElement {
 
     return html`
       <div class="panel-header">
-        <button class="panel-close" @click=${() => this.dispatchEvent(new CustomEvent("panel-close", { bubbles: true, composed: true }))}>✕</button>
-        <div class="agent-name">${a.name}</div>
-        <div class="agent-meta-row">
-          <span class="agent-id-label">${a.agent_id}</span>
-          ${a.is_default ? html`<span class="badge-default">${msg("Default", { id: "acm-badge-default" })}</span>` : ""}
-          ${a.role ? html`<span class="badge-role">${a.role}</span>` : ""}
+        <div class="panel-header-info">
+          <div class="agent-name">${a.name}</div>
+          <div class="agent-meta-row">
+            <span class="agent-id-label">${a.agent_id}</span>
+            ${a.is_default ? html`<span class="badge-default">${msg("Default", { id: "acm-badge-default" })}</span>` : ""}
+            ${a.role ? html`<span class="badge-role">${a.role}</span>` : ""}
+          </div>
+        </div>
+        <div class="panel-controls">
+          <button
+            class="panel-btn"
+            title=${this._expanded ? msg("Collapse", { id: "adp-btn-collapse" }) : msg("Expand", { id: "adp-btn-expand" })}
+            @click=${this._toggleExpand}
+          >${this._expanded ? "⊟" : "⊞"}</button>
+          <button
+            class="panel-btn"
+            title=${msg("Close", { id: "adp-btn-close" })}
+            @click=${() => this.dispatchEvent(new CustomEvent("panel-close", { bubbles: true, composed: true }))}
+          >✕</button>
         </div>
       </div>
 
