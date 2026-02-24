@@ -135,12 +135,22 @@ export class AgentSync {
 
     const configAgents: ConfigAgent[] = [];
 
-    // Main agent
+    /** Resolve a workspace field to an absolute path.
+     *  If the value is already absolute, use it as-is.
+     *  Otherwise treat it as a relative name under {stateDir}/workspaces/. */
+    const resolveWorkspace = (workspace: string | undefined, fallback: string): string => {
+      if (!workspace) return `${stateDir}/workspaces/${fallback}`;
+      if (workspace.startsWith("/")) return workspace;
+      return `${stateDir}/workspaces/${workspace}`;
+    };
+
+    // Main agent — use defaults.workspace if present
+    const defaultWorkspace = agentsDefaults?.["workspace"] as string | undefined;
     configAgents.push({
       agentId: "main",
       name: (agentsDefaults?.["name"] as string | undefined) ?? "Main",
       model: defaultModel,
-      workspacePath: `${stateDir}/workspaces/main`,
+      workspacePath: resolveWorkspace(defaultWorkspace, "main"),
       isDefault: true,
       rawBlock: agentsDefaults ?? {},
     });
@@ -148,11 +158,13 @@ export class AgentSync {
     for (const agent of agentsList) {
       if (!agent["id"]) continue;
       const agentId = agent["id"] as string;
+      // Skip if this entry duplicates the main agent
+      if (agentId === "main") continue;
       configAgents.push({
         agentId,
         name: (agent["name"] as string | undefined) ?? agentId,
         model: normaliseModel(agent["model"]) ?? defaultModel,
-        workspacePath: `${stateDir}/workspaces/${(agent["workspace"] as string | undefined) ?? agentId}`,
+        workspacePath: resolveWorkspace(agent["workspace"] as string | undefined, agentId),
         isDefault: false,
         rawBlock: agent,
       });
