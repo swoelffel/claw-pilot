@@ -1,7 +1,7 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import { initLocale } from "./localization.js";
+import { initLocale, switchLocale, getLocale, allLocales, type SupportedLocale } from "./localization.js";
 import type { InstanceInfo, WsMessage } from "./types.js";
 import "./components/cluster-view.js";
 import "./components/instance-detail.js";
@@ -172,11 +172,46 @@ export class CpApp extends LitElement {
       color: #94a3b8;
     }
 
+    .lang-switcher {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .lang-btn {
+      background: none;
+      border: none;
+      color: #4a5568;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 2px 5px;
+      border-radius: 3px;
+      letter-spacing: 0.04em;
+      transition: color 0.15s, background 0.15s;
+      font-family: inherit;
+    }
+
+    .lang-btn:hover {
+      color: #94a3b8;
+    }
+
+    .lang-btn.active {
+      color: #6c63ff;
+      background: #6c63ff18;
+    }
+
+    .lang-sep {
+      color: #2a2d3a;
+      font-size: 10px;
+    }
+
   `;
 
   @state() private _route: Route = { view: "cluster" };
   @state() private _instances: InstanceInfo[] = [];
   @state() private _wsConnected = false;
+  @state() private _locale: SupportedLocale = getLocale() as SupportedLocale;
 
   private _ws: WebSocket | null = null;
   private _wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -286,6 +321,12 @@ export class CpApp extends LitElement {
     this._route = { view: "cluster" };
   }
 
+  private async _switchLocale(locale: SupportedLocale): Promise<void> {
+    if (locale === this._locale) return;
+    await switchLocale(locale);
+    this._locale = locale;
+  }
+
   private _onInstanceDeleted(e: Event): void {
     const { slug } = (e as CustomEvent<{ slug: string }>).detail;
     // Remove from local instances list immediately (optimistic update)
@@ -371,6 +412,16 @@ export class CpApp extends LitElement {
           >${msg("Issues", { id: "footer-issues" })}</a>
         </div>
         <div class="footer-right">
+          <div class="lang-switcher">
+            ${allLocales.map((l, i) => html`
+              ${i > 0 ? html`<span class="lang-sep">|</span>` : ""}
+              <button
+                class="lang-btn ${this._locale === l.code ? "active" : ""}"
+                @click=${() => this._switchLocale(l.code)}
+              >${l.label}</button>
+            `)}
+          </div>
+          <span class="footer-sep">·</span>
           <span>© ${new Date().getFullYear()} SWO — ${msg("MIT License", { id: "footer-license" })}</span>
         </div>
       </footer>
