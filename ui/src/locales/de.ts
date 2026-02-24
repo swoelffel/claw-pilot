@@ -100,4 +100,34 @@ export const templates = {
   "error-provisioning": "Bereitstellung fehlgeschlagen",
   "btn-cancel-dialog": "Abbrechen",
   "btn-create-instance": "Instanz erstellen",
+
+  // agents-builder.ts
+  "ab-btn-back": "← Zurück",
+  "ab-title": "Agenten-Builder",
+  "ab-btn-sync": "↻ Synchronisieren",
+  "ab-syncing": "Agenten werden synchronisiert…",
+  "ab-error-load": "Agenten konnten nicht geladen werden",
+  "ab-empty-title": "Keine Agenten gefunden",
+  "ab-empty-sub": "Klicken Sie auf Synchronisieren, um vom Datenträger zu aktualisieren",
+
+  // agent-card-mini.ts
+  "acm-badge-default": "Standard",
+  "acm-files": "Dateien",
+
+  // agent-detail-panel.ts
+  "adp-tab-info": "Info",
+  "adp-label-model": "Modell",
+  "adp-label-workspace": "Arbeitsbereich",
+  "adp-label-last-sync": "Letzte Sync",
+  "adp-label-a2a": "A2A-Links (bidirektional)",
+  "adp-label-can-spawn": "Kann spawnen",
+  "adp-label-spawned-by": "Gespawnt von",
+  "adp-label-notes": "Notizen",
+  "adp-loading-file": "Laden",
+  "adp-file-not-available": "Datei nicht verfügbar.",
+  "adp-badge-editable": "bearbeitbar",
+  "adp-badge-readonly": "schreibgeschützt",
+  "adp-btn-expand": "Vergrößern",
+  "adp-btn-collapse": "Verkleinern",
+  "adp-btn-close": "Schließen",
 };

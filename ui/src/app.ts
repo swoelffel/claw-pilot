@@ -5,7 +5,7 @@ import { initLocale, switchLocale, getLocale, allLocales, type SupportedLocale }
 import { createRef, ref, type Ref } from "lit/directives/ref.js";
 import type { InstanceInfo, WsMessage } from "./types.js";
 import "./components/cluster-view.js";
-import "./components/instance-detail.js";
+import "./components/agents-builder.js";
 
 // Initialize locale — resolved before first render via localeReady promise
 export const localeReady = initLocale();
@@ -19,7 +19,7 @@ declare global {
 
 type Route =
   | { view: "cluster" }
-  | { view: "instance"; slug: string };
+  | { view: "agents-builder"; slug: string };
 
 @localized()
 @customElement("cp-app")
@@ -386,11 +386,13 @@ export class CpApp extends LitElement {
   }
 
   private _navigate(e: Event): void {
-    const { slug } = (e as CustomEvent<{ slug: string | null }>).detail;
-    if (slug === null) {
+    const detail = (e as CustomEvent<{ slug: string | null; view?: string }>).detail;
+    if (detail.slug === null) {
       this._route = { view: "cluster" };
+    } else if (detail.view === "agents-builder") {
+      this._route = { view: "agents-builder", slug: detail.slug };
     } else {
-      this._route = { view: "instance", slug };
+      this._route = { view: "cluster" };
     }
   }
 
@@ -424,14 +426,15 @@ export class CpApp extends LitElement {
         ></cp-cluster-view>
       `;
     }
-    // view === "instance" — TypeScript narrows slug here
-    return html`
-      <cp-instance-detail
-        .slug=${this._route.slug}
-        @navigate=${this._navigate}
-        @instance-deleted=${this._onInstanceDeleted}
-      ></cp-instance-detail>
-    `;
+    if (this._route.view === "agents-builder") {
+      return html`
+        <cp-agents-builder
+          .slug=${this._route.slug}
+          @navigate=${this._navigate}
+        ></cp-agents-builder>
+      `;
+    }
+    return html``;
   }
 
   override render() {

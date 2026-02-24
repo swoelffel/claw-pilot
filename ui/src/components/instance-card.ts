@@ -2,7 +2,7 @@ import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { InstanceInfo } from "../types.js";
-import { startInstance, stopInstance, restartInstance } from "../api.js";
+import { startInstance, stopInstance } from "../api.js";
 
 @localized()
 @customElement("cp-instance-card")
@@ -17,21 +17,22 @@ export class InstanceCard extends LitElement {
       border: 1px solid #2a2d3a;
       border-radius: 10px;
       padding: 20px;
-      cursor: pointer;
-      transition: border-color 0.15s, box-shadow 0.15s;
       position: relative;
-    }
-
-    .card:hover {
-      border-color: #6c63ff;
-      box-shadow: 0 0 0 1px #6c63ff22;
     }
 
     .card-header {
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       justify-content: space-between;
       margin-bottom: 12px;
+      gap: 10px;
+    }
+
+    .card-header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
     }
 
     .slug {
@@ -172,16 +173,6 @@ export class InstanceCard extends LitElement {
       background: #ef444430;
     }
 
-    .btn-restart {
-      background: #6c63ff20;
-      color: #6c63ff;
-      border-color: #6c63ff40;
-    }
-
-    .btn-restart:hover:not(:disabled) {
-      background: #6c63ff30;
-    }
-
     .btn-ui {
       flex: none;
       padding: 7px 10px;
@@ -201,6 +192,23 @@ export class InstanceCard extends LitElement {
       background: #f59e0b30;
     }
 
+    .btn-builder {
+      flex: none;
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid #0ea5e940;
+      background: #0ea5e920;
+      color: #0ea5e9;
+      transition: background 0.15s;
+    }
+
+    .btn-builder:hover {
+      background: #0ea5e940;
+    }
+
     .error-msg {
       margin-top: 8px;
       font-size: 11px;
@@ -212,17 +220,6 @@ export class InstanceCard extends LitElement {
 
   @state() private _loading = false;
   @state() private _error = "";
-
-  private _navigate(e: Event): void {
-    e.stopPropagation();
-    this.dispatchEvent(
-      new CustomEvent("navigate", {
-        detail: { slug: this.instance.slug },
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
 
   private async _action(
     e: Event,
@@ -249,7 +246,7 @@ export class InstanceCard extends LitElement {
     const stateClass = this._stateClass();
 
     return html`
-      <div class="card" @click=${this._navigate}>
+      <div class="card">
         <div class="card-header">
           <div>
             <div class="slug">${inst.slug}</div>
@@ -257,10 +254,23 @@ export class InstanceCard extends LitElement {
               ? html`<div class="display-name">${inst.display_name}</div>`
               : ""}
           </div>
-          <span class="state-badge ${stateClass}">
-            <span class="state-dot"></span>
-            ${stateClass}
-          </span>
+          <div class="card-header-right">
+            <span class="state-badge ${stateClass}">
+              <span class="state-dot"></span>
+              ${stateClass}
+            </span>
+            ${inst.state === "running"
+              ? html`<a
+                  class="btn-ui"
+                  href=${inst.gatewayToken
+                    ? `http://localhost:${inst.port}/#token=${inst.gatewayToken}`
+                    : `http://localhost:${inst.port}`}
+                  target="_blank"
+                  rel="noopener"
+                  @click=${(e: Event) => e.stopPropagation()}
+                >⎋ UI</a>`
+              : ""}
+          </div>
         </div>
 
         <div class="meta">
@@ -298,35 +308,30 @@ export class InstanceCard extends LitElement {
         <div class="actions">
           <button
             class="btn btn-start"
-            ?disabled=${this._loading}
+            ?disabled=${this._loading || inst.state === "running"}
             @click=${(e: Event) => this._action(e, startInstance)}
           >
             ${msg("Start", { id: "btn-start" })}
           </button>
           <button
             class="btn btn-stop"
-            ?disabled=${this._loading}
+            ?disabled=${this._loading || inst.state !== "running"}
             @click=${(e: Event) => this._action(e, stopInstance)}
           >
             ${msg("Stop", { id: "btn-stop" })}
           </button>
-          <button
-            class="btn btn-restart"
-            ?disabled=${this._loading}
-            @click=${(e: Event) => this._action(e, restartInstance)}
-          >
-            ${msg("Restart", { id: "btn-restart" })}
-          </button>
-          ${inst.state === "running"
-            ? html`<a
-                class="btn-ui"
-                href=${inst.gatewayToken
-                  ? `http://localhost:${inst.port}/#token=${inst.gatewayToken}`
-                  : `http://localhost:${inst.port}`}
-                target="_blank"
-                rel="noopener"
-                @click=${(e: Event) => e.stopPropagation()}
-              >${msg("⎋ UI", { id: "btn-open-ui" })}</a>`
+          ${(inst.state === "running" || (inst.agentCount ?? 0) > 0)
+            ? html`<button
+                class="btn-builder"
+                @click=${(e: Event) => {
+                  e.stopPropagation();
+                  this.dispatchEvent(new CustomEvent("navigate", {
+                    detail: { view: "agents-builder", slug: inst.slug },
+                    bubbles: true,
+                    composed: true,
+                  }));
+                }}
+              >Agents</button>`
             : ""}
         </div>
 
