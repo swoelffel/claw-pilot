@@ -306,6 +306,19 @@ export class AgentDetailPanel extends LitElement {
     }
   }
 
+  private _resolveModel(raw: string | null): string | null {
+    if (!raw) return null;
+    if (raw.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        return (parsed["primary"] as string | undefined) ?? raw;
+      } catch {
+        return raw;
+      }
+    }
+    return raw;
+  }
+
   private _renderInfo() {
     const a = this.agent;
     const a2aLinks = this.links.filter(l =>
@@ -323,7 +336,7 @@ export class AgentDetailPanel extends LitElement {
         ${a.model ? html`
           <div class="info-item">
             <span class="info-label">${msg("Model", { id: "adp-label-model" })}</span>
-            <span class="info-value">${a.model}</span>
+            <span class="info-value">${this._resolveModel(a.model)}</span>
           </div>
         ` : ""}
         <div class="info-item">

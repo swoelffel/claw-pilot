@@ -115,9 +115,24 @@ export class AgentCardMini extends LitElement {
     return str.length > max ? str.slice(0, max) + "…" : str;
   }
 
+  /** Resolve model string — handles JSON-stringified objects like {"primary":"provider/model"} */
+  private _resolveModel(raw: string | null): string | null {
+    if (!raw) return null;
+    if (raw.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        return (parsed["primary"] as string | undefined) ?? raw;
+      } catch {
+        return raw;
+      }
+    }
+    return raw;
+  }
+
   override render() {
     const a = this.agent;
-    const modelShort = a.model ? this._truncate(a.model.split("/").pop() ?? a.model, 18) : null;
+    const model = this._resolveModel(a.model);
+    const modelShort = model ? this._truncate(model.split("/").pop() ?? model, 18) : null;
 
     return html`
       <div
@@ -132,7 +147,7 @@ export class AgentCardMini extends LitElement {
         <div class="agent-id">${a.agent_id}</div>
         <div class="card-bottom">
           ${a.role ? html`<span class="badge-role">${a.role}</span>` : ""}
-          ${modelShort ? html`<span class="model-label" title=${a.model ?? ""}>${modelShort}</span>` : ""}
+          ${modelShort ? html`<span class="model-label" title=${model ?? ""}>${modelShort}</span>` : ""}
         </div>
       </div>
     `;
