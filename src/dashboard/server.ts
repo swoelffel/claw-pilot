@@ -196,7 +196,20 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       const agentsConf = config["agents"] as Record<string, unknown> | undefined;
 
       // 2. Update the allowAgents array for the target agent
-      if (agentId === "main") {
+      // For "main": prefer agents.list[id=main] if it exists, otherwise fall back to agents.defaults
+      const agentsList = (agentsConf?.["list"] ?? []) as Array<Record<string, unknown>>;
+      const listEntry = agentsList.find((a) => a["id"] === agentId);
+
+      if (listEntry) {
+        // Agent has an explicit entry in agents.list — update there
+        let subagents = listEntry["subagents"] as Record<string, unknown> | undefined;
+        if (!subagents) {
+          subagents = {};
+          listEntry["subagents"] = subagents;
+        }
+        subagents["allowAgents"] = body.targets;
+      } else if (agentId === "main") {
+        // main with no list entry — update agents.defaults.subagents
         const defaults = agentsConf?.["defaults"] as Record<string, unknown> | undefined;
         if (defaults) {
           let subagents = defaults["subagents"] as Record<string, unknown> | undefined;
@@ -207,15 +220,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
           subagents["allowAgents"] = body.targets;
         }
       } else {
-        const agentsList = (agentsConf?.["list"] ?? []) as Array<Record<string, unknown>>;
-        const agentEntry = agentsList.find((a) => a["id"] === agentId);
-        if (!agentEntry) return c.json({ error: `Agent '${agentId}' not found in config` }, 404);
-        let subagents = agentEntry["subagents"] as Record<string, unknown> | undefined;
-        if (!subagents) {
-          subagents = {};
-          agentEntry["subagents"] = subagents;
-        }
-        subagents["allowAgents"] = body.targets;
+        return c.json({ error: `Agent '${agentId}' not found in config` }, 404);
       }
 
       // 3. Write back openclaw.json
