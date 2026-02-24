@@ -17,14 +17,7 @@ export class InstanceCard extends LitElement {
       border: 1px solid #2a2d3a;
       border-radius: 10px;
       padding: 20px;
-      cursor: pointer;
-      transition: border-color 0.15s, box-shadow 0.15s;
       position: relative;
-    }
-
-    .card:hover {
-      border-color: #6c63ff;
-      box-shadow: 0 0 0 1px #6c63ff22;
     }
 
     .card-header {
@@ -228,17 +221,6 @@ export class InstanceCard extends LitElement {
   @state() private _loading = false;
   @state() private _error = "";
 
-  private _navigate(e: Event): void {
-    e.stopPropagation();
-    this.dispatchEvent(
-      new CustomEvent("navigate", {
-        detail: { slug: this.instance.slug },
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
-
   private async _action(
     e: Event,
     fn: (slug: string) => Promise<void>,
@@ -264,7 +246,7 @@ export class InstanceCard extends LitElement {
     const stateClass = this._stateClass();
 
     return html`
-      <div class="card" @click=${this._navigate}>
+      <div class="card">
         <div class="card-header">
           <div>
             <div class="slug">${inst.slug}</div>

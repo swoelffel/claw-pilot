@@ -5,7 +5,6 @@ import { initLocale, switchLocale, getLocale, allLocales, type SupportedLocale }
 import { createRef, ref, type Ref } from "lit/directives/ref.js";
 import type { InstanceInfo, WsMessage } from "./types.js";
 import "./components/cluster-view.js";
-import "./components/instance-detail.js";
 import "./components/agents-builder.js";
 
 // Initialize locale — resolved before first render via localeReady promise
@@ -20,7 +19,6 @@ declare global {
 
 type Route =
   | { view: "cluster" }
-  | { view: "instance"; slug: string }
   | { view: "agents-builder"; slug: string };
 
 @localized()
@@ -394,7 +392,7 @@ export class CpApp extends LitElement {
     } else if (detail.view === "agents-builder") {
       this._route = { view: "agents-builder", slug: detail.slug };
     } else {
-      this._route = { view: "instance", slug: detail.slug };
+      this._route = { view: "cluster" };
     }
   }
 
@@ -436,14 +434,7 @@ export class CpApp extends LitElement {
         ></cp-agents-builder>
       `;
     }
-    // view === "instance"
-    return html`
-      <cp-instance-detail
-        .slug=${this._route.slug}
-        @navigate=${this._navigate}
-        @instance-deleted=${this._onInstanceDeleted}
-      ></cp-instance-detail>
-    `;
+    return html``;
   }
 
   override render() {
