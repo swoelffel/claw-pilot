@@ -1,6 +1,7 @@
 // src/core/discovery.ts
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
+import type { AgentSync } from "./agent-sync.js";
 import { constants } from "../lib/constants.js";
 import { shellEscape } from "../lib/shell.js";
 import { logger } from "../lib/logger.js";
@@ -391,8 +392,16 @@ export class InstanceDiscovery {
 
   /**
    * Adopt a discovered instance into the registry.
+   *
+   * @param agentSync - Optional AgentSync instance. When provided, a full
+   *   workspace sync is performed after the basic agent rows are created.
+   *   Sync failures are non-fatal and only logged.
    */
-  async adopt(instance: DiscoveredInstance, serverId: number): Promise<void> {
+  async adopt(
+    instance: DiscoveredInstance,
+    serverId: number,
+    agentSync?: AgentSync,
+  ): Promise<void> {
     const record = this.registry.createInstance({
       serverId,
       slug: instance.slug,
@@ -434,6 +443,17 @@ export class InstanceDiscovery {
       "discovered",
       `Adopted from existing infra (source: ${instance.source}, ${instance.agents.length} agents, port ${instance.port})`,
     );
+
+    // Optional deep sync of workspace files and agent links
+    if (agentSync) {
+      try {
+        await agentSync.sync(record);
+      } catch (err) {
+        logger.dim(
+          `[discovery] Agent sync failed for ${instance.slug} (non-fatal): ${err}`,
+        );
+      }
+    }
   }
 
   // --- Helpers ---

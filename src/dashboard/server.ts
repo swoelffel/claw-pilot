@@ -14,6 +14,7 @@ import { Destroyer } from "../core/destroyer.js";
 import { Provisioner } from "../core/provisioner.js";
 import { PortAllocator } from "../core/port-allocator.js";
 import { PairingManager } from "../core/pairing.js";
+import { AgentSync, EDITABLE_FILES } from "../core/agent-sync.js";
 import { Monitor } from "./monitor.js";
 import { ClawPilotError, InstanceNotFoundError } from "../lib/errors.js";
 import { resolveXdgRuntimeDir } from "../lib/xdg.js";
@@ -102,6 +103,97 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     const slug = c.req.param("slug");
     const agents = registry.listAgents(slug);
     return c.json(agents);
+  });
+
+  // POST /api/instances/:slug/agents/sync — trigger a full agent workspace sync
+  app.post("/api/instances/:slug/agents/sync", async (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    if (!instance) return c.json({ error: "Not found" }, 404);
+
+    try {
+      const agentSync = new AgentSync(conn, registry);
+      const result = await agentSync.sync(instance);
+      return c.json({ synced: true, ...result });
+    } catch (err) {
+      return c.json(
+        { error: err instanceof Error ? err.message : "Sync failed" },
+        500,
+      );
+    }
+  });
+
+  // GET /api/instances/:slug/agents/builder — full builder payload (agents + links + file summaries)
+  app.get("/api/instances/:slug/agents/builder", (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    if (!instance) return c.json({ error: "Not found" }, 404);
+
+    const agents = registry.listAgents(slug);
+    const links = registry.listAgentLinks(instance.id);
+
+    // For each agent, attach a file summary (no content — content is fetched separately)
+    const agentsWithFiles = agents.map((agent) => {
+      const files = registry.listAgentFiles(agent.id).map((f) => ({
+        filename: f.filename,
+        content_hash: f.content_hash,
+        size: f.content ? f.content.length : 0,
+        updated_at: f.updated_at,
+      }));
+      return {
+        id: agent.id,
+        agent_id: agent.agent_id,
+        name: agent.name,
+        model: agent.model,
+        workspace_path: agent.workspace_path,
+        is_default: agent.is_default === 1,
+        role: agent.role ?? null,
+        tags: agent.tags ?? null,
+        notes: agent.notes ?? null,
+        synced_at: agent.synced_at ?? null,
+        files,
+      };
+    });
+
+    return c.json({
+      instance: {
+        slug: instance.slug,
+        display_name: instance.display_name,
+        port: instance.port,
+        state: instance.state,
+        default_model: instance.default_model,
+      },
+      agents: agentsWithFiles,
+      links: links.map((l) => ({
+        source_agent_id: l.source_agent_id,
+        target_agent_id: l.target_agent_id,
+        link_type: l.link_type,
+      })),
+    });
+  });
+
+  // GET /api/instances/:slug/agents/:agentId/files/:filename — fetch a single workspace file
+  app.get("/api/instances/:slug/agents/:agentId/files/:filename", (c) => {
+    const slug = c.req.param("slug");
+    const agentId = c.req.param("agentId");
+    const filename = c.req.param("filename");
+
+    const instance = registry.getInstance(slug);
+    if (!instance) return c.json({ error: "Not found" }, 404);
+
+    const agent = registry.getAgentByAgentId(instance.id, agentId);
+    if (!agent) return c.json({ error: "Agent not found" }, 404);
+
+    const file = registry.getAgentFileContent(agent.id, filename);
+    if (!file) return c.json({ error: "File not found" }, 404);
+
+    return c.json({
+      filename: file.filename,
+      content: file.content ?? "",
+      content_hash: file.content_hash ?? "",
+      updated_at: file.updated_at ?? "",
+      editable: EDITABLE_FILES.has(filename),
+    });
   });
 
   app.get("/api/instances/:slug/conversations", async (c) => {

@@ -201,6 +201,23 @@ export class InstanceCard extends LitElement {
       background: #f59e0b30;
     }
 
+    .btn-builder {
+      flex: none;
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid #0ea5e940;
+      background: #0ea5e920;
+      color: #0ea5e9;
+      transition: background 0.15s;
+    }
+
+    .btn-builder:hover {
+      background: #0ea5e940;
+    }
+
     .error-msg {
       margin-top: 8px;
       font-size: 11px;
@@ -327,6 +344,19 @@ export class InstanceCard extends LitElement {
                 rel="noopener"
                 @click=${(e: Event) => e.stopPropagation()}
               >${msg("⎋ UI", { id: "btn-open-ui" })}</a>`
+            : ""}
+          ${(inst.state === "running" || (inst.agentCount ?? 0) > 0)
+            ? html`<button
+                class="btn-builder"
+                @click=${(e: Event) => {
+                  e.stopPropagation();
+                  this.dispatchEvent(new CustomEvent("navigate", {
+                    detail: { view: "agents-builder", slug: inst.slug },
+                    bubbles: true,
+                    composed: true,
+                  }));
+                }}
+              >Agents</button>`
             : ""}
         </div>
 

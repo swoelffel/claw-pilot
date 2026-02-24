@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import * as path from "node:path";
 
+// Bump this when adding new migrations
 const SCHEMA_VERSION = 1;
 
 const SCHEMA_SQL = `
@@ -89,6 +90,63 @@ const DEFAULT_CONFIG: Record<string, string> = {
   openclaw_user: "openclaw",
 };
 
+// ---------------------------------------------------------------------------
+// Migration framework
+// ---------------------------------------------------------------------------
+
+interface Migration {
+  version: number;
+  up(db: Database.Database): void;
+}
+
+/**
+ * Ordered list of migrations. Each migration must have a unique, monotonically
+ * increasing version number greater than SCHEMA_VERSION (1).
+ * Migrations are applied in order, inside individual transactions.
+ */
+const MIGRATIONS: Migration[] = [
+  {
+    version: 2,
+    up(db) {
+      db.exec(`
+        -- Agent workspace files (AGENTS.md, SOUL.md, etc.)
+        CREATE TABLE IF NOT EXISTS agent_files (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          agent_id        INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+          filename        TEXT NOT NULL,
+          content         TEXT,
+          content_hash    TEXT,
+          updated_at      TEXT,
+          UNIQUE(agent_id, filename)
+        );
+
+        -- Agent-to-agent links (a2a or spawn) scoped to an instance
+        CREATE TABLE IF NOT EXISTS agent_links (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          instance_id     INTEGER NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
+          source_agent_id TEXT NOT NULL,
+          target_agent_id TEXT NOT NULL,
+          link_type       TEXT NOT NULL CHECK(link_type IN ('a2a', 'spawn')),
+          UNIQUE(instance_id, source_agent_id, target_agent_id, link_type)
+        );
+
+        -- Enriched agent metadata columns (added by v2 migration)
+        ALTER TABLE agents ADD COLUMN role         TEXT;
+        ALTER TABLE agents ADD COLUMN tags         TEXT;
+        ALTER TABLE agents ADD COLUMN notes        TEXT;
+        ALTER TABLE agents ADD COLUMN position_x   REAL;
+        ALTER TABLE agents ADD COLUMN position_y   REAL;
+        ALTER TABLE agents ADD COLUMN config_hash  TEXT;
+        ALTER TABLE agents ADD COLUMN synced_at    TEXT;
+      `);
+    },
+  },
+];
+
+// ---------------------------------------------------------------------------
+// initDatabase
+// ---------------------------------------------------------------------------
+
 export function initDatabase(dbPath: string): Database.Database {
   // Ensure parent directory exists
   const dirPath = path.dirname(dbPath);
@@ -102,7 +160,7 @@ export function initDatabase(dbPath: string): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
 
-  // Check if schema exists
+  // Check if schema exists (fresh DB vs existing DB)
   const hasSchema = db
     .prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'",
@@ -110,6 +168,7 @@ export function initDatabase(dbPath: string): Database.Database {
     .get();
 
   if (!hasSchema) {
+    // --- Fresh database: create base schema + seed config ---
     db.exec(SCHEMA_SQL);
     db.prepare("INSERT INTO schema_version (version) VALUES (?)").run(
       SCHEMA_VERSION,
@@ -122,6 +181,22 @@ export function initDatabase(dbPath: string): Database.Database {
     for (const [key, value] of Object.entries(DEFAULT_CONFIG)) {
       insert.run(key, value);
     }
+  }
+
+  // --- Run pending migrations (applies to both fresh and existing DBs) ---
+  const row = db
+    .prepare("SELECT version FROM schema_version")
+    .get() as { version: number } | undefined;
+  const currentVersion = row?.version ?? SCHEMA_VERSION;
+
+  for (const migration of MIGRATIONS) {
+    if (migration.version <= currentVersion) continue;
+
+    // Each migration runs in its own transaction so a failure is atomic
+    db.transaction(() => {
+      migration.up(db);
+      db.prepare("UPDATE schema_version SET version = ?").run(migration.version);
+    })();
   }
 
   return db;

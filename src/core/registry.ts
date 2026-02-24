@@ -40,6 +40,32 @@ export interface AgentRecord {
   model: string | null;
   workspace_path: string;
   is_default: number;
+  // v2 enriched fields (nullable — added by migration)
+  role: string | null;
+  tags: string | null;
+  notes: string | null;
+  position_x: number | null;
+  position_y: number | null;
+  config_hash: string | null;
+  synced_at: string | null;
+}
+
+export interface AgentFileRecord {
+  id: number;
+  /** FK to agents.id (the DB primary key, not agent_id string) */
+  agent_id: number;
+  filename: string;
+  content: string | null;
+  content_hash: string | null;
+  updated_at: string | null;
+}
+
+export interface AgentLinkRecord {
+  id: number;
+  instance_id: number;
+  source_agent_id: string;
+  target_agent_id: string;
+  link_type: "a2a" | "spawn";
 }
 
 export class Registry {
@@ -225,6 +251,183 @@ export class Registry {
 
   deleteAgents(instanceId: number): void {
     this.db.prepare("DELETE FROM agents WHERE instance_id = ?").run(instanceId);
+  }
+
+  /** Delete a single agent row by its DB primary key (cascade removes agent_files). */
+  deleteAgentById(agentDbId: number): void {
+    this.db.prepare("DELETE FROM agents WHERE id = ?").run(agentDbId);
+  }
+
+  /**
+   * Insert or update an agent row, returning the persisted record.
+   *
+   * Uses INSERT ... ON CONFLICT DO UPDATE so that v2 enriched fields
+   * (role, tags, notes, position_x/y, config_hash, synced_at) are preserved
+   * when updating an existing row — unlike INSERT OR REPLACE which would
+   * delete and re-insert, losing those columns.
+   */
+  upsertAgent(
+    instanceId: number,
+    data: {
+      agentId: string;
+      name: string;
+      model?: string;
+      workspacePath: string;
+      isDefault?: boolean;
+    },
+  ): AgentRecord {
+    this.db
+      .prepare(
+        `INSERT INTO agents (instance_id, agent_id, name, model, workspace_path, is_default)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(instance_id, agent_id) DO UPDATE SET
+           name          = excluded.name,
+           model         = excluded.model,
+           workspace_path = excluded.workspace_path,
+           is_default    = excluded.is_default`,
+      )
+      .run(
+        instanceId,
+        data.agentId,
+        data.name,
+        data.model ?? null,
+        data.workspacePath,
+        data.isDefault ? 1 : 0,
+      );
+    return this.getAgentByAgentId(instanceId, data.agentId)!;
+  }
+
+  /** Look up an agent by its string agent_id within an instance. */
+  getAgentByAgentId(
+    instanceId: number,
+    agentId: string,
+  ): AgentRecord | undefined {
+    return this.db
+      .prepare(
+        "SELECT * FROM agents WHERE instance_id = ? AND agent_id = ?",
+      )
+      .get(instanceId, agentId) as AgentRecord | undefined;
+  }
+
+  /**
+   * Update human-readable metadata fields on an agent.
+   * Only the provided keys are updated (undefined = skip).
+   */
+  updateAgentMeta(
+    agentDbId: number,
+    fields: Partial<{
+      role: string | null;
+      tags: string | null;
+      notes: string | null;
+    }>,
+  ): void {
+    const sets: string[] = [];
+    const values: unknown[] = [];
+
+    if ("role" in fields) { sets.push("role=?"); values.push(fields.role ?? null); }
+    if ("tags" in fields) { sets.push("tags=?"); values.push(fields.tags ?? null); }
+    if ("notes" in fields) { sets.push("notes=?"); values.push(fields.notes ?? null); }
+
+    if (sets.length === 0) return;
+    values.push(agentDbId);
+
+    this.db
+      .prepare(`UPDATE agents SET ${sets.join(", ")} WHERE id=?`)
+      .run(...values);
+  }
+
+  /** Record the last sync hash and timestamp for an agent. */
+  updateAgentSync(
+    agentDbId: number,
+    fields: { configHash: string; syncedAt: string },
+  ): void {
+    this.db
+      .prepare(
+        "UPDATE agents SET config_hash=?, synced_at=? WHERE id=?",
+      )
+      .run(fields.configHash, fields.syncedAt, agentDbId);
+  }
+
+  // --- Agent Files ---
+
+  /** List all workspace files cached for a given agent (by DB id). */
+  listAgentFiles(agentDbId: number): AgentFileRecord[] {
+    return this.db
+      .prepare("SELECT * FROM agent_files WHERE agent_id = ?")
+      .all(agentDbId) as AgentFileRecord[];
+  }
+
+  /** Insert or update a workspace file record. */
+  upsertAgentFile(
+    agentDbId: number,
+    data: { filename: string; content: string; contentHash: string },
+  ): void {
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO agent_files
+           (agent_id, filename, content, content_hash, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(agentDbId, data.filename, data.content, data.contentHash, now());
+  }
+
+  /** Delete a single workspace file record. */
+  deleteAgentFile(agentDbId: number, filename: string): void {
+    this.db
+      .prepare(
+        "DELETE FROM agent_files WHERE agent_id = ? AND filename = ?",
+      )
+      .run(agentDbId, filename);
+  }
+
+  /** Retrieve a single workspace file record including its content. */
+  getAgentFileContent(
+    agentDbId: number,
+    filename: string,
+  ): AgentFileRecord | undefined {
+    return this.db
+      .prepare(
+        "SELECT * FROM agent_files WHERE agent_id = ? AND filename = ?",
+      )
+      .get(agentDbId, filename) as AgentFileRecord | undefined;
+  }
+
+  // --- Agent Links ---
+
+  /** List all agent links for an instance. */
+  listAgentLinks(instanceId: number): AgentLinkRecord[] {
+    return this.db
+      .prepare("SELECT * FROM agent_links WHERE instance_id = ?")
+      .all(instanceId) as AgentLinkRecord[];
+  }
+
+  /**
+   * Atomically replace all agent links for an instance.
+   * Deletes existing links then inserts the new set in a single transaction.
+   */
+  replaceAgentLinks(
+    instanceId: number,
+    links: Array<{
+      sourceAgentId: string;
+      targetAgentId: string;
+      linkType: "a2a" | "spawn";
+    }>,
+  ): void {
+    const del = this.db.prepare(
+      "DELETE FROM agent_links WHERE instance_id = ?",
+    );
+    const ins = this.db.prepare(
+      `INSERT OR IGNORE INTO agent_links
+         (instance_id, source_agent_id, target_agent_id, link_type)
+       VALUES (?, ?, ?, ?)`,
+    );
+
+    this.db.transaction(() => {
+      del.run(instanceId);
+      for (const link of links) {
+        ins.run(instanceId, link.sourceAgentId, link.targetAgentId, link.linkType);
+      }
+    })();
   }
 
   // --- Ports ---

@@ -1,4 +1,4 @@
-import type { InstanceInfo, AgentInfo, CreateInstanceRequest, ProvidersResponse, ConversationEntry } from "./types.js";
+import type { InstanceInfo, AgentInfo, CreateInstanceRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent } from "./types.js";
 
 declare global {
   interface Window {
@@ -88,4 +88,16 @@ export async function fetchConversations(
     `/instances/${slug}/conversations?limit=${limit}`,
   );
   return data.entries;
+}
+
+export async function syncAgents(slug: string): Promise<SyncResult> {
+  return apiFetch<SyncResult>(`/instances/${slug}/agents/sync`, { method: "POST" });
+}
+
+export async function fetchBuilderData(slug: string): Promise<BuilderData> {
+  return apiFetch<BuilderData>(`/instances/${slug}/agents/builder`);
+}
+
+export async function fetchAgentFile(slug: string, agentId: string, filename: string): Promise<AgentFileContent> {
+  return apiFetch<AgentFileContent>(`/instances/${slug}/agents/${agentId}/files/${filename}`);
 }

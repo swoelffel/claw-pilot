@@ -98,3 +98,65 @@ export interface ConversationEntry {
   /** Current status of the dispatch */
   status?: "running" | "done" | "failed";
 }
+
+// Agents Builder types
+
+export interface AgentFileSummary {
+  filename: string;
+  content_hash: string | null;
+  size: number;
+  updated_at: string | null;
+}
+
+export interface AgentBuilderInfo {
+  id: number;
+  agent_id: string;
+  name: string;
+  model: string | null;
+  workspace_path: string;
+  is_default: boolean;
+  role: string | null;
+  tags: string | null;
+  notes: string | null;
+  synced_at: string | null;
+  files: AgentFileSummary[];
+}
+
+export interface AgentLink {
+  source_agent_id: string;
+  target_agent_id: string;
+  link_type: "a2a" | "spawn";
+}
+
+export interface AgentFileContent {
+  filename: string;
+  content: string;
+  content_hash: string;
+  updated_at: string;
+  editable: boolean;
+}
+
+export interface BuilderData {
+  instance: {
+    slug: string;
+    display_name: string | null;
+    port: number;
+    state: string;
+    default_model: string | null;
+  };
+  agents: AgentBuilderInfo[];
+  links: AgentLink[];
+}
+
+export interface SyncResult {
+  synced: true;
+  agents: AgentBuilderInfo[];
+  links: AgentLink[];
+  changes: {
+    agentsAdded: string[];
+    agentsRemoved: string[];
+    agentsUpdated: string[];
+    filesChanged: number;
+    linksChanged: number;
+  };
+}
