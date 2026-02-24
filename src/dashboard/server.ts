@@ -221,12 +221,14 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       // 3. Write back openclaw.json
       await conn.writeFile(instance.config_path, JSON.stringify(config, null, 2));
 
-      // 4. Restart the daemon so changes take effect
-      await lifecycle.restart(slug);
-
-      // 5. Re-sync agents to update DB + links from the new config
+      // 4. Re-sync agents to update DB + links from the new config (before restart so it always succeeds)
       const agentSync = new AgentSync(conn, registry);
       const result = await agentSync.sync(instance);
+
+      // 5. Restart the daemon fire-and-forget (don't wait for health — instance may be unhealthy)
+      conn.execFile("systemctl", ["--user", "restart", instance.systemd_unit], {
+        env: { XDG_RUNTIME_DIR: xdgRuntimeDir },
+      }).catch(() => { /* best-effort restart */ });
 
       return c.json({
         ok: true,
