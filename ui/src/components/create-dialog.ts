@@ -1,8 +1,10 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { localized, msg } from "@lit/localize";
 import type { AgentDefinition, CreateInstanceRequest, ProviderInfo, ProvidersResponse } from "../types.js";
 import { fetchNextPort, createInstance, fetchProviders } from "../api.js";
 
+@localized()
 @customElement("cp-create-dialog")
 export class CreateDialog extends LitElement {
   static styles = css`
@@ -323,7 +325,7 @@ export class CreateDialog extends LitElement {
     try {
       this._port = await fetchNextPort();
     } catch (err) {
-      this._portError = err instanceof Error ? err.message : "Could not fetch next port";
+      this._portError = err instanceof Error ? err.message : msg("Could not fetch next port", { id: "error-fetch-port" });
       this._port = 18790;
     } finally {
       this._portLoading = false;
@@ -341,7 +343,7 @@ export class CreateDialog extends LitElement {
       this._selectedProvider = defaultProvider;
       this._model = defaultProvider?.defaultModel ?? defaultProvider?.models[0] ?? "";
     } catch (err) {
-      this._providersError = err instanceof Error ? err.message : "Could not load providers";
+      this._providersError = err instanceof Error ? err.message : msg("Could not load providers", { id: "error-load-providers" });
       this._providers = [{
         id: "anthropic",
         label: "Anthropic",
@@ -371,9 +373,9 @@ export class CreateDialog extends LitElement {
   }
 
   private _validateSlug(value: string): string {
-    if (!value) return "Slug is required";
-    if (!/^[a-z][a-z0-9-]*$/.test(value)) return "Lowercase letters, numbers, hyphens only";
-    if (value.length < 2 || value.length > 30) return "Must be 2-30 characters";
+    if (!value) return msg("Slug is required", { id: "error-slug-required" });
+    if (!/^[a-z][a-z0-9-]*$/.test(value)) return msg("Lowercase letters, numbers, hyphens only", { id: "error-slug-format" });
+    if (value.length < 2 || value.length > 30) return msg("Must be 2-30 characters", { id: "error-slug-length" });
     return "";
   }
 
@@ -451,7 +453,7 @@ export class CreateDialog extends LitElement {
       this.dispatchEvent(new CustomEvent("instance-created", { bubbles: true, composed: true }));
       this._close();
     } catch (err) {
-      this._submitError = err instanceof Error ? err.message : "Provisioning failed";
+      this._submitError = err instanceof Error ? err.message : msg("Provisioning failed", { id: "error-provisioning" });
     } finally {
       this._submitting = false;
     }
@@ -461,8 +463,8 @@ export class CreateDialog extends LitElement {
     return html`
       <div class="spinner-overlay">
         <div class="spinner"></div>
-        <div>Provisioning instance <strong>${this._slug}</strong>...</div>
-        <div class="spinner-msg">This may take 20-30 seconds (systemd start + health check)</div>
+        <div>${msg("Provisioning instance", { id: "spinner-provisioning" })} <strong>${this._slug}</strong>...</div>
+        <div class="spinner-msg">${msg("This may take 20-30 seconds (systemd start + health check)", { id: "spinner-wait" })}</div>
       </div>
     `;
   }
@@ -471,8 +473,8 @@ export class CreateDialog extends LitElement {
     if (this._providersLoading) {
       return html`
         <div class="section">
-          <div class="section-label">Provider</div>
-          <span class="field-hint">Loading providers...</span>
+          <div class="section-label">${msg("Provider", { id: "section-provider" })}</div>
+          <span class="field-hint">${msg("Loading providers...", { id: "hint-loading-providers" })}</span>
         </div>
       `;
     }
@@ -481,14 +483,14 @@ export class CreateDialog extends LitElement {
 
     return html`
       <div class="section">
-        <div class="section-label">Provider</div>
+        <div class="section-label">${msg("Provider", { id: "section-provider" })}</div>
 
         ${this._providersError
           ? html`<span class="field-error">${this._providersError}</span>`
           : ""}
 
         <div class="field">
-          <label for="provider">AI Provider *</label>
+          <label for="provider">${msg("AI Provider *", { id: "label-ai-provider" })}</label>
           <select id="provider" @change=${this._onProviderChange}>
             ${this._providers.map((p) => html`
               <option value=${p.id} ?selected=${selected?.id === p.id}>${p.label}</option>
@@ -497,7 +499,7 @@ export class CreateDialog extends LitElement {
         </div>
 
         <div class="field">
-          <label for="model">Default model *</label>
+          <label for="model">${msg("Default model *", { id: "label-default-model-form" })}</label>
           <select
             id="model"
             .value=${this._model}
@@ -512,7 +514,7 @@ export class CreateDialog extends LitElement {
         ${selected?.requiresKey
           ? html`
               <div class="field">
-                <label for="api-key">API Key *</label>
+                <label for="api-key">${msg("API Key *", { id: "label-api-key" })}</label>
                 <input
                   id="api-key"
                   type="password"
@@ -520,14 +522,14 @@ export class CreateDialog extends LitElement {
                   .value=${this._apiKey}
                   @input=${(e: Event) => { this._apiKey = (e.target as HTMLInputElement).value; }}
                 />
-                <span class="field-hint">Your ${selected.label} API key</span>
+                <span class="field-hint">${msg("Your API key", { id: "hint-api-key" })} (${selected.label})</span>
               </div>
             `
           : html`
               <span class="field-hint">
                 ${selected?.id === "opencode"
-                  ? "Uses the OpenCode runtime — no API key required"
-                  : "Credentials will be reused from the existing instance"}
+                  ? msg("Uses the OpenCode runtime — no API key required", { id: "hint-opencode-no-key" })
+                  : msg("Credentials will be reused from the existing instance", { id: "hint-reuse-credentials" })}
               </span>
             `}
       </div>
@@ -551,28 +553,28 @@ export class CreateDialog extends LitElement {
 
         <!-- Identity -->
         <div class="section">
-          <div class="section-label">Identity</div>
+          <div class="section-label">${msg("Identity", { id: "section-identity" })}</div>
           <div class="field-row">
             <div class="field">
-              <label for="slug">Slug *</label>
+              <label for="slug">${msg("Slug *", { id: "label-slug" })}</label>
               <input
                 id="slug"
                 type="text"
-                placeholder="e.g. dev-team"
+                placeholder=${msg("e.g. dev-team", { id: "placeholder-slug" })}
                 .value=${this._slug}
                 class=${this._slugError ? "invalid" : ""}
                 @input=${this._onSlugInput}
               />
               ${this._slugError
                 ? html`<span class="field-error">${this._slugError}</span>`
-                : html`<span class="field-hint">Lowercase, 2-30 chars</span>`}
+                : html`<span class="field-hint">${msg("Lowercase, 2-30 chars", { id: "hint-slug" })}</span>`}
             </div>
             <div class="field">
-              <label for="display-name">Display name</label>
+              <label for="display-name">${msg("Display name", { id: "label-display-name" })}</label>
               <input
                 id="display-name"
                 type="text"
-                placeholder="e.g. Dev Team"
+                placeholder=${msg("e.g. Dev Team", { id: "placeholder-display-name" })}
                 .value=${this._displayName}
                 @input=${(e: Event) => { this._displayName = (e.target as HTMLInputElement).value; }}
               />
@@ -584,9 +586,9 @@ export class CreateDialog extends LitElement {
 
         <!-- Port -->
         <div class="section">
-          <div class="section-label">Configuration</div>
+          <div class="section-label">${msg("Configuration", { id: "section-configuration" })}</div>
           <div class="field">
-            <label for="port">Gateway port *</label>
+            <label for="port">${msg("Gateway port *", { id: "label-gateway-port" })}</label>
             <input
               id="port"
               type="number"
@@ -594,12 +596,12 @@ export class CreateDialog extends LitElement {
               max="65535"
               .value=${this._portLoading ? "" : String(this._port)}
               ?disabled=${this._portLoading}
-              placeholder=${this._portLoading ? "Loading..." : ""}
+              placeholder=${this._portLoading ? msg("Loading...", { id: "placeholder-loading" }) : ""}
               @input=${(e: Event) => { this._port = parseInt((e.target as HTMLInputElement).value) || 0; }}
             />
             ${this._portError
               ? html`<span class="field-error">${this._portError}</span>`
-              : html`<span class="field-hint">Auto-suggested from free range</span>`}
+              : html`<span class="field-hint">${msg("Auto-suggested from free range", { id: "hint-port" })}</span>`}
           </div>
         </div>
 
@@ -612,16 +614,16 @@ export class CreateDialog extends LitElement {
 
         <!-- Agents -->
         <div class="section">
-          <div class="section-label">Agent team</div>
+          <div class="section-label">${msg("Agent team", { id: "section-agent-team" })}</div>
           <div class="agent-mode-toggle">
             <button
               class="toggle-btn ${this._agentMode === "minimal" ? "active" : ""}"
               @click=${() => { this._agentMode = "minimal"; }}
-            >Minimal (main only)</button>
+            >${msg("Minimal (main only)", { id: "toggle-minimal" })}</button>
             <button
               class="toggle-btn ${this._agentMode === "custom" ? "active" : ""}"
               @click=${() => { this._agentMode = "custom"; }}
-            >Custom agents</button>
+            >${msg("Custom agents", { id: "toggle-custom" })}</button>
           </div>
 
           ${this._agentMode === "custom"
@@ -638,23 +640,23 @@ export class CreateDialog extends LitElement {
                     <div class="agent-row">
                       <input
                         type="text"
-                        placeholder="agent-id"
+                        placeholder=${msg("agent-id", { id: "placeholder-agent-id" })}
                         .value=${agent.id}
                         @input=${(e: Event) => this._updateAgent(idx, "id", (e.target as HTMLInputElement).value)}
                       />
                       <input
                         type="text"
-                        placeholder="Display name"
+                        placeholder=${msg("Display name", { id: "placeholder-agent-name" })}
                         .value=${agent.name}
                         @input=${(e: Event) => this._updateAgent(idx, "name", (e.target as HTMLInputElement).value)}
                       />
                       <button class="agent-remove" @click=${() => this._removeAgent(idx)}>✕</button>
                     </div>
                   `)}
-                  <button class="add-agent-btn" @click=${this._addAgent}>+ Add agent</button>
+                  <button class="add-agent-btn" @click=${this._addAgent}>${msg("+ Add agent", { id: "btn-add-agent" })}</button>
                 </div>
               `
-            : html`<span class="field-hint">Single main agent — you can add more later via CLI</span>`}
+            : html`<span class="field-hint">${msg("Single main agent — you can add more later via CLI", { id: "hint-minimal-agent" })}</span>`}
         </div>
 
         ${this._submitError
@@ -664,12 +666,12 @@ export class CreateDialog extends LitElement {
       </div>
 
       <div class="dialog-footer">
-        <button class="btn btn-cancel" @click=${this._close}>Cancel</button>
+        <button class="btn btn-cancel" @click=${this._close}>${msg("Cancel", { id: "btn-cancel-dialog" })}</button>
         <button
           class="btn btn-create"
           ?disabled=${!this._isFormValid()}
           @click=${this._submit}
-        >Create Instance</button>
+        >${msg("Create Instance", { id: "btn-create-instance" })}</button>
       </div>
     `;
   }
@@ -679,7 +681,7 @@ export class CreateDialog extends LitElement {
       <div class="overlay" @click=${(e: Event) => { if (e.target === e.currentTarget) this._close(); }}>
         <div class="dialog">
           <div class="dialog-header">
-            <span class="dialog-title">New Instance</span>
+            <span class="dialog-title">${msg("New Instance", { id: "dialog-title" })}</span>
             <button class="close-btn" @click=${this._close} ?disabled=${this._submitting}>✕</button>
           </div>
           ${this._submitting ? this._renderSpinner() : this._renderForm()}

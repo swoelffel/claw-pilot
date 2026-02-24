@@ -1,8 +1,13 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { localized, msg } from "@lit/localize";
+import { initLocale } from "./localization.js";
 import type { InstanceInfo, WsMessage } from "./types.js";
 import "./components/cluster-view.js";
 import "./components/instance-detail.js";
+
+// Initialize locale once at module load (async, non-blocking)
+initLocale();
 
 declare global {
   interface Window {
@@ -15,6 +20,7 @@ type Route =
   | { view: "cluster" }
   | { view: "instance"; slug: string };
 
+@localized()
 @customElement("cp-app")
 export class CpApp extends LitElement {
   static styles = css`
@@ -322,7 +328,9 @@ export class CpApp extends LitElement {
           ${instanceCount > 0
             ? html`
                 <span class="instance-badge">
-                  ${instanceCount} instance${instanceCount !== 1 ? "s" : ""}
+                  ${instanceCount} ${instanceCount !== 1
+                    ? msg("instances", { id: "instance-count-many" })
+                    : msg("instance", { id: "instance-count-one" })}
                 </span>
               `
             : ""}
@@ -332,7 +340,9 @@ export class CpApp extends LitElement {
             <span
               class="ws-dot ${this._wsConnected ? "connected" : "disconnected"}"
             ></span>
-            ${this._wsConnected ? "Live" : "Offline"}
+            ${this._wsConnected
+              ? msg("Live", { id: "ws-live" })
+              : msg("Offline", { id: "ws-offline" })}
           </div>
         </div>
       </header>
@@ -351,17 +361,17 @@ export class CpApp extends LitElement {
             href="https://github.com/swoelffel/claw-pilot"
             target="_blank"
             rel="noopener"
-          >GitHub</a>
+          >${msg("GitHub", { id: "footer-github" })}</a>
           <span class="footer-sep">·</span>
           <a
             class="footer-link"
             href="https://github.com/swoelffel/claw-pilot/issues"
             target="_blank"
             rel="noopener"
-          >Issues</a>
+          >${msg("Issues", { id: "footer-issues" })}</a>
         </div>
         <div class="footer-right">
-          <span>© ${new Date().getFullYear()} SWO — MIT License</span>
+          <span>© ${new Date().getFullYear()} SWO — ${msg("MIT License", { id: "footer-license" })}</span>
         </div>
       </footer>
     `;

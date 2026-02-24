@@ -1,8 +1,10 @@
 import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { localized, msg } from "@lit/localize";
 import type { InstanceInfo } from "../types.js";
 import { startInstance, stopInstance, restartInstance } from "../api.js";
 
+@localized()
 @customElement("cp-instance-card")
 export class InstanceCard extends LitElement {
   static styles = css`
@@ -232,7 +234,7 @@ export class InstanceCard extends LitElement {
     try {
       await fn(this.instance.slug);
     } catch (err) {
-      this._error = err instanceof Error ? err.message : "Action failed";
+      this._error = err instanceof Error ? err.message : msg("Action failed", { id: "action-failed" });
     } finally {
       this._loading = false;
     }
@@ -263,13 +265,15 @@ export class InstanceCard extends LitElement {
 
         <div class="meta">
           <div class="meta-item">
-            <span class="meta-label">Port</span>
+            <span class="meta-label">${msg("Port", { id: "meta-port" })}</span>
             <span class="meta-value">:${inst.port}</span>
           </div>
           ${inst.agentCount !== undefined
             ? html`
                 <div class="meta-item">
-                  <span class="meta-label">${inst.agentCount === 1 ? "Agent" : "Agents"}</span>
+                  <span class="meta-label">${inst.agentCount === 1
+                    ? msg("Agent", { id: "meta-agent" })
+                    : msg("Agents", { id: "meta-agents" })}</span>
                   <span class="meta-value">:${inst.agentCount}</span>
                 </div>
               `
@@ -284,7 +288,7 @@ export class InstanceCard extends LitElement {
           ${inst.default_model
             ? html`
                 <div class="meta-item">
-                  <span class="meta-label">Model</span>
+                  <span class="meta-label">${msg("Model", { id: "meta-model" })}</span>
                   <span class="meta-value">${inst.default_model}</span>
                 </div>
               `
@@ -297,21 +301,21 @@ export class InstanceCard extends LitElement {
             ?disabled=${this._loading}
             @click=${(e: Event) => this._action(e, startInstance)}
           >
-            Start
+            ${msg("Start", { id: "btn-start" })}
           </button>
           <button
             class="btn btn-stop"
             ?disabled=${this._loading}
             @click=${(e: Event) => this._action(e, stopInstance)}
           >
-            Stop
+            ${msg("Stop", { id: "btn-stop" })}
           </button>
           <button
             class="btn btn-restart"
             ?disabled=${this._loading}
             @click=${(e: Event) => this._action(e, restartInstance)}
           >
-            Restart
+            ${msg("Restart", { id: "btn-restart" })}
           </button>
           ${inst.state === "running"
             ? html`<a
@@ -322,7 +326,7 @@ export class InstanceCard extends LitElement {
                 target="_blank"
                 rel="noopener"
                 @click=${(e: Event) => e.stopPropagation()}
-              >⎋ UI</a>`
+              >${msg("⎋ UI", { id: "btn-open-ui" })}</a>`
             : ""}
         </div>
 

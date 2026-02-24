@@ -1,5 +1,6 @@
 import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { localized, msg } from "@lit/localize";
 import type { InstanceInfo, AgentInfo, ConversationEntry } from "../types.js";
 import {
   fetchInstance,
@@ -12,6 +13,7 @@ import {
 } from "../api.js";
 
 
+@localized()
 @customElement("cp-instance-detail")
 export class InstanceDetail extends LitElement {
   static styles = css`
@@ -535,7 +537,7 @@ export class InstanceDetail extends LitElement {
       this._agents = agents;
     } catch (err) {
       this._error =
-        err instanceof Error ? err.message : "Failed to load instance";
+        err instanceof Error ? err.message : msg("Failed to load instance", { id: "failed-load-instance" });
     } finally {
       this._loading = false;
     }
@@ -567,7 +569,7 @@ export class InstanceDetail extends LitElement {
       await this._load();
     } catch (err) {
       this._actionError =
-        err instanceof Error ? err.message : "Action failed";
+        err instanceof Error ? err.message : msg("Action failed", { id: "action-failed-detail" });
     } finally {
       this._actionLoading = false;
     }
@@ -588,7 +590,7 @@ export class InstanceDetail extends LitElement {
       );
       this._back();
     } catch (err) {
-      this._deleteError = err instanceof Error ? err.message : "Delete failed";
+      this._deleteError = err instanceof Error ? err.message : msg("Delete failed", { id: "delete-failed" });
       this._deleting = false;
     }
   }
@@ -602,7 +604,7 @@ export class InstanceDetail extends LitElement {
   }
 
   private _formatTime(ts: number): string {
-    return new Date(ts).toLocaleTimeString("fr-FR", {
+    return new Date(ts).toLocaleTimeString(navigator.language, {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
@@ -625,21 +627,21 @@ export class InstanceDetail extends LitElement {
               class="btn btn-start"
               ?disabled=${dis}
               @click=${() => this._action(startInstance)}
-            >Start</button>`
+            >${msg("Start", { id: "btn-start-detail" })}</button>`
           : ""}
         ${showStop
           ? html`<button
               class="btn btn-stop"
               ?disabled=${dis}
               @click=${() => this._action(stopInstance)}
-            >Stop</button>`
+            >${msg("Stop", { id: "btn-stop-detail" })}</button>`
           : ""}
         ${showRestart
           ? html`<button
               class="btn btn-restart"
               ?disabled=${dis}
               @click=${() => this._action(restartInstance)}
-            >Restart</button>`
+            >${msg("Restart", { id: "btn-restart-detail" })}</button>`
           : ""}
         ${showUI
           ? html`<a
@@ -647,7 +649,7 @@ export class InstanceDetail extends LitElement {
               href=${this._controlUrl()}
               target="_blank"
               rel="noopener"
-            >⎋ Open UI</a>`
+            >${msg("⎋ Open UI", { id: "btn-open-ui-detail" })}</a>`
           : ""}
         <button
           class="btn btn-delete"
@@ -657,7 +659,7 @@ export class InstanceDetail extends LitElement {
             this._deleteSlugInput = "";
             this._deleteError = "";
           }}
-        >Delete</button>
+        >${msg("Delete", { id: "btn-delete" })}</button>
       </div>
       ${this._actionError
         ? html`<div class="action-error">${this._actionError}</div>`
@@ -668,11 +670,11 @@ export class InstanceDetail extends LitElement {
   private _renderConversations() {
     return html`
       <div class="section">
-        <div class="section-title">Recent Conversations</div>
+        <div class="section-title">${msg("Recent Conversations", { id: "section-conversations" })}</div>
         ${this._convLoading
-          ? html`<div class="empty-agents">Loading…</div>`
+          ? html`<div class="empty-agents">${msg("Loading…", { id: "loading-ellipsis" })}</div>`
           : this._conversations.length === 0
-            ? html`<div class="empty-agents">No conversations yet</div>`
+            ? html`<div class="empty-agents">${msg("No conversations yet", { id: "no-conversations" })}</div>`
             : html`
                 <ul class="conv-list">
                   ${this._conversations.map(
@@ -700,15 +702,15 @@ export class InstanceDetail extends LitElement {
   override render() {
     if (this._loading) {
       return html`
-        <button class="back-btn" @click=${this._back}>&#8592; Back</button>
-        <div class="loading">Loading instance...</div>
+        <button class="back-btn" @click=${this._back}>${msg("← Back", { id: "btn-back" })}</button>
+        <div class="loading">${msg("Loading instance...", { id: "loading-instance" })}</div>
       `;
     }
 
     if (this._error || !this._instance) {
       return html`
-        <button class="back-btn" @click=${this._back}>&#8592; Back</button>
-        <div class="error-banner">${this._error || "Instance not found"}</div>
+        <button class="back-btn" @click=${this._back}>${msg("← Back", { id: "btn-back" })}</button>
+        <div class="error-banner">${this._error || msg("Instance not found", { id: "instance-not-found" })}</div>
       `;
     }
 
@@ -716,7 +718,7 @@ export class InstanceDetail extends LitElement {
     const stateClass = inst.state ?? "unknown";
 
     return html`
-      <button class="back-btn" @click=${this._back}>&#8592; Back</button>
+      <button class="back-btn" @click=${this._back}>${msg("← Back", { id: "btn-back" })}</button>
 
       <div class="detail-header">
         <div>
@@ -736,10 +738,9 @@ export class InstanceDetail extends LitElement {
       ${this._showDeleteConfirm
         ? html`
             <div class="delete-confirm">
-              <div class="delete-confirm-title">Permanently destroy "${inst.slug}"?</div>
+              <div class="delete-confirm-title">${msg("Permanently destroy", { id: "delete-confirm-title" })} "${inst.slug}"?</div>
               <div class="delete-confirm-hint">
-                This will stop the service, remove all files and the registry entry.
-                Type the instance slug to confirm.
+                ${msg("This will stop the service, remove all files and the registry entry. Type the instance slug to confirm.", { id: "delete-confirm-hint" })}
               </div>
               <div class="delete-confirm-row">
                 <input
@@ -759,14 +760,16 @@ export class InstanceDetail extends LitElement {
                   ?disabled=${this._deleteSlugInput !== inst.slug || this._deleting}
                   @click=${this._confirmDelete}
                 >
-                  ${this._deleting ? "Deleting…" : "Destroy"}
+                  ${this._deleting
+                    ? msg("Deleting…", { id: "btn-deleting" })
+                    : msg("Destroy", { id: "btn-destroy" })}
                 </button>
                 <button
                   class="btn-cancel-delete"
                   ?disabled=${this._deleting}
                   @click=${() => { this._showDeleteConfirm = false; }}
                 >
-                  Cancel
+                  ${msg("Cancel", { id: "btn-cancel" })}
                 </button>
               </div>
               ${this._deleteError
@@ -777,20 +780,20 @@ export class InstanceDetail extends LitElement {
         : ""}
 
       <div class="section">
-        <div class="section-title">Instance Info</div>
+        <div class="section-title">${msg("Instance Info", { id: "section-instance-info" })}</div>
         <div class="info-grid">
           <div class="info-item">
-            <span class="info-label">Port</span>
+            <span class="info-label">${msg("Port", { id: "label-port" })}</span>
             <span class="info-value">:${inst.port}</span>
           </div>
           <div class="info-item">
-            <span class="info-label">Systemd Unit</span>
+            <span class="info-label">${msg("Systemd Unit", { id: "label-systemd-unit" })}</span>
             <span class="info-value">${inst.systemd_unit}</span>
           </div>
           ${inst.telegram_bot
             ? html`
                 <div class="info-item">
-                  <span class="info-label">Telegram Bot</span>
+                  <span class="info-label">${msg("Telegram Bot", { id: "label-telegram-bot" })}</span>
                   <span class="info-value">${inst.telegram_bot}</span>
                 </div>
               `
@@ -798,38 +801,38 @@ export class InstanceDetail extends LitElement {
           ${inst.default_model
             ? html`
                 <div class="info-item">
-                  <span class="info-label">Default Model</span>
+                  <span class="info-label">${msg("Default Model", { id: "label-default-model" })}</span>
                   <span class="info-value">${inst.default_model}</span>
                 </div>
               `
             : ""}
           <div class="info-item">
-            <span class="info-label">Config Path</span>
+            <span class="info-label">${msg("Config Path", { id: "label-config-path" })}</span>
             <span class="info-value">${inst.config_path}</span>
           </div>
           <div class="info-item">
-            <span class="info-label">State Dir</span>
+            <span class="info-label">${msg("State Dir", { id: "label-state-dir" })}</span>
             <span class="info-value">${inst.state_dir}</span>
           </div>
           <div class="info-item">
-            <span class="info-label">Created</span>
+            <span class="info-label">${msg("Created", { id: "label-created" })}</span>
             <span class="info-value">${inst.created_at}</span>
           </div>
         </div>
       </div>
 
       <div class="section">
-        <div class="section-title">Agents (${this._agents.length})</div>
+        <div class="section-title">${msg("Agents", { id: "section-agents" })} (${this._agents.length})</div>
         ${this._agents.length === 0
-          ? html`<div class="empty-agents">No agents registered</div>`
+          ? html`<div class="empty-agents">${msg("No agents registered", { id: "no-agents" })}</div>`
           : html`
               <table>
                 <thead>
                   <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Model</th>
-                    <th>Workspace</th>
+                    <th>${msg("ID", { id: "table-id" })}</th>
+                    <th>${msg("Name", { id: "table-name" })}</th>
+                    <th>${msg("Model", { id: "table-model" })}</th>
+                    <th>${msg("Workspace", { id: "table-workspace" })}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -839,7 +842,7 @@ export class InstanceDetail extends LitElement {
                         <td>
                           ${agent.agent_id}
                           ${agent.is_default
-                            ? html`<span class="default-badge">default</span>`
+                            ? html`<span class="default-badge">${msg("default", { id: "agent-default-badge" })}</span>`
                             : ""}
                         </td>
                         <td>${agent.name}</td>

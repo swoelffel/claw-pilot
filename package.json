@@ -34,6 +34,7 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^7",
+    "@lit/localize": "^0.12.2",
     "better-sqlite3": "^11",
     "chalk": "^5",
     "cli-table3": "^0.6",

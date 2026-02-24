@@ -1,10 +1,12 @@
 import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { localized, msg } from "@lit/localize";
 import type { InstanceInfo } from "../types.js";
 import { fetchInstances } from "../api.js";
 import "./instance-card.js";
 import "./create-dialog.js";
 
+@localized()
 @customElement("cp-cluster-view")
 export class ClusterView extends LitElement {
   static styles = css`
@@ -107,7 +109,7 @@ export class ClusterView extends LitElement {
         }),
       );
     } catch (err) {
-      this._error = err instanceof Error ? err.message : "Failed to load instances";
+      this._error = err instanceof Error ? err.message : msg("Failed to load instances", { id: "error-load-instances" });
     } finally {
       this._loading = false;
     }
@@ -126,7 +128,7 @@ export class ClusterView extends LitElement {
 
   override render() {
     if (this._loading) {
-      return html`<div class="loading">Loading instances...</div>`;
+      return html`<div class="loading">${msg("Loading instances...", { id: "loading-instances" })}</div>`;
     }
 
     return html`
@@ -136,10 +138,12 @@ export class ClusterView extends LitElement {
 
       <div class="section-header">
         <div class="section-title">
-          ${this.instances.length} instance${this.instances.length !== 1 ? "s" : ""}
+          ${this.instances.length} ${this.instances.length !== 1
+            ? msg("instances", { id: "instance-count-many" })
+            : msg("instance", { id: "instance-count-one" })}
         </div>
         <button class="btn-new" @click=${() => { this._showCreateDialog = true; }}>
-          + New Instance
+          ${msg("+ New Instance", { id: "btn-new-instance" })}
         </button>
       </div>
 
@@ -147,7 +151,7 @@ export class ClusterView extends LitElement {
         ? html`
             <div class="empty">
               <div class="empty-icon">&#9634;</div>
-              No instances found
+              ${msg("No instances found", { id: "no-instances-found" })}
             </div>
           `
         : html`
