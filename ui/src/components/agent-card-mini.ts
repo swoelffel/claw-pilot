@@ -58,14 +58,52 @@ export class AgentCardMini extends LitElement {
       max-width: 180px;
     }
 
+    /* row 1 : name + delete button */
     .card-top {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      margin-bottom: 4px;
-      padding-bottom: 2px;
+      gap: 4px;
+      margin-bottom: 3px;
     }
 
+    .agent-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* row 2 : slug (left) + file count (right) */
+    .card-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+
+    .agent-id {
+      font-size: 10px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+
+    .file-count {
+      font-size: 10px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* badges (default / a2a) — now unused in card-top, kept for card-bottom if needed */
     .badge-default {
       font-size: 9px;
       font-weight: 700;
@@ -76,6 +114,7 @@ export class AgentCardMini extends LitElement {
       border: 1px solid var(--accent-border);
       border-radius: 3px;
       padding: 1px 5px;
+      flex-shrink: 0;
     }
 
     .badge-a2a {
@@ -88,28 +127,7 @@ export class AgentCardMini extends LitElement {
       border: 1px solid var(--accent-border);
       border-radius: 3px;
       padding: 1px 5px;
-    }
-
-    .file-count {
-      font-size: 10px;
-      color: var(--text-muted);
-    }
-
-    .agent-name {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-primary);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-bottom: 2px;
-    }
-
-    .agent-id {
-      font-size: 10px;
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-      margin-bottom: 4px;
+      flex-shrink: 0;
     }
 
     .card-bottom {
@@ -193,13 +211,9 @@ export class AgentCardMini extends LitElement {
         class="card ${a.is_default ? "is-default" : ""} ${this.selected ? "selected" : ""} ${this.isA2A ? "is-a2a" : ""}"
         @click=${() => this.dispatchEvent(new CustomEvent("agent-select", { detail: { agentId: a.agent_id }, bubbles: true, composed: true }))}
       >
+        <!-- row 1 : name + delete -->
         <div class="card-top">
-          ${a.is_default
-            ? html`<span class="badge-default">${msg("Default", { id: "acm-badge-default" })}</span>`
-            : this.isA2A
-              ? html`<span class="badge-a2a">${msg("A2A", { id: "acm-badge-a2a" })}</span>`
-              : html`<span></span>`}
-          <span class="file-count">${a.files.length} ${msg("files", { id: "acm-files" })}</span>
+          <span class="agent-name" title=${a.name}>${this._truncate(a.name, 22)}</span>
           ${this.deletable ? html`
             <button
               class="btn-delete"
@@ -215,9 +229,18 @@ export class AgentCardMini extends LitElement {
             >✕</button>
           ` : nothing}
         </div>
-        <div class="agent-name" title=${a.name}>${this._truncate(a.name, 25)}</div>
-        <div class="agent-id">${a.agent_id}</div>
+        <!-- row 2 : slug (left) + file count (right) -->
+        <div class="card-meta">
+          <span class="agent-id">${a.agent_id}</span>
+          <span class="file-count">${a.files.length} ${msg("files", { id: "acm-files" })}</span>
+        </div>
+        <!-- row 3 : badges + model -->
         <div class="card-bottom">
+          ${a.is_default
+            ? html`<span class="badge-default">${msg("Default", { id: "acm-badge-default" })}</span>`
+            : this.isA2A
+              ? html`<span class="badge-a2a">${msg("A2A", { id: "acm-badge-a2a" })}</span>`
+              : nothing}
           ${a.role ? html`<span class="badge-role">${a.role}</span>` : ""}
           ${modelShort ? html`<span class="model-label" title=${model ?? ""}>${modelShort}</span>` : ""}
         </div>
