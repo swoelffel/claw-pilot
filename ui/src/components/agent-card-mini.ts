@@ -63,6 +63,7 @@ export class AgentCardMini extends LitElement {
       align-items: center;
       justify-content: space-between;
       margin-bottom: 4px;
+      padding-bottom: 2px;
     }
 
     .badge-default {
@@ -138,34 +139,23 @@ export class AgentCardMini extends LitElement {
     }
 
     .btn-delete {
-      position: absolute;
-      top: 4px;
-      right: 4px;
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
+      background: none;
       border: none;
-      background: var(--state-error, #ef4444);
-      color: white;
-      font-size: 10px;
-      line-height: 1;
+      color: var(--text-muted);
       cursor: pointer;
-      opacity: 0;
-      transition: opacity 0.15s ease;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0;
-      z-index: 2;
-    }
-
-    :host(:hover) .btn-delete,
-    :host(:focus-within) .btn-delete {
-      opacity: 1;
+      font-size: 14px;
+      line-height: 1;
+      padding: 2px 3px;
+      border-radius: var(--radius-sm);
+      opacity: 0.45;
+      transition: opacity 0.15s, color 0.15s, background 0.15s;
+      flex-shrink: 0;
     }
 
     .btn-delete:hover {
-      background: #c53030;
+      opacity: 1;
+      color: var(--state-error, #ef4444);
+      background: color-mix(in srgb, var(--state-error, #ef4444) 10%, transparent);
     }
   `];
 
@@ -210,6 +200,20 @@ export class AgentCardMini extends LitElement {
               ? html`<span class="badge-a2a">${msg("A2A", { id: "acm-badge-a2a" })}</span>`
               : html`<span></span>`}
           <span class="file-count">${a.files.length} ${msg("files", { id: "acm-files" })}</span>
+          ${this.deletable ? html`
+            <button
+              class="btn-delete"
+              title=${msg("Delete agent", { id: "acm-btn-delete" })}
+              @click=${(e: Event) => {
+                e.stopPropagation();
+                this.dispatchEvent(new CustomEvent("agent-delete-requested", {
+                  detail: { agentId: this.agent.agent_id },
+                  bubbles: true,
+                  composed: true,
+                }));
+              }}
+            >✕</button>
+          ` : nothing}
         </div>
         <div class="agent-name" title=${a.name}>${this._truncate(a.name, 25)}</div>
         <div class="agent-id">${a.agent_id}</div>
@@ -217,20 +221,6 @@ export class AgentCardMini extends LitElement {
           ${a.role ? html`<span class="badge-role">${a.role}</span>` : ""}
           ${modelShort ? html`<span class="model-label" title=${model ?? ""}>${modelShort}</span>` : ""}
         </div>
-        ${this.deletable ? html`
-          <button
-            class="btn-delete"
-            title=${msg("Delete agent", { id: "acm-btn-delete" })}
-            @click=${(e: Event) => {
-              e.stopPropagation();
-              this.dispatchEvent(new CustomEvent("agent-delete-requested", {
-                detail: { agentId: this.agent.agent_id },
-                bubbles: true,
-                composed: true,
-              }));
-            }}
-          >✕</button>
-        ` : nothing}
       </div>
     `;
   }

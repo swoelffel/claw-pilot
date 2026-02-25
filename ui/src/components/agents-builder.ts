@@ -387,6 +387,12 @@ export class AgentsBuilder extends LitElement {
     ) as HTMLElement | undefined;
     if (!card) return;
 
+    // If the click originated from the delete button, don't start a drag
+    const isDeleteBtn = (e.composedPath() as Element[]).some(
+      el => el instanceof Element && el.classList.contains("btn-delete"),
+    );
+    if (isDeleteBtn) return;
+
     const agentId = card.dataset["agentId"];
     if (!agentId) return;
 
