@@ -49,6 +49,8 @@ export class AgentProvisioner {
     const config = JSON.parse(configRaw) as Record<string, unknown>;
 
     // 6. Add agent to agents.list[]
+    // Use absolute path so agent-sync.ts resolveWorkspace() doesn't mangle it
+    // (resolveWorkspace prefixes stateDir/workspaces/ for relative paths)
     const agentsConf = (config["agents"] ?? {}) as Record<string, unknown>;
     config["agents"] = agentsConf;
     if (!Array.isArray(agentsConf["list"])) {
@@ -58,7 +60,7 @@ export class AgentProvisioner {
       id: data.agentSlug,
       name: data.name,
       model: `${data.provider}/${data.model}`,
-      workspace: `./workspace-${data.agentSlug}/`,
+      workspace: workspaceDir,  // absolute path — avoids resolveWorkspace() prefix bug
     });
 
     // 7. Write openclaw.json back

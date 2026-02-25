@@ -313,27 +313,34 @@ export class AgentsBuilder extends LitElement {
     this._showCreateDialog = false;
     // Identify the new agent — find agent_id present in builderData but not in current data
     const currentAgentIds = new Set(this._data?.agents.map(a => a.agent_id) ?? []);
+    const newAgent = builderData.agents.find(a => !currentAgentIds.has(a.agent_id))
+      ?? builderData.agents.at(-1)
+      ?? null;
+
+    // Pre-inject a top-right position for the new agent so computePositions
+    // picks it up from in-memory (priority 1) instead of falling back to concentric
+    const positionsWithNew = new Map(this._positions);
+    if (newAgent) {
+      const CARD_W = 160;
+      const CARD_H = 80;
+      const MARGIN = 24;
+      positionsWithNew.set(newAgent.agent_id, {
+        x: this._canvasWidth - CARD_W / 2 - MARGIN,
+        y: CARD_H / 2 + MARGIN,
+      });
+    }
+
     this._data = builderData;
     this._positions = computePositions(
       builderData.agents,
       this._canvasWidth,
       this._canvasHeight,
-      this._positions,
+      positionsWithNew,
     );
-    // Find the newly added agent
-    const newAgent = builderData.agents.find(a => !currentAgentIds.has(a.agent_id))
-      ?? builderData.agents.at(-1)
-      ?? null;
+
     if (newAgent) {
       this._justCreatedAgentId = newAgent.agent_id;
       this._selectedAgentId = newAgent.agent_id;
-      // Recompute to include the new agent
-      this._positions = computePositions(
-        builderData.agents,
-        this._canvasWidth,
-        this._canvasHeight,
-        this._positions,
-      );
       setTimeout(() => { this._justCreatedAgentId = null; }, 2000);
     }
   }
