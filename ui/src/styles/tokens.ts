@@ -1,5 +1,9 @@
 import { css } from "lit";
 
+// Tokens injectés sur :host de chaque composant.
+// Les CSS custom properties traversent le Shadow DOM par héritage —
+// elles sont donc disponibles dans tous les composants enfants
+// à condition que chaque composant les redéclare sur son :host.
 export const tokenStyles = css`
   :host {
     --bg-base:        #0f1117;
@@ -37,6 +41,8 @@ export const tokenStyles = css`
     --space-8: 32px;
 
     --focus-ring: 0 0 0 2px rgba(79, 110, 247, 0.5);
+
+    font-family: var(--font-ui);
   }
 
   :host *:focus-visible {
