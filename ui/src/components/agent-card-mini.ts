@@ -13,6 +13,7 @@ export class AgentCardMini extends LitElement {
       display: block;
       position: absolute;
       transform: translate(-50%, -50%);
+      cursor: grab;
     }
 
     .card {
@@ -20,7 +21,7 @@ export class AgentCardMini extends LitElement {
       border: 1px solid var(--bg-border);
       border-radius: var(--radius-md);
       padding: 8px 10px;
-      cursor: pointer;
+      cursor: inherit;
       transition: box-shadow 0.15s, border-color 0.15s;
       user-select: none;
       min-width: 130px;
@@ -38,6 +39,17 @@ export class AgentCardMini extends LitElement {
     .card.selected {
       border-color: var(--accent);
       box-shadow: 0 0 0 1px var(--accent-border);
+    }
+
+    :host([is-new]) .card {
+      border: 2px solid var(--state-success, #22c55e);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--state-success, #22c55e) 20%, transparent);
+      animation: new-agent-pulse 2s ease-out forwards;
+    }
+
+    @keyframes new-agent-pulse {
+      0%   { box-shadow: 0 0 0 4px color-mix(in srgb, var(--state-success, #22c55e) 30%, transparent); }
+      100% { box-shadow: 0 0 0 0px color-mix(in srgb, var(--state-success, #22c55e) 0%, transparent); }
     }
 
     .card.is-default {
@@ -128,6 +140,7 @@ export class AgentCardMini extends LitElement {
   @property({ type: Object }) agent!: AgentBuilderInfo;
   @property({ type: Boolean }) selected = false;
   @property({ type: Boolean }) isA2A = false;
+  @property({ type: Boolean, reflect: true }) isNew = false;
 
   private _truncate(str: string, max: number): string {
     return str.length > max ? str.slice(0, max) + "…" : str;

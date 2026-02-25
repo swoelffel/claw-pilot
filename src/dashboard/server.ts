@@ -15,6 +15,8 @@ import { Provisioner } from "../core/provisioner.js";
 import { PortAllocator } from "../core/port-allocator.js";
 import { PairingManager } from "../core/pairing.js";
 import { AgentSync, EDITABLE_FILES } from "../core/agent-sync.js";
+import { AgentProvisioner } from "../core/agent-provisioner.js";
+import type { CreateAgentData } from "../core/agent-provisioner.js";
 import { Monitor } from "./monitor.js";
 import { ClawPilotError, InstanceNotFoundError } from "../lib/errors.js";
 import { resolveXdgRuntimeDir } from "../lib/xdg.js";
@@ -151,6 +153,8 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
         tags: agent.tags ?? null,
         notes: agent.notes ?? null,
         synced_at: agent.synced_at ?? null,
+        position_x: agent.position_x ?? null,
+        position_y: agent.position_y ?? null,
         files,
       };
     });
@@ -170,6 +174,107 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
         link_type: l.link_type,
       })),
     });
+  });
+
+  // PATCH /api/instances/:slug/agents/:agentId/position — persist canvas position
+  app.patch("/api/instances/:slug/agents/:agentId/position", async (c) => {
+    const slug = c.req.param("slug");
+    const agentId = c.req.param("agentId");
+    const instance = registry.getInstance(slug);
+    if (!instance) return c.json({ error: "Not found" }, 404);
+
+    let body: { x: number; y: number };
+    try {
+      body = await c.req.json() as { x: number; y: number };
+      if (typeof body.x !== "number" || typeof body.y !== "number") {
+        return c.json({ error: "x and y must be numbers" }, 400);
+      }
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const agent = registry.getAgentByAgentId(instance.id, agentId);
+    if (!agent) return c.json({ error: "Agent not found" }, 404);
+
+    registry.updateAgentPosition(agent.id, body.x, body.y);
+    return c.json({ ok: true });
+  });
+
+  // POST /api/instances/:slug/agents — create a new agent
+  app.post("/api/instances/:slug/agents", async (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    if (!instance) return c.json({ error: "Not found" }, 404);
+
+    let body: CreateAgentData;
+    try {
+      body = await c.req.json() as CreateAgentData;
+      if (!body.agentSlug || !body.name || !body.provider || !body.model) {
+        return c.json({ error: "Missing required fields: agentSlug, name, provider, model" }, 400);
+      }
+      // Validate slug format
+      if (!/^[a-z][a-z0-9-]*$/.test(body.agentSlug) || body.agentSlug.length < 2 || body.agentSlug.length > 30) {
+        return c.json({ error: "Invalid agentSlug: must be 2-30 lowercase alphanumeric chars with hyphens" }, 400);
+      }
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    try {
+      const provisioner = new AgentProvisioner(conn, registry);
+      await provisioner.createAgent(instance, body);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return c.json({ error: msg }, 409);
+    }
+
+    // Restart daemon fire-and-forget
+    conn.execFile("systemctl", ["--user", "restart", instance.systemd_unit], {
+      env: { XDG_RUNTIME_DIR: xdgRuntimeDir },
+    }).catch(() => { /* best-effort restart */ });
+
+    // Return fresh builder payload
+    const agents = registry.listAgents(slug);
+    const links = registry.listAgentLinks(instance.id);
+    const agentsWithFiles = agents.map((agent) => {
+      const files = registry.listAgentFiles(agent.id).map((f) => ({
+        filename: f.filename,
+        content_hash: f.content_hash,
+        size: f.content ? f.content.length : 0,
+        updated_at: f.updated_at,
+      }));
+      return {
+        id: agent.id,
+        agent_id: agent.agent_id,
+        name: agent.name,
+        model: agent.model,
+        workspace_path: agent.workspace_path,
+        is_default: agent.is_default === 1,
+        role: agent.role ?? null,
+        tags: agent.tags ?? null,
+        notes: agent.notes ?? null,
+        synced_at: agent.synced_at ?? null,
+        position_x: agent.position_x ?? null,
+        position_y: agent.position_y ?? null,
+        files,
+      };
+    });
+
+    return c.json({
+      instance: {
+        slug: instance.slug,
+        display_name: instance.display_name,
+        port: instance.port,
+        state: instance.state,
+        default_model: instance.default_model,
+      },
+      agents: agentsWithFiles,
+      links: links.map((l) => ({
+        source_agent_id: l.source_agent_id,
+        target_agent_id: l.target_agent_id,
+        link_type: l.link_type,
+      })),
+    }, 201);
   });
 
   // PATCH /api/instances/:slug/agents/:agentId/spawn-links — update spawn targets in openclaw.json

@@ -3,41 +3,64 @@ import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo, BuilderData } from "../types.js";
-import { syncAgents, fetchBuilderData } from "../api.js";
+import { syncAgents, fetchBuilderData, updateAgentPosition } from "../api.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { badgeStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
 import "./agent-card-mini.js";
 import "./agent-links-svg.js";
 import "./agent-detail-panel.js";
+import "./create-agent-dialog.js";
 
 function computePositions(
   agents: AgentBuilderInfo[],
   canvasWidth: number,
   canvasHeight: number,
+  /** Current in-memory positions — takes priority over DB values on recompute. */
+  current: Map<string, { x: number; y: number }> = new Map(),
 ): Map<string, { x: number; y: number }> {
-  const centerX = canvasWidth / 2;
-  const centerY = canvasHeight / 2;
   const positions = new Map<string, { x: number; y: number }>();
 
-  const mainAgent = agents.find(a => a.is_default);
-  if (mainAgent) {
-    positions.set(mainAgent.agent_id, { x: centerX, y: centerY });
+  // Priority order:
+  //   1. current in-memory position (set by drag or previous recompute)
+  //   2. DB-persisted position (agent.position_x/y)
+  //   3. concentric fallback (for agents with no position at all)
+  const needsLayout: AgentBuilderInfo[] = [];
+  for (const agent of agents) {
+    const mem = current.get(agent.agent_id);
+    if (mem) {
+      // Already positioned in this session — keep it
+      positions.set(agent.agent_id, mem);
+    } else if (agent.position_x != null && agent.position_y != null) {
+      // Restore from DB on first load
+      positions.set(agent.agent_id, { x: agent.position_x, y: agent.position_y });
+    } else {
+      // Brand-new agent with no position anywhere — needs layout
+      needsLayout.push(agent);
+    }
   }
 
-  const others = agents.filter(a => !a.is_default);
-  if (others.length === 0) return positions;
-
-  const radius = Math.min(canvasWidth, canvasHeight) * 0.35;
-  const angleStep = (2 * Math.PI) / others.length;
-  const startAngle = -Math.PI / 2;
-
-  others.forEach((agent, i) => {
-    const angle = startAngle + i * angleStep;
-    positions.set(agent.agent_id, {
-      x: centerX + radius * Math.cos(angle),
-      y: centerY + radius * Math.sin(angle),
-    });
-  });
+  // Concentric fallback only for agents with no position at all
+  if (needsLayout.length > 0) {
+    const centerX = canvasWidth / 2;
+    const centerY = canvasHeight / 2;
+    const mainAgent = needsLayout.find(a => a.is_default);
+    if (mainAgent) {
+      positions.set(mainAgent.agent_id, { x: centerX, y: centerY });
+    }
+    const others = needsLayout.filter(a => !a.is_default);
+    if (others.length > 0) {
+      const radius = Math.min(canvasWidth, canvasHeight) * 0.35;
+      const angleStep = (2 * Math.PI) / others.length;
+      const startAngle = -Math.PI / 2;
+      others.forEach((agent, i) => {
+        const angle = startAngle + i * angleStep;
+        positions.set(agent.agent_id, {
+          x: centerX + radius * Math.cos(angle),
+          y: centerY + radius * Math.sin(angle),
+        });
+      });
+    }
+  }
 
   return positions;
 }
@@ -94,7 +117,6 @@ export class AgentsBuilder extends LitElement {
     }
 
     .btn-sync {
-      margin-left: auto;
       background: var(--accent-subtle);
       border: 1px solid var(--accent-border);
       color: var(--accent);
@@ -116,6 +138,26 @@ export class AgentsBuilder extends LitElement {
       cursor: not-allowed;
     }
 
+    .btn-add-agent {
+      margin-left: auto;
+      background: var(--bg-surface);
+      border: 1px solid var(--bg-border);
+      color: var(--text-secondary);
+      border-radius: var(--radius-md);
+      padding: 5px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      font-family: inherit;
+    }
+
+    .btn-add-agent:hover {
+      border-color: var(--state-success, #22c55e);
+      color: var(--state-success, #22c55e);
+      background: color-mix(in srgb, var(--state-success, #22c55e) 8%, transparent);
+    }
+
     .builder-body {
       flex: 1;
       position: relative;
@@ -125,6 +167,12 @@ export class AgentsBuilder extends LitElement {
     .canvas-zone {
       position: absolute;
       inset: 0;
+      cursor: default;
+    }
+
+    .canvas-zone.dragging {
+      cursor: grabbing;
+      user-select: none;
     }
 
     .spinner-overlay {
@@ -184,6 +232,18 @@ export class AgentsBuilder extends LitElement {
   @state() private _canvasHeight = 600;
   @state() private _pendingRemovals = new Set<string>();
   @state() private _pendingAdditions = new Map<string, Set<string>>();
+  @state() private _showCreateDialog = false;
+  @state() private _justCreatedAgentId: string | null = null;
+
+  // Drag state — not @state, updated directly during pointer events
+  private _drag: {
+    agentId: string;
+    startX: number;
+    startY: number;
+    startCardX: number;
+    startCardY: number;
+    moved: boolean;
+  } | null = null;
 
   private _resizeObserver: ResizeObserver | null = null;
 
@@ -214,7 +274,12 @@ export class AgentsBuilder extends LitElement {
 
   private _recomputePositions(): void {
     if (!this._data) return;
-    this._positions = computePositions(this._data.agents, this._canvasWidth, this._canvasHeight);
+    this._positions = computePositions(
+      this._data.agents,
+      this._canvasWidth,
+      this._canvasHeight,
+      this._positions,
+    );
   }
 
   private async _syncAndLoad(): Promise<void> {
@@ -244,6 +309,119 @@ export class AgentsBuilder extends LitElement {
     this._selectedAgentId = this._selectedAgentId === agentId ? null : agentId;
   }
 
+  private _onAgentCreated(builderData: BuilderData): void {
+    this._showCreateDialog = false;
+    // Identify the new agent — find agent_id present in builderData but not in current data
+    const currentAgentIds = new Set(this._data?.agents.map(a => a.agent_id) ?? []);
+    const newAgent = builderData.agents.find(a => !currentAgentIds.has(a.agent_id))
+      ?? builderData.agents.at(-1)
+      ?? null;
+
+    // Pre-inject a top-left position for the new agent so computePositions
+    // picks it up from in-memory (priority 1) instead of falling back to concentric
+    const positionsWithNew = new Map(this._positions);
+    if (newAgent) {
+      const CARD_W = 160;
+      const CARD_H = 80;
+      const MARGIN = 24;
+      positionsWithNew.set(newAgent.agent_id, {
+        x: CARD_W / 2 + MARGIN,
+        y: CARD_H / 2 + MARGIN,
+      });
+    }
+
+    this._data = builderData;
+    this._positions = computePositions(
+      builderData.agents,
+      this._canvasWidth,
+      this._canvasHeight,
+      positionsWithNew,
+    );
+
+    if (newAgent) {
+      this._justCreatedAgentId = newAgent.agent_id;
+      this._selectedAgentId = newAgent.agent_id;
+      setTimeout(() => { this._justCreatedAgentId = null; }, 2000);
+    }
+  }
+
+  private _onPointerDown(e: PointerEvent): void {
+    // Identify the card via composedPath
+    const card = (e.composedPath() as Element[]).find(
+      el => el instanceof Element && el.tagName === "CP-AGENT-CARD-MINI",
+    ) as HTMLElement | undefined;
+    if (!card) return;
+
+    const agentId = card.dataset["agentId"];
+    if (!agentId) return;
+
+    const pos = this._positions.get(agentId);
+    if (!pos) return;
+
+    const zone = e.currentTarget as HTMLElement;
+    const rect = zone.getBoundingClientRect();
+
+    this._drag = {
+      agentId,
+      startX: e.clientX - rect.left,
+      startY: e.clientY - rect.top,
+      startCardX: pos.x,
+      startCardY: pos.y,
+      moved: false,
+    };
+
+    zone.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }
+
+  private _onPointerMove(e: PointerEvent): void {
+    if (!this._drag) return;
+
+    const zone = e.currentTarget as HTMLElement;
+    const rect = zone.getBoundingClientRect();
+    const dx = (e.clientX - rect.left) - this._drag.startX;
+    const dy = (e.clientY - rect.top) - this._drag.startY;
+
+    if (!this._drag.moved && Math.hypot(dx, dy) >= 5) {
+      this._drag.moved = true;
+      zone.classList.add("dragging");
+    }
+
+    if (this._drag.moved) {
+      const next = new Map(this._positions);
+      next.set(this._drag.agentId, {
+        x: this._drag.startCardX + dx,
+        y: this._drag.startCardY + dy,
+      });
+      this._positions = next;
+    }
+  }
+
+  private _onPointerUp(e: PointerEvent): void {
+    if (!this._drag) return;
+
+    const zone = e.currentTarget as HTMLElement;
+    zone.releasePointerCapture(e.pointerId);
+    zone.classList.remove("dragging");
+
+    const { agentId, moved } = this._drag;
+    this._drag = null;
+
+    if (!moved) {
+      // Short click — open/close panel
+      this._selectAgent(agentId);
+      return;
+    }
+
+    // Drag ended — persist position fire-and-forget
+    const pos = this._positions.get(agentId);
+    if (pos) {
+      void updateAgentPosition(this.slug, agentId, pos.x, pos.y).catch(err => {
+        console.error("Failed to save agent position:", err);
+      });
+    }
+  }
+
   private get _selectedAgent(): AgentBuilderInfo | null {
     if (!this._data || !this._selectedAgentId) return null;
     return this._data.agents.find(a => a.agent_id === this._selectedAgentId) ?? null;
@@ -262,6 +440,11 @@ export class AgentsBuilder extends LitElement {
           <span class="badge ${inst.state}">${inst.state}</span>
         ` : ""}
         <button
+          class="btn-add-agent"
+          aria-label="New agent"
+          @click=${() => { this._showCreateDialog = true; }}
+        >${msg("+ New agent", { id: "ab-btn-add-agent" })}</button>
+        <button
           class="btn-sync"
           aria-label="Synchroniser"
           ?disabled=${this._syncing}
@@ -270,7 +453,12 @@ export class AgentsBuilder extends LitElement {
       </div>
 
       <div class="builder-body">
-        <div class="canvas-zone">
+        <div class="canvas-zone"
+          @pointerdown=${this._onPointerDown}
+          @pointermove=${this._onPointerMove}
+          @pointerup=${this._onPointerUp}
+          @pointercancel=${this._onPointerUp}
+        >
           ${this._syncing ? html`
             <div class="spinner-overlay">
               <div class="spinner"></div>
@@ -310,11 +498,12 @@ export class AgentsBuilder extends LitElement {
                 if (!pos) return "";
                 return html`
                   <cp-agent-card-mini
+                    data-agent-id=${agent.agent_id}
                     .agent=${agent}
                     .selected=${this._selectedAgentId === agent.agent_id}
                     .isA2A=${a2aAgentIds.has(agent.agent_id)}
+                    .isNew=${this._justCreatedAgentId === agent.agent_id}
                     style="left: ${pos.x}px; top: ${pos.y}px;"
-                    @agent-select=${(e: Event) => this._selectAgent((e as CustomEvent<{ agentId: string }>).detail.agentId)}
                   ></cp-agent-card-mini>
                 `;
               });
@@ -346,6 +535,15 @@ export class AgentsBuilder extends LitElement {
           ></cp-agent-detail-panel>
         ` : ""}
       </div>
+
+      ${this._showCreateDialog ? html`
+        <cp-create-agent-dialog
+          .slug=${this.slug}
+          .existingAgentIds=${this._data?.agents.map(a => a.agent_id) ?? []}
+          @close-dialog=${() => { this._showCreateDialog = false; }}
+          @agent-created=${(e: CustomEvent<BuilderData>) => this._onAgentCreated(e.detail)}
+        ></cp-create-agent-dialog>
+      ` : ""}
     `;
   }
 }

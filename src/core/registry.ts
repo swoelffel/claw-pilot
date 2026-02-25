@@ -336,6 +336,13 @@ export class Registry {
       .run(...values);
   }
 
+  /** Persist the canvas position of an agent. */
+  updateAgentPosition(agentDbId: number, x: number, y: number): void {
+    this.db
+      .prepare("UPDATE agents SET position_x=?, position_y=? WHERE id=?")
+      .run(x, y, agentDbId);
+  }
+
   /** Record the last sync hash and timestamp for an agent. */
   updateAgentSync(
     agentDbId: number,

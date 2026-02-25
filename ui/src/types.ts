@@ -119,6 +119,8 @@ export interface AgentBuilderInfo {
   tags: string | null;
   notes: string | null;
   synced_at: string | null;
+  position_x: number | null;
+  position_y: number | null;
   files: AgentFileSummary[];
 }
 
@@ -146,6 +148,14 @@ export interface BuilderData {
   };
   agents: AgentBuilderInfo[];
   links: AgentLink[];
+}
+
+export interface CreateAgentRequest {
+  agentSlug: string;
+  name: string;
+  role: string;
+  provider: string;
+  model: string;
 }
 
 export interface SyncResult {
