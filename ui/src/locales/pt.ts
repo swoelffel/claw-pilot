@@ -114,7 +114,11 @@ export const templates = {
   // agent-card-mini.ts
   "acm-badge-default": "Padrão",
   "acm-badge-a2a": "A2A",
+  "acm-badge-sa": "SA",
   "acm-files": "arquivos",
+  "acm-tooltip-default": "Ponto de entrada principal para conversas. Orquestra a equipe de agentes.",
+  "acm-tooltip-a2a": "Conectado no modo Agente-para-Agente (par bidirecional).",
+  "acm-tooltip-sa": "SubAgente: agente especializado, invocado pelo orquestrador.",
 
   // create-agent-dialog.ts
   "cad-title": "Novo agente",
@@ -137,6 +141,17 @@ export const templates = {
   "cad-error-slug-taken": "Este ID já está em uso",
   "cad-error-create": "Falha ao criar o agente",
   "cad-spinner-creating": "Criando agente",
+
+  // delete-agent-dialog.ts
+  "acm-btn-delete": "Excluir agente",
+  "dad-title": "Excluir agente",
+  "dad-warning": "Isso excluirá permanentemente todos os arquivos do workspace e cancelará o registro do agente na instância. Esta ação não pode ser desfeita.",
+  "dad-confirm-label": "Digite o ID do agente para confirmar",
+  "dad-btn-cancel": "Cancelar",
+  "dad-btn-confirm": "Excluir",
+  "dad-btn-deleting": "Excluindo...",
+  "dad-spinner-deleting": "Excluindo agente...",
+  "dad-error-delete": "Falha ao excluir agente",
 
   // agent-detail-panel.ts
   "adp-tab-info": "Info",

@@ -1,5 +1,5 @@
 // ui/src/components/agent-card-mini.ts
-import { LitElement, html, css } from "lit";
+import { LitElement, html, css, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo } from "../types.js";
@@ -26,6 +26,7 @@ export class AgentCardMini extends LitElement {
       user-select: none;
       min-width: 130px;
       max-width: 160px;
+      position: relative;
     }
 
     .card.is-a2a {
@@ -57,11 +58,49 @@ export class AgentCardMini extends LitElement {
       max-width: 180px;
     }
 
+    /* row 1 : name + delete button */
     .card-top {
       display: flex;
       align-items: center;
+      gap: 4px;
+      margin-bottom: 3px;
+    }
+
+    .agent-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* row 2 : slug (left) + file count (right) */
+    .card-meta {
+      display: flex;
+      align-items: center;
       justify-content: space-between;
+      gap: 6px;
       margin-bottom: 4px;
+    }
+
+    .agent-id {
+      font-size: 10px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+
+    .file-count {
+      font-size: 10px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .badge-default {
@@ -74,10 +113,12 @@ export class AgentCardMini extends LitElement {
       border: 1px solid var(--accent-border);
       border-radius: 3px;
       padding: 1px 5px;
+      flex-shrink: 0;
+      cursor: help;
     }
 
     .badge-a2a {
-      font-size: 8px;
+      font-size: 9px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.06em;
@@ -86,28 +127,22 @@ export class AgentCardMini extends LitElement {
       border: 1px solid var(--accent-border);
       border-radius: 3px;
       padding: 1px 5px;
+      flex-shrink: 0;
+      cursor: help;
     }
 
-    .file-count {
-      font-size: 10px;
+    .badge-sa {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
       color: var(--text-muted);
-    }
-
-    .agent-name {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-primary);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-bottom: 2px;
-    }
-
-    .agent-id {
-      font-size: 10px;
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-      margin-bottom: 4px;
+      background: transparent;
+      border: 1px solid var(--bg-border);
+      border-radius: 3px;
+      padding: 1px 5px;
+      flex-shrink: 0;
+      cursor: help;
     }
 
     .card-bottom {
@@ -115,16 +150,6 @@ export class AgentCardMini extends LitElement {
       align-items: center;
       gap: 5px;
       flex-wrap: wrap;
-    }
-
-    .badge-role {
-      font-size: 9px;
-      font-weight: 600;
-      color: var(--state-info);
-      background: rgba(14, 165, 233, 0.08);
-      border: 1px solid rgba(14, 165, 233, 0.25);
-      border-radius: 3px;
-      padding: 1px 5px;
     }
 
     .model-label {
@@ -135,12 +160,33 @@ export class AgentCardMini extends LitElement {
       text-overflow: ellipsis;
       max-width: 90px;
     }
+
+    .btn-delete {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      padding: 2px 3px;
+      border-radius: var(--radius-sm);
+      opacity: 0.45;
+      transition: opacity 0.15s, color 0.15s, background 0.15s;
+      flex-shrink: 0;
+    }
+
+    .btn-delete:hover {
+      opacity: 1;
+      color: var(--state-error, #ef4444);
+      background: color-mix(in srgb, var(--state-error, #ef4444) 10%, transparent);
+    }
   `];
 
   @property({ type: Object }) agent!: AgentBuilderInfo;
   @property({ type: Boolean }) selected = false;
   @property({ type: Boolean }) isA2A = false;
   @property({ type: Boolean, reflect: true }) isNew = false;
+  @property({ type: Boolean }) deletable = false;
 
   private _truncate(str: string, max: number): string {
     return str.length > max ? str.slice(0, max) + "…" : str;
@@ -170,18 +216,36 @@ export class AgentCardMini extends LitElement {
         class="card ${a.is_default ? "is-default" : ""} ${this.selected ? "selected" : ""} ${this.isA2A ? "is-a2a" : ""}"
         @click=${() => this.dispatchEvent(new CustomEvent("agent-select", { detail: { agentId: a.agent_id }, bubbles: true, composed: true }))}
       >
+        <!-- row 1 : name + delete -->
         <div class="card-top">
-          ${a.is_default
-            ? html`<span class="badge-default">${msg("Default", { id: "acm-badge-default" })}</span>`
-            : this.isA2A
-              ? html`<span class="badge-a2a">${msg("A2A", { id: "acm-badge-a2a" })}</span>`
-              : html`<span></span>`}
+          <span class="agent-name" title=${a.name}>${this._truncate(a.name, 22)}</span>
+          ${this.deletable ? html`
+            <button
+              class="btn-delete"
+              title=${msg("Delete agent", { id: "acm-btn-delete" })}
+              @click=${(e: Event) => {
+                e.stopPropagation();
+                this.dispatchEvent(new CustomEvent("agent-delete-requested", {
+                  detail: { agentId: this.agent.agent_id },
+                  bubbles: true,
+                  composed: true,
+                }));
+              }}
+            >✕</button>
+          ` : nothing}
+        </div>
+        <!-- row 2 : slug (left) + file count (right) -->
+        <div class="card-meta">
+          <span class="agent-id">${a.agent_id}</span>
           <span class="file-count">${a.files.length} ${msg("files", { id: "acm-files" })}</span>
         </div>
-        <div class="agent-name" title=${a.name}>${this._truncate(a.name, 25)}</div>
-        <div class="agent-id">${a.agent_id}</div>
+        <!-- row 3 : badge (Default | A2A | SA) + model -->
         <div class="card-bottom">
-          ${a.role ? html`<span class="badge-role">${a.role}</span>` : ""}
+          ${a.is_default
+            ? html`<span class="badge-default" title=${msg("Main entry point for conversations. Orchestrates the agent team.", { id: "acm-tooltip-default" })}>${msg("Default", { id: "acm-badge-default" })}</span>`
+            : this.isA2A
+              ? html`<span class="badge-a2a" title=${msg("Connected in Agent-to-Agent mode (bidirectional peer).", { id: "acm-tooltip-a2a" })}>${msg("A2A", { id: "acm-badge-a2a" })}</span>`
+              : html`<span class="badge-sa" title=${msg("SubAgent: specialized agent, invoked by the orchestrator.", { id: "acm-tooltip-sa" })}>${msg("SA", { id: "acm-badge-sa" })}</span>`}
           ${modelShort ? html`<span class="model-label" title=${model ?? ""}>${modelShort}</span>` : ""}
         </div>
       </div>

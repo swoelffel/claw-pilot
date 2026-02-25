@@ -4,6 +4,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo, BuilderData } from "../types.js";
 import { syncAgents, fetchBuilderData, updateAgentPosition } from "../api.js";
+import "./delete-agent-dialog.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { badgeStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
 import "./agent-card-mini.js";
@@ -234,6 +235,7 @@ export class AgentsBuilder extends LitElement {
   @state() private _pendingAdditions = new Map<string, Set<string>>();
   @state() private _showCreateDialog = false;
   @state() private _justCreatedAgentId: string | null = null;
+  @state() private _agentToDelete: AgentBuilderInfo | null = null;
 
   // Drag state — not @state, updated directly during pointer events
   private _drag: {
@@ -345,12 +347,51 @@ export class AgentsBuilder extends LitElement {
     }
   }
 
+  private _onDeleteRequested(agentId: string): void {
+    const agent = this._data?.agents.find(a => a.agent_id === agentId) ?? null;
+    if (agent && !agent.is_default) {
+      this._agentToDelete = agent;
+    }
+  }
+
+  private _onAgentDeleted(builderData: BuilderData): void {
+    const deletedId = this._agentToDelete?.agent_id;
+    this._agentToDelete = null;
+
+    // Reset selection if the deleted agent was selected
+    if (deletedId && this._selectedAgentId === deletedId) {
+      this._selectedAgentId = null;
+    }
+
+    // Remove position from in-memory map
+    if (deletedId) {
+      const next = new Map(this._positions);
+      next.delete(deletedId);
+      this._positions = next;
+    }
+
+    // Update data and recompute positions
+    this._data = builderData;
+    this._positions = computePositions(
+      builderData.agents,
+      this._canvasWidth,
+      this._canvasHeight,
+      this._positions,
+    );
+  }
+
   private _onPointerDown(e: PointerEvent): void {
     // Identify the card via composedPath
     const card = (e.composedPath() as Element[]).find(
       el => el instanceof Element && el.tagName === "CP-AGENT-CARD-MINI",
     ) as HTMLElement | undefined;
     if (!card) return;
+
+    // If the click originated from the delete button, don't start a drag
+    const isDeleteBtn = (e.composedPath() as Element[]).some(
+      el => el instanceof Element && el.classList.contains("btn-delete"),
+    );
+    if (isDeleteBtn) return;
 
     const agentId = card.dataset["agentId"];
     if (!agentId) return;
@@ -503,7 +544,9 @@ export class AgentsBuilder extends LitElement {
                     .selected=${this._selectedAgentId === agent.agent_id}
                     .isA2A=${a2aAgentIds.has(agent.agent_id)}
                     .isNew=${this._justCreatedAgentId === agent.agent_id}
+                    .deletable=${!agent.is_default}
                     style="left: ${pos.x}px; top: ${pos.y}px;"
+                    @agent-delete-requested=${(e: CustomEvent<{ agentId: string }>) => this._onDeleteRequested(e.detail.agentId)}
                   ></cp-agent-card-mini>
                 `;
               });
@@ -543,6 +586,15 @@ export class AgentsBuilder extends LitElement {
           @close-dialog=${() => { this._showCreateDialog = false; }}
           @agent-created=${(e: CustomEvent<BuilderData>) => this._onAgentCreated(e.detail)}
         ></cp-create-agent-dialog>
+      ` : ""}
+
+      ${this._agentToDelete ? html`
+        <cp-delete-agent-dialog
+          .instanceSlug=${this.slug}
+          .agent=${this._agentToDelete}
+          @close-dialog=${() => { this._agentToDelete = null; }}
+          @agent-deleted=${(e: CustomEvent<BuilderData>) => this._onAgentDeleted(e.detail)}
+        ></cp-delete-agent-dialog>
       ` : ""}
     `;
   }

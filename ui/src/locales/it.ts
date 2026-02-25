@@ -114,7 +114,11 @@ export const templates = {
   // agent-card-mini.ts
   "acm-badge-default": "Predefinito",
   "acm-badge-a2a": "A2A",
+  "acm-badge-sa": "SA",
   "acm-files": "file",
+  "acm-tooltip-default": "Punto di ingresso principale per le conversazioni. Orchestra il team di agenti.",
+  "acm-tooltip-a2a": "Connesso in modalità Agent-to-Agent (peer bidirezionale).",
+  "acm-tooltip-sa": "SottoAgente: agente specializzato, invocato dall'orchestratore.",
 
   // create-agent-dialog.ts
   "cad-title": "Nuovo agente",
@@ -137,6 +141,17 @@ export const templates = {
   "cad-error-slug-taken": "Questo ID è già in uso",
   "cad-error-create": "Impossibile creare l'agente",
   "cad-spinner-creating": "Creazione agente",
+
+  // delete-agent-dialog.ts
+  "acm-btn-delete": "Elimina agente",
+  "dad-title": "Elimina agente",
+  "dad-warning": "Questo eliminerà definitivamente tutti i file del workspace e de-registrerà l'agente dall'istanza. Questa azione non può essere annullata.",
+  "dad-confirm-label": "Digita l'ID dell'agente per confermare",
+  "dad-btn-cancel": "Annulla",
+  "dad-btn-confirm": "Elimina",
+  "dad-btn-deleting": "Eliminazione...",
+  "dad-spinner-deleting": "Eliminazione agente...",
+  "dad-error-delete": "Impossibile eliminare l'agente",
 
   // agent-detail-panel.ts
   "adp-tab-info": "Info",

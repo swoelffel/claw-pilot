@@ -71,27 +71,47 @@ export class AgentDetailPanel extends LitElement {
       background: var(--bg-border);
     }
 
+    /* row 1 : name + slug */
+    .agent-name-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 3px;
+      min-width: 0;
+    }
+
     .agent-name {
       font-size: 16px;
       font-weight: 700;
       color: var(--text-primary);
-      margin-bottom: 4px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-    }
-
-    .agent-meta-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
+      min-width: 0;
     }
 
     .agent-id-label {
       font-size: 11px;
       color: var(--text-muted);
       font-family: var(--font-mono);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* row 2 : role (optional) */
+    .agent-role-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-style: italic;
+      margin-bottom: 2px;
+    }
+
+    /* row 3 : badges */
+    .agent-meta-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
     }
 
     .badge-default {
@@ -103,16 +123,6 @@ export class AgentDetailPanel extends LitElement {
       border: 1px solid var(--accent-border);
       border-radius: 3px;
       padding: 1px 5px;
-    }
-
-    .badge-role {
-      font-size: 10px;
-      font-weight: 600;
-      color: var(--state-info);
-      background: rgba(14, 165, 233, 0.08);
-      border: 1px solid rgba(14, 165, 233, 0.25);
-      border-radius: 3px;
-      padding: 1px 6px;
     }
 
     .tabs {
@@ -734,12 +744,11 @@ export class AgentDetailPanel extends LitElement {
     return html`
       <div class="panel-header">
         <div class="panel-header-info">
-          <div class="agent-name">${a.name}</div>
-          <div class="agent-meta-row">
+          <div class="agent-name-row">
+            <span class="agent-name">${a.name}</span>
             <span class="agent-id-label">${a.agent_id}</span>
-            ${a.is_default ? html`<span class="badge-default">${msg("Default", { id: "acm-badge-default" })}</span>` : ""}
-            ${a.role ? html`<span class="badge-role">${a.role}</span>` : ""}
           </div>
+          ${a.role ? html`<div class="agent-role-label">${a.role}</div>` : ""}
         </div>
         <div class="panel-controls">
           <button

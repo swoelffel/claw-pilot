@@ -134,3 +134,12 @@ export async function createAgent(
     body: JSON.stringify(data),
   });
 }
+
+export async function deleteAgent(
+  instanceSlug: string,
+  agentId: string,
+): Promise<BuilderData> {
+  return apiFetch<BuilderData>(`/instances/${instanceSlug}/agents/${agentId}`, {
+    method: "DELETE",
+  });
+}
