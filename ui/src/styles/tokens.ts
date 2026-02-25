@@ -45,6 +45,12 @@ export const tokenStyles = css`
     font-family: var(--font-ui);
   }
 
+  /* Propage la font à tous les éléments du shadow root */
+  :host * {
+    font-family: var(--font-ui);
+    box-sizing: border-box;
+  }
+
   :host *:focus-visible {
     outline: none;
     box-shadow: var(--focus-ring);
