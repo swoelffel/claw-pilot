@@ -317,7 +317,7 @@ export class AgentsBuilder extends LitElement {
       ?? builderData.agents.at(-1)
       ?? null;
 
-    // Pre-inject a top-right position for the new agent so computePositions
+    // Pre-inject a top-left position for the new agent so computePositions
     // picks it up from in-memory (priority 1) instead of falling back to concentric
     const positionsWithNew = new Map(this._positions);
     if (newAgent) {
@@ -325,7 +325,7 @@ export class AgentsBuilder extends LitElement {
       const CARD_H = 80;
       const MARGIN = 24;
       positionsWithNew.set(newAgent.agent_id, {
-        x: this._canvasWidth - CARD_W / 2 - MARGIN,
+        x: CARD_W / 2 + MARGIN,
         y: CARD_H / 2 + MARGIN,
       });
     }
