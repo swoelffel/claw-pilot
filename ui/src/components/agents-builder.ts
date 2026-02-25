@@ -229,6 +229,7 @@ export class AgentsBuilder extends LitElement {
   @state() private _canvasWidth = 800;
   @state() private _canvasHeight = 600;
   @state() private _pendingRemovals = new Set<string>();
+  @state() private _pendingAdditions = new Map<string, Set<string>>();
 
   private _resizeObserver: ResizeObserver | null = null;
 
@@ -338,6 +339,7 @@ export class AgentsBuilder extends LitElement {
               .links=${data.links}
               .positions=${this._positions}
               .pendingRemovals=${this._pendingRemovals}
+              .pendingAdditions=${this._pendingAdditions}
             ></cp-agent-links-svg>
 
             ${(() => {
@@ -371,10 +373,20 @@ export class AgentsBuilder extends LitElement {
             .links=${data?.links ?? []}
             .allAgents=${data?.agents ?? []}
             .slug=${this.slug}
-            @panel-close=${() => { this._selectedAgentId = null; }}
-            @spawn-links-updated=${() => void this._syncAndLoad()}
+            @panel-close=${() => { this._selectedAgentId = null; this._pendingAdditions = new Map(); this._pendingRemovals = new Set(); }}
+            @spawn-links-updated=${() => { this._pendingAdditions = new Map(); void this._syncAndLoad(); }}
             @pending-removals-changed=${(e: Event) => {
               this._pendingRemovals = (e as CustomEvent<{ pendingRemovals: Set<string> }>).detail.pendingRemovals;
+            }}
+            @pending-additions-changed=${(e: Event) => {
+              const { agentId, pendingAdditions } = (e as CustomEvent<{ agentId: string; pendingAdditions: Set<string> }>).detail;
+              const next = new Map(this._pendingAdditions);
+              if (pendingAdditions.size === 0) {
+                next.delete(agentId);
+              } else {
+                next.set(agentId, pendingAdditions);
+              }
+              this._pendingAdditions = next;
             }}
           ></cp-agent-detail-panel>
         ` : ""}

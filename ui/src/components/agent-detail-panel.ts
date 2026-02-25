@@ -493,6 +493,14 @@ export class AgentDetailPanel extends LitElement {
     return raw;
   }
 
+  private _emitPendingAdditions(additions: Set<string>): void {
+    this.dispatchEvent(new CustomEvent("pending-additions-changed", {
+      detail: { agentId: this.agent.agent_id, pendingAdditions: new Set(additions) },
+      bubbles: true,
+      composed: true,
+    }));
+  }
+
   private _cancelPendingChanges(): void {
     this._pendingRemovals = new Set();
     this._pendingAdditions = new Set();
@@ -502,17 +510,21 @@ export class AgentDetailPanel extends LitElement {
       bubbles: true,
       composed: true,
     }));
+    this._emitPendingAdditions(new Set());
   }
 
   private _addSpawnLink(targetId: string): void {
-    this._pendingAdditions = new Set(this._pendingAdditions).add(targetId);
+    const next = new Set(this._pendingAdditions).add(targetId);
+    this._pendingAdditions = next;
     this._dropdownOpen = false;
+    this._emitPendingAdditions(next);
   }
 
   private _cancelAddition(targetId: string): void {
     const next = new Set(this._pendingAdditions);
     next.delete(targetId);
     this._pendingAdditions = next;
+    this._emitPendingAdditions(next);
   }
 
   private _toggleSpawnRemoval(targetId: string): void {
@@ -542,12 +554,13 @@ export class AgentDetailPanel extends LitElement {
       this._pendingRemovals = new Set();
       this._pendingAdditions = new Set();
       this._dropdownOpen = false;
-      // Notify canvas: no more pending removals
+      // Notify canvas: no more pending removals/additions
       this.dispatchEvent(new CustomEvent("pending-removals-changed", {
         detail: { pendingRemovals: new Set() },
         bubbles: true,
         composed: true,
       }));
+      this._emitPendingAdditions(new Set());
       // Propagate updated links to parent (agents-builder will re-fetch)
       this.dispatchEvent(new CustomEvent("spawn-links-updated", {
         detail: { links: result.links },
