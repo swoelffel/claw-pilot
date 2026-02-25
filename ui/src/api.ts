@@ -102,6 +102,18 @@ export async function fetchAgentFile(slug: string, agentId: string, filename: st
   return apiFetch<AgentFileContent>(`/instances/${slug}/agents/${agentId}/files/${filename}`);
 }
 
+export async function updateAgentPosition(
+  slug: string,
+  agentId: string,
+  x: number,
+  y: number,
+): Promise<void> {
+  await apiFetch(`/instances/${slug}/agents/${agentId}/position`, {
+    method: "PATCH",
+    body: JSON.stringify({ x, y }),
+  });
+}
+
 export async function updateSpawnLinks(
   slug: string,
   agentId: string,

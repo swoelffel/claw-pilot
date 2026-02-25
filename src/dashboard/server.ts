@@ -151,6 +151,8 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
         tags: agent.tags ?? null,
         notes: agent.notes ?? null,
         synced_at: agent.synced_at ?? null,
+        position_x: agent.position_x ?? null,
+        position_y: agent.position_y ?? null,
         files,
       };
     });
@@ -170,6 +172,30 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
         link_type: l.link_type,
       })),
     });
+  });
+
+  // PATCH /api/instances/:slug/agents/:agentId/position — persist canvas position
+  app.patch("/api/instances/:slug/agents/:agentId/position", async (c) => {
+    const slug = c.req.param("slug");
+    const agentId = c.req.param("agentId");
+    const instance = registry.getInstance(slug);
+    if (!instance) return c.json({ error: "Not found" }, 404);
+
+    let body: { x: number; y: number };
+    try {
+      body = await c.req.json() as { x: number; y: number };
+      if (typeof body.x !== "number" || typeof body.y !== "number") {
+        return c.json({ error: "x and y must be numbers" }, 400);
+      }
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const agent = registry.getAgentByAgentId(instance.id, agentId);
+    if (!agent) return c.json({ error: "Agent not found" }, 404);
+
+    registry.updateAgentPosition(agent.id, body.x, body.y);
+    return c.json({ ok: true });
   });
 
   // PATCH /api/instances/:slug/agents/:agentId/spawn-links — update spawn targets in openclaw.json

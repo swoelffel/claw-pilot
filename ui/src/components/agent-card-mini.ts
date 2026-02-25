@@ -13,6 +13,7 @@ export class AgentCardMini extends LitElement {
       display: block;
       position: absolute;
       transform: translate(-50%, -50%);
+      cursor: grab;
     }
 
     .card {
@@ -20,7 +21,7 @@ export class AgentCardMini extends LitElement {
       border: 1px solid var(--bg-border);
       border-radius: var(--radius-md);
       padding: 8px 10px;
-      cursor: pointer;
+      cursor: inherit;
       transition: box-shadow 0.15s, border-color 0.15s;
       user-select: none;
       min-width: 130px;

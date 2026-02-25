@@ -119,6 +119,8 @@ export interface AgentBuilderInfo {
   tags: string | null;
   notes: string | null;
   synced_at: string | null;
+  position_x: number | null;
+  position_y: number | null;
   files: AgentFileSummary[];
 }
 
