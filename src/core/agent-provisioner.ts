@@ -107,6 +107,27 @@ export class AgentProvisioner {
       );
     }
 
+    // 4b. Remove agentSlug from all subagents.allowAgents references in agents.list[]
+    if (agentsConf && Array.isArray(agentsConf["list"])) {
+      for (const entry of agentsConf["list"] as Array<Record<string, unknown>>) {
+        const subagents = entry["subagents"] as Record<string, unknown> | undefined;
+        if (subagents && Array.isArray(subagents["allowAgents"])) {
+          subagents["allowAgents"] = (subagents["allowAgents"] as string[]).filter(
+            (id) => id !== agentSlug,
+          );
+        }
+      }
+    }
+
+    // 4c. Also clean from agents.defaults.subagents.allowAgents (for main agent)
+    const agentsDefaults = agentsConf?.["defaults"] as Record<string, unknown> | undefined;
+    const defaultSubagents = agentsDefaults?.["subagents"] as Record<string, unknown> | undefined;
+    if (defaultSubagents && Array.isArray(defaultSubagents["allowAgents"])) {
+      defaultSubagents["allowAgents"] = (defaultSubagents["allowAgents"] as string[]).filter(
+        (id) => id !== agentSlug,
+      );
+    }
+
     // 5. Write openclaw.json back
     await this.conn.writeFile(
       instance.config_path,
