@@ -3,11 +3,12 @@ import { LitElement, html, css } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo } from "../types.js";
+import { tokenStyles } from "../styles/tokens.js";
 
 @localized()
 @customElement("cp-agent-card-mini")
 export class AgentCardMini extends LitElement {
-  static styles = css`
+  static styles = [tokenStyles, css`
     :host {
       display: block;
       position: absolute;
@@ -15,9 +16,9 @@ export class AgentCardMini extends LitElement {
     }
 
     .card {
-      background: #1a1a2e;
-      border: 1px solid #2a2d3a;
-      border-radius: 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--bg-border);
+      border-radius: var(--radius-md);
       padding: 8px 10px;
       cursor: pointer;
       transition: box-shadow 0.15s, border-color 0.15s;
@@ -27,7 +28,7 @@ export class AgentCardMini extends LitElement {
     }
 
     .card.is-a2a {
-      border-color: #6c63ff40;
+      border-color: var(--accent-border);
     }
 
     .card:hover {
@@ -35,8 +36,8 @@ export class AgentCardMini extends LitElement {
     }
 
     .card.selected {
-      border-color: #6c63ff;
-      box-shadow: 0 0 0 1px #6c63ff40;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent-border);
     }
 
     .card.is-default {
@@ -56,9 +57,9 @@ export class AgentCardMini extends LitElement {
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.06em;
-      color: #6c63ff;
-      background: #6c63ff20;
-      border: 1px solid #6c63ff40;
+      color: var(--accent);
+      background: var(--accent-subtle);
+      border: 1px solid var(--accent-border);
       border-radius: 3px;
       padding: 1px 5px;
     }
@@ -68,22 +69,22 @@ export class AgentCardMini extends LitElement {
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.06em;
-      color: #6c63ff;
-      background: #6c63ff15;
-      border: 1px solid #6c63ff40;
+      color: var(--accent);
+      background: var(--accent-subtle);
+      border: 1px solid var(--accent-border);
       border-radius: 3px;
       padding: 1px 5px;
     }
 
     .file-count {
       font-size: 10px;
-      color: #4a5568;
+      color: var(--text-muted);
     }
 
     .agent-name {
       font-size: 12px;
       font-weight: 600;
-      color: #e2e8f0;
+      color: var(--text-primary);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -92,8 +93,8 @@ export class AgentCardMini extends LitElement {
 
     .agent-id {
       font-size: 10px;
-      color: #4a5568;
-      font-family: "Fira Mono", monospace;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
       margin-bottom: 4px;
     }
 
@@ -107,22 +108,22 @@ export class AgentCardMini extends LitElement {
     .badge-role {
       font-size: 9px;
       font-weight: 600;
-      color: #0ea5e9;
-      background: #0ea5e920;
-      border: 1px solid #0ea5e940;
+      color: var(--state-info);
+      background: rgba(14, 165, 233, 0.08);
+      border: 1px solid rgba(14, 165, 233, 0.25);
       border-radius: 3px;
       padding: 1px 5px;
     }
 
     .model-label {
       font-size: 9px;
-      color: #4a5568;
+      color: var(--text-muted);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
       max-width: 90px;
     }
-  `;
+  `];
 
   @property({ type: Object }) agent!: AgentBuilderInfo;
   @property({ type: Boolean }) selected = false;

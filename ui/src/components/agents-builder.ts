@@ -4,6 +4,8 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo, BuilderData } from "../types.js";
 import { syncAgents, fetchBuilderData } from "../api.js";
+import { tokenStyles } from "../styles/tokens.js";
+import { badgeStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
 import "./agent-card-mini.js";
 import "./agent-links-svg.js";
 import "./agent-detail-panel.js";
@@ -43,12 +45,12 @@ function computePositions(
 @localized()
 @customElement("cp-agents-builder")
 export class AgentsBuilder extends LitElement {
-  static styles = css`
+  static styles = [tokenStyles, badgeStyles, spinnerStyles, errorBannerStyles, css`
     :host {
       display: flex;
       flex-direction: column;
       height: calc(100vh - 56px - 48px);
-      background: #0f1117;
+      background: var(--bg-base);
       overflow: hidden;
     }
 
@@ -57,16 +59,16 @@ export class AgentsBuilder extends LitElement {
       align-items: center;
       gap: 12px;
       padding: 12px 20px;
-      background: #1a1d27;
-      border-bottom: 1px solid #2a2d3a;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--bg-border);
       flex-shrink: 0;
     }
 
     .btn-back {
       background: none;
-      border: 1px solid #2a2d3a;
-      color: #94a3b8;
-      border-radius: 6px;
+      border: 1px solid var(--bg-border);
+      color: var(--text-secondary);
+      border-radius: var(--radius-md);
       padding: 5px 12px;
       font-size: 12px;
       cursor: pointer;
@@ -75,57 +77,28 @@ export class AgentsBuilder extends LitElement {
     }
 
     .btn-back:hover {
-      border-color: #6c63ff;
-      color: #e2e8f0;
+      border-color: var(--accent);
+      color: var(--text-primary);
     }
 
     .header-title {
       font-size: 15px;
       font-weight: 600;
-      color: #e2e8f0;
+      color: var(--text-primary);
     }
 
     .header-slug {
       font-size: 13px;
-      color: #4a5568;
-      font-family: "Fira Mono", monospace;
-    }
-
-    .state-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 2px 8px;
-      border-radius: 12px;
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-    }
-
-    .state-badge.running {
-      background: #10b98120;
-      color: #10b981;
-      border: 1px solid #10b98140;
-    }
-
-    .state-badge.stopped {
-      background: #64748b20;
-      color: #64748b;
-      border: 1px solid #64748b40;
-    }
-
-    .state-badge.error, .state-badge.unknown {
-      background: #f59e0b20;
-      color: #f59e0b;
-      border: 1px solid #f59e0b40;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
     }
 
     .btn-sync {
       margin-left: auto;
-      background: #6c63ff20;
-      border: 1px solid #6c63ff40;
-      color: #6c63ff;
-      border-radius: 6px;
+      background: var(--accent-subtle);
+      border: 1px solid var(--accent-border);
+      color: var(--accent);
+      border-radius: var(--radius-md);
       padding: 5px 14px;
       font-size: 12px;
       font-weight: 600;
@@ -135,7 +108,7 @@ export class AgentsBuilder extends LitElement {
     }
 
     .btn-sync:hover:not(:disabled) {
-      background: #6c63ff30;
+      background: rgba(79, 110, 247, 0.15);
     }
 
     .btn-sync:disabled {
@@ -161,27 +134,14 @@ export class AgentsBuilder extends LitElement {
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      background: #0f111780;
+      background: rgba(15, 17, 23, 0.5);
       z-index: 20;
       gap: 12px;
     }
 
-    .spinner {
-      width: 32px;
-      height: 32px;
-      border: 3px solid #2a2d3a;
-      border-top-color: #6c63ff;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
     .spinner-label {
       font-size: 13px;
-      color: #94a3b8;
+      color: var(--text-secondary);
     }
 
     .error-banner {
@@ -189,12 +149,6 @@ export class AgentsBuilder extends LitElement {
       top: 16px;
       left: 50%;
       transform: translateX(-50%);
-      background: #ef444420;
-      border: 1px solid #ef444440;
-      color: #ef4444;
-      border-radius: 6px;
-      padding: 8px 16px;
-      font-size: 13px;
       z-index: 15;
     }
 
@@ -205,7 +159,7 @@ export class AgentsBuilder extends LitElement {
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      color: #4a5568;
+      color: var(--text-muted);
       gap: 8px;
     }
 
@@ -217,7 +171,7 @@ export class AgentsBuilder extends LitElement {
     .empty-state-sub {
       font-size: 13px;
     }
-  `;
+  `];
 
   @property({ type: String }) slug = "";
 
@@ -301,14 +255,15 @@ export class AgentsBuilder extends LitElement {
 
     return html`
       <div class="builder-header">
-        <button class="btn-back" @click=${this._goBack}>${msg("← Back", { id: "ab-btn-back" })}</button>
+        <button class="btn-back" aria-label="Retour" @click=${this._goBack}>${msg("← Back", { id: "ab-btn-back" })}</button>
         <span class="header-title">${msg("Agents Builder", { id: "ab-title" })}</span>
         ${inst ? html`
           <span class="header-slug">${inst.slug}</span>
-          <span class="state-badge ${inst.state}">${inst.state}</span>
+          <span class="badge ${inst.state}">${inst.state}</span>
         ` : ""}
         <button
           class="btn-sync"
+          aria-label="Synchroniser"
           ?disabled=${this._syncing}
           @click=${() => void this._syncAndLoad()}
         >${msg("↻ Sync", { id: "ab-btn-sync" })}</button>

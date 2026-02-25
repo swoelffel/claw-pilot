@@ -4,13 +4,15 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo, AgentLink, AgentFileContent } from "../types.js";
 import { fetchAgentFile, updateSpawnLinks } from "../api.js";
+import { tokenStyles } from "../styles/tokens.js";
+import { sectionLabelStyles } from "../styles/shared.js";
 
 const EDITABLE_FILES = new Set(["AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md", "USER.md", "HEARTBEAT.md"]);
 
 @localized()
 @customElement("cp-agent-detail-panel")
 export class AgentDetailPanel extends LitElement {
-  static styles = css`
+  static styles = [tokenStyles, sectionLabelStyles, css`
     :host {
       display: flex;
       flex-direction: column;
@@ -19,8 +21,8 @@ export class AgentDetailPanel extends LitElement {
       right: 0;
       width: 420px;
       height: 100%;
-      background: #1a1d27;
-      border-left: 1px solid #2a2d3a;
+      background: var(--bg-surface);
+      border-left: 1px solid var(--bg-border);
       overflow: hidden;
       z-index: 10;
       transition: width 0.25s ease;
@@ -33,7 +35,7 @@ export class AgentDetailPanel extends LitElement {
 
     .panel-header {
       padding: 14px 16px;
-      border-bottom: 1px solid #2a2d3a;
+      border-bottom: 1px solid var(--bg-border);
       flex-shrink: 0;
       display: flex;
       align-items: flex-start;
@@ -55,24 +57,24 @@ export class AgentDetailPanel extends LitElement {
     .panel-btn {
       background: none;
       border: none;
-      color: #4a5568;
+      color: var(--text-muted);
       font-size: 14px;
       cursor: pointer;
       padding: 4px 7px;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       transition: color 0.15s, background 0.15s;
       line-height: 1;
     }
 
     .panel-btn:hover {
-      color: #e2e8f0;
-      background: #2a2d3a;
+      color: var(--text-primary);
+      background: var(--bg-border);
     }
 
     .agent-name {
       font-size: 16px;
       font-weight: 700;
-      color: #e2e8f0;
+      color: var(--text-primary);
       margin-bottom: 4px;
       white-space: nowrap;
       overflow: hidden;
@@ -88,17 +90,17 @@ export class AgentDetailPanel extends LitElement {
 
     .agent-id-label {
       font-size: 11px;
-      color: #4a5568;
-      font-family: "Fira Mono", monospace;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
     }
 
     .badge-default {
       font-size: 9px;
       font-weight: 700;
       text-transform: uppercase;
-      color: #6c63ff;
-      background: #6c63ff20;
-      border: 1px solid #6c63ff40;
+      color: var(--accent);
+      background: var(--accent-subtle);
+      border: 1px solid var(--accent-border);
       border-radius: 3px;
       padding: 1px 5px;
     }
@@ -106,9 +108,9 @@ export class AgentDetailPanel extends LitElement {
     .badge-role {
       font-size: 10px;
       font-weight: 600;
-      color: #0ea5e9;
-      background: #0ea5e920;
-      border: 1px solid #0ea5e940;
+      color: var(--state-info);
+      background: rgba(14, 165, 233, 0.08);
+      border: 1px solid rgba(14, 165, 233, 0.25);
       border-radius: 3px;
       padding: 1px 6px;
     }
@@ -116,7 +118,7 @@ export class AgentDetailPanel extends LitElement {
     .tabs {
       display: flex;
       gap: 0;
-      border-bottom: 1px solid #2a2d3a;
+      border-bottom: 1px solid var(--bg-border);
       overflow-x: auto;
       flex-shrink: 0;
       scrollbar-width: none;
@@ -130,7 +132,7 @@ export class AgentDetailPanel extends LitElement {
       padding: 8px 14px;
       font-size: 11px;
       font-weight: 600;
-      color: #4a5568;
+      color: var(--text-muted);
       cursor: pointer;
       border-bottom: 2px solid transparent;
       white-space: nowrap;
@@ -143,18 +145,22 @@ export class AgentDetailPanel extends LitElement {
     }
 
     .tab:hover {
-      color: #94a3b8;
+      color: var(--text-secondary);
     }
 
     .tab.active {
-      color: #6c63ff;
-      border-bottom-color: #6c63ff;
+      color: var(--accent);
+      border-bottom-color: var(--accent);
     }
 
     .panel-body {
       flex: 1;
       overflow-y: auto;
       padding: 16px 20px;
+    }
+
+    .panel-body.has-save-bar {
+      padding-bottom: 52px;
     }
 
     .info-row {
@@ -173,13 +179,13 @@ export class AgentDetailPanel extends LitElement {
       font-size: 10px;
       text-transform: uppercase;
       letter-spacing: 0.06em;
-      color: #4a5568;
+      color: var(--text-muted);
     }
 
     .info-value {
       font-size: 13px;
-      color: #94a3b8;
-      font-family: "Fira Mono", monospace;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
       word-break: break-all;
     }
 
@@ -192,20 +198,20 @@ export class AgentDetailPanel extends LitElement {
 
     .link-badge {
       font-size: 10px;
-      color: #94a3b8;
-      background: #2a2d3a;
+      color: var(--text-secondary);
+      background: var(--bg-border);
       border-radius: 3px;
       padding: 2px 7px;
-      font-family: "Fira Mono", monospace;
+      font-family: var(--font-mono);
     }
 
     .link-badge.a2a {
-      color: #6c63ff;
-      background: #6c63ff15;
+      color: var(--accent);
+      background: var(--accent-subtle);
     }
 
     .link-badge.spawn {
-      color: #94a3b8;
+      color: var(--text-secondary);
     }
 
     .link-badge.spawn-editable {
@@ -223,7 +229,7 @@ export class AgentDetailPanel extends LitElement {
     .spawn-remove-btn {
       background: none;
       border: none;
-      color: #4a5568;
+      color: var(--text-muted);
       font-size: 10px;
       cursor: pointer;
       padding: 0 1px;
@@ -234,15 +240,15 @@ export class AgentDetailPanel extends LitElement {
     }
 
     .spawn-remove-btn:hover {
-      color: #ef4444;
+      color: var(--state-error);
     }
 
     .pending-removal .spawn-remove-btn {
-      color: #6c63ff;
+      color: var(--accent);
     }
 
     .pending-removal .spawn-remove-btn:hover {
-      color: #a78bfa;
+      color: var(--accent-hover);
     }
 
     .spawn-save-bar {
@@ -254,15 +260,15 @@ export class AgentDetailPanel extends LitElement {
       align-items: center;
       gap: 10px;
       padding: 10px 20px;
-      background: #1a1d27;
-      border-top: 1px solid #2a2d3a;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--bg-border);
       z-index: 5;
     }
 
     .btn-save-spawn {
-      background: #6c63ff20;
-      border: 1px solid #6c63ff40;
-      color: #6c63ff;
+      background: var(--accent-subtle);
+      border: 1px solid var(--accent-border);
+      color: var(--accent);
       border-radius: 5px;
       padding: 5px 14px;
       font-size: 11px;
@@ -273,7 +279,7 @@ export class AgentDetailPanel extends LitElement {
     }
 
     .btn-save-spawn:hover:not(:disabled) {
-      background: #6c63ff35;
+      background: rgba(79, 110, 247, 0.15);
     }
 
     .btn-save-spawn:disabled {
@@ -283,14 +289,14 @@ export class AgentDetailPanel extends LitElement {
 
     .save-hint {
       font-size: 10px;
-      color: #4a5568;
+      color: var(--text-muted);
       flex: 1;
     }
 
     .btn-cancel-spawn {
       background: none;
-      border: 1px solid #2a2d3a;
-      color: #64748b;
+      border: 1px solid var(--bg-border);
+      color: var(--state-stopped);
       border-radius: 5px;
       padding: 5px 14px;
       font-size: 11px;
@@ -301,20 +307,20 @@ export class AgentDetailPanel extends LitElement {
     }
 
     .btn-cancel-spawn:hover {
-      border-color: #ef4444;
-      color: #ef4444;
+      border-color: var(--state-error);
+      color: var(--state-error);
     }
 
     .file-content {
-      font-family: "Fira Mono", monospace;
+      font-family: var(--font-mono);
       font-size: 12px;
       line-height: 1.6;
-      color: #94a3b8;
+      color: var(--text-secondary);
       white-space: pre-wrap;
       word-break: break-word;
-      background: #0f1117;
-      border: 1px solid #2a2d3a;
-      border-radius: 6px;
+      background: var(--bg-base);
+      border: 1px solid var(--bg-border);
+      border-radius: var(--radius-md);
       padding: 12px;
       margin: 0;
       overflow-x: auto;
@@ -329,29 +335,29 @@ export class AgentDetailPanel extends LitElement {
     }
 
     .badge-editable {
-      color: #10b981;
-      background: #10b98115;
-      border: 1px solid #10b98130;
+      color: var(--state-running);
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.2);
       border-radius: 3px;
       padding: 1px 6px;
     }
 
     .badge-readonly {
-      color: #4a5568;
-      background: #2a2d3a;
+      color: var(--text-muted);
+      background: var(--bg-border);
       border-radius: 3px;
       padding: 1px 6px;
     }
 
     .loading-text {
-      color: #4a5568;
+      color: var(--text-muted);
       font-size: 13px;
       font-style: italic;
     }
 
     .notes-text {
       font-size: 13px;
-      color: #94a3b8;
+      color: var(--text-secondary);
       line-height: 1.5;
       font-style: italic;
     }
@@ -363,8 +369,8 @@ export class AgentDetailPanel extends LitElement {
 
     .spawn-add-btn {
       background: none;
-      border: 1px dashed #2a2d3a;
-      color: #4a5568;
+      border: 1px dashed var(--bg-border);
+      color: var(--text-muted);
       font-size: 11px;
       cursor: pointer;
       padding: 2px 8px;
@@ -375,20 +381,20 @@ export class AgentDetailPanel extends LitElement {
     }
 
     .spawn-add-btn:hover {
-      border-color: #6c63ff80;
-      color: #6c63ff;
+      border-color: var(--accent-border);
+      color: var(--accent);
     }
 
     .spawn-dropdown {
       position: absolute;
       top: calc(100% + 4px);
       left: 0;
-      background: #1e2130;
-      border: 1px solid #2a2d3a;
-      border-radius: 6px;
+      background: var(--bg-hover);
+      border: 1px solid var(--bg-border);
+      border-radius: var(--radius-md);
       min-width: 140px;
       z-index: 20;
-      box-shadow: 0 4px 16px #00000060;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.375);
       overflow: hidden;
     }
 
@@ -398,33 +404,33 @@ export class AgentDetailPanel extends LitElement {
       text-align: left;
       background: none;
       border: none;
-      color: #94a3b8;
+      color: var(--text-secondary);
       font-size: 11px;
-      font-family: "Fira Mono", monospace;
+      font-family: var(--font-mono);
       padding: 7px 12px;
       cursor: pointer;
       transition: background 0.1s, color 0.1s;
     }
 
     .spawn-dropdown-item:hover {
-      background: #6c63ff20;
-      color: #e2e8f0;
+      background: var(--accent-subtle);
+      color: var(--text-primary);
     }
 
     .link-badge.spawn-pending-add {
-      color: #10b981;
-      background: #10b98115;
-      border: 1px solid #10b98130;
+      color: var(--state-running);
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.2);
     }
 
     .link-badge.spawn-pending-add .spawn-remove-btn {
-      color: #4a5568;
+      color: var(--text-muted);
     }
 
     .link-badge.spawn-pending-add .spawn-remove-btn:hover {
-      color: #ef4444;
+      color: var(--state-error);
     }
-  `;
+  `];
 
   @property({ type: Object }) agent!: AgentBuilderInfo;
   @property({ type: Array }) links: AgentLink[] = [];
@@ -738,11 +744,13 @@ export class AgentDetailPanel extends LitElement {
         <div class="panel-controls">
           <button
             class="panel-btn"
+            aria-label=${this._expanded ? msg("Collapse", { id: "adp-btn-collapse" }) : msg("Expand", { id: "adp-btn-expand" })}
             title=${this._expanded ? msg("Collapse", { id: "adp-btn-collapse" }) : msg("Expand", { id: "adp-btn-expand" })}
             @click=${this._toggleExpand}
           >${this._expanded ? "⊟" : "⊞"}</button>
           <button
             class="panel-btn"
+            aria-label="Fermer"
             title=${msg("Close", { id: "adp-btn-close" })}
             @click=${() => this.dispatchEvent(new CustomEvent("panel-close", { bubbles: true, composed: true }))}
           >✕</button>
@@ -762,7 +770,7 @@ export class AgentDetailPanel extends LitElement {
         `)}
       </div>
 
-      <div class="panel-body" style=${(this._pendingRemovals.size > 0 || this._pendingAdditions.size > 0) ? "padding-bottom: 52px;" : ""}>
+      <div class="panel-body ${(this._pendingRemovals.size > 0 || this._pendingAdditions.size > 0) ? "has-save-bar" : ""}">
         ${this._activeTab === "info"
           ? this._renderInfo()
           : this._renderFileTab(this._activeTab)}
