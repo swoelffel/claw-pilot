@@ -114,7 +114,11 @@ export const templates = {
   // agent-card-mini.ts
   "acm-badge-default": "Standard",
   "acm-badge-a2a": "A2A",
+  "acm-badge-sa": "SA",
   "acm-files": "Dateien",
+  "acm-tooltip-default": "Haupteinstiegspunkt für Gespräche. Orchestriert das Agenten-Team.",
+  "acm-tooltip-a2a": "Im Agent-to-Agent-Modus verbunden (bidirektionaler Peer).",
+  "acm-tooltip-sa": "Unteragent: spezialisierter Agent, der vom Orchestrator aufgerufen wird.",
 
   // create-agent-dialog.ts
   "cad-title": "Neuer Agent",

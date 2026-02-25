@@ -114,7 +114,11 @@ export const templates = {
   // agent-card-mini.ts
   "acm-badge-default": "Padrão",
   "acm-badge-a2a": "A2A",
+  "acm-badge-sa": "SA",
   "acm-files": "arquivos",
+  "acm-tooltip-default": "Ponto de entrada principal para conversas. Orquestra a equipe de agentes.",
+  "acm-tooltip-a2a": "Conectado no modo Agente-para-Agente (par bidirecional).",
+  "acm-tooltip-sa": "SubAgente: agente especializado, invocado pelo orquestrador.",
 
   // create-agent-dialog.ts
   "cad-title": "Novo agente",

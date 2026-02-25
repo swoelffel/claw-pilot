@@ -103,7 +103,6 @@ export class AgentCardMini extends LitElement {
       flex-shrink: 0;
     }
 
-    /* badges (default / a2a) — now unused in card-top, kept for card-bottom if needed */
     .badge-default {
       font-size: 9px;
       font-weight: 700;
@@ -115,10 +114,11 @@ export class AgentCardMini extends LitElement {
       border-radius: 3px;
       padding: 1px 5px;
       flex-shrink: 0;
+      cursor: help;
     }
 
     .badge-a2a {
-      font-size: 8px;
+      font-size: 9px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.06em;
@@ -128,6 +128,21 @@ export class AgentCardMini extends LitElement {
       border-radius: 3px;
       padding: 1px 5px;
       flex-shrink: 0;
+      cursor: help;
+    }
+
+    .badge-sa {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      background: transparent;
+      border: 1px solid var(--bg-border);
+      border-radius: 3px;
+      padding: 1px 5px;
+      flex-shrink: 0;
+      cursor: help;
     }
 
     .card-bottom {
@@ -224,13 +239,13 @@ export class AgentCardMini extends LitElement {
           <span class="agent-id">${a.agent_id}</span>
           <span class="file-count">${a.files.length} ${msg("files", { id: "acm-files" })}</span>
         </div>
-        <!-- row 3 : badge (Default | A2A | nothing) + model -->
+        <!-- row 3 : badge (Default | A2A | SA) + model -->
         <div class="card-bottom">
           ${a.is_default
-            ? html`<span class="badge-default">${msg("Default", { id: "acm-badge-default" })}</span>`
+            ? html`<span class="badge-default" title=${msg("Main entry point for conversations. Orchestrates the agent team.", { id: "acm-tooltip-default" })}>${msg("Default", { id: "acm-badge-default" })}</span>`
             : this.isA2A
-              ? html`<span class="badge-a2a">${msg("A2A", { id: "acm-badge-a2a" })}</span>`
-              : nothing}
+              ? html`<span class="badge-a2a" title=${msg("Connected in Agent-to-Agent mode (bidirectional peer).", { id: "acm-tooltip-a2a" })}>${msg("A2A", { id: "acm-badge-a2a" })}</span>`
+              : html`<span class="badge-sa" title=${msg("SubAgent: specialized agent, invoked by the orchestrator.", { id: "acm-tooltip-sa" })}>${msg("SA", { id: "acm-badge-sa" })}</span>`}
           ${modelShort ? html`<span class="model-label" title=${model ?? ""}>${modelShort}</span>` : ""}
         </div>
       </div>

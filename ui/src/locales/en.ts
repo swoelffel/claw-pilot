@@ -115,7 +115,11 @@ export const templates = {
   // agent-card-mini.ts
   "acm-badge-default": "Default",
   "acm-badge-a2a": "A2A",
+  "acm-badge-sa": "SA",
   "acm-files": "files",
+  "acm-tooltip-default": "Main entry point for conversations. Orchestrates the agent team.",
+  "acm-tooltip-a2a": "Connected in Agent-to-Agent mode (bidirectional peer).",
+  "acm-tooltip-sa": "SubAgent: specialized agent, invoked by the orchestrator.",
 
   // create-agent-dialog.ts
   "cad-title": "New agent",
