@@ -355,10 +355,80 @@ export class AgentDetailPanel extends LitElement {
       line-height: 1.5;
       font-style: italic;
     }
+
+    .spawn-add-wrap {
+      position: relative;
+      display: inline-block;
+    }
+
+    .spawn-add-btn {
+      background: none;
+      border: 1px dashed #2a2d3a;
+      color: #4a5568;
+      font-size: 11px;
+      cursor: pointer;
+      padding: 2px 8px;
+      border-radius: 3px;
+      line-height: 1.4;
+      transition: border-color 0.12s, color 0.12s;
+      font-family: inherit;
+    }
+
+    .spawn-add-btn:hover {
+      border-color: #6c63ff80;
+      color: #6c63ff;
+    }
+
+    .spawn-dropdown {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      background: #1e2130;
+      border: 1px solid #2a2d3a;
+      border-radius: 6px;
+      min-width: 140px;
+      z-index: 20;
+      box-shadow: 0 4px 16px #00000060;
+      overflow: hidden;
+    }
+
+    .spawn-dropdown-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      color: #94a3b8;
+      font-size: 11px;
+      font-family: "Fira Mono", monospace;
+      padding: 7px 12px;
+      cursor: pointer;
+      transition: background 0.1s, color 0.1s;
+    }
+
+    .spawn-dropdown-item:hover {
+      background: #6c63ff20;
+      color: #e2e8f0;
+    }
+
+    .link-badge.spawn-pending-add {
+      color: #10b981;
+      background: #10b98115;
+      border: 1px solid #10b98130;
+    }
+
+    .link-badge.spawn-pending-add .spawn-remove-btn {
+      color: #4a5568;
+    }
+
+    .link-badge.spawn-pending-add .spawn-remove-btn:hover {
+      color: #ef4444;
+    }
   `;
 
   @property({ type: Object }) agent!: AgentBuilderInfo;
   @property({ type: Array }) links: AgentLink[] = [];
+  @property({ type: Array }) allAgents: AgentBuilderInfo[] = [];
   @property({ type: String }) slug = "";
 
   @state() private _activeTab = "info";
@@ -366,6 +436,8 @@ export class AgentDetailPanel extends LitElement {
   @state() private _loadingFile = false;
   @state() private _expanded = false;
   @state() private _pendingRemovals = new Set<string>();
+  @state() private _pendingAdditions = new Set<string>();
+  @state() private _dropdownOpen = false;
   @state() private _saving = false;
 
   private async _loadFile(filename: string): Promise<void> {
@@ -403,6 +475,8 @@ export class AgentDetailPanel extends LitElement {
       this._activeTab = "info";
       this._fileCache = new Map();
       this._pendingRemovals = new Set();
+      this._pendingAdditions = new Set();
+      this._dropdownOpen = false;
     }
   }
 
@@ -419,13 +493,26 @@ export class AgentDetailPanel extends LitElement {
     return raw;
   }
 
-  private _cancelPendingRemovals(): void {
+  private _cancelPendingChanges(): void {
     this._pendingRemovals = new Set();
+    this._pendingAdditions = new Set();
+    this._dropdownOpen = false;
     this.dispatchEvent(new CustomEvent("pending-removals-changed", {
       detail: { pendingRemovals: new Set() },
       bubbles: true,
       composed: true,
     }));
+  }
+
+  private _addSpawnLink(targetId: string): void {
+    this._pendingAdditions = new Set(this._pendingAdditions).add(targetId);
+    this._dropdownOpen = false;
+  }
+
+  private _cancelAddition(targetId: string): void {
+    const next = new Set(this._pendingAdditions);
+    next.delete(targetId);
+    this._pendingAdditions = next;
   }
 
   private _toggleSpawnRemoval(targetId: string): void {
@@ -449,8 +536,12 @@ export class AgentDetailPanel extends LitElement {
       const remaining = spawnLinks
         .map(l => l.target_agent_id)
         .filter(id => !this._pendingRemovals.has(id));
-      const result = await updateSpawnLinks(this.slug, this.agent.agent_id, remaining);
+      const added = Array.from(this._pendingAdditions);
+      const targets = [...new Set([...remaining, ...added])];
+      const result = await updateSpawnLinks(this.slug, this.agent.agent_id, targets);
       this._pendingRemovals = new Set();
+      this._pendingAdditions = new Set();
+      this._dropdownOpen = false;
       // Notify canvas: no more pending removals
       this.dispatchEvent(new CustomEvent("pending-removals-changed", {
         detail: { pendingRemovals: new Set() },
@@ -511,26 +602,67 @@ export class AgentDetailPanel extends LitElement {
             </div>
           </div>
         ` : ""}
-        ${spawnLinks.length > 0 ? html`
-          <div class="info-item">
-            <span class="info-label">${msg("Can spawn", { id: "adp-label-can-spawn" })}</span>
-            <div class="links-list">
-              ${spawnLinks.map(l => {
-                const isPending = this._pendingRemovals.has(l.target_agent_id);
-                return html`
-                  <span class="link-badge spawn spawn-editable ${isPending ? "pending-removal" : ""}">
-                    → ${l.target_agent_id}
+        ${(() => {
+          // Agents already linked as spawn targets (from saved state)
+          const linkedIds = new Set(spawnLinks.map(l => l.target_agent_id));
+          // Available agents: all agents except self, already linked, and pending additions
+          const availableAgents = this.allAgents.filter(ag =>
+            ag.agent_id !== a.agent_id &&
+            !linkedIds.has(ag.agent_id) &&
+            !this._pendingAdditions.has(ag.agent_id)
+          );
+          const hasSpawnSection = spawnLinks.length > 0 || this._pendingAdditions.size > 0 || availableAgents.length > 0;
+          if (!hasSpawnSection) return "";
+          return html`
+            <div class="info-item">
+              <span class="info-label">${msg("Can spawn", { id: "adp-label-can-spawn" })}</span>
+              <div class="links-list">
+                ${spawnLinks.map(l => {
+                  const isPending = this._pendingRemovals.has(l.target_agent_id);
+                  return html`
+                    <span class="link-badge spawn spawn-editable ${isPending ? "pending-removal" : ""}">
+                      → ${l.target_agent_id}
+                      <button
+                        class="spawn-remove-btn"
+                        title=${isPending ? "Restore" : "Remove"}
+                        @click=${() => this._toggleSpawnRemoval(l.target_agent_id)}
+                      >${isPending ? "↩" : "✕"}</button>
+                    </span>
+                  `;
+                })}
+                ${Array.from(this._pendingAdditions).map(id => html`
+                  <span class="link-badge spawn spawn-editable spawn-pending-add">
+                    → ${id}
                     <button
                       class="spawn-remove-btn"
-                      title=${isPending ? "Restore" : "Remove"}
-                      @click=${() => this._toggleSpawnRemoval(l.target_agent_id)}
-                    >${isPending ? "↩" : "✕"}</button>
+                      title="Cancel"
+                      @click=${() => this._cancelAddition(id)}
+                    >✕</button>
                   </span>
-                `;
-              })}
+                `)}
+                ${availableAgents.length > 0 ? html`
+                  <div class="spawn-add-wrap">
+                    <button
+                      class="spawn-add-btn"
+                      title=${msg("Add agent", { id: "adp-btn-add-spawn" })}
+                      @click=${() => { this._dropdownOpen = !this._dropdownOpen; }}
+                    >＋</button>
+                    ${this._dropdownOpen ? html`
+                      <div class="spawn-dropdown">
+                        ${availableAgents.map(ag => html`
+                          <button
+                            class="spawn-dropdown-item"
+                            @click=${() => this._addSpawnLink(ag.agent_id)}
+                          >${ag.agent_id}</button>
+                        `)}
+                      </div>
+                    ` : ""}
+                  </div>
+                ` : ""}
+              </div>
             </div>
-          </div>
-        ` : ""}
+          `;
+        })()}
         ${receivedSpawn.length > 0 ? html`
           <div class="info-item">
             <span class="info-label">${msg("Spawned by", { id: "adp-label-spawned-by" })}</span>
@@ -617,13 +749,13 @@ export class AgentDetailPanel extends LitElement {
         `)}
       </div>
 
-      <div class="panel-body" style=${this._pendingRemovals.size > 0 ? "padding-bottom: 52px;" : ""}>
+      <div class="panel-body" style=${(this._pendingRemovals.size > 0 || this._pendingAdditions.size > 0) ? "padding-bottom: 52px;" : ""}>
         ${this._activeTab === "info"
           ? this._renderInfo()
           : this._renderFileTab(this._activeTab)}
       </div>
 
-      ${this._pendingRemovals.size > 0 ? html`
+      ${(this._pendingRemovals.size > 0 || this._pendingAdditions.size > 0) ? html`
         <div class="spawn-save-bar">
           <button
             class="btn-save-spawn"
@@ -632,11 +764,11 @@ export class AgentDetailPanel extends LitElement {
           >${this._saving
             ? msg("Saving...", { id: "adp-saving" })
             : msg("Save", { id: "adp-btn-save" })}</button>
-          <span class="save-hint">${this._pendingRemovals.size} removal${this._pendingRemovals.size > 1 ? "s" : ""} pending</span>
+          <span class="save-hint">${this._pendingRemovals.size + this._pendingAdditions.size} change${(this._pendingRemovals.size + this._pendingAdditions.size) > 1 ? "s" : ""} pending</span>
           <button
             class="btn-cancel-spawn"
             ?disabled=${this._saving}
-            @click=${this._cancelPendingRemovals}
+            @click=${this._cancelPendingChanges}
           >${msg("Cancel", { id: "adp-btn-cancel-spawn" })}</button>
         </div>
       ` : ""}

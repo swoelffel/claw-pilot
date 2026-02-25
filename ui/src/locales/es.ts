@@ -134,4 +134,5 @@ export const templates = {
   "adp-btn-save": "Guardar",
   "adp-saving": "Guardando...",
   "adp-btn-cancel-spawn": "Cancelar",
+  "adp-btn-add-spawn": "Agregar agente",
 };
