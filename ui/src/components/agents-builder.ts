@@ -14,20 +14,31 @@ function computePositions(
   agents: AgentBuilderInfo[],
   canvasWidth: number,
   canvasHeight: number,
+  /** Current in-memory positions — takes priority over DB values on recompute. */
+  current: Map<string, { x: number; y: number }> = new Map(),
 ): Map<string, { x: number; y: number }> {
   const positions = new Map<string, { x: number; y: number }>();
 
-  // Agents with saved positions — use them directly
+  // Priority order:
+  //   1. current in-memory position (set by drag or previous recompute)
+  //   2. DB-persisted position (agent.position_x/y)
+  //   3. concentric fallback (for agents with no position at all)
   const needsLayout: AgentBuilderInfo[] = [];
   for (const agent of agents) {
-    if (agent.position_x != null && agent.position_y != null) {
+    const mem = current.get(agent.agent_id);
+    if (mem) {
+      // Already positioned in this session — keep it
+      positions.set(agent.agent_id, mem);
+    } else if (agent.position_x != null && agent.position_y != null) {
+      // Restore from DB on first load
       positions.set(agent.agent_id, { x: agent.position_x, y: agent.position_y });
     } else {
+      // Brand-new agent with no position anywhere — needs layout
       needsLayout.push(agent);
     }
   }
 
-  // Agents without saved positions — concentric fallback
+  // Concentric fallback only for agents with no position at all
   if (needsLayout.length > 0) {
     const centerX = canvasWidth / 2;
     const centerY = canvasHeight / 2;
@@ -241,7 +252,12 @@ export class AgentsBuilder extends LitElement {
 
   private _recomputePositions(): void {
     if (!this._data) return;
-    this._positions = computePositions(this._data.agents, this._canvasWidth, this._canvasHeight);
+    this._positions = computePositions(
+      this._data.agents,
+      this._canvasWidth,
+      this._canvasHeight,
+      this._positions,
+    );
   }
 
   private async _syncAndLoad(): Promise<void> {
