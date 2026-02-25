@@ -138,6 +138,17 @@ export const templates = {
   "cad-error-create": "Agent konnte nicht erstellt werden",
   "cad-spinner-creating": "Agent wird erstellt",
 
+  // delete-agent-dialog.ts
+  "acm-btn-delete": "Agent löschen",
+  "dad-title": "Agent löschen",
+  "dad-warning": "Dadurch werden alle Workspace-Dateien dauerhaft gelöscht und der Agent aus der Instanz entfernt. Diese Aktion kann nicht rückgängig gemacht werden.",
+  "dad-confirm-label": "Agent-ID zur Bestätigung eingeben",
+  "dad-btn-cancel": "Abbrechen",
+  "dad-btn-confirm": "Löschen",
+  "dad-btn-deleting": "Wird gelöscht...",
+  "dad-spinner-deleting": "Agent wird gelöscht...",
+  "dad-error-delete": "Agent konnte nicht gelöscht werden",
+
   // agent-detail-panel.ts
   "adp-tab-info": "Info",
   "adp-label-model": "Modell",

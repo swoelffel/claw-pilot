@@ -138,6 +138,17 @@ export const templates = {
   "cad-error-create": "Falha ao criar o agente",
   "cad-spinner-creating": "Criando agente",
 
+  // delete-agent-dialog.ts
+  "acm-btn-delete": "Excluir agente",
+  "dad-title": "Excluir agente",
+  "dad-warning": "Isso excluirá permanentemente todos os arquivos do workspace e cancelará o registro do agente na instância. Esta ação não pode ser desfeita.",
+  "dad-confirm-label": "Digite o ID do agente para confirmar",
+  "dad-btn-cancel": "Cancelar",
+  "dad-btn-confirm": "Excluir",
+  "dad-btn-deleting": "Excluindo...",
+  "dad-spinner-deleting": "Excluindo agente...",
+  "dad-error-delete": "Falha ao excluir agente",
+
   // agent-detail-panel.ts
   "adp-tab-info": "Info",
   "adp-label-model": "Modelo",

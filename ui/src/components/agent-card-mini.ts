@@ -1,5 +1,5 @@
 // ui/src/components/agent-card-mini.ts
-import { LitElement, html, css } from "lit";
+import { LitElement, html, css, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo } from "../types.js";
@@ -26,6 +26,7 @@ export class AgentCardMini extends LitElement {
       user-select: none;
       min-width: 130px;
       max-width: 160px;
+      position: relative;
     }
 
     .card.is-a2a {
@@ -135,12 +136,44 @@ export class AgentCardMini extends LitElement {
       text-overflow: ellipsis;
       max-width: 90px;
     }
+
+    .btn-delete {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: none;
+      background: var(--state-error, #ef4444);
+      color: white;
+      font-size: 10px;
+      line-height: 1;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      z-index: 2;
+    }
+
+    :host(:hover) .btn-delete,
+    :host(:focus-within) .btn-delete {
+      opacity: 1;
+    }
+
+    .btn-delete:hover {
+      background: #c53030;
+    }
   `];
 
   @property({ type: Object }) agent!: AgentBuilderInfo;
   @property({ type: Boolean }) selected = false;
   @property({ type: Boolean }) isA2A = false;
   @property({ type: Boolean, reflect: true }) isNew = false;
+  @property({ type: Boolean }) deletable = false;
 
   private _truncate(str: string, max: number): string {
     return str.length > max ? str.slice(0, max) + "…" : str;
@@ -184,6 +217,20 @@ export class AgentCardMini extends LitElement {
           ${a.role ? html`<span class="badge-role">${a.role}</span>` : ""}
           ${modelShort ? html`<span class="model-label" title=${model ?? ""}>${modelShort}</span>` : ""}
         </div>
+        ${this.deletable ? html`
+          <button
+            class="btn-delete"
+            title=${msg("Delete agent", { id: "acm-btn-delete" })}
+            @click=${(e: Event) => {
+              e.stopPropagation();
+              this.dispatchEvent(new CustomEvent("agent-delete-requested", {
+                detail: { agentId: this.agent.agent_id },
+                bubbles: true,
+                composed: true,
+              }));
+            }}
+          >✕</button>
+        ` : nothing}
       </div>
     `;
   }

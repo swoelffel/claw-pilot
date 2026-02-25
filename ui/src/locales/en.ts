@@ -139,6 +139,17 @@ export const templates = {
   "cad-error-create": "Failed to create agent",
   "cad-spinner-creating": "Creating agent",
 
+  // delete-agent-dialog.ts
+  "acm-btn-delete": "Delete agent",
+  "dad-title": "Delete agent",
+  "dad-warning": "This will permanently delete all workspace files and unregister the agent from the instance. This action cannot be undone.",
+  "dad-confirm-label": "Type the agent ID to confirm",
+  "dad-btn-cancel": "Cancel",
+  "dad-btn-confirm": "Delete",
+  "dad-btn-deleting": "Deleting...",
+  "dad-spinner-deleting": "Deleting agent...",
+  "dad-error-delete": "Failed to delete agent",
+
   // agent-detail-panel.ts
   "adp-tab-info": "Info",
   "adp-label-model": "Model",

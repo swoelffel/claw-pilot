@@ -41,6 +41,7 @@ export const PROVIDER_ENV_VARS: Record<string, string> = {
   google:     "GOOGLE_API_KEY",
   mistral:    "MISTRAL_API_KEY",
   xai:        "XAI_API_KEY",
+  kilocode:   "KILOCODE_API_KEY",
   opencode:   "",
 };
 
@@ -48,7 +49,7 @@ export function generateConfig(answers: WizardAnswers): string {
   const nonMainAgents = answers.agents.filter((a) => !a.isDefault && a.id !== "main");
   const allAgentIds = answers.agents.map((a) => a.id);
 
-  // Build agents list (v2026.2.14 format)
+  // Build agents list (v2026.2.24 format)
   const agentsList = nonMainAgents.map((agent) => {
     const entry: Record<string, unknown> = {
       id: agent.id,
@@ -62,7 +63,7 @@ export function generateConfig(answers: WizardAnswers): string {
     return entry;
   });
 
-  // Build bindings (v2026.2.14: match.channel + match.accountId)
+  // Build bindings (v2026.2.24: match.channel + match.accountId)
   const bindings: Record<string, unknown>[] = nonMainAgents.map((agent) => ({
     agentId: agent.id,
     match: {
@@ -71,12 +72,12 @@ export function generateConfig(answers: WizardAnswers): string {
     },
   }));
 
-  // Build provider config block (v2026.2.14: baseUrl + models array required)
+  // Build provider config block (v2026.2.24: baseUrl + models array required)
   const envVar = PROVIDER_ENV_VARS[answers.provider] ?? "";
   const providerBlock: Record<string, unknown> = {};
 
-  if (answers.provider === "opencode") {
-    // opencode uses auth.profiles, no providers block needed
+  if (answers.provider === "opencode" || answers.provider === "kilocode") {
+    // opencode and kilocode use auth.profiles, no providers block needed
   } else if (envVar) {
     const providerDefaults: Record<string, { baseUrl: string }> = {
       anthropic:  { baseUrl: "https://api.anthropic.com" },
@@ -93,10 +94,10 @@ export function generateConfig(answers: WizardAnswers): string {
     };
   }
 
-  // model default as object (v2026.2.14)
+  // model default as object (v2026.2.24)
   const defaultModelObj = { primary: answers.defaultModel };
 
-  // auth block: opencode uses profiles, others use providers
+  // auth block: opencode and kilocode use profiles, others use providers
   const authBlock: Record<string, unknown> = answers.provider === "opencode"
     ? {
         profiles: {
@@ -106,11 +107,20 @@ export function generateConfig(answers: WizardAnswers): string {
           },
         },
       }
+    : answers.provider === "kilocode"
+    ? {
+        profiles: {
+          "kilocode:default": {
+            provider: "kilocode",
+            mode: "api_key",
+          },
+        },
+      }
     : {};
 
   const config: Record<string, unknown> = {
     meta: {
-      lastTouchedVersion: "2026.2.14",
+      lastTouchedVersion: "2026.2.24",
       lastTouchedAt: new Date().toISOString(),
     },
     ...(Object.keys(authBlock).length > 0 ? { auth: authBlock } : {}),

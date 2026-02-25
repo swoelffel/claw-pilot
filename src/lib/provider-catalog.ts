@@ -12,7 +12,7 @@ export interface ProviderInfo {
 /**
  * Provider catalog — kept in sync with OpenClaw model registry.
  * Source: src/openclaw/node_modules/@mariozechner/pi-ai/dist/models.generated.js
- * OpenClaw version reference: 2026.2.14
+ * OpenClaw version reference: 2026.2.24
  * Update this catalog on each OpenClaw release (see docs/OPENCLAW-COMPAT.md).
  */
 export const PROVIDER_CATALOG: ProviderInfo[] = [
@@ -84,6 +84,15 @@ export const PROVIDER_CATALOG: ProviderInfo[] = [
     ],
   },
   {
+    id: "kilocode",
+    label: "Kilocode",
+    requiresKey: true,
+    defaultModel: "kilocode/anthropic/claude-opus-4.6",
+    models: [
+      "kilocode/anthropic/claude-opus-4.6",
+    ],
+  },
+  {
     id: "opencode",
     label: "OpenCode Zen (no key)",
     requiresKey: false,
@@ -94,6 +103,7 @@ export const PROVIDER_CATALOG: ProviderInfo[] = [
       "opencode/claude-opus-4-5",
       "opencode/gemini-3-pro",
       "opencode/gpt-5.1-codex-mini",
+      "opencode/gpt-5.1-codex-max",
       "opencode/gpt-5.1",
       "opencode/glm-4.7",
       "opencode/gemini-3-flash",

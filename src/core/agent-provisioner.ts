@@ -86,4 +86,48 @@ export class AgentProvisioner {
       }
     }
   }
+
+  async deleteAgent(instance: InstanceRecord, agentSlug: string): Promise<void> {
+    // 1. Lookup agent in DB
+    const agent = this.registry.getAgentByAgentId(instance.id, agentSlug);
+    if (!agent) throw new Error(`Agent "${agentSlug}" not found`);
+
+    // 2. Block deletion of default agent
+    if (agent.is_default) throw new Error(`Cannot delete the default agent`);
+
+    // 3. Read openclaw.json
+    const configRaw = await this.conn.readFile(instance.config_path);
+    const config = JSON.parse(configRaw) as Record<string, unknown>;
+
+    // 4. Remove agent from agents.list[]
+    const agentsConf = config["agents"] as Record<string, unknown> | undefined;
+    if (agentsConf && Array.isArray(agentsConf["list"])) {
+      agentsConf["list"] = (agentsConf["list"] as Array<{ id: string }>).filter(
+        (a) => a.id !== agentSlug,
+      );
+    }
+
+    // 5. Write openclaw.json back
+    await this.conn.writeFile(
+      instance.config_path,
+      JSON.stringify(config, null, 2) + "\n",
+    );
+
+    // 6. Delete workspace directory on server
+    await this.conn.remove(agent.workspace_path, { recursive: true });
+
+    // 7. Clean up orphan links in DB
+    const allLinks = this.registry.listAgentLinks(instance.id);
+    const remainingLinks = allLinks
+      .filter((l) => l.source_agent_id !== agentSlug && l.target_agent_id !== agentSlug)
+      .map((l) => ({
+        sourceAgentId: l.source_agent_id,
+        targetAgentId: l.target_agent_id,
+        linkType: l.link_type as "a2a" | "spawn",
+      }));
+    this.registry.replaceAgentLinks(instance.id, remainingLinks);
+
+    // 8. Delete agent from DB (cascades to agent_files)
+    this.registry.deleteAgentById(agent.id);
+  }
 }
