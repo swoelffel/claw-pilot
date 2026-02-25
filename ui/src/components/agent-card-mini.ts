@@ -137,16 +137,6 @@ export class AgentCardMini extends LitElement {
       flex-wrap: wrap;
     }
 
-    .badge-role {
-      font-size: 9px;
-      font-weight: 600;
-      color: var(--state-info);
-      background: rgba(14, 165, 233, 0.08);
-      border: 1px solid rgba(14, 165, 233, 0.25);
-      border-radius: 3px;
-      padding: 1px 5px;
-    }
-
     .model-label {
       font-size: 9px;
       color: var(--text-muted);
@@ -234,14 +224,13 @@ export class AgentCardMini extends LitElement {
           <span class="agent-id">${a.agent_id}</span>
           <span class="file-count">${a.files.length} ${msg("files", { id: "acm-files" })}</span>
         </div>
-        <!-- row 3 : badges + model -->
+        <!-- row 3 : badge (Default | A2A | nothing) + model -->
         <div class="card-bottom">
           ${a.is_default
             ? html`<span class="badge-default">${msg("Default", { id: "acm-badge-default" })}</span>`
             : this.isA2A
               ? html`<span class="badge-a2a">${msg("A2A", { id: "acm-badge-a2a" })}</span>`
               : nothing}
-          ${a.role ? html`<span class="badge-role">${a.role}</span>` : ""}
           ${modelShort ? html`<span class="model-label" title=${model ?? ""}>${modelShort}</span>` : ""}
         </div>
       </div>
