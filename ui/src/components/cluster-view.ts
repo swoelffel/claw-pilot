@@ -3,24 +3,21 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { InstanceInfo } from "../types.js";
 import { fetchInstances } from "../api.js";
+import { tokenStyles } from "../styles/tokens.js";
+import { sectionLabelStyles, errorBannerStyles, buttonStyles } from "../styles/shared.js";
 import "./instance-card.js";
 import "./create-dialog.js";
 
 @localized()
 @customElement("cp-cluster-view")
 export class ClusterView extends LitElement {
-  static styles = css`
+  static styles = [tokenStyles, sectionLabelStyles, errorBannerStyles, buttonStyles, css`
     :host {
       display: block;
       padding: 24px;
     }
 
     .section-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
       margin-bottom: 20px;
     }
 
@@ -33,7 +30,7 @@ export class ClusterView extends LitElement {
     .empty {
       text-align: center;
       padding: 60px 20px;
-      color: #4a5568;
+      color: var(--text-muted);
       font-size: 15px;
     }
 
@@ -45,17 +42,11 @@ export class ClusterView extends LitElement {
     .loading {
       text-align: center;
       padding: 60px 20px;
-      color: #4a5568;
+      color: var(--text-muted);
       font-size: 14px;
     }
 
     .error-banner {
-      background: #ef444420;
-      border: 1px solid #ef444440;
-      border-radius: 8px;
-      padding: 12px 16px;
-      color: #ef4444;
-      font-size: 13px;
       margin-bottom: 20px;
     }
 
@@ -65,23 +56,7 @@ export class ClusterView extends LitElement {
       justify-content: space-between;
       margin-bottom: 20px;
     }
-
-    .btn-new {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: #6c63ff;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      padding: 6px 14px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-    .btn-new:hover { background: #7c73ff; }
-  `;
+  `];
 
   @property({ type: Array }) instances: InstanceInfo[] = [];
 
@@ -142,7 +117,7 @@ export class ClusterView extends LitElement {
             ? msg("instances", { id: "instance-count-many" })
             : msg("instance", { id: "instance-count-one" })}
         </div>
-        <button class="btn-new" @click=${() => { this._showCreateDialog = true; }}>
+        <button class="btn btn-primary" @click=${() => { this._showCreateDialog = true; }}>
           ${msg("+ New Instance", { id: "btn-new-instance" })}
         </button>
       </div>

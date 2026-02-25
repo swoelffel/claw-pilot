@@ -112,6 +112,7 @@ export const templates = {
 
   // agent-card-mini.ts
   "acm-badge-default": "Standard",
+  "acm-badge-a2a": "A2A",
   "acm-files": "Dateien",
 
   // agent-detail-panel.ts
@@ -130,4 +131,8 @@ export const templates = {
   "adp-btn-expand": "Vergrößern",
   "adp-btn-collapse": "Verkleinern",
   "adp-btn-close": "Schließen",
+  "adp-btn-save": "Speichern",
+  "adp-saving": "Speichern...",
+  "adp-btn-cancel-spawn": "Abbrechen",
+  "adp-btn-add-spawn": "Agent hinzufügen",
 };

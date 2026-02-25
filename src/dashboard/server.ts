@@ -172,6 +172,85 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     });
   });
 
+  // PATCH /api/instances/:slug/agents/:agentId/spawn-links — update spawn targets in openclaw.json
+  app.patch("/api/instances/:slug/agents/:agentId/spawn-links", async (c) => {
+    const slug = c.req.param("slug");
+    const agentId = c.req.param("agentId");
+    const instance = registry.getInstance(slug);
+    if (!instance) return c.json({ error: "Not found" }, 404);
+
+    let body: { targets: string[] };
+    try {
+      body = await c.req.json();
+      if (!Array.isArray(body.targets) || !body.targets.every((t: unknown) => typeof t === "string")) {
+        return c.json({ error: "targets must be an array of strings" }, 400);
+      }
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    try {
+      // 1. Read and parse openclaw.json
+      const configRaw = await conn.readFile(instance.config_path);
+      const config = JSON.parse(configRaw) as Record<string, unknown>;
+      const agentsConf = config["agents"] as Record<string, unknown> | undefined;
+
+      // 2. Update the allowAgents array for the target agent
+      // For "main": prefer agents.list[id=main] if it exists, otherwise fall back to agents.defaults
+      const agentsList = (agentsConf?.["list"] ?? []) as Array<Record<string, unknown>>;
+      const listEntry = agentsList.find((a) => a["id"] === agentId);
+
+      if (listEntry) {
+        // Agent has an explicit entry in agents.list — update there
+        let subagents = listEntry["subagents"] as Record<string, unknown> | undefined;
+        if (!subagents) {
+          subagents = {};
+          listEntry["subagents"] = subagents;
+        }
+        subagents["allowAgents"] = body.targets;
+      } else if (agentId === "main") {
+        // main with no list entry — update agents.defaults.subagents
+        const defaults = agentsConf?.["defaults"] as Record<string, unknown> | undefined;
+        if (defaults) {
+          let subagents = defaults["subagents"] as Record<string, unknown> | undefined;
+          if (!subagents) {
+            subagents = {};
+            defaults["subagents"] = subagents;
+          }
+          subagents["allowAgents"] = body.targets;
+        }
+      } else {
+        return c.json({ error: `Agent '${agentId}' not found in config` }, 404);
+      }
+
+      // 3. Write back openclaw.json
+      await conn.writeFile(instance.config_path, JSON.stringify(config, null, 2));
+
+      // 4. Re-sync agents to update DB + links from the new config (before restart so it always succeeds)
+      const agentSync = new AgentSync(conn, registry);
+      const result = await agentSync.sync(instance);
+
+      // 5. Restart the daemon fire-and-forget (don't wait for health — instance may be unhealthy)
+      conn.execFile("systemctl", ["--user", "restart", instance.systemd_unit], {
+        env: { XDG_RUNTIME_DIR: xdgRuntimeDir },
+      }).catch(() => { /* best-effort restart */ });
+
+      return c.json({
+        ok: true,
+        links: result.links.map((l) => ({
+          source_agent_id: l.source_agent_id,
+          target_agent_id: l.target_agent_id,
+          link_type: l.link_type,
+        })),
+      });
+    } catch (err) {
+      return c.json(
+        { error: err instanceof Error ? err.message : "Failed to update spawn links" },
+        500,
+      );
+    }
+  });
+
   // GET /api/instances/:slug/agents/:agentId/files/:filename — fetch a single workspace file
   app.get("/api/instances/:slug/agents/:agentId/files/:filename", (c) => {
     const slug = c.req.param("slug");

@@ -326,20 +326,13 @@ export class AgentSync {
       }
     }
 
-    // Spawn links from defaults.subagents.allowAgents[]
-    const defaultSubagents = agentsDefaults?.["subagents"] as
-      | Record<string, unknown>
-      | undefined;
-    const defaultAllowAgents = (defaultSubagents?.["allowAgents"] ?? []) as string[];
-    for (const target of defaultAllowAgents) {
-      links.push({
-        source_agent_id: "main",
-        target_agent_id: target,
-        link_type: "spawn",
-      });
-    }
-
     // Spawn links from each agent in list[].subagents.allowAgents[]
+    // (list entries take precedence — if main has an explicit list entry, skip defaults)
+    const mainListEntry = agentsList.find((a) => a["id"] === "main");
+    const mainHasListSubagents =
+      mainListEntry !== undefined &&
+      Array.isArray((mainListEntry["subagents"] as Record<string, unknown> | undefined)?.["allowAgents"]);
+
     for (const agent of agentsList) {
       if (!agent["id"]) continue;
       const sourceId = agent["id"] as string;
@@ -348,6 +341,21 @@ export class AgentSync {
       for (const target of allowAgents) {
         links.push({
           source_agent_id: sourceId,
+          target_agent_id: target,
+          link_type: "spawn",
+        });
+      }
+    }
+
+    // Spawn links from defaults.subagents.allowAgents[] — only if main has no explicit list entry
+    if (!mainHasListSubagents) {
+      const defaultSubagents = agentsDefaults?.["subagents"] as
+        | Record<string, unknown>
+        | undefined;
+      const defaultAllowAgents = (defaultSubagents?.["allowAgents"] ?? []) as string[];
+      for (const target of defaultAllowAgents) {
+        links.push({
+          source_agent_id: "main",
           target_agent_id: target,
           link_type: "spawn",
         });

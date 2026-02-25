@@ -3,11 +3,13 @@ import { customElement, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { AgentDefinition, CreateInstanceRequest, ProviderInfo, ProvidersResponse } from "../types.js";
 import { fetchNextPort, createInstance, fetchProviders } from "../api.js";
+import { tokenStyles } from "../styles/tokens.js";
+import { sectionLabelStyles, spinnerStyles, errorBannerStyles, buttonStyles } from "../styles/shared.js";
 
 @localized()
 @customElement("cp-create-dialog")
 export class CreateDialog extends LitElement {
-  static styles = css`
+  static styles = [tokenStyles, sectionLabelStyles, spinnerStyles, errorBannerStyles, buttonStyles, css`
     :host {
       display: block;
     }
@@ -27,9 +29,9 @@ export class CreateDialog extends LitElement {
 
     /* Dialog panel */
     .dialog {
-      background: #1a1d27;
-      border: 1px solid #2a2d3a;
-      border-radius: 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--bg-border);
+      border-radius: var(--radius-lg);
       width: 100%;
       max-width: 560px;
       max-height: 90vh;
@@ -42,28 +44,28 @@ export class CreateDialog extends LitElement {
       align-items: center;
       justify-content: space-between;
       padding: 20px 24px 16px;
-      border-bottom: 1px solid #2a2d3a;
+      border-bottom: 1px solid var(--bg-border);
     }
 
     .dialog-title {
       font-size: 16px;
       font-weight: 700;
-      color: #e2e8f0;
+      color: var(--text-primary);
       letter-spacing: -0.01em;
     }
 
     .close-btn {
       background: none;
       border: none;
-      color: #64748b;
+      color: var(--state-stopped);
       cursor: pointer;
       font-size: 20px;
       line-height: 1;
       padding: 4px;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       transition: color 0.15s;
     }
-    .close-btn:hover { color: #e2e8f0; }
+    .close-btn:hover { color: var(--text-primary); }
 
     .dialog-body {
       padding: 24px;
@@ -77,14 +79,6 @@ export class CreateDialog extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 12px;
-    }
-
-    .section-label {
-      font-size: 11px;
-      font-weight: 600;
-      color: #6c63ff;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
     }
 
     /* Form fields */
@@ -103,17 +97,17 @@ export class CreateDialog extends LitElement {
     label {
       font-size: 13px;
       font-weight: 500;
-      color: #94a3b8;
+      color: var(--text-secondary);
     }
 
     input[type="text"],
     input[type="number"],
     input[type="password"],
     select {
-      background: #0f1117;
-      border: 1px solid #2a2d3a;
-      border-radius: 6px;
-      color: #e2e8f0;
+      background: var(--bg-base);
+      border: 1px solid var(--bg-border);
+      border-radius: var(--radius-md);
+      color: var(--text-primary);
       font-size: 14px;
       padding: 8px 12px;
       width: 100%;
@@ -126,19 +120,19 @@ export class CreateDialog extends LitElement {
     input[type="number"]:focus,
     input[type="password"]:focus,
     select:focus {
-      border-color: #6c63ff;
+      border-color: var(--accent);
     }
     input.invalid {
-      border-color: #ef4444;
+      border-color: var(--state-error);
     }
 
     .field-hint {
       font-size: 11px;
-      color: #4a5568;
+      color: var(--text-muted);
     }
     .field-error {
       font-size: 11px;
-      color: #ef4444;
+      color: var(--state-error);
     }
 
     /* Agents section */
@@ -150,10 +144,10 @@ export class CreateDialog extends LitElement {
     .toggle-btn {
       flex: 1;
       padding: 8px 12px;
-      border-radius: 6px;
-      border: 1px solid #2a2d3a;
-      background: #0f1117;
-      color: #64748b;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--bg-border);
+      background: var(--bg-base);
+      color: var(--state-stopped);
       font-size: 13px;
       font-weight: 500;
       cursor: pointer;
@@ -161,9 +155,9 @@ export class CreateDialog extends LitElement {
       text-align: center;
     }
     .toggle-btn.active {
-      background: #6c63ff20;
-      border-color: #6c63ff60;
-      color: #6c63ff;
+      background: var(--accent-subtle);
+      border-color: var(--accent-border);
+      color: var(--accent);
     }
 
     .agents-list {
@@ -182,20 +176,20 @@ export class CreateDialog extends LitElement {
     .agent-remove {
       background: none;
       border: none;
-      color: #ef444480;
+      color: rgba(239, 68, 68, 0.5);
       cursor: pointer;
       font-size: 16px;
       padding: 4px 6px;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       transition: color 0.15s;
     }
-    .agent-remove:hover { color: #ef4444; }
+    .agent-remove:hover { color: var(--state-error); }
 
     .add-agent-btn {
       background: none;
-      border: 1px dashed #2a2d3a;
-      border-radius: 6px;
-      color: #6c63ff;
+      border: 1px dashed var(--bg-border);
+      border-radius: var(--radius-md);
+      color: var(--accent);
       font-size: 13px;
       padding: 8px;
       cursor: pointer;
@@ -203,25 +197,15 @@ export class CreateDialog extends LitElement {
       width: 100%;
     }
     .add-agent-btn:hover {
-      border-color: #6c63ff60;
-      background: #6c63ff10;
+      border-color: var(--accent-border);
+      background: var(--accent-subtle);
     }
 
     /* Divider */
     .divider {
       border: none;
-      border-top: 1px solid #2a2d3a;
+      border-top: 1px solid var(--bg-border);
       margin: 0;
-    }
-
-    /* Error banner */
-    .error-banner {
-      background: #ef444420;
-      border: 1px solid #ef444440;
-      border-radius: 8px;
-      padding: 12px 16px;
-      color: #ef4444;
-      font-size: 13px;
     }
 
     /* Spinner overlay */
@@ -232,25 +216,12 @@ export class CreateDialog extends LitElement {
       justify-content: center;
       gap: 16px;
       padding: 48px 24px;
-      color: #94a3b8;
+      color: var(--text-secondary);
       font-size: 14px;
     }
 
-    .spinner {
-      width: 36px;
-      height: 36px;
-      border: 3px solid #2a2d3a;
-      border-top-color: #6c63ff;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
     .spinner-msg {
-      color: #64748b;
+      color: var(--state-stopped);
       font-size: 13px;
     }
 
@@ -260,35 +231,9 @@ export class CreateDialog extends LitElement {
       justify-content: flex-end;
       gap: 10px;
       padding: 16px 24px 20px;
-      border-top: 1px solid #2a2d3a;
+      border-top: 1px solid var(--bg-border);
     }
-
-    .btn {
-      padding: 8px 18px;
-      border-radius: 6px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      border: none;
-      transition: all 0.15s;
-    }
-    .btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .btn-cancel {
-      background: #2a2d3a;
-      color: #94a3b8;
-    }
-    .btn-cancel:hover:not(:disabled) { background: #363a4a; }
-
-    .btn-create {
-      background: #6c63ff;
-      color: #fff;
-    }
-    .btn-create:hover:not(:disabled) { background: #7c73ff; }
-  `;
+  `];
 
   // --- Form state ---
   @state() private _slug = "";
@@ -650,7 +595,7 @@ export class CreateDialog extends LitElement {
                         .value=${agent.name}
                         @input=${(e: Event) => this._updateAgent(idx, "name", (e.target as HTMLInputElement).value)}
                       />
-                      <button class="agent-remove" @click=${() => this._removeAgent(idx)}>✕</button>
+                      <button class="agent-remove" aria-label="Supprimer l'agent" @click=${() => this._removeAgent(idx)}>✕</button>
                     </div>
                   `)}
                   <button class="add-agent-btn" @click=${this._addAgent}>${msg("+ Add agent", { id: "btn-add-agent" })}</button>
@@ -666,9 +611,9 @@ export class CreateDialog extends LitElement {
       </div>
 
       <div class="dialog-footer">
-        <button class="btn btn-cancel" @click=${this._close}>${msg("Cancel", { id: "btn-cancel-dialog" })}</button>
+        <button class="btn btn-ghost" @click=${this._close}>${msg("Cancel", { id: "btn-cancel-dialog" })}</button>
         <button
-          class="btn btn-create"
+          class="btn btn-primary"
           ?disabled=${!this._isFormValid()}
           @click=${this._submit}
         >${msg("Create Instance", { id: "btn-create-instance" })}</button>
@@ -682,7 +627,7 @@ export class CreateDialog extends LitElement {
         <div class="dialog">
           <div class="dialog-header">
             <span class="dialog-title">${msg("New Instance", { id: "dialog-title" })}</span>
-            <button class="close-btn" @click=${this._close} ?disabled=${this._submitting}>✕</button>
+            <button class="close-btn" aria-label="Fermer" @click=${this._close} ?disabled=${this._submitting}>✕</button>
           </div>
           ${this._submitting ? this._renderSpinner() : this._renderForm()}
         </div>

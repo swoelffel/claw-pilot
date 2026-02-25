@@ -4,6 +4,7 @@ import { localized, msg } from "@lit/localize";
 import { initLocale, switchLocale, getLocale, allLocales, type SupportedLocale } from "./localization.js";
 import { createRef, ref, type Ref } from "lit/directives/ref.js";
 import type { InstanceInfo, WsMessage } from "./types.js";
+import { tokenStyles } from "./styles/tokens.js";
 import "./components/cluster-view.js";
 import "./components/agents-builder.js";
 
@@ -24,14 +25,13 @@ type Route =
 @localized()
 @customElement("cp-app")
 export class CpApp extends LitElement {
-  static styles = css`
+  static styles = [tokenStyles, css`
     :host {
       display: block;
       min-height: 100vh;
-      background: #0f1117;
-      color: #e2e8f0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-        "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      font-family: var(--font-ui);
     }
 
     header {
@@ -40,8 +40,8 @@ export class CpApp extends LitElement {
       justify-content: space-between;
       padding: 0 24px;
       height: 56px;
-      background: #1a1d27;
-      border-bottom: 1px solid #2a2d3a;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--bg-border);
       position: sticky;
       top: 0;
       z-index: 100;
@@ -56,22 +56,22 @@ export class CpApp extends LitElement {
     .logo {
       font-size: 17px;
       font-weight: 700;
-      color: #e2e8f0;
+      color: var(--text-primary);
       letter-spacing: -0.02em;
       cursor: pointer;
       user-select: none;
     }
 
     .logo span {
-      color: #6c63ff;
+      color: var(--accent);
     }
 
     .instance-badge {
       display: inline-flex;
       align-items: center;
-      background: #6c63ff20;
-      color: #6c63ff;
-      border: 1px solid #6c63ff40;
+      background: var(--accent-subtle);
+      color: var(--accent);
+      border: 1px solid var(--accent-border);
       border-radius: 20px;
       padding: 2px 10px;
       font-size: 12px;
@@ -89,7 +89,7 @@ export class CpApp extends LitElement {
       align-items: center;
       gap: 6px;
       font-size: 12px;
-      color: #94a3b8;
+      color: var(--text-secondary);
     }
 
     .ws-dot {
@@ -100,12 +100,12 @@ export class CpApp extends LitElement {
     }
 
     .ws-dot.connected {
-      background: #10b981;
-      box-shadow: 0 0 6px #10b98180;
+      background: var(--state-running);
+      box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
     }
 
     .ws-dot.disconnected {
-      background: #ef4444;
+      background: var(--state-error);
     }
 
     main {
@@ -120,10 +120,10 @@ export class CpApp extends LitElement {
       gap: 8px;
       padding: 0 24px;
       height: 48px;
-      background: #1a1d27;
-      border-top: 1px solid #2a2d3a;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--bg-border);
       font-size: 12px;
-      color: #4a5568;
+      color: var(--text-muted);
     }
 
     .footer-left {
@@ -140,37 +140,37 @@ export class CpApp extends LitElement {
 
     .footer-brand {
       font-weight: 600;
-      color: #64748b;
+      color: var(--state-stopped);
       letter-spacing: -0.01em;
     }
 
     .footer-brand span {
-      color: #6c63ff;
+      color: var(--accent);
     }
 
     .footer-version {
-      background: #6c63ff18;
-      color: #6c63ff;
-      border: 1px solid #6c63ff30;
-      border-radius: 4px;
+      background: var(--accent-subtle);
+      color: var(--accent);
+      border: 1px solid var(--accent-border);
+      border-radius: var(--radius-sm);
       padding: 1px 7px;
       font-size: 11px;
       font-weight: 600;
-      font-family: "Fira Mono", monospace;
+      font-family: var(--font-mono);
     }
 
     .footer-sep {
-      color: #2a2d3a;
+      color: var(--bg-border);
     }
 
     .footer-link {
-      color: #4a5568;
+      color: var(--text-muted);
       text-decoration: none;
       transition: color 0.15s;
     }
 
     .footer-link:hover {
-      color: #94a3b8;
+      color: var(--text-secondary);
     }
 
     .lang-trigger {
@@ -178,9 +178,9 @@ export class CpApp extends LitElement {
       align-items: center;
       gap: 5px;
       background: none;
-      border: 1px solid #2a2d3a;
+      border: 1px solid var(--bg-border);
       border-radius: 5px;
-      color: #64748b;
+      color: var(--state-stopped);
       font-size: 11px;
       font-weight: 600;
       cursor: pointer;
@@ -192,8 +192,8 @@ export class CpApp extends LitElement {
     }
 
     .lang-trigger:hover {
-      border-color: #6c63ff60;
-      color: #94a3b8;
+      border-color: var(--accent-border);
+      color: var(--text-secondary);
     }
 
     .lang-trigger .chevron {
@@ -210,9 +210,9 @@ export class CpApp extends LitElement {
       position: absolute;
       bottom: calc(100% + 8px);
       right: 0;
-      background: #1a1d27;
-      border: 1px solid #2a2d3a;
-      border-radius: 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--bg-border);
+      border-radius: var(--radius-md);
       box-shadow: 0 -8px 32px rgba(0,0,0,0.5);
       min-width: 160px;
       overflow: hidden;
@@ -227,7 +227,7 @@ export class CpApp extends LitElement {
       padding: 9px 14px;
       background: none;
       border: none;
-      color: #94a3b8;
+      color: var(--text-secondary);
       font-size: 13px;
       cursor: pointer;
       text-align: left;
@@ -237,12 +237,12 @@ export class CpApp extends LitElement {
     }
 
     .lang-option:hover {
-      background: #2a2d3a;
-      color: #e2e8f0;
+      background: var(--bg-border);
+      color: var(--text-primary);
     }
 
     .lang-option.active {
-      color: #6c63ff;
+      color: var(--accent);
     }
 
     .lang-option .check {
@@ -264,7 +264,7 @@ export class CpApp extends LitElement {
       position: relative;
     }
 
-  `;
+  `];
 
   @state() private _route: Route = { view: "cluster" };
   @state() private _instances: InstanceInfo[] = [];
@@ -495,10 +495,11 @@ export class CpApp extends LitElement {
           <div class="lang-wrapper" ${ref(this._langWrapperRef)}>
             <button
               class="lang-trigger ${this._langOpen ? "open" : ""}"
+              aria-label="Change language"
               @click=${(e: Event) => { e.stopPropagation(); this._langOpen = !this._langOpen; }}
             >
               🌐 ${allLocales.find(l => l.code === this._locale)?.label ?? "EN"}
-              <span class="chevron">▼</span>
+              <span class="chevron">▾</span>
             </button>
             ${this._langOpen ? html`
               <div class="lang-dropdown">

@@ -3,18 +3,20 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { InstanceInfo } from "../types.js";
 import { startInstance, stopInstance } from "../api.js";
+import { tokenStyles } from "../styles/tokens.js";
+import { badgeStyles, buttonStyles } from "../styles/shared.js";
 
 @localized()
 @customElement("cp-instance-card")
 export class InstanceCard extends LitElement {
-  static styles = css`
+  static styles = [tokenStyles, badgeStyles, buttonStyles, css`
     :host {
       display: block;
     }
 
     .card {
-      background: #1a1d27;
-      border: 1px solid #2a2d3a;
+      background: var(--bg-surface);
+      border: 1px solid var(--bg-border);
       border-radius: 10px;
       padding: 20px;
       position: relative;
@@ -38,58 +40,14 @@ export class InstanceCard extends LitElement {
     .slug {
       font-size: 18px;
       font-weight: 700;
-      color: #e2e8f0;
+      color: var(--text-primary);
       letter-spacing: -0.01em;
     }
 
     .display-name {
       font-size: 12px;
-      color: #94a3b8;
+      color: var(--text-secondary);
       margin-top: 2px;
-    }
-
-    .state-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 3px 10px;
-      border-radius: 20px;
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      flex-shrink: 0;
-    }
-
-    .state-badge.running {
-      background: #10b98120;
-      color: #10b981;
-      border: 1px solid #10b98140;
-    }
-
-    .state-badge.stopped {
-      background: #64748b20;
-      color: #64748b;
-      border: 1px solid #64748b40;
-    }
-
-    .state-badge.error {
-      background: #ef444420;
-      color: #ef4444;
-      border: 1px solid #ef444440;
-    }
-
-    .state-badge.unknown {
-      background: #f59e0b20;
-      color: #f59e0b;
-      border: 1px solid #f59e0b40;
-    }
-
-    .state-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: currentColor;
     }
 
     .meta {
@@ -104,19 +62,19 @@ export class InstanceCard extends LitElement {
       align-items: center;
       gap: 5px;
       font-size: 13px;
-      color: #94a3b8;
+      color: var(--text-secondary);
     }
 
     .meta-label {
-      color: #4a5568;
+      color: var(--text-muted);
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
 
     .meta-value {
-      color: #94a3b8;
-      font-family: "Fira Mono", monospace;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
     }
 
     .telegram-tag {
@@ -126,7 +84,7 @@ export class InstanceCard extends LitElement {
       background: #0088cc20;
       color: #0088cc;
       border: 1px solid #0088cc40;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       padding: 2px 8px;
       font-size: 11px;
     }
@@ -136,52 +94,15 @@ export class InstanceCard extends LitElement {
       gap: 8px;
     }
 
-    .btn {
-      flex: none;
-      padding: 5px 10px;
-      border-radius: 6px;
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-      border: 1px solid transparent;
-      transition: opacity 0.15s, background 0.15s;
-      text-align: center;
-    }
-
-    .btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .btn-start {
-      background: #10b98120;
-      color: #10b981;
-      border-color: #10b98140;
-    }
-
-    .btn-start:hover:not(:disabled) {
-      background: #10b98130;
-    }
-
-    .btn-stop {
-      background: #ef444420;
-      color: #ef4444;
-      border-color: #ef444440;
-    }
-
-    .btn-stop:hover:not(:disabled) {
-      background: #ef444430;
-    }
-
     .btn-ui {
       flex: none;
       padding: 7px 10px;
-      border-radius: 6px;
+      border-radius: var(--radius-md);
       font-size: 12px;
       font-weight: 600;
-      border: 1px solid #f59e0b40;
-      background: #f59e0b20;
-      color: #f59e0b;
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      background: rgba(245, 158, 11, 0.08);
+      color: var(--state-warning);
       text-decoration: none;
       display: inline-flex;
       align-items: center;
@@ -189,32 +110,32 @@ export class InstanceCard extends LitElement {
     }
 
     .btn-ui:hover {
-      background: #f59e0b30;
+      background: rgba(245, 158, 11, 0.15);
     }
 
     .btn-builder {
       flex: none;
       padding: 5px 10px;
-      border-radius: 4px;
+      border-radius: var(--radius-md);
       font-size: 11px;
       font-weight: 600;
       cursor: pointer;
-      border: 1px solid #0ea5e940;
-      background: #0ea5e920;
-      color: #0ea5e9;
+      border: 1px solid rgba(14, 165, 233, 0.25);
+      background: rgba(14, 165, 233, 0.08);
+      color: var(--state-info);
       transition: background 0.15s;
     }
 
     .btn-builder:hover {
-      background: #0ea5e940;
+      background: rgba(14, 165, 233, 0.15);
     }
 
     .error-msg {
       margin-top: 8px;
       font-size: 11px;
-      color: #ef4444;
+      color: var(--state-error);
     }
-  `;
+  `];
 
   @property({ type: Object }) instance!: InstanceInfo;
 
@@ -255,7 +176,7 @@ export class InstanceCard extends LitElement {
               : ""}
           </div>
           <div class="card-header-right">
-            <span class="state-badge ${stateClass}">
+            <span class="badge ${stateClass}">
               <span class="state-dot"></span>
               ${stateClass}
             </span>
