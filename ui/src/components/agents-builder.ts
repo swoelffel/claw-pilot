@@ -9,6 +9,7 @@ import { badgeStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.
 import "./agent-card-mini.js";
 import "./agent-links-svg.js";
 import "./agent-detail-panel.js";
+import "./create-agent-dialog.js";
 
 function computePositions(
   agents: AgentBuilderInfo[],
@@ -116,7 +117,6 @@ export class AgentsBuilder extends LitElement {
     }
 
     .btn-sync {
-      margin-left: auto;
       background: var(--accent-subtle);
       border: 1px solid var(--accent-border);
       color: var(--accent);
@@ -136,6 +136,26 @@ export class AgentsBuilder extends LitElement {
     .btn-sync:disabled {
       opacity: 0.5;
       cursor: not-allowed;
+    }
+
+    .btn-add-agent {
+      margin-left: auto;
+      background: var(--bg-surface);
+      border: 1px solid var(--bg-border);
+      color: var(--text-secondary);
+      border-radius: var(--radius-md);
+      padding: 5px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      font-family: inherit;
+    }
+
+    .btn-add-agent:hover {
+      border-color: var(--state-success, #22c55e);
+      color: var(--state-success, #22c55e);
+      background: color-mix(in srgb, var(--state-success, #22c55e) 8%, transparent);
     }
 
     .builder-body {
@@ -212,6 +232,8 @@ export class AgentsBuilder extends LitElement {
   @state() private _canvasHeight = 600;
   @state() private _pendingRemovals = new Set<string>();
   @state() private _pendingAdditions = new Map<string, Set<string>>();
+  @state() private _showCreateDialog = false;
+  @state() private _justCreatedAgentId: string | null = null;
 
   // Drag state — not @state, updated directly during pointer events
   private _drag: {
@@ -285,6 +307,35 @@ export class AgentsBuilder extends LitElement {
 
   private _selectAgent(agentId: string): void {
     this._selectedAgentId = this._selectedAgentId === agentId ? null : agentId;
+  }
+
+  private _onAgentCreated(builderData: BuilderData): void {
+    this._showCreateDialog = false;
+    // Identify the new agent — find agent_id present in builderData but not in current data
+    const currentAgentIds = new Set(this._data?.agents.map(a => a.agent_id) ?? []);
+    this._data = builderData;
+    this._positions = computePositions(
+      builderData.agents,
+      this._canvasWidth,
+      this._canvasHeight,
+      this._positions,
+    );
+    // Find the newly added agent
+    const newAgent = builderData.agents.find(a => !currentAgentIds.has(a.agent_id))
+      ?? builderData.agents.at(-1)
+      ?? null;
+    if (newAgent) {
+      this._justCreatedAgentId = newAgent.agent_id;
+      this._selectedAgentId = newAgent.agent_id;
+      // Recompute to include the new agent
+      this._positions = computePositions(
+        builderData.agents,
+        this._canvasWidth,
+        this._canvasHeight,
+        this._positions,
+      );
+      setTimeout(() => { this._justCreatedAgentId = null; }, 2000);
+    }
   }
 
   private _onPointerDown(e: PointerEvent): void {
@@ -382,6 +433,11 @@ export class AgentsBuilder extends LitElement {
           <span class="badge ${inst.state}">${inst.state}</span>
         ` : ""}
         <button
+          class="btn-add-agent"
+          aria-label="New agent"
+          @click=${() => { this._showCreateDialog = true; }}
+        >${msg("+ New agent", { id: "ab-btn-add-agent" })}</button>
+        <button
           class="btn-sync"
           aria-label="Synchroniser"
           ?disabled=${this._syncing}
@@ -439,6 +495,7 @@ export class AgentsBuilder extends LitElement {
                     .agent=${agent}
                     .selected=${this._selectedAgentId === agent.agent_id}
                     .isA2A=${a2aAgentIds.has(agent.agent_id)}
+                    .isNew=${this._justCreatedAgentId === agent.agent_id}
                     style="left: ${pos.x}px; top: ${pos.y}px;"
                   ></cp-agent-card-mini>
                 `;
@@ -471,6 +528,15 @@ export class AgentsBuilder extends LitElement {
           ></cp-agent-detail-panel>
         ` : ""}
       </div>
+
+      ${this._showCreateDialog ? html`
+        <cp-create-agent-dialog
+          .slug=${this.slug}
+          .existingAgentIds=${this._data?.agents.map(a => a.agent_id) ?? []}
+          @close-dialog=${() => { this._showCreateDialog = false; }}
+          @agent-created=${(e: CustomEvent<BuilderData>) => this._onAgentCreated(e.detail)}
+        ></cp-create-agent-dialog>
+      ` : ""}
     `;
   }
 }

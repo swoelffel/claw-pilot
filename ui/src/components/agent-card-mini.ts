@@ -41,6 +41,17 @@ export class AgentCardMini extends LitElement {
       box-shadow: 0 0 0 1px var(--accent-border);
     }
 
+    :host([is-new]) .card {
+      border: 2px solid var(--state-success, #22c55e);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--state-success, #22c55e) 20%, transparent);
+      animation: new-agent-pulse 2s ease-out forwards;
+    }
+
+    @keyframes new-agent-pulse {
+      0%   { box-shadow: 0 0 0 4px color-mix(in srgb, var(--state-success, #22c55e) 30%, transparent); }
+      100% { box-shadow: 0 0 0 0px color-mix(in srgb, var(--state-success, #22c55e) 0%, transparent); }
+    }
+
     .card.is-default {
       min-width: 150px;
       max-width: 180px;
@@ -129,6 +140,7 @@ export class AgentCardMini extends LitElement {
   @property({ type: Object }) agent!: AgentBuilderInfo;
   @property({ type: Boolean }) selected = false;
   @property({ type: Boolean }) isA2A = false;
+  @property({ type: Boolean, reflect: true }) isNew = false;
 
   private _truncate(str: string, max: number): string {
     return str.length > max ? str.slice(0, max) + "…" : str;

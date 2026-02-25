@@ -150,6 +150,14 @@ export interface BuilderData {
   links: AgentLink[];
 }
 
+export interface CreateAgentRequest {
+  agentSlug: string;
+  name: string;
+  role: string;
+  provider: string;
+  model: string;
+}
+
 export interface SyncResult {
   synced: true;
   agents: AgentBuilderInfo[];

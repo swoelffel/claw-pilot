@@ -1,4 +1,4 @@
-import type { InstanceInfo, AgentInfo, CreateInstanceRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink } from "./types.js";
+import type { InstanceInfo, AgentInfo, CreateInstanceRequest, CreateAgentRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink } from "./types.js";
 
 declare global {
   interface Window {
@@ -123,4 +123,14 @@ export async function updateSpawnLinks(
     `/instances/${slug}/agents/${agentId}/spawn-links`,
     { method: "PATCH", body: JSON.stringify({ targets }) },
   );
+}
+
+export async function createAgent(
+  slug: string,
+  data: CreateAgentRequest,
+): Promise<BuilderData> {
+  return apiFetch<BuilderData>(`/instances/${slug}/agents`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
