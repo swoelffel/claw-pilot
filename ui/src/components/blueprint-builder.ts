@@ -2,23 +2,19 @@
 import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { AgentBuilderInfo, AgentLink, BlueprintBuilderData, AgentFileContent } from "../types.js";
+import type { AgentBuilderInfo, AgentLink, BlueprintBuilderData, PanelContext } from "../types.js";
 import {
   fetchBlueprintBuilder,
   createBlueprintAgent,
   deleteBlueprintAgent,
   updateBlueprintAgentPosition,
-  fetchBlueprintAgentFile,
-  updateBlueprintAgentFile,
-  updateBlueprintSpawnLinks,
 } from "../api.js";
 import { computePositions, newAgentPosition } from "../lib/builder-utils.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { badgeStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
 import "./agent-card-mini.js";
 import "./agent-links-svg.js";
-
-type PanelTab = "info" | "files" | "links";
+import "./agent-detail-panel.js";
 
 @localized()
 @customElement("cp-blueprint-builder")
@@ -152,251 +148,6 @@ export class BlueprintBuilder extends LitElement {
       font-size: 13px;
     }
 
-    /* Detail panel */
-    .detail-panel {
-      position: absolute;
-      top: 0;
-      right: 0;
-      width: 420px;
-      height: 100%;
-      background: var(--bg-surface);
-      border-left: 1px solid var(--bg-border);
-      display: flex;
-      flex-direction: column;
-      z-index: 10;
-    }
-
-    .panel-header {
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--bg-border);
-      flex-shrink: 0;
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 10px;
-    }
-
-    .panel-agent-name {
-      font-size: 15px;
-      font-weight: 700;
-      color: var(--text-primary);
-    }
-
-    .panel-agent-id {
-      font-size: 11px;
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-    }
-
-    .panel-close-btn {
-      background: none;
-      border: none;
-      color: var(--text-muted);
-      font-size: 18px;
-      cursor: pointer;
-      padding: 2px 6px;
-      border-radius: var(--radius-sm);
-      transition: color 0.15s;
-      font-family: inherit;
-      line-height: 1;
-    }
-
-    .panel-close-btn:hover {
-      color: var(--text-primary);
-    }
-
-    .panel-tabs {
-      display: flex;
-      border-bottom: 1px solid var(--bg-border);
-      flex-shrink: 0;
-    }
-
-    .panel-tab {
-      padding: 8px 14px;
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-muted);
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      background: none;
-      border-top: none;
-      border-left: none;
-      border-right: none;
-      font-family: inherit;
-      transition: color 0.15s, border-color 0.15s;
-    }
-
-    .panel-tab:hover { color: var(--text-secondary); }
-    .panel-tab.active {
-      color: var(--accent);
-      border-bottom-color: var(--accent);
-    }
-
-    .panel-body {
-      flex: 1;
-      overflow-y: auto;
-      padding: 16px;
-    }
-
-    .info-item {
-      margin-bottom: 12px;
-    }
-
-    .info-label {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--text-muted);
-      margin-bottom: 3px;
-    }
-
-    .info-value {
-      font-size: 13px;
-      color: var(--text-secondary);
-      font-family: var(--font-mono);
-      word-break: break-all;
-    }
-
-    .file-list {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      margin-bottom: 12px;
-    }
-
-    .file-btn {
-      background: var(--bg-base);
-      border: 1px solid var(--bg-border);
-      border-radius: var(--radius-sm);
-      color: var(--text-secondary);
-      font-size: 12px;
-      font-family: var(--font-mono);
-      padding: 6px 10px;
-      cursor: pointer;
-      text-align: left;
-      transition: border-color 0.15s, color 0.15s;
-    }
-
-    .file-btn:hover, .file-btn.active {
-      border-color: var(--accent-border);
-      color: var(--accent);
-    }
-
-    .file-editor {
-      margin-top: 8px;
-    }
-
-    .file-editor-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 6px;
-    }
-
-    .file-editor-name {
-      font-size: 11px;
-      font-family: var(--font-mono);
-      color: var(--text-muted);
-    }
-
-    .file-editor textarea {
-      width: 100%;
-      min-height: 200px;
-      background: var(--bg-base);
-      border: 1px solid var(--bg-border);
-      border-radius: var(--radius-sm);
-      color: var(--text-primary);
-      font-size: 12px;
-      font-family: var(--font-mono);
-      padding: 8px;
-      box-sizing: border-box;
-      resize: vertical;
-      outline: none;
-      transition: border-color 0.15s;
-    }
-
-    .file-editor textarea:focus {
-      border-color: var(--accent);
-    }
-
-    .btn-save {
-      background: var(--accent);
-      border: none;
-      color: white;
-      border-radius: var(--radius-sm);
-      padding: 4px 12px;
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-      font-family: inherit;
-      transition: opacity 0.15s;
-    }
-
-    .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    .spawn-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-      margin-bottom: 10px;
-    }
-
-    .spawn-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 11px;
-      color: var(--text-secondary);
-      background: var(--bg-border);
-      border-radius: 3px;
-      padding: 2px 7px;
-      font-family: var(--font-mono);
-    }
-
-    .spawn-remove {
-      background: none;
-      border: none;
-      color: var(--text-muted);
-      font-size: 10px;
-      cursor: pointer;
-      padding: 0 1px;
-      line-height: 1;
-      font-family: inherit;
-      transition: color 0.12s;
-    }
-
-    .spawn-remove:hover { color: var(--state-error); }
-
-    .spawn-add {
-      display: flex;
-      gap: 6px;
-      margin-top: 8px;
-    }
-
-    .spawn-add select {
-      flex: 1;
-      background: var(--bg-base);
-      border: 1px solid var(--bg-border);
-      border-radius: var(--radius-sm);
-      color: var(--text-primary);
-      font-size: 12px;
-      font-family: inherit;
-      padding: 4px 8px;
-      outline: none;
-    }
-
-    .btn-add-link {
-      background: var(--accent-subtle);
-      border: 1px solid var(--accent-border);
-      color: var(--accent);
-      border-radius: var(--radius-sm);
-      padding: 4px 10px;
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-      font-family: inherit;
-    }
-
     /* Create agent dialog */
     .dialog-overlay {
       position: fixed;
@@ -489,24 +240,6 @@ export class BlueprintBuilder extends LitElement {
     }
 
     .btn-create:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    .btn-delete-agent {
-      background: none;
-      border: 1px solid transparent;
-      color: var(--text-muted);
-      border-radius: var(--radius-sm);
-      padding: 3px 8px;
-      font-size: 11px;
-      cursor: pointer;
-      font-family: inherit;
-      transition: border-color 0.15s, color 0.15s;
-      margin-top: 16px;
-    }
-
-    .btn-delete-agent:hover {
-      border-color: var(--state-error, #ef4444);
-      color: var(--state-error, #ef4444);
-    }
   `];
 
   @property({ type: Number }) blueprintId = 0;
@@ -522,15 +255,6 @@ export class BlueprintBuilder extends LitElement {
   @state() private _pendingAdditions = new Map<string, Set<string>>();
   @state() private _showCreateDialog = false;
   @state() private _justCreatedAgentId: string | null = null;
-
-  // Panel state
-  @state() private _panelTab: PanelTab = "info";
-  @state() private _activeFile: string | null = null;
-  @state() private _fileContent: AgentFileContent | null = null;
-  @state() private _fileLoading = false;
-  @state() private _fileSaving = false;
-  @state() private _fileEdited = "";
-  @state() private _spawnTarget = "";
 
   // Create dialog state
   @state() private _newAgentId = "";
@@ -614,12 +338,6 @@ export class BlueprintBuilder extends LitElement {
       return;
     }
     this._selectedAgentId = agentId;
-    this._panelTab = "info";
-    this._activeFile = null;
-    this._fileContent = null;
-    this._fileEdited = "";
-    this._pendingRemovals = new Set();
-    this._pendingAdditions = new Map();
   }
 
   private _onPointerDown(e: PointerEvent): void {
@@ -769,198 +487,9 @@ export class BlueprintBuilder extends LitElement {
     }
   }
 
-  private async _loadFile(agentId: string, filename: string): Promise<void> {
-    this._activeFile = filename;
-    this._fileLoading = true;
-    this._fileContent = null;
-    this._fileEdited = "";
-    try {
-      const file = await fetchBlueprintAgentFile(this.blueprintId, agentId, filename);
-      this._fileContent = file;
-      this._fileEdited = file.content;
-    } catch {
-      // File doesn't exist yet — start with empty content
-      this._fileContent = null;
-      this._fileEdited = "";
-    } finally {
-      this._fileLoading = false;
-    }
-  }
-
-  private async _saveFile(agentId: string, filename: string): Promise<void> {
-    this._fileSaving = true;
-    try {
-      await updateBlueprintAgentFile(this.blueprintId, agentId, filename, this._fileEdited);
-      // Refresh builder data to update file summaries
-      const data = await fetchBlueprintBuilder(this.blueprintId);
-      this._data = data;
-    } catch (err) {
-      this._error = err instanceof Error ? err.message : "Failed to save file";
-    } finally {
-      this._fileSaving = false;
-    }
-  }
-
-  private async _addSpawnLink(agentId: string, targetId: string): Promise<void> {
-    if (!targetId) return;
-    const currentLinks = this._data?.links ?? [];
-    const currentSpawnTargets = currentLinks
-      .filter((l: AgentLink) => l.source_agent_id === agentId && l.link_type === "spawn")
-      .map((l: AgentLink) => l.target_agent_id);
-    if (currentSpawnTargets.includes(targetId)) return;
-    const newTargets = [...currentSpawnTargets, targetId];
-    try {
-      const data = await updateBlueprintSpawnLinks(this.blueprintId, agentId, newTargets);
-      this._data = data;
-      this._spawnTarget = "";
-    } catch (err) {
-      this._error = err instanceof Error ? err.message : "Failed to update links";
-    }
-  }
-
-  private async _removeSpawnLink(agentId: string, targetId: string): Promise<void> {
-    const currentLinks = this._data?.links ?? [];
-    const newTargets = currentLinks
-      .filter((l: AgentLink) => l.source_agent_id === agentId && l.link_type === "spawn" && l.target_agent_id !== targetId)
-      .map((l: AgentLink) => l.target_agent_id);
-    try {
-      const data = await updateBlueprintSpawnLinks(this.blueprintId, agentId, newTargets);
-      this._data = data;
-    } catch (err) {
-      this._error = err instanceof Error ? err.message : "Failed to update links";
-    }
-  }
-
   private get _selectedAgent(): AgentBuilderInfo | null {
     if (!this._data || !this._selectedAgentId) return null;
     return this._data.agents.find(a => a.agent_id === this._selectedAgentId) ?? null;
-  }
-
-  private _renderDetailPanel(agent: AgentBuilderInfo) {
-    const links = this._data?.links ?? [];
-    const spawnLinks = links.filter((l: AgentLink) => l.source_agent_id === agent.agent_id && l.link_type === "spawn");
-    const a2aLinks = links.filter((l: AgentLink) => l.source_agent_id === agent.agent_id && l.link_type === "a2a");
-    const otherAgents = this._data?.agents.filter(a => a.agent_id !== agent.agent_id) ?? [];
-    const EDITABLE_FILES = ["AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md", "USER.md", "HEARTBEAT.md"];
-
-    return html`
-      <div class="detail-panel">
-        <div class="panel-header">
-          <div>
-            <div class="panel-agent-name">${agent.name}</div>
-            <div class="panel-agent-id">${agent.agent_id}</div>
-          </div>
-          <button class="panel-close-btn" @click=${() => { this._selectedAgentId = null; }}>✕</button>
-        </div>
-
-        <div class="panel-tabs">
-          ${(["info", "files", "links"] as PanelTab[]).map(tab => html`
-            <button
-              class="panel-tab ${this._panelTab === tab ? "active" : ""}"
-              @click=${() => { this._panelTab = tab; }}
-            >${tab.charAt(0).toUpperCase() + tab.slice(1)}</button>
-          `)}
-        </div>
-
-        <div class="panel-body">
-          ${this._panelTab === "info" ? html`
-            <div class="info-item">
-              <div class="info-label">Workspace</div>
-              <div class="info-value">${agent.workspace_path}</div>
-            </div>
-            ${agent.model ? html`
-              <div class="info-item">
-                <div class="info-label">Model</div>
-                <div class="info-value">${agent.model}</div>
-              </div>
-            ` : ""}
-            ${agent.role ? html`
-              <div class="info-item">
-                <div class="info-label">Role</div>
-                <div class="info-value">${agent.role}</div>
-              </div>
-            ` : ""}
-            ${!agent.is_default ? html`
-              <button
-                class="btn-delete-agent"
-                @click=${() => this._onDeleteRequested(agent.agent_id)}
-              >Delete agent</button>
-            ` : ""}
-          ` : ""}
-
-          ${this._panelTab === "files" ? html`
-            <div class="file-list">
-              ${EDITABLE_FILES.map(filename => html`
-                <button
-                  class="file-btn ${this._activeFile === filename ? "active" : ""}"
-                  @click=${() => void this._loadFile(agent.agent_id, filename)}
-                >${filename}</button>
-              `)}
-            </div>
-
-            ${this._activeFile ? html`
-              <div class="file-editor">
-                <div class="file-editor-header">
-                  <span class="file-editor-name">${this._activeFile}</span>
-                  <button
-                    class="btn-save"
-                    ?disabled=${this._fileSaving}
-                    @click=${() => void this._saveFile(agent.agent_id, this._activeFile!)}
-                  >${this._fileSaving ? "Saving…" : "Save"}</button>
-                </div>
-                ${this._fileLoading ? html`<div class="spinner"></div>` : html`
-                  <textarea
-                    .value=${this._fileEdited}
-                    @input=${(e: Event) => { this._fileEdited = (e.target as HTMLTextAreaElement).value; }}
-                    rows="15"
-                  ></textarea>
-                `}
-              </div>
-            ` : ""}
-          ` : ""}
-
-          ${this._panelTab === "links" ? html`
-            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;">Spawn links</div>
-            ${spawnLinks.length > 0 ? html`
-              <div class="spawn-list">
-                ${spawnLinks.map((l: AgentLink) => html`
-                  <span class="spawn-badge">
-                    ${l.target_agent_id}
-                    <button class="spawn-remove" @click=${() => void this._removeSpawnLink(agent.agent_id, l.target_agent_id)}>✕</button>
-                  </span>
-                `)}
-              </div>
-            ` : html`<div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">No spawn links</div>`}
-
-            ${otherAgents.length > 0 ? html`
-              <div class="spawn-add">
-                <select
-                  .value=${this._spawnTarget}
-                  @change=${(e: Event) => { this._spawnTarget = (e.target as HTMLSelectElement).value; }}
-                >
-                  <option value="">Select agent…</option>
-                  ${otherAgents
-                    .filter((a: AgentBuilderInfo) => !spawnLinks.some((l: AgentLink) => l.target_agent_id === a.agent_id))
-                    .map((a: AgentBuilderInfo) => html`<option value="${a.agent_id}">${a.name} (${a.agent_id})</option>`)}
-                </select>
-                <button
-                  class="btn-add-link"
-                  ?disabled=${!this._spawnTarget}
-                  @click=${() => void this._addSpawnLink(agent.agent_id, this._spawnTarget)}
-                >+ Add</button>
-              </div>
-            ` : ""}
-
-            ${a2aLinks.length > 0 ? html`
-              <div style="font-size: 11px; color: var(--text-muted); margin: 12px 0 8px; text-transform: uppercase; letter-spacing: 0.05em;">A2A links</div>
-              <div class="spawn-list">
-                ${a2aLinks.map((l: AgentLink) => html`<span class="spawn-badge" style="color: var(--accent);">${l.target_agent_id}</span>`)}
-              </div>
-            ` : ""}
-          ` : ""}
-        </div>
-      </div>
-    `;
   }
 
   override render() {
@@ -1040,7 +569,34 @@ export class BlueprintBuilder extends LitElement {
           ` : ""}
         </div>
 
-        ${this._selectedAgent ? this._renderDetailPanel(this._selectedAgent) : ""}
+        ${this._selectedAgent ? html`
+          <cp-agent-detail-panel
+            .agent=${this._selectedAgent}
+            .links=${this._data?.links ?? []}
+            .allAgents=${this._data?.agents ?? []}
+            .context=${{ kind: "blueprint", blueprintId: this.blueprintId } as PanelContext}
+            @panel-close=${() => { this._selectedAgentId = null; }}
+            @agent-delete-requested=${(e: CustomEvent<{ agentId: string }>) => this._onDeleteRequested(e.detail.agentId)}
+            @spawn-links-updated=${(e: CustomEvent<{ links: AgentLink[] }>) => {
+              if (this._data) {
+                this._data = { ...this._data, links: e.detail.links };
+              }
+            }}
+            @pending-removals-changed=${(e: Event) => {
+              this._pendingRemovals = (e as CustomEvent<{ pendingRemovals: Set<string> }>).detail.pendingRemovals;
+            }}
+            @pending-additions-changed=${(e: Event) => {
+              const { agentId, pendingAdditions } = (e as CustomEvent<{ agentId: string; pendingAdditions: Set<string> }>).detail;
+              const next = new Map(this._pendingAdditions);
+              if (pendingAdditions.size === 0) {
+                next.delete(agentId);
+              } else {
+                next.set(agentId, pendingAdditions);
+              }
+              this._pendingAdditions = next;
+            }}
+          ></cp-agent-detail-panel>
+        ` : ""}
       </div>
 
       ${this._showCreateDialog ? html`

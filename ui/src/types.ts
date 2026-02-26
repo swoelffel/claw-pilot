@@ -172,6 +172,12 @@ export interface SyncResult {
   };
 }
 
+// Agent detail panel context — identifies whether the panel is used inside an
+// instance builder or a blueprint builder, and carries the relevant identifier.
+export type PanelContext =
+  | { kind: "instance"; slug: string }
+  | { kind: "blueprint"; blueprintId: number };
+
 // Blueprint types
 
 export interface Blueprint {

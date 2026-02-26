@@ -234,8 +234,8 @@ export async function updateBlueprintAgentFile(
   agentId: string,
   filename: string,
   content: string,
-): Promise<{ ok: boolean }> {
-  return apiFetch<{ ok: boolean }>(
+): Promise<AgentFileContent> {
+  return apiFetch<AgentFileContent>(
     `/blueprints/${blueprintId}/agents/${agentId}/files/${filename}`,
     {
       method: "PUT",
@@ -248,8 +248,8 @@ export async function updateBlueprintSpawnLinks(
   blueprintId: number,
   agentId: string,
   targets: string[],
-): Promise<BlueprintBuilderData> {
-  return apiFetch<BlueprintBuilderData>(
+): Promise<{ ok: boolean; links: AgentLink[] }> {
+  return apiFetch<{ ok: boolean; links: AgentLink[] }>(
     `/blueprints/${blueprintId}/agents/${agentId}/spawn-links`,
     { method: "PATCH", body: JSON.stringify({ targets }) },
   );

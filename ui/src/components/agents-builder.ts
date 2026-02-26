@@ -500,8 +500,9 @@ export class AgentsBuilder extends LitElement {
             .agent=${this._selectedAgent}
             .links=${data?.links ?? []}
             .allAgents=${data?.agents ?? []}
-            .slug=${this.slug}
+            .context=${{ kind: "instance", slug: this.slug }}
             @panel-close=${() => { this._selectedAgentId = null; this._pendingAdditions = new Map(); this._pendingRemovals = new Set(); }}
+            @agent-delete-requested=${(e: CustomEvent<{ agentId: string }>) => this._onDeleteRequested(e.detail.agentId)}
             @spawn-links-updated=${() => { this._pendingAdditions = new Map(); void this._syncAndLoad(); }}
             @pending-removals-changed=${(e: Event) => {
               this._pendingRemovals = (e as CustomEvent<{ pendingRemovals: Set<string> }>).detail.pendingRemovals;

@@ -1074,7 +1074,16 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       contentHash,
     });
 
-    return c.json({ ok: true });
+    // Return AgentFileContent shape (same as instance file route) so the
+    // shared agent-detail-panel can handle both contexts uniformly.
+    const saved = registry.getAgentFileContent(agent.id, filename);
+    return c.json({
+      filename,
+      content: body.content,
+      content_hash: saved?.content_hash ?? contentHash,
+      updated_at: saved?.updated_at ?? new Date().toISOString(),
+      editable: true,
+    });
   });
 
   // PATCH /api/blueprints/:id/agents/:agentId/spawn-links — modifier les liens spawn
@@ -1114,8 +1123,14 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     ];
     registry.replaceBlueprintLinks(id, mergedLinks);
 
-    const payload = buildBlueprintPayload(id, registry);
-    return c.json(payload);
+    // Return { ok, links } — same shape as the instance spawn-links route so
+    // the shared agent-detail-panel can handle both contexts uniformly.
+    const updatedLinks = registry.listBlueprintLinks(id).map((l) => ({
+      source_agent_id: l.source_agent_id,
+      target_agent_id: l.target_agent_id,
+      link_type: l.link_type,
+    }));
+    return c.json({ ok: true, links: updatedLinks });
   });
 
   // --- Static file serving ---
