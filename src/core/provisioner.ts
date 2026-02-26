@@ -284,10 +284,12 @@ export class Provisioner {
       agents: WizardAnswers["agents"];
     },
   ): Promise<void> {
-    // Load templates from the package's templates/workspace directory
+    // Load templates from the package's templates/workspace directory.
+    // In dev: src/core/ → ../../templates/workspace = templates/workspace ✓
+    // In prod: dist/ → ../templates/workspace = templates/workspace ✓
     const templateDir = path.join(
       path.dirname(new URL(import.meta.url).pathname),
-      "../../templates/workspace",
+      "../templates/workspace",
     );
 
     const files = ["AGENTS.md", "SOUL.md", "TOOLS.md", "USER.md", "MEMORY.md"];

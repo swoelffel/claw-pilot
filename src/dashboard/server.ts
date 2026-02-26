@@ -777,27 +777,24 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   // --- Blueprint routes ---
 
   /**
-   * Seed the default "main" agent into a newly created blueprint.
-   * Mirrors the implicit "main" agent that OpenClaw creates on every fresh instance.
-   * Reads workspace file templates from templates/workspace/ and stores them in the DB.
+   * Seed workspace files (AGENTS.md, SOUL.md, etc.) for a blueprint agent.
+   * Reads templates from templates/workspace/ and stores them in the DB.
+   * Called both on blueprint creation (main agent) and when adding a new agent.
    */
-  async function seedBlueprintMainAgent(reg: Registry, blueprintId: number): Promise<void> {
+  async function seedBlueprintAgentFiles(
+    reg: Registry,
+    agentDbId: number,
+    agentId: string,
+    agentName: string,
+  ): Promise<void> {
     const { createHash } = await import("node:crypto");
 
-    // Create the main agent row
-    const mainAgent = reg.createBlueprintAgent(blueprintId, {
-      agentId: "main",
-      name: "Main",
-      isDefault: true,
-    });
-
-    // Centre it on the canvas
-    reg.updateBlueprintAgentPosition(mainAgent.id, 400, 300);
-
-    // Resolve templates directory (same pattern as provisioner.ts)
+    // Resolve templates directory.
+    // In dev: src/dashboard/ → ../templates/workspace = templates/workspace ✓
+    // In prod: dist/ → ../templates/workspace = templates/workspace ✓
     const templateDir = path.join(
       path.dirname(fileURLToPath(import.meta.url)),
-      "../../templates/workspace",
+      "../templates/workspace",
     );
 
     // Seed the 6 standard workspace files (no MEMORY.md — runtime only)
@@ -814,8 +811,8 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
 
       // Apply simple template substitutions where relevant
       content = content
-        .replace(/\{\{agentId\}\}/g, "main")
-        .replace(/\{\{agentName\}\}/g, "Main")
+        .replace(/\{\{agentId\}\}/g, agentId)
+        .replace(/\{\{agentName\}\}/g, agentName)
         .replace(/\{\{instanceSlug\}\}/g, "blueprint")
         .replace(/\{\{instanceName\}\}/g, "Blueprint")
         .replace(/\{\{date\}\}/g, date)
@@ -823,8 +820,27 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
         .replace(/\{\{#each agents\}\}[\s\S]*?\{\{\/each\}\}/g, "");
 
       const contentHash = createHash("sha256").update(content).digest("hex").slice(0, 16);
-      reg.upsertAgentFile(mainAgent.id, { filename, content, contentHash });
+      reg.upsertAgentFile(agentDbId, { filename, content, contentHash });
     }
+  }
+
+  /**
+   * Seed the default "main" agent into a newly created blueprint.
+   * Mirrors the implicit "main" agent that OpenClaw creates on every fresh instance.
+   */
+  async function seedBlueprintMainAgent(reg: Registry, blueprintId: number): Promise<void> {
+    // Create the main agent row
+    const mainAgent = reg.createBlueprintAgent(blueprintId, {
+      agentId: "main",
+      name: "Main",
+      isDefault: true,
+    });
+
+    // Centre it on the canvas
+    reg.updateBlueprintAgentPosition(mainAgent.id, 400, 300);
+
+    // Seed workspace files
+    await seedBlueprintAgentFiles(reg, mainAgent.id, "main", "Main");
   }
 
   // Helper: build the full builder payload for a blueprint
@@ -974,8 +990,9 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
+    let newAgent;
     try {
-      registry.createBlueprintAgent(id, {
+      newAgent = registry.createBlueprintAgent(id, {
         agentId: body.agent_id,
         name: body.name,
         model: body.model,
@@ -985,6 +1002,9 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       if (errMsg.includes("UNIQUE")) return c.json({ error: "An agent with this id already exists in this blueprint" }, 409);
       return c.json({ error: errMsg }, 500);
     }
+
+    // Seed workspace files for the new agent (same as for the default main agent)
+    await seedBlueprintAgentFiles(registry, newAgent.id, body.agent_id, body.name);
 
     const payload = buildBlueprintPayload(id, registry);
     return c.json(payload, 201);
