@@ -1,0 +1,29 @@
+name: Documentation
+description: Report missing or unclear documentation
+labels: ["docs"]
+body:
+  - type: textarea
+    id: what-doc
+    attributes:
+      label: What documentation is missing or unclear?
+      description: Describe what documentation issue you're encountering
+      placeholder: |
+        Example: The documentation for the `create` command doesn't explain what the "blueprint" option does.
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Where is it located?
+      description: File path or URL if you know where this should be documented (optional)
+      placeholder: |
+        Example: docs/commands.md or src/commands/create.ts
+
+  - type: textarea
+    id: suggested-content
+    attributes:
+      label: Suggested content
+      description: What should the documentation include? (optional)
+      placeholder: |
+        Example: Should explain that blueprints reference saved agent configurations from the registry.

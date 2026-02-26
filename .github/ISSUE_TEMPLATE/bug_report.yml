@@ -1,0 +1,66 @@
+name: Bug report
+description: Report something that isn't working as expected
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe what you were trying to do and what actually happened
+      placeholder: |
+        Example: I tried to create a new OpenClaw instance using the wizard, but it failed during the nginx configuration step.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+      placeholder: |
+        Example: The instance should be created successfully and nginx should be configured with SSL.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce this issue? Be as specific as possible.
+      placeholder: |
+        1. Run `claw-pilot create`
+        2. Select "Production" preset
+        3. Enter instance name "test-instance"
+        4. See error during nginx setup
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version, pnpm version, claw-pilot version or commit
+      placeholder: |
+        OS: Ubuntu 22.04
+        Node: v22.12.0
+        pnpm: 9.15.0
+        claw-pilot: v0.3.3
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots
+      description: Relevant log output or screenshots (optional)
+      placeholder: |
+        Paste relevant error messages or attach screenshots here
+
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: Searched existing issues?
+      description: Have you searched for existing issues that describe this problem?
+      options:
+        - label: Yes, I searched and found no existing issue
+          required: true

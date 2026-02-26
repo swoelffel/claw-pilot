@@ -1,0 +1,52 @@
+name: Feature request
+description: Suggest a new feature or improvement
+labels: ["feature"]
+body:
+  - type: textarea
+    id: problem-statement
+    attributes:
+      label: Problem statement
+      description: What problem does this solve? Why is it needed?
+      placeholder: |
+        Example: Currently there's no way to export agent configurations for reuse across instances.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed solution
+      description: How should this work? Describe the implementation approach.
+      placeholder: |
+        Example: Add a `claw-pilot blueprint export` command that saves the current agent configuration to a JSON file.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any alternative solutions you considered? (optional)
+      placeholder: |
+        Example: Using a different file format (YAML instead of JSON)
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope / impact
+      description: Who would this affect? Any breaking changes? (optional)
+      placeholder: |
+        Example: All users who manage multiple instances would benefit. No breaking changes.
+
+  - type: checklist
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: What must be true for this feature to be considered complete?
+      options:
+        - label: Command accepts a `--output` flag for file path
+        - label: Exported JSON includes all agent configurations
+        - label: Documentation is updated
+        - label: Tests are added for the new functionality
+    validations:
+      required: true
