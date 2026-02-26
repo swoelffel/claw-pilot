@@ -84,14 +84,16 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
 
   app.get("/api/instances", async (c) => {
     const statuses = await health.checkAll();
-    // Enrich each status with gatewayToken (parallel reads)
+    // Merge health status with DB instance fields (state, display_name, etc.)
+    // and enrich with gatewayToken
     const enriched = await Promise.all(
       statuses.map(async (s) => {
         const instance = registry.getInstance(s.slug);
         const gatewayToken = instance
           ? await readGatewayToken(conn, instance.state_dir)
           : null;
-        return { ...s, gatewayToken };
+        // instance fields first, then health fields override (gateway, systemd, etc.)
+        return { ...instance, ...s, gatewayToken };
       }),
     );
     return c.json(enriched);

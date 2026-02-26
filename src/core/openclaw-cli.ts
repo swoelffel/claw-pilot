@@ -28,28 +28,44 @@ export class OpenClawCLI {
 
   /** Detect openclaw binary path and version */
   async detect(): Promise<{ bin: string; version: string } | null> {
-    const candidates = [
-      "openclaw",
+    const home = process.env["HOME"] ?? "";
+
+    // Absolute candidate paths — checked via conn.exists() to avoid spawning
+    // openclaw --version which blocks when there is no TTY (openclaw writes
+    // version info directly to the terminal, not to stdout/stderr).
+    const absoluteCandidates = [
+      `${home}/.npm-global/bin/openclaw`,
       "/opt/openclaw/.npm-global/bin/openclaw",
-      `${process.env["HOME"] ?? ""}/.npm-global/bin/openclaw`,
     ];
 
-    for (const candidate of candidates) {
-      // Use execFile for the version check — no shell interpolation needed
-      const result = await this.conn.execFile(candidate, ["--version"], {
-        timeout: 5_000,
-      });
-      if (result.exitCode === 0 && result.stdout.trim()) {
-        const version = result.stdout.trim();
-        // Resolve to absolute path so systemd ExecStart works without PATH lookup.
-        // Uses exec() because the resolution uses shell pipes (command -v, readlink).
-        const absResult = await this.conn.exec(
-          `command -v ${shellEscape(candidate)} 2>/dev/null || readlink -f $(which ${shellEscape(candidate)} 2>/dev/null) 2>/dev/null || echo ${shellEscape(candidate)}`,
-        );
-        const bin = absResult.stdout.trim() || candidate;
+    for (const bin of absoluteCandidates) {
+      if (await this.conn.exists(bin)) {
+        // Read version from package.json (reliable, no TTY needed).
+        // bin is e.g. /home/user/.npm-global/bin/openclaw
+        // package.json is at   /home/user/.npm-global/lib/node_modules/openclaw/package.json
+        const npmGlobalRoot = bin.replace(/\/bin\/openclaw$/, "");
+        const pkgPath = `${npmGlobalRoot}/lib/node_modules/openclaw/package.json`;
+        let version = "unknown";
+        try {
+          const raw = await this.conn.readFile(pkgPath);
+          const pkg = JSON.parse(raw) as { version?: string };
+          if (pkg.version) version = pkg.version;
+        } catch {
+          // package.json not readable — version stays "unknown", bin is still valid
+        }
         return { bin, version };
       }
     }
+
+    // Fallback: resolve via which (works in interactive sessions, may fail in systemd)
+    const whichResult = await this.conn.exec(
+      `which openclaw 2>/dev/null || command -v openclaw 2>/dev/null || true`,
+    );
+    const bin = whichResult.stdout.trim();
+    if (bin) {
+      return { bin, version: "unknown" };
+    }
+
     return null;
   }
 
@@ -60,6 +76,7 @@ export class OpenClawCLI {
     configPath: string,
     args: string,
   ): Promise<ExecResult> {
+    const home = process.env["HOME"] ?? "";
     // Split args string into array — callers always pass simple args (no pipes/redirections)
     const argsArray = args.split(/\s+/).filter(Boolean);
     return this.conn.execFile(
@@ -69,7 +86,8 @@ export class OpenClawCLI {
         env: {
           OPENCLAW_STATE_DIR: stateDir,
           OPENCLAW_CONFIG_PATH: configPath,
-          PATH: "/opt/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin",
+          // Extended PATH covering all known npm-global locations
+          PATH: `${home}/.npm-global/bin:/opt/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin`,
         },
       },
     );
