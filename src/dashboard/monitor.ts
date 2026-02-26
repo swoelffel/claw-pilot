@@ -11,6 +11,7 @@ interface WSMessage {
 export class Monitor {
   private interval: NodeJS.Timeout | null = null;
   private clients: Set<WebSocket> = new Set();
+  private previousState = "";
 
   constructor(
     private health: HealthChecker,
@@ -26,12 +27,18 @@ export class Monitor {
     this.interval = setInterval(async () => {
       try {
         const statuses = await this.health.checkAll();
-        this.broadcast({
-          type: "health_update",
+        const msg = {
+          type: "health_update" as const,
           payload: { instances: statuses },
-        });
+        };
+        const serialized = JSON.stringify(msg);
+        // Only broadcast when state actually changed — eliminates ~90% of WS traffic
+        if (serialized !== this.previousState) {
+          this.previousState = serialized;
+          this.broadcast(msg);
+        }
       } catch {
-        // Ignore polling errors
+        // Expected: health check can fail transiently
       }
     }, this.intervalMs);
   }

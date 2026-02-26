@@ -175,30 +175,38 @@ export class InstanceDiscovery {
     );
     const knownPorts = new Set([...found.values()].map((i) => i.port));
 
-    for (let port = start; port <= end; port++) {
-      if (knownPorts.has(port)) continue;
+    // Scan all ports in parallel — worst case drops from 22s to ~2s
+    const portsToScan = Array.from(
+      { length: end - start + 1 },
+      (_, i) => start + i,
+    ).filter((p) => !knownPorts.has(p));
 
-      try {
-        const res = await fetch(`http://127.0.0.1:${port}/health`, {
-          signal: AbortSignal.timeout(2_000),
-        });
-        if (!res.ok) continue;
+    const results = await Promise.allSettled(
+      portsToScan.map(async (port) => {
+        try {
+          const res = await fetch(`http://127.0.0.1:${port}/health`, {
+            signal: AbortSignal.timeout(2_000),
+          });
+          if (!res.ok) return null;
+          return port;
+        } catch {
+          // Expected: port not responding
+          return null;
+        }
+      }),
+    );
 
-        const slug = await this.findSlugByPort(port);
-        if (!slug || found.has(slug)) continue;
+    for (const result of results) {
+      if (result.status !== "fulfilled" || result.value === null) continue;
+      const port = result.value;
 
-        const stateDir = `${this.openclawHome}/${constants.OPENCLAW_STATE_PREFIX}${slug}`;
-        const configPath = `${stateDir}/openclaw.json`;
-        const instance = await this.parseInstance(
-          slug,
-          stateDir,
-          configPath,
-          "port",
-        );
-        if (instance) found.set(slug, instance);
-      } catch {
-        // Expected: port not responding
-      }
+      const slug = await this.findSlugByPort(port);
+      if (!slug || found.has(slug)) continue;
+
+      const stateDir = `${this.openclawHome}/${constants.OPENCLAW_STATE_PREFIX}${slug}`;
+      const configPath = `${stateDir}/openclaw.json`;
+      const instance = await this.parseInstance(slug, stateDir, configPath, "port");
+      if (instance) found.set(slug, instance);
     }
   }
 

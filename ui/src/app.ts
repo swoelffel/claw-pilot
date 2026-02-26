@@ -402,11 +402,12 @@ export class CpApp extends LitElement {
       };
       const updates = payload.instances ?? [];
       if (updates.length > 0 && this._instances.length > 0) {
-        this._instances = this._instances.map((inst) => {
+        let changed = false;
+        const next = this._instances.map((inst) => {
           const update = updates.find((u) => u.slug === inst.slug);
           if (!update) return inst;
           // Derive state from health
-          const state: InstanceInfo["state"] =
+          const newState: InstanceInfo["state"] =
             update.gateway === "healthy"
               ? "running"
               : update.systemd === "inactive"
@@ -414,13 +415,21 @@ export class CpApp extends LitElement {
                 : update.systemd === "failed"
                   ? "error"
                   : "unknown";
-          return {
-            ...inst,
-            gateway: update.gateway,
-            systemd: update.systemd,
-            state,
-          };
+          // Only create a new object if something actually changed
+          if (
+            inst.gateway === update.gateway &&
+            inst.systemd === update.systemd &&
+            inst.state === newState
+          ) {
+            return inst;
+          }
+          changed = true;
+          return { ...inst, gateway: update.gateway, systemd: update.systemd, state: newState };
         });
+        // Only reassign (triggering Lit re-render) when at least one instance changed
+        if (changed) {
+          this._instances = next;
+        }
       }
     }
   }

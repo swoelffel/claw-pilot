@@ -125,6 +125,17 @@ export class HealthChecker {
 
   async checkAll(): Promise<HealthStatus[]> {
     const instances = this.registry.listInstances();
-    return Promise.all(instances.map((i) => this.check(i.slug)));
+    const BATCH_SIZE = 5;
+    const results: HealthStatus[] = [];
+
+    for (let i = 0; i < instances.length; i += BATCH_SIZE) {
+      const batch = instances.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map((inst) => this.check(inst.slug)),
+      );
+      results.push(...batchResults);
+    }
+
+    return results;
   }
 }

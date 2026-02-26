@@ -510,9 +510,49 @@ export class InstanceDetail extends LitElement {
   @state() private _conversations: ConversationEntry[] = [];
   @state() private _convLoading = true;
 
+  private _boundWsHandler = this._handleWsMessage.bind(this);
+
   override connectedCallback(): void {
     super.connectedCallback();
     this._load();
+    window.addEventListener("cp-ws-message", this._boundWsHandler as EventListener);
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    window.removeEventListener("cp-ws-message", this._boundWsHandler as EventListener);
+  }
+
+  private _handleWsMessage(e: Event): void {
+    const msg = (e as CustomEvent).detail as {
+      type: string;
+      payload: { instances?: Array<{ slug: string; gateway: string; systemd: string }> };
+    };
+    if (msg.type !== "health_update" || !this._instance) return;
+
+    const updates = msg.payload.instances ?? [];
+    const update = updates.find((u) => u.slug === this._instance!.slug);
+    if (!update) return;
+
+    const newGateway = update.gateway as InstanceInfo["gateway"];
+    const newSystemd = update.systemd as InstanceInfo["systemd"];
+    const newState: InstanceInfo["state"] =
+      newGateway === "healthy"
+        ? "running"
+        : newSystemd === "inactive"
+          ? "stopped"
+          : newSystemd === "failed"
+            ? "error"
+            : "unknown";
+
+    // Only trigger re-render if something actually changed
+    if (
+      this._instance.gateway !== newGateway ||
+      this._instance.systemd !== newSystemd ||
+      this._instance.state !== newState
+    ) {
+      this._instance = { ...this._instance, gateway: newGateway, systemd: newSystemd, state: newState };
+    }
   }
 
   override updated(changed: Map<string, unknown>): void {
