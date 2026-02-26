@@ -1,11 +1,13 @@
 // ui/src/components/agent-detail-panel.ts
-import { LitElement, html, css } from "lit";
+import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo, AgentLink, AgentFileContent } from "../types.js";
-import { fetchAgentFile, updateSpawnLinks } from "../api.js";
+import { fetchAgentFile, updateSpawnLinks, updateAgentFile } from "../api.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { sectionLabelStyles } from "../styles/shared.js";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 
 const EDITABLE_FILES = new Set(["AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md", "USER.md", "HEARTBEAT.md"]);
 
@@ -167,6 +169,7 @@ export class AgentDetailPanel extends LitElement {
       flex: 1;
       overflow-y: auto;
       padding: 16px 20px;
+      position: relative;
     }
 
     .panel-body.has-save-bar {
@@ -440,6 +443,251 @@ export class AgentDetailPanel extends LitElement {
     .link-badge.spawn-pending-add .spawn-remove-btn:hover {
       color: var(--state-error);
     }
+
+    .file-edit-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .badge-editing {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: var(--accent-subtle);
+      border: 1px solid var(--accent-border);
+      border-radius: 3px;
+      padding: 1px 6px;
+    }
+
+    .editor-tabs {
+      display: flex;
+      gap: 3px;
+    }
+
+    .editor-tab {
+      background: none;
+      border: 1px solid var(--bg-border);
+      border-radius: 4px;
+      padding: 2px 10px;
+      font-size: 11px;
+      font-family: inherit;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: background 0.12s, color 0.12s;
+    }
+
+    .editor-tab.active {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+
+    .editor-actions {
+      display: flex;
+      gap: 6px;
+      margin-left: auto;
+    }
+
+    .btn-file-save {
+      background: var(--accent-subtle);
+      border: 1px solid var(--accent-border);
+      color: var(--accent);
+      border-radius: 5px;
+      padding: 4px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-file-save:hover:not(:disabled) {
+      background: rgba(79, 110, 247, 0.15);
+    }
+
+    .btn-file-save:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-file-cancel {
+      background: none;
+      border: 1px solid var(--bg-border);
+      color: var(--text-muted);
+      border-radius: 5px;
+      padding: 4px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .btn-file-cancel:hover:not(:disabled) {
+      border-color: var(--state-error);
+      color: var(--state-error);
+    }
+
+    .btn-edit-file {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 1px 4px;
+      border-radius: 3px;
+      color: var(--text-muted);
+      transition: color 0.12s;
+      line-height: 1;
+    }
+
+    .btn-edit-file:hover {
+      color: var(--accent);
+    }
+
+    .file-editor {
+      width: 100%;
+      min-height: 280px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.6;
+      border: 1px solid var(--bg-border);
+      border-radius: var(--radius-md);
+      padding: 10px 12px;
+      resize: vertical;
+      box-sizing: border-box;
+      background: var(--bg-base);
+      color: var(--text-secondary);
+    }
+
+    .file-editor:focus {
+      outline: none;
+      border-color: var(--accent-border);
+    }
+
+    .file-save-error {
+      color: var(--state-error);
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+
+    .md-render {
+      font-size: 13px;
+      line-height: 1.65;
+      color: var(--text-secondary);
+    }
+
+    .md-render h1, .md-render h2, .md-render h3 {
+      color: var(--text-primary);
+      margin-top: 14px;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    .md-render h1 { font-size: 16px; }
+
+    .md-render p {
+      margin: 6px 0;
+    }
+
+    .md-render ul, .md-render ol {
+      padding-left: 18px;
+      margin: 6px 0;
+    }
+
+    .md-render code {
+      background: var(--bg-border);
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .md-render pre {
+      background: var(--bg-base);
+      border: 1px solid var(--bg-border);
+      border-radius: var(--radius-md);
+      padding: 10px 12px;
+      overflow-x: auto;
+    }
+
+    .md-render pre code {
+      background: none;
+      padding: 0;
+    }
+
+    .md-render blockquote {
+      border-left: 3px solid var(--accent-border);
+      margin: 8px 0;
+      padding: 4px 12px;
+      color: var(--text-muted);
+    }
+
+    .discard-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+      border-radius: var(--radius-md);
+    }
+
+    .discard-dialog {
+      background: var(--bg-surface);
+      border: 1px solid var(--bg-border);
+      border-radius: var(--radius-md);
+      padding: 20px;
+      max-width: 300px;
+      width: 90%;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+
+    .discard-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin: 0 0 8px;
+    }
+
+    .discard-body {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin: 0 0 16px;
+    }
+
+    .discard-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .btn-keep-editing {
+      background: none;
+      border: 1px solid var(--bg-border);
+      color: var(--text-secondary);
+      border-radius: 5px;
+      padding: 5px 12px;
+      font-size: 11px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+
+    .btn-discard {
+      background: var(--state-error, #e53e3e);
+      border: none;
+      color: white;
+      border-radius: 5px;
+      padding: 5px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+    }
   `];
 
   @property({ type: Object }) agent!: AgentBuilderInfo;
@@ -455,6 +703,14 @@ export class AgentDetailPanel extends LitElement {
   @state() private _pendingAdditions = new Set<string>();
   @state() private _dropdownOpen = false;
   @state() private _saving = false;
+  @state() private _editMode = false;
+  @state() private _editContent = "";
+  @state() private _editOriginal = "";
+  @state() private _editTab: "edit" | "preview" = "edit";
+  @state() private _fileSaving = false;
+  @state() private _fileSaveError = "";
+  @state() private _discardDialogOpen = false;
+  @state() private _pendingTabSwitch: string | null = null;
 
   private async _loadFile(filename: string): Promise<void> {
     if (this._fileCache.has(filename)) return;
@@ -470,6 +726,12 @@ export class AgentDetailPanel extends LitElement {
   }
 
   private _selectTab(tab: string): void {
+    if (this._editMode && this._editContent !== this._editOriginal) {
+      this._pendingTabSwitch = tab;
+      this._discardDialogOpen = true;
+      return;
+    }
+    this._editMode = false;
     this._activeTab = tab;
     if (tab !== "info") {
       void this._loadFile(tab);
@@ -493,6 +755,12 @@ export class AgentDetailPanel extends LitElement {
       this._pendingRemovals = new Set();
       this._pendingAdditions = new Set();
       this._dropdownOpen = false;
+      this._editMode = false;
+      this._editContent = "";
+      this._editOriginal = "";
+      this._fileSaveError = "";
+      this._discardDialogOpen = false;
+      this._pendingTabSwitch = null;
     }
   }
 
@@ -588,6 +856,70 @@ export class AgentDetailPanel extends LitElement {
     } finally {
       this._saving = false;
     }
+  }
+
+  private _enterEditMode(filename: string): void {
+    const cached = this._fileCache.get(filename);
+    if (!cached) return;
+    this._editOriginal = cached.content ?? "";
+    this._editContent = this._editOriginal;
+    this._editTab = "edit";
+    this._fileSaveError = "";
+    this._editMode = true;
+  }
+
+  private _cancelEdit(): void {
+    if (this._editContent !== this._editOriginal) {
+      this._discardDialogOpen = true;
+    } else {
+      this._exitEditMode();
+    }
+  }
+
+  private _exitEditMode(): void {
+    this._editMode = false;
+    this._editContent = "";
+    this._editOriginal = "";
+    this._fileSaveError = "";
+    this._discardDialogOpen = false;
+    this._pendingTabSwitch = null;
+  }
+
+  private _confirmDiscard(): void {
+    if (this._pendingTabSwitch) {
+      const target = this._pendingTabSwitch;
+      this._exitEditMode();
+      this._activeTab = target;
+      if (target !== "info") void this._loadFile(target);
+    } else {
+      this._exitEditMode();
+    }
+  }
+
+  private async _saveFile(filename: string): Promise<void> {
+    if (!this.agent || !this.slug) return;
+    this._fileSaving = true;
+    this._fileSaveError = "";
+    try {
+      const updated = await updateAgentFile(
+        this.slug,
+        this.agent.agent_id,
+        filename,
+        this._editContent,
+      );
+      this._fileCache = new Map(this._fileCache).set(filename, updated);
+      this._exitEditMode();
+    } catch (err) {
+      this._fileSaveError = err instanceof Error ? err.message : String(err);
+    } finally {
+      this._fileSaving = false;
+    }
+  }
+
+  private _renderMarkdown(content: string) {
+    const rawHtml = marked.parse(content) as string;
+    const clean = DOMPurify.sanitize(rawHtml);
+    return html`<div class="md-render" .innerHTML=${clean}></div>`;
   }
 
   private _renderInfo() {
@@ -722,6 +1054,66 @@ export class AgentDetailPanel extends LitElement {
       return html`<p class="loading-text">${msg("File not available.", { id: "adp-file-not-available" })}</p>`;
     }
 
+    if (this._editMode && isEditable) {
+      return html`
+        <div class="file-edit-header">
+          <span class="badge-editing">${msg("Editing", { id: "adf-badge-editing" })}</span>
+          <div class="editor-tabs">
+            <button
+              class="editor-tab ${this._editTab === "edit" ? "active" : ""}"
+              @click=${() => { this._editTab = "edit"; }}
+            >${msg("Edit", { id: "adf-tab-edit" })}</button>
+            <button
+              class="editor-tab ${this._editTab === "preview" ? "active" : ""}"
+              @click=${() => { this._editTab = "preview"; }}
+            >${msg("Preview", { id: "adf-tab-preview" })}</button>
+          </div>
+          <div class="editor-actions">
+            <button
+              class="btn-file-save"
+              ?disabled=${this._fileSaving}
+              @click=${() => void this._saveFile(filename)}
+            >${this._fileSaving
+              ? msg("Saving...", { id: "adf-btn-saving" })
+              : msg("Save", { id: "adf-btn-save" })}</button>
+            <button
+              class="btn-file-cancel"
+              ?disabled=${this._fileSaving}
+              @click=${() => this._cancelEdit()}
+            >${msg("Cancel", { id: "adf-btn-cancel" })}</button>
+          </div>
+        </div>
+        ${this._fileSaveError ? html`<div class="file-save-error">${this._fileSaveError}</div>` : nothing}
+        ${this._editTab === "edit"
+          ? html`<textarea
+              class="file-editor"
+              .value=${this._editContent}
+              @input=${(e: InputEvent) => { this._editContent = (e.target as HTMLTextAreaElement).value; }}
+            ></textarea>`
+          : this._renderMarkdown(this._editContent)
+        }
+        ${this._discardDialogOpen ? html`
+          <div class="discard-overlay">
+            <div class="discard-dialog">
+              <h3 class="discard-title">${msg("Discard changes?", { id: "adf-confirm-discard-title" })}</h3>
+              <p class="discard-body">${msg("Your changes will be lost.", { id: "adf-confirm-discard-body" })}</p>
+              <div class="discard-actions">
+                <button
+                  class="btn-keep-editing"
+                  @click=${() => { this._discardDialogOpen = false; this._pendingTabSwitch = null; }}
+                >${msg("Keep editing", { id: "adf-confirm-keep" })}</button>
+                <button
+                  class="btn-discard"
+                  @click=${() => this._confirmDiscard()}
+                >${msg("Discard", { id: "adf-confirm-discard-ok" })}</button>
+              </div>
+            </div>
+          </div>
+        ` : nothing}
+      `;
+    }
+
+    // Consultation mode
     return html`
       <div class="file-badge">
         <span class="${isEditable ? "badge-editable" : "badge-readonly"}">
@@ -729,8 +1121,15 @@ export class AgentDetailPanel extends LitElement {
             ? msg("editable", { id: "adp-badge-editable" })
             : msg("read-only", { id: "adp-badge-readonly" })}
         </span>
+        ${isEditable ? html`
+          <button
+            class="btn-edit-file"
+            title=${msg("Edit", { id: "adf-btn-edit" })}
+            @click=${() => this._enterEditMode(filename)}
+          >✏</button>
+        ` : nothing}
       </div>
-      <pre class="file-content">${cached.content}</pre>
+      ${this._renderMarkdown(cached.content ?? "")}
     `;
   }
 

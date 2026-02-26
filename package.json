@@ -39,7 +39,9 @@
     "chalk": "^5",
     "cli-table3": "^0.6",
     "commander": "^13",
+    "dompurify": "^3.0.0",
     "hono": "^4",
+    "marked": "^15.0.0",
     "nanoid": "^5",
     "ora": "^8",
     "ws": "^8"
@@ -47,6 +49,7 @@
   "devDependencies": {
     "@hono/node-server": "^1",
     "@types/better-sqlite3": "^7",
+    "@types/dompurify": "^3.0.0",
     "@types/node": "^22",
     "@types/ws": "^8",
     "lit": "^3",

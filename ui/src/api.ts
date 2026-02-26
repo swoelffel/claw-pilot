@@ -102,6 +102,21 @@ export async function fetchAgentFile(slug: string, agentId: string, filename: st
   return apiFetch<AgentFileContent>(`/instances/${slug}/agents/${agentId}/files/${filename}`);
 }
 
+export async function updateAgentFile(
+  instanceSlug: string,
+  agentId: string,
+  filename: string,
+  content: string,
+): Promise<AgentFileContent> {
+  return apiFetch<AgentFileContent>(
+    `/instances/${instanceSlug}/agents/${agentId}/files/${filename}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ content }),
+    },
+  );
+}
+
 export async function updateAgentPosition(
   slug: string,
   agentId: string,

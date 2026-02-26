@@ -447,6 +447,59 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     });
   });
 
+  // PUT /api/instances/:slug/agents/:agentId/files/:filename — update a workspace file
+  app.put("/api/instances/:slug/agents/:agentId/files/:filename", async (c) => {
+    const slug = c.req.param("slug");
+    const agentId = c.req.param("agentId");
+    const filename = c.req.param("filename");
+
+    if (!EDITABLE_FILES.has(filename)) {
+      return c.json({ error: "File is not editable" }, 403);
+    }
+
+    const instance = registry.getInstance(slug);
+    if (!instance) return c.json({ error: "Not found" }, 404);
+
+    const agentRecord = registry.getAgentByAgentId(instance.id, agentId);
+    if (!agentRecord) return c.json({ error: "Agent not found" }, 404);
+
+    let body: { content?: string };
+    try {
+      body = await c.req.json<{ content?: string }>();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    if (typeof body.content !== "string") {
+      return c.json({ error: "content is required" }, 400);
+    }
+
+    try {
+      const provisioner = new AgentProvisioner(conn, registry);
+      await provisioner.updateAgentFile(instance, agentId, filename, body.content);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const status = msg.includes("not found") ? 404
+                   : msg.includes("not editable") ? 403
+                   : 500;
+      return c.json({ error: msg }, status);
+    }
+
+    // Restart daemon fire-and-forget
+    conn.execFile("systemctl", ["--user", "restart", instance.systemd_unit], {
+      env: { XDG_RUNTIME_DIR: xdgRuntimeDir },
+    }).catch(() => {});
+
+    // Return updated file record
+    const updatedFile = registry.getAgentFileContent(agentRecord.id, filename);
+    return c.json({
+      filename,
+      content: updatedFile?.content ?? body.content,
+      content_hash: updatedFile?.content_hash ?? "",
+      updated_at: updatedFile?.updated_at ?? new Date().toISOString(),
+      editable: true,
+    }, 200);
+  });
+
   app.get("/api/instances/:slug/conversations", async (c) => {
     const slug = c.req.param("slug");
     const instance = registry.getInstance(slug);

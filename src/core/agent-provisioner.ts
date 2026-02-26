@@ -1,6 +1,8 @@
 // src/core/agent-provisioner.ts
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
+import { EDITABLE_FILES } from "./agent-sync.js";
+import { createHash } from "node:crypto";
 
 export interface CreateAgentData {
   agentSlug: string;
@@ -150,5 +152,30 @@ export class AgentProvisioner {
 
     // 8. Delete agent from DB (cascades to agent_files)
     this.registry.deleteAgentById(agent.id);
+  }
+
+  async updateAgentFile(
+    instance: InstanceRecord,
+    agentSlug: string,
+    filename: string,
+    content: string,
+  ): Promise<void> {
+    // 1. Lookup agent in DB
+    const agent = this.registry.getAgentByAgentId(instance.id, agentSlug);
+    if (!agent) throw new Error(`Agent "${agentSlug}" not found`);
+
+    // 2. Guard: file must be editable
+    if (!EDITABLE_FILES.has(filename)) {
+      throw new Error(`File "${filename}" is not editable`);
+    }
+
+    // 3. Write to disk
+    const path = await import("node:path");
+    const filePath = path.join(agent.workspace_path, filename);
+    await this.conn.writeFile(filePath, content);
+
+    // 4. Update SQLite cache
+    const hash = createHash("sha256").update(content).digest("hex");
+    this.registry.upsertAgentFile(agent.id, { filename, content, contentHash: hash });
   }
 }

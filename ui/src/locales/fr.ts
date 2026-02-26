@@ -174,4 +174,17 @@ export const templates = {
   "adp-saving": "Sauvegarde...",
   "adp-btn-cancel-spawn": "Annuler",
   "adp-btn-add-spawn": "Ajouter un agent",
+
+  // agent-detail-panel.ts — file editor
+  "adf-btn-edit": "Modifier",
+  "adf-badge-editing": "Édition",
+  "adf-btn-save": "Sauvegarder",
+  "adf-btn-saving": "Sauvegarde...",
+  "adf-btn-cancel": "Annuler",
+  "adf-tab-edit": "Éditer",
+  "adf-tab-preview": "Aperçu",
+  "adf-confirm-discard-title": "Abandonner les modifications ?",
+  "adf-confirm-discard-body": "Vos modifications seront perdues.",
+  "adf-confirm-keep": "Continuer l'édition",
+  "adf-confirm-discard-ok": "Abandonner",
 };
