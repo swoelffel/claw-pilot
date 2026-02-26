@@ -218,7 +218,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       }
       // Validate slug format
       if (!/^[a-z][a-z0-9-]*$/.test(body.agentSlug) || body.agentSlug.length < 2 || body.agentSlug.length > 30) {
-        return apiError(c, 400, "INVALID_SLUG", "Invalid agentSlug: must be 2-30 lowercase alphanumeric chars with hyphens");
+        return apiError(c, 400, "INVALID_AGENT_ID", "Invalid agentSlug: must be 2-30 lowercase alphanumeric chars with hyphens");
       }
     } catch {
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
@@ -700,7 +700,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     const apiKey   = body["apiKey"];
 
     if (typeof slug !== "string" || !/^[a-z][a-z0-9-]*$/.test(slug) || slug.length < 2 || slug.length > 30) {
-      return apiError(c, 400, "INVALID_SLUG", "Invalid slug: must be 2-30 lowercase alphanumeric chars with hyphens");
+      return apiError(c, 400, "INVALID_INSTANCE_SLUG", "Invalid slug: must be 2-30 lowercase alphanumeric chars with hyphens");
     }
     if (typeof port !== "number" || port < 1024 || port > 65535) {
       return apiError(c, 400, "FIELD_INVALID", "Invalid port: must be 1024-65535");
@@ -888,7 +888,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     try {
       body = await c.req.json() as typeof body;
       if (!body.name || typeof body.name !== "string" || body.name.trim() === "") {
-        return apiError(c, 400, "SLUG_REQUIRED", "name is required");
+        return apiError(c, 400, "BLUEPRINT_NAME_REQUIRED", "name is required");
       }
     } catch {
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
@@ -908,7 +908,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       return c.json(blueprint, 201);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("UNIQUE")) return apiError(c, 409, "SLUG_TAKEN", "A blueprint with this name already exists");
+      if (msg.includes("UNIQUE")) return apiError(c, 409, "BLUEPRINT_NAME_TAKEN", "A blueprint with this name already exists");
       return apiError(c, 500, "INTERNAL_ERROR", msg);
     }
   });
@@ -941,7 +941,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       return c.json(updated);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("UNIQUE")) return apiError(c, 409, "SLUG_TAKEN", "A blueprint with this name already exists");
+      if (msg.includes("UNIQUE")) return apiError(c, 409, "BLUEPRINT_NAME_TAKEN", "A blueprint with this name already exists");
       return apiError(c, 500, "INTERNAL_ERROR", msg);
     }
   });
@@ -979,7 +979,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
         return apiError(c, 400, "FIELD_REQUIRED", "agent_id and name are required");
       }
       if (!/^[a-z][a-z0-9-]*$/.test(body.agent_id) || body.agent_id.length < 2 || body.agent_id.length > 30) {
-        return apiError(c, 400, "INVALID_SLUG", "Invalid agent_id: must be 2-30 lowercase alphanumeric chars with hyphens");
+        return apiError(c, 400, "INVALID_AGENT_ID", "Invalid agent_id: must be 2-30 lowercase alphanumeric chars with hyphens");
       }
     } catch {
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
@@ -994,7 +994,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      if (errMsg.includes("UNIQUE")) return apiError(c, 409, "SLUG_TAKEN", "An agent with this id already exists in this blueprint");
+      if (errMsg.includes("UNIQUE")) return apiError(c, 409, "AGENT_ID_TAKEN", "An agent with this id already exists in this blueprint");
       return apiError(c, 500, "INTERNAL_ERROR", errMsg);
     }
 

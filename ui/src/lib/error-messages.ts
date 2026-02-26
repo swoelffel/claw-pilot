@@ -23,10 +23,20 @@ function resolveCode(code: string): string {
       return msg("Invalid request format.", { id: "err-invalid-json" });
     case "INVALID_SLUG":
       return msg("Must be 2-30 lowercase letters, numbers, or hyphens.", { id: "err-invalid-slug" });
+    case "INVALID_INSTANCE_SLUG":
+      return msg("Instance ID must be 2-30 lowercase letters, numbers, or hyphens.", { id: "err-invalid-instance-slug" });
+    case "INVALID_AGENT_ID":
+      return msg("Agent ID must be 2-30 lowercase letters, numbers, or hyphens.", { id: "err-invalid-agent-id" });
     case "SLUG_REQUIRED":
       return msg("This name is required.", { id: "err-slug-required" });
+    case "BLUEPRINT_NAME_REQUIRED":
+      return msg("Blueprint name is required.", { id: "err-blueprint-name-required" });
     case "SLUG_TAKEN":
       return msg("This name is already in use.", { id: "err-slug-taken" });
+    case "BLUEPRINT_NAME_TAKEN":
+      return msg("A blueprint with this name already exists.", { id: "err-blueprint-name-taken" });
+    case "AGENT_ID_TAKEN":
+      return msg("An agent with this ID already exists in this blueprint.", { id: "err-agent-id-taken" });
     case "FIELD_REQUIRED":
       return msg("A required field is missing.", { id: "err-field-required" });
     case "FIELD_INVALID":
