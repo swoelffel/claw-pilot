@@ -1,4 +1,5 @@
 import type { InstanceInfo, AgentInfo, CreateInstanceRequest, CreateAgentRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink, Blueprint, BlueprintBuilderData, CreateBlueprintRequest } from "./types.js";
+import { ApiError } from "./lib/api-error.js";
 
 declare global {
   interface Window {
@@ -26,8 +27,16 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`API error ${res.status}: ${text}`);
+    let code = "INTERNAL_ERROR";
+    let message = res.statusText;
+    try {
+      const body = await res.json() as { code?: string; error?: string };
+      code = body.code ?? "INTERNAL_ERROR";
+      message = body.error ?? res.statusText;
+    } catch {
+      // Body is not JSON — keep defaults
+    }
+    throw new ApiError(res.status, code, message);
   }
   return res.json() as Promise<T>;
 }

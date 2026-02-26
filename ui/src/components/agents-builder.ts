@@ -4,6 +4,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo, BuilderData } from "../types.js";
 import { syncAgents, fetchBuilderData, updateAgentPosition } from "../api.js";
+import { userMessage } from "../lib/error-messages.js";
 import "./delete-agent-dialog.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { badgeStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
@@ -240,7 +241,7 @@ export class AgentsBuilder extends LitElement {
       this._data = data;
       this._recomputePositions();
     } catch (err) {
-      this._error = err instanceof Error ? err.message : msg("Failed to load agents", { id: "ab-error-load" });
+      this._error = userMessage(err);
     } finally {
       this._syncing = false;
     }

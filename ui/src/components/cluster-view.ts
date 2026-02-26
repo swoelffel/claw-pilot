@@ -3,6 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { InstanceInfo } from "../types.js";
 import { fetchInstances } from "../api.js";
+import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { sectionLabelStyles, errorBannerStyles, buttonStyles } from "../styles/shared.js";
 import "./instance-card.js";
@@ -84,7 +85,7 @@ export class ClusterView extends LitElement {
         }),
       );
     } catch (err) {
-      this._error = err instanceof Error ? err.message : msg("Failed to load instances", { id: "error-load-instances" });
+      this._error = userMessage(err);
     } finally {
       this._loading = false;
     }

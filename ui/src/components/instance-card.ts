@@ -3,6 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { InstanceInfo } from "../types.js";
 import { startInstance, stopInstance } from "../api.js";
+import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { badgeStyles, buttonStyles } from "../styles/shared.js";
 
@@ -152,7 +153,7 @@ export class InstanceCard extends LitElement {
     try {
       await fn(this.instance.slug);
     } catch (err) {
-      this._error = err instanceof Error ? err.message : msg("Action failed", { id: "action-failed" });
+      this._error = userMessage(err);
     } finally {
       this._loading = false;
     }

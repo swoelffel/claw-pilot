@@ -11,6 +11,7 @@ import {
   restartInstance,
   deleteInstance,
 } from "../api.js";
+import { userMessage } from "../lib/error-messages.js";
 
 
 @localized()
@@ -503,11 +504,9 @@ export class InstanceDetail extends LitElement {
   @state() private _loading = true;
   @state() private _error = "";
   @state() private _actionLoading = false;
-  @state() private _actionError = "";
   @state() private _showDeleteConfirm = false;
   @state() private _deleteSlugInput = "";
   @state() private _deleting = false;
-  @state() private _deleteError = "";
   @state() private _conversations: ConversationEntry[] = [];
   @state() private _convLoading = true;
 
@@ -536,8 +535,7 @@ export class InstanceDetail extends LitElement {
       this._gatewayToken = gatewayToken;
       this._agents = agents;
     } catch (err) {
-      this._error =
-        err instanceof Error ? err.message : msg("Failed to load instance", { id: "failed-load-instance" });
+      this._error = userMessage(err);
     } finally {
       this._loading = false;
     }
@@ -563,13 +561,12 @@ export class InstanceDetail extends LitElement {
 
   private async _action(fn: (slug: string) => Promise<void>): Promise<void> {
     this._actionLoading = true;
-    this._actionError = "";
+    this._error = "";
     try {
       await fn(this.slug);
       await this._load();
     } catch (err) {
-      this._actionError =
-        err instanceof Error ? err.message : msg("Action failed", { id: "action-failed-detail" });
+      this._error = userMessage(err);
     } finally {
       this._actionLoading = false;
     }
@@ -578,7 +575,7 @@ export class InstanceDetail extends LitElement {
   private async _confirmDelete(): Promise<void> {
     if (this._deleteSlugInput !== this.slug || this._deleting) return;
     this._deleting = true;
-    this._deleteError = "";
+    this._error = "";
     try {
       await deleteInstance(this.slug);
       this.dispatchEvent(
@@ -590,7 +587,7 @@ export class InstanceDetail extends LitElement {
       );
       this._back();
     } catch (err) {
-      this._deleteError = err instanceof Error ? err.message : msg("Delete failed", { id: "delete-failed" });
+      this._error = userMessage(err);
       this._deleting = false;
     }
   }
@@ -657,12 +654,12 @@ export class InstanceDetail extends LitElement {
           @click=${() => {
             this._showDeleteConfirm = true;
             this._deleteSlugInput = "";
-            this._deleteError = "";
+            this._error = "";
           }}
         >${msg("Delete", { id: "btn-delete" })}</button>
       </div>
-      ${this._actionError
-        ? html`<div class="action-error">${this._actionError}</div>`
+      ${this._error
+        ? html`<div class="action-error">${this._error}</div>`
         : ""}
     `;
   }
@@ -772,8 +769,8 @@ export class InstanceDetail extends LitElement {
                   ${msg("Cancel", { id: "btn-cancel" })}
                 </button>
               </div>
-              ${this._deleteError
-                ? html`<div class="action-error">${this._deleteError}</div>`
+              ${this._error
+                ? html`<div class="action-error">${this._error}</div>`
                 : ""}
             </div>
           `

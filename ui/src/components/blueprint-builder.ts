@@ -9,6 +9,7 @@ import {
   deleteBlueprintAgent,
   updateBlueprintAgentPosition,
 } from "../api.js";
+import { userMessage } from "../lib/error-messages.js";
 import { computePositions, newAgentPosition } from "../lib/builder-utils.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { badgeStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
@@ -261,7 +262,7 @@ export class BlueprintBuilder extends LitElement {
   @state() private _newAgentName = "";
   @state() private _newAgentModel = "";
   @state() private _creating = false;
-  @state() private _createError = "";
+  @state() private _submitError = "";
 
   // Drag state — not @state, updated directly during pointer events
   private _drag: {
@@ -318,7 +319,7 @@ export class BlueprintBuilder extends LitElement {
       this._data = data;
       this._recomputePositions();
     } catch (err) {
-      this._error = err instanceof Error ? err.message : "Failed to load blueprint";
+      this._error = userMessage(err);
     } finally {
       this._loading = false;
     }
@@ -439,14 +440,14 @@ export class BlueprintBuilder extends LitElement {
       this._data = data;
       this._recomputePositions();
     } catch (err) {
-      this._error = err instanceof Error ? err.message : "Failed to delete agent";
+      this._error = userMessage(err);
     }
   }
 
   private async _createAgent(): Promise<void> {
     if (!this._newAgentId.trim() || !this._newAgentName.trim()) return;
     this._creating = true;
-    this._createError = "";
+    this._submitError = "";
     try {
       const data = await createBlueprintAgent(this.blueprintId, {
         agent_id: this._newAgentId.trim(),
@@ -481,7 +482,7 @@ export class BlueprintBuilder extends LitElement {
       this._newAgentName = "";
       this._newAgentModel = "";
     } catch (err) {
-      this._createError = err instanceof Error ? err.message : "Failed to create agent";
+      this._submitError = userMessage(err);
     } finally {
       this._creating = false;
     }
@@ -603,7 +604,7 @@ export class BlueprintBuilder extends LitElement {
         <div class="dialog-overlay" @click=${(e: Event) => { if (e.target === e.currentTarget) this._showCreateDialog = false; }}>
           <div class="dialog">
             <h3 class="dialog-title">${msg("New agent", { id: "ab-btn-add-agent" })}</h3>
-            ${this._createError ? html`<div class="error-banner" style="margin-bottom: 12px;">${this._createError}</div>` : ""}
+            ${this._submitError ? html`<div class="error-banner" style="margin-bottom: 12px;">${this._submitError}</div>` : ""}
             <div class="form-group">
               <label>Agent ID *</label>
               <input
@@ -633,7 +634,7 @@ export class BlueprintBuilder extends LitElement {
               />
             </div>
             <div class="dialog-actions">
-              <button class="btn-cancel" @click=${() => { this._showCreateDialog = false; this._createError = ""; }}>
+              <button class="btn-cancel" @click=${() => { this._showCreateDialog = false; this._submitError = ""; }}>
                 ${msg("Cancel", { id: "cbd-btn-cancel" })}
               </button>
               <button

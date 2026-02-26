@@ -4,6 +4,7 @@ import { customElement, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { Blueprint } from "../types.js";
 import { fetchBlueprints, deleteBlueprint } from "../api.js";
+import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { sectionLabelStyles, errorBannerStyles, buttonStyles } from "../styles/shared.js";
 import "./blueprint-card.js";
@@ -81,7 +82,7 @@ export class BlueprintsView extends LitElement {
     try {
       this._blueprints = await fetchBlueprints();
     } catch (err) {
-      this._error = err instanceof Error ? err.message : "Failed to load blueprints";
+      this._error = userMessage(err);
     } finally {
       this._loading = false;
     }
@@ -102,7 +103,7 @@ export class BlueprintsView extends LitElement {
       await deleteBlueprint(blueprintId);
       this._blueprints = this._blueprints.filter(bp => bp.id !== blueprintId);
     } catch (err) {
-      this._error = err instanceof Error ? err.message : "Failed to delete blueprint";
+      this._error = userMessage(err);
     }
   }
 

@@ -4,6 +4,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo, BuilderData } from "../types.js";
 import { deleteAgent } from "../api.js";
+import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { spinnerStyles, errorBannerStyles, buttonStyles } from "../styles/shared.js";
 
@@ -192,7 +193,7 @@ export class DeleteAgentDialog extends LitElement {
         composed: true,
       }));
     } catch (err) {
-      this._submitError = err instanceof Error ? err.message : msg("Failed to delete agent", { id: "dad-error-delete" });
+      this._submitError = userMessage(err);
       this._submitting = false;
     }
   }

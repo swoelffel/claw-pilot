@@ -11,6 +11,7 @@ import {
   updateBlueprintAgentFile,
   updateBlueprintSpawnLinks,
 } from "../api.js";
+import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { sectionLabelStyles } from "../styles/shared.js";
 import { marked } from "marked";
@@ -723,7 +724,7 @@ export class AgentDetailPanel extends LitElement {
   @state() private _editOriginal = "";
   @state() private _editTab: "edit" | "preview" = "edit";
   @state() private _fileSaving = false;
-  @state() private _fileSaveError = "";
+  @state() private _error = "";
   @state() private _discardDialogOpen = false;
   @state() private _pendingTabSwitch: string | null = null;
 
@@ -780,7 +781,7 @@ export class AgentDetailPanel extends LitElement {
       this._editMode = false;
       this._editContent = "";
       this._editOriginal = "";
-      this._fileSaveError = "";
+      this._error = "";
       this._discardDialogOpen = false;
       this._pendingTabSwitch = null;
     }
@@ -883,7 +884,7 @@ export class AgentDetailPanel extends LitElement {
         composed: true,
       }));
     } catch (err) {
-      console.error("Failed to save spawn links:", err);
+      this._error = userMessage(err);
     } finally {
       this._saving = false;
     }
@@ -895,7 +896,7 @@ export class AgentDetailPanel extends LitElement {
     this._editOriginal = cached.content ?? "";
     this._editContent = this._editOriginal;
     this._editTab = "edit";
-    this._fileSaveError = "";
+    this._error = "";
     this._editMode = true;
   }
 
@@ -911,7 +912,7 @@ export class AgentDetailPanel extends LitElement {
     this._editMode = false;
     this._editContent = "";
     this._editOriginal = "";
-    this._fileSaveError = "";
+    this._error = "";
     this._discardDialogOpen = false;
     this._pendingTabSwitch = null;
   }
@@ -930,7 +931,7 @@ export class AgentDetailPanel extends LitElement {
   private async _saveFile(filename: string): Promise<void> {
     if (!this.agent || !this.context) return;
     this._fileSaving = true;
-    this._fileSaveError = "";
+    this._error = "";
     try {
       let updated: AgentFileContent;
       if (this.context.kind === "blueprint") {
@@ -953,7 +954,7 @@ export class AgentDetailPanel extends LitElement {
       this._fileCache = new Map(this._fileCache).set(filename, updated);
       this._exitEditMode();
     } catch (err) {
-      this._fileSaveError = err instanceof Error ? err.message : String(err);
+      this._error = userMessage(err);
     } finally {
       this._fileSaving = false;
     }
@@ -1126,7 +1127,7 @@ export class AgentDetailPanel extends LitElement {
             >${msg("Cancel", { id: "adf-btn-cancel" })}</button>
           </div>
         </div>
-        ${this._fileSaveError ? html`<div class="file-save-error">${this._fileSaveError}</div>` : nothing}
+        ${this._error ? html`<div class="file-save-error">${this._error}</div>` : nothing}
         ${this._editTab === "edit"
           ? html`<textarea
               class="file-editor"

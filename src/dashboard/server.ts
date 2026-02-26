@@ -1,5 +1,5 @@
 // src/dashboard/server.ts
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { serve } from "@hono/node-server";
 import { WebSocketServer } from "ws";
 import * as fs from "node:fs/promises";
@@ -64,11 +64,18 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   const lifecycle = new Lifecycle(conn, registry, xdgRuntimeDir);
   const monitor = new Monitor(health);
 
+  // Structured error helper — all API error responses go through this function.
+  // Returns { error: <human message for logs>, code: <machine code for i18n> }.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function apiError(c: Context<any, any, any>, status: number, code: string, message: string) {
+    return c.json({ error: message, code }, status as 400 | 401 | 403 | 404 | 409 | 500);
+  }
+
   // Auth middleware for API routes
   app.use("/api/*", async (c, next) => {
     const auth = c.req.header("Authorization");
     if (auth !== `Bearer ${token}`) {
-      return c.json({ error: "Unauthorized" }, 401);
+      return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
     }
     await next();
   });
@@ -93,7 +100,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   app.get("/api/instances/:slug", async (c) => {
     const slug = c.req.param("slug");
     const instance = registry.getInstance(slug);
-    if (!instance) return c.json({ error: "Not found" }, 404);
+    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
     const [status, gatewayToken] = await Promise.all([
       health.check(slug),
       readGatewayToken(conn, instance.state_dir),
@@ -111,17 +118,14 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   app.post("/api/instances/:slug/agents/sync", async (c) => {
     const slug = c.req.param("slug");
     const instance = registry.getInstance(slug);
-    if (!instance) return c.json({ error: "Not found" }, 404);
+    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
 
     try {
       const agentSync = new AgentSync(conn, registry);
       const result = await agentSync.sync(instance);
       return c.json({ synced: true, ...result });
     } catch (err) {
-      return c.json(
-        { error: err instanceof Error ? err.message : "Sync failed" },
-        500,
-      );
+      return apiError(c, 500, "SYNC_FAILED", err instanceof Error ? err.message : "Sync failed");
     }
   });
 
@@ -129,7 +133,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   app.get("/api/instances/:slug/agents/builder", (c) => {
     const slug = c.req.param("slug");
     const instance = registry.getInstance(slug);
-    if (!instance) return c.json({ error: "Not found" }, 404);
+    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
 
     const agents = registry.listAgents(slug);
     const links = registry.listAgentLinks(instance.id);
@@ -181,20 +185,20 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     const slug = c.req.param("slug");
     const agentId = c.req.param("agentId");
     const instance = registry.getInstance(slug);
-    if (!instance) return c.json({ error: "Not found" }, 404);
+    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
 
     let body: { x: number; y: number };
     try {
       body = await c.req.json() as { x: number; y: number };
       if (typeof body.x !== "number" || typeof body.y !== "number") {
-        return c.json({ error: "x and y must be numbers" }, 400);
+        return apiError(c, 400, "FIELD_INVALID", "x and y must be numbers");
       }
     } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
+      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
     const agent = registry.getAgentByAgentId(instance.id, agentId);
-    if (!agent) return c.json({ error: "Agent not found" }, 404);
+    if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
     registry.updateAgentPosition(agent.id, body.x, body.y);
     return c.json({ ok: true });
@@ -204,28 +208,27 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   app.post("/api/instances/:slug/agents", async (c) => {
     const slug = c.req.param("slug");
     const instance = registry.getInstance(slug);
-    if (!instance) return c.json({ error: "Not found" }, 404);
+    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
 
     let body: CreateAgentData;
     try {
       body = await c.req.json() as CreateAgentData;
       if (!body.agentSlug || !body.name || !body.provider || !body.model) {
-        return c.json({ error: "Missing required fields: agentSlug, name, provider, model" }, 400);
+        return apiError(c, 400, "FIELD_REQUIRED", "Missing required fields: agentSlug, name, provider, model");
       }
       // Validate slug format
       if (!/^[a-z][a-z0-9-]*$/.test(body.agentSlug) || body.agentSlug.length < 2 || body.agentSlug.length > 30) {
-        return c.json({ error: "Invalid agentSlug: must be 2-30 lowercase alphanumeric chars with hyphens" }, 400);
+        return apiError(c, 400, "INVALID_SLUG", "Invalid agentSlug: must be 2-30 lowercase alphanumeric chars with hyphens");
       }
     } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
+      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
     try {
       const provisioner = new AgentProvisioner(conn, registry);
       await provisioner.createAgent(instance, body);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return c.json({ error: msg }, 409);
+      return apiError(c, 500, "AGENT_CREATE_FAILED", err instanceof Error ? err.message : "Agent create failed");
     }
 
     // Restart daemon fire-and-forget
@@ -282,17 +285,16 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     const slug = c.req.param("slug");
     const agentId = c.req.param("agentId");
     const instance = registry.getInstance(slug);
-    if (!instance) return c.json({ error: "Not found" }, 404);
+    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
 
     try {
       const provisioner = new AgentProvisioner(conn, registry);
       await provisioner.deleteAgent(instance, agentId);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const status = msg.includes("not found") ? 404
-                   : msg.includes("default") ? 409
-                   : 500;
-      return c.json({ error: msg }, status as 404 | 409 | 500);
+      if (err instanceof InstanceNotFoundError) {
+        return apiError(c, 404, "AGENT_NOT_FOUND", err.message);
+      }
+      return apiError(c, 500, "AGENT_DELETE_FAILED", err instanceof Error ? err.message : "Agent delete failed");
     }
 
     // Restart daemon fire-and-forget
@@ -349,16 +351,16 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     const slug = c.req.param("slug");
     const agentId = c.req.param("agentId");
     const instance = registry.getInstance(slug);
-    if (!instance) return c.json({ error: "Not found" }, 404);
+    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
 
     let body: { targets: string[] };
     try {
       body = await c.req.json();
       if (!Array.isArray(body.targets) || !body.targets.every((t: unknown) => typeof t === "string")) {
-        return c.json({ error: "targets must be an array of strings" }, 400);
+        return apiError(c, 400, "FIELD_INVALID", "targets must be an array of strings");
       }
     } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
+      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
     try {
@@ -392,7 +394,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
           subagents["allowAgents"] = body.targets;
         }
       } else {
-        return c.json({ error: `Agent '${agentId}' not found in config` }, 404);
+        return apiError(c, 404, "AGENT_NOT_FOUND", `Agent '${agentId}' not found in config`);
       }
 
       // 3. Write back openclaw.json
@@ -416,10 +418,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
         })),
       });
     } catch (err) {
-      return c.json(
-        { error: err instanceof Error ? err.message : "Failed to update spawn links" },
-        500,
-      );
+      return apiError(c, 500, "LINK_UPDATE_FAILED", err instanceof Error ? err.message : "Failed to update spawn links");
     }
   });
 
@@ -430,13 +429,13 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     const filename = c.req.param("filename");
 
     const instance = registry.getInstance(slug);
-    if (!instance) return c.json({ error: "Not found" }, 404);
+    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
 
     const agent = registry.getAgentByAgentId(instance.id, agentId);
-    if (!agent) return c.json({ error: "Agent not found" }, 404);
+    if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
     const file = registry.getAgentFileContent(agent.id, filename);
-    if (!file) return c.json({ error: "File not found" }, 404);
+    if (!file) return apiError(c, 404, "FILE_NOT_FOUND", "File not found");
 
     return c.json({
       filename: file.filename,
@@ -454,34 +453,36 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     const filename = c.req.param("filename");
 
     if (!EDITABLE_FILES.has(filename)) {
-      return c.json({ error: "File is not editable" }, 403);
+      return apiError(c, 403, "FILE_NOT_EDITABLE", "File is not editable");
     }
 
     const instance = registry.getInstance(slug);
-    if (!instance) return c.json({ error: "Not found" }, 404);
+    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
 
     const agentRecord = registry.getAgentByAgentId(instance.id, agentId);
-    if (!agentRecord) return c.json({ error: "Agent not found" }, 404);
+    if (!agentRecord) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
     let body: { content?: string };
     try {
       body = await c.req.json<{ content?: string }>();
     } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
+      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
     if (typeof body.content !== "string") {
-      return c.json({ error: "content is required" }, 400);
+      return apiError(c, 400, "FIELD_REQUIRED", "content is required");
     }
 
     try {
       const provisioner = new AgentProvisioner(conn, registry);
       await provisioner.updateAgentFile(instance, agentId, filename, body.content);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const status = msg.includes("not found") ? 404
-                   : msg.includes("not editable") ? 403
-                   : 500;
-      return c.json({ error: msg }, status);
+      if (err instanceof InstanceNotFoundError) {
+        return apiError(c, 404, "FILE_NOT_FOUND", err.message);
+      }
+      if (err instanceof ClawPilotError && err.message.includes("not editable")) {
+        return apiError(c, 403, "FILE_NOT_EDITABLE", err.message);
+      }
+      return apiError(c, 500, "FILE_SAVE_FAILED", err instanceof Error ? err.message : "File save failed");
     }
 
     // Restart daemon fire-and-forget
@@ -503,7 +504,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   app.get("/api/instances/:slug/conversations", async (c) => {
     const slug = c.req.param("slug");
     const instance = registry.getInstance(slug);
-    if (!instance) return c.json({ error: "Not found" }, 404);
+    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
 
     const limit = Math.min(parseInt(c.req.query("limit") ?? "10", 10), 100);
 
@@ -549,10 +550,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       const status = await health.check(slug);
       return c.json(status);
     } catch (err) {
-      return c.json(
-        { error: err instanceof Error ? err.message : "Unknown error" },
-        500,
-      );
+      return apiError(c, 500, "INTERNAL_ERROR", err instanceof Error ? err.message : "Unknown error");
     }
   });
 
@@ -563,9 +561,9 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       return c.json({ ok: true });
     } catch (err) {
       if (err instanceof InstanceNotFoundError) {
-        return c.json({ error: err.message }, 404);
+        return apiError(c, 404, "NOT_FOUND", err.message);
       }
-      return c.json({ error: err instanceof Error ? err.message : "Start failed" }, 500);
+      return apiError(c, 500, "LIFECYCLE_FAILED", err instanceof Error ? err.message : "Start failed");
     }
   });
 
@@ -576,9 +574,9 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       return c.json({ ok: true });
     } catch (err) {
       if (err instanceof InstanceNotFoundError) {
-        return c.json({ error: err.message }, 404);
+        return apiError(c, 404, "NOT_FOUND", err.message);
       }
-      return c.json({ error: err instanceof Error ? err.message : "Stop failed" }, 500);
+      return apiError(c, 500, "LIFECYCLE_FAILED", err instanceof Error ? err.message : "Stop failed");
     }
   });
 
@@ -589,9 +587,9 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       return c.json({ ok: true });
     } catch (err) {
       if (err instanceof InstanceNotFoundError) {
-        return c.json({ error: err.message }, 404);
+        return apiError(c, 404, "NOT_FOUND", err.message);
       }
-      return c.json({ error: err instanceof Error ? err.message : "Restart failed" }, 500);
+      return apiError(c, 500, "LIFECYCLE_FAILED", err instanceof Error ? err.message : "Restart failed");
     }
   });
 
@@ -603,12 +601,9 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       return c.json({ ok: true, slug });
     } catch (err) {
       if (err instanceof InstanceNotFoundError) {
-        return c.json({ error: err.message }, 404);
+        return apiError(c, 404, "NOT_FOUND", err.message);
       }
-      return c.json(
-        { error: err instanceof Error ? err.message : "Destroy failed" },
-        500,
-      );
+      return apiError(c, 500, "DESTROY_FAILED", err instanceof Error ? err.message : "Destroy failed");
     }
   });
 
@@ -619,13 +614,13 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   // GET /api/next-port — suggest next free port in the configured range
   app.get("/api/next-port", async (c) => {
     const server = registry.getLocalServer();
-    if (!server) return c.json({ error: "Server not initialized. Run claw-pilot init first." }, 500);
+    if (!server) return apiError(c, 500, "SERVER_NOT_INIT", "Server not initialized. Run claw-pilot init first.");
     try {
       const portAllocator = new PortAllocator(registry, conn);
       const nextPort = await portAllocator.findFreePort(server.id);
       return c.json({ port: nextPort });
     } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : "No free port available" }, 500);
+      return apiError(c, 500, "INTERNAL_ERROR", err instanceof Error ? err.message : "No free port available");
     }
   });
 
@@ -688,13 +683,13 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   // POST /api/instances — provision a new instance
   app.post("/api/instances", async (c) => {
     const server = registry.getLocalServer();
-    if (!server) return c.json({ error: "Server not initialized. Run claw-pilot init first." }, 500);
+    if (!server) return apiError(c, 500, "SERVER_NOT_INIT", "Server not initialized. Run claw-pilot init first.");
 
     let body: Record<string, unknown>;
     try {
       body = await c.req.json();
     } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
+      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
     // Basic validation
@@ -705,19 +700,19 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     const apiKey   = body["apiKey"];
 
     if (typeof slug !== "string" || !/^[a-z][a-z0-9-]*$/.test(slug) || slug.length < 2 || slug.length > 30) {
-      return c.json({ error: "Invalid slug: must be 2-30 lowercase alphanumeric chars with hyphens" }, 400);
+      return apiError(c, 400, "INVALID_SLUG", "Invalid slug: must be 2-30 lowercase alphanumeric chars with hyphens");
     }
     if (typeof port !== "number" || port < 1024 || port > 65535) {
-      return c.json({ error: "Invalid port: must be 1024-65535" }, 400);
+      return apiError(c, 400, "FIELD_INVALID", "Invalid port: must be 1024-65535");
     }
     if (typeof defaultModel !== "string" || !defaultModel) {
-      return c.json({ error: "defaultModel is required" }, 400);
+      return apiError(c, 400, "FIELD_REQUIRED", "defaultModel is required");
     }
     if (typeof provider !== "string" || !provider) {
-      return c.json({ error: "provider is required" }, 400);
+      return apiError(c, 400, "FIELD_REQUIRED", "provider is required");
     }
     if (typeof apiKey !== "string") {
-      return c.json({ error: "apiKey must be a string (use '' for providers that need no key)" }, 400);
+      return apiError(c, 400, "FIELD_INVALID", "apiKey must be a string (use '' for providers that need no key)");
     }
 
     // Build WizardAnswers from simplified web form
@@ -755,7 +750,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       // Attempt device pairing bootstrap (non-fatal)
       try {
         const pairing = new PairingManager(conn, registry);
-        await pairing.bootstrapDevicePairing(slug);
+        await pairing.bootstrapDevicePairing(slug as string);
       } catch {
         // Pairing is best-effort — don't fail the whole request
       }
@@ -768,9 +763,9 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
         err.code === "ENV_READ_FAILED" ||
         err.code === "API_KEY_READ_FAILED"
       )) {
-        return c.json({ error: msg }, 400);
+        return apiError(c, 400, "PROVISION_FAILED", msg);
       }
-      return c.json({ error: msg }, 500);
+      return apiError(c, 500, "PROVISION_FAILED", msg);
     }
   });
 
@@ -893,10 +888,10 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     try {
       body = await c.req.json() as typeof body;
       if (!body.name || typeof body.name !== "string" || body.name.trim() === "") {
-        return c.json({ error: "name is required" }, 400);
+        return apiError(c, 400, "SLUG_REQUIRED", "name is required");
       }
     } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
+      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
     try {
       const blueprint = registry.createBlueprint({
@@ -913,32 +908,32 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       return c.json(blueprint, 201);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("UNIQUE")) return c.json({ error: "A blueprint with this name already exists" }, 409);
-      return c.json({ error: msg }, 500);
+      if (msg.includes("UNIQUE")) return apiError(c, 409, "SLUG_TAKEN", "A blueprint with this name already exists");
+      return apiError(c, 500, "INTERNAL_ERROR", msg);
     }
   });
 
   // GET /api/blueprints/:id — détail d'un blueprint
   app.get("/api/blueprints/:id", (c) => {
     const id = Number(c.req.param("id"));
-    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
     const blueprint = registry.getBlueprint(id);
-    if (!blueprint) return c.json({ error: "Not found" }, 404);
+    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
     return c.json(blueprint);
   });
 
   // PUT /api/blueprints/:id — mettre à jour un blueprint
   app.put("/api/blueprints/:id", async (c) => {
     const id = Number(c.req.param("id"));
-    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
     const blueprint = registry.getBlueprint(id);
-    if (!blueprint) return c.json({ error: "Not found" }, 404);
+    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
 
     let body: Partial<{ name: string; description: string | null; icon: string | null; tags: string | null; color: string | null }>;
     try {
       body = await c.req.json() as typeof body;
     } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
+      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
     try {
@@ -946,17 +941,17 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       return c.json(updated);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("UNIQUE")) return c.json({ error: "A blueprint with this name already exists" }, 409);
-      return c.json({ error: msg }, 500);
+      if (msg.includes("UNIQUE")) return apiError(c, 409, "SLUG_TAKEN", "A blueprint with this name already exists");
+      return apiError(c, 500, "INTERNAL_ERROR", msg);
     }
   });
 
   // DELETE /api/blueprints/:id — supprimer un blueprint
   app.delete("/api/blueprints/:id", (c) => {
     const id = Number(c.req.param("id"));
-    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
     const blueprint = registry.getBlueprint(id);
-    if (!blueprint) return c.json({ error: "Not found" }, 404);
+    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
     registry.deleteBlueprint(id);
     return c.json({ ok: true });
   });
@@ -964,30 +959,30 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   // GET /api/blueprints/:id/builder — payload complet builder
   app.get("/api/blueprints/:id/builder", (c) => {
     const id = Number(c.req.param("id"));
-    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
     const payload = buildBlueprintPayload(id, registry);
-    if (!payload) return c.json({ error: "Not found" }, 404);
+    if (!payload) return apiError(c, 404, "NOT_FOUND", "Not found");
     return c.json(payload);
   });
 
   // POST /api/blueprints/:id/agents — créer un agent dans un blueprint
   app.post("/api/blueprints/:id/agents", async (c) => {
     const id = Number(c.req.param("id"));
-    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
     const blueprint = registry.getBlueprint(id);
-    if (!blueprint) return c.json({ error: "Not found" }, 404);
+    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
 
     let body: { agent_id: string; name: string; model?: string };
     try {
       body = await c.req.json() as typeof body;
       if (!body.agent_id || !body.name) {
-        return c.json({ error: "agent_id and name are required" }, 400);
+        return apiError(c, 400, "FIELD_REQUIRED", "agent_id and name are required");
       }
       if (!/^[a-z][a-z0-9-]*$/.test(body.agent_id) || body.agent_id.length < 2 || body.agent_id.length > 30) {
-        return c.json({ error: "Invalid agent_id: must be 2-30 lowercase alphanumeric chars with hyphens" }, 400);
+        return apiError(c, 400, "INVALID_SLUG", "Invalid agent_id: must be 2-30 lowercase alphanumeric chars with hyphens");
       }
     } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
+      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
     let newAgent;
@@ -999,8 +994,8 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      if (errMsg.includes("UNIQUE")) return c.json({ error: "An agent with this id already exists in this blueprint" }, 409);
-      return c.json({ error: errMsg }, 500);
+      if (errMsg.includes("UNIQUE")) return apiError(c, 409, "SLUG_TAKEN", "An agent with this id already exists in this blueprint");
+      return apiError(c, 500, "INTERNAL_ERROR", errMsg);
     }
 
     // Seed workspace files for the new agent (same as for the default main agent)
@@ -1014,11 +1009,11 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   app.delete("/api/blueprints/:id/agents/:agentId", (c) => {
     const id = Number(c.req.param("id"));
     const agentId = c.req.param("agentId");
-    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
     const blueprint = registry.getBlueprint(id);
-    if (!blueprint) return c.json({ error: "Not found" }, 404);
+    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
     const agent = registry.getBlueprintAgent(id, agentId);
-    if (!agent) return c.json({ error: "Agent not found" }, 404);
+    if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
     registry.deleteBlueprintAgent(id, agentId);
     const payload = buildBlueprintPayload(id, registry);
     return c.json(payload);
@@ -1028,20 +1023,20 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   app.patch("/api/blueprints/:id/agents/:agentId/position", async (c) => {
     const id = Number(c.req.param("id"));
     const agentId = c.req.param("agentId");
-    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
 
     let body: { x: number; y: number };
     try {
       body = await c.req.json() as { x: number; y: number };
       if (typeof body.x !== "number" || typeof body.y !== "number") {
-        return c.json({ error: "x and y must be numbers" }, 400);
+        return apiError(c, 400, "FIELD_INVALID", "x and y must be numbers");
       }
     } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
+      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
     const agent = registry.getBlueprintAgent(id, agentId);
-    if (!agent) return c.json({ error: "Agent not found" }, 404);
+    if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
     registry.updateBlueprintAgentPosition(agent.id, body.x, body.y);
     return c.json({ ok: true });
   });
@@ -1051,13 +1046,13 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     const id = Number(c.req.param("id"));
     const agentId = c.req.param("agentId");
     const filename = c.req.param("filename");
-    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
 
     const agent = registry.getBlueprintAgent(id, agentId);
-    if (!agent) return c.json({ error: "Agent not found" }, 404);
+    if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
     const file = registry.getAgentFileContent(agent.id, filename);
-    if (!file) return c.json({ error: "File not found" }, 404);
+    if (!file) return apiError(c, 404, "FILE_NOT_FOUND", "File not found");
 
     return c.json({
       filename: file.filename,
@@ -1073,26 +1068,30 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     const id = Number(c.req.param("id"));
     const agentId = c.req.param("agentId");
     const filename = c.req.param("filename");
-    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
 
     let body: { content: string };
     try {
       body = await c.req.json() as { content: string };
-      if (typeof body.content !== "string") return c.json({ error: "content must be a string" }, 400);
+      if (typeof body.content !== "string") return apiError(c, 400, "FIELD_INVALID", "content must be a string");
     } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
+      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
     const agent = registry.getBlueprintAgent(id, agentId);
-    if (!agent) return c.json({ error: "Agent not found" }, 404);
+    if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
-    const { createHash } = await import("node:crypto");
-    const contentHash = createHash("sha256").update(body.content).digest("hex").slice(0, 16);
-    registry.upsertAgentFile(agent.id, {
-      filename,
-      content: body.content,
-      contentHash,
-    });
+    try {
+      const { createHash } = await import("node:crypto");
+      const contentHash = createHash("sha256").update(body.content).digest("hex").slice(0, 16);
+      registry.upsertAgentFile(agent.id, {
+        filename,
+        content: body.content,
+        contentHash,
+      });
+    } catch (err: unknown) {
+      return apiError(c, 500, "FILE_SAVE_FAILED", err instanceof Error ? err.message : "File save failed");
+    }
 
     // Return AgentFileContent shape (same as instance file route) so the
     // shared agent-detail-panel can handle both contexts uniformly.
@@ -1100,7 +1099,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     return c.json({
       filename,
       content: body.content,
-      content_hash: saved?.content_hash ?? contentHash,
+      content_hash: saved?.content_hash ?? "",
       updated_at: saved?.updated_at ?? new Date().toISOString(),
       editable: true,
     });
@@ -1110,18 +1109,18 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   app.patch("/api/blueprints/:id/agents/:agentId/spawn-links", async (c) => {
     const id = Number(c.req.param("id"));
     const agentId = c.req.param("agentId");
-    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
 
     let body: { targets: string[] };
     try {
       body = await c.req.json() as { targets: string[] };
-      if (!Array.isArray(body.targets)) return c.json({ error: "targets must be an array" }, 400);
+      if (!Array.isArray(body.targets)) return apiError(c, 400, "FIELD_INVALID", "targets must be an array");
     } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
+      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
     const blueprint = registry.getBlueprint(id);
-    if (!blueprint) return c.json({ error: "Not found" }, 404);
+    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
 
     // Get all current links for this blueprint, keep non-spawn links for this agent, replace spawn links
     const allLinks = registry.listBlueprintLinks(id);

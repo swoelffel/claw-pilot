@@ -4,6 +4,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { BuilderData, CreateAgentRequest, ProviderInfo, ProvidersResponse } from "../types.js";
 import { fetchProviders, createAgent } from "../api.js";
+import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { sectionLabelStyles, spinnerStyles, errorBannerStyles, buttonStyles } from "../styles/shared.js";
 
@@ -246,7 +247,7 @@ export class CreateAgentDialog extends LitElement {
       }));
       this._close();
     } catch (err) {
-      this._submitError = err instanceof Error ? err.message : msg("Failed to create agent", { id: "cad-error-create" });
+      this._submitError = userMessage(err);
     } finally {
       this._submitting = false;
     }

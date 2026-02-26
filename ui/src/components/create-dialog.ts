@@ -3,6 +3,7 @@ import { customElement, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { AgentDefinition, Blueprint, CreateInstanceRequest, ProviderInfo, ProvidersResponse } from "../types.js";
 import { fetchNextPort, createInstance, fetchProviders, fetchBlueprints } from "../api.js";
+import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { sectionLabelStyles, spinnerStyles, errorBannerStyles, buttonStyles } from "../styles/shared.js";
 
@@ -274,7 +275,7 @@ export class CreateDialog extends LitElement {
     try {
       this._port = await fetchNextPort();
     } catch (err) {
-      this._portError = err instanceof Error ? err.message : msg("Could not fetch next port", { id: "error-fetch-port" });
+      this._portError = userMessage(err);
       this._port = 18790;
     } finally {
       this._portLoading = false;
@@ -292,7 +293,7 @@ export class CreateDialog extends LitElement {
       this._selectedProvider = defaultProvider;
       this._model = defaultProvider?.defaultModel ?? defaultProvider?.models[0] ?? "";
     } catch (err) {
-      this._providersError = err instanceof Error ? err.message : msg("Could not load providers", { id: "error-load-providers" });
+      this._providersError = userMessage(err);
       this._providers = [{
         id: "anthropic",
         label: "Anthropic",
@@ -414,7 +415,7 @@ export class CreateDialog extends LitElement {
       this.dispatchEvent(new CustomEvent("instance-created", { bubbles: true, composed: true }));
       this._close();
     } catch (err) {
-      this._submitError = err instanceof Error ? err.message : msg("Provisioning failed", { id: "error-provisioning" });
+      this._submitError = userMessage(err);
     } finally {
       this._submitting = false;
     }

@@ -4,6 +4,7 @@ import { customElement, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { Blueprint } from "../types.js";
 import { createBlueprint } from "../api.js";
+import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { spinnerStyles, errorBannerStyles } from "../styles/shared.js";
 
@@ -195,7 +196,7 @@ export class CreateBlueprintDialog extends LitElement {
       }));
       this._close();
     } catch (err) {
-      this._error = err instanceof Error ? err.message : "Failed to create blueprint";
+      this._error = userMessage(err);
     } finally {
       this._creating = false;
     }
