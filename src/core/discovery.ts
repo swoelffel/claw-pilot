@@ -4,6 +4,7 @@ import type { Registry, InstanceRecord } from "./registry.js";
 import type { AgentSync } from "./agent-sync.js";
 import { constants } from "../lib/constants.js";
 import { logger } from "../lib/logger.js";
+import { getServiceManager, getLaunchdDir, getLaunchdLabel, getLaunchdPlistPath } from "../lib/platform.js";
 
 export interface DiscoveredAgent {
   id: string;
@@ -53,8 +54,9 @@ export class InstanceDiscovery {
     // Strategy 1: Directory scan
     await this.scanDirectories(found);
 
-    // Strategy 2: Systemd scan
+    // Strategy 2: Systemd scan (Linux only) or launchd scan (macOS)
     await this.scanSystemdUnits(found);
+    await this.scanLaunchdAgents(found);
 
     // Strategy 3: Port scan
     await this.scanPorts(found);
@@ -100,11 +102,13 @@ export class InstanceDiscovery {
     }
   }
 
-  // --- Strategy 2: Systemd unit scan ---
+  // --- Strategy 2: Systemd unit scan (Linux only) ---
 
   private async scanSystemdUnits(
     found: Map<string, DiscoveredInstance>,
   ): Promise<void> {
+    if (getServiceManager() !== "systemd") return;
+
     const result = await this.conn.execFile(
       "systemctl",
       ["--user", "list-units", "openclaw-*", "--no-pager", "--plain", "--no-legend"],
@@ -155,6 +159,60 @@ export class InstanceDiscovery {
       if (instance) {
         instance.systemdUnit = `openclaw-${slug}.service`;
         instance.systemdState = systemdState;
+        found.set(slug, instance);
+      }
+    }
+  }
+
+  // --- Strategy 2b: launchd agent scan (macOS only) ---
+
+  private async scanLaunchdAgents(
+    found: Map<string, DiscoveredInstance>,
+  ): Promise<void> {
+    if (getServiceManager() !== "launchd") return;
+
+    const launchdDir = getLaunchdDir();
+    let entries: string[];
+    try {
+      entries = await this.conn.readdir(launchdDir);
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const match = entry.match(/^ai\.openclaw\.([a-z0-9-]+)\.plist$/);
+      if (!match) continue;
+      const slug = match[1]!;
+      if (found.has(slug)) {
+        // Enrich existing entry with launchd info
+        const existing = found.get(slug)!;
+        existing.systemdUnit = getLaunchdLabel(slug);
+        const result = await this.conn.execFile("launchctl", ["list", getLaunchdLabel(slug)]);
+        existing.systemdState = result.exitCode === 0 ? "active" : "inactive";
+        continue;
+      }
+
+      // Read the plist to extract stateDir
+      const plistPath = getLaunchdPlistPath(slug);
+      let stateDir: string | undefined;
+      try {
+        const plistContent = await this.conn.readFile(plistPath);
+        const match2 = plistContent.match(/<key>OPENCLAW_STATE_DIR<\/key>\s*<string>([^<]+)<\/string>/);
+        if (match2) stateDir = match2[1];
+      } catch {
+        // plist unreadable — skip
+      }
+      if (!stateDir) continue;
+
+      // Check if active
+      const listResult = await this.conn.execFile("launchctl", ["list", getLaunchdLabel(slug)]);
+      const configPath = `${stateDir}/openclaw.json`;
+      if (!(await this.conn.exists(configPath))) continue;
+
+      const instance = await this.parseInstance(slug, stateDir, configPath, "systemd");
+      if (instance) {
+        instance.systemdUnit = getLaunchdLabel(slug);
+        instance.systemdState = listResult.exitCode === 0 ? "active" : "inactive";
         found.set(slug, instance);
       }
     }
@@ -320,19 +378,35 @@ export class InstanceDiscovery {
       // Expected: gateway not responding
     }
 
-    // Systemd status
+    // Service status (systemd or launchd)
     let systemdUnit: string | null = null;
     let systemdState: DiscoveredInstance["systemdState"] = null;
-    const unitName = `openclaw-${slug}.service`;
-    const systemdResult = await this.conn.execFile(
-      "systemctl",
-      ["--user", "is-active", unitName],
-      { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
-    );
-    const sysState = systemdResult.stdout.trim();
-    if (["active", "inactive", "failed"].includes(sysState)) {
-      systemdUnit = unitName;
-      systemdState = sysState as "active" | "inactive" | "failed";
+    if (getServiceManager() === "systemd") {
+      const unitName = `openclaw-${slug}.service`;
+      const systemdResult = await this.conn.execFile(
+        "systemctl",
+        ["--user", "is-active", unitName],
+        { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
+      );
+      const sysState = systemdResult.stdout.trim();
+      if (["active", "inactive", "failed"].includes(sysState)) {
+        systemdUnit = unitName;
+        systemdState = sysState as "active" | "inactive" | "failed";
+      }
+    } else {
+      // launchd
+      const label = getLaunchdLabel(slug);
+      const result = await this.conn.execFile("launchctl", ["list", label]);
+      if (result.exitCode === 0) {
+        systemdUnit = label;
+        systemdState = "active";
+      } else {
+        const plistPath = getLaunchdPlistPath(slug);
+        if (await this.conn.exists(plistPath)) {
+          systemdUnit = label;
+          systemdState = "inactive";
+        }
+      }
     }
 
     return {

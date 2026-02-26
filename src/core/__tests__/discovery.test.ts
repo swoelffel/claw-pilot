@@ -7,6 +7,18 @@ import { initDatabase } from "../../db/schema.js";
 import { Registry } from "../registry.js";
 import { InstanceDiscovery } from "../discovery.js";
 import { MockConnection } from "./mock-connection.js";
+import { getLaunchdPlistPath } from "../../lib/platform.js";
+
+// Allow tests to control the service manager returned by getServiceManager()
+let _mockServiceManager: "systemd" | "launchd" | null = null;
+
+vi.mock("../../lib/platform.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/platform.js")>();
+  return {
+    ...actual,
+    getServiceManager: () => _mockServiceManager ?? actual.getServiceManager(),
+  };
+});
 
 let tmpDir: string;
 let registry: Registry;
@@ -20,6 +32,8 @@ beforeEach(() => {
   registry = new Registry(db);
   registry.upsertLocalServer("testhost", HOME);
   conn = new MockConnection();
+  // Default to systemd for Linux tests (platform-independent test execution)
+  _mockServiceManager = "systemd";
 
   // Mock systemctl as inactive by default
   conn.mockExec("systemctl --user is-active", {
@@ -37,6 +51,7 @@ beforeEach(() => {
 afterEach(() => {
   db.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
+  _mockServiceManager = null;
   vi.restoreAllMocks();
 });
 
@@ -213,5 +228,82 @@ describe("InstanceDiscovery — adopt", () => {
 
     const events = registry.listEvents("demo1");
     expect(events.some((e) => e.event_type === "discovered")).toBe(true);
+  });
+});
+
+describe("InstanceDiscovery — macOS (launchd)", () => {
+  beforeEach(() => {
+    _mockServiceManager = "launchd";
+  });
+
+  afterEach(() => {
+    _mockServiceManager = null;
+  });
+
+  it("scanSystemdUnits is a no-op on macOS (no systemctl calls)", async () => {
+    // Seed a valid instance directory
+    conn.files.set(`${HOME}/.openclaw-demo1/openclaw.json`, makeConfig(18789));
+
+    const discovery = new InstanceDiscovery(conn, registry, HOME, "");
+    await discovery.scan();
+
+    const cmds = conn.commands.join("\n");
+    expect(cmds).not.toContain("systemctl --user list-units");
+  });
+
+  it("scanLaunchdAgents finds instances from plist files", async () => {
+    const slug = "demo-mac";
+    const stateDir = `${HOME}/.openclaw-${slug}`;
+    const configPath = `${stateDir}/openclaw.json`;
+    const plistPath = getLaunchdPlistPath(slug);
+
+    // Seed the config and plist
+    conn.files.set(configPath, makeConfig(18790));
+    conn.files.set(
+      plistPath,
+      `<?xml version="1.0"?><plist><dict>
+        <key>OPENCLAW_STATE_DIR</key><string>${stateDir}</string>
+      </dict></plist>`,
+    );
+
+    // Mock launchctl list to return active
+    conn.mockExec(`launchctl list ai.openclaw.${slug}`, {
+      stdout: `{ "PID" = 1234; "Label" = "ai.openclaw.${slug}"; }`,
+      stderr: "",
+      exitCode: 0,
+    });
+
+    const discovery = new InstanceDiscovery(conn, registry, HOME, "");
+    const result = await discovery.scan();
+
+    // Should find the instance (either from directory scan or launchd scan)
+    expect(result.instances.length).toBeGreaterThan(0);
+    const found = result.instances.find((i) => i.slug === slug);
+    expect(found).toBeDefined();
+  });
+
+  it("uses launchctl list instead of systemctl is-active in parseInstance (active)", async () => {
+    const slug = "demo-mac2";
+    const stateDir = `${HOME}/.openclaw-${slug}`;
+    const configPath = `${stateDir}/openclaw.json`;
+
+    conn.files.set(configPath, makeConfig(18791));
+
+    // Mock launchctl list to return active (exit 0)
+    conn.mockExec(`launchctl list ai.openclaw.${slug}`, {
+      stdout: `{ "PID" = 5678; "Label" = "ai.openclaw.${slug}"; }`,
+      stderr: "",
+      exitCode: 0,
+    });
+
+    const discovery = new InstanceDiscovery(conn, registry, HOME, "");
+    const result = await discovery.scan();
+
+    const found = result.instances.find((i) => i.slug === slug);
+    expect(found).toBeDefined();
+    // systemdUnit should be the launchd label
+    expect(found?.systemdUnit).toBe(`ai.openclaw.${slug}`);
+    // systemdState should be active
+    expect(found?.systemdState).toBe("active");
   });
 });

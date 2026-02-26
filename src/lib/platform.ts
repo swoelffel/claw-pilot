@@ -56,3 +56,31 @@ export function getDashboardServicePath(): string {
   // Uses getSystemdDir() which follows the same home as other systemd units
   return path.join(getSystemdDir(), DASHBOARD_SERVICE_UNIT);
 }
+
+// --- Service manager abstraction ---
+
+export type ServiceManager = "systemd" | "launchd";
+
+export function getServiceManager(): ServiceManager {
+  return isDarwin() ? "launchd" : "systemd";
+}
+
+// --- launchd helpers (macOS) ---
+
+export function getLaunchdDir(): string {
+  return path.join(os.homedir(), "Library/LaunchAgents");
+}
+
+export function getLaunchdLabel(slug: string): string {
+  return `ai.openclaw.${slug}`;
+}
+
+export function getLaunchdPlistPath(slug: string): string {
+  return path.join(getLaunchdDir(), `${getLaunchdLabel(slug)}.plist`);
+}
+
+export const DASHBOARD_LAUNCHD_LABEL = "io.claw-pilot.dashboard";
+
+export function getDashboardLaunchdPlistPath(): string {
+  return path.join(getLaunchdDir(), `${DASHBOARD_LAUNCHD_LABEL}.plist`);
+}

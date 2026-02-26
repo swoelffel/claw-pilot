@@ -1,5 +1,5 @@
 // src/core/__tests__/destroyer.test.ts
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
@@ -8,7 +8,18 @@ import { Registry } from "../registry.js";
 import { Destroyer } from "../destroyer.js";
 import { MockConnection } from "./mock-connection.js";
 import { InstanceNotFoundError } from "../../lib/errors.js";
-import { getSystemdDir } from "../../lib/platform.js";
+import { getSystemdDir, getLaunchdPlistPath } from "../../lib/platform.js";
+
+// Allow tests to control the service manager returned by getServiceManager()
+let _mockServiceManager: "systemd" | "launchd" | null = null;
+
+vi.mock("../../lib/platform.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/platform.js")>();
+  return {
+    ...actual,
+    getServiceManager: () => _mockServiceManager ?? actual.getServiceManager(),
+  };
+});
 
 const XDG = "/run/user/1000";
 
@@ -22,11 +33,14 @@ beforeEach(() => {
   db = initDatabase(path.join(tmpDir, "test.db"));
   registry = new Registry(db);
   conn = new MockConnection();
+  // Default to systemd for Linux tests (platform-independent test execution)
+  _mockServiceManager = "systemd";
 });
 
 afterEach(() => {
   db.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
+  _mockServiceManager = null;
 });
 
 /** Create a minimal instance in the registry and seed the mock filesystem */
@@ -155,5 +169,93 @@ describe("Destroyer.destroy()", () => {
     const destroyer = new Destroyer(conn, registry, XDG);
     await destroyer.destroy(slug);
     await expect(destroyer.destroy(slug)).rejects.toThrow(InstanceNotFoundError);
+  });
+});
+
+describe("Destroyer.destroy() — macOS (launchd)", () => {
+  beforeEach(() => {
+    _mockServiceManager = "launchd";
+  });
+
+  afterEach(() => {
+    _mockServiceManager = null;
+  });
+
+  function seedLaunchdInstance(opts: { slug?: string } = {}) {
+    const slug = opts.slug ?? "demo-mac";
+    const server = registry.upsertLocalServer("mac-host", "/Users/test");
+    const stateDir = `/Users/test/.openclaw-${slug}`;
+    const plistPath = getLaunchdPlistPath(slug);
+
+    // Seed plist and state files in mock connection
+    conn.files.set(plistPath, `<plist><dict><key>Label</key><string>ai.openclaw.${slug}</string></dict></plist>`);
+    conn.files.set(`${stateDir}/openclaw.json`, "{}");
+    conn.files.set(`${stateDir}/.env`, "KEY=val");
+
+    const instance = registry.createInstance({
+      serverId: server.id,
+      slug,
+      port: 18791,
+      configPath: `${stateDir}/openclaw.json`,
+      stateDir,
+      systemdUnit: `ai.openclaw.${slug}`,
+    });
+    registry.allocatePort(server.id, 18791, slug);
+    registry.createAgent(instance.id, {
+      agentId: "main",
+      name: "Main",
+      workspacePath: `${stateDir}/workspaces/workspace`,
+      isDefault: true,
+    });
+
+    return { slug, stateDir, plistPath, instance };
+  }
+
+  it("calls launchctl unload for the plist", async () => {
+    const { slug, plistPath } = seedLaunchdInstance();
+    const destroyer = new Destroyer(conn, registry, XDG);
+    await destroyer.destroy(slug);
+
+    const cmds = conn.commands.join("\n");
+    expect(cmds).toContain(`launchctl unload ${plistPath}`);
+  });
+
+  it("removes the launchd plist file", async () => {
+    const { slug, plistPath } = seedLaunchdInstance();
+    expect(conn.files.has(plistPath)).toBe(true);
+
+    const destroyer = new Destroyer(conn, registry, XDG);
+    await destroyer.destroy(slug);
+
+    expect(conn.files.has(plistPath)).toBe(false);
+  });
+
+  it("does NOT call systemctl on macOS", async () => {
+    const { slug } = seedLaunchdInstance();
+    const destroyer = new Destroyer(conn, registry, XDG);
+    await destroyer.destroy(slug);
+
+    const cmds = conn.commands.join("\n");
+    expect(cmds).not.toContain("systemctl");
+  });
+
+  it("removes the state directory recursively", async () => {
+    const { slug, stateDir } = seedLaunchdInstance();
+    expect(conn.files.has(`${stateDir}/openclaw.json`)).toBe(true);
+
+    const destroyer = new Destroyer(conn, registry, XDG);
+    await destroyer.destroy(slug);
+
+    expect(conn.files.has(`${stateDir}/openclaw.json`)).toBe(false);
+  });
+
+  it("deletes the instance from the registry", async () => {
+    const { slug } = seedLaunchdInstance();
+    expect(registry.getInstance(slug)).toBeDefined();
+
+    const destroyer = new Destroyer(conn, registry, XDG);
+    await destroyer.destroy(slug);
+
+    expect(registry.getInstance(slug)).toBeUndefined();
   });
 });

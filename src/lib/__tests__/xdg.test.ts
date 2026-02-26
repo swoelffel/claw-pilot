@@ -1,7 +1,13 @@
 // src/lib/__tests__/xdg.test.ts
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { resolveXdgRuntimeDir } from "../xdg.js";
 import type { ServerConnection } from "../../server/connection.js";
+
+// Force Linux behavior for all tests in this file (xdg.ts is Linux-only)
+vi.mock("../platform.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../platform.js")>();
+  return { ...actual, isDarwin: () => false };
+});
 
 function makeConn(stdout: string): ServerConnection {
   return {

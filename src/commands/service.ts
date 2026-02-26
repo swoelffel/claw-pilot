@@ -1,6 +1,6 @@
 // src/commands/service.ts
 import { Command } from "commander";
-import { isLinux } from "../lib/platform.js";
+import { getServiceManager } from "../lib/platform.js";
 import {
   installDashboardService,
   uninstallDashboardService,
@@ -13,23 +13,24 @@ import { withContext } from "./_context.js";
 
 export function serviceCommand(): Command {
   const cmd = new Command("service")
-    .description("Manage the claw-pilot dashboard systemd service (Linux only)");
+    .description("Manage the claw-pilot dashboard service (systemd on Linux, launchd on macOS)");
 
   cmd
     .command("install")
-    .description("Install and start the dashboard as a systemd user service")
+    .description("Install and start the dashboard as a system service")
     .option("-p, --port <port>", "Dashboard port", String(constants.DASHBOARD_PORT))
     .action(async (opts: { port: string }) => {
-      if (!isLinux()) {
-        console.error("[x] systemd services are only supported on Linux.");
-        process.exit(1);
-      }
+      const sm = getServiceManager();
       try {
         await withContext(async ({ conn, xdgRuntimeDir }) => {
           await installDashboardService(conn, xdgRuntimeDir, parsePositiveInt(opts.port, "--port"));
         });
         console.log("[+] Dashboard service installed successfully.");
-        console.log(`    View logs: journalctl --user -u claw-pilot-dashboard.service -f`);
+        if (sm === "launchd") {
+          console.log(`    View logs: tail -f ~/.claw-pilot/dashboard.log`);
+        } else {
+          console.log(`    View logs: journalctl --user -u claw-pilot-dashboard.service -f`);
+        }
       } catch (err: any) {
         console.error(`[x] Failed to install service: ${err.message}`);
         process.exit(1);
@@ -38,12 +39,8 @@ export function serviceCommand(): Command {
 
   cmd
     .command("uninstall")
-    .description("Stop and remove the dashboard systemd service")
+    .description("Stop and remove the dashboard service")
     .action(async () => {
-      if (!isLinux()) {
-        console.error("[x] systemd services are only supported on Linux.");
-        process.exit(1);
-      }
       try {
         await withContext(async ({ conn, xdgRuntimeDir }) => {
           await uninstallDashboardService(conn, xdgRuntimeDir);
@@ -56,12 +53,8 @@ export function serviceCommand(): Command {
 
   cmd
     .command("restart")
-    .description("Restart the dashboard systemd service")
+    .description("Restart the dashboard service")
     .action(async () => {
-      if (!isLinux()) {
-        console.error("[x] systemd services are only supported on Linux.");
-        process.exit(1);
-      }
       try {
         await withContext(async ({ conn, xdgRuntimeDir }) => {
           await restartDashboardService(conn, xdgRuntimeDir);
@@ -74,13 +67,9 @@ export function serviceCommand(): Command {
 
   cmd
     .command("status")
-    .description("Show the status of the dashboard systemd service")
+    .description("Show the status of the dashboard service")
     .action(async () => {
-      if (!isLinux()) {
-        console.log("[!] systemd services are only supported on Linux.");
-        console.log("    On macOS, run the dashboard manually: claw-pilot dashboard");
-        return;
-      }
+      const sm = getServiceManager();
       try {
         const status = await withContext(async ({ conn, xdgRuntimeDir }) => {
           return getDashboardServiceStatus(conn, xdgRuntimeDir);
@@ -95,7 +84,11 @@ export function serviceCommand(): Command {
         if (!status.active) {
           console.log("");
           console.log("  To install: claw-pilot service install");
-          console.log("  To view logs: journalctl --user -u claw-pilot-dashboard.service -n 50");
+          if (sm === "launchd") {
+            console.log("  To view logs: tail -f ~/.claw-pilot/dashboard.log");
+          } else {
+            console.log("  To view logs: journalctl --user -u claw-pilot-dashboard.service -n 50");
+          }
         }
       } catch (err: any) {
         console.error(`[x] Failed to get service status: ${err.message}`);

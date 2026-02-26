@@ -2,6 +2,7 @@
 import type { ServerConnection, ExecResult } from "../server/connection.js";
 import { constants } from "../lib/constants.js";
 import { shellEscape } from "../lib/shell.js";
+import { isDarwin } from "../lib/platform.js";
 
 export class OpenClawCLI {
   constructor(private conn: ServerConnection) {}
@@ -33,10 +34,16 @@ export class OpenClawCLI {
     // Absolute candidate paths — checked via conn.exists() to avoid spawning
     // openclaw --version which blocks when there is no TTY (openclaw writes
     // version info directly to the terminal, not to stdout/stderr).
-    const absoluteCandidates = [
-      `${home}/.npm-global/bin/openclaw`,
-      "/opt/openclaw/.npm-global/bin/openclaw",
-    ];
+    const absoluteCandidates = isDarwin()
+      ? [
+          `${home}/.npm-global/bin/openclaw`,
+          "/opt/homebrew/bin/openclaw",
+          "/usr/local/bin/openclaw",
+        ]
+      : [
+          `${home}/.npm-global/bin/openclaw`,
+          "/opt/openclaw/.npm-global/bin/openclaw",
+        ];
 
     for (const bin of absoluteCandidates) {
       if (await this.conn.exists(bin)) {
@@ -86,8 +93,10 @@ export class OpenClawCLI {
         env: {
           OPENCLAW_STATE_DIR: stateDir,
           OPENCLAW_CONFIG_PATH: configPath,
-          // Extended PATH covering all known npm-global locations
-          PATH: `${home}/.npm-global/bin:/opt/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin`,
+          // Extended PATH covering all known npm-global locations (platform-aware)
+          PATH: isDarwin()
+            ? `/opt/homebrew/bin:${home}/.npm-global/bin:/usr/local/bin:/usr/bin:/bin`
+            : `${home}/.npm-global/bin:/opt/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin`,
         },
       },
     );

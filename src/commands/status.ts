@@ -31,7 +31,7 @@ export function statusCommand(): Command {
           }`,
         );
         console.log(
-          `  Systemd      : ${
+          `  Service      : ${
             status.systemd === "active"
               ? chalk.green("active")
               : status.systemd === "failed"
