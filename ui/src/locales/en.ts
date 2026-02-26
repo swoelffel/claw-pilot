@@ -154,6 +154,12 @@ export const templates = {
   "dad-spinner-deleting": "Deleting agent...",
   "dad-error-delete": "Failed to delete agent",
 
+  // delete-instance-dialog.ts
+  "did-title": "Delete instance",
+  "did-warning": "This will permanently stop the service, remove all files (state directory, systemd unit, nginx config) and delete the instance from the registry. This action cannot be undone.",
+  "did-confirm-label": "Type the instance slug to confirm",
+  "did-spinner-deleting": "Destroying instance...",
+
   // agent-detail-panel.ts
   "adp-tab-info": "Info",
   "adp-label-model": "Model",

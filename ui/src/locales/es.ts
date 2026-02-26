@@ -153,6 +153,12 @@ export const templates = {
   "dad-spinner-deleting": "Eliminando agente...",
   "dad-error-delete": "Error al eliminar el agente",
 
+  // delete-instance-dialog.ts
+  "did-title": "Eliminar instancia",
+  "did-warning": "Esto detendrá el servicio, eliminará todos los archivos (directorio de estado, unidad systemd, configuración nginx) y eliminará la instancia del registro. Esta acción no se puede deshacer.",
+  "did-confirm-label": "Escriba el slug de la instancia para confirmar",
+  "did-spinner-deleting": "Destruyendo instancia...",
+
   // agent-detail-panel.ts
   "adp-tab-info": "Info",
   "adp-label-model": "Modelo",

@@ -153,6 +153,12 @@ export const templates = {
   "dad-spinner-deleting": "Eliminazione agente...",
   "dad-error-delete": "Impossibile eliminare l'agente",
 
+  // delete-instance-dialog.ts
+  "did-title": "Elimina istanza",
+  "did-warning": "Questo fermerà il servizio, rimuoverà tutti i file (directory di stato, unità systemd, configurazione nginx) e cancellerà l'istanza dal registro. Questa azione non può essere annullata.",
+  "did-confirm-label": "Digita lo slug dell'istanza per confermare",
+  "did-spinner-deleting": "Distruzione dell'istanza...",
+
   // agent-detail-panel.ts
   "adp-tab-info": "Info",
   "adp-label-model": "Modello",

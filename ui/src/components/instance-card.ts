@@ -53,9 +53,9 @@ export class InstanceCard extends LitElement {
 
     .meta {
       display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      margin-bottom: 16px;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 0;
     }
 
     .meta-item {
@@ -88,11 +88,6 @@ export class InstanceCard extends LitElement {
       border-radius: var(--radius-sm);
       padding: 2px 8px;
       font-size: 11px;
-    }
-
-    .actions {
-      display: flex;
-      gap: 8px;
     }
 
     .btn-ui {
@@ -129,6 +124,41 @@ export class InstanceCard extends LitElement {
 
     .btn-builder:hover {
       background: rgba(14, 165, 233, 0.15);
+    }
+
+    .btn-delete-instance {
+      flex: none;
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+
+    .btn-delete-instance:hover {
+      color: var(--state-error);
+      border-color: color-mix(in srgb, var(--state-error) 30%, transparent);
+      background: color-mix(in srgb, var(--state-error) 8%, transparent);
+    }
+
+    .card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 12px;
+    }
+
+    .card-footer-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
     }
 
     .error-msg {
@@ -181,17 +211,27 @@ export class InstanceCard extends LitElement {
               <span class="state-dot"></span>
               ${stateClass}
             </span>
-            ${inst.state === "running"
-              ? html`<a
-                  class="btn-ui"
-                  href=${inst.gatewayToken
-                    ? `http://localhost:${inst.port}/#token=${inst.gatewayToken}`
-                    : `http://localhost:${inst.port}`}
-                  target="_blank"
-                  rel="noopener"
-                  @click=${(e: Event) => e.stopPropagation()}
-                >⎋ UI</a>`
-              : ""}
+            <button
+              class="btn ${inst.state === 'running' ? 'btn-stop' : 'btn-start'}"
+              ?disabled=${this._loading}
+              @click=${(e: Event) => this._action(e, inst.state === "running" ? stopInstance : startInstance)}
+            >
+              ${inst.state === "running"
+                ? msg("Stop", { id: "btn-stop" })
+                : msg("Start", { id: "btn-start" })}
+            </button>
+            <button
+              class="btn-delete-instance"
+              aria-label=${msg("Delete", { id: "btn-delete" })}
+              @click=${(e: Event) => {
+                e.stopPropagation();
+                this.dispatchEvent(new CustomEvent("request-delete", {
+                  detail: { slug: inst.slug },
+                  bubbles: true,
+                  composed: true,
+                }));
+              }}
+            >✕</button>
           </div>
         </div>
 
@@ -200,16 +240,6 @@ export class InstanceCard extends LitElement {
             <span class="meta-label">${msg("Port", { id: "meta-port" })}</span>
             <span class="meta-value">:${inst.port}</span>
           </div>
-          ${inst.agentCount !== undefined
-            ? html`
-                <div class="meta-item">
-                  <span class="meta-label">${inst.agentCount === 1
-                    ? msg("Agent", { id: "meta-agent" })
-                    : msg("Agents", { id: "meta-agents" })}</span>
-                  <span class="meta-value">:${inst.agentCount}</span>
-                </div>
-              `
-            : ""}
           ${inst.telegram_bot
             ? html`
                 <div class="meta-item">
@@ -227,34 +257,43 @@ export class InstanceCard extends LitElement {
             : ""}
         </div>
 
-        <div class="actions">
-          <button
-            class="btn btn-start"
-            ?disabled=${this._loading || inst.state === "running"}
-            @click=${(e: Event) => this._action(e, startInstance)}
-          >
-            ${msg("Start", { id: "btn-start" })}
-          </button>
-          <button
-            class="btn btn-stop"
-            ?disabled=${this._loading || inst.state !== "running"}
-            @click=${(e: Event) => this._action(e, stopInstance)}
-          >
-            ${msg("Stop", { id: "btn-stop" })}
-          </button>
-          ${(inst.state === "running" || (inst.agentCount ?? 0) > 0)
-            ? html`<button
-                class="btn-builder"
-                @click=${(e: Event) => {
-                  e.stopPropagation();
-                  this.dispatchEvent(new CustomEvent("navigate", {
-                    detail: { view: "agents-builder", slug: inst.slug },
-                    bubbles: true,
-                    composed: true,
-                  }));
-                }}
-              >Agents</button>`
-            : ""}
+        <div class="card-footer">
+          <div class="meta-item">
+            ${inst.agentCount !== undefined
+              ? html`
+                  <span class="meta-label">${inst.agentCount === 1
+                    ? msg("Agent", { id: "meta-agent" })
+                    : msg("Agents", { id: "meta-agents" })}</span>
+                  <span class="meta-value">:${inst.agentCount}</span>
+                `
+              : ""}
+          </div>
+          <div class="card-footer-actions">
+            ${inst.state === "running"
+              ? html`<a
+                  class="btn-ui"
+                  href=${inst.gatewayToken
+                    ? `http://localhost:${inst.port}/#token=${inst.gatewayToken}`
+                    : `http://localhost:${inst.port}`}
+                  target="_blank"
+                  rel="noopener"
+                  @click=${(e: Event) => e.stopPropagation()}
+                >⎋ UI</a>`
+              : ""}
+            ${(inst.state === "running" || (inst.agentCount ?? 0) > 0)
+              ? html`<button
+                  class="btn-builder"
+                  @click=${(e: Event) => {
+                    e.stopPropagation();
+                    this.dispatchEvent(new CustomEvent("navigate", {
+                      detail: { view: "agents-builder", slug: inst.slug },
+                      bubbles: true,
+                      composed: true,
+                    }));
+                  }}
+                >Agents</button>`
+              : ""}
+          </div>
         </div>
 
         ${this._error
