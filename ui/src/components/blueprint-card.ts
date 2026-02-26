@@ -103,23 +103,26 @@ export class BlueprintCard extends LitElement {
       font-weight: 500;
     }
 
-    .btn-delete {
-      background: none;
-      border: 1px solid transparent;
-      color: var(--text-muted);
+    .btn-delete-x {
+      flex: none;
+      width: 28px;
+      height: 28px;
       border-radius: var(--radius-sm);
-      padding: 3px 8px;
-      font-size: 11px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 16px;
       cursor: pointer;
-      transition: border-color 0.15s, color 0.15s, background 0.15s;
-      font-family: inherit;
-      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
     }
 
-    .btn-delete:hover {
-      border-color: var(--state-error, #ef4444);
-      color: var(--state-error, #ef4444);
-      background: color-mix(in srgb, var(--state-error, #ef4444) 8%, transparent);
+    .btn-delete-x:hover {
+      color: var(--state-error);
+      border-color: color-mix(in srgb, var(--state-error) 30%, transparent);
+      background: color-mix(in srgb, var(--state-error) 8%, transparent);
     }
 
     .confirm-delete {
@@ -171,7 +174,7 @@ export class BlueprintCard extends LitElement {
 
   private _onClick(e: Event): void {
     // Don't navigate if clicking delete area
-    if ((e.target as Element).closest(".btn-delete, .confirm-delete")) return;
+    if ((e.target as Element).closest(".btn-delete-x, .confirm-delete")) return;
     this.dispatchEvent(new CustomEvent("blueprint-click", {
       detail: { blueprintId: this.blueprint.id },
       bubbles: true,
@@ -213,10 +216,10 @@ export class BlueprintCard extends LitElement {
             <span class="card-name">${bp.name}</span>
           </div>
           <button
-            class="btn-delete"
-            aria-label="Delete blueprint"
+            class="btn-delete-x"
+            aria-label=${msg("Delete", { id: "bp-btn-delete" })}
             @click=${this._onDeleteClick}
-          >${msg("Delete", { id: "bp-btn-delete" })}</button>
+          >✕</button>
         </div>
 
         ${bp.description ? html`

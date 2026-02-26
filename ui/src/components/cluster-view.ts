@@ -8,6 +8,7 @@ import { tokenStyles } from "../styles/tokens.js";
 import { sectionLabelStyles, errorBannerStyles, buttonStyles } from "../styles/shared.js";
 import "./instance-card.js";
 import "./create-dialog.js";
+import "./delete-instance-dialog.js";
 
 @localized()
 @customElement("cp-cluster-view")
@@ -64,6 +65,7 @@ export class ClusterView extends LitElement {
   @state() private _loading = true;
   @state() private _error = "";
   @state() private _showCreateDialog = false;
+  @state() private _deleteTarget: InstanceInfo | null = null;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -137,6 +139,9 @@ export class ClusterView extends LitElement {
                   <cp-instance-card
                     .instance=${inst}
                     @navigate=${this._onNavigate}
+                    @request-delete=${(e: CustomEvent<{ slug: string }>) => {
+                      this._deleteTarget = this.instances.find(i => i.slug === e.detail.slug) ?? null;
+                    }}
                   ></cp-instance-card>
                 `,
               )}
@@ -152,6 +157,19 @@ export class ClusterView extends LitElement {
                 this._load();
               }}
             ></cp-create-dialog>
+          `
+        : ""}
+
+      ${this._deleteTarget
+        ? html`
+            <cp-delete-instance-dialog
+              .instance=${this._deleteTarget}
+              @close-dialog=${() => { this._deleteTarget = null; }}
+              @instance-deleted=${() => {
+                this._deleteTarget = null;
+                this._load();
+              }}
+            ></cp-delete-instance-dialog>
           `
         : ""}
     `;

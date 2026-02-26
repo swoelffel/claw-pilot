@@ -153,6 +153,12 @@ export const templates = {
   "dad-spinner-deleting": "Agent wird gelöscht...",
   "dad-error-delete": "Agent konnte nicht gelöscht werden",
 
+  // delete-instance-dialog.ts
+  "did-title": "Instanz löschen",
+  "did-warning": "Dies stoppt den Dienst, entfernt alle Dateien (Statusverzeichnis, systemd-Unit, Nginx-Konfiguration) und löscht die Instanz aus dem Register. Diese Aktion kann nicht rückgängig gemacht werden.",
+  "did-confirm-label": "Geben Sie den Instanz-Slug zur Bestätigung ein",
+  "did-spinner-deleting": "Instanz wird zerstört...",
+
   // agent-detail-panel.ts
   "adp-tab-info": "Info",
   "adp-label-model": "Modell",
