@@ -141,6 +141,81 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 3,
+    up(db) {
+      db.exec(`
+        -- 1. Table blueprints
+        CREATE TABLE IF NOT EXISTS blueprints (
+          id           INTEGER PRIMARY KEY AUTOINCREMENT,
+          name         TEXT NOT NULL UNIQUE,
+          description  TEXT,
+          icon         TEXT,
+          tags         TEXT,
+          color        TEXT,
+          created_at   TEXT,
+          updated_at   TEXT
+        );
+
+        -- 2. Recréer agents avec FK polymorphe
+        CREATE TABLE agents_v3 (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          instance_id     INTEGER REFERENCES instances(id) ON DELETE CASCADE,
+          blueprint_id    INTEGER REFERENCES blueprints(id) ON DELETE CASCADE,
+          agent_id        TEXT NOT NULL,
+          name            TEXT NOT NULL,
+          model           TEXT,
+          workspace_path  TEXT NOT NULL,
+          is_default      INTEGER DEFAULT 0,
+          role            TEXT,
+          tags            TEXT,
+          notes           TEXT,
+          position_x      REAL,
+          position_y      REAL,
+          config_hash     TEXT,
+          synced_at       TEXT,
+          CHECK (
+            (instance_id IS NOT NULL AND blueprint_id IS NULL) OR
+            (instance_id IS NULL AND blueprint_id IS NOT NULL)
+          ),
+          UNIQUE(instance_id, agent_id),
+          UNIQUE(blueprint_id, agent_id)
+        );
+
+        INSERT INTO agents_v3
+          SELECT id, instance_id, NULL, agent_id, name, model, workspace_path,
+                 is_default, role, tags, notes, position_x, position_y,
+                 config_hash, synced_at
+          FROM agents;
+
+        DROP TABLE agents;
+        ALTER TABLE agents_v3 RENAME TO agents;
+
+        -- 3. Recréer agent_links avec FK polymorphe
+        CREATE TABLE agent_links_v3 (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          instance_id     INTEGER REFERENCES instances(id) ON DELETE CASCADE,
+          blueprint_id    INTEGER REFERENCES blueprints(id) ON DELETE CASCADE,
+          source_agent_id TEXT NOT NULL,
+          target_agent_id TEXT NOT NULL,
+          link_type       TEXT NOT NULL CHECK(link_type IN ('a2a', 'spawn')),
+          CHECK (
+            (instance_id IS NOT NULL AND blueprint_id IS NULL) OR
+            (instance_id IS NULL AND blueprint_id IS NOT NULL)
+          ),
+          UNIQUE(instance_id, source_agent_id, target_agent_id, link_type),
+          UNIQUE(blueprint_id, source_agent_id, target_agent_id, link_type)
+        );
+
+        INSERT INTO agent_links_v3
+          SELECT id, instance_id, NULL, source_agent_id, target_agent_id, link_type
+          FROM agent_links;
+
+        DROP TABLE agent_links;
+        ALTER TABLE agent_links_v3 RENAME TO agent_links;
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

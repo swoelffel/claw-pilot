@@ -749,7 +749,8 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     try {
       const portAllocator = new PortAllocator(registry, conn);
       const provisioner = new Provisioner(conn, registry, portAllocator);
-      const result = await provisioner.provision(answers, server.id);
+      const blueprintId = typeof body.blueprintId === "number" ? body.blueprintId : undefined;
+      const result = await provisioner.provision(answers, server.id, blueprintId);
 
       // Attempt device pairing bootstrap (non-fatal)
       try {
@@ -771,6 +772,295 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       }
       return c.json({ error: msg }, 500);
     }
+  });
+
+  // --- Blueprint routes ---
+
+  // Helper: build the full builder payload for a blueprint
+  function buildBlueprintPayload(blueprintId: number, reg: Registry) {
+    const data = reg.getBlueprintBuilderData(blueprintId);
+    if (!data) return null;
+    const agentsWithFiles = data.agents.map((agent) => {
+      const files = reg.listAgentFiles(agent.id).map((f) => ({
+        filename: f.filename,
+        content_hash: f.content_hash,
+        size: f.content ? f.content.length : 0,
+        updated_at: f.updated_at,
+      }));
+      return {
+        id: agent.id,
+        agent_id: agent.agent_id,
+        name: agent.name,
+        model: agent.model,
+        workspace_path: agent.workspace_path,
+        is_default: agent.is_default === 1,
+        role: agent.role ?? null,
+        tags: agent.tags ?? null,
+        notes: agent.notes ?? null,
+        synced_at: agent.synced_at ?? null,
+        position_x: agent.position_x ?? null,
+        position_y: agent.position_y ?? null,
+        files,
+      };
+    });
+    return {
+      blueprint: data.blueprint,
+      agents: agentsWithFiles,
+      links: data.links.map((l) => ({
+        source_agent_id: l.source_agent_id,
+        target_agent_id: l.target_agent_id,
+        link_type: l.link_type,
+      })),
+    };
+  }
+
+  // GET /api/blueprints — liste tous les blueprints
+  app.get("/api/blueprints", (c) => {
+    const blueprints = registry.listBlueprints();
+    return c.json(blueprints);
+  });
+
+  // POST /api/blueprints — créer un blueprint
+  app.post("/api/blueprints", async (c) => {
+    let body: { name: string; description?: string; icon?: string; tags?: string; color?: string };
+    try {
+      body = await c.req.json() as typeof body;
+      if (!body.name || typeof body.name !== "string" || body.name.trim() === "") {
+        return c.json({ error: "name is required" }, 400);
+      }
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    try {
+      const blueprint = registry.createBlueprint({
+        name: body.name.trim(),
+        description: body.description,
+        icon: body.icon,
+        tags: body.tags,
+        color: body.color,
+      });
+      return c.json(blueprint, 201);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("UNIQUE")) return c.json({ error: "A blueprint with this name already exists" }, 409);
+      return c.json({ error: msg }, 500);
+    }
+  });
+
+  // GET /api/blueprints/:id — détail d'un blueprint
+  app.get("/api/blueprints/:id", (c) => {
+    const id = Number(c.req.param("id"));
+    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+    const blueprint = registry.getBlueprint(id);
+    if (!blueprint) return c.json({ error: "Not found" }, 404);
+    return c.json(blueprint);
+  });
+
+  // PUT /api/blueprints/:id — mettre à jour un blueprint
+  app.put("/api/blueprints/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+    const blueprint = registry.getBlueprint(id);
+    if (!blueprint) return c.json({ error: "Not found" }, 404);
+
+    let body: Partial<{ name: string; description: string | null; icon: string | null; tags: string | null; color: string | null }>;
+    try {
+      body = await c.req.json() as typeof body;
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    try {
+      const updated = registry.updateBlueprint(id, body);
+      return c.json(updated);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("UNIQUE")) return c.json({ error: "A blueprint with this name already exists" }, 409);
+      return c.json({ error: msg }, 500);
+    }
+  });
+
+  // DELETE /api/blueprints/:id — supprimer un blueprint
+  app.delete("/api/blueprints/:id", (c) => {
+    const id = Number(c.req.param("id"));
+    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+    const blueprint = registry.getBlueprint(id);
+    if (!blueprint) return c.json({ error: "Not found" }, 404);
+    registry.deleteBlueprint(id);
+    return c.json({ ok: true });
+  });
+
+  // GET /api/blueprints/:id/builder — payload complet builder
+  app.get("/api/blueprints/:id/builder", (c) => {
+    const id = Number(c.req.param("id"));
+    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+    const payload = buildBlueprintPayload(id, registry);
+    if (!payload) return c.json({ error: "Not found" }, 404);
+    return c.json(payload);
+  });
+
+  // POST /api/blueprints/:id/agents — créer un agent dans un blueprint
+  app.post("/api/blueprints/:id/agents", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+    const blueprint = registry.getBlueprint(id);
+    if (!blueprint) return c.json({ error: "Not found" }, 404);
+
+    let body: { agent_id: string; name: string; model?: string };
+    try {
+      body = await c.req.json() as typeof body;
+      if (!body.agent_id || !body.name) {
+        return c.json({ error: "agent_id and name are required" }, 400);
+      }
+      if (!/^[a-z][a-z0-9-]*$/.test(body.agent_id) || body.agent_id.length < 2 || body.agent_id.length > 30) {
+        return c.json({ error: "Invalid agent_id: must be 2-30 lowercase alphanumeric chars with hyphens" }, 400);
+      }
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    try {
+      registry.createBlueprintAgent(id, {
+        agentId: body.agent_id,
+        name: body.name,
+        model: body.model,
+      });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (errMsg.includes("UNIQUE")) return c.json({ error: "An agent with this id already exists in this blueprint" }, 409);
+      return c.json({ error: errMsg }, 500);
+    }
+
+    const payload = buildBlueprintPayload(id, registry);
+    return c.json(payload, 201);
+  });
+
+  // DELETE /api/blueprints/:id/agents/:agentId — supprimer un agent
+  app.delete("/api/blueprints/:id/agents/:agentId", (c) => {
+    const id = Number(c.req.param("id"));
+    const agentId = c.req.param("agentId");
+    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+    const blueprint = registry.getBlueprint(id);
+    if (!blueprint) return c.json({ error: "Not found" }, 404);
+    const agent = registry.getBlueprintAgent(id, agentId);
+    if (!agent) return c.json({ error: "Agent not found" }, 404);
+    registry.deleteBlueprintAgent(id, agentId);
+    const payload = buildBlueprintPayload(id, registry);
+    return c.json(payload);
+  });
+
+  // PATCH /api/blueprints/:id/agents/:agentId/position — position canvas
+  app.patch("/api/blueprints/:id/agents/:agentId/position", async (c) => {
+    const id = Number(c.req.param("id"));
+    const agentId = c.req.param("agentId");
+    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+
+    let body: { x: number; y: number };
+    try {
+      body = await c.req.json() as { x: number; y: number };
+      if (typeof body.x !== "number" || typeof body.y !== "number") {
+        return c.json({ error: "x and y must be numbers" }, 400);
+      }
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const agent = registry.getBlueprintAgent(id, agentId);
+    if (!agent) return c.json({ error: "Agent not found" }, 404);
+    registry.updateBlueprintAgentPosition(agent.id, body.x, body.y);
+    return c.json({ ok: true });
+  });
+
+  // GET /api/blueprints/:id/agents/:agentId/files/:filename — lire un fichier
+  app.get("/api/blueprints/:id/agents/:agentId/files/:filename", (c) => {
+    const id = Number(c.req.param("id"));
+    const agentId = c.req.param("agentId");
+    const filename = c.req.param("filename");
+    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+
+    const agent = registry.getBlueprintAgent(id, agentId);
+    if (!agent) return c.json({ error: "Agent not found" }, 404);
+
+    const file = registry.getAgentFileContent(agent.id, filename);
+    if (!file) return c.json({ error: "File not found" }, 404);
+
+    return c.json({
+      filename: file.filename,
+      content: file.content ?? "",
+      content_hash: file.content_hash ?? "",
+      updated_at: file.updated_at ?? "",
+      editable: true,
+    });
+  });
+
+  // PUT /api/blueprints/:id/agents/:agentId/files/:filename — écrire un fichier
+  app.put("/api/blueprints/:id/agents/:agentId/files/:filename", async (c) => {
+    const id = Number(c.req.param("id"));
+    const agentId = c.req.param("agentId");
+    const filename = c.req.param("filename");
+    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+
+    let body: { content: string };
+    try {
+      body = await c.req.json() as { content: string };
+      if (typeof body.content !== "string") return c.json({ error: "content must be a string" }, 400);
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const agent = registry.getBlueprintAgent(id, agentId);
+    if (!agent) return c.json({ error: "Agent not found" }, 404);
+
+    const { createHash } = await import("node:crypto");
+    const contentHash = createHash("sha256").update(body.content).digest("hex").slice(0, 16);
+    registry.upsertAgentFile(agent.id, {
+      filename,
+      content: body.content,
+      contentHash,
+    });
+
+    return c.json({ ok: true });
+  });
+
+  // PATCH /api/blueprints/:id/agents/:agentId/spawn-links — modifier les liens spawn
+  app.patch("/api/blueprints/:id/agents/:agentId/spawn-links", async (c) => {
+    const id = Number(c.req.param("id"));
+    const agentId = c.req.param("agentId");
+    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+
+    let body: { targets: string[] };
+    try {
+      body = await c.req.json() as { targets: string[] };
+      if (!Array.isArray(body.targets)) return c.json({ error: "targets must be an array" }, 400);
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const blueprint = registry.getBlueprint(id);
+    if (!blueprint) return c.json({ error: "Not found" }, 404);
+
+    // Get all current links for this blueprint, keep non-spawn links for this agent, replace spawn links
+    const allLinks = registry.listBlueprintLinks(id);
+    const otherLinks = allLinks.filter(
+      (l) => !(l.source_agent_id === agentId && l.link_type === "spawn"),
+    );
+    const newSpawnLinks = body.targets.map((target) => ({
+      sourceAgentId: agentId,
+      targetAgentId: target,
+      linkType: "spawn" as const,
+    }));
+    const mergedLinks = [
+      ...otherLinks.map((l) => ({
+        sourceAgentId: l.source_agent_id,
+        targetAgentId: l.target_agent_id,
+        linkType: l.link_type,
+      })),
+      ...newSpawnLinks,
+    ];
+    registry.replaceBlueprintLinks(id, mergedLinks);
+
+    const payload = buildBlueprintPayload(id, registry);
+    return c.json(payload);
   });
 
   // --- Static file serving ---

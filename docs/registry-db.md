@@ -2,7 +2,7 @@
 
 SQLite database stored at `~/.claw-pilot/registry.db`.  
 WAL mode enabled. Foreign keys enforced.  
-Current schema version: **2** (base schema v1 + migration v2).
+Current schema version: **3** (base schema v1 + migrations v2 + v3).
 
 ---
 
@@ -14,11 +14,19 @@ servers ──< instances ──< agents ──< agent_files
                     └──< agent_links
                     └──< events
 
+blueprints ──< agents ──< agent_files
+           │
+           └──< agent_links
+
 servers ──< ports
 
 config  (global key-value)
 schema_version  (single row)
 ```
+
+> `agents` and `agent_links` use a **polymorphic FK**: each row belongs to either an
+> `instance` (live agent) or a `blueprint` (template agent), never both. Enforced by a
+> `CHECK` constraint.
 
 ---
 
@@ -80,12 +88,15 @@ One row per OpenClaw gateway instance. Each instance has a unique slug and port.
 
 ### `agents`
 
-One row per agent within an instance. Populated by `agent-sync.ts` on each sync.
+One row per agent — either within a live instance or within a blueprint template.
+Live agents are populated by `agent-sync.ts` on each sync; blueprint agents are managed
+via the Blueprint Builder UI.
 
 | Column         | Type    | Notes                                                              |
 |----------------|---------|--------------------------------------------------------------------|
 | id             | INTEGER | PK autoincrement — used as FK in `agent_files`                     |
-| instance_id    | INTEGER | FK → instances(id) ON DELETE CASCADE                               |
+| instance_id    | INTEGER | nullable — FK → instances(id) ON DELETE CASCADE (live agent)       |
+| blueprint_id   | INTEGER | nullable — FK → blueprints(id) ON DELETE CASCADE (template agent)  |
 | agent_id       | TEXT    | string ID from `openclaw.json`, e.g. `main`, `analyst`, `dev`     |
 | name           | TEXT    | display name, e.g. `Amelia - Developer`                            |
 | model          | TEXT    | nullable — JSON string or plain model ID                           |
@@ -94,12 +105,14 @@ One row per agent within an instance. Populated by `agent-sync.ts` on each sync.
 | role           | TEXT    | nullable — free-text role label (v2, editable in UI)               |
 | tags           | TEXT    | nullable — comma-separated tags (v2, reserved)                     |
 | notes          | TEXT    | nullable — free-text notes (v2, reserved)                          |
-| position_x     | REAL    | nullable — canvas X position in Agent Builder                      |
-| position_y     | REAL    | nullable — canvas Y position in Agent Builder                      |
+| position_x     | REAL    | nullable — canvas X position in Agent Builder / Blueprint Builder  |
+| position_y     | REAL    | nullable — canvas Y position in Agent Builder / Blueprint Builder  |
 | config_hash    | TEXT    | nullable — SHA-256 of agent config at last sync                    |
 | synced_at      | TEXT    | nullable — ISO timestamp of last sync                              |
 
-Unique constraint: `(instance_id, agent_id)`.
+Unique constraints: `(instance_id, agent_id)` and `(blueprint_id, agent_id)`.
+
+CHECK constraint: exactly one of `instance_id` / `blueprint_id` must be non-null.
 
 ---
 
@@ -137,22 +150,49 @@ Editability is enforced server-side by the `EDITABLE_FILES` Set in `src/core/age
 
 ---
 
-### `agent_links` *(added in migration v2)*
+### `agent_links` *(added in migration v2, extended in v3)*
 
-Directed agent-to-agent relationships scoped to an instance. Mirrors the
-`a2a` and `spawn` links declared in `openclaw.json`.
+Directed agent-to-agent relationships scoped to either a live instance or a blueprint.
+Mirrors the `a2a` and `spawn` links declared in `openclaw.json`.
 
-| Column          | Type    | Notes                                             |
-|-----------------|---------|---------------------------------------------------|
-| id              | INTEGER | PK autoincrement                                  |
-| instance_id     | INTEGER | FK → instances(id) ON DELETE CASCADE              |
-| source_agent_id | TEXT    | string agent_id of the source                     |
-| target_agent_id | TEXT    | string agent_id of the target                     |
-| link_type       | TEXT    | `a2a` (peer communication) \| `spawn` (sub-agent) |
+| Column          | Type    | Notes                                                             |
+|-----------------|---------|-------------------------------------------------------------------|
+| id              | INTEGER | PK autoincrement                                                  |
+| instance_id     | INTEGER | nullable — FK → instances(id) ON DELETE CASCADE (live link)       |
+| blueprint_id    | INTEGER | nullable — FK → blueprints(id) ON DELETE CASCADE (template link)  |
+| source_agent_id | TEXT    | string agent_id of the source                                     |
+| target_agent_id | TEXT    | string agent_id of the target                                     |
+| link_type       | TEXT    | `a2a` (peer communication) \| `spawn` (sub-agent)                 |
 
-Unique constraint: `(instance_id, source_agent_id, target_agent_id, link_type)`.
+Unique constraints: `(instance_id, source_agent_id, target_agent_id, link_type)` and
+`(blueprint_id, source_agent_id, target_agent_id, link_type)`.
 
-Replaced atomically on each sync via `registry.replaceAgentLinks()`.
+CHECK constraint: exactly one of `instance_id` / `blueprint_id` must be non-null.
+
+Live instance links are replaced atomically on each sync via `registry.replaceAgentLinks()`.
+Blueprint links are managed via `registry.replaceBlueprintLinks()`.
+
+---
+
+### `blueprints` *(added in migration v3)*
+
+Reusable team templates. A blueprint holds a set of agents (with their workspace files)
+and the links between them. It can be deployed to create a new instance pre-populated
+with that team.
+
+| Column      | Type    | Notes                                                        |
+|-------------|---------|--------------------------------------------------------------|
+| id          | INTEGER | PK autoincrement                                             |
+| name        | TEXT    | UNIQUE — human-readable name, e.g. `BMAD Core Team`         |
+| description | TEXT    | nullable — short description shown in the UI                 |
+| icon        | TEXT    | nullable — emoji or icon identifier                          |
+| tags        | TEXT    | nullable — comma-separated tags (reserved)                   |
+| color       | TEXT    | nullable — hex color for the card accent, e.g. `#6366f1`    |
+| created_at  | TEXT    | ISO-like timestamp                                           |
+| updated_at  | TEXT    |                                                              |
+
+Blueprint agents and links are stored in the shared `agents` and `agent_links` tables
+using the polymorphic `blueprint_id` FK.
 
 ---
 
@@ -213,6 +253,7 @@ Append-only audit log. One row per lifecycle event.
 |---------|------------------------------------------------------------------------------------------|
 | 1       | Base schema: `schema_version`, `servers`, `instances`, `agents`, `ports`, `config`, `events` |
 | 2       | Added `agent_files`, `agent_links` tables; added enriched columns to `agents` (`role`, `tags`, `notes`, `position_x/y`, `config_hash`, `synced_at`) |
+| 3       | Added `blueprints` table; recreated `agents` and `agent_links` with polymorphic FK (`instance_id` OR `blueprint_id`) and CHECK constraint; added `blueprint_id` column to both tables |
 
 ---
 
@@ -226,9 +267,18 @@ Append-only audit log. One row per lifecycle event.
 | Upsert agent (sync) | `registry.upsertAgent()` | `INSERT … ON CONFLICT DO UPDATE` (preserves v2 fields) |
 | Get file content | `registry.getAgentFileContent()` | `SELECT * FROM agent_files WHERE agent_id = ? AND filename = ?` |
 | Write file (edit) | `registry.upsertAgentFile()` | `INSERT OR REPLACE INTO agent_files` |
-| Replace all links | `registry.replaceAgentLinks()` | DELETE + INSERT in transaction |
+| Replace all links (instance) | `registry.replaceAgentLinks()` | DELETE + INSERT in transaction |
 | Log event | `registry.logEvent()` | `INSERT INTO events` |
+| List all blueprints | `registry.listBlueprints()` | `SELECT * FROM blueprints ORDER BY name` |
+| Get blueprint by id | `registry.getBlueprint(id)` | `SELECT * FROM blueprints WHERE id = ?` |
+| Create blueprint | `registry.createBlueprint()` | `INSERT INTO blueprints` |
+| Update blueprint | `registry.updateBlueprint()` | `UPDATE blueprints SET … WHERE id = ?` |
+| Delete blueprint | `registry.deleteBlueprint()` | `DELETE FROM blueprints WHERE id = ?` |
+| List blueprint agents | `registry.listBlueprintAgents(id)` | `SELECT * FROM agents WHERE blueprint_id = ?` |
+| Upsert blueprint agent | `registry.upsertBlueprintAgent()` | `INSERT … ON CONFLICT DO UPDATE` |
+| Replace blueprint links | `registry.replaceBlueprintLinks()` | DELETE + INSERT in transaction |
+| Get blueprint builder data | `registry.getBlueprintBuilderData(id)` | agents + files + links in one call |
 
 ---
 
-*Updated: 2026-02-26 — Removed environment-specific data (moved to [registry-db-vm01.md](../../docs/_work/claw-pilot/registry-db-vm01.md))*
+*Updated: 2026-02-26 — v3 schema: blueprints table, polymorphic FK on agents/agent_links*

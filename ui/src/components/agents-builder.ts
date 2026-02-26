@@ -11,60 +11,7 @@ import "./agent-card-mini.js";
 import "./agent-links-svg.js";
 import "./agent-detail-panel.js";
 import "./create-agent-dialog.js";
-
-function computePositions(
-  agents: AgentBuilderInfo[],
-  canvasWidth: number,
-  canvasHeight: number,
-  /** Current in-memory positions — takes priority over DB values on recompute. */
-  current: Map<string, { x: number; y: number }> = new Map(),
-): Map<string, { x: number; y: number }> {
-  const positions = new Map<string, { x: number; y: number }>();
-
-  // Priority order:
-  //   1. current in-memory position (set by drag or previous recompute)
-  //   2. DB-persisted position (agent.position_x/y)
-  //   3. concentric fallback (for agents with no position at all)
-  const needsLayout: AgentBuilderInfo[] = [];
-  for (const agent of agents) {
-    const mem = current.get(agent.agent_id);
-    if (mem) {
-      // Already positioned in this session — keep it
-      positions.set(agent.agent_id, mem);
-    } else if (agent.position_x != null && agent.position_y != null) {
-      // Restore from DB on first load
-      positions.set(agent.agent_id, { x: agent.position_x, y: agent.position_y });
-    } else {
-      // Brand-new agent with no position anywhere — needs layout
-      needsLayout.push(agent);
-    }
-  }
-
-  // Concentric fallback only for agents with no position at all
-  if (needsLayout.length > 0) {
-    const centerX = canvasWidth / 2;
-    const centerY = canvasHeight / 2;
-    const mainAgent = needsLayout.find(a => a.is_default);
-    if (mainAgent) {
-      positions.set(mainAgent.agent_id, { x: centerX, y: centerY });
-    }
-    const others = needsLayout.filter(a => !a.is_default);
-    if (others.length > 0) {
-      const radius = Math.min(canvasWidth, canvasHeight) * 0.35;
-      const angleStep = (2 * Math.PI) / others.length;
-      const startAngle = -Math.PI / 2;
-      others.forEach((agent, i) => {
-        const angle = startAngle + i * angleStep;
-        positions.set(agent.agent_id, {
-          x: centerX + radius * Math.cos(angle),
-          y: centerY + radius * Math.sin(angle),
-        });
-      });
-    }
-  }
-
-  return positions;
-}
+import { computePositions, newAgentPosition } from "../lib/builder-utils.js";
 
 @localized()
 @customElement("cp-agents-builder")
@@ -323,13 +270,7 @@ export class AgentsBuilder extends LitElement {
     // picks it up from in-memory (priority 1) instead of falling back to concentric
     const positionsWithNew = new Map(this._positions);
     if (newAgent) {
-      const CARD_W = 160;
-      const CARD_H = 80;
-      const MARGIN = 24;
-      positionsWithNew.set(newAgent.agent_id, {
-        x: CARD_W / 2 + MARGIN,
-        y: CARD_H / 2 + MARGIN,
-      });
+      positionsWithNew.set(newAgent.agent_id, newAgentPosition());
     }
 
     this._data = builderData;

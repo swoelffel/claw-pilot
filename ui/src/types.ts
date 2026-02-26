@@ -82,6 +82,7 @@ export interface CreateInstanceRequest {
   provider: string;
   apiKey: string;
   agents: AgentDefinition[];
+  blueprintId?: number;
 }
 
 export interface ConversationEntry {
@@ -169,4 +170,32 @@ export interface SyncResult {
     filesChanged: number;
     linksChanged: number;
   };
+}
+
+// Blueprint types
+
+export interface Blueprint {
+  id: number;
+  name: string;
+  description?: string | null;
+  icon?: string | null;
+  tags?: string | null;  // JSON array string, ex: '["rh","legal"]'
+  color?: string | null;
+  agent_count?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface BlueprintBuilderData {
+  blueprint: Blueprint;
+  agents: AgentBuilderInfo[];
+  links: AgentLink[];
+}
+
+export interface CreateBlueprintRequest {
+  name: string;
+  description?: string;
+  icon?: string;
+  tags?: string;
+  color?: string;
 }

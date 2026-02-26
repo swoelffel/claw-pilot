@@ -7,6 +7,8 @@ import type { InstanceInfo, WsMessage } from "./types.js";
 import { tokenStyles } from "./styles/tokens.js";
 import "./components/cluster-view.js";
 import "./components/agents-builder.js";
+import "./components/blueprints-view.js";
+import "./components/blueprint-builder.js";
 
 // Initialize locale — resolved before first render via localeReady promise
 export const localeReady = initLocale();
@@ -20,7 +22,9 @@ declare global {
 
 type Route =
   | { view: "cluster" }
-  | { view: "agents-builder"; slug: string };
+  | { view: "agents-builder"; slug: string }
+  | { view: "blueprints" }
+  | { view: "blueprint-builder"; blueprintId: number };
 
 @localized()
 @customElement("cp-app")
@@ -64,18 +68,6 @@ export class CpApp extends LitElement {
 
     .logo span {
       color: var(--accent);
-    }
-
-    .instance-badge {
-      display: inline-flex;
-      align-items: center;
-      background: var(--accent-subtle);
-      color: var(--accent);
-      border: 1px solid var(--accent-border);
-      border-radius: 20px;
-      padding: 2px 10px;
-      font-size: 12px;
-      font-weight: 600;
     }
 
     .header-right {
@@ -264,6 +256,54 @@ export class CpApp extends LitElement {
       position: relative;
     }
 
+    .nav-tabs {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      margin-left: 8px;
+    }
+
+    .nav-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 0 10px;
+      height: 56px;
+      transition: color 0.15s, border-color 0.15s;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+
+    .nav-tab:hover {
+      color: var(--text-primary);
+    }
+
+    .nav-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      font-weight: 600;
+    }
+
+    .nav-badge {
+      display: inline-flex;
+      align-items: center;
+      background: var(--accent-subtle);
+      color: var(--accent);
+      border: 1px solid var(--accent-border);
+      border-radius: 20px;
+      padding: 1px 7px;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
   `];
 
   @state() private _route: Route = { view: "cluster" };
@@ -386,11 +426,13 @@ export class CpApp extends LitElement {
   }
 
   private _navigate(e: Event): void {
-    const detail = (e as CustomEvent<{ slug: string | null; view?: string }>).detail;
-    if (detail.slug === null) {
-      this._route = { view: "cluster" };
-    } else if (detail.view === "agents-builder") {
+    const detail = (e as CustomEvent<{ slug?: string | null; view?: string; blueprintId?: number }>).detail;
+    if (detail.view === "agents-builder" && detail.slug) {
       this._route = { view: "agents-builder", slug: detail.slug };
+    } else if (detail.view === "blueprints") {
+      this._route = { view: "blueprints" };
+    } else if (detail.view === "blueprint-builder" && detail.blueprintId !== undefined) {
+      this._route = { view: "blueprint-builder", blueprintId: detail.blueprintId };
     } else {
       this._route = { view: "cluster" };
     }
@@ -434,6 +476,21 @@ export class CpApp extends LitElement {
         ></cp-agents-builder>
       `;
     }
+    if (this._route.view === "blueprints") {
+      return html`
+        <cp-blueprints-view
+          @navigate=${this._navigate}
+        ></cp-blueprints-view>
+      `;
+    }
+    if (this._route.view === "blueprint-builder") {
+      return html`
+        <cp-blueprint-builder
+          .blueprintId=${this._route.blueprintId}
+          @navigate=${this._navigate}
+        ></cp-blueprint-builder>
+      `;
+    }
     return html``;
   }
 
@@ -446,15 +503,21 @@ export class CpApp extends LitElement {
           <div class="logo" @click=${this._goHome}>
             Claw<span>Pilot</span>
           </div>
-          ${instanceCount > 0
-            ? html`
-                <span class="instance-badge">
-                  ${instanceCount} ${instanceCount !== 1
-                    ? msg("instances", { id: "instance-count-many" })
-                    : msg("instance", { id: "instance-count-one" })}
-                </span>
-              `
-            : ""}
+          <nav class="nav-tabs">
+            <button
+              class="nav-tab ${this._route.view === "cluster" || this._route.view === "agents-builder" ? "active" : ""}"
+              @click=${() => { this._route = { view: "cluster" }; }}
+            >
+              ${msg("Instances", { id: "nav-instances" })}
+              ${instanceCount > 0 ? html`<span class="nav-badge">${instanceCount}</span>` : ""}
+            </button>
+            <button
+              class="nav-tab ${this._route.view === "blueprints" || this._route.view === "blueprint-builder" ? "active" : ""}"
+              @click=${() => { this._route = { view: "blueprints" }; }}
+            >
+              ${msg("Blueprints", { id: "nav-blueprints" })}
+            </button>
+          </nav>
         </div>
         <div class="header-right">
           <div class="ws-indicator">
