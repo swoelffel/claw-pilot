@@ -28,16 +28,28 @@ export class OpenClawCLI {
 
   /** Detect openclaw binary path and version */
   async detect(): Promise<{ bin: string; version: string } | null> {
+    const home = process.env["HOME"] ?? "";
+    // Extended PATH covering all known npm-global locations — needed when running
+    // from a systemd service that inherits a minimal PATH.
+    const extendedPath = [
+      `${home}/.npm-global/bin`,
+      "/opt/openclaw/.npm-global/bin",
+      "/usr/local/bin",
+      "/usr/bin",
+      "/bin",
+    ].join(":");
+
+    // Try absolute paths first, then fall back to PATH-based lookup
     const candidates = [
-      "openclaw",
+      `${home}/.npm-global/bin/openclaw`,
       "/opt/openclaw/.npm-global/bin/openclaw",
-      `${process.env["HOME"] ?? ""}/.npm-global/bin/openclaw`,
+      "openclaw", // resolved via extendedPath below
     ];
 
     for (const candidate of candidates) {
-      // Use execFile for the version check — no shell interpolation needed
       const result = await this.conn.execFile(candidate, ["--version"], {
         timeout: 5_000,
+        env: { PATH: extendedPath },
       });
       if (result.exitCode === 0 && result.stdout.trim()) {
         const version = result.stdout.trim();
@@ -60,6 +72,7 @@ export class OpenClawCLI {
     configPath: string,
     args: string,
   ): Promise<ExecResult> {
+    const home = process.env["HOME"] ?? "";
     // Split args string into array — callers always pass simple args (no pipes/redirections)
     const argsArray = args.split(/\s+/).filter(Boolean);
     return this.conn.execFile(
@@ -69,7 +82,8 @@ export class OpenClawCLI {
         env: {
           OPENCLAW_STATE_DIR: stateDir,
           OPENCLAW_CONFIG_PATH: configPath,
-          PATH: "/opt/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin",
+          // Extended PATH covering all known npm-global locations
+          PATH: `${home}/.npm-global/bin:/opt/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin`,
         },
       },
     );
