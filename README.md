@@ -1,40 +1,66 @@
 # claw-pilot
 
-**Orchestrator for OpenClaw multi-instance clusters**
+**CLI + web dashboard to orchestrate OpenClaw multi-agent clusters on a Linux server**
 
-`claw-pilot` is a CLI + web dashboard that automates provisioning, managing, and monitoring
-[OpenClaw](https://docs.openclaw.ai) instances on a Linux server. It handles discovery of
-existing instances, full creation wizard, systemd integration, Nginx config generation,
-and device pairing bootstrapping.
+`claw-pilot` manages the full lifecycle of [OpenClaw](https://docs.openclaw.ai) instances:
+provisioning, systemd integration, Nginx config generation, device pairing, and a visual
+Agent Builder to design and edit multi-agent teams.
+
+> Not published on npm — installed from source only.
+
+---
+
+## Screenshots
+
+![Instances dashboard](docs/assets/screenshot-instances.png)
+*Instance dashboard — live status, port, agent count, quick actions*
+
+![Agent Builder](docs/assets/screenshot-agent-builder.png)
+*Agent Builder — drag-and-drop canvas, A2A/spawn links, inline file editor*
+
+---
+
+## Features
+
+- **Instance management** — provision, start, stop, restart, destroy OpenClaw instances via systemd user services
+- **Discovery** — auto-detect existing OpenClaw instances on the server
+- **Interactive wizard** — guided creation with Nginx + SSL config generation
+- **Web dashboard** — real-time status via WebSocket, port 19000
+- **Agent Builder** — visual canvas to design multi-agent teams (drag & drop, A2A/spawn links)
+- **Blueprints** — save and reuse agent team templates, deploy to any instance
+- **Inline file editor** — edit agent workspace files (SOUL.md, AGENTS.md, TOOLS.md, …) directly from the UI with Markdown preview
+- **Token management** — `claw-pilot token <slug>` to retrieve gateway tokens and open the Control UI
+- **i18n** — UI available in 6 languages (EN, FR, DE, ES, IT, PT)
+
+---
 
 ## Requirements
 
 - Node.js >= 22.12.0
 - pnpm >= 9
 - Linux (Ubuntu/Debian recommended) with systemd user services enabled
-- OpenClaw CLI (auto-installed if missing — `claw-pilot init` will offer to install it)
+- OpenClaw CLI (`claw-pilot init` will offer to install it if missing)
 
-> **Note:** The OpenClaw install URL defaults to `https://openclaw.ai/install.sh`.
-> Override with `OPENCLAW_INSTALL_URL=<url>` if you use a mirror or a specific version.
+---
 
-## Quick install
+## Install
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/swoelffel/claw-pilot/main/install.sh | sh
 ```
 
-The script clones the repo to `/opt/claw-pilot` (override with `CLAW_PILOT_INSTALL_DIR`),
-builds the CLI locally, and links the binary into your PATH.
+Clones the repo to `/opt/claw-pilot` (override with `CLAW_PILOT_INSTALL_DIR`), builds the CLI,
+and links the binary into your PATH.
 
-> **Note:** `claw-pilot` is not published on npm — it must be installed from source.
+---
 
-## Usage
+## CLI commands
 
 ```
 claw-pilot [command]
 
-Commands:
-  init              Initialize Claw Pilot & discover existing instances
+Instance lifecycle:
+  init              Initialize claw-pilot & discover existing instances
   create            Create a new OpenClaw instance (interactive wizard)
   destroy <slug>    Destroy an instance (stops service, removes files)
   list              List all instances with status
@@ -42,51 +68,101 @@ Commands:
   stop <slug>       Stop an instance
   restart <slug>    Restart an instance
   status <slug>     Show detailed status of an instance
-  logs <slug>       View gateway logs (with -f for live tail)
+  logs <slug>       View gateway logs (-f for live tail)
+
+Tooling:
   dashboard         Start the web dashboard (default port 19000)
+  token <slug>      Show gateway token (--url for full URL, --open to launch browser)
   doctor [slug]     Diagnose instance health
 ```
 
-## Development
+---
+
+## Web dashboard
+
+Start the dashboard:
 
 ```sh
-# Clone
-git clone https://github.com/swoelffel/claw-pilot.git
-cd claw-pilot
-
-# Install dependencies (requires node-gyp for better-sqlite3)
-pnpm install
-# If better-sqlite3 native bindings are missing:
-# cd node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3 && npx node-gyp rebuild
-
-# Build CLI
-pnpm build:cli
-
-# Run tests
-pnpm test:run
-
-# Type check
-pnpm typecheck
+claw-pilot dashboard
+# → http://localhost:19000
 ```
+
+The dashboard provides:
+- **Instances view** — live status cards with start/stop/restart actions and direct Control UI links
+- **Agent Builder** — drag-and-drop canvas per instance to visualize and edit the agent graph
+- **Blueprints** — create reusable agent team templates and deploy them to instances
+- **Inline editor** — edit agent workspace files with Markdown preview, directly from the detail panel
+
+---
 
 ## Architecture
 
 ```
-claw-pilot/
-  src/
-    commands/       CLI commands (init, create, destroy, list, ...)
-    core/           Business logic (registry, discovery, provisioner, ...)
-    dashboard/      Web dashboard (Hono HTTP + WebSocket)
-    db/             SQLite schema and migrations
-    lib/            Utilities (logger, errors, constants, platform)
-    server/         Server abstraction (LocalConnection, future SSHConnection)
-    wizard/         Interactive creation wizard
-  templates/        Workspace bootstrap files
-  docs/
-    SPEC-MVP.md     Technical specifications
+src/
+  commands/         CLI commands — thin wrappers over core/
+  core/             Business logic (registry, discovery, provisioner, agent-sync, blueprints, …)
+  dashboard/        Hono HTTP server + WebSocket monitor
+  db/               SQLite schema and migrations (schema.ts)
+  lib/              Utilities (logger, errors, constants, platform, xdg, shell, …)
+  server/           ServerConnection abstraction (LocalConnection; SSH planned)
+  wizard/           Interactive creation wizard (@inquirer/prompts)
+ui/src/
+  components/       Lit web components (instance cards, agent builder, blueprint views, …)
+  locales/          i18n strings (en, fr, de, es, it, pt)
+templates/          Workspace bootstrap files (SOUL.md, AGENTS.md, TOOLS.md, …)
+docs/
+  SPEC-MVP.md       Full technical specification
+  registry-db.md    SQLite schema reference
 ```
 
-See `docs/SPEC-MVP.md` for full technical specifications.
+### Data model
+
+| Table | Role |
+|---|---|
+| `servers` | Physical servers (V1: always 1 local row) |
+| `instances` | OpenClaw instances — slug, port, state, systemd unit |
+| `agents` | Agents per instance or blueprint — canvas position, sync hash |
+| `agent_files` | Workspace file cache (SOUL.md, AGENTS.md, …) |
+| `agent_links` | A2A and spawn links between agents |
+| `blueprints` | Reusable agent team templates |
+| `ports` | Port reservation registry (anti-conflict) |
+| `config` | Global key-value config |
+| `events` | Audit log |
+
+See [`docs/registry-db.md`](docs/registry-db.md) for the full schema reference.
+
+---
+
+## Development
+
+```sh
+git clone https://github.com/swoelffel/claw-pilot.git
+cd claw-pilot
+pnpm install
+
+pnpm build         # Build CLI + UI
+pnpm build:cli     # Build CLI only
+pnpm test:run      # Run tests
+pnpm typecheck     # tsc --noEmit
+pnpm lint          # oxlint src/
+```
+
+---
+
+## Tech stack
+
+| Layer | Stack |
+|---|---|
+| Runtime | Node.js >= 22, ESM |
+| CLI | Commander.js + @inquirer/prompts |
+| HTTP / WS | Hono + ws |
+| Database | better-sqlite3 (SQLite, WAL) |
+| UI | Lit web components + Vite |
+| Build | tsdown (CLI) + Vite (UI) |
+| Tests | Vitest |
+| Lint | oxlint |
+
+---
 
 ## License
 
