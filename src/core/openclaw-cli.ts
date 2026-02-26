@@ -10,6 +10,7 @@ export class OpenClawCLI {
    * Install OpenClaw via its official install script.
    * Returns true if installation succeeded (binary detected after install).
    * The install URL can be overridden with the OPENCLAW_INSTALL_URL env var.
+   * Uses exec() because the command is a shell pipe (curl | sh).
    */
   async install(): Promise<boolean> {
     const url =
@@ -34,14 +35,16 @@ export class OpenClawCLI {
     ];
 
     for (const candidate of candidates) {
-      const result = await this.conn.exec(
-        `${candidate} --version 2>/dev/null || true`,
-      );
+      // Use execFile for the version check — no shell interpolation needed
+      const result = await this.conn.execFile(candidate, ["--version"], {
+        timeout: 5_000,
+      });
       if (result.exitCode === 0 && result.stdout.trim()) {
         const version = result.stdout.trim();
-        // Resolve to absolute path so systemd ExecStart works without PATH lookup
+        // Resolve to absolute path so systemd ExecStart works without PATH lookup.
+        // Uses exec() because the resolution uses shell pipes (command -v, readlink).
         const absResult = await this.conn.exec(
-          `command -v ${candidate} 2>/dev/null || readlink -f $(which ${candidate} 2>/dev/null) 2>/dev/null || echo ${candidate}`,
+          `command -v ${shellEscape(candidate)} 2>/dev/null || readlink -f $(which ${shellEscape(candidate)} 2>/dev/null) 2>/dev/null || echo ${shellEscape(candidate)}`,
         );
         const bin = absResult.stdout.trim() || candidate;
         return { bin, version };
@@ -57,13 +60,19 @@ export class OpenClawCLI {
     configPath: string,
     args: string,
   ): Promise<ExecResult> {
-    const env = [
-      `OPENCLAW_STATE_DIR=${shellEscape(stateDir)}`,
-      `OPENCLAW_CONFIG_PATH=${shellEscape(configPath)}`,
-      `PATH=/opt/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin`,
-    ].join(" ");
-
-    return this.conn.exec(`${env} openclaw --profile ${shellEscape(slug)} ${args}`);
+    // Split args string into array — callers always pass simple args (no pipes/redirections)
+    const argsArray = args.split(/\s+/).filter(Boolean);
+    return this.conn.execFile(
+      "openclaw",
+      ["--profile", slug, ...argsArray],
+      {
+        env: {
+          OPENCLAW_STATE_DIR: stateDir,
+          OPENCLAW_CONFIG_PATH: configPath,
+          PATH: "/opt/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin",
+        },
+      },
+    );
   }
 
   /** Install a plugin for an instance */

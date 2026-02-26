@@ -29,9 +29,10 @@ export class PairingManager {
     }
 
     // Step 2: List pending device requests
-    const envVars = this.getOpenClawEnv(instance);
-    const listResult = await this.conn.exec(
-      `${envVars} openclaw --profile ${shellEscape(slug)} devices list --json 2>/dev/null || true`,
+    const listResult = await this.conn.execFile(
+      "openclaw",
+      ["--profile", slug, "devices", "list", "--json"],
+      { env: this.getOpenClawEnvObj(instance) },
     );
 
     // Step 3: Parse the pending request ID
@@ -44,8 +45,10 @@ export class PairingManager {
     }
 
     // Step 4: Approve the request
-    const approveResult = await this.conn.exec(
-      `${envVars} openclaw --profile ${shellEscape(slug)} devices approve ${shellEscape(requestId)}`,
+    const approveResult = await this.conn.execFile(
+      "openclaw",
+      ["--profile", slug, "devices", "approve", requestId],
+      { env: this.getOpenClawEnvObj(instance) },
     );
     if (approveResult.exitCode !== 0) {
       throw new ClawPilotError(
@@ -66,19 +69,21 @@ export class PairingManager {
     const instance = this.registry.getInstance(slug);
     if (!instance) throw new InstanceNotFoundError(slug);
 
-    const envVars = this.getOpenClawEnv(instance);
     const logPath = `${instance.state_dir}/logs/gateway.log`;
     const start = Date.now();
 
     while (Date.now() - start < timeoutMs) {
+      // Uses exec() because the command uses a shell pipe (tail | grep)
       const result = await this.conn.exec(
         `tail -20 ${shellEscape(logPath)} 2>/dev/null | grep "pairing.*telegram" || true`,
       );
 
       const code = this.parseTelegramPairingCode(result.stdout);
       if (code) {
-        await this.conn.exec(
-          `${envVars} openclaw --profile ${shellEscape(slug)} pairing approve telegram ${shellEscape(code)}`,
+        await this.conn.execFile(
+          "openclaw",
+          ["--profile", slug, "pairing", "approve", "telegram", code],
+          { env: this.getOpenClawEnvObj(instance) },
         );
         return code;
       }
@@ -92,8 +97,11 @@ export class PairingManager {
     );
   }
 
-  private getOpenClawEnv(instance: InstanceRecord): string {
-    return `OPENCLAW_STATE_DIR=${shellEscape(instance.state_dir)} OPENCLAW_CONFIG_PATH=${shellEscape(instance.config_path)}`;
+  private getOpenClawEnvObj(instance: InstanceRecord): Record<string, string> {
+    return {
+      OPENCLAW_STATE_DIR: instance.state_dir,
+      OPENCLAW_CONFIG_PATH: instance.config_path,
+    };
   }
 
   private parsePendingRequestId(output: string): string | null {

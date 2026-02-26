@@ -1,14 +1,14 @@
 // src/core/dashboard-service.ts
 import * as os from "node:os";
-import * as fs from "node:fs/promises";
-import { statSync } from "node:fs";
 import * as path from "node:path";
-import { spawnSync } from "node:child_process";
+import { statSync } from "node:fs";
+import type { ServerConnection } from "../server/connection.js";
 import { isLinux, getSystemdDir, getDashboardServicePath, DASHBOARD_SERVICE_UNIT } from "../lib/platform.js";
 import { generateDashboardService } from "./systemd-generator.js";
 import { constants } from "../lib/constants.js";
 import { logger } from "../lib/logger.js";
 import { pollUntilReady } from "../lib/poll.js";
+import { shellEscape } from "../lib/shell.js";
 
 export interface DashboardServiceStatus {
   installed: boolean;
@@ -19,28 +19,10 @@ export interface DashboardServiceStatus {
   portResponding: boolean;
 }
 
-/** Resolve the absolute path to the node binary */
-function resolveNodeBin(): string {
-  try {
-    const result = spawnSync("which", ["node"], { encoding: "utf-8" });
-    const bin = result.stdout.trim();
-    if (bin) return bin;
-  } catch {
-    // which not available — try fallback paths
-  }
-  // Fallback common paths
-  for (const p of ["/usr/local/bin/node", "/usr/bin/node"]) {
-    try {
-      spawnSync(p, ["--version"], { encoding: "utf-8" });
-      return p;
-    } catch {
-      // Path not available
-    }
-  }
-  throw new Error("Cannot find node binary. Ensure Node.js is in PATH.");
-}
-
-/** Resolve the absolute path to the claw-pilot dist/index.mjs */
+/**
+ * Resolve the absolute path to the claw-pilot dist/index.mjs.
+ * Uses import.meta.url to find the binary relative to this file — local filesystem only.
+ */
 function resolveClawPilotBin(): string {
   const currentDir = path.dirname(new URL(import.meta.url).pathname);
   // In dev: src/core/ -> go up 2 levels to project root, then dist/index.mjs
@@ -58,53 +40,45 @@ function resolveClawPilotBin(): string {
       // Candidate path not found
     }
   }
-  // Last resort: use the symlink in PATH
-  try {
-    const result = spawnSync("which", ["claw-pilot"], { encoding: "utf-8" });
-    const bin = result.stdout.trim();
-    if (bin) return bin;
-  } catch {
-    // which not available
-  }
   throw new Error("Cannot find claw-pilot binary. Ensure it is installed.");
 }
 
-/** Run a systemctl --user command, returns exit code */
-function systemctlUser(args: string[]): { code: number; stdout: string; stderr: string } {
-  const uid = process.getuid?.() ?? 1000;
-  const xdgRuntimeDir = `/run/user/${uid}`;
-  const result = spawnSync("systemctl", ["--user", ...args], {
-    encoding: "utf-8",
-    env: { ...process.env, XDG_RUNTIME_DIR: xdgRuntimeDir },
+/** Run a systemctl --user command via ServerConnection */
+async function systemctlUser(
+  conn: ServerConnection,
+  xdgRuntimeDir: string,
+  args: string[],
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  const result = await conn.execFile("systemctl", ["--user", ...args], {
+    env: { XDG_RUNTIME_DIR: xdgRuntimeDir },
   });
-  return {
-    code: result.status ?? 1,
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-  };
+  return { code: result.exitCode, stdout: result.stdout, stderr: result.stderr };
 }
 
 /** Check if linger is enabled for the current user, enable it if not */
-async function ensureLinger(): Promise<void> {
-  const username = os.userInfo().username;
-  const result = spawnSync("loginctl", ["show-user", username, "-p", "Linger"], {
-    encoding: "utf-8",
-  });
-  if (result.stdout.includes("Linger=yes")) return;
+async function ensureLinger(conn: ServerConnection): Promise<void> {
+  const whoami = await conn.execFile("whoami", []);
+  const username = whoami.stdout.trim() || os.userInfo().username;
 
-  // Try to enable linger (may need sudo)
-  const enableResult = spawnSync("loginctl", ["enable-linger", username], {
-    encoding: "utf-8",
-  });
-  if (enableResult.status !== 0) {
-    // Try with sudo
-    const sudoResult = spawnSync("sudo", ["loginctl", "enable-linger", username], {
-      stdio: "inherit",
-    });
-    if (sudoResult.status !== 0) {
-      logger.warn(`Could not enable linger for ${username}. The dashboard service may stop on logout.`);
-      logger.dim(`Run manually: sudo loginctl enable-linger ${username}`);
-    }
+  const check = await conn.execFile("loginctl", ["show-user", username, "-p", "Linger"]);
+  if (check.stdout.includes("Linger=yes")) return;
+
+  // Try to enable linger directly
+  logger.step("Enabling lingering for systemd user services...");
+  const enable = await conn.execFile("loginctl", ["enable-linger", username]);
+  if (enable.exitCode === 0) {
+    logger.success("Linger enabled");
+    return;
+  }
+
+  // Fallback: sudo
+  logger.dim("Retrying with sudo...");
+  const sudo = await conn.exec(`sudo loginctl enable-linger ${shellEscape(username)}`);
+  if (sudo.exitCode !== 0) {
+    logger.warn(`Could not enable linger for ${username}. The dashboard service may stop on logout.`);
+    logger.dim(`Run manually: sudo loginctl enable-linger ${username}`);
+  } else {
+    logger.success("Linger enabled (via sudo)");
   }
 }
 
@@ -121,12 +95,31 @@ async function isPortResponding(port: number): Promise<boolean> {
   }
 }
 
-export async function installDashboardService(port: number = constants.DASHBOARD_PORT): Promise<void> {
+export async function installDashboardService(
+  conn: ServerConnection,
+  xdgRuntimeDir: string,
+  port: number = constants.DASHBOARD_PORT,
+): Promise<void> {
   if (!isLinux()) {
     throw new Error("systemd services are only supported on Linux.");
   }
 
-  const nodeBin = resolveNodeBin();
+  // Resolve node binary via conn
+  const nodeResult = await conn.execFile("which", ["node"]);
+  let nodeBin = nodeResult.stdout.trim();
+  if (!nodeBin) {
+    // Fallback: check known paths
+    for (const candidate of ["/usr/local/bin/node", "/usr/bin/node"]) {
+      if (await conn.exists(candidate)) {
+        nodeBin = candidate;
+        break;
+      }
+    }
+  }
+  if (!nodeBin) {
+    throw new Error("Cannot find node binary. Ensure Node.js is in PATH.");
+  }
+
   const clawPilotBin = resolveClawPilotBin();
   const home = os.homedir();
   const uid = process.getuid?.() ?? 1000;
@@ -136,30 +129,30 @@ export async function installDashboardService(port: number = constants.DASHBOARD
 
   // Ensure systemd user dir exists
   const systemdDir = getSystemdDir();
-  await fs.mkdir(systemdDir, { recursive: true });
+  await conn.mkdir(systemdDir);
 
   // Write service file
   const servicePath = getDashboardServicePath();
-  await fs.writeFile(servicePath, serviceContent, { mode: 0o644 });
+  await conn.writeFile(servicePath, serviceContent, 0o644);
   logger.success(`Service file written: ${servicePath}`);
 
   // Ensure linger is enabled
-  await ensureLinger();
+  await ensureLinger(conn);
 
   // daemon-reload
-  const reload = systemctlUser(["daemon-reload"]);
+  const reload = await systemctlUser(conn, xdgRuntimeDir, ["daemon-reload"]);
   if (reload.code !== 0) {
     throw new Error(`systemctl daemon-reload failed: ${reload.stderr}`);
   }
 
   // enable
-  const enable = systemctlUser(["enable", DASHBOARD_SERVICE_UNIT]);
+  const enable = await systemctlUser(conn, xdgRuntimeDir, ["enable", DASHBOARD_SERVICE_UNIT]);
   if (enable.code !== 0) {
     throw new Error(`systemctl enable failed: ${enable.stderr}`);
   }
 
   // start
-  const start = systemctlUser(["start", DASHBOARD_SERVICE_UNIT]);
+  const start = await systemctlUser(conn, xdgRuntimeDir, ["start", DASHBOARD_SERVICE_UNIT]);
   if (start.code !== 0) {
     throw new Error(`systemctl start failed: ${start.stderr}`);
   }
@@ -179,21 +172,24 @@ export async function installDashboardService(port: number = constants.DASHBOARD
   }
 }
 
-export async function uninstallDashboardService(): Promise<void> {
+export async function uninstallDashboardService(
+  conn: ServerConnection,
+  xdgRuntimeDir: string,
+): Promise<void> {
   if (!isLinux()) {
     throw new Error("systemd services are only supported on Linux.");
   }
 
   // stop (ignore errors if not running)
-  systemctlUser(["stop", DASHBOARD_SERVICE_UNIT]);
+  await systemctlUser(conn, xdgRuntimeDir, ["stop", DASHBOARD_SERVICE_UNIT]);
 
   // disable (ignore errors if not enabled)
-  systemctlUser(["disable", DASHBOARD_SERVICE_UNIT]);
+  await systemctlUser(conn, xdgRuntimeDir, ["disable", DASHBOARD_SERVICE_UNIT]);
 
   // Remove service file
   const servicePath = getDashboardServicePath();
   try {
-    await fs.unlink(servicePath);
+    await conn.remove(servicePath);
     logger.success(`Service file removed: ${servicePath}`);
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
@@ -201,44 +197,45 @@ export async function uninstallDashboardService(): Promise<void> {
   }
 
   // daemon-reload
-  systemctlUser(["daemon-reload"]);
+  await systemctlUser(conn, xdgRuntimeDir, ["daemon-reload"]);
   logger.success(`Dashboard service uninstalled.`);
 }
 
-export async function restartDashboardService(): Promise<void> {
+export async function restartDashboardService(
+  conn: ServerConnection,
+  xdgRuntimeDir: string,
+): Promise<void> {
   if (!isLinux()) {
     throw new Error("systemd services are only supported on Linux.");
   }
-  const result = systemctlUser(["restart", DASHBOARD_SERVICE_UNIT]);
+  const result = await systemctlUser(conn, xdgRuntimeDir, ["restart", DASHBOARD_SERVICE_UNIT]);
   if (result.code !== 0) {
     throw new Error(`systemctl restart failed: ${result.stderr}`);
   }
   logger.success(`Dashboard service restarted.`);
 }
 
-export async function getDashboardServiceStatus(port = constants.DASHBOARD_PORT): Promise<DashboardServiceStatus> {
+export async function getDashboardServiceStatus(
+  conn: ServerConnection,
+  xdgRuntimeDir: string,
+  port = constants.DASHBOARD_PORT,
+): Promise<DashboardServiceStatus> {
   if (!isLinux()) {
     return { installed: false, active: false, enabled: false, portResponding: false };
   }
 
   const servicePath = getDashboardServicePath();
-  let installed = false;
-  try {
-    await fs.access(servicePath);
-    installed = true;
-  } catch {
-    // Service file not installed
-  }
+  const installed = await conn.exists(servicePath);
 
-  const activeResult = systemctlUser(["is-active", DASHBOARD_SERVICE_UNIT]);
+  const activeResult = await systemctlUser(conn, xdgRuntimeDir, ["is-active", DASHBOARD_SERVICE_UNIT]);
   const active = activeResult.code === 0;
 
-  const enabledResult = systemctlUser(["is-enabled", DASHBOARD_SERVICE_UNIT]);
+  const enabledResult = await systemctlUser(conn, xdgRuntimeDir, ["is-enabled", DASHBOARD_SERVICE_UNIT]);
   const enabled = enabledResult.code === 0;
 
   // Get PID
   let pid: number | undefined;
-  const showResult = systemctlUser(["show", DASHBOARD_SERVICE_UNIT, "--property=MainPID"]);
+  const showResult = await systemctlUser(conn, xdgRuntimeDir, ["show", DASHBOARD_SERVICE_UNIT, "--property=MainPID"]);
   const pidMatch = showResult.stdout.match(/MainPID=(\d+)/);
   if (pidMatch && pidMatch[1] != null && pidMatch[1] !== "0") {
     pid = parseInt(pidMatch[1], 10);
@@ -246,7 +243,7 @@ export async function getDashboardServiceStatus(port = constants.DASHBOARD_PORT)
 
   // Get uptime
   let uptime: string | undefined;
-  const uptimeResult = systemctlUser(["show", DASHBOARD_SERVICE_UNIT, "--property=ActiveEnterTimestamp"]);
+  const uptimeResult = await systemctlUser(conn, xdgRuntimeDir, ["show", DASHBOARD_SERVICE_UNIT, "--property=ActiveEnterTimestamp"]);
   const tsMatch = uptimeResult.stdout.match(/ActiveEnterTimestamp=(.+)/);
   if (tsMatch && tsMatch[1] != null) {
     uptime = tsMatch[1].trim();
