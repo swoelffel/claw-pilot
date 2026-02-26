@@ -1,8 +1,8 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { AgentDefinition, CreateInstanceRequest, ProviderInfo, ProvidersResponse } from "../types.js";
-import { fetchNextPort, createInstance, fetchProviders } from "../api.js";
+import type { AgentDefinition, Blueprint, CreateInstanceRequest, ProviderInfo, ProvidersResponse } from "../types.js";
+import { fetchNextPort, createInstance, fetchProviders, fetchBlueprints } from "../api.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { sectionLabelStyles, spinnerStyles, errorBannerStyles, buttonStyles } from "../styles/shared.js";
 
@@ -253,6 +253,9 @@ export class CreateDialog extends LitElement {
   @state() private _apiKey = "";
   @state() private _agentMode: "minimal" | "custom" = "minimal";
   @state() private _customAgents: Array<{ id: string; name: string }> = [];
+  @state() private _blueprints: Blueprint[] = [];
+  @state() private _blueprintsLoading = false;
+  @state() private _selectedBlueprintId: number | null = null;
 
   // --- Submit state ---
   @state() private _submitting = false;
@@ -262,6 +265,7 @@ export class CreateDialog extends LitElement {
     super.connectedCallback();
     this._loadNextPort();
     this._loadProviders();
+    this._loadBlueprints();
   }
 
   private async _loadNextPort(): Promise<void> {
@@ -300,6 +304,17 @@ export class CreateDialog extends LitElement {
       this._model = "anthropic/claude-sonnet-4-6";
     } finally {
       this._providersLoading = false;
+    }
+  }
+
+  private async _loadBlueprints(): Promise<void> {
+    this._blueprintsLoading = true;
+    try {
+      this._blueprints = await fetchBlueprints();
+    } catch {
+      this._blueprints = [];
+    } finally {
+      this._blueprintsLoading = false;
     }
   }
 
@@ -391,6 +406,7 @@ export class CreateDialog extends LitElement {
       provider: this._selectedProvider?.id ?? "anthropic",
       apiKey: this._selectedProvider?.requiresKey ? this._apiKey.trim() : "",
       agents: this._buildAgents(),
+      blueprintId: this._selectedBlueprintId ?? undefined,
     };
 
     try {
@@ -409,7 +425,11 @@ export class CreateDialog extends LitElement {
       <div class="spinner-overlay">
         <div class="spinner"></div>
         <div>${msg("Provisioning instance", { id: "spinner-provisioning" })} <strong>${this._slug}</strong>...</div>
-        <div class="spinner-msg">${msg("This may take 20-30 seconds (systemd start + health check)", { id: "spinner-wait" })}</div>
+        ${this._selectedBlueprintId ? html`
+          <div class="spinner-msg">${msg("Deploying blueprint agents...", { id: "cd-deploying" })}</div>
+        ` : html`
+          <div class="spinner-msg">${msg("This may take 20-30 seconds (systemd start + health check)", { id: "spinner-wait" })}</div>
+        `}
       </div>
     `;
   }
@@ -554,6 +574,31 @@ export class CreateDialog extends LitElement {
 
         <!-- Provider + API Key -->
         ${this._renderProviderSection()}
+
+        <hr class="divider" />
+
+        <!-- Blueprint -->
+        <div class="section">
+          <div class="section-label">${msg("Team Blueprint", { id: "cd-blueprint" })}</div>
+          <div class="field">
+            <label for="blueprint">${msg("Team Blueprint", { id: "cd-blueprint" })}</label>
+            <select
+              id="blueprint"
+              @change=${(e: Event) => {
+                const val = (e.target as HTMLSelectElement).value;
+                this._selectedBlueprintId = val ? Number(val) : null;
+              }}
+            >
+              <option value="">${msg("None", { id: "cd-blueprint-none" })}</option>
+              ${this._blueprints.map(bp => html`
+                <option value="${bp.id}">
+                  ${bp.icon ? `${bp.icon} ` : ""}${bp.name}${bp.agent_count ? ` (${bp.agent_count} agents)` : ""}
+                </option>
+              `)}
+            </select>
+            <span class="field-hint">${msg("Optionally deploy a team of agents", { id: "cd-blueprint-hint" })}</span>
+          </div>
+        </div>
 
         <hr class="divider" />
 

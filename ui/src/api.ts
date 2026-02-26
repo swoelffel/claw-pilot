@@ -1,4 +1,4 @@
-import type { InstanceInfo, AgentInfo, CreateInstanceRequest, CreateAgentRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink } from "./types.js";
+import type { InstanceInfo, AgentInfo, CreateInstanceRequest, CreateAgentRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink, Blueprint, BlueprintBuilderData, CreateBlueprintRequest } from "./types.js";
 
 declare global {
   interface Window {
@@ -157,4 +157,100 @@ export async function deleteAgent(
   return apiFetch<BuilderData>(`/instances/${instanceSlug}/agents/${agentId}`, {
     method: "DELETE",
   });
+}
+
+// --- Blueprint API ---
+
+export async function fetchBlueprints(): Promise<Blueprint[]> {
+  return apiFetch<Blueprint[]>("/blueprints");
+}
+
+export async function createBlueprint(data: CreateBlueprintRequest): Promise<Blueprint> {
+  return apiFetch<Blueprint>("/blueprints", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateBlueprint(
+  id: number,
+  data: Partial<CreateBlueprintRequest>,
+): Promise<Blueprint> {
+  return apiFetch<Blueprint>(`/blueprints/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteBlueprint(id: number): Promise<void> {
+  await apiFetch(`/blueprints/${id}`, { method: "DELETE" });
+}
+
+export async function fetchBlueprintBuilder(id: number): Promise<BlueprintBuilderData> {
+  return apiFetch<BlueprintBuilderData>(`/blueprints/${id}/builder`);
+}
+
+export async function createBlueprintAgent(
+  blueprintId: number,
+  data: { agent_id: string; name: string; model?: string },
+): Promise<BlueprintBuilderData> {
+  return apiFetch<BlueprintBuilderData>(`/blueprints/${blueprintId}/agents`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteBlueprintAgent(
+  blueprintId: number,
+  agentId: string,
+): Promise<BlueprintBuilderData> {
+  return apiFetch<BlueprintBuilderData>(`/blueprints/${blueprintId}/agents/${agentId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function updateBlueprintAgentPosition(
+  blueprintId: number,
+  agentId: string,
+  x: number,
+  y: number,
+): Promise<void> {
+  await apiFetch(`/blueprints/${blueprintId}/agents/${agentId}/position`, {
+    method: "PATCH",
+    body: JSON.stringify({ x, y }),
+  });
+}
+
+export async function fetchBlueprintAgentFile(
+  blueprintId: number,
+  agentId: string,
+  filename: string,
+): Promise<AgentFileContent> {
+  return apiFetch<AgentFileContent>(`/blueprints/${blueprintId}/agents/${agentId}/files/${filename}`);
+}
+
+export async function updateBlueprintAgentFile(
+  blueprintId: number,
+  agentId: string,
+  filename: string,
+  content: string,
+): Promise<AgentFileContent> {
+  return apiFetch<AgentFileContent>(
+    `/blueprints/${blueprintId}/agents/${agentId}/files/${filename}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ content }),
+    },
+  );
+}
+
+export async function updateBlueprintSpawnLinks(
+  blueprintId: number,
+  agentId: string,
+  targets: string[],
+): Promise<{ ok: boolean; links: AgentLink[] }> {
+  return apiFetch<{ ok: boolean; links: AgentLink[] }>(
+    `/blueprints/${blueprintId}/agents/${agentId}/spawn-links`,
+    { method: "PATCH", body: JSON.stringify({ targets }) },
+  );
 }

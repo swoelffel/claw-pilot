@@ -2,8 +2,15 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { AgentBuilderInfo, AgentLink, AgentFileContent } from "../types.js";
-import { fetchAgentFile, updateSpawnLinks, updateAgentFile } from "../api.js";
+import type { AgentBuilderInfo, AgentLink, AgentFileContent, PanelContext } from "../types.js";
+import {
+  fetchAgentFile,
+  updateSpawnLinks,
+  updateAgentFile,
+  fetchBlueprintAgentFile,
+  updateBlueprintAgentFile,
+  updateBlueprintSpawnLinks,
+} from "../api.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { sectionLabelStyles } from "../styles/shared.js";
 import { marked } from "marked";
@@ -70,6 +77,11 @@ export class AgentDetailPanel extends LitElement {
 
     .panel-btn:hover {
       color: var(--text-primary);
+      background: var(--bg-border);
+    }
+
+    .panel-btn.danger:hover {
+      color: var(--state-error);
       background: var(--bg-border);
     }
 
@@ -693,7 +705,10 @@ export class AgentDetailPanel extends LitElement {
   @property({ type: Object }) agent!: AgentBuilderInfo;
   @property({ type: Array }) links: AgentLink[] = [];
   @property({ type: Array }) allAgents: AgentBuilderInfo[] = [];
+  // Kept for backward compatibility during transition — prefer using `context`
   @property({ type: String }) slug = "";
+  // Primary routing context: determines whether this panel operates on an instance or a blueprint
+  @property({ type: Object }) context!: PanelContext;
 
   @state() private _activeTab = "info";
   @state() private _fileCache = new Map<string, AgentFileContent>();
@@ -716,7 +731,14 @@ export class AgentDetailPanel extends LitElement {
     if (this._fileCache.has(filename)) return;
     this._loadingFile = true;
     try {
-      const content = await fetchAgentFile(this.slug, this.agent.agent_id, filename);
+      let content: AgentFileContent;
+      if (this.context.kind === "blueprint") {
+        // Blueprint context: use blueprint-specific API
+        content = await fetchBlueprintAgentFile(this.context.blueprintId, this.agent.agent_id, filename);
+      } else {
+        // Instance context: use instance-specific API
+        content = await fetchAgentFile(this.context.slug, this.agent.agent_id, filename);
+      }
       this._fileCache = new Map(this._fileCache).set(filename, content);
     } catch {
       // Ignore — file may not be synced yet
@@ -834,7 +856,16 @@ export class AgentDetailPanel extends LitElement {
         .filter(id => !this._pendingRemovals.has(id));
       const added = Array.from(this._pendingAdditions);
       const targets = [...new Set([...remaining, ...added])];
-      const result = await updateSpawnLinks(this.slug, this.agent.agent_id, targets);
+
+      let result: { ok: boolean; links: AgentLink[] };
+      if (this.context.kind === "blueprint") {
+        // Blueprint context: use blueprint-specific spawn links API
+        result = await updateBlueprintSpawnLinks(this.context.blueprintId, this.agent.agent_id, targets);
+      } else {
+        // Instance context: use instance-specific spawn links API
+        result = await updateSpawnLinks(this.context.slug, this.agent.agent_id, targets);
+      }
+
       this._pendingRemovals = new Set();
       this._pendingAdditions = new Set();
       this._dropdownOpen = false;
@@ -897,16 +928,28 @@ export class AgentDetailPanel extends LitElement {
   }
 
   private async _saveFile(filename: string): Promise<void> {
-    if (!this.agent || !this.slug) return;
+    if (!this.agent || !this.context) return;
     this._fileSaving = true;
     this._fileSaveError = "";
     try {
-      const updated = await updateAgentFile(
-        this.slug,
-        this.agent.agent_id,
-        filename,
-        this._editContent,
-      );
+      let updated: AgentFileContent;
+      if (this.context.kind === "blueprint") {
+        // Blueprint context: use blueprint-specific file update API
+        updated = await updateBlueprintAgentFile(
+          this.context.blueprintId,
+          this.agent.agent_id,
+          filename,
+          this._editContent,
+        );
+      } else {
+        // Instance context: use instance-specific file update API
+        updated = await updateAgentFile(
+          this.context.slug,
+          this.agent.agent_id,
+          filename,
+          this._editContent,
+        );
+      }
       this._fileCache = new Map(this._fileCache).set(filename, updated);
       this._exitEditMode();
     } catch (err) {
@@ -946,7 +989,7 @@ export class AgentDetailPanel extends LitElement {
           <span class="info-label">${msg("Workspace", { id: "adp-label-workspace" })}</span>
           <span class="info-value">${a.workspace_path}</span>
         </div>
-        ${a.synced_at ? html`
+        ${a.synced_at && this.context?.kind !== "blueprint" ? html`
           <div class="info-item">
             <span class="info-label">${msg("Last sync", { id: "adp-label-last-sync" })}</span>
             <span class="info-value">${a.synced_at}</span>
@@ -1150,6 +1193,18 @@ export class AgentDetailPanel extends LitElement {
           ${a.role ? html`<div class="agent-role-label">${a.role}</div>` : ""}
         </div>
         <div class="panel-controls">
+          ${!a.is_default ? html`
+            <button
+              class="panel-btn danger"
+              aria-label=${msg("Delete agent", { id: "adp-btn-delete-agent" })}
+              title=${msg("Delete agent", { id: "adp-btn-delete-agent" })}
+              @click=${() => this.dispatchEvent(new CustomEvent("agent-delete-requested", {
+                detail: { agentId: a.agent_id },
+                bubbles: true,
+                composed: true,
+              }))}
+            >🗑</button>
+          ` : ""}
           <button
             class="panel-btn"
             aria-label=${this._expanded ? msg("Collapse", { id: "adp-btn-collapse" }) : msg("Expand", { id: "adp-btn-expand" })}

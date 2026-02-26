@@ -17,6 +17,7 @@ import { InstanceAlreadyExistsError, ClawPilotError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
 import { shellEscape } from "../lib/shell.js";
 import { resolveXdgRuntimeDir } from "../lib/xdg.js";
+import { BlueprintDeployer } from "./blueprint-deployer.js";
 
 export interface ProvisionResult {
   slug: string;
@@ -81,7 +82,7 @@ export class Provisioner {
     private portAllocator: PortAllocator,
   ) {}
 
-  async provision(answers: WizardAnswers, serverId: number): Promise<ProvisionResult> {
+  async provision(answers: WizardAnswers, serverId: number, blueprintId?: number): Promise<ProvisionResult> {
     const { slug } = answers;
 
     // Step 1: Validation
@@ -253,6 +254,15 @@ export class Provisioner {
       `Instance created with ${answers.agents.length} agent(s) on port ${answers.port}`,
     );
 
+    // Step 10: Deploy blueprint (if specified)
+    if (blueprintId !== undefined) {
+      logger.step("Deploying blueprint agents...");
+      const deployer = new BlueprintDeployer(this.conn, this.registry);
+      await deployer.deploy(blueprintId, instance);
+      // Restart daemon to pick up new agents
+      await lifecycle.restart(slug);
+    }
+
     return {
       slug,
       port: answers.port,
@@ -274,10 +284,12 @@ export class Provisioner {
       agents: WizardAnswers["agents"];
     },
   ): Promise<void> {
-    // Load templates from the package's templates/workspace directory
+    // Load templates from the package's templates/workspace directory.
+    // In dev: src/core/ → ../../templates/workspace = templates/workspace ✓
+    // In prod: dist/ → ../templates/workspace = templates/workspace ✓
     const templateDir = path.join(
       path.dirname(new URL(import.meta.url).pathname),
-      "../../templates/workspace",
+      "../templates/workspace",
     );
 
     const files = ["AGENTS.md", "SOUL.md", "TOOLS.md", "USER.md", "MEMORY.md"];
