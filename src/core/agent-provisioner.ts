@@ -29,7 +29,7 @@ export class AgentProvisioner {
     if (existing) throw new Error(`Agent "${data.agentSlug}" already exists`);
 
     // 2. Determine workspace dir from instance config_path
-    // config_path is like /home/freebox/.openclaw/openclaw.json
+    // config_path is like /home/openclaw/.openclaw/openclaw.json
     // openclawHome is the directory containing openclaw.json
     const path = await import("node:path");
     const openclawHome = path.dirname(instance.config_path);

@@ -33,7 +33,7 @@ afterEach(() => {
 function seedInstance(opts: { slug?: string; nginx?: string } = {}) {
   const slug = opts.slug ?? "demo1";
   const server = registry.upsertLocalServer("testhost", "/opt/openclaw");
-  const stateDir = `/home/freebox/.openclaw-${slug}`;
+  const stateDir = `/home/openclaw/.openclaw-${slug}`;
   // Destroyer uses getSystemdDir() from platform.ts — seed at the same path
   const serviceFile = path.join(getSystemdDir(), `openclaw-${slug}.service`);
 

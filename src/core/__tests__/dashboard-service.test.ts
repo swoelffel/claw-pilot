@@ -6,7 +6,7 @@ const opts = {
   nodeBin: "/usr/local/bin/node",
   clawPilotBin: "/opt/claw-pilot/dist/index.mjs",
   port: 19000,
-  home: "/home/freebox",
+  home: "/home/openclaw",
   uid: 1000,
 };
 
@@ -23,7 +23,7 @@ describe("generateDashboardService", () => {
 
   it("sets HOME to user home dir", () => {
     const service = generateDashboardService(opts);
-    expect(service).toContain("Environment=HOME=/home/freebox");
+    expect(service).toContain("Environment=HOME=/home/openclaw");
   });
 
   it("has Restart=always", () => {

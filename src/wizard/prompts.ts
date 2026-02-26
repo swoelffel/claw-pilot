@@ -202,12 +202,12 @@ export async function promptNginx(): Promise<{
 
   const certPath = await input({
     message: "SSL certificate path:",
-    default: "/etc/letsencrypt/live/wcasldspv54l.hunik.io/fullchain.pem",
+    default: "/etc/letsencrypt/live/yourdomain.com/fullchain.pem",
   });
 
   const keyPath = await input({
     message: "SSL key path:",
-    default: "/etc/letsencrypt/live/wcasldspv54l.hunik.io/privkey.pem",
+    default: "/etc/letsencrypt/live/yourdomain.com/privkey.pem",
   });
 
   return { enabled: true, domain, certPath, keyPath };
