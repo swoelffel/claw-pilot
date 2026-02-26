@@ -776,6 +776,57 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
 
   // --- Blueprint routes ---
 
+  /**
+   * Seed the default "main" agent into a newly created blueprint.
+   * Mirrors the implicit "main" agent that OpenClaw creates on every fresh instance.
+   * Reads workspace file templates from templates/workspace/ and stores them in the DB.
+   */
+  async function seedBlueprintMainAgent(reg: Registry, blueprintId: number): Promise<void> {
+    const { createHash } = await import("node:crypto");
+
+    // Create the main agent row
+    const mainAgent = reg.createBlueprintAgent(blueprintId, {
+      agentId: "main",
+      name: "Main",
+      isDefault: true,
+    });
+
+    // Centre it on the canvas
+    reg.updateBlueprintAgentPosition(mainAgent.id, 400, 300);
+
+    // Resolve templates directory (same pattern as provisioner.ts)
+    const templateDir = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../templates/workspace",
+    );
+
+    // Seed the 6 standard workspace files (no MEMORY.md — runtime only)
+    const templateFiles = ["AGENTS.md", "SOUL.md", "TOOLS.md", "USER.md", "IDENTITY.md", "HEARTBEAT.md"];
+    const date = new Date().toISOString().split("T")[0]!;
+
+    for (const filename of templateFiles) {
+      let content: string;
+      try {
+        content = await fs.readFile(path.join(templateDir, filename), "utf-8");
+      } catch {
+        content = `# ${filename}\n`;
+      }
+
+      // Apply simple template substitutions where relevant
+      content = content
+        .replace(/\{\{agentId\}\}/g, "main")
+        .replace(/\{\{agentName\}\}/g, "Main")
+        .replace(/\{\{instanceSlug\}\}/g, "blueprint")
+        .replace(/\{\{instanceName\}\}/g, "Blueprint")
+        .replace(/\{\{date\}\}/g, date)
+        // Strip {{#each agents}}...{{/each}} blocks (no agents list in a fresh blueprint)
+        .replace(/\{\{#each agents\}\}[\s\S]*?\{\{\/each\}\}/g, "");
+
+      const contentHash = createHash("sha256").update(content).digest("hex").slice(0, 16);
+      reg.upsertAgentFile(mainAgent.id, { filename, content, contentHash });
+    }
+  }
+
   // Helper: build the full builder payload for a blueprint
   function buildBlueprintPayload(blueprintId: number, reg: Registry) {
     const data = reg.getBlueprintBuilderData(blueprintId);
@@ -839,6 +890,10 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
         tags: body.tags,
         color: body.color,
       });
+
+      // Seed default "main" agent — every blueprint starts with one
+      await seedBlueprintMainAgent(registry, blueprint.id);
+
       return c.json(blueprint, 201);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
