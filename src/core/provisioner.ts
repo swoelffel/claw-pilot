@@ -7,17 +7,17 @@ import type { PortAllocator } from "./port-allocator.js";
 import type { WizardAnswers } from "./config-generator.js";
 import { generateConfig, generateEnv, PROVIDER_ENV_VARS } from "./config-generator.js";
 import { generateSystemdService } from "./systemd-generator.js";
-import { generateNginxVhost } from "./nginx-generator.js";
+import { generateLaunchdPlist } from "./launchd-generator.js";
 import { generateGatewayToken } from "./secrets.js";
 import { OpenClawCLI } from "./openclaw-cli.js";
 import { Lifecycle } from "./lifecycle.js";
 import { constants } from "../lib/constants.js";
-import { getOpenClawHome, getSystemdDir, getSystemdUnit } from "../lib/platform.js";
+import { getOpenClawHome, getSystemdDir, getSystemdUnit, getServiceManager, getLaunchdDir, getLaunchdPlistPath } from "../lib/platform.js";
 import { InstanceAlreadyExistsError, ClawPilotError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
-import { shellEscape } from "../lib/shell.js";
 import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 import { BlueprintDeployer } from "./blueprint-deployer.js";
+import * as os from "node:os";
 
 export interface ProvisionResult {
   slug: string;
@@ -26,7 +26,6 @@ export interface ProvisionResult {
   gatewayToken: string;
   agentCount: number;
   telegramBot?: string;
-  nginxDomain?: string;
 }
 
 /** Exported for testing: resolve the API key from answers, reading from existing instance if needed */
@@ -105,9 +104,7 @@ export class Provisioner {
     const configPath = path.join(stateDir, "openclaw.json");
     const envPath = path.join(stateDir, ".env");
     const logsDir = path.join(stateDir, "logs");
-    const systemdUnit = getSystemdUnit(slug);
-    const systemdDir = getSystemdDir();
-    const serviceFile = path.join(systemdDir, systemdUnit);
+    const sm = getServiceManager();
 
     // Detect openclaw binary
     const cli = new OpenClawCLI(this.conn);
@@ -165,20 +162,39 @@ export class Provisioner {
       });
     }
 
-    // Step 6: Generate and install systemd service
-    logger.step("Installing systemd service...");
-    const serviceContent = generateSystemdService({
-      slug,
-      displayName: answers.displayName,
-      port: answers.port,
-      stateDir,
-      configPath,
-      openclawHome,
-      openclawBin: openclaw.bin,
-      uid,
-    });
-    await this.conn.mkdir(systemdDir);
-    await this.conn.writeFile(serviceFile, serviceContent);
+    // Step 6: Generate and install service (systemd on Linux, launchd on macOS)
+    if (sm === "launchd") {
+      logger.step("Installing launchd service...");
+      const plistContent = generateLaunchdPlist({
+        slug,
+        displayName: answers.displayName,
+        port: answers.port,
+        stateDir,
+        configPath,
+        openclawBin: openclaw.bin,
+        home: os.homedir(),
+      });
+      const launchdDir = getLaunchdDir();
+      await this.conn.mkdir(launchdDir);
+      await this.conn.writeFile(getLaunchdPlistPath(slug), plistContent);
+    } else {
+      logger.step("Installing systemd service...");
+      const systemdDir = getSystemdDir();
+      const systemdUnit = getSystemdUnit(slug);
+      const serviceFile = path.join(systemdDir, systemdUnit);
+      const serviceContent = generateSystemdService({
+        slug,
+        displayName: answers.displayName,
+        port: answers.port,
+        stateDir,
+        configPath,
+        openclawHome,
+        openclawBin: openclaw.bin,
+        uid,
+      });
+      await this.conn.mkdir(systemdDir);
+      await this.conn.writeFile(serviceFile, serviceContent);
+    }
 
     const lifecycle = new Lifecycle(this.conn, this.registry, xdgRuntimeDir);
 
@@ -190,11 +206,12 @@ export class Provisioner {
       port: answers.port,
       configPath,
       stateDir,
-      systemdUnit,
+      systemdUnit: sm === "launchd"
+        ? `ai.openclaw.${slug}`
+        : `openclaw-${slug}.service`,
       telegramBot: answers.telegram.enabled
         ? undefined // will be set after pairing
         : undefined,
-      nginxDomain: answers.nginx.domain,
       defaultModel: answers.defaultModel,
       discovered: false,
     });
@@ -230,23 +247,6 @@ export class Provisioner {
       await lifecycle.restart(slug);
     }
 
-    // Step 9: Nginx (if enabled)
-    if (answers.nginx.enabled && answers.nginx.domain) {
-      logger.step("Configuring Nginx...");
-      const vhostContent = generateNginxVhost({
-        slug,
-        domain: answers.nginx.domain,
-        port: answers.port,
-        certPath: answers.nginx.certPath ?? "",
-        keyPath: answers.nginx.keyPath ?? "",
-      });
-      const vhostPath = `/etc/nginx/sites-available/${answers.nginx.domain}`;
-      const enabledPath = `/etc/nginx/sites-enabled/${answers.nginx.domain}`;
-      await this.conn.writeFile(vhostPath, vhostContent);
-      await this.conn.exec(`sudo ln -sf ${shellEscape(vhostPath)} ${shellEscape(enabledPath)}`);
-      await this.conn.exec("sudo nginx -t && sudo systemctl reload nginx");
-    }
-
     // Log creation event
     this.registry.logEvent(
       slug,
@@ -270,7 +270,6 @@ export class Provisioner {
       gatewayToken,
       agentCount: answers.agents.length,
       telegramBot: answers.telegram.enabled ? "pending" : undefined,
-      nginxDomain: answers.nginx.domain,
     };
   }
 

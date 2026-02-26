@@ -155,7 +155,7 @@ export const templates = {
 
   // delete-instance-dialog.ts
   "did-title": "Elimina istanza",
-  "did-warning": "Questo fermerà il servizio, rimuoverà tutti i file (directory di stato, unità systemd, configurazione nginx) e cancellerà l'istanza dal registro. Questa azione non può essere annullata.",
+  "did-warning": "Questo fermerà il servizio, rimuoverà tutti i file (directory di stato, unità systemd) e cancellerà l'istanza dal registro. Questa azione non può essere annullata.",
   "did-confirm-label": "Digita lo slug dell'istanza per confermare",
   "did-spinner-deleting": "Distruzione dell'istanza...",
 

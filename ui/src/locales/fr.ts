@@ -156,7 +156,7 @@ export const templates = {
 
   // delete-instance-dialog.ts
   "did-title": "Supprimer l'instance",
-  "did-warning": "Cela arrêtera définitivement le service, supprimera tous les fichiers (répertoire d'état, unité systemd, config nginx) et retirera l'instance du registre. Cette action est irréversible.",
+  "did-warning": "Cela arrêtera définitivement le service, supprimera tous les fichiers (répertoire d'état, unité systemd) et retirera l'instance du registre. Cette action est irréversible.",
   "did-confirm-label": "Saisissez le slug de l'instance pour confirmer",
   "did-spinner-deleting": "Destruction de l'instance...",
 

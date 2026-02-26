@@ -183,36 +183,6 @@ export async function promptTelegram(): Promise<{
   return { enabled: true, botToken };
 }
 
-export async function promptNginx(): Promise<{
-  enabled: boolean;
-  domain?: string;
-  certPath?: string;
-  keyPath?: string;
-}> {
-  const enabled = await confirm({
-    message: "Configure Nginx reverse proxy?",
-    default: false,
-  });
-  if (!enabled) return { enabled: false };
-
-  const domain = await input({
-    message: "Domain name:",
-    validate: (v) => (v.includes(".") ? true : "Must be a valid domain"),
-  });
-
-  const certPath = await input({
-    message: "SSL certificate path:",
-    default: "/etc/letsencrypt/live/yourdomain.com/fullchain.pem",
-  });
-
-  const keyPath = await input({
-    message: "SSL key path:",
-    default: "/etc/letsencrypt/live/yourdomain.com/privkey.pem",
-  });
-
-  return { enabled: true, domain, certPath, keyPath };
-}
-
 export async function promptMem0(
   conn: { exec: (cmd: string) => Promise<{ stdout: string }> },
 ): Promise<{ enabled: boolean; ollamaUrl?: string; qdrantHost?: string; qdrantPort?: number }> {

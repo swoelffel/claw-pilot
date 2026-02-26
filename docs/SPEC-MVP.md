@@ -49,7 +49,6 @@ claw-pilot/
       pairing.ts             # Device pairing bootstrap + Telegram pairing
       config-generator.ts    # Generate openclaw.json from wizard answers
       systemd-generator.ts   # Generate .service file
-      nginx-generator.ts     # Generate Nginx vhost (optional)
       secrets.ts             # Crypto-random token generation
       port-allocator.ts      # Registry-based port allocation
       openclaw-cli.ts        # Wrapper around the openclaw CLI (plugins, devices, pairing)
@@ -86,7 +85,6 @@ claw-pilot/
       platform.ts            # OS detection, paths
   templates/                 # Template files (copied during provisioning)
     systemd.service.hbs      # Handlebars template for systemd service
-    nginx-vhost.hbs          # Handlebars template for Nginx vhost
     workspace/               # Workspace bootstrap files
       AGENTS.md.hbs
       SOUL.md.hbs
@@ -130,7 +128,7 @@ claw-pilot/
 | `better-sqlite3` | ^11 | Embedded SQLite |
 | `hono` | ^4 | Dashboard HTTP server (lightweight, Node-compatible) |
 | `ws` | ^8 | WebSocket server (dashboard push) |
-| `handlebars` | ^4 | Templates (systemd, nginx, workspace files) |
+| `handlebars` | ^4 | Templates (systemd, workspace files) |
 | `chalk` | ^5 | ANSI terminal colors |
 | `ora` | ^8 | Terminal spinners |
 | `cli-table3` | ^0.6 | Terminal tables |
@@ -359,7 +357,6 @@ CREATE TABLE IF NOT EXISTS instances (
   state_dir       TEXT NOT NULL,
   systemd_unit    TEXT NOT NULL,
   telegram_bot    TEXT,
-  nginx_domain    TEXT,
   default_model   TEXT,
   discovered      INTEGER DEFAULT 0,  -- 1 if adopted from existing infra, 0 if created by claw-pilot
   created_at      TEXT DEFAULT (datetime('now')),
@@ -461,7 +458,6 @@ export interface InstanceRecord {
   state_dir: string;
   systemd_unit: string;
   telegram_bot: string | null;
-  nginx_domain: string | null;
   default_model: string | null;
   discovered: number;
   created_at: string;
@@ -524,15 +520,14 @@ export class Registry {
     stateDir: string;
     systemdUnit: string;
     telegramBot?: string;
-    nginxDomain?: string;
     defaultModel?: string;
     discovered?: boolean;
   }): InstanceRecord {
     this.db
       .prepare(
         `INSERT INTO instances (server_id, slug, display_name, port, config_path, state_dir,
-         systemd_unit, telegram_bot, nginx_domain, default_model, discovered)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         systemd_unit, telegram_bot, default_model, discovered)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         data.serverId,
@@ -543,7 +538,6 @@ export class Registry {
         data.stateDir,
         data.systemdUnit,
         data.telegramBot ?? null,
-        data.nginxDomain ?? null,
         data.defaultModel ?? null,
         data.discovered ? 1 : 0
       );
@@ -894,7 +888,6 @@ export interface DiscoveredInstance {
   systemdState: "active" | "inactive" | "failed" | null;
   gatewayHealthy: boolean;
   telegramBot: string | null;       // @username if configured
-  nginxDomain: string | null;       // domain if vhost found
   defaultModel: string | null;
   source: "directory" | "systemd" | "port" | "legacy";  // which heuristic found it
 }
@@ -1076,7 +1069,7 @@ export class InstanceDiscovery {
   // --- Shared parsing logic ---
 
   /**
-   * Parse an openclaw.json file and enrich with health/systemd/nginx info.
+   * Parse an openclaw.json file and enrich with health/systemd info.
    * Returns null if the config is unreadable or invalid.
    */
   private async parseInstance(
@@ -1157,16 +1150,6 @@ export class InstanceDiscovery {
       systemdState = state as "active" | "inactive" | "failed";
     }
 
-    // Check nginx vhost
-    let nginxDomain: string | null = null;
-    const nginxResult = await this.conn.exec(
-      `ls /etc/nginx/sites-enabled/ 2>/dev/null | grep -i "${slug}" || true`
-    );
-    const nginxFile = nginxResult.stdout.trim();
-    if (nginxFile) {
-      nginxDomain = nginxFile;
-    }
-
     return {
       slug,
       stateDir,
@@ -1177,7 +1160,6 @@ export class InstanceDiscovery {
       systemdState,
       gatewayHealthy,
       telegramBot,
-      nginxDomain,
       defaultModel,
       source,
     };
@@ -1236,7 +1218,6 @@ export class InstanceDiscovery {
       stateDir: instance.stateDir,
       systemdUnit: instance.systemdUnit ?? `openclaw-${instance.slug}.service`,
       telegramBot: instance.telegramBot ?? undefined,
-      nginxDomain: instance.nginxDomain ?? undefined,
       defaultModel: instance.defaultModel ?? undefined,
       discovered: true,
     });
@@ -1336,12 +1317,6 @@ export interface WizardAnswers {
     enabled: boolean;
     botToken?: string;
   };
-  nginx: {
-    enabled: boolean;
-    domain?: string;
-    certPath?: string;
-    keyPath?: string;
-  };
   mem0: {
     enabled: boolean;
     ollamaUrl?: string;
@@ -1424,24 +1399,7 @@ WantedBy=default.target
 **Critical rule**: the 3 variables `OPENCLAW_PROFILE`, `OPENCLAW_STATE_DIR`,
 `OPENCLAW_CONFIG_PATH` are ALWAYS present (trap 1 from the CDC).
 
-### 9.3 Nginx generator (`nginx-generator.ts`)
-
-**Inputs**:
-```typescript
-export interface NginxOptions {
-  slug: string;
-  domain: string;
-  port: number;
-  certPath: string;
-  keyPath: string;
-}
-```
-
-**Output**: string of the Nginx vhost file
-
-Optional generation (only if `--with-nginx` in wizard).
-
-### 9.4 .env generator
+### 9.3 .env generator
 
 Generates the `.env` file:
 ```
@@ -1468,7 +1426,6 @@ export interface ProvisionResult {
   gatewayToken: string;
   agentCount: number;
   telegramBot?: string;
-  nginxDomain?: string;
 }
 
 export class Provisioner {
@@ -1522,16 +1479,10 @@ export class Provisioner {
     //   - openclaw --profile <slug> devices list -> extract request ID
     //   - openclaw --profile <slug> devices approve <request-id>
 
-    // Step 10: Nginx (if enabled)
-    //   - Generate vhost
-    //   - Write to /etc/nginx/sites-available/
-    //   - Symlink to sites-enabled/
-    //   - nginx -t && systemctl reload nginx (sudo required)
-
-    // Step 11: Register in registry
+    // Step 10: Register in registry
     //   - Instance + agents + port
 
-    // Step 12: Log event
+    // Step 11: Log event
     //   - registry.logEvent(slug, "created", detail)
 
     // Return result
@@ -1585,25 +1536,16 @@ export class Destroyer {
     // 6. Remove project directory
     await this.conn.remove(`/data/projects/${slug}`, { recursive: true });
 
-    // 7. Remove nginx vhost (if exists)
-    if (instance.nginx_domain) {
-      const vhostFile = `/etc/nginx/sites-available/${instance.nginx_domain}`;
-      const enabledLink = `/etc/nginx/sites-enabled/${instance.nginx_domain}`;
-      await this.conn.remove(enabledLink);
-      await this.conn.remove(vhostFile);
-      await this.conn.exec("sudo nginx -t && sudo systemctl reload nginx");
-    }
-
-    // 8. Release port in registry
+    // 6. Release port in registry
     this.registry.releasePort(instance.server_id, instance.port);
 
-    // 9. Delete agents from registry
+    // 7. Delete agents from registry
     this.registry.deleteAgents(instance.id);
 
-    // 10. Delete instance from registry
+    // 8. Delete instance from registry
     this.registry.deleteInstance(slug);
 
-    // 11. Log event
+    // 9. Log event
     this.registry.logEvent(slug, "destroyed");
   }
 }
@@ -2102,27 +2044,6 @@ export async function promptTelegram(): Promise<{ enabled: boolean; botToken?: s
   return { enabled: true, botToken };
 }
 
-export async function promptNginx(): Promise<WizardAnswers["nginx"]> {
-  const enabled = await confirm({ message: "Configure Nginx reverse proxy?", default: false });
-  if (!enabled) return { enabled: false };
-
-  const domain = await input({
-    message: "Domain name:",
-    validate: (v) => (v.includes(".") ? true : "Must be a valid domain"),
-  });
-
-  const certPath = await input({
-    message: "SSL certificate path:",
-    default: "/etc/letsencrypt/live/yourdomain.com/fullchain.pem",
-  });
-
-  const keyPath = await input({
-    message: "SSL key path:",
-    default: "/etc/letsencrypt/live/yourdomain.com/privkey.pem",
-  });
-
-  return { enabled: true, domain, certPath, keyPath };
-}
 ```
 
 ### 16.3 Workspace templates (`src/wizard/templates.ts`)
@@ -2642,7 +2563,6 @@ src/
       port-allocator.test.ts
       config-generator.test.ts
       systemd-generator.test.ts
-      nginx-generator.test.ts
       provisioner.test.ts
       destroyer.test.ts
       health.test.ts
@@ -2741,7 +2661,7 @@ export default defineConfig({
 |-------|---------|-----------------|
 | **Phase 1: Foundations** | `lib/`, `db/schema`, `server/local`, `core/registry`, `core/secrets`, `core/port-allocator` | 2-3 days |
 | **Phase 2: Discovery** | `core/discovery`, `commands/init` (with full scan + adopt flow) | 1-2 days |
-| **Phase 3: Generators** | `core/config-generator`, `core/systemd-generator`, `core/nginx-generator`, `templates/` | 2 days |
+| **Phase 3: Generators** | `core/config-generator`, `core/systemd-generator`, `templates/` | 2 days |
 | **Phase 4: CLI base** | `index.ts`, `commands/list`, `commands/status`, `commands/doctor` | 2 days |
 | **Phase 5: Wizard + Provisioner** | `wizard/`, `core/provisioner`, `commands/create` | 3 days |
 | **Phase 6: Lifecycle + Destroy** | `core/lifecycle`, `core/destroyer`, `commands/start,stop,restart,destroy` | 1 day |

@@ -3,8 +3,17 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { statSync } from "node:fs";
 import type { ServerConnection } from "../server/connection.js";
-import { isLinux, getSystemdDir, getDashboardServicePath, DASHBOARD_SERVICE_UNIT } from "../lib/platform.js";
+import {
+  getSystemdDir,
+  getDashboardServicePath,
+  DASHBOARD_SERVICE_UNIT,
+  getServiceManager,
+  getLaunchdDir,
+  getDashboardLaunchdPlistPath,
+  DASHBOARD_LAUNCHD_LABEL,
+} from "../lib/platform.js";
 import { generateDashboardService } from "./systemd-generator.js";
+import { generateDashboardLaunchdPlist } from "./launchd-generator.js";
 import { constants } from "../lib/constants.js";
 import { logger } from "../lib/logger.js";
 import { pollUntilReady } from "../lib/poll.js";
@@ -100,16 +109,17 @@ export async function installDashboardService(
   xdgRuntimeDir: string,
   port: number = constants.DASHBOARD_PORT,
 ): Promise<void> {
-  if (!isLinux()) {
-    throw new Error("systemd services are only supported on Linux.");
-  }
+  const sm = getServiceManager();
 
   // Resolve node binary via conn
   const nodeResult = await conn.execFile("which", ["node"]);
   let nodeBin = nodeResult.stdout.trim();
   if (!nodeBin) {
     // Fallback: check known paths
-    for (const candidate of ["/usr/local/bin/node", "/usr/bin/node"]) {
+    const nodeCandidates = sm === "launchd"
+      ? ["/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"]
+      : ["/usr/local/bin/node", "/usr/bin/node"];
+    for (const candidate of nodeCandidates) {
       if (await conn.exists(candidate)) {
         nodeBin = candidate;
         break;
@@ -122,39 +132,57 @@ export async function installDashboardService(
 
   const clawPilotBin = resolveClawPilotBin();
   const home = os.homedir();
-  const uid = process.getuid?.() ?? 1000;
 
-  // Generate service file content
-  const serviceContent = generateDashboardService({ nodeBin, clawPilotBin, port, home, uid });
+  if (sm === "launchd") {
+    // macOS: install as launchd agent
+    const plistContent = generateDashboardLaunchdPlist({ nodeBin, clawPilotBin, port, home });
 
-  // Ensure systemd user dir exists
-  const systemdDir = getSystemdDir();
-  await conn.mkdir(systemdDir);
+    const launchdDir = getLaunchdDir();
+    await conn.mkdir(launchdDir);
 
-  // Write service file
-  const servicePath = getDashboardServicePath();
-  await conn.writeFile(servicePath, serviceContent, 0o644);
-  logger.success(`Service file written: ${servicePath}`);
+    const plistPath = getDashboardLaunchdPlistPath();
+    await conn.writeFile(plistPath, plistContent, 0o644);
+    logger.success(`Launchd plist written: ${plistPath}`);
 
-  // Ensure linger is enabled
-  await ensureLinger(conn);
+    // Load the agent
+    await conn.execFile("launchctl", ["load", "-w", plistPath]);
+    logger.success(`Launchd agent loaded: ${DASHBOARD_LAUNCHD_LABEL}`);
+  } else {
+    // Linux: install as systemd user service
+    const uid = process.getuid?.() ?? 1000;
 
-  // daemon-reload
-  const reload = await systemctlUser(conn, xdgRuntimeDir, ["daemon-reload"]);
-  if (reload.code !== 0) {
-    throw new Error(`systemctl daemon-reload failed: ${reload.stderr}`);
-  }
+    // Generate service file content
+    const serviceContent = generateDashboardService({ nodeBin, clawPilotBin, port, home, uid });
 
-  // enable
-  const enable = await systemctlUser(conn, xdgRuntimeDir, ["enable", DASHBOARD_SERVICE_UNIT]);
-  if (enable.code !== 0) {
-    throw new Error(`systemctl enable failed: ${enable.stderr}`);
-  }
+    // Ensure systemd user dir exists
+    const systemdDir = getSystemdDir();
+    await conn.mkdir(systemdDir);
 
-  // start
-  const start = await systemctlUser(conn, xdgRuntimeDir, ["start", DASHBOARD_SERVICE_UNIT]);
-  if (start.code !== 0) {
-    throw new Error(`systemctl start failed: ${start.stderr}`);
+    // Write service file
+    const servicePath = getDashboardServicePath();
+    await conn.writeFile(servicePath, serviceContent, 0o644);
+    logger.success(`Service file written: ${servicePath}`);
+
+    // Ensure linger is enabled
+    await ensureLinger(conn);
+
+    // daemon-reload
+    const reload = await systemctlUser(conn, xdgRuntimeDir, ["daemon-reload"]);
+    if (reload.code !== 0) {
+      throw new Error(`systemctl daemon-reload failed: ${reload.stderr}`);
+    }
+
+    // enable
+    const enable = await systemctlUser(conn, xdgRuntimeDir, ["enable", DASHBOARD_SERVICE_UNIT]);
+    if (enable.code !== 0) {
+      throw new Error(`systemctl enable failed: ${enable.stderr}`);
+    }
+
+    // start
+    const start = await systemctlUser(conn, xdgRuntimeDir, ["start", DASHBOARD_SERVICE_UNIT]);
+    if (start.code !== 0) {
+      throw new Error(`systemctl start failed: ${start.stderr}`);
+    }
   }
 
   // Wait for port to respond
@@ -168,7 +196,11 @@ export async function installDashboardService(
     logger.success(`Dashboard is ready at http://localhost:${port}`);
   } catch {
     logger.warn(`Dashboard service started but port ${port} is not responding yet.`);
-    logger.dim(`Check logs: journalctl --user -u ${DASHBOARD_SERVICE_UNIT} -n 50`);
+    if (sm === "launchd") {
+      logger.dim(`Check logs: tail -f ${home}/.claw-pilot/dashboard.log`);
+    } else {
+      logger.dim(`Check logs: journalctl --user -u ${DASHBOARD_SERVICE_UNIT} -n 50`);
+    }
   }
 }
 
@@ -176,28 +208,41 @@ export async function uninstallDashboardService(
   conn: ServerConnection,
   xdgRuntimeDir: string,
 ): Promise<void> {
-  if (!isLinux()) {
-    throw new Error("systemd services are only supported on Linux.");
+  const sm = getServiceManager();
+
+  if (sm === "launchd") {
+    const plistPath = getDashboardLaunchdPlistPath();
+    // unload (ignore errors if not loaded)
+    await conn.execFile("launchctl", ["unload", plistPath]).catch(() => {});
+    // Remove plist file
+    try {
+      await conn.remove(plistPath);
+      logger.success(`Launchd plist removed: ${plistPath}`);
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      logger.info(`Launchd plist not found (already removed): ${plistPath}`);
+    }
+  } else {
+    // stop (ignore errors if not running)
+    await systemctlUser(conn, xdgRuntimeDir, ["stop", DASHBOARD_SERVICE_UNIT]);
+
+    // disable (ignore errors if not enabled)
+    await systemctlUser(conn, xdgRuntimeDir, ["disable", DASHBOARD_SERVICE_UNIT]);
+
+    // Remove service file
+    const servicePath = getDashboardServicePath();
+    try {
+      await conn.remove(servicePath);
+      logger.success(`Service file removed: ${servicePath}`);
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      logger.info(`Service file not found (already removed): ${servicePath}`);
+    }
+
+    // daemon-reload
+    await systemctlUser(conn, xdgRuntimeDir, ["daemon-reload"]);
   }
 
-  // stop (ignore errors if not running)
-  await systemctlUser(conn, xdgRuntimeDir, ["stop", DASHBOARD_SERVICE_UNIT]);
-
-  // disable (ignore errors if not enabled)
-  await systemctlUser(conn, xdgRuntimeDir, ["disable", DASHBOARD_SERVICE_UNIT]);
-
-  // Remove service file
-  const servicePath = getDashboardServicePath();
-  try {
-    await conn.remove(servicePath);
-    logger.success(`Service file removed: ${servicePath}`);
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-    logger.info(`Service file not found (already removed): ${servicePath}`);
-  }
-
-  // daemon-reload
-  await systemctlUser(conn, xdgRuntimeDir, ["daemon-reload"]);
   logger.success(`Dashboard service uninstalled.`);
 }
 
@@ -205,14 +250,20 @@ export async function restartDashboardService(
   conn: ServerConnection,
   xdgRuntimeDir: string,
 ): Promise<void> {
-  if (!isLinux()) {
-    throw new Error("systemd services are only supported on Linux.");
+  const sm = getServiceManager();
+
+  if (sm === "launchd") {
+    const plistPath = getDashboardLaunchdPlistPath();
+    await conn.execFile("launchctl", ["unload", plistPath]).catch(() => {});
+    await conn.execFile("launchctl", ["load", "-w", plistPath]);
+    logger.success(`Dashboard service restarted.`);
+  } else {
+    const result = await systemctlUser(conn, xdgRuntimeDir, ["restart", DASHBOARD_SERVICE_UNIT]);
+    if (result.code !== 0) {
+      throw new Error(`systemctl restart failed: ${result.stderr}`);
+    }
+    logger.success(`Dashboard service restarted.`);
   }
-  const result = await systemctlUser(conn, xdgRuntimeDir, ["restart", DASHBOARD_SERVICE_UNIT]);
-  if (result.code !== 0) {
-    throw new Error(`systemctl restart failed: ${result.stderr}`);
-  }
-  logger.success(`Dashboard service restarted.`);
 }
 
 export async function getDashboardServiceStatus(
@@ -220,10 +271,23 @@ export async function getDashboardServiceStatus(
   xdgRuntimeDir: string,
   port = constants.DASHBOARD_PORT,
 ): Promise<DashboardServiceStatus> {
-  if (!isLinux()) {
-    return { installed: false, active: false, enabled: false, portResponding: false };
+  const sm = getServiceManager();
+
+  if (sm === "launchd") {
+    const plistPath = getDashboardLaunchdPlistPath();
+    const installed = await conn.exists(plistPath);
+
+    // launchctl list returns exit 0 if the agent is loaded/running
+    const listResult = await conn.execFile("launchctl", ["list", DASHBOARD_LAUNCHD_LABEL]).catch(() => ({ exitCode: 1, stdout: "", stderr: "" }));
+    const active = listResult.exitCode === 0;
+    // launchd agents with RunAtLoad=true are always "enabled" when the plist exists
+    const enabled = installed;
+
+    const portResponding = await isPortResponding(port);
+    return { installed, active, enabled, portResponding };
   }
 
+  // Linux: systemd
   const servicePath = getDashboardServicePath();
   const installed = await conn.exists(servicePath);
 

@@ -31,7 +31,7 @@ export function statusCommand(): Command {
           }`,
         );
         console.log(
-          `  Systemd      : ${
+          `  Service      : ${
             status.systemd === "active"
               ? chalk.green("active")
               : status.systemd === "failed"
@@ -51,8 +51,6 @@ export function statusCommand(): Command {
                 : "-"
           }`,
         );
-        if (instance?.nginx_domain)
-          console.log(`  Nginx domain : ${instance.nginx_domain}`);
         if (instance?.discovered)
           console.log(`  Origin       : ${chalk.dim("adopted (existing infra)")}`);
 

@@ -4,6 +4,7 @@ import type { Registry } from "./registry.js";
 import { InstanceNotFoundError } from "../lib/errors.js";
 import { constants } from "../lib/constants.js";
 import { shellEscape } from "../lib/shell.js";
+import { getServiceManager, getLaunchdLabel } from "../lib/platform.js";
 
 export interface HealthStatus {
   slug: string;
@@ -35,18 +36,21 @@ export class HealthChecker {
       systemd: "unknown",
     };
 
-    // 1. Systemd status
-    const systemdResult = await this.conn.execFile(
-      "systemctl",
-      ["--user", "is-active", instance.systemd_unit],
-      { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
-    );
-    const systemdState = systemdResult.stdout.trim();
-    status.systemd = (
-      ["active", "inactive", "failed"].includes(systemdState)
-        ? systemdState
-        : "unknown"
-    ) as HealthStatus["systemd"];
+    // 1. Service status (systemd or launchd)
+    const sm = getServiceManager();
+    if (sm === "systemd") {
+      const systemdResult = await this.conn.execFile(
+        "systemctl",
+        ["--user", "is-active", instance.systemd_unit],
+        { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
+      );
+      const s = systemdResult.stdout.trim();
+      status.systemd = (["active", "inactive", "failed"].includes(s) ? s : "unknown") as typeof status.systemd;
+    } else {
+      // launchd: launchctl list <label> — exit 0 = running
+      const result = await this.conn.execFile("launchctl", ["list", getLaunchdLabel(slug)]);
+      status.systemd = result.exitCode === 0 ? "active" : "inactive";
+    }
 
     // 2. Gateway health (HTTP)
     try {
@@ -58,8 +62,8 @@ export class HealthChecker {
       status.gateway = "unhealthy";
     }
 
-    // 3. PID and uptime
-    if (status.systemd === "active") {
+    // 3. PID and uptime (systemd only — launchd does not expose these easily)
+    if (sm === "systemd" && status.systemd === "active") {
       const [pidResult, uptimeResult] = await Promise.all([
         this.conn.execFile(
           "systemctl",

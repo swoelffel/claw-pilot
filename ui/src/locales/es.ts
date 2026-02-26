@@ -155,7 +155,7 @@ export const templates = {
 
   // delete-instance-dialog.ts
   "did-title": "Eliminar instancia",
-  "did-warning": "Esto detendrá el servicio, eliminará todos los archivos (directorio de estado, unidad systemd, configuración nginx) y eliminará la instancia del registro. Esta acción no se puede deshacer.",
+  "did-warning": "Esto detendrá el servicio, eliminará todos los archivos (directorio de estado, unidad systemd) y eliminará la instancia del registro. Esta acción no se puede deshacer.",
   "did-confirm-label": "Escriba el slug de la instancia para confirmar",
   "did-spinner-deleting": "Destruyendo instancia...",
 

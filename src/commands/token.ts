@@ -33,9 +33,7 @@ export function tokenCommand(): Command {
         }
 
         // Build the Control UI base URL
-        const baseUrl = instance.nginx_domain
-          ? `https://${instance.nginx_domain}`
-          : `http://localhost:${instance.port}`;
+        const baseUrl = `http://localhost:${instance.port}`;
 
         const tokenUrl = `${baseUrl}/#token=${token}`;
 

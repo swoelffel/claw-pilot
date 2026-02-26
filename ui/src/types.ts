@@ -8,7 +8,6 @@ export interface InstanceInfo {
   state_dir: string;
   systemd_unit: string;
   telegram_bot: string | null;
-  nginx_domain: string | null;
   default_model: string | null;
   discovered: number;
   created_at: string;

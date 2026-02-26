@@ -739,7 +739,6 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       provider,
       apiKey,
       telegram: { enabled: false },
-      nginx:    { enabled: false },
       mem0:     { enabled: false },
     };
 

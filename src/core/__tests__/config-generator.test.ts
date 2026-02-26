@@ -12,7 +12,6 @@ const baseAnswers: WizardAnswers = {
   provider: "anthropic",
   apiKey: "sk-ant-test123",
   telegram: { enabled: false },
-  nginx: { enabled: false },
   mem0: { enabled: false },
 };
 

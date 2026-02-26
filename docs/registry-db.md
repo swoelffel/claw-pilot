@@ -2,7 +2,7 @@
 
 SQLite database stored at `~/.claw-pilot/registry.db`.  
 WAL mode enabled. Foreign keys enforced.  
-Current schema version: **3** (base schema v1 + migrations v2 + v3).
+Current schema version: **4** (base schema v1 + migrations v2 + v3 + v4).
 
 ---
 
@@ -78,7 +78,6 @@ One row per OpenClaw gateway instance. Each instance has a unique slug and port.
 | state_dir    | TEXT    | absolute path to state directory                                      |
 | systemd_unit | TEXT    | e.g. `openclaw-gateway.service`, `openclaw-<slug>.service`            |
 | telegram_bot | TEXT    | nullable — Telegram bot username if configured                        |
-| nginx_domain | TEXT    | nullable — public domain served by Nginx                              |
 | default_model| TEXT    | nullable — JSON string or plain model ID                              |
 | discovered   | INTEGER | `1` = adopted from existing infra, `0` = created by claw-pilot       |
 | created_at   | TEXT    |                                                                       |
@@ -254,6 +253,7 @@ Append-only audit log. One row per lifecycle event.
 | 1       | Base schema: `schema_version`, `servers`, `instances`, `agents`, `ports`, `config`, `events` |
 | 2       | Added `agent_files`, `agent_links` tables; added enriched columns to `agents` (`role`, `tags`, `notes`, `position_x/y`, `config_hash`, `synced_at`) |
 | 3       | Added `blueprints` table; recreated `agents` and `agent_links` with polymorphic FK (`instance_id` OR `blueprint_id`) and CHECK constraint; added `blueprint_id` column to both tables |
+| 4       | Removed `nginx_domain` column from `instances` table (Nginx support dropped) |
 
 ---
 

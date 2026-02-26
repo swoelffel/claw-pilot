@@ -3,7 +3,7 @@ import * as path from "node:path";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry } from "./registry.js";
 import { InstanceNotFoundError } from "../lib/errors.js";
-import { getSystemdDir } from "../lib/platform.js";
+import { getSystemdDir, getServiceManager, getLaunchdPlistPath } from "../lib/platform.js";
 
 export class Destroyer {
   constructor(
@@ -16,54 +16,53 @@ export class Destroyer {
     const instance = this.registry.getInstance(slug);
     if (!instance) throw new InstanceNotFoundError(slug);
 
-    // 1. Stop service
-    await this.conn.execFile(
-      "systemctl",
-      ["--user", "stop", instance.systemd_unit],
-      { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
-    );
+    const sm = getServiceManager();
 
-    // 2. Disable service
-    await this.conn.execFile(
-      "systemctl",
-      ["--user", "disable", instance.systemd_unit],
-      { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
-    );
+    if (sm === "launchd") {
+      // 1. Stop service (launchd)
+      const plistPath = getLaunchdPlistPath(slug);
+      await this.conn.execFile("launchctl", ["unload", plistPath]);
 
-    // 3. Remove service file
-    const serviceFile = path.join(getSystemdDir(), instance.systemd_unit);
-    await this.conn.remove(serviceFile);
-
-    // 4. Reload systemd
-    await this.conn.execFile("systemctl", ["--user", "daemon-reload"], {
-      env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir },
-    });
-
-    // 5. Remove state directory
-    await this.conn.remove(instance.state_dir, { recursive: true });
-
-    // 6. Remove nginx vhost (if exists)
-    if (instance.nginx_domain) {
-      const vhostFile = `/etc/nginx/sites-available/${instance.nginx_domain}`;
-      const enabledLink = `/etc/nginx/sites-enabled/${instance.nginx_domain}`;
-      await this.conn.remove(enabledLink);
-      await this.conn.remove(vhostFile);
-      // nginx paths are derived from instance.nginx_domain (validated slug-like value)
-      await this.conn.exec(
-        "sudo nginx -t && sudo systemctl reload nginx 2>/dev/null || true",
+      // 2. Remove plist file
+      await this.conn.remove(plistPath);
+    } else {
+      // 1. Stop service (systemd)
+      await this.conn.execFile(
+        "systemctl",
+        ["--user", "stop", instance.systemd_unit],
+        { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
       );
+
+      // 2. Disable service
+      await this.conn.execFile(
+        "systemctl",
+        ["--user", "disable", instance.systemd_unit],
+        { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
+      );
+
+      // 3. Remove service file
+      const serviceFile = path.join(getSystemdDir(), instance.systemd_unit);
+      await this.conn.remove(serviceFile);
+
+      // 4. Reload systemd
+      await this.conn.execFile("systemctl", ["--user", "daemon-reload"], {
+        env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir },
+      });
     }
 
-    // 7. Release port in registry
+    // 5. Remove state directory (same on both platforms)
+    await this.conn.remove(instance.state_dir, { recursive: true });
+
+    // 6. Release port in registry
     this.registry.releasePort(instance.server_id, instance.port);
 
-    // 8. Delete agents from registry
+    // 7. Delete agents from registry
     this.registry.deleteAgents(instance.id);
 
-    // 9. Delete instance from registry
+    // 8. Delete instance from registry
     this.registry.deleteInstance(slug);
 
-    // 10. Log event
+    // 9. Log event
     this.registry.logEvent(slug, "destroyed");
   }
 }
