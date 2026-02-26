@@ -9,6 +9,7 @@ import {
 } from "../core/dashboard-service.js";
 import { constants } from "../lib/constants.js";
 import { parsePositiveInt } from "../lib/validate.js";
+import { withContext } from "./_context.js";
 
 export function serviceCommand(): Command {
   const cmd = new Command("service")
@@ -24,7 +25,9 @@ export function serviceCommand(): Command {
         process.exit(1);
       }
       try {
-        await installDashboardService(parsePositiveInt(opts.port, "--port"));
+        await withContext(async ({ conn, xdgRuntimeDir }) => {
+          await installDashboardService(conn, xdgRuntimeDir, parsePositiveInt(opts.port, "--port"));
+        });
         console.log("[+] Dashboard service installed successfully.");
         console.log(`    View logs: journalctl --user -u claw-pilot-dashboard.service -f`);
       } catch (err: any) {
@@ -42,7 +45,9 @@ export function serviceCommand(): Command {
         process.exit(1);
       }
       try {
-        await uninstallDashboardService();
+        await withContext(async ({ conn, xdgRuntimeDir }) => {
+          await uninstallDashboardService(conn, xdgRuntimeDir);
+        });
       } catch (err: any) {
         console.error(`[x] Failed to uninstall service: ${err.message}`);
         process.exit(1);
@@ -58,7 +63,9 @@ export function serviceCommand(): Command {
         process.exit(1);
       }
       try {
-        await restartDashboardService();
+        await withContext(async ({ conn, xdgRuntimeDir }) => {
+          await restartDashboardService(conn, xdgRuntimeDir);
+        });
       } catch (err: any) {
         console.error(`[x] Failed to restart service: ${err.message}`);
         process.exit(1);
@@ -75,7 +82,9 @@ export function serviceCommand(): Command {
         return;
       }
       try {
-        const status = await getDashboardServiceStatus();
+        const status = await withContext(async ({ conn, xdgRuntimeDir }) => {
+          return getDashboardServiceStatus(conn, xdgRuntimeDir);
+        });
         console.log("Dashboard Service Status:");
         console.log(`  Installed:       ${status.installed ? "yes" : "no"}`);
         console.log(`  Active:          ${status.active ? "yes (running)" : "no"}`);

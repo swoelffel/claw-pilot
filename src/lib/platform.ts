@@ -41,7 +41,9 @@ export function getConfigPath(slug: string): string {
 }
 
 export function getSystemdDir(): string {
-  return path.join(getOpenClawHome(), ".config/systemd/user");
+  // Systemd --user units always live in $HOME/.config/systemd/user/,
+  // regardless of OPENCLAW_HOME.
+  return path.join(os.homedir(), ".config/systemd/user");
 }
 
 export function getSystemdUnit(slug: string): string {

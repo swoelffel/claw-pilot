@@ -488,7 +488,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     // Restart daemon fire-and-forget
     conn.execFile("systemctl", ["--user", "restart", instance.systemd_unit], {
       env: { XDG_RUNTIME_DIR: xdgRuntimeDir },
-    }).catch(() => {});
+    }).catch(() => { /* best-effort restart */ });
 
     // Return updated file record
     const updatedFile = registry.getAgentFileContent(agentRecord.id, filename);
