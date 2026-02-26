@@ -2,6 +2,10 @@
 
 Thank you for your interest in contributing to claw-pilot! We welcome bug reports, feature requests, documentation improvements, and code contributions.
 
+**Questions?** → [Discussions (Q&A)](https://github.com/swoelffel/claw-pilot/discussions/categories/q-a)
+**Ideas?** → [Discussions (Ideas)](https://github.com/swoelffel/claw-pilot/discussions/categories/ideas)
+**Bugs / Tasks?** → [Issues](https://github.com/swoelffel/claw-pilot/issues)
+
 ## Code of Conduct
 
 Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md). We expect all contributors to maintain a respectful and collaborative environment.

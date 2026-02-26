@@ -8,6 +8,8 @@ Agent Builder to design and edit multi-agent teams.
 
 > Not published on npm — installed from source only.
 
+**Questions** → [Discussions (Q&A)](https://github.com/swoelffel/claw-pilot/discussions/categories/q-a) · **Bugs / Tasks** → [Issues](https://github.com/swoelffel/claw-pilot/issues) · **Ideas** → [Discussions (Ideas)](https://github.com/swoelffel/claw-pilot/discussions/categories/ideas)
+
 ---
 
 ## Screenshots
