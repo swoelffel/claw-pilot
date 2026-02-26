@@ -6,6 +6,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.5.0] — 2026-02-26
+
+### Added
+- macOS support — claw-pilot now runs natively on macOS using launchd (LaunchAgents)
+- `launchd-generator.ts` — generates `.plist` files for OpenClaw instances and the dashboard service
+- `getServiceManager()` in `platform.ts` — abstracts systemd vs launchd dispatch
+- launchd helpers: `getLaunchdDir()`, `getLaunchdLabel()`, `getLaunchdPlistPath()`, `getDashboardLaunchdPlistPath()`
+- macOS OpenClaw detection paths: `~/.npm-global/bin`, `/opt/homebrew/bin`, `/usr/local/bin`
+- macOS-aware PATH in `openclaw-cli.ts` (includes `/opt/homebrew/bin`)
+- `xdg.ts` guard — returns empty string on macOS (XDG_RUNTIME_DIR is Linux-only)
+
+### Changed
+- `lifecycle.ts`, `provisioner.ts`, `destroyer.ts`, `health.ts`, `discovery.ts`, `dashboard-service.ts` — all dispatch on `getServiceManager()` (systemd on Linux, launchd on macOS)
+- `systemd_unit` field stores launchd label (`ai.openclaw.<slug>`) on macOS
+- `status.ts` — renamed "Systemd" label to "Service" for platform-neutral display
+
+### Removed
+- Nginx support — fully removed from code, wizard, DB schema, types, tests, and docs
+- `nginx-generator.ts` deleted
+- DB migration v4 removes `nginx_domain` column from `instances` table
+
+---
+
 ## [0.4.0] — 2026-02-26
 
 ### Added
