@@ -42,28 +42,16 @@ export class Destroyer {
     // 5. Remove state directory
     await this.conn.remove(instance.state_dir, { recursive: true });
 
-    // 6. Remove nginx vhost (if exists)
-    if (instance.nginx_domain) {
-      const vhostFile = `/etc/nginx/sites-available/${instance.nginx_domain}`;
-      const enabledLink = `/etc/nginx/sites-enabled/${instance.nginx_domain}`;
-      await this.conn.remove(enabledLink);
-      await this.conn.remove(vhostFile);
-      // nginx paths are derived from instance.nginx_domain (validated slug-like value)
-      await this.conn.exec(
-        "sudo nginx -t && sudo systemctl reload nginx 2>/dev/null || true",
-      );
-    }
-
-    // 7. Release port in registry
+    // 6. Release port in registry
     this.registry.releasePort(instance.server_id, instance.port);
 
-    // 8. Delete agents from registry
+    // 7. Delete agents from registry
     this.registry.deleteAgents(instance.id);
 
-    // 9. Delete instance from registry
+    // 8. Delete instance from registry
     this.registry.deleteInstance(slug);
 
-    // 10. Log event
+    // 9. Log event
     this.registry.logEvent(slug, "destroyed");
   }
 }

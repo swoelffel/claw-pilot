@@ -25,7 +25,6 @@ export interface InstanceRecord {
   state_dir: string;
   systemd_unit: string;
   telegram_bot: string | null;
-  nginx_domain: string | null;
   default_model: string | null;
   discovered: number;
   created_at: string;
@@ -171,15 +170,14 @@ export class Registry {
     stateDir: string;
     systemdUnit: string;
     telegramBot?: string;
-    nginxDomain?: string;
     defaultModel?: string;
     discovered?: boolean;
   }): InstanceRecord {
     this.db
       .prepare(
         `INSERT OR IGNORE INTO instances (server_id, slug, display_name, port, config_path, state_dir,
-         systemd_unit, telegram_bot, nginx_domain, default_model, discovered, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         systemd_unit, telegram_bot, default_model, discovered, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         data.serverId,
@@ -190,7 +188,6 @@ export class Registry {
         data.stateDir,
         data.systemdUnit,
         data.telegramBot ?? null,
-        data.nginxDomain ?? null,
         data.defaultModel ?? null,
         data.discovered ? 1 : 0,
         now(),
@@ -212,7 +209,6 @@ export class Registry {
     fields: Partial<{
       displayName: string;
       telegramBot: string;
-      nginxDomain: string;
       defaultModel: string;
     }>,
   ): void {
@@ -226,10 +222,6 @@ export class Registry {
     if (fields.telegramBot !== undefined) {
       sets.push("telegram_bot=?");
       values.push(fields.telegramBot);
-    }
-    if (fields.nginxDomain !== undefined) {
-      sets.push("nginx_domain=?");
-      values.push(fields.nginxDomain);
     }
     if (fields.defaultModel !== undefined) {
       sets.push("default_model=?");

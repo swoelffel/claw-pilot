@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import * as path from "node:path";
 
-// Bump this when adding new migrations
+// Bump this when adding new migrations — base schema version (migrations tracked separately)
 const SCHEMA_VERSION = 1;
 
 const SCHEMA_SQL = `
@@ -39,7 +39,6 @@ CREATE TABLE IF NOT EXISTS instances (
   state_dir       TEXT NOT NULL,
   systemd_unit    TEXT NOT NULL,
   telegram_bot    TEXT,
-  nginx_domain    TEXT,
   default_model   TEXT,
   discovered      INTEGER DEFAULT 0,
   created_at      TEXT,
@@ -214,6 +213,44 @@ const MIGRATIONS: Migration[] = [
         DROP TABLE agent_links;
         ALTER TABLE agent_links_v3 RENAME TO agent_links;
       `);
+    },
+  },
+  {
+    // v4: remove nginx_domain column from instances table.
+    // SQLite < 3.35.0 does not support DROP COLUMN, so we recreate the table.
+    // FK enforcement is temporarily disabled to allow DROP TABLE instances
+    // (agents and agent_links reference it via ON DELETE CASCADE).
+    version: 4,
+    up(db) {
+      // Disable FK enforcement for the duration of the table swap
+      db.pragma("foreign_keys = OFF");
+      db.exec(`
+        CREATE TABLE instances_v4 (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          server_id       INTEGER NOT NULL REFERENCES servers(id),
+          slug            TEXT NOT NULL UNIQUE,
+          display_name    TEXT,
+          port            INTEGER NOT NULL UNIQUE,
+          state           TEXT DEFAULT 'unknown' CHECK(state IN ('running','stopped','error','unknown')),
+          config_path     TEXT NOT NULL,
+          state_dir       TEXT NOT NULL,
+          systemd_unit    TEXT NOT NULL,
+          telegram_bot    TEXT,
+          default_model   TEXT,
+          discovered      INTEGER DEFAULT 0,
+          created_at      TEXT,
+          updated_at      TEXT
+        );
+        INSERT INTO instances_v4
+          SELECT id, server_id, slug, display_name, port, state,
+                 config_path, state_dir, systemd_unit, telegram_bot,
+                 default_model, discovered, created_at, updated_at
+          FROM instances;
+        DROP TABLE instances;
+        ALTER TABLE instances_v4 RENAME TO instances;
+      `);
+      // Re-enable FK enforcement
+      db.pragma("foreign_keys = ON");
     },
   },
 ];

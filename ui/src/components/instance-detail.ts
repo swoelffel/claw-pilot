@@ -634,9 +634,7 @@ export class InstanceDetail extends LitElement {
 
   private _controlUrl(): string {
     if (!this._instance) return "#";
-    const base = this._instance.nginx_domain
-      ? `https://${this._instance.nginx_domain}`
-      : `http://localhost:${this._instance.port}`;
+    const base = `http://localhost:${this._instance.port}`;
     return this._gatewayToken ? `${base}/#token=${this._gatewayToken}` : base;
   }
 

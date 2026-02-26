@@ -11,7 +11,6 @@ import {
   promptModel,
   promptProvider,
   promptTelegram,
-  promptNginx,
   promptMem0,
 } from "./prompts.js";
 import chalk from "chalk";
@@ -43,13 +42,10 @@ export async function runWizard(
   // Step 6: Telegram
   const telegram = await promptTelegram();
 
-  // Step 7: Nginx
-  const nginx = await promptNginx();
-
-  // Step 8: mem0
+  // Step 7: mem0
   const mem0 = await promptMem0(conn);
 
-  // Step 9: Summary + confirmation
+  // Step 8: Summary + confirmation
   console.log(chalk.bold("\n=== Summary ==="));
   console.log(`  Slug:        ${slug}`);
   console.log(`  Name:        ${displayName}`);
@@ -61,7 +57,6 @@ export async function runWizard(
     `  API key:     ${apiKey === "reuse" ? "reuse from existing" : apiKey ? "new key" : "none (not required)"}`,
   );
   console.log(`  Telegram:    ${telegram.enabled ? "yes" : "no"}`);
-  console.log(`  Nginx:       ${nginx.enabled ? nginx.domain : "no"}`);
   console.log(`  mem0:        ${mem0.enabled ? "yes" : "no"}`);
   console.log("");
 
@@ -83,7 +78,6 @@ export async function runWizard(
     provider,
     apiKey,
     telegram,
-    nginx,
     mem0,
   };
 }

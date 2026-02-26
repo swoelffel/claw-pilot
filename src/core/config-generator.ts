@@ -20,12 +20,6 @@ export interface WizardAnswers {
     enabled: boolean;
     botToken?: string;
   };
-  nginx: {
-    enabled: boolean;
-    domain?: string;
-    certPath?: string;
-    keyPath?: string;
-  };
   mem0: {
     enabled: boolean;
     ollamaUrl?: string;

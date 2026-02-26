@@ -32,7 +32,6 @@ beforeEach(() => {
     stderr: "",
     exitCode: 0,
   });
-  conn.mockExec("nginx", { stdout: "", stderr: "", exitCode: 0 });
 });
 
 afterEach(() => {

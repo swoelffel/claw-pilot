@@ -3,7 +3,6 @@ import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
 import type { AgentSync } from "./agent-sync.js";
 import { constants } from "../lib/constants.js";
-import { shellEscape } from "../lib/shell.js";
 import { logger } from "../lib/logger.js";
 
 export interface DiscoveredAgent {
@@ -24,7 +23,6 @@ export interface DiscoveredInstance {
   systemdState: "active" | "inactive" | "failed" | null;
   gatewayHealthy: boolean;
   telegramBot: string | null;
-  nginxDomain: string | null;
   defaultModel: string | null;
   source: "directory" | "systemd" | "port" | "legacy";
 }
@@ -337,16 +335,6 @@ export class InstanceDiscovery {
       systemdState = sysState as "active" | "inactive" | "failed";
     }
 
-    // Nginx vhost
-    let nginxDomain: string | null = null;
-    const nginxResult = await this.conn.exec(
-      `ls /etc/nginx/sites-enabled/ 2>/dev/null | grep -i ${shellEscape(slug)} || true`,
-    );
-    const nginxFile = nginxResult.stdout.trim();
-    if (nginxFile) {
-      nginxDomain = nginxFile;
-    }
-
     return {
       slug,
       stateDir,
@@ -357,7 +345,6 @@ export class InstanceDiscovery {
       systemdState,
       gatewayHealthy,
       telegramBot,
-      nginxDomain,
       defaultModel,
       source,
     };
@@ -420,7 +407,6 @@ export class InstanceDiscovery {
       systemdUnit:
         instance.systemdUnit ?? `openclaw-${instance.slug}.service`,
       telegramBot: instance.telegramBot ?? undefined,
-      nginxDomain: instance.nginxDomain ?? undefined,
       defaultModel: instance.defaultModel ?? undefined,
       discovered: true,
     });

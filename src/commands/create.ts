@@ -56,9 +56,7 @@ export function createCommand(): Command {
         }
 
         // Build Control UI URL — inject token in hash fragment for zero-friction login
-        const baseUrl = result.nginxDomain
-          ? `https://${result.nginxDomain}`
-          : `http://127.0.0.1:${result.port}`;
+        const baseUrl = `http://127.0.0.1:${result.port}`;
 
         // Read the freshly-written token (best-effort — provisioner already has it in result)
         const gatewayToken = result.gatewayToken || await readGatewayToken(conn, result.stateDir);

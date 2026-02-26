@@ -212,7 +212,7 @@ export class DeleteInstanceDialog extends LitElement {
     return html`
       <div class="dialog-body">
         <div class="warning-box">
-          ${msg("This will permanently stop the service, remove all files (state directory, systemd unit, nginx config) and delete the instance from the registry. This action cannot be undone.", { id: "did-warning" })}
+          ${msg("This will permanently stop the service, remove all files (state directory, service unit) and delete the instance from the registry. This action cannot be undone.", { id: "did-warning" })}
         </div>
         <div class="instance-info">
           ${inst.display_name ?? inst.slug} — <strong>${inst.slug}</strong>

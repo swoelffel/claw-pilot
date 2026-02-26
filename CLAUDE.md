@@ -4,7 +4,7 @@ Guidance for Claude Code when working in this repository.
 
 ## What this project is
 
-`claw-pilot` is a **CLI + web dashboard** that orchestrates multiple [OpenClaw](https://docs.openclaw.ai) instances on a single Linux server. It handles discovery, provisioning, lifecycle management (via systemd), Nginx config generation, and device pairing.
+`claw-pilot` is a **CLI + web dashboard** that orchestrates multiple [OpenClaw](https://docs.openclaw.ai) instances on a single Linux server. It handles discovery, provisioning, lifecycle management (via systemd), and device pairing.
 
 Not published on npm — installed from source only (`/opt/claw-pilot`).
 
@@ -51,7 +51,7 @@ docs/SPEC-MVP.md    # Full technical spec — read this before major changes
 | Table | Role |
 |---|---|
 | `servers` | Physical servers (V1: always 1 local row) |
-| `instances` | OpenClaw instances — slug, port, state, config_path, nginx_domain |
+| `instances` | OpenClaw instances — slug, port, state, config_path |
 | `agents` | Agents per instance |
 | `ports` | Port reservation registry (anti-conflict) |
 | `config` | Global key-value config |

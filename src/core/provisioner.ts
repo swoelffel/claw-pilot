@@ -7,7 +7,6 @@ import type { PortAllocator } from "./port-allocator.js";
 import type { WizardAnswers } from "./config-generator.js";
 import { generateConfig, generateEnv, PROVIDER_ENV_VARS } from "./config-generator.js";
 import { generateSystemdService } from "./systemd-generator.js";
-import { generateNginxVhost } from "./nginx-generator.js";
 import { generateGatewayToken } from "./secrets.js";
 import { OpenClawCLI } from "./openclaw-cli.js";
 import { Lifecycle } from "./lifecycle.js";
@@ -15,7 +14,6 @@ import { constants } from "../lib/constants.js";
 import { getOpenClawHome, getSystemdDir, getSystemdUnit } from "../lib/platform.js";
 import { InstanceAlreadyExistsError, ClawPilotError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
-import { shellEscape } from "../lib/shell.js";
 import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 import { BlueprintDeployer } from "./blueprint-deployer.js";
 
@@ -26,7 +24,6 @@ export interface ProvisionResult {
   gatewayToken: string;
   agentCount: number;
   telegramBot?: string;
-  nginxDomain?: string;
 }
 
 /** Exported for testing: resolve the API key from answers, reading from existing instance if needed */
@@ -194,7 +191,6 @@ export class Provisioner {
       telegramBot: answers.telegram.enabled
         ? undefined // will be set after pairing
         : undefined,
-      nginxDomain: answers.nginx.domain,
       defaultModel: answers.defaultModel,
       discovered: false,
     });
@@ -230,23 +226,6 @@ export class Provisioner {
       await lifecycle.restart(slug);
     }
 
-    // Step 9: Nginx (if enabled)
-    if (answers.nginx.enabled && answers.nginx.domain) {
-      logger.step("Configuring Nginx...");
-      const vhostContent = generateNginxVhost({
-        slug,
-        domain: answers.nginx.domain,
-        port: answers.port,
-        certPath: answers.nginx.certPath ?? "",
-        keyPath: answers.nginx.keyPath ?? "",
-      });
-      const vhostPath = `/etc/nginx/sites-available/${answers.nginx.domain}`;
-      const enabledPath = `/etc/nginx/sites-enabled/${answers.nginx.domain}`;
-      await this.conn.writeFile(vhostPath, vhostContent);
-      await this.conn.exec(`sudo ln -sf ${shellEscape(vhostPath)} ${shellEscape(enabledPath)}`);
-      await this.conn.exec("sudo nginx -t && sudo systemctl reload nginx");
-    }
-
     // Log creation event
     this.registry.logEvent(
       slug,
@@ -270,7 +249,6 @@ export class Provisioner {
       gatewayToken,
       agentCount: answers.agents.length,
       telegramBot: answers.telegram.enabled ? "pending" : undefined,
-      nginxDomain: answers.nginx.domain,
     };
   }
 

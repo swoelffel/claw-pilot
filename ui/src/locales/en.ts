@@ -156,7 +156,7 @@ export const templates = {
 
   // delete-instance-dialog.ts
   "did-title": "Delete instance",
-  "did-warning": "This will permanently stop the service, remove all files (state directory, systemd unit, nginx config) and delete the instance from the registry. This action cannot be undone.",
+  "did-warning": "This will permanently stop the service, remove all files (state directory, service unit) and delete the instance from the registry. This action cannot be undone.",
   "did-confirm-label": "Type the instance slug to confirm",
   "did-spinner-deleting": "Destroying instance...",
 

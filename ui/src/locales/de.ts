@@ -155,7 +155,7 @@ export const templates = {
 
   // delete-instance-dialog.ts
   "did-title": "Instanz löschen",
-  "did-warning": "Dies stoppt den Dienst, entfernt alle Dateien (Statusverzeichnis, systemd-Unit, Nginx-Konfiguration) und löscht die Instanz aus dem Register. Diese Aktion kann nicht rückgängig gemacht werden.",
+  "did-warning": "Dies stoppt den Dienst, entfernt alle Dateien (Statusverzeichnis, systemd-Unit) und löscht die Instanz aus dem Register. Diese Aktion kann nicht rückgängig gemacht werden.",
   "did-confirm-label": "Geben Sie den Instanz-Slug zur Bestätigung ein",
   "did-spinner-deleting": "Instanz wird zerstört...",
 

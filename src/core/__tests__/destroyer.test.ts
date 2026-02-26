@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 /** Create a minimal instance in the registry and seed the mock filesystem */
-function seedInstance(opts: { slug?: string; nginx?: string } = {}) {
+function seedInstance(opts: { slug?: string } = {}) {
   const slug = opts.slug ?? "demo1";
   const server = registry.upsertLocalServer("testhost", "/opt/openclaw");
   const stateDir = `/home/openclaw/.openclaw-${slug}`;
@@ -49,7 +49,6 @@ function seedInstance(opts: { slug?: string; nginx?: string } = {}) {
     configPath: `${stateDir}/openclaw.json`,
     stateDir,
     systemdUnit: `openclaw-${slug}.service`,
-    nginxDomain: opts.nginx ?? null!,
   });
   registry.allocatePort(server.id, 18790, slug);
   registry.createAgent(instance.id, {
@@ -149,31 +148,6 @@ describe("Destroyer.destroy()", () => {
 
     const events = registry.listEvents(slug, 10);
     expect(events.some((e) => e.event_type === "destroyed")).toBe(true);
-  });
-
-  it("handles nginx vhost removal when nginx_domain is set", async () => {
-    const { slug } = seedInstance({ nginx: "demo1.example.com" });
-    const vhostFile = "/etc/nginx/sites-available/demo1.example.com";
-    const enabledLink = "/etc/nginx/sites-enabled/demo1.example.com";
-    conn.files.set(vhostFile, "server {}");
-    conn.files.set(enabledLink, "symlink");
-
-    const destroyer = new Destroyer(conn, registry, XDG);
-    await destroyer.destroy(slug);
-
-    expect(conn.files.has(vhostFile)).toBe(false);
-    expect(conn.files.has(enabledLink)).toBe(false);
-    const cmds = conn.commands.join("\n");
-    expect(cmds).toContain("nginx");
-  });
-
-  it("skips nginx removal when nginx_domain is null", async () => {
-    const { slug } = seedInstance(); // no nginx
-    const destroyer = new Destroyer(conn, registry, XDG);
-    await destroyer.destroy(slug);
-
-    const cmds = conn.commands.join("\n");
-    expect(cmds).not.toContain("nginx");
   });
 
   it("is idempotent: second destroy throws InstanceNotFoundError", async () => {
