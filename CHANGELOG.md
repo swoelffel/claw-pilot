@@ -6,6 +6,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.4.0] — 2026-02-26
+
+### Added
+- Real-time instance monitoring via WebSocket change-detection (push on state change only)
+- Live instance detail panel — auto-refreshes health, logs, and status without polling
+- Batched health checks — parallel port scan reduces dashboard load time
+
+### Changed
+- Dashboard service migrated to `ServerConnection` abstraction (no more raw `child_process` calls)
+- `execFile` migration complete — all shell ops go through `conn.execFile` for future SSH compatibility
+- `detect()` in `openclaw-cli` uses `conn.exists()` instead of `--version` subprocess (no TTY required)
+- Extended PATH in `detect()` and `run()` for systemd non-interactive context
+
+### Fixed
+- `/api/instances` response now merges DB fields (state, telegram_bot, etc.) into instance objects
+- `state: undefined` no longer returned when DB row exists but runtime state is unknown
+
+---
+
 ## [0.3.3] — 2026-02-26 — First public release
 
 > This is the first official public release of claw-pilot.
