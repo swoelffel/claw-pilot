@@ -19,6 +19,7 @@ import { AgentProvisioner } from "../core/agent-provisioner.js";
 import type { CreateAgentData } from "../core/agent-provisioner.js";
 import { exportInstanceTeam, exportBlueprintTeam, serializeTeamYaml } from "../core/team-export.js";
 import { parseAndValidateTeam, importInstanceTeam, importBlueprintTeam } from "../core/team-import.js";
+import { logger } from "../lib/logger.js";
 import { Monitor } from "./monitor.js";
 import { ClawPilotError, InstanceNotFoundError } from "../lib/errors.js";
 import { resolveXdgRuntimeDir } from "../lib/xdg.js";
@@ -1193,10 +1194,28 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       return apiError(c, 400, "INVALID_BODY", "Could not read request body");
     }
 
+    logger.info(`[team-import] instance=${slug} dry_run=${dryRun} size=${yamlContent.length}B`);
+
     const parsed = parseAndValidateTeam(yamlContent);
     if (!parsed.success) {
-      return c.json(parsed.error, 400);
+      const err = parsed.error;
+      if (err.error === "yaml_parse_error") {
+        logger.error(`[team-import] YAML parse error for instance=${slug}: ${err.message ?? ""}`);
+        return c.json({ ok: false, error: "YAML_PARSE_ERROR", message: err.message ?? "Invalid YAML" }, 400);
+      }
+      // validation_failed — log each Zod issue
+      const details = err.details ?? [];
+      logger.error(`[team-import] Validation failed for instance=${slug} — ${details.length} issue(s):`);
+      for (const d of details) {
+        logger.error(`  [team-import]   path="${d.path || "(root)"}" — ${d.message}`);
+      }
+      const humanMessage = details.length > 0
+        ? details.map((d) => `${d.path ? `[${d.path}] ` : ""}${d.message}`).join(" | ")
+        : "Invalid team file format";
+      return c.json({ ok: false, error: "VALIDATION_FAILED", message: humanMessage, details }, 400);
     }
+
+    logger.info(`[team-import] Validated OK — ${parsed.data.agents.length} agents, ${parsed.data.links.length} links`);
 
     try {
       const result = await importInstanceTeam(
@@ -1208,9 +1227,13 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
         xdgRuntimeDir,
         dryRun,
       );
+      logger.info(`[team-import] ${dryRun ? "Dry-run" : "Import"} complete for instance=${slug}`);
       return c.json(result);
     } catch (err) {
-      return apiError(c, 500, "IMPORT_FAILED", err instanceof Error ? err.message : "Import failed");
+      const msg = err instanceof Error ? err.message : "Import failed";
+      logger.error(`[team-import] Import error for instance=${slug}: ${msg}`);
+      if (err instanceof Error && err.stack) logger.error(err.stack);
+      return apiError(c, 500, "IMPORT_FAILED", msg);
     }
   });
 
@@ -1253,10 +1276,27 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       return apiError(c, 400, "INVALID_BODY", "Could not read request body");
     }
 
+    logger.info(`[team-import] blueprint=${id} dry_run=${dryRun} size=${yamlContent.length}B`);
+
     const parsed = parseAndValidateTeam(yamlContent);
     if (!parsed.success) {
-      return c.json(parsed.error, 400);
+      const err = parsed.error;
+      if (err.error === "yaml_parse_error") {
+        logger.error(`[team-import] YAML parse error for blueprint=${id}: ${err.message ?? ""}`);
+        return c.json({ ok: false, error: "YAML_PARSE_ERROR", message: err.message ?? "Invalid YAML" }, 400);
+      }
+      const details = err.details ?? [];
+      logger.error(`[team-import] Validation failed for blueprint=${id} — ${details.length} issue(s):`);
+      for (const d of details) {
+        logger.error(`  [team-import]   path="${d.path || "(root)"}" — ${d.message}`);
+      }
+      const humanMessage = details.length > 0
+        ? details.map((d) => `${d.path ? `[${d.path}] ` : ""}${d.message}`).join(" | ")
+        : "Invalid team file format";
+      return c.json({ ok: false, error: "VALIDATION_FAILED", message: humanMessage, details }, 400);
     }
+
+    logger.info(`[team-import] Validated OK — ${parsed.data.agents.length} agents, ${parsed.data.links.length} links`);
 
     try {
       const result = importBlueprintTeam(
@@ -1266,9 +1306,13 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
         parsed.data,
         dryRun,
       );
+      logger.info(`[team-import] ${dryRun ? "Dry-run" : "Import"} complete for blueprint=${id}`);
       return c.json(result);
     } catch (err) {
-      return apiError(c, 500, "IMPORT_FAILED", err instanceof Error ? err.message : "Import failed");
+      const msg = err instanceof Error ? err.message : "Import failed";
+      logger.error(`[team-import] Import error for blueprint=${id}: ${msg}`);
+      if (err instanceof Error && err.stack) logger.error(err.stack);
+      return apiError(c, 500, "IMPORT_FAILED", msg);
     }
   });
 

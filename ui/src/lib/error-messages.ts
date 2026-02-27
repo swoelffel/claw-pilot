@@ -8,6 +8,13 @@ import { ApiError } from "./api-error.js";
  */
 export function userMessage(err: unknown): string {
   if (err instanceof ApiError) {
+    // For import errors, the server sends a human-readable message — use it directly
+    if (
+      (err.code === "VALIDATION_FAILED" || err.code === "YAML_PARSE_ERROR" || err.code === "IMPORT_FAILED") &&
+      err.message
+    ) {
+      return err.message;
+    }
     return resolveCode(err.code);
   }
   return msg("An unexpected error occurred.", { id: "err-unknown" });

@@ -289,8 +289,8 @@ export async function importInstanceTeam(slug: string, yamlContent: string, dryR
     body: yamlContent,
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText })) as { error?: string; code?: string };
-    throw new ApiError(res.status, body.code ?? "IMPORT_FAILED", body.error ?? "Import failed");
+    const body = await res.json().catch(() => ({ error: res.statusText })) as { error?: string; code?: string; message?: string };
+    throw new ApiError(res.status, body.error ?? body.code ?? "IMPORT_FAILED", body.message ?? body.error ?? "Import failed");
   }
   return res.json() as Promise<TeamImportResult>;
 }
@@ -314,8 +314,8 @@ export async function importBlueprintTeam(blueprintId: number, yamlContent: stri
     body: yamlContent,
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText })) as { error?: string; code?: string };
-    throw new ApiError(res.status, body.code ?? "IMPORT_FAILED", body.error ?? "Import failed");
+    const body = await res.json().catch(() => ({ error: res.statusText })) as { error?: string; code?: string; message?: string };
+    throw new ApiError(res.status, body.error ?? body.code ?? "IMPORT_FAILED", body.message ?? body.error ?? "Import failed");
   }
   return res.json() as Promise<TeamImportResult>;
 }

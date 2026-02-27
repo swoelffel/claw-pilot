@@ -41,14 +41,14 @@ const IdentitySchema = z
     emoji: z.string().optional(),
     avatar: z.string().optional(),
   })
-  .strict();
+  .passthrough(); // allow unknown identity fields (color, icon, etc.)
 
 const SubagentsConfigSchema = z
   .object({
     allowAgents: z.array(z.string()).optional(),
     model: AgentModelSchema.optional(),
   })
-  .strict();
+  .passthrough(); // allow unknown subagent fields
 
 const AgentConfigSchema = z
   .object({
@@ -63,6 +63,7 @@ const AgentConfigSchema = z
     humanDelay: z.record(z.string(), z.unknown()).optional(),
     groupChat: z.record(z.string(), z.unknown()).optional(),
   })
+  .passthrough() // allow unknown config fields for forward-compat
   .optional();
 
 const PositionSchema = z.object({
