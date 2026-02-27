@@ -227,6 +227,20 @@ export const templates = {
   "cd-blueprint-hint": "Déployer optionnellement une équipe d'agents",
   "cd-deploying": "Déploiement des agents du blueprint...",
 
+  // team export/import (v0.5.1)
+  "team-export": "↓ Exporter",
+  "team-import": "↑ Importer",
+  "tid-title": "Importer une équipe d'agents",
+  "tid-drop-hint": "Déposez un fichier .team.yaml ici ou cliquez pour parcourir",
+  "tid-file": "Fichier",
+  "tid-agents": "Agents",
+  "tid-links": "Liens",
+  "tid-files": "Fichiers",
+  "tid-warning": "Cela remplacera tous les agents, fichiers et liens existants. Cette action est irréversible.",
+  "tid-btn-cancel": "Annuler",
+  "tid-btn-import": "Importer",
+  "tid-btn-importing": "Import en cours...",
+
   // error-messages.ts (err-* keys — codes d'erreur API -> i18n)
   "err-unauthorized": "Session expirée. Veuillez rafraîchir la page.",
   "err-not-found": "Ressource introuvable.",

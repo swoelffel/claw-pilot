@@ -109,6 +109,11 @@ export interface BlueprintLinkRecord {
 export class Registry {
   constructor(private db: Database.Database) {}
 
+  /** Expose the underlying database handle for transaction-level operations. */
+  getDb(): Database.Database {
+    return this.db;
+  }
+
   // --- Servers ---
 
   getLocalServer(): ServerRecord | undefined {

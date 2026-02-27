@@ -17,6 +17,8 @@ import { PairingManager } from "../core/pairing.js";
 import { AgentSync, EDITABLE_FILES } from "../core/agent-sync.js";
 import { AgentProvisioner } from "../core/agent-provisioner.js";
 import type { CreateAgentData } from "../core/agent-provisioner.js";
+import { exportInstanceTeam, exportBlueprintTeam, serializeTeamYaml } from "../core/team-export.js";
+import { parseAndValidateTeam, importInstanceTeam, importBlueprintTeam } from "../core/team-import.js";
 import { Monitor } from "./monitor.js";
 import { ClawPilotError, InstanceNotFoundError } from "../lib/errors.js";
 import { resolveXdgRuntimeDir } from "../lib/xdg.js";
@@ -1151,6 +1153,123 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       link_type: l.link_type,
     }));
     return c.json({ ok: true, links: updatedLinks });
+  });
+
+  // --- Team export/import routes ---
+
+  // GET /api/instances/:slug/team/export — export instance team as YAML
+  app.get("/api/instances/:slug/team/export", async (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
+
+    try {
+      const team = await exportInstanceTeam(conn, registry, instance);
+      const yaml = serializeTeamYaml(team);
+      return new Response(yaml, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/yaml; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${slug}-team.yaml"`,
+        },
+      });
+    } catch (err) {
+      return apiError(c, 500, "EXPORT_FAILED", err instanceof Error ? err.message : "Export failed");
+    }
+  });
+
+  // POST /api/instances/:slug/team/import — import team YAML into instance
+  app.post("/api/instances/:slug/team/import", async (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
+
+    const dryRun = c.req.query("dry_run") === "true";
+
+    let yamlContent: string;
+    try {
+      yamlContent = await c.req.text();
+    } catch {
+      return apiError(c, 400, "INVALID_BODY", "Could not read request body");
+    }
+
+    const parsed = parseAndValidateTeam(yamlContent);
+    if (!parsed.success) {
+      return c.json(parsed.error, 400);
+    }
+
+    try {
+      const result = await importInstanceTeam(
+        registry.getDb(),
+        registry,
+        conn,
+        instance,
+        parsed.data,
+        xdgRuntimeDir,
+        dryRun,
+      );
+      return c.json(result);
+    } catch (err) {
+      return apiError(c, 500, "IMPORT_FAILED", err instanceof Error ? err.message : "Import failed");
+    }
+  });
+
+  // GET /api/blueprints/:id/team/export — export blueprint team as YAML
+  app.get("/api/blueprints/:id/team/export", (c) => {
+    const id = Number(c.req.param("id"));
+    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
+
+    try {
+      const team = exportBlueprintTeam(registry, id);
+      const yaml = serializeTeamYaml(team);
+      const blueprint = registry.getBlueprint(id);
+      const filename = blueprint ? `${blueprint.name.toLowerCase().replace(/\s+/g, "-")}-team.yaml` : `blueprint-${id}-team.yaml`;
+      return new Response(yaml, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/yaml; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${filename}"`,
+        },
+      });
+    } catch (err) {
+      return apiError(c, 500, "EXPORT_FAILED", err instanceof Error ? err.message : "Export failed");
+    }
+  });
+
+  // POST /api/blueprints/:id/team/import — import team YAML into blueprint
+  app.post("/api/blueprints/:id/team/import", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
+
+    const blueprint = registry.getBlueprint(id);
+    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
+
+    const dryRun = c.req.query("dry_run") === "true";
+
+    let yamlContent: string;
+    try {
+      yamlContent = await c.req.text();
+    } catch {
+      return apiError(c, 400, "INVALID_BODY", "Could not read request body");
+    }
+
+    const parsed = parseAndValidateTeam(yamlContent);
+    if (!parsed.success) {
+      return c.json(parsed.error, 400);
+    }
+
+    try {
+      const result = importBlueprintTeam(
+        registry.getDb(),
+        registry,
+        id,
+        parsed.data,
+        dryRun,
+      );
+      return c.json(result);
+    } catch (err) {
+      return apiError(c, 500, "IMPORT_FAILED", err instanceof Error ? err.message : "Import failed");
+    }
   });
 
   // --- Static file serving ---

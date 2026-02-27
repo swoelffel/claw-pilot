@@ -3,7 +3,8 @@ import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo, BuilderData } from "../types.js";
-import { syncAgents, fetchBuilderData, updateAgentPosition } from "../api.js";
+import { syncAgents, fetchBuilderData, updateAgentPosition, exportInstanceTeam, importInstanceTeam } from "../api.js";
+import type { TeamImportResult } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import "./delete-agent-dialog.js";
 import { tokenStyles } from "../styles/tokens.js";
@@ -12,6 +13,7 @@ import "./agent-card-mini.js";
 import "./agent-links-svg.js";
 import "./agent-detail-panel.js";
 import "./create-agent-dialog.js";
+import "./import-team-dialog.js";
 import { computePositions, newAgentPosition } from "../lib/builder-utils.js";
 
 @localized()
@@ -85,6 +87,23 @@ export class AgentsBuilder extends LitElement {
     .btn-sync:disabled {
       opacity: 0.5;
       cursor: not-allowed;
+    }
+
+    .btn-team {
+      background: none;
+      border: 1px solid var(--bg-border);
+      color: var(--text-secondary);
+      border-radius: var(--radius-md);
+      padding: 5px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+      font-family: inherit;
+    }
+
+    .btn-team:hover {
+      border-color: var(--accent);
+      color: var(--text-primary);
     }
 
     .btn-add-agent {
@@ -184,6 +203,7 @@ export class AgentsBuilder extends LitElement {
   @state() private _showCreateDialog = false;
   @state() private _justCreatedAgentId: string | null = null;
   @state() private _agentToDelete: AgentBuilderInfo | null = null;
+  @state() private _showImportDialog = false;
 
   // Drag state — not @state, updated directly during pointer events
   private _drag: {
@@ -287,6 +307,31 @@ export class AgentsBuilder extends LitElement {
       this._selectedAgentId = newAgent.agent_id;
       setTimeout(() => { this._justCreatedAgentId = null; }, 2000);
     }
+  }
+
+  private async _exportTeam(): Promise<void> {
+    try {
+      const blob = await exportInstanceTeam(this.slug);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${this.slug}-team.yaml`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      this._error = err instanceof Error ? err.message : "Export failed";
+    }
+  }
+
+  private _openImportDialog(): void {
+    this._showImportDialog = true;
+  }
+
+  private _onTeamImported(): void {
+    this._showImportDialog = false;
+    void this._syncAndLoad();
   }
 
   private _onDeleteRequested(agentId: string): void {
@@ -423,6 +468,14 @@ export class AgentsBuilder extends LitElement {
           <span class="badge ${inst.state}">${inst.state}</span>
         ` : ""}
         <button
+          class="btn-team"
+          @click=${() => void this._exportTeam()}
+        >${msg("↓ Export", { id: "team-export" })}</button>
+        <button
+          class="btn-team"
+          @click=${this._openImportDialog}
+        >${msg("↑ Import", { id: "team-import" })}</button>
+        <button
           class="btn-add-agent"
           aria-label="New agent"
           @click=${() => { this._showCreateDialog = true; }}
@@ -538,6 +591,14 @@ export class AgentsBuilder extends LitElement {
           @close-dialog=${() => { this._agentToDelete = null; }}
           @agent-deleted=${(e: CustomEvent<BuilderData>) => this._onAgentDeleted(e.detail)}
         ></cp-delete-agent-dialog>
+      ` : ""}
+
+      ${this._showImportDialog ? html`
+        <cp-import-team-dialog
+          .context=${{ kind: "instance", slug: this.slug }}
+          @close-dialog=${() => { this._showImportDialog = false; }}
+          @team-imported=${() => this._onTeamImported()}
+        ></cp-import-team-dialog>
       ` : ""}
     `;
   }

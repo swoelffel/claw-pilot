@@ -226,6 +226,20 @@ export const templates = {
   "cd-blueprint-hint": "Optional ein Agenten-Team bereitstellen",
   "cd-deploying": "Blueprint-Agenten werden bereitgestellt...",
 
+  // team export/import (v0.5.1)
+  "team-export": "↓ Exportieren",
+  "team-import": "↑ Importieren",
+  "tid-title": "Agenten-Team importieren",
+  "tid-drop-hint": ".team.yaml-Datei hierher ziehen oder klicken zum Durchsuchen",
+  "tid-file": "Datei",
+  "tid-agents": "Agenten",
+  "tid-links": "Links",
+  "tid-files": "Dateien",
+  "tid-warning": "Dies ersetzt alle vorhandenen Agenten, Dateien und Links. Diese Aktion kann nicht rückgängig gemacht werden.",
+  "tid-btn-cancel": "Abbrechen",
+  "tid-btn-import": "Importieren",
+  "tid-btn-importing": "Importiere...",
+
   // error-messages.ts (err-* Schlüssel — API-Fehlercodes -> i18n)
   "err-unauthorized": "Sitzung abgelaufen. Bitte Seite neu laden.",
   "err-not-found": "Ressource nicht gefunden.",

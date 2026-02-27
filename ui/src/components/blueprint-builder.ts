@@ -8,7 +8,10 @@ import {
   createBlueprintAgent,
   deleteBlueprintAgent,
   updateBlueprintAgentPosition,
+  exportBlueprintTeam,
+  importBlueprintTeam,
 } from "../api.js";
+import type { TeamImportResult } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { computePositions, newAgentPosition } from "../lib/builder-utils.js";
 import { tokenStyles } from "../styles/tokens.js";
@@ -16,6 +19,7 @@ import { badgeStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.
 import "./agent-card-mini.js";
 import "./agent-links-svg.js";
 import "./agent-detail-panel.js";
+import "./import-team-dialog.js";
 
 @localized()
 @customElement("cp-blueprint-builder")
@@ -65,6 +69,23 @@ export class BlueprintBuilder extends LitElement {
     .header-subtitle {
       font-size: 12px;
       color: var(--text-muted);
+    }
+
+    .btn-team {
+      background: none;
+      border: 1px solid var(--bg-border);
+      color: var(--text-secondary);
+      border-radius: var(--radius-md);
+      padding: 5px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+      font-family: inherit;
+    }
+
+    .btn-team:hover {
+      border-color: var(--accent);
+      color: var(--text-primary);
     }
 
     .btn-add-agent {
@@ -257,6 +278,8 @@ export class BlueprintBuilder extends LitElement {
   @state() private _showCreateDialog = false;
   @state() private _justCreatedAgentId: string | null = null;
 
+  @state() private _showImportDialog = false;
+
   // Create dialog state
   @state() private _newAgentId = "";
   @state() private _newAgentName = "";
@@ -424,6 +447,32 @@ export class BlueprintBuilder extends LitElement {
     }
   }
 
+  private async _exportTeam(): Promise<void> {
+    try {
+      const blob = await exportBlueprintTeam(this.blueprintId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const name = this._data?.blueprint.name?.toLowerCase().replace(/\s+/g, "-") ?? `blueprint-${this.blueprintId}`;
+      a.download = `${name}-team.yaml`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      this._error = err instanceof Error ? err.message : "Export failed";
+    }
+  }
+
+  private _openImportDialog(): void {
+    this._showImportDialog = true;
+  }
+
+  private _onTeamImported(): void {
+    this._showImportDialog = false;
+    void this._load();
+  }
+
   private _onDeleteRequested(agentId: string): void {
     const agent = this._data?.agents.find(a => a.agent_id === agentId);
     if (!agent || agent.is_default) return;
@@ -503,6 +552,14 @@ export class BlueprintBuilder extends LitElement {
         </button>
         <span class="header-title">${data?.blueprint.name ?? "Blueprint"}</span>
         ${data?.blueprint.icon ? html`<span style="font-size: 18px;">${data.blueprint.icon}</span>` : ""}
+        <button
+          class="btn-team"
+          @click=${() => void this._exportTeam()}
+        >${msg("↓ Export", { id: "team-export" })}</button>
+        <button
+          class="btn-team"
+          @click=${this._openImportDialog}
+        >${msg("↑ Import", { id: "team-import" })}</button>
         <button
           class="btn-add-agent"
           @click=${() => { this._showCreateDialog = true; }}
@@ -599,6 +656,14 @@ export class BlueprintBuilder extends LitElement {
           ></cp-agent-detail-panel>
         ` : ""}
       </div>
+
+      ${this._showImportDialog ? html`
+        <cp-import-team-dialog
+          .context=${{ kind: "blueprint", blueprintId: this.blueprintId }}
+          @close-dialog=${() => { this._showImportDialog = false; }}
+          @team-imported=${() => this._onTeamImported()}
+        ></cp-import-team-dialog>
+      ` : ""}
 
       ${this._showCreateDialog ? html`
         <div class="dialog-overlay" @click=${(e: Event) => { if (e.target === e.currentTarget) this._showCreateDialog = false; }}>
