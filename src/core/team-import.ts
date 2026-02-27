@@ -402,25 +402,10 @@ function mergeTeamIntoConfig(
     agentsConf["defaults"] = merged;
   }
 
-  // Rebuild subagents.allowAgents in agents.defaults from spawn links in the YAML.
-  // agent-sync.ts derives spawn links by reading this field from openclaw.json —
-  // if it is missing, the sync overwrites the DB links with an empty list.
-  // We only set allowAgents for the default agent (main); non-default agents with
-  // spawn links are handled via their list[] entry below.
-  if (defaultAgent) {
-    const spawnTargets = team.links
-      .filter((l) => l.type === "spawn" && l.source === defaultAgent.id)
-      .map((l) => l.target);
-
-    if (spawnTargets.length > 0) {
-      const existingDefaults = (agentsConf["defaults"] ?? {}) as Record<string, unknown>;
-      const existingSubagents = (existingDefaults["subagents"] ?? {}) as Record<string, unknown>;
-      existingDefaults["subagents"] = { ...existingSubagents, allowAgents: spawnTargets };
-      agentsConf["defaults"] = existingDefaults;
-    }
-  }
-
   // 2. Rebuild agents.list[] from non-default agents
+  // NOTE: spawn links for the default agent (main) are handled via a dedicated
+  // list[] entry for "main" appended below. OpenClaw rejects allowAgents inside
+  // agents.defaults.subagents — it is only valid inside list[].subagents.
   const agentsList = team.agents
     .filter((a) => !a.is_default)
     .map((a) => {
@@ -457,6 +442,23 @@ function mergeTeamIntoConfig(
 
       return entry;
     });
+
+  // If the default agent (main) has spawn links, add a dedicated list[] entry
+  // for "main" carrying subagents.allowAgents. This is the only valid location
+  // for allowAgents in openclaw.json — OpenClaw rejects it in defaults.subagents.
+  // agent-sync.ts reads list[].subagents.allowAgents first (priority over defaults).
+  if (defaultAgent) {
+    const mainSpawnTargets = team.links
+      .filter((l) => l.type === "spawn" && l.source === defaultAgent.id)
+      .map((l) => l.target);
+    if (mainSpawnTargets.length > 0) {
+      agentsList.push({
+        id: defaultAgent.id,
+        subagents: { allowAgents: mainSpawnTargets },
+      });
+    }
+  }
+
   agentsConf["list"] = agentsList;
 
   // 3. Update tools.agentToAgent
