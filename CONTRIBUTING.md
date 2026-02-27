@@ -8,9 +8,7 @@ Thank you for your interest in contributing to claw-pilot! We welcome bug report
 
 ## Code of Conduct
 
-Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md). We expect all contributors to maintain a respectful and collaborative environment.
-
-If a Code of Conduct does not exist yet, we encourage respectful collaboration. Consider proposing one in a future contribution.
+Please read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) (short and lightweight). We expect all contributors to maintain a respectful and collaborative environment.
 
 ## Project Setup
 
