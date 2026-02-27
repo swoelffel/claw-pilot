@@ -193,6 +193,20 @@ export class InstanceCard extends LitElement {
     return this.instance.state ?? "unknown";
   }
 
+  /** Handles JSON-stringified objects like {"primary":"provider/model"} */
+  private _resolveModel(raw: string | null): string | null {
+    if (!raw) return null;
+    if (raw.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        return (parsed["primary"] as string | undefined) ?? raw;
+      } catch {
+        return raw;
+      }
+    }
+    return raw;
+  }
+
   override render() {
     const inst = this.instance;
     const stateClass = this._stateClass();
@@ -247,11 +261,11 @@ export class InstanceCard extends LitElement {
                 </div>
               `
             : ""}
-          ${inst.default_model
+          ${this._resolveModel(inst.default_model)
             ? html`
                 <div class="meta-item">
                   <span class="meta-label">${msg("Model", { id: "meta-model" })}</span>
-                  <span class="meta-value">${inst.default_model}</span>
+                  <span class="meta-value">${this._resolveModel(inst.default_model)}</span>
                 </div>
               `
             : ""}
