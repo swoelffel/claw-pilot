@@ -261,9 +261,11 @@ export async function importInstanceTeam(
     const openclawHome = path.dirname(instance.config_path);
 
     for (const agent of team.agents) {
+      // agent-sync.ts resolves workspace paths as stateDir/workspaces/{workspace}.
+      // We must use the same convention so that the post-import sync finds the files.
       const workspacePath = agent.is_default
-        ? path.join(openclawHome, "workspace")
-        : path.join(openclawHome, `workspace-${agent.id}`);
+        ? path.join(openclawHome, "workspaces", "workspace")
+        : path.join(openclawHome, "workspaces", `workspace-${agent.id}`);
 
       const tagsJson = agent.meta?.tags ? JSON.stringify(agent.meta.tags) : null;
 
@@ -475,9 +477,10 @@ async function syncWorkspacesToDisk(
   let filesWritten = 0;
 
   for (const agent of team.agents) {
+    // Same convention as agent-sync.ts: stateDir/workspaces/{workspace}
     const workspacePath = agent.is_default
-      ? path.join(openclawHome, "workspace")
-      : path.join(openclawHome, `workspace-${agent.id}`);
+      ? path.join(openclawHome, "workspaces", "workspace")
+      : path.join(openclawHome, "workspaces", `workspace-${agent.id}`);
 
     // Create workspace directory
     await conn.mkdir(workspacePath);
