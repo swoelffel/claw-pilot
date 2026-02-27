@@ -12,7 +12,7 @@ export interface ProviderInfo {
 /**
  * Provider catalog — kept in sync with OpenClaw model registry.
  * Source: src/openclaw/node_modules/@mariozechner/pi-ai/dist/models.generated.js
- * OpenClaw version reference: 2026.2.24
+ * OpenClaw version reference: 2026.2.27
  * Update this catalog on each OpenClaw release (see docs/OPENCLAW-COMPAT.md).
  */
 export const PROVIDER_CATALOG: ProviderInfo[] = [
@@ -20,11 +20,10 @@ export const PROVIDER_CATALOG: ProviderInfo[] = [
     id: "anthropic",
     label: "Anthropic",
     requiresKey: true,
-    defaultModel: "anthropic/claude-sonnet-4-6",
+    defaultModel: "anthropic/claude-opus-4-5",
     models: [
-      "anthropic/claude-opus-4-6",
       "anthropic/claude-opus-4-5",
-      "anthropic/claude-sonnet-4-6",
+      "anthropic/claude-opus-4-1",
       "anthropic/claude-sonnet-4-5",
       "anthropic/claude-haiku-4-5",
     ],

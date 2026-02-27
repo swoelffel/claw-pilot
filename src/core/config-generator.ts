@@ -32,7 +32,7 @@ export const PROVIDER_ENV_VARS: Record<string, string> = {
   anthropic:  "ANTHROPIC_API_KEY",
   openai:     "OPENAI_API_KEY",
   openrouter: "OPENROUTER_API_KEY",
-  google:     "GOOGLE_API_KEY",
+  google:     "GEMINI_API_KEY",
   mistral:    "MISTRAL_API_KEY",
   xai:        "XAI_API_KEY",
   kilocode:   "KILOCODE_API_KEY",
@@ -114,7 +114,7 @@ export function generateConfig(answers: WizardAnswers): string {
 
   const config: Record<string, unknown> = {
     meta: {
-      lastTouchedVersion: "2026.2.24",
+      lastTouchedVersion: "2026.2.27",
       lastTouchedAt: new Date().toISOString(),
     },
     ...(Object.keys(authBlock).length > 0 ? { auth: authBlock } : {}),

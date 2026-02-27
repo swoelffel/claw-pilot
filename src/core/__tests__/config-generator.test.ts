@@ -45,10 +45,10 @@ describe("generateConfig", () => {
     expect(config.models.providers.anthropic).toBeUndefined();
   });
 
-  it("uses correct provider block for google (not gemini)", () => {
+  it("uses correct provider block for google (GEMINI_API_KEY, not GOOGLE_API_KEY)", () => {
     const answers: WizardAnswers = { ...baseAnswers, provider: "google", apiKey: "AIza-test" };
     const config = JSON.parse(generateConfig(answers));
-    expect(config.models.providers.google.apiKey).toBe("${GOOGLE_API_KEY}");
+    expect(config.models.providers.google.apiKey).toBe("${GEMINI_API_KEY}");
     expect(config.models.providers.google.baseUrl).toBe("https://generativelanguage.googleapis.com/v1beta");
     expect(config.models.providers.gemini).toBeUndefined();
   });
@@ -143,10 +143,10 @@ describe("generateConfig", () => {
     expect(config.channels).toBeUndefined();
   });
 
-  it("does NOT include slug in meta (v2026.2.24)", () => {
+  it("does NOT include slug in meta (v2026.2.27)", () => {
     const config = JSON.parse(generateConfig(baseAnswers));
     expect(config.meta.slug).toBeUndefined();
-    expect(config.meta.lastTouchedVersion).toBe("2026.2.24");
+    expect(config.meta.lastTouchedVersion).toBe("2026.2.27");
   });
 });
 
@@ -174,10 +174,10 @@ describe("generateEnv", () => {
     expect(env).not.toContain("ANTHROPIC_API_KEY");
   });
 
-  it("writes GOOGLE_API_KEY for google provider (not GEMINI_API_KEY)", () => {
+  it("writes GEMINI_API_KEY for google provider (not GOOGLE_API_KEY)", () => {
     const env = generateEnv({ provider: "google", apiKey: "AIza-test", gatewayToken: "token" });
-    expect(env).toContain("GOOGLE_API_KEY=AIza-test");
-    expect(env).not.toContain("GEMINI_API_KEY");
+    expect(env).toContain("GEMINI_API_KEY=AIza-test");
+    expect(env).not.toContain("GOOGLE_API_KEY");
   });
 
   it("writes XAI_API_KEY for xai provider", () => {
