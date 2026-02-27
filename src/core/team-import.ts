@@ -400,6 +400,24 @@ function mergeTeamIntoConfig(
     agentsConf["defaults"] = merged;
   }
 
+  // Rebuild subagents.allowAgents in agents.defaults from spawn links in the YAML.
+  // agent-sync.ts derives spawn links by reading this field from openclaw.json —
+  // if it is missing, the sync overwrites the DB links with an empty list.
+  // We only set allowAgents for the default agent (main); non-default agents with
+  // spawn links are handled via their list[] entry below.
+  if (defaultAgent) {
+    const spawnTargets = team.links
+      .filter((l) => l.type === "spawn" && l.source === defaultAgent.id)
+      .map((l) => l.target);
+
+    if (spawnTargets.length > 0) {
+      const existingDefaults = (agentsConf["defaults"] ?? {}) as Record<string, unknown>;
+      const existingSubagents = (existingDefaults["subagents"] ?? {}) as Record<string, unknown>;
+      existingDefaults["subagents"] = { ...existingSubagents, allowAgents: spawnTargets };
+      agentsConf["defaults"] = existingDefaults;
+    }
+  }
+
   // 2. Rebuild agents.list[] from non-default agents
   const agentsList = team.agents
     .filter((a) => !a.is_default)
@@ -423,6 +441,18 @@ function mergeTeamIntoConfig(
         if (humanDelay !== undefined) entry["humanDelay"] = humanDelay;
         if (groupChat !== undefined) entry["groupChat"] = groupChat;
       }
+
+      // Inject subagents.allowAgents from spawn links for this non-default agent.
+      // Same reason as for the default agent: agent-sync.ts reads this field to
+      // reconstruct spawn links, so it must be present in openclaw.json.
+      const agentSpawnTargets = team.links
+        .filter((l) => l.type === "spawn" && l.source === a.id)
+        .map((l) => l.target);
+      if (agentSpawnTargets.length > 0) {
+        const existingSubagents = (entry["subagents"] ?? {}) as Record<string, unknown>;
+        entry["subagents"] = { ...existingSubagents, allowAgents: agentSpawnTargets };
+      }
+
       return entry;
     });
   agentsConf["list"] = agentsList;
