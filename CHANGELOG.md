@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.6.1] — 2026-02-27
+
+### Fixed
+- Google provider now writes `GEMINI_API_KEY` in `.env` instead of `GOOGLE_API_KEY` — instances created with Google Gemini were failing to start because OpenClaw expects `GEMINI_API_KEY`
+- `openclaw.json` `meta.lastTouchedVersion` bumped to `2026.2.27` to match current OpenClaw release
+- Anthropic model catalog corrected — removed non-existent `claude-opus-4-6` / `claude-sonnet-4-6` model IDs, replaced with real catalog (`claude-opus-4-5`, `claude-opus-4-1`, `claude-sonnet-4-5`, `claude-haiku-4-5`)
+
+---
+
 ## [0.6.0] — 2026-02-27
 
 ### Added
