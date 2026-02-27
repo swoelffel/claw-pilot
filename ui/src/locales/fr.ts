@@ -223,7 +223,7 @@ export const templates = {
   "bb-no-agents": "Aucun agent dans ce blueprint",
   "bb-no-agents-hint": "Cliquez sur \"+ Nouvel agent\" pour en ajouter un.",
   "cd-blueprint": "Blueprint d'équipe",
-  "cd-blueprint-none": "Aucun",
+  "cd-blueprint-none": "Défaut (Principal uniquement)",
   "cd-blueprint-hint": "Déployer optionnellement une équipe d'agents",
   "cd-deploying": "Déploiement des agents du blueprint...",
 

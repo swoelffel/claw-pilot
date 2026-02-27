@@ -252,8 +252,7 @@ export class CreateDialog extends LitElement {
   @state() private _providersError = "";
   @state() private _selectedProvider: ProviderInfo | null = null;
   @state() private _apiKey = "";
-  @state() private _agentMode: "minimal" | "custom" = "minimal";
-  @state() private _customAgents: Array<{ id: string; name: string }> = [];
+
   @state() private _blueprints: Blueprint[] = [];
   @state() private _blueprintsLoading = false;
   @state() private _selectedBlueprintId: number | null = null;
@@ -352,30 +351,8 @@ export class CreateDialog extends LitElement {
     }
   }
 
-  private _addAgent(): void {
-    this._customAgents = [...this._customAgents, { id: "", name: "" }];
-  }
-
-  private _removeAgent(idx: number): void {
-    this._customAgents = this._customAgents.filter((_, i) => i !== idx);
-  }
-
-  private _updateAgent(idx: number, field: "id" | "name", value: string): void {
-    this._customAgents = this._customAgents.map((a, i) =>
-      i === idx ? { ...a, [field]: field === "id" ? value.toLowerCase().replace(/[^a-z0-9-]/g, "") : value } : a
-    );
-  }
-
   private _buildAgents(): AgentDefinition[] {
-    const agents: AgentDefinition[] = [{ id: "main", name: "Main", isDefault: true }];
-    if (this._agentMode === "custom") {
-      for (const a of this._customAgents) {
-        if (a.id && a.name) {
-          agents.push({ id: a.id, name: a.name });
-        }
-      }
-    }
-    return agents;
+    return [{ id: "main", name: "Main", isDefault: true }];
   }
 
   private _isFormValid(): boolean {
@@ -384,12 +361,6 @@ export class CreateDialog extends LitElement {
     if (!this._model) return false;
     if (!this._selectedProvider) return false;
     if (this._selectedProvider.requiresKey && !this._apiKey.trim()) return false;
-    if (this._agentMode === "custom") {
-      for (const a of this._customAgents) {
-        if (!a.id || !a.name) return false;
-        if (!/^[a-z][a-z0-9-]*$/.test(a.id)) return false;
-      }
-    }
     return true;
   }
 
@@ -590,7 +561,7 @@ export class CreateDialog extends LitElement {
                 this._selectedBlueprintId = val ? Number(val) : null;
               }}
             >
-              <option value="">${msg("None", { id: "cd-blueprint-none" })}</option>
+              <option value="">${msg("Default (Main only)", { id: "cd-blueprint-none" })}</option>
               ${this._blueprints.map(bp => html`
                 <option value="${bp.id}">
                   ${bp.icon ? `${bp.icon} ` : ""}${bp.name}${bp.agent_count ? ` (${bp.agent_count} agents)` : ""}
@@ -599,55 +570,6 @@ export class CreateDialog extends LitElement {
             </select>
             <span class="field-hint">${msg("Optionally deploy a team of agents", { id: "cd-blueprint-hint" })}</span>
           </div>
-        </div>
-
-        <hr class="divider" />
-
-        <!-- Agents -->
-        <div class="section">
-          <div class="section-label">${msg("Agent team", { id: "section-agent-team" })}</div>
-          <div class="agent-mode-toggle">
-            <button
-              class="toggle-btn ${this._agentMode === "minimal" ? "active" : ""}"
-              @click=${() => { this._agentMode = "minimal"; }}
-            >${msg("Minimal (main only)", { id: "toggle-minimal" })}</button>
-            <button
-              class="toggle-btn ${this._agentMode === "custom" ? "active" : ""}"
-              @click=${() => { this._agentMode = "custom"; }}
-            >${msg("Custom agents", { id: "toggle-custom" })}</button>
-          </div>
-
-          ${this._agentMode === "custom"
-            ? html`
-                <div class="agents-list">
-                  <!-- Main agent (always present, read-only) -->
-                  <div class="agent-row">
-                    <input type="text" value="main" disabled />
-                    <input type="text" value="Main" disabled />
-                    <span style="width:28px"></span>
-                  </div>
-                  <!-- Custom agents -->
-                  ${this._customAgents.map((agent, idx) => html`
-                    <div class="agent-row">
-                      <input
-                        type="text"
-                        placeholder=${msg("agent-id", { id: "placeholder-agent-id" })}
-                        .value=${agent.id}
-                        @input=${(e: Event) => this._updateAgent(idx, "id", (e.target as HTMLInputElement).value)}
-                      />
-                      <input
-                        type="text"
-                        placeholder=${msg("Display name", { id: "placeholder-agent-name" })}
-                        .value=${agent.name}
-                        @input=${(e: Event) => this._updateAgent(idx, "name", (e.target as HTMLInputElement).value)}
-                      />
-                      <button class="agent-remove" aria-label="Supprimer l'agent" @click=${() => this._removeAgent(idx)}>✕</button>
-                    </div>
-                  `)}
-                  <button class="add-agent-btn" @click=${this._addAgent}>${msg("+ Add agent", { id: "btn-add-agent" })}</button>
-                </div>
-              `
-            : html`<span class="field-hint">${msg("Single main agent — you can add more later via CLI", { id: "hint-minimal-agent" })}</span>`}
         </div>
 
         ${this._submitError
