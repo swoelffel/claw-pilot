@@ -253,6 +253,73 @@ export async function updateBlueprintAgentFile(
   );
 }
 
+// --- Team export/import API ---
+
+export interface TeamImportResult {
+  ok: boolean;
+  agents_imported?: number;
+  links_imported?: number;
+  files_written?: number;
+  dry_run?: boolean;
+  summary?: {
+    agents_to_import: number;
+    links_to_import: number;
+    files_to_write: number;
+    agents_to_remove: number;
+    current_agent_count: number;
+  };
+}
+
+export async function exportInstanceTeam(slug: string): Promise<Blob> {
+  const res = await fetch(`/api/instances/${slug}/team/export`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new ApiError(res.status, "EXPORT_FAILED", "Export failed");
+  return res.blob();
+}
+
+export async function importInstanceTeam(slug: string, yamlContent: string, dryRun = false): Promise<TeamImportResult> {
+  const url = `/api/instances/${slug}/team/import${dryRun ? "?dry_run=true" : ""}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getToken()}`,
+      "Content-Type": "text/yaml",
+    },
+    body: yamlContent,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText })) as { error?: string; code?: string; message?: string };
+    throw new ApiError(res.status, body.error ?? body.code ?? "IMPORT_FAILED", body.message ?? body.error ?? "Import failed");
+  }
+  return res.json() as Promise<TeamImportResult>;
+}
+
+export async function exportBlueprintTeam(blueprintId: number): Promise<Blob> {
+  const res = await fetch(`/api/blueprints/${blueprintId}/team/export`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new ApiError(res.status, "EXPORT_FAILED", "Export failed");
+  return res.blob();
+}
+
+export async function importBlueprintTeam(blueprintId: number, yamlContent: string, dryRun = false): Promise<TeamImportResult> {
+  const url = `/api/blueprints/${blueprintId}/team/import${dryRun ? "?dry_run=true" : ""}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getToken()}`,
+      "Content-Type": "text/yaml",
+    },
+    body: yamlContent,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText })) as { error?: string; code?: string; message?: string };
+    throw new ApiError(res.status, body.error ?? body.code ?? "IMPORT_FAILED", body.message ?? body.error ?? "Import failed");
+  }
+  return res.json() as Promise<TeamImportResult>;
+}
+
 export async function updateBlueprintSpawnLinks(
   blueprintId: number,
   agentId: string,

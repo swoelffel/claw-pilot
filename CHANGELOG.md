@@ -6,6 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.6.0] — 2026-02-27
+
+### Added
+- Agent team export/import via `.team.yaml` files — snapshot and restore a full agent team (agents, prompts, spawn links) across instances
+- Export button in the agents builder — generates a `.team.yaml` with all agents, their workspace files, and spawn relationships
+- Import dialog in the agents builder — validates and applies a `.team.yaml` into any instance, creating agents, writing workspace files, and wiring spawn links
+- Verbose import validation — detailed error messages when the YAML schema is invalid or agents are misconfigured
+
+### Fixed
+- Import now correctly restores spawn links in `openclaw.json` (`list[].subagents.allowAgents`) — previously links were lost after sync
+- Workspace files (AGENTS.md, SOUL.md, etc.) are now written to the correct path (`workspaces/workspace-{id}/`) matching the convention used by agent-sync and discovery
+- `main` spawn links are now written to a dedicated `list[]` entry instead of `defaults.subagents`, which was rejected by OpenClaw and caused the instance to become unhealthy
+
+---
+
 ## [0.5.0] — 2026-02-26
 
 ### Added

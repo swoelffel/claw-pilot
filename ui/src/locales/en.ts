@@ -223,9 +223,23 @@ export const templates = {
   "bb-no-agents": "No agents in this blueprint",
   "bb-no-agents-hint": "Click \"+ New agent\" to add one.",
   "cd-blueprint": "Team Blueprint",
-  "cd-blueprint-none": "None",
+  "cd-blueprint-none": "Default (Main only)",
   "cd-blueprint-hint": "Optionally deploy a team of agents",
   "cd-deploying": "Deploying blueprint agents...",
+
+  // team export/import (v0.5.1)
+  "team-export": "↓ Export",
+  "team-import": "↑ Import",
+  "tid-title": "Import Agent Team",
+  "tid-drop-hint": "Drop .team.yaml file here or click to browse",
+  "tid-file": "File",
+  "tid-agents": "Agents",
+  "tid-links": "Links",
+  "tid-files": "Files",
+  "tid-warning": "This will replace all existing agents, files, and links. This action cannot be undone.",
+  "tid-btn-cancel": "Cancel",
+  "tid-btn-import": "Import",
+  "tid-btn-importing": "Importing...",
 
   // error-messages.ts (err-* keys — API error codes -> i18n)
   "err-unauthorized": "Session expired. Please refresh the page.",

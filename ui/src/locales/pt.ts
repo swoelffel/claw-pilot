@@ -222,9 +222,23 @@ export const templates = {
   "bb-no-agents": "Sem agentes neste blueprint",
   "bb-no-agents-hint": "Clique em \"+ Novo agente\" para adicionar um.",
   "cd-blueprint": "Blueprint de equipe",
-  "cd-blueprint-none": "Nenhum",
+  "cd-blueprint-none": "Padrão (somente principal)",
   "cd-blueprint-hint": "Opcionalmente implantar uma equipe de agentes",
   "cd-deploying": "Implantando agentes do blueprint...",
+
+  // team export/import (v0.5.1)
+  "team-export": "↓ Exportar",
+  "team-import": "↑ Importar",
+  "tid-title": "Importar equipe de agentes",
+  "tid-drop-hint": "Arraste um arquivo .team.yaml aqui ou clique para procurar",
+  "tid-file": "Arquivo",
+  "tid-agents": "Agentes",
+  "tid-links": "Links",
+  "tid-files": "Arquivos",
+  "tid-warning": "Isso substituirá todos os agentes, arquivos e links existentes. Esta ação não pode ser desfeita.",
+  "tid-btn-cancel": "Cancelar",
+  "tid-btn-import": "Importar",
+  "tid-btn-importing": "Importando...",
 
   // error-messages.ts (chaves err-* — códigos de erro API -> i18n)
   "err-unauthorized": "Sessão expirada. Por favor, recarregue a página.",
