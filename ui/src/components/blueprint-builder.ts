@@ -553,6 +553,10 @@ export class BlueprintBuilder extends LitElement {
         <span class="header-title">${data?.blueprint.name ?? "Blueprint"}</span>
         ${data?.blueprint.icon ? html`<span style="font-size: 18px;">${data.blueprint.icon}</span>` : ""}
         <button
+          class="btn-add-agent"
+          @click=${() => { this._showCreateDialog = true; }}
+        >${msg("+ New agent", { id: "ab-btn-add-agent" })}</button>
+        <button
           class="btn-team"
           @click=${() => void this._exportTeam()}
         >${msg("↓ Export", { id: "team-export" })}</button>
@@ -560,10 +564,6 @@ export class BlueprintBuilder extends LitElement {
           class="btn-team"
           @click=${this._openImportDialog}
         >${msg("↑ Import", { id: "team-import" })}</button>
-        <button
-          class="btn-add-agent"
-          @click=${() => { this._showCreateDialog = true; }}
-        >${msg("+ New agent", { id: "ab-btn-add-agent" })}</button>
       </div>
 
       <div class="builder-body">

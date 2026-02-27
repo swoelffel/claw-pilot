@@ -468,6 +468,11 @@ export class AgentsBuilder extends LitElement {
           <span class="badge ${inst.state}">${inst.state}</span>
         ` : ""}
         <button
+          class="btn-add-agent"
+          aria-label="New agent"
+          @click=${() => { this._showCreateDialog = true; }}
+        >${msg("+ New agent", { id: "ab-btn-add-agent" })}</button>
+        <button
           class="btn-team"
           @click=${() => void this._exportTeam()}
         >${msg("↓ Export", { id: "team-export" })}</button>
@@ -475,11 +480,6 @@ export class AgentsBuilder extends LitElement {
           class="btn-team"
           @click=${this._openImportDialog}
         >${msg("↑ Import", { id: "team-import" })}</button>
-        <button
-          class="btn-add-agent"
-          aria-label="New agent"
-          @click=${() => { this._showCreateDialog = true; }}
-        >${msg("+ New agent", { id: "ab-btn-add-agent" })}</button>
         <button
           class="btn-sync"
           aria-label="Synchroniser"
