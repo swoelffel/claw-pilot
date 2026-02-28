@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.6.4] — 2026-02-28
+
+### Fixed
+- `claw-pilot init` now shows a clear actionable message when OpenClaw installation fails — includes the manual install command and instructs the user to re-run `claw-pilot init` afterward
+
+---
+
 ## [0.6.3] — 2026-02-28
 
 ### Fixed

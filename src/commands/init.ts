@@ -51,12 +51,12 @@ export function initCommand(): Command {
           logger.info("Installing OpenClaw...");
           const installed = await cli.install();
           if (!installed) {
-            logger.error(
-              `OpenClaw installation failed. Install manually: ${installUrl}`,
-            );
+            logger.error("OpenClaw installation failed.");
             logger.warn(
-              "Continuing without OpenClaw — create/start commands will not work.",
+              "OpenClaw is required to create and manage instances. Install it manually:",
             );
+            logger.warn(`  curl -fsSL ${installUrl} | sh`);
+            logger.warn("Then re-run: claw-pilot init");
           } else {
             openclaw = await cli.detect();
             if (openclaw) {
