@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.6.2] — 2026-02-28
+
+### Fixed
+- `claw-pilot create` now detects missing OpenClaw before entering the wizard and offers to install it automatically — instead of throwing an opaque `OPENCLAW_NOT_FOUND` error mid-provisioning
+
+---
+
 ## [0.6.1] — 2026-02-27
 
 ### Fixed

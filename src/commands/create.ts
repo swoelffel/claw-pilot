@@ -1,11 +1,14 @@
 // src/commands/create.ts
 import { Command } from "commander";
+import { confirm } from "@inquirer/prompts";
 import { PortAllocator } from "../core/port-allocator.js";
 import { PairingManager } from "../core/pairing.js";
 import { Provisioner } from "../core/provisioner.js";
+import { OpenClawCLI } from "../core/openclaw-cli.js";
 import { runWizard } from "../wizard/wizard.js";
 import { logger } from "../lib/logger.js";
 import { withContext } from "./_context.js";
+import { constants } from "../lib/constants.js";
 import chalk from "chalk";
 import { readGatewayToken } from "../lib/env-reader.js";
 
@@ -20,6 +23,37 @@ export function createCommand(): Command {
         if (!server) {
           logger.error("No server registered. Run 'claw-pilot init' first.");
           process.exit(1);
+        }
+
+        // Detect OpenClaw — offer to install if missing (before entering the wizard)
+        const cli = new OpenClawCLI(conn);
+        const openclaw = await cli.detect();
+        if (!openclaw) {
+          const installUrl =
+            process.env["OPENCLAW_INSTALL_URL"] ?? constants.OPENCLAW_INSTALL_URL;
+          logger.warn("OpenClaw CLI not found.");
+          const shouldInstall = await confirm({
+            message: `Install OpenClaw automatically? (from ${installUrl})`,
+            default: true,
+          });
+          if (shouldInstall) {
+            logger.info("Installing OpenClaw...");
+            const installed = await cli.install();
+            if (!installed) {
+              logger.error(
+                `OpenClaw installation failed. Install manually: ${installUrl}`,
+              );
+              logger.error("Cannot create instance without OpenClaw.");
+              process.exit(1);
+            }
+            const detected = await cli.detect();
+            logger.success(`OpenClaw installed: ${detected?.version ?? "unknown"}`);
+          } else {
+            logger.error(
+              "OpenClaw is required to create instances. Run 'claw-pilot init' to install it.",
+            );
+            process.exit(1);
+          }
         }
 
         const answers = await runWizard(registry, portAllocator, conn, server.id);
