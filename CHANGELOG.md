@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.6.5] — 2026-02-28
+
+### Fixed
+- Provisioner now rolls back all created artefacts on failure — if `claw-pilot create` fails mid-provisioning (after directories or service files were created), it automatically removes the state dir, service file, and registry entries instead of leaving orphaned state
+
+---
+
 ## [0.6.4] — 2026-02-28
 
 ### Fixed

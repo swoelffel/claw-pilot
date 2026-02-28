@@ -15,6 +15,7 @@ import { constants } from "../lib/constants.js";
 import { getOpenClawHome, getSystemdDir, getSystemdUnit, getServiceManager, getLaunchdDir, getLaunchdPlistPath } from "../lib/platform.js";
 import { InstanceAlreadyExistsError, ClawPilotError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
+import { shellEscape } from "../lib/shell.js";
 import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 import { BlueprintDeployer } from "./blueprint-deployer.js";
 import * as os from "node:os";
@@ -121,156 +122,285 @@ export class Provisioner {
     // Extract uid from xdgRuntimeDir for the systemd service template
     const uid = parseInt(xdgRuntimeDir.split("/").pop() ?? "1000", 10) || 1000;
 
-    // Step 2: Create directory structure
-    logger.step("Creating directories...");
-    await this.conn.mkdir(stateDir, { mode: constants.DIR_MODE });
-    await this.conn.mkdir(path.join(stateDir, "workspaces"));
-    await this.conn.mkdir(logsDir);
+    // Track what has been created so we can roll back on failure
+    let stateDirCreated = false;
+    let serviceFileCreated = false;
+    let instanceRegistered = false;
+    let portAllocated = false;
+    let serviceStarted = false;
+    let serviceEnabled = false;
 
-    // Step 3: Generate secrets
-    logger.step("Generating secrets...");
-    const gatewayToken = generateGatewayToken();
+    try {
+      // Step 2: Create directory structure
+      logger.step("Creating directories...");
+      await this.conn.mkdir(stateDir, { mode: constants.DIR_MODE });
+      await this.conn.mkdir(path.join(stateDir, "workspaces"));
+      await this.conn.mkdir(logsDir);
+      stateDirCreated = true;
 
-    // Resolve API key
-    const resolvedApiKey = await resolveApiKey(answers, this.registry, this.conn);
+      // Step 3: Generate secrets
+      logger.step("Generating secrets...");
+      const gatewayToken = generateGatewayToken();
 
-    const envContent = generateEnv({
-      provider: answers.provider,
-      apiKey: resolvedApiKey,
-      gatewayToken,
-      telegramBotToken: answers.telegram.botToken,
-    });
-    await this.conn.writeFile(envPath, envContent, constants.ENV_FILE_MODE);
+      // Resolve API key
+      const resolvedApiKey = await resolveApiKey(answers, this.registry, this.conn);
 
-    // Step 4: Generate openclaw.json
-    logger.step("Generating configuration...");
-    const configContent = generateConfig(answers);
-    await this.conn.writeFile(configPath, configContent, constants.CONFIG_FILE_MODE);
-
-    // Step 5: Create workspaces
-    logger.step("Creating workspaces...");
-    for (const agent of answers.agents) {
-      const workspaceId = agent.workspace ?? (agent.isDefault ? "workspace" : `workspace-${agent.id}`);
-      const workspacePath = path.join(stateDir, "workspaces", workspaceId);
-      await this.conn.mkdir(workspacePath);
-      await this.provisionWorkspaceFiles(workspacePath, {
-        agentId: agent.id,
-        agentName: agent.name,
-        instanceSlug: slug,
-        instanceName: answers.displayName,
-        agents: answers.agents,
+      const envContent = generateEnv({
+        provider: answers.provider,
+        apiKey: resolvedApiKey,
+        gatewayToken,
+        telegramBotToken: answers.telegram.botToken,
       });
-    }
+      await this.conn.writeFile(envPath, envContent, constants.ENV_FILE_MODE);
 
-    // Step 6: Generate and install service (systemd on Linux, launchd on macOS)
-    if (sm === "launchd") {
-      logger.step("Installing launchd service...");
-      const plistContent = generateLaunchdPlist({
+      // Step 4: Generate openclaw.json
+      logger.step("Generating configuration...");
+      const configContent = generateConfig(answers);
+      await this.conn.writeFile(configPath, configContent, constants.CONFIG_FILE_MODE);
+
+      // Step 5: Create workspaces
+      logger.step("Creating workspaces...");
+      for (const agent of answers.agents) {
+        const workspaceId = agent.workspace ?? (agent.isDefault ? "workspace" : `workspace-${agent.id}`);
+        const workspacePath = path.join(stateDir, "workspaces", workspaceId);
+        await this.conn.mkdir(workspacePath);
+        await this.provisionWorkspaceFiles(workspacePath, {
+          agentId: agent.id,
+          agentName: agent.name,
+          instanceSlug: slug,
+          instanceName: answers.displayName,
+          agents: answers.agents,
+        });
+      }
+
+      // Step 6: Generate and install service (systemd on Linux, launchd on macOS)
+      if (sm === "launchd") {
+        logger.step("Installing launchd service...");
+        const plistContent = generateLaunchdPlist({
+          slug,
+          displayName: answers.displayName,
+          port: answers.port,
+          stateDir,
+          configPath,
+          openclawBin: openclaw.bin,
+          home: os.homedir(),
+        });
+        const launchdDir = getLaunchdDir();
+        await this.conn.mkdir(launchdDir);
+        await this.conn.writeFile(getLaunchdPlistPath(slug), plistContent);
+      } else {
+        logger.step("Installing systemd service...");
+        const systemdDir = getSystemdDir();
+        const systemdUnit = getSystemdUnit(slug);
+        const serviceFile = path.join(systemdDir, systemdUnit);
+        const serviceContent = generateSystemdService({
+          slug,
+          displayName: answers.displayName,
+          port: answers.port,
+          stateDir,
+          configPath,
+          openclawHome,
+          openclawBin: openclaw.bin,
+          uid,
+        });
+        await this.conn.mkdir(systemdDir);
+        await this.conn.writeFile(serviceFile, serviceContent);
+      }
+      serviceFileCreated = true;
+
+      const lifecycle = new Lifecycle(this.conn, this.registry, xdgRuntimeDir);
+
+      // Register in registry BEFORE start (lifecycle.start needs registry entry)
+      const instance = this.registry.createInstance({
+        serverId,
         slug,
         displayName: answers.displayName,
         port: answers.port,
-        stateDir,
         configPath,
-        openclawBin: openclaw.bin,
-        home: os.homedir(),
+        stateDir,
+        systemdUnit: sm === "launchd"
+          ? `ai.openclaw.${slug}`
+          : `openclaw-${slug}.service`,
+        telegramBot: answers.telegram.enabled
+          ? undefined // will be set after pairing
+          : undefined,
+        defaultModel: answers.defaultModel,
+        discovered: false,
       });
-      const launchdDir = getLaunchdDir();
-      await this.conn.mkdir(launchdDir);
-      await this.conn.writeFile(getLaunchdPlistPath(slug), plistContent);
-    } else {
-      logger.step("Installing systemd service...");
-      const systemdDir = getSystemdDir();
-      const systemdUnit = getSystemdUnit(slug);
-      const serviceFile = path.join(systemdDir, systemdUnit);
-      const serviceContent = generateSystemdService({
+      instanceRegistered = true;
+
+      // Register port
+      this.registry.allocatePort(serverId, answers.port, slug);
+      portAllocated = true;
+
+      // Register agents
+      for (const agent of answers.agents) {
+        const workspaceId = agent.workspace ?? (agent.isDefault ? "workspace" : `workspace-${agent.id}`);
+        this.registry.createAgent(instance.id, {
+          agentId: agent.id,
+          name: agent.name,
+          model: agent.model,
+          workspacePath: path.join(stateDir, "workspaces", workspaceId),
+          isDefault: agent.isDefault,
+        });
+      }
+
+      await lifecycle.daemonReload();
+
+      // Step 7: Enable and start instance
+      logger.step("Starting instance...");
+      await lifecycle.enable(slug);
+      serviceEnabled = true;
+      await lifecycle.start(slug);
+      serviceStarted = true;
+
+      // Step 8: Install mem0 plugin (if enabled)
+      if (answers.mem0.enabled) {
+        logger.step("Installing mem0 plugin...");
+        await cli.installPlugin(slug, stateDir, configPath, "@mem0/openclaw-mem0@0.1.2");
+        // Re-inject OSS config (trap 4: plugin install overwrites config)
+        const updatedConfig = generateConfig(answers);
+        await this.conn.writeFile(configPath, updatedConfig, constants.CONFIG_FILE_MODE);
+        await lifecycle.restart(slug);
+      }
+
+      // Log creation event
+      this.registry.logEvent(
         slug,
-        displayName: answers.displayName,
+        "created",
+        `Instance created with ${answers.agents.length} agent(s) on port ${answers.port}`,
+      );
+
+      // Step 10: Deploy blueprint (if specified)
+      if (blueprintId !== undefined) {
+        logger.step("Deploying blueprint agents...");
+        const deployer = new BlueprintDeployer(this.conn, this.registry);
+        await deployer.deploy(blueprintId, instance);
+        // Restart daemon to pick up new agents
+        await lifecycle.restart(slug);
+      }
+
+      return {
+        slug,
         port: answers.port,
         stateDir,
-        configPath,
-        openclawHome,
-        openclawBin: openclaw.bin,
-        uid,
+        gatewayToken,
+        agentCount: answers.agents.length,
+        telegramBot: answers.telegram.enabled ? "pending" : undefined,
+      };
+    } catch (err) {
+      // Provisioning failed — roll back all created artefacts (best-effort)
+      logger.warn(`Provisioning failed — rolling back artefacts for "${slug}"...`);
+      await this.rollback({
+        slug,
+        stateDir,
+        serverId,
+        xdgRuntimeDir,
+        sm,
+        stateDirCreated,
+        serviceFileCreated,
+        instanceRegistered,
+        portAllocated,
+        serviceStarted,
+        serviceEnabled,
+        port: answers.port,
       });
-      await this.conn.mkdir(systemdDir);
-      await this.conn.writeFile(serviceFile, serviceContent);
+      throw err;
+    }
+  }
+
+  private async rollback(ctx: {
+    slug: string;
+    stateDir: string;
+    serverId: number;
+    xdgRuntimeDir: string;
+    sm: string;
+    stateDirCreated: boolean;
+    serviceFileCreated: boolean;
+    instanceRegistered: boolean;
+    portAllocated: boolean;
+    serviceStarted: boolean;
+    serviceEnabled: boolean;
+    port: number;
+  }): Promise<void> {
+    const {
+      slug, stateDir, serverId, xdgRuntimeDir, sm,
+      stateDirCreated, serviceFileCreated, instanceRegistered,
+      portAllocated, serviceStarted, serviceEnabled, port,
+    } = ctx;
+
+    // 1. Stop service (best-effort)
+    if (serviceStarted) {
+      try {
+        if (sm === "launchd") {
+          await this.conn.execFile("launchctl", ["unload", getLaunchdPlistPath(slug)]);
+        } else {
+          await this.conn.execFile(
+            "systemctl", ["--user", "stop", getSystemdUnit(slug)],
+            { env: { XDG_RUNTIME_DIR: xdgRuntimeDir } },
+          );
+        }
+      } catch (e) {
+        logger.warn(`Rollback: failed to stop service — ${e instanceof Error ? e.message : e}`);
+      }
     }
 
-    const lifecycle = new Lifecycle(this.conn, this.registry, xdgRuntimeDir);
-
-    // Register in registry BEFORE start (lifecycle.start needs registry entry)
-    const instance = this.registry.createInstance({
-      serverId,
-      slug,
-      displayName: answers.displayName,
-      port: answers.port,
-      configPath,
-      stateDir,
-      systemdUnit: sm === "launchd"
-        ? `ai.openclaw.${slug}`
-        : `openclaw-${slug}.service`,
-      telegramBot: answers.telegram.enabled
-        ? undefined // will be set after pairing
-        : undefined,
-      defaultModel: answers.defaultModel,
-      discovered: false,
-    });
-
-    // Register port
-    this.registry.allocatePort(serverId, answers.port, slug);
-    // Register agents
-    for (const agent of answers.agents) {
-      const workspaceId = agent.workspace ?? (agent.isDefault ? "workspace" : `workspace-${agent.id}`);
-      this.registry.createAgent(instance.id, {
-        agentId: agent.id,
-        name: agent.name,
-        model: agent.model,
-        workspacePath: path.join(stateDir, "workspaces", workspaceId),
-        isDefault: agent.isDefault,
-      });
+    // 2. Disable service (best-effort)
+    if (serviceEnabled) {
+      try {
+        if (sm === "launchd") {
+          // launchctl unload already disables; nothing extra needed
+        } else {
+          await this.conn.execFile(
+            "systemctl", ["--user", "disable", getSystemdUnit(slug)],
+            { env: { XDG_RUNTIME_DIR: xdgRuntimeDir } },
+          );
+        }
+      } catch (e) {
+        logger.warn(`Rollback: failed to disable service — ${e instanceof Error ? e.message : e}`);
+      }
     }
 
-    await lifecycle.daemonReload();
-
-    // Step 7: Enable and start instance
-    logger.step("Starting instance...");
-    await lifecycle.enable(slug);
-    await lifecycle.start(slug);
-
-    // Step 8: Install mem0 plugin (if enabled)
-    if (answers.mem0.enabled) {
-      logger.step("Installing mem0 plugin...");
-      await cli.installPlugin(slug, stateDir, configPath, "@mem0/openclaw-mem0@0.1.2");
-      // Re-inject OSS config (trap 4: plugin install overwrites config)
-      const updatedConfig = generateConfig(answers);
-      await this.conn.writeFile(configPath, updatedConfig, constants.CONFIG_FILE_MODE);
-      await lifecycle.restart(slug);
+    // 3. Remove service file (best-effort)
+    if (serviceFileCreated) {
+      try {
+        const serviceFilePath = sm === "launchd"
+          ? getLaunchdPlistPath(slug)
+          : path.join(getSystemdDir(), getSystemdUnit(slug));
+        await this.conn.remove(serviceFilePath);
+        if (sm !== "launchd") {
+          await this.conn.exec(
+            `systemctl --user daemon-reload 2>/dev/null || true`,
+          );
+        }
+      } catch (e) {
+        logger.warn(`Rollback: failed to remove service file — ${e instanceof Error ? e.message : e}`);
+      }
     }
 
-    // Log creation event
-    this.registry.logEvent(
-      slug,
-      "created",
-      `Instance created with ${answers.agents.length} agent(s) on port ${answers.port}`,
-    );
-
-    // Step 10: Deploy blueprint (if specified)
-    if (blueprintId !== undefined) {
-      logger.step("Deploying blueprint agents...");
-      const deployer = new BlueprintDeployer(this.conn, this.registry);
-      await deployer.deploy(blueprintId, instance);
-      // Restart daemon to pick up new agents
-      await lifecycle.restart(slug);
+    // 4. Remove DB entries (synchronous — no try needed, but wrap for safety)
+    if (portAllocated) {
+      try { this.registry.releasePort(serverId, port); } catch { /* ignore */ }
+    }
+    if (instanceRegistered) {
+      try {
+        const inst = this.registry.getInstance(slug);
+        if (inst) this.registry.deleteAgents(inst.id);
+        this.registry.deleteInstance(slug);
+      } catch { /* ignore */ }
     }
 
-    return {
-      slug,
-      port: answers.port,
-      stateDir,
-      gatewayToken,
-      agentCount: answers.agents.length,
-      telegramBot: answers.telegram.enabled ? "pending" : undefined,
-    };
+    // 5. Remove state directory (best-effort)
+    if (stateDirCreated) {
+      try {
+        await this.conn.remove(stateDir, { recursive: true });
+      } catch (e) {
+        logger.warn(`Rollback: failed to remove state dir "${stateDir}" — ${e instanceof Error ? e.message : e}`);
+        logger.warn(`  Remove it manually: rm -rf ${shellEscape(stateDir)}`);
+      }
+    }
+
+    logger.warn(`Rollback complete for "${slug}".`);
   }
 
   private async provisionWorkspaceFiles(
