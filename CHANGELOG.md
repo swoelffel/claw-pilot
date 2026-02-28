@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.6.3] — 2026-02-28
+
+### Fixed
+- `install.sh` now sources `~/.zshrc` after `pnpm setup` (in addition to `.bashrc`/`.profile`) — fixes silent PATH failure on macOS where zsh is the default shell since Catalina
+- `install.sh` OpenClaw detection now includes `/opt/homebrew/bin/openclaw` and `/usr/local/bin/openclaw` — aligns with the paths checked by `openclaw-cli.ts` on macOS
+- `install.sh` now checks for required build tools (`cc`, `make`, `python3`) before `pnpm install` and prints a clear hint if any are missing (needed to compile `better-sqlite3` native bindings)
+
+---
+
 ## [0.6.2] — 2026-02-28
 
 ### Fixed

@@ -68,6 +68,7 @@ if ! pnpm bin --global >/dev/null 2>&1; then
   # shellcheck disable=SC1090
   [ -f "$HOME/.bashrc" ]  && . "$HOME/.bashrc"  2>/dev/null || true
   [ -f "$HOME/.profile" ] && . "$HOME/.profile" 2>/dev/null || true
+  [ -f "$HOME/.zshrc" ]   && . "$HOME/.zshrc"   2>/dev/null || true
 fi
 log "pnpm $(pnpm --version)"
 
@@ -77,7 +78,10 @@ if command -v openclaw >/dev/null 2>&1; then
   log "OpenClaw $(openclaw --version 2>/dev/null || echo 'unknown')"
   OPENCLAW_FOUND=1
 else
-  for p in "/opt/openclaw/.npm-global/bin/openclaw" "$HOME/.npm-global/bin/openclaw"; do
+  for p in "$HOME/.npm-global/bin/openclaw" \
+            "/opt/openclaw/.npm-global/bin/openclaw" \
+            "/opt/homebrew/bin/openclaw" \
+            "/usr/local/bin/openclaw"; do
     if [ -x "$p" ]; then
       log "OpenClaw found at $p (not in PATH)"
       OPENCLAW_FOUND=1
@@ -148,7 +152,24 @@ else
   fi
 fi
 
-# 8. Install dependencies and build
+# 8. Check build tools (required for better-sqlite3 native bindings)
+BUILD_TOOLS_OK=1
+for tool in cc make python3; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    warn "Build tool '$tool' not found — better-sqlite3 compilation may fail."
+    BUILD_TOOLS_OK=0
+  fi
+done
+if [ "$BUILD_TOOLS_OK" -eq 0 ]; then
+  if [ "$(uname)" = "Darwin" ]; then
+    warn "Install missing build tools with: xcode-select --install"
+  else
+    warn "Install missing build tools with: sudo apt install build-essential python3  (Debian/Ubuntu)"
+    warn "  or: sudo dnf install gcc make python3  (Fedora/RHEL)"
+  fi
+fi
+
+# 9. Install dependencies and build
 # Note: better-sqlite3 native bindings are compiled automatically via
 # pnpm.onlyBuiltDependencies in package.json (requires python3 + make + g++)
 log "Installing dependencies (includes compiling better-sqlite3 native bindings)..."
@@ -157,7 +178,7 @@ log "Installing dependencies (includes compiling better-sqlite3 native bindings)
 log "Building CLI and UI..."
 ( cd "$INSTALL_DIR" && pnpm run build:cli && pnpm run build:ui )
 
-# 9. Link binary globally
+# 10. Link binary globally
 log "Linking claw-pilot binary..."
 PNPM_GLOBAL_BIN=$(pnpm bin --global 2>/dev/null || echo "")
 
@@ -180,7 +201,7 @@ else
   fi
 fi
 
-# 10. Verify
+# 11. Verify
 if command -v claw-pilot >/dev/null 2>&1; then
   log "claw-pilot $(claw-pilot --version) installed successfully! (linked at $LINK_PATH)"
 else
@@ -190,7 +211,7 @@ else
   warn "Or run directly: node $INSTALL_DIR/dist/index.mjs"
 fi
 
-# 11. Initialize
+# 12. Initialize
 echo ""
 log "Running 'claw-pilot init' to set up the registry..."
 if command -v claw-pilot >/dev/null 2>&1; then
@@ -200,7 +221,7 @@ else
 fi
 $CLAW_PILOT_CMD init --yes
 
-# 12. Install dashboard as systemd service (Linux only)
+# 13. Install dashboard as systemd service (Linux only)
 if [ "$(uname)" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
   echo ""
   log "Setting up dashboard as a systemd service..."
