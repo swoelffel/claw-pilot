@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.6.6] — 2026-03-01
+
+### Added
+- `uninstall.sh` — script de désinstallation complet : arrête tous les services (systemd/launchd), supprime les fichiers de service, les données des instances (`~/.openclaw-*/`), les données claw-pilot (`~/.claw-pilot/`), le symlink binaire et le répertoire d'installation
+- Modes `--dry-run` (affiche ce qui serait supprimé), `--yes` (non-interactif), `--keep-data` (garde les données instances et claw-pilot)
+- Détection automatique du répertoire d'installation via le symlink `claw-pilot` (fallback `CLAW_PILOT_INSTALL_DIR` ou `/opt/claw-pilot`)
+- Fallback sudo pour les suppressions nécessitant des droits élevés (symlink dans `/usr/local/bin`, repo dans `/opt/`)
+
+---
+
 ## [0.6.5] — 2026-02-28
 
 ### Fixed
