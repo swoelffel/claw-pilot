@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.7.2] — 2026-03-02
+
+### Changed
+- `registry.ts` (729 lines) split into 7 focused sub-repositories under `src/core/repositories/`: `AgentRepository`, `BlueprintRepository`, `ConfigRepository`, `EventRepository`, `InstanceRepository`, `PortRepository`, `ServerRepository`. `Registry` is now a thin facade — all callers unchanged.
+
+### Fixed
+- **Critical migration bug**: `PRAGMA foreign_keys = OFF` was silently ignored inside `better-sqlite3` transactions (SQLite restriction). Migration v4 (`DROP TABLE instances`) was therefore running with FK enforcement ON, triggering `ON DELETE CASCADE` and wiping all agents rows on first open of a v1–v3 database. Fixed by setting the pragma before the transaction starts (`disableFk` flag on `Migration` interface).
+
+---
+
 ## [0.7.1] — 2026-03-02
 
 ### Added
