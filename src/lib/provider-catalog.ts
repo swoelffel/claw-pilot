@@ -20,7 +20,7 @@ export const PROVIDER_CATALOG: ProviderInfo[] = [
     id: "anthropic",
     label: "Anthropic",
     requiresKey: true,
-    defaultModel: "anthropic/claude-opus-4-5",
+    defaultModel: "anthropic/claude-haiku-4-5",
     models: [
       "anthropic/claude-opus-4-5",
       "anthropic/claude-opus-4-1",
