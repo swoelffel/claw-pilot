@@ -204,3 +204,65 @@ export interface CreateBlueprintRequest {
   tags?: string;
   color?: string;
 }
+
+// Instance Settings types
+
+/** Structured config returned by GET /api/instances/:slug/config */
+export interface InstanceConfig {
+  general: {
+    displayName: string;
+    defaultModel: string;
+    provider: string;
+    apiKeyMasked: string | null;
+    apiKeyEnvVar: string;
+    port: number;
+    toolsProfile: string;
+  };
+  agentDefaults: {
+    workspace: string;
+    subagents: { maxConcurrent: number; archiveAfterMinutes: number };
+    compaction: { mode: string; reserveTokensFloor?: number };
+    contextPruning: { mode: string; ttl?: string };
+    heartbeat: { every?: string; model?: string; target?: string };
+  };
+  agents: Array<{
+    id: string;
+    name: string;
+    model: string | null;
+    workspace: string;
+    identity: { name?: string; emoji?: string; avatar?: string } | null;
+  }>;
+  channels: {
+    telegram: {
+      enabled: boolean;
+      botTokenMasked: string | null;
+      dmPolicy: string;
+      groupPolicy: string;
+      streamMode?: string;
+    } | null;
+  };
+  plugins: {
+    mem0: {
+      enabled: boolean;
+      ollamaUrl: string;
+      qdrantHost: string;
+      qdrantPort: number;
+    } | null;
+  };
+  gateway: {
+    port: number;
+    bind: string;
+    authMode: string;
+    reloadMode: string;
+    reloadDebounceMs: number;
+  };
+}
+
+/** Result of PATCH /api/instances/:slug/config */
+export interface ConfigPatchResult {
+  ok: boolean;
+  restarted: boolean;
+  hotReloaded: boolean;
+  warnings: string[];
+  restartReason?: string;
+}

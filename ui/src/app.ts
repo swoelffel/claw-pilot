@@ -9,6 +9,7 @@ import "./components/cluster-view.js";
 import "./components/agents-builder.js";
 import "./components/blueprints-view.js";
 import "./components/blueprint-builder.js";
+import "./components/instance-settings.js";
 
 // Initialize locale — resolved before first render via localeReady promise
 export const localeReady = initLocale();
@@ -24,7 +25,8 @@ type Route =
   | { view: "cluster" }
   | { view: "agents-builder"; slug: string }
   | { view: "blueprints" }
-  | { view: "blueprint-builder"; blueprintId: number };
+  | { view: "blueprint-builder"; blueprintId: number }
+  | { view: "instance-settings"; slug: string };
 
 @localized()
 @customElement("cp-app")
@@ -436,7 +438,9 @@ export class CpApp extends LitElement {
 
   private _navigate(e: Event): void {
     const detail = (e as CustomEvent<{ slug?: string | null; view?: string; blueprintId?: number }>).detail;
-    if (detail.view === "agents-builder" && detail.slug) {
+    if (detail.view === "instance-settings" && detail.slug) {
+      this._route = { view: "instance-settings", slug: detail.slug };
+    } else if (detail.view === "agents-builder" && detail.slug) {
       this._route = { view: "agents-builder", slug: detail.slug };
     } else if (detail.view === "blueprints") {
       this._route = { view: "blueprints" };
@@ -500,6 +504,14 @@ export class CpApp extends LitElement {
         ></cp-blueprint-builder>
       `;
     }
+    if (this._route.view === "instance-settings") {
+      return html`
+        <cp-instance-settings
+          .slug=${this._route.slug}
+          @navigate=${this._navigate}
+        ></cp-instance-settings>
+      `;
+    }
     return html``;
   }
 
@@ -514,7 +526,7 @@ export class CpApp extends LitElement {
           </div>
           <nav class="nav-tabs">
             <button
-              class="nav-tab ${this._route.view === "cluster" || this._route.view === "agents-builder" ? "active" : ""}"
+              class="nav-tab ${this._route.view === "cluster" || this._route.view === "agents-builder" || this._route.view === "instance-settings" ? "active" : ""}"
               @click=${() => { this._route = { view: "cluster" }; }}
             >
               ${msg("Instances", { id: "nav-instances" })}

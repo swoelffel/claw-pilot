@@ -26,6 +26,8 @@ import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 import { PROVIDER_CATALOG } from "../lib/provider-catalog.js";
 import type { ProviderInfo } from "../lib/provider-catalog.js";
 import { readGatewayToken } from "../lib/env-reader.js";
+import { readInstanceConfig, applyConfigPatch } from "../core/config-updater.js";
+import type { ConfigPatch } from "../core/config-updater.js";
 
 // Resolve dist/ui/ relative to this bundle chunk.
 // When bundled: this file is at <install>/dist/server-*.mjs
@@ -111,6 +113,60 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       readGatewayToken(conn, instance.state_dir),
     ]);
     return c.json({ instance, status, gatewayToken });
+  });
+
+  // GET /api/instances/:slug/config — structured config for the settings UI
+  app.get("/api/instances/:slug/config", async (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
+
+    try {
+      const payload = await readInstanceConfig(conn, instance.config_path, instance.state_dir);
+      // Enrich with DB-only fields
+      payload.general.displayName = instance.display_name ?? "";
+      return c.json(payload);
+    } catch (err) {
+      return apiError(c, 500, "CONFIG_READ_FAILED", err instanceof Error ? err.message : "Failed to read config");
+    }
+  });
+
+  // PATCH /api/instances/:slug/config — apply partial config changes
+  app.patch("/api/instances/:slug/config", async (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
+
+    let patch: ConfigPatch;
+    try {
+      patch = await c.req.json() as ConfigPatch;
+    } catch {
+      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+    }
+
+    try {
+      const result = await applyConfigPatch(
+        conn,
+        registry,
+        slug,
+        instance.config_path,
+        instance.state_dir,
+        patch,
+      );
+
+      // If restart required and instance is running, restart the daemon
+      if (result.restarted && instance.state === "running") {
+        try {
+          await lifecycle.restart(slug);
+        } catch (err) {
+          result.warnings.push(`Restart failed: ${err instanceof Error ? err.message : "unknown error"}`);
+        }
+      }
+
+      return c.json(result);
+    } catch (err) {
+      return apiError(c, 500, "CONFIG_PATCH_FAILED", err instanceof Error ? err.message : "Failed to apply config");
+    }
   });
 
   app.get("/api/instances/:slug/agents", (c) => {

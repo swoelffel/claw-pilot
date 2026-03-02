@@ -1,4 +1,4 @@
-import type { InstanceInfo, AgentInfo, CreateInstanceRequest, CreateAgentRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink, Blueprint, BlueprintBuilderData, CreateBlueprintRequest } from "./types.js";
+import type { InstanceInfo, AgentInfo, CreateInstanceRequest, CreateAgentRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink, Blueprint, BlueprintBuilderData, CreateBlueprintRequest, InstanceConfig, ConfigPatchResult } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 
 declare global {
@@ -318,6 +318,22 @@ export async function importBlueprintTeam(blueprintId: number, yamlContent: stri
     throw new ApiError(res.status, body.error ?? body.code ?? "IMPORT_FAILED", body.message ?? body.error ?? "Import failed");
   }
   return res.json() as Promise<TeamImportResult>;
+}
+
+// --- Instance Settings API ---
+
+export async function fetchInstanceConfig(slug: string): Promise<InstanceConfig> {
+  return apiFetch<InstanceConfig>(`/instances/${slug}/config`);
+}
+
+export async function patchInstanceConfig(
+  slug: string,
+  patch: Record<string, unknown>,
+): Promise<ConfigPatchResult> {
+  return apiFetch<ConfigPatchResult>(`/instances/${slug}/config`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
 }
 
 export async function updateBlueprintSpawnLinks(
