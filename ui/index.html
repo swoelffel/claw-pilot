@@ -5,13 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Claw Pilot Dashboard</title>
     <script>
-      // Read token from URL hash: #token=xxx
+      // Read token from URL hash: #token=xxx, then clean it from the URL
       (function () {
         var hash = window.location.hash.slice(1);
         var params = new URLSearchParams(hash);
         var token = params.get("token");
         if (token) {
           window.__CP_TOKEN__ = token;
+          // Remove token from URL bar to prevent leaking via Referer or browser history
+          history.replaceState(null, "", window.location.pathname);
         }
       })();
     </script>
