@@ -13,12 +13,12 @@ import type { CreateAgentData } from "../../core/agent-provisioner.js";
 import { ClawPilotError, InstanceNotFoundError } from "../../lib/errors.js";
 import { PROVIDER_CATALOG } from "../../lib/provider-catalog.js";
 import type { ProviderInfo } from "../../lib/provider-catalog.js";
-import { readGatewayToken } from "../../lib/env-reader.js";
+// readGatewayToken replaced by tokenCache in RouteDeps for performance
 import { readInstanceConfig, applyConfigPatch, ConfigPatchSchema } from "../../core/config-updater.js";
 import type { ConfigPatch } from "../../core/config-updater.js";
 
 export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
-  const { registry, conn, health, lifecycle, xdgRuntimeDir } = deps;
+  const { registry, conn, health, lifecycle, tokenCache, xdgRuntimeDir } = deps;
 
   app.get("/api/instances", async (c) => {
     const statuses = await health.checkAll();
@@ -28,7 +28,7 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
       statuses.map(async (s) => {
         const instance = registry.getInstance(s.slug);
         const gatewayToken = instance
-          ? await readGatewayToken(conn, instance.state_dir)
+          ? await tokenCache.get(s.slug, instance.state_dir)
           : null;
         // instance fields first, then health fields override (gateway, systemd, etc.)
         return { ...instance, ...s, gatewayToken };
@@ -43,7 +43,7 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
     if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
     const [status, gatewayToken] = await Promise.all([
       health.check(slug),
-      readGatewayToken(conn, instance.state_dir),
+      tokenCache.get(slug, instance.state_dir),
     ]);
     return c.json({ instance, status, gatewayToken });
   });
@@ -606,6 +606,7 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
     try {
       const destroyer = new Destroyer(conn, registry, xdgRuntimeDir);
       await destroyer.destroy(slug);
+      tokenCache.invalidate(slug);
       return c.json({ ok: true, slug });
     } catch (err) {
       if (err instanceof InstanceNotFoundError) {

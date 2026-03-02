@@ -6,6 +6,7 @@ import type { HealthChecker } from "../core/health.js";
 import type { Lifecycle } from "../core/lifecycle.js";
 import type { UpdateChecker } from "../core/update-checker.js";
 import type { Updater } from "../core/updater.js";
+import type { TokenCache } from "./token-cache.js";
 
 export interface RouteDeps {
   registry: Registry;
@@ -14,6 +15,7 @@ export interface RouteDeps {
   lifecycle: Lifecycle;
   updateChecker: UpdateChecker;
   updater: Updater;
+  tokenCache: TokenCache;
   xdgRuntimeDir: string;
 }
 

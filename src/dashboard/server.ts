@@ -15,6 +15,7 @@ import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 import { UpdateChecker } from "../core/update-checker.js";
 import { Updater } from "../core/updater.js";
 import { createRateLimiter } from "./rate-limit.js";
+import { TokenCache } from "./token-cache.js";
 import { apiError } from "./route-deps.js";
 import type { RouteDeps } from "./route-deps.js";
 import { registerInstanceRoutes } from "./routes/instances.js";
@@ -69,6 +70,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   const monitor = new Monitor(health);
   const updateChecker = new UpdateChecker(conn);
   const updater = new Updater(conn, registry, lifecycle);
+  const tokenCache = new TokenCache(conn);
 
   // Security headers middleware
   app.use("*", async (c, next) => {
@@ -99,7 +101,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   });
 
   // --- API routes (delegated to route modules) ---
-  const deps: RouteDeps = { registry, conn, health, lifecycle, updateChecker, updater, xdgRuntimeDir };
+  const deps: RouteDeps = { registry, conn, health, lifecycle, updateChecker, updater, tokenCache, xdgRuntimeDir };
   registerInstanceRoutes(app, deps);
   registerBlueprintRoutes(app, deps);
   registerTeamRoutes(app, deps);
