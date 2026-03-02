@@ -1,4 +1,4 @@
-import { LitElement, html, css } from "lit";
+import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { InstanceInfo } from "../types.js";
@@ -187,6 +187,7 @@ export class InstanceCard extends LitElement {
   `];
 
   @property({ type: Object }) instance!: InstanceInfo;
+  @property({ type: String }) openclawVersion: string | null = null;
 
   @state() private _loading = false;
   @state() private _error = "";
@@ -299,6 +300,9 @@ export class InstanceCard extends LitElement {
                   <span class="meta-value">:${inst.agentCount}</span>
                 `
               : ""}
+            ${this.openclawVersion
+              ? html`<span class="meta-value" style="margin-left:8px;font-size:11px;color:var(--text-muted)">openclaw v${this.openclawVersion}</span>`
+              : nothing}
           </div>
           <div class="card-footer-actions">
             ${inst.state === "running"

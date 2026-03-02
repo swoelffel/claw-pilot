@@ -28,6 +28,8 @@ import type { ProviderInfo } from "../lib/provider-catalog.js";
 import { readGatewayToken } from "../lib/env-reader.js";
 import { readInstanceConfig, applyConfigPatch } from "../core/config-updater.js";
 import type { ConfigPatch } from "../core/config-updater.js";
+import { UpdateChecker } from "../core/update-checker.js";
+import { Updater } from "../core/updater.js";
 
 // Resolve dist/ui/ relative to this bundle chunk.
 // When bundled: this file is at <install>/dist/server-*.mjs
@@ -68,6 +70,8 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   const health = new HealthChecker(conn, registry, xdgRuntimeDir);
   const lifecycle = new Lifecycle(conn, registry, xdgRuntimeDir);
   const monitor = new Monitor(health);
+  const updateChecker = new UpdateChecker(conn);
+  const updater = new Updater(conn, registry, lifecycle);
 
   // Structured error helper — all API error responses go through this function.
   // Returns { error: <human message for logs>, code: <machine code for i18n> }.
@@ -675,6 +679,33 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
 
   app.get("/api/health", (c) => {
     return c.json({ ok: true, instances: registry.listInstances().length });
+  });
+
+  // GET /api/openclaw/update-status — version courante + version dispo + etat du job en cours
+  app.get("/api/openclaw/update-status", async (c) => {
+    try {
+      const updateStatus = await updateChecker.check();
+      const job = updater.getJob();
+      return c.json({ ...updateStatus, ...job });
+    } catch (err) {
+      return apiError(c, 500, "UPDATE_CHECK_FAILED", err instanceof Error ? err.message : "Check failed");
+    }
+  });
+
+  // POST /api/openclaw/update — declenche la mise a jour en background
+  app.post("/api/openclaw/update", async (c) => {
+    const job = updater.getJob();
+    if (job.status === "running") {
+      return apiError(c, 409, "UPDATE_RUNNING", "Update already in progress");
+    }
+    // Recupere les versions pour les passer au job (affichage UX)
+    const status = await updateChecker.check().catch(() => ({
+      currentVersion: null,
+      latestVersion: null,
+      updateAvailable: false,
+    }));
+    updater.run(status.currentVersion ?? undefined, status.latestVersion ?? undefined);
+    return c.json({ ok: true, jobId: updater.getJob().jobId });
   });
 
   // GET /api/next-port — suggest next free port in the configured range

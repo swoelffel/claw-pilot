@@ -276,3 +276,19 @@ export interface ConfigPatchResult {
   warnings: string[];
   restartReason?: string;
 }
+
+/** Etat de la mise a jour OpenClaw — GET /api/openclaw/update-status */
+export interface OpenClawUpdateStatus {
+  // Versions
+  currentVersion: string | null;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  // Job en cours (polling)
+  status: "idle" | "running" | "done" | "error";
+  jobId?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  message?: string;
+  fromVersion?: string;
+  toVersion?: string;
+}

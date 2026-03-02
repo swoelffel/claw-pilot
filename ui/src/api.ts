@@ -1,4 +1,4 @@
-import type { InstanceInfo, AgentInfo, CreateInstanceRequest, CreateAgentRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink, Blueprint, BlueprintBuilderData, CreateBlueprintRequest, InstanceConfig, ConfigPatchResult } from "./types.js";
+import type { InstanceInfo, AgentInfo, CreateInstanceRequest, CreateAgentRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink, Blueprint, BlueprintBuilderData, CreateBlueprintRequest, InstanceConfig, ConfigPatchResult, OpenClawUpdateStatus } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 
 declare global {
@@ -345,4 +345,14 @@ export async function updateBlueprintSpawnLinks(
     `/blueprints/${blueprintId}/agents/${agentId}/spawn-links`,
     { method: "PATCH", body: JSON.stringify({ targets }) },
   );
+}
+
+// --- OpenClaw update API ---
+
+export async function fetchUpdateStatus(): Promise<OpenClawUpdateStatus> {
+  return apiFetch<OpenClawUpdateStatus>("/openclaw/update-status");
+}
+
+export async function triggerUpdate(): Promise<{ ok: boolean; jobId: string }> {
+  return apiFetch<{ ok: boolean; jobId: string }>("/openclaw/update", { method: "POST" });
 }

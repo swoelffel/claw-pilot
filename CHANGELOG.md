@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.7.0] — 2026-03-02
+
+### Added
+- OpenClaw update management from the dashboard: global banner in cluster view shows when a new version is available (e.g. "OpenClaw v2026.3.1 available")
+- "Update all instances" button triggers `npm install -g openclaw@latest` on the server then restarts all running instances automatically
+- Async polling: update job runs in background, UI polls every 2s and shows spinner during install, success/error state on completion
+- OpenClaw version displayed in each instance card footer (e.g. `openclaw v2026.3.1`)
+- New API routes: `GET /api/openclaw/update-status` and `POST /api/openclaw/update`
+
+---
+
 ## [0.6.7] — 2026-03-02
 
 ### Added
