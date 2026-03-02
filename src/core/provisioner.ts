@@ -6,6 +6,7 @@ import type { Registry } from "./registry.js";
 import type { PortAllocator } from "./port-allocator.js";
 import type { WizardAnswers } from "./config-generator.js";
 import { generateConfig, generateEnv, PROVIDER_ENV_VARS } from "./config-generator.js";
+import { PROVIDER_CATALOG } from "../lib/provider-catalog.js";
 import { generateSystemdService } from "./systemd-generator.js";
 import { generateLaunchdPlist } from "./launchd-generator.js";
 import { generateGatewayToken } from "./secrets.js";
@@ -39,14 +40,17 @@ export async function resolveApiKey(
 
   if (resolvedApiKey === "reuse") {
     const envVar = PROVIDER_ENV_VARS[answers.provider] ?? "";
+    const catalogEntry = PROVIDER_CATALOG.find((p) => p.id === answers.provider);
+    const requiresKey = catalogEntry?.requiresKey ?? true;
 
     if (!envVar) {
-      // Provider needs no API key (e.g. opencode) — nothing to reuse
+      // Provider needs no API key and has no env var — nothing to reuse
       return "";
     }
 
     const existing = registry.listInstances();
     if (existing.length === 0) {
+      if (!requiresKey) return ""; // Optional key, no existing instance — OK
       throw new ClawPilotError("No existing instance to reuse API key from", "NO_EXISTING_INSTANCE");
     }
     const existingInst = existing[0]!;
@@ -56,6 +60,7 @@ export async function resolveApiKey(
     try {
       envContent = await conn.readFile(existingEnvPath);
     } catch (err) {
+      if (!requiresKey) return ""; // Optional key, .env unreadable — OK
       throw new ClawPilotError(
         `Could not read .env from existing instance "${existingInst.slug}": ${err instanceof Error ? err.message : String(err)}`,
         "ENV_READ_FAILED",
@@ -64,7 +69,7 @@ export async function resolveApiKey(
 
     const match = envContent.match(new RegExp(`${envVar}=(.+)`));
     resolvedApiKey = match?.[1]?.trim() ?? "";
-    if (!resolvedApiKey) {
+    if (!resolvedApiKey && requiresKey) {
       throw new ClawPilotError(
         `Could not find ${envVar} in existing instance "${existingInst.slug}" .env`,
         "API_KEY_READ_FAILED",

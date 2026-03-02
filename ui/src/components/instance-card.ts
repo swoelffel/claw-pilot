@@ -126,6 +126,23 @@ export class InstanceCard extends LitElement {
       background: rgba(14, 165, 233, 0.15);
     }
 
+    .btn-settings {
+      flex: none;
+      padding: 5px 10px;
+      border-radius: var(--radius-md);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid rgba(168, 85, 247, 0.25);
+      background: rgba(168, 85, 247, 0.08);
+      color: #a855f7;
+      transition: background 0.15s;
+    }
+
+    .btn-settings:hover {
+      background: rgba(168, 85, 247, 0.15);
+    }
+
     .btn-delete-instance {
       flex: none;
       width: 28px;
@@ -152,12 +169,13 @@ export class InstanceCard extends LitElement {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 12px;
       margin-top: 12px;
     }
 
     .card-footer-actions {
       display: flex;
-      gap: 8px;
+      gap: 10px;
       align-items: center;
     }
 
@@ -307,6 +325,17 @@ export class InstanceCard extends LitElement {
                   }}
                 >Agents</button>`
               : ""}
+            <button
+              class="btn-settings"
+              @click=${(e: Event) => {
+                e.stopPropagation();
+                this.dispatchEvent(new CustomEvent("navigate", {
+                  detail: { view: "instance-settings", slug: inst.slug },
+                  bubbles: true,
+                  composed: true,
+                }));
+              }}
+            >${msg("Settings", { id: "btn-settings" })}</button>
           </div>
         </div>
 
