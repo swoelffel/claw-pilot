@@ -25,6 +25,7 @@ export const templates = {
   "btn-stop": "Ferma",
   "btn-restart": "Riavvia",
   "btn-open-ui": "⎋ UI",
+  "btn-settings": "Impostazioni",
   "action-failed": "Azione fallita",
 
   // instance-detail.ts

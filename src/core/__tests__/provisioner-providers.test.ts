@@ -68,7 +68,30 @@ describe("resolveApiKey", () => {
   });
 
   describe("opencode provider", () => {
-    it("returns '' when apiKey === 'reuse' (no env var needed)", async () => {
+    it("returns '' when apiKey === 'reuse' and OPENCODE_API_KEY not in .env (optional key)", async () => {
+      // opencode has OPENCODE_API_KEY but it's optional — missing key returns '' gracefully
+      const conn = makeConn({ "/state/source/.env": "OPENCLAW_GW_AUTH_TOKEN=tok\n" });
+      const registry = makeRegistry([{ slug: "source", state_dir: "/state/source" }]);
+      const result = await resolveApiKey(
+        { provider: "opencode", apiKey: "reuse" },
+        registry as any,
+        conn as any,
+      );
+      expect(result).toBe("");
+    });
+
+    it("returns OPENCODE_API_KEY value when apiKey === 'reuse' and key is present in .env", async () => {
+      const conn = makeConn({ "/state/source/.env": "OPENCODE_API_KEY=sk-oc-real\nOPENCLAW_GW_AUTH_TOKEN=tok\n" });
+      const registry = makeRegistry([{ slug: "source", state_dir: "/state/source" }]);
+      const result = await resolveApiKey(
+        { provider: "opencode", apiKey: "reuse" },
+        registry as any,
+        conn as any,
+      );
+      expect(result).toBe("sk-oc-real");
+    });
+
+    it("returns '' when apiKey === 'reuse' and .env is unreadable (optional key)", async () => {
       const conn = makeConn({});
       const registry = makeRegistry([{ slug: "source", state_dir: "/state/source" }]);
       const result = await resolveApiKey(

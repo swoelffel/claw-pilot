@@ -1,7 +1,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { InstanceConfig, ConfigPatchResult, ProviderInfo } from "../types.js";
+import type { InstanceConfig, ConfigPatchResult, ProviderInfo, ProviderEntry } from "../types.js";
 import { fetchInstanceConfig, patchInstanceConfig, fetchProviders } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
@@ -407,6 +407,120 @@ export class InstanceSettings extends LitElement {
       -webkit-appearance: none;
       margin: 0;
     }
+
+    /* --- Field validation --- */
+    .field-error {
+      font-size: 11px;
+      color: var(--state-error);
+      margin-top: 4px;
+    }
+
+    .field-input.invalid {
+      border-color: var(--state-error);
+    }
+
+    /* --- Provider cards --- */
+    .providers-section {
+      margin-top: 24px;
+    }
+
+    .providers-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .section-subheader {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .provider-card {
+      border: 1px solid var(--bg-border);
+      border-radius: var(--radius-md);
+      padding: 12px 16px;
+      margin-bottom: 8px;
+      background: var(--bg-surface);
+    }
+
+    .provider-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .provider-header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .provider-name {
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--text-primary);
+    }
+
+    .provider-id {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .provider-key-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .provider-env-var {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      min-width: 160px;
+    }
+
+    .btn-remove-provider {
+      font-size: 11px;
+      color: var(--state-error);
+      background: transparent;
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-remove-provider:hover {
+      background: rgba(239, 68, 68, 0.08);
+    }
+
+    .btn-remove-provider:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .badge-new {
+      font-size: 10px;
+      background: rgba(34, 197, 94, 0.15);
+      color: #22c55e;
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+      font-weight: 600;
+    }
+
+    .provider-add-row {
+      margin-top: 8px;
+    }
+
+    .provider-add-row select {
+      width: 100%;
+    }
   `];
 
   @property({ type: String }) slug = "";
@@ -419,20 +533,29 @@ export class InstanceSettings extends LitElement {
   @state() private _toast: { message: string; type: "success" | "warning" | "error" } | null = null;
   @state() private _instanceState: string = "unknown";
 
-  // Providers for model/provider selects
-  @state() private _providers: ProviderInfo[] = [];
+  // Providers catalog (from /api/providers) — used for "Add provider" dropdown
+  @state() private _providerCatalog: ProviderInfo[] = [];
 
   // Dirty tracking — stores modified values
   @state() private _dirty: Record<string, unknown> = {};
 
   // Secret editing state
-  @state() private _editingApiKey = false;
   @state() private _editingBotToken = false;
+
+  // Field validation errors
+  @state() private _heartbeatEveryError = "";
+
+  // Provider editing state
+  @state() private _editingKeyForProvider: string | null = null;
+  @state() private _addedProviders: Array<{ id: string; apiKey: string }> = [];
+  @state() private _removedProviders: string[] = [];
+  @state() private _updatedKeys: Record<string, string> = {};
+  @state() private _showAddProvider = false;
 
   override connectedCallback(): void {
     super.connectedCallback();
     this._loadConfig();
-    this._loadProviders();
+    this._loadProviderCatalog();
   }
 
   private async _loadConfig(): Promise<void> {
@@ -441,6 +564,12 @@ export class InstanceSettings extends LitElement {
     try {
       this._config = await fetchInstanceConfig(this.slug);
       this._dirty = {};
+      this._heartbeatEveryError = "";
+      this._addedProviders = [];
+      this._removedProviders = [];
+      this._updatedKeys = {};
+      this._editingKeyForProvider = null;
+      this._showAddProvider = false;
     } catch (err) {
       this._error = userMessage(err);
     } finally {
@@ -448,12 +577,12 @@ export class InstanceSettings extends LitElement {
     }
   }
 
-  private async _loadProviders(): Promise<void> {
+  private async _loadProviderCatalog(): Promise<void> {
     try {
       const data = await fetchProviders();
-      this._providers = data.providers;
+      this._providerCatalog = data.providers;
     } catch {
-      // Non-fatal — selects will be empty
+      // Non-fatal — add provider dropdown will be empty
     }
   }
 
@@ -471,7 +600,10 @@ export class InstanceSettings extends LitElement {
   }
 
   private get _hasChanges(): boolean {
-    return Object.keys(this._dirty).length > 0;
+    return Object.keys(this._dirty).length > 0
+      || this._addedProviders.length > 0
+      || this._removedProviders.length > 0
+      || Object.keys(this._updatedKeys).length > 0;
   }
 
   private _buildPatch(): Record<string, unknown> {
@@ -482,10 +614,27 @@ export class InstanceSettings extends LitElement {
     const general: Record<string, unknown> = {};
     if (this._isDirty("general.displayName")) general["displayName"] = this._dirty["general.displayName"];
     if (this._isDirty("general.defaultModel")) general["defaultModel"] = this._dirty["general.defaultModel"];
-    if (this._isDirty("general.provider")) general["provider"] = this._dirty["general.provider"];
-    if (this._isDirty("general.apiKey")) general["apiKey"] = this._dirty["general.apiKey"];
     if (this._isDirty("general.toolsProfile")) general["toolsProfile"] = this._dirty["general.toolsProfile"];
     if (Object.keys(general).length > 0) patch["general"] = general;
+
+    // Providers section
+    const providersAdd = this._addedProviders.map((p) => ({
+      id: p.id,
+      apiKey: p.apiKey || undefined,
+    }));
+    const providersUpdate = Object.entries(this._updatedKeys).map(([id, apiKey]) => ({
+      id,
+      apiKey,
+    }));
+    const providersRemove = [...this._removedProviders];
+
+    if (providersAdd.length > 0 || providersUpdate.length > 0 || providersRemove.length > 0) {
+      const providersPatch: Record<string, unknown> = {};
+      if (providersAdd.length > 0) providersPatch["add"] = providersAdd;
+      if (providersUpdate.length > 0) providersPatch["update"] = providersUpdate;
+      if (providersRemove.length > 0) providersPatch["remove"] = providersRemove;
+      patch["providers"] = providersPatch;
+    }
 
     // Agent defaults
     const agentDefaults: Record<string, unknown> = {};
@@ -548,10 +697,11 @@ export class InstanceSettings extends LitElement {
 
   private async _save(): Promise<void> {
     if (!this._hasChanges || this._saving) return;
+    if (this._heartbeatEveryError) return;
     this._saving = true;
     try {
       const patch = this._buildPatch();
-      const result = await patchInstanceConfig(this.slug, patch);
+      const result: ConfigPatchResult = await patchInstanceConfig(this.slug, patch);
       if (result.ok) {
         if (result.restarted) {
           this._showToast(
@@ -568,7 +718,6 @@ export class InstanceSettings extends LitElement {
         }
         // Reload config to get fresh state
         await this._loadConfig();
-        this._editingApiKey = false;
         this._editingBotToken = false;
       }
     } catch (err) {
@@ -580,9 +729,49 @@ export class InstanceSettings extends LitElement {
 
   private _cancel(): void {
     this._dirty = {};
-    this._editingApiKey = false;
+    this._heartbeatEveryError = "";
     this._editingBotToken = false;
+    this._addedProviders = [];
+    this._removedProviders = [];
+    this._updatedKeys = {};
+    this._editingKeyForProvider = null;
+    this._showAddProvider = false;
     this.requestUpdate();
+  }
+
+  /**
+   * Validate and normalize a heartbeat interval string.
+   * - Bare number (e.g. "5") → auto-corrected to "5m"
+   * - Valid units: ms, s, m, h, d — single or composite (e.g. "1h30m")
+   * - Returns { value, error } — error is empty string when valid
+   */
+  private _normalizeHeartbeatEvery(raw: string): { value: string; error: string } {
+    const trimmed = raw.trim();
+    if (!trimmed) return { value: "", error: "" }; // empty = disabled, OK
+
+    // Auto-correct bare number → append "m"
+    if (/^\d+(\.\d+)?$/.test(trimmed)) {
+      return { value: `${trimmed}m`, error: "" };
+    }
+
+    // Validate: single token with unit
+    const single = /^(\d+(?:\.\d+)?)(ms|s|m|h|d)$/.test(trimmed);
+    // Validate: composite form (e.g. "1h30m", "2m500ms")
+    const composite = (() => {
+      let consumed = 0;
+      const tokenRe = /(\d+(?:\.\d+)?)(ms|s|m|h|d)/g;
+      for (const match of trimmed.matchAll(tokenRe)) {
+        if ((match.index ?? -1) !== consumed) return false;
+        consumed += match[0].length;
+      }
+      return consumed === trimmed.length && consumed > 0;
+    })();
+
+    if (!single && !composite) {
+      return { value: trimmed, error: msg("Invalid format. Use e.g. 30m, 1h, 1h30m", { id: "settings-heartbeat-every-invalid" }) };
+    }
+
+    return { value: trimmed, error: "" };
   }
 
   private _showToast(message: string, type: "success" | "warning" | "error"): void {
@@ -602,6 +791,42 @@ export class InstanceSettings extends LitElement {
     this._activeSection = section;
     const el = this.shadowRoot?.getElementById(`section-${section}`);
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  // --- Provider management ---
+
+  private _addProvider(id: string): void {
+    if (!id) return;
+    this._addedProviders = [...this._addedProviders, { id, apiKey: "" }];
+    this._showAddProvider = false;
+    this.requestUpdate();
+  }
+
+  private _removeProvider(id: string): void {
+    const c = this._config!;
+    const defaultModel = this._getDirty("general.defaultModel", c.general.defaultModel);
+    // Block removal if this provider is used by the default model
+    if (defaultModel.startsWith(`${id}/`)) return;
+
+    // If it was a newly added provider, just remove from _addedProviders
+    const addedIdx = this._addedProviders.findIndex((p) => p.id === id);
+    if (addedIdx >= 0) {
+      this._addedProviders = this._addedProviders.filter((p) => p.id !== id);
+    } else {
+      this._removedProviders = [...this._removedProviders, id];
+    }
+    // Clean up any pending key update
+    const updated = { ...this._updatedKeys };
+    delete updated[id];
+    this._updatedKeys = updated;
+    if (this._editingKeyForProvider === id) this._editingKeyForProvider = null;
+    this.requestUpdate();
+  }
+
+  private _isDefaultModelProvider(id: string): boolean {
+    if (!this._config) return false;
+    const defaultModel = this._getDirty("general.defaultModel", this._config.general.defaultModel);
+    return defaultModel.startsWith(`${id}/`);
   }
 
   // --- Render helpers ---
@@ -629,11 +854,195 @@ export class InstanceSettings extends LitElement {
     `;
   }
 
+  private _renderProviderCard(p: ProviderEntry, isNew: boolean) {
+    const isEditing = this._editingKeyForProvider === p.id;
+    const isDefaultProvider = this._isDefaultModelProvider(p.id);
+
+    return html`
+      <div class="provider-card">
+        <div class="provider-header">
+          <div class="provider-header-left">
+            <span class="provider-name">${p.label}</span>
+            <span class="provider-id">${p.id}</span>
+            ${isNew ? html`<span class="badge-new">new</span>` : nothing}
+          </div>
+          <button
+            class="btn-remove-provider"
+            ?disabled=${isDefaultProvider}
+            title=${isDefaultProvider
+              ? msg("Default model uses this provider. Change it first.", { id: "settings-remove-provider-blocked" })
+              : msg("Remove provider", { id: "settings-remove-provider" })}
+            @click=${() => this._removeProvider(p.id)}
+          >${msg("Remove", { id: "settings-remove" })}</button>
+        </div>
+        <div class="provider-key-row">
+          <span class="provider-env-var">${p.envVar || "—"}</span>
+          ${isEditing ? html`
+            <input
+              class="field-input mono changed"
+              style="flex:1"
+              type="text"
+              placeholder=${p.requiresKey
+                ? msg("Enter API key", { id: "settings-enter-api-key" })
+                : msg("Optional API key", { id: "settings-optional-api-key" })}
+              @input=${(e: Event) => {
+                this._updatedKeys = { ...this._updatedKeys, [p.id]: (e.target as HTMLInputElement).value };
+                this.requestUpdate();
+              }}
+            />
+            <button class="btn-reveal" @click=${() => {
+              this._editingKeyForProvider = null;
+              const updated = { ...this._updatedKeys };
+              delete updated[p.id];
+              this._updatedKeys = updated;
+              this.requestUpdate();
+            }}>
+              ${msg("Cancel", { id: "settings-cancel" })}
+            </button>
+          ` : html`
+            <span class="field-readonly" style="flex:1">${p.apiKeyMasked
+              ?? (p.requiresKey
+                ? msg("Not set", { id: "settings-not-set" })
+                : msg("Optional", { id: "settings-optional" }))}</span>
+            <button class="btn-reveal" @click=${() => { this._editingKeyForProvider = p.id; this.requestUpdate(); }}>
+              ${msg("Change", { id: "settings-change" })}
+            </button>
+          `}
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderNewProviderCard(p: { id: string; apiKey: string }) {
+    // Build a synthetic ProviderEntry from catalog info
+    const catalogEntry = this._providerCatalog.find((c) => c.id === p.id);
+    const entry: ProviderEntry = {
+      id: p.id,
+      label: catalogEntry?.label ?? p.id,
+      envVar: "",
+      apiKeyMasked: null,
+      apiKeySet: false,
+      requiresKey: catalogEntry?.requiresKey ?? true,
+      baseUrl: null,
+      source: "models",
+    };
+
+    return html`
+      <div class="provider-card">
+        <div class="provider-header">
+          <div class="provider-header-left">
+            <span class="provider-name">${entry.label}</span>
+            <span class="provider-id">${entry.id}</span>
+            <span class="badge-new">new</span>
+          </div>
+          <button
+            class="btn-remove-provider"
+            @click=${() => this._removeProvider(p.id)}
+          >${msg("Remove", { id: "settings-remove" })}</button>
+        </div>
+        <div class="provider-key-row">
+          <span class="provider-env-var" style="font-size:11px;color:var(--text-muted)">
+            ${entry.requiresKey
+              ? msg("API key required", { id: "settings-api-key-required" })
+              : msg("API key optional", { id: "settings-api-key-optional" })}
+          </span>
+          <input
+            class="field-input mono changed"
+            style="flex:1"
+            type="text"
+            placeholder=${entry.requiresKey
+              ? msg("Enter API key", { id: "settings-enter-api-key" })
+              : msg("Optional API key", { id: "settings-optional-api-key" })}
+            .value=${p.apiKey}
+            @input=${(e: Event) => {
+              const val = (e.target as HTMLInputElement).value;
+              this._addedProviders = this._addedProviders.map((ap) =>
+                ap.id === p.id ? { ...ap, apiKey: val } : ap,
+              );
+              this.requestUpdate();
+            }}
+          />
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderProviders() {
+    const c = this._config!;
+    // Existing providers minus removed ones
+    const existing = c.providers.filter((p) => !this._removedProviders.includes(p.id));
+    // Newly added providers
+    const added = this._addedProviders;
+    // Providers available for addition (not already configured or pending add)
+    const configuredIds = new Set([
+      ...existing.map((p) => p.id),
+      ...added.map((p) => p.id),
+    ]);
+    const available = this._providerCatalog.filter((p) => !configuredIds.has(p.id));
+
+    return html`
+      <div class="providers-section">
+        <div class="providers-header">
+          <span class="section-subheader">${msg("Providers", { id: "settings-providers" })}</span>
+          ${available.length > 0 ? html`
+            <button
+              class="btn btn-ghost btn-sm"
+              @click=${() => { this._showAddProvider = !this._showAddProvider; this.requestUpdate(); }}
+            >+ ${msg("Add provider", { id: "settings-add-provider" })}</button>
+          ` : nothing}
+        </div>
+
+        ${existing.map((p) => this._renderProviderCard(p, false))}
+        ${added.map((p) => this._renderNewProviderCard(p))}
+
+        ${this._showAddProvider && available.length > 0 ? html`
+          <div class="provider-add-row">
+            <select
+              class="field-input"
+              @change=${(e: Event) => {
+                const val = (e.target as HTMLSelectElement).value;
+                if (val) this._addProvider(val);
+              }}
+            >
+              <option value="">${msg("Select provider...", { id: "settings-select-provider" })}</option>
+              ${available.map((p) => html`<option value=${p.id}>${p.label}</option>`)}
+            </select>
+          </div>
+        ` : nothing}
+
+        ${existing.length === 0 && added.length === 0 ? html`
+          <p style="color:var(--text-muted);font-size:13px;margin:0">
+            ${msg("No providers configured.", { id: "settings-no-providers" })}
+          </p>
+        ` : nothing}
+      </div>
+    `;
+  }
+
   private _renderGeneralSection() {
     const c = this._config!;
-    const provider = this._getDirty("general.provider", c.general.provider);
-    const currentProviderInfo = this._providers.find((p) => p.id === provider);
-    const models = currentProviderInfo?.models ?? [];
+    const currentDefaultModel = this._getDirty("general.defaultModel", c.general.defaultModel);
+
+    // Build model options grouped by provider (from configured providers + added ones)
+    const existingProviders = c.providers.filter((p) => !this._removedProviders.includes(p.id));
+    const addedProviderIds = this._addedProviders.map((p) => p.id);
+    const allConfiguredProviderIds = [
+      ...existingProviders.map((p) => p.id),
+      ...addedProviderIds,
+    ];
+
+    // Get models per provider from catalog
+    const modelGroups = allConfiguredProviderIds
+      .map((id) => {
+        const catalogEntry = this._providerCatalog.find((p) => p.id === id);
+        if (!catalogEntry || catalogEntry.models.length === 0) return null;
+        return { id, label: catalogEntry.label, models: catalogEntry.models };
+      })
+      .filter((g): g is { id: string; label: string; models: string[] } => g !== null);
+
+    // Check if current default model is in any group
+    const allModels = modelGroups.flatMap((g) => g.models);
+    const currentModelInList = allModels.includes(currentDefaultModel);
 
     return html`
       <div class="section" id="section-general">
@@ -654,66 +1063,23 @@ export class InstanceSettings extends LitElement {
             </label>
             <div class="field-readonly">:${c.general.port}</div>
           </div>
-          <div class="field">
-            <label class="field-label">${msg("Provider", { id: "settings-provider" })}</label>
-            <select
-              class="field-input ${this._isDirty("general.provider") ? "changed" : ""}"
-              @change=${(e: Event) => {
-                const val = (e.target as HTMLSelectElement).value;
-                this._setDirty("general.provider", val);
-                // Reset model when provider changes
-                const prov = this._providers.find((p) => p.id === val);
-                if (prov) this._setDirty("general.defaultModel", prov.defaultModel);
-              }}
-            >
-              ${this._providers.map((p) => html`
-                <option value=${p.id} ?selected=${p.id === provider}>${p.label}</option>
-              `)}
-            </select>
-          </div>
-          <div class="field">
+          <div class="field full-width">
             <label class="field-label">${msg("Default model", { id: "settings-default-model" })}</label>
             <select
               class="field-input ${this._isDirty("general.defaultModel") ? "changed" : ""}"
               @change=${(e: Event) => this._setDirty("general.defaultModel", (e.target as HTMLSelectElement).value)}
             >
-              ${models.map((m) => html`
-                <option value=${m} ?selected=${m === this._getDirty("general.defaultModel", c.general.defaultModel)}>${m}</option>
-              `)}
-              ${!models.includes(this._getDirty("general.defaultModel", c.general.defaultModel))
-                ? html`<option value=${this._getDirty("general.defaultModel", c.general.defaultModel)} selected>
-                    ${this._getDirty("general.defaultModel", c.general.defaultModel)}
-                  </option>`
-                : nothing}
+              ${modelGroups.length > 0 ? modelGroups.map((group) => html`
+                <optgroup label=${group.label}>
+                  ${group.models.map((m) => html`
+                    <option value=${m} ?selected=${m === currentDefaultModel}>${m}</option>
+                  `)}
+                </optgroup>
+              `) : nothing}
+              ${!currentModelInList ? html`
+                <option value=${currentDefaultModel} selected>${currentDefaultModel}</option>
+              ` : nothing}
             </select>
-          </div>
-          <div class="field full-width">
-            <label class="field-label">
-              ${msg("API Key", { id: "settings-api-key" })}
-              ${c.general.apiKeyEnvVar ? html`<span style="font-weight:400;color:var(--text-muted)">(${c.general.apiKeyEnvVar})</span>` : nothing}
-            </label>
-            ${this._editingApiKey
-              ? html`
-                <div class="secret-row">
-                  <input
-                    class="field-input mono changed"
-                    type="text"
-                    placeholder=${msg("Enter new API key", { id: "settings-enter-api-key" })}
-                    @input=${(e: Event) => this._setDirty("general.apiKey", (e.target as HTMLInputElement).value)}
-                  />
-                  <button class="btn-reveal" @click=${() => { this._editingApiKey = false; delete this._dirty["general.apiKey"]; this.requestUpdate(); }}>
-                    ${msg("Cancel", { id: "settings-cancel" })}
-                  </button>
-                </div>
-              `
-              : html`
-                <div class="secret-row">
-                  <div class="field-readonly" style="flex:1">${c.general.apiKeyMasked ?? msg("Not set", { id: "settings-not-set" })}</div>
-                  <button class="btn-reveal" @click=${() => { this._editingApiKey = true; }}>
-                    ${msg("Change", { id: "settings-change" })}
-                  </button>
-                </div>
-              `}
           </div>
           <div class="field">
             <label class="field-label">${msg("Tools profile", { id: "settings-tools-profile" })}</label>
@@ -727,12 +1093,33 @@ export class InstanceSettings extends LitElement {
             </select>
           </div>
         </div>
+
+        ${this._renderProviders()}
       </div>
     `;
   }
 
   private _renderAgentsSection() {
     const c = this._config!;
+
+    // Build model groups from configured providers (same logic as General section)
+    const existingProviders = c.providers.filter((p) => !this._removedProviders.includes(p.id));
+    const addedProviderIds = this._addedProviders.map((p) => p.id);
+    const allConfiguredProviderIds = [
+      ...existingProviders.map((p) => p.id),
+      ...addedProviderIds,
+    ];
+    const heartbeatModelGroups = allConfiguredProviderIds
+      .map((id) => {
+        const catalogEntry = this._providerCatalog.find((p) => p.id === id);
+        if (!catalogEntry || catalogEntry.models.length === 0) return null;
+        return { id, label: catalogEntry.label, models: catalogEntry.models };
+      })
+      .filter((g): g is { id: string; label: string; models: string[] } => g !== null);
+
+    const currentHeartbeatModel = this._getDirty("agentDefaults.heartbeat.model", c.agentDefaults.heartbeat.model ?? "");
+    const allHeartbeatModels = heartbeatModelGroups.flatMap((g) => g.models);
+    const heartbeatModelInList = allHeartbeatModels.includes(currentHeartbeatModel);
 
     return html`
       <div class="section" id="section-agents">
@@ -782,22 +1169,49 @@ export class InstanceSettings extends LitElement {
           <div class="field">
             <label class="field-label">${msg("Heartbeat interval", { id: "settings-heartbeat-every" })}</label>
             <input
-              class="field-input ${this._isDirty("agentDefaults.heartbeat.every") ? "changed" : ""}"
+              class="field-input ${this._isDirty("agentDefaults.heartbeat.every") ? "changed" : ""} ${this._heartbeatEveryError ? "invalid" : ""}"
               type="text"
               placeholder="e.g. 30m, 1h"
               .value=${this._getDirty("agentDefaults.heartbeat.every", c.agentDefaults.heartbeat.every ?? "")}
-              @input=${(e: Event) => this._setDirty("agentDefaults.heartbeat.every", (e.target as HTMLInputElement).value)}
+              @input=${(e: Event) => {
+                const raw = (e.target as HTMLInputElement).value;
+                const { error } = this._normalizeHeartbeatEvery(raw);
+                this._heartbeatEveryError = error;
+                this._setDirty("agentDefaults.heartbeat.every", raw);
+              }}
+              @blur=${(e: Event) => {
+                const raw = (e.target as HTMLInputElement).value;
+                const { value, error } = this._normalizeHeartbeatEvery(raw);
+                this._heartbeatEveryError = error;
+                if (!error && value !== raw) {
+                  // Auto-correct bare number → Xm
+                  (e.target as HTMLInputElement).value = value;
+                  this._setDirty("agentDefaults.heartbeat.every", value);
+                }
+              }}
             />
+            ${this._heartbeatEveryError
+              ? html`<span class="field-error">${this._heartbeatEveryError}</span>`
+              : nothing}
           </div>
           <div class="field">
             <label class="field-label">${msg("Heartbeat model", { id: "settings-heartbeat-model" })}</label>
-            <input
+            <select
               class="field-input ${this._isDirty("agentDefaults.heartbeat.model") ? "changed" : ""}"
-              type="text"
-              placeholder="e.g. anthropic/claude-haiku-4-5"
-              .value=${this._getDirty("agentDefaults.heartbeat.model", c.agentDefaults.heartbeat.model ?? "")}
-              @input=${(e: Event) => this._setDirty("agentDefaults.heartbeat.model", (e.target as HTMLInputElement).value)}
-            />
+              @change=${(e: Event) => this._setDirty("agentDefaults.heartbeat.model", (e.target as HTMLSelectElement).value)}
+            >
+              <option value="" ?selected=${!currentHeartbeatModel}>${msg("— none —", { id: "settings-heartbeat-model-none" })}</option>
+              ${heartbeatModelGroups.length > 0 ? heartbeatModelGroups.map((group) => html`
+                <optgroup label=${group.label}>
+                  ${group.models.map((m) => html`
+                    <option value=${m} ?selected=${m === currentHeartbeatModel}>${m}</option>
+                  `)}
+                </optgroup>
+              `) : nothing}
+              ${currentHeartbeatModel && !heartbeatModelInList ? html`
+                <option value=${currentHeartbeatModel} selected>${currentHeartbeatModel}</option>
+              ` : nothing}
+            </select>
           </div>
         </div>
 
@@ -1069,7 +1483,7 @@ export class InstanceSettings extends LitElement {
             <button
               class="btn btn-primary"
               @click=${this._save}
-              ?disabled=${this._saving}
+              ?disabled=${this._saving || !!this._heartbeatEveryError}
             >${this._saving
               ? msg("Saving...", { id: "settings-saving" })
               : msg("Save", { id: "settings-save" })}</button>

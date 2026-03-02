@@ -207,17 +207,27 @@ export interface CreateBlueprintRequest {
 
 // Instance Settings types
 
+/** A single provider entry as returned by the config API */
+export interface ProviderEntry {
+  id: string;
+  label: string;
+  envVar: string;
+  apiKeyMasked: string | null;
+  apiKeySet: boolean;
+  requiresKey: boolean;
+  baseUrl: string | null;
+  source: "models" | "auth";
+}
+
 /** Structured config returned by GET /api/instances/:slug/config */
 export interface InstanceConfig {
   general: {
     displayName: string;
     defaultModel: string;
-    provider: string;
-    apiKeyMasked: string | null;
-    apiKeyEnvVar: string;
     port: number;
     toolsProfile: string;
   };
+  providers: ProviderEntry[];
   agentDefaults: {
     workspace: string;
     subagents: { maxConcurrent: number; archiveAfterMinutes: number };

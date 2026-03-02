@@ -36,7 +36,7 @@ export const PROVIDER_ENV_VARS: Record<string, string> = {
   mistral:    "MISTRAL_API_KEY",
   xai:        "XAI_API_KEY",
   kilocode:   "KILOCODE_API_KEY",
-  opencode:   "",
+  opencode:   "OPENCODE_API_KEY",
 };
 
 export function generateConfig(answers: WizardAnswers): string {

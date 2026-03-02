@@ -127,6 +127,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       payload.general.displayName = instance.display_name ?? "";
       return c.json(payload);
     } catch (err) {
+      console.error(`[config] GET /config error for slug=${slug}:`, err);
       return apiError(c, 500, "CONFIG_READ_FAILED", err instanceof Error ? err.message : "Failed to read config");
     }
   });
@@ -143,6 +144,8 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     } catch {
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
+
+    console.log(`[config] PATCH /config slug=${slug} patch=${JSON.stringify(patch)}`);
 
     try {
       const result = await applyConfigPatch(
@@ -163,8 +166,10 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
         }
       }
 
+      console.log(`[config] PATCH /config slug=${slug} result=${JSON.stringify(result)}`);
       return c.json(result);
     } catch (err) {
+      console.error(`[config] PATCH /config error for slug=${slug}:`, err);
       return apiError(c, 500, "CONFIG_PATCH_FAILED", err instanceof Error ? err.message : "Failed to apply config");
     }
   });

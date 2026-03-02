@@ -169,12 +169,13 @@ export class InstanceCard extends LitElement {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 12px;
       margin-top: 12px;
     }
 
     .card-footer-actions {
       display: flex;
-      gap: 8px;
+      gap: 10px;
       align-items: center;
     }
 

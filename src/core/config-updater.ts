@@ -7,22 +7,46 @@ import * as path from "node:path";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry } from "./registry.js";
 import { PROVIDER_ENV_VARS } from "./config-generator.js";
+import { PROVIDER_CATALOG } from "../lib/provider-catalog.js";
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const PROVIDER_BASE_URLS: Record<string, string> = {
+  anthropic:  "https://api.anthropic.com",
+  openai:     "https://api.openai.com/v1",
+  openrouter: "https://openrouter.ai/api/v1",
+  google:     "https://generativelanguage.googleapis.com/v1beta",
+  mistral:    "https://api.mistral.ai/v1",
+  xai:        "https://api.x.ai/v1",
+};
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+/** A single provider entry as returned by the config API */
+export interface ProviderEntry {
+  id: string;
+  label: string;
+  envVar: string;
+  apiKeyMasked: string | null;
+  apiKeySet: boolean;
+  requiresKey: boolean;
+  baseUrl: string | null;
+  source: "models" | "auth";
+}
 
 /** Structured config payload returned by GET /api/instances/:slug/config */
 export interface InstanceConfigPayload {
   general: {
     displayName: string;
     defaultModel: string;
-    provider: string;
-    apiKeyMasked: string | null;
-    apiKeyEnvVar: string;
     port: number;
     toolsProfile: string;
   };
+  providers: ProviderEntry[];
   agentDefaults: {
     workspace: string;
     subagents: { maxConcurrent: number; archiveAfterMinutes: number };
@@ -68,9 +92,15 @@ export interface ConfigPatch {
   general?: {
     displayName?: string;
     defaultModel?: string;
+    toolsProfile?: string;
+    // Legacy single-provider fields (retro-compat — still accepted but deprecated)
     provider?: string;
     apiKey?: string;
-    toolsProfile?: string;
+  };
+  providers?: {
+    add?: Array<{ id: string; apiKey?: string }>;
+    update?: Array<{ id: string; apiKey?: string }>;
+    remove?: string[];
   };
   agentDefaults?: {
     workspace?: string;
@@ -153,11 +183,11 @@ function serializeEnv(map: Map<string, string>): string {
   return lines.join("\n") + "\n";
 }
 
-/** Mask a secret value: show first 8 chars + **** */
+/** Mask a secret value: show first 8 chars + *** + last 4 chars */
 function maskSecret(value: string | undefined): string | null {
   if (!value || value.length === 0) return null;
-  if (value.length <= 8) return "****";
-  return value.slice(0, 8) + "****";
+  if (value.length <= 12) return "****";
+  return value.slice(0, 8) + "***" + value.slice(-4);
 }
 
 // ---------------------------------------------------------------------------
@@ -195,27 +225,59 @@ function deepMerge(
 }
 
 // ---------------------------------------------------------------------------
-// Detect provider from openclaw.json
+// Read all providers from openclaw.json + .env
 // ---------------------------------------------------------------------------
 
-function detectProvider(config: Record<string, unknown>): string {
-  // Check models.providers
+function readProviders(
+  config: Record<string, unknown>,
+  envMap: Map<string, string>,
+): ProviderEntry[] {
+  const providerEntries: ProviderEntry[] = [];
+
+  // 1. Read models.providers
   const models = config["models"] as Record<string, unknown> | undefined;
-  const providers = models?.["providers"] as Record<string, unknown> | undefined;
-  if (providers) {
-    const providerIds = Object.keys(providers);
-    if (providerIds.length > 0) return providerIds[0]!;
+  const modelsProviders = (models?.["providers"] ?? {}) as Record<string, Record<string, unknown>>;
+
+  for (const [providerId, providerConf] of Object.entries(modelsProviders)) {
+    const envVar = PROVIDER_ENV_VARS[providerId] ?? "";
+    const apiKeyRaw = envVar ? envMap.get(envVar) : undefined;
+    const catalogEntry = PROVIDER_CATALOG.find((p) => p.id === providerId);
+    providerEntries.push({
+      id: providerId,
+      label: catalogEntry?.label ?? providerId,
+      envVar,
+      apiKeyMasked: maskSecret(apiKeyRaw),
+      apiKeySet: !!apiKeyRaw,
+      requiresKey: catalogEntry?.requiresKey ?? true,
+      baseUrl: (providerConf["baseUrl"] as string) ?? null,
+      source: "models",
+    });
   }
-  // Check auth.profiles for opencode/kilocode
+
+  // 2. Read auth.profiles for opencode/kilocode (if not already in models.providers)
   const auth = config["auth"] as Record<string, unknown> | undefined;
-  const profiles = auth?.["profiles"] as Record<string, Record<string, unknown>> | undefined;
-  if (profiles) {
-    for (const profile of Object.values(profiles)) {
-      if (profile["provider"] === "opencode") return "opencode";
-      if (profile["provider"] === "kilocode") return "kilocode";
+  const authProfiles = (auth?.["profiles"] ?? {}) as Record<string, Record<string, unknown>>;
+
+  for (const [, profile] of Object.entries(authProfiles)) {
+    const provider = profile["provider"] as string | undefined;
+    if (provider && !providerEntries.some((p) => p.id === provider)) {
+      const envVar = PROVIDER_ENV_VARS[provider] ?? "";
+      const apiKeyRaw = envVar ? envMap.get(envVar) : undefined;
+      const catalogEntry = PROVIDER_CATALOG.find((p) => p.id === provider);
+      providerEntries.push({
+        id: provider,
+        label: catalogEntry?.label ?? provider,
+        envVar,
+        apiKeyMasked: maskSecret(apiKeyRaw),
+        apiKeySet: !!apiKeyRaw,
+        requiresKey: catalogEntry?.requiresKey ?? false,
+        baseUrl: null,
+        source: "auth",
+      });
     }
   }
-  return "unknown";
+
+  return providerEntries;
 }
 
 // ---------------------------------------------------------------------------
@@ -242,10 +304,8 @@ export async function readInstanceConfig(
     // .env missing — not fatal
   }
 
-  // Extract provider
-  const provider = detectProvider(config);
-  const apiKeyEnvVar = PROVIDER_ENV_VARS[provider] ?? "";
-  const apiKeyRaw = apiKeyEnvVar ? envMap.get(apiKeyEnvVar) : undefined;
+  // Extract all providers
+  const providers = readProviders(config, envMap);
 
   // Extract agents config
   const agentsConf = config["agents"] as Record<string, unknown> | undefined;
@@ -324,12 +384,10 @@ export async function readInstanceConfig(
     general: {
       displayName: "", // Will be enriched from DB by the route handler
       defaultModel: defaultModelStr,
-      provider,
-      apiKeyMasked: maskSecret(apiKeyRaw),
-      apiKeyEnvVar,
       port: (gateway?.["port"] as number) ?? 0,
       toolsProfile,
     },
+    providers,
     agentDefaults: {
       workspace: (defaults?.["workspace"] as string) ?? "workspace",
       subagents: {
@@ -376,11 +434,15 @@ export function classifyChanges(patch: ConfigPatch): ChangeClassification {
   let restartReason: string | null = null;
   let hasFileChanges = false;
 
-  // general.displayName is DB-only
+  // general.displayName is DB-only; other general fields touch the file
   if (patch.general) {
     const { displayName: _displayName, ...rest } = patch.general;
     if (Object.keys(rest).length > 0) hasFileChanges = true;
-    // provider change is hot-reloadable (models.providers)
+  }
+
+  // providers.add/update/remove → hot-reload (models.providers is hot-reloadable)
+  if (patch.providers) {
+    hasFileChanges = true;
   }
 
   if (patch.agentDefaults) hasFileChanges = true;
@@ -465,77 +527,104 @@ export async function applyConfigPatch(
       registry.updateInstance(slug, { defaultModel: g.defaultModel });
     }
 
-    // provider change → complex operation
-    if (g.provider !== undefined) {
-      const oldProvider = detectProvider(config);
-      const newProvider = g.provider;
-
-      if (oldProvider !== newProvider) {
-        // Remove old provider block
-        const models = (config["models"] ?? {}) as Record<string, unknown>;
-        const providers = (models["providers"] ?? {}) as Record<string, unknown>;
-        delete providers[oldProvider];
-
-        // Remove old env var
-        const oldEnvVar = PROVIDER_ENV_VARS[oldProvider] ?? "";
-        if (oldEnvVar) envMap.delete(oldEnvVar);
-
-        // Add new provider block (unless opencode/kilocode)
-        const newEnvVar = PROVIDER_ENV_VARS[newProvider] ?? "";
-        if (newProvider !== "opencode" && newProvider !== "kilocode" && newEnvVar) {
-          const providerDefaults: Record<string, string> = {
-            anthropic: "https://api.anthropic.com",
-            openai: "https://api.openai.com/v1",
-            openrouter: "https://openrouter.ai/api/v1",
-            google: "https://generativelanguage.googleapis.com/v1beta",
-            mistral: "https://api.mistral.ai/v1",
-            xai: "https://api.x.ai/v1",
-          };
-          providers[newProvider] = {
-            apiKey: `\${${newEnvVar}}`,
-            baseUrl: providerDefaults[newProvider] ?? "",
-            models: [],
-          };
-        }
-
-        models["providers"] = providers;
-        config["models"] = models;
-
-        // Handle auth profiles for opencode/kilocode
-        if (newProvider === "opencode" || newProvider === "kilocode") {
-          const auth = (config["auth"] ?? {}) as Record<string, unknown>;
-          const profiles = (auth["profiles"] ?? {}) as Record<string, unknown>;
-          profiles[`${newProvider}:default`] = {
-            provider: newProvider,
-            mode: "api_key",
-          };
-          auth["profiles"] = profiles;
-          config["auth"] = auth;
-        }
-
-        envChanged = true;
-      }
-    }
-
-    // apiKey → .env
-    if (g.apiKey !== undefined) {
-      const provider = g.provider ?? detectProvider(config);
-      const envVar = PROVIDER_ENV_VARS[provider] ?? "";
-      if (envVar && g.apiKey) {
-        envMap.set(envVar, g.apiKey);
-        envChanged = true;
-      }
-    }
-
     // toolsProfile → tools.profile
     if (g.toolsProfile !== undefined) {
       const tools = (config["tools"] ?? {}) as Record<string, unknown>;
       tools["profile"] = g.toolsProfile;
       config["tools"] = tools;
     }
+
+    // Legacy retro-compat: general.provider / general.apiKey
+    // Treat as providers.update for the given provider
+    if (g.provider !== undefined || g.apiKey !== undefined) {
+      const legacyProvider = g.provider ?? (() => {
+        // Detect current provider from config
+        const models = config["models"] as Record<string, unknown> | undefined;
+        const providers = models?.["providers"] as Record<string, unknown> | undefined;
+        if (providers) {
+          const ids = Object.keys(providers);
+          if (ids.length > 0) return ids[0]!;
+        }
+        const auth = config["auth"] as Record<string, unknown> | undefined;
+        const profiles = auth?.["profiles"] as Record<string, Record<string, unknown>> | undefined;
+        if (profiles) {
+          for (const profile of Object.values(profiles)) {
+            if (profile["provider"]) return profile["provider"] as string;
+          }
+        }
+        return "unknown";
+      })();
+
+      if (g.apiKey !== undefined) {
+        const envVar = PROVIDER_ENV_VARS[legacyProvider] ?? "";
+        if (envVar && g.apiKey) {
+          envMap.set(envVar, g.apiKey);
+          envChanged = true;
+        }
+      }
+    }
   }
 
-  // 4. Apply agentDefaults section
+  // 4. Apply providers section (new multi-provider format)
+  if (patch.providers) {
+    const models = (config["models"] ?? {}) as Record<string, unknown>;
+    const providers = (models["providers"] ?? {}) as Record<string, unknown>;
+    const auth = (config["auth"] ?? {}) as Record<string, unknown>;
+    const profiles = (auth["profiles"] ?? {}) as Record<string, unknown>;
+
+    // ADD
+    for (const add of patch.providers.add ?? []) {
+      const envVar = PROVIDER_ENV_VARS[add.id] ?? "";
+      if (add.id === "opencode" || add.id === "kilocode") {
+        // auth.profiles
+        profiles[`${add.id}:default`] = { provider: add.id, mode: "api_key" };
+      } else {
+        // models.providers
+        providers[add.id] = {
+          apiKey: envVar ? `\${${envVar}}` : "",
+          baseUrl: PROVIDER_BASE_URLS[add.id] ?? "",
+          models: [],
+        };
+      }
+      if (envVar && add.apiKey) {
+        envMap.set(envVar, add.apiKey);
+        envChanged = true;
+      }
+    }
+
+    // UPDATE (API Key only)
+    for (const upd of patch.providers.update ?? []) {
+      const envVar = PROVIDER_ENV_VARS[upd.id] ?? "";
+      if (envVar && upd.apiKey) {
+        envMap.set(envVar, upd.apiKey);
+        envChanged = true;
+      }
+    }
+
+    // REMOVE
+    for (const removeId of patch.providers.remove ?? []) {
+      delete providers[removeId];
+      // Also remove from auth.profiles
+      for (const [key, profile] of Object.entries(profiles)) {
+        if ((profile as Record<string, unknown>)["provider"] === removeId) {
+          delete profiles[key];
+        }
+      }
+      // Remove env var
+      const envVar = PROVIDER_ENV_VARS[removeId] ?? "";
+      if (envVar) {
+        envMap.delete(envVar);
+        envChanged = true;
+      }
+    }
+
+    models["providers"] = providers;
+    config["models"] = models;
+    auth["profiles"] = profiles;
+    config["auth"] = auth;
+  }
+
+  // 5. Apply agentDefaults section
   if (patch.agentDefaults) {
     const agentsConf = (config["agents"] ?? {}) as Record<string, unknown>;
     const defaults = (agentsConf["defaults"] ?? {}) as Record<string, unknown>;
@@ -572,7 +661,7 @@ export async function applyConfigPatch(
     config["agents"] = agentsConf;
   }
 
-  // 5. Apply agents list changes
+  // 6. Apply agents list changes
   if (patch.agents) {
     const agentsConf = (config["agents"] ?? {}) as Record<string, unknown>;
     const currentList = (agentsConf["list"] ?? []) as Array<Record<string, unknown>>;
@@ -596,7 +685,7 @@ export async function applyConfigPatch(
     config["agents"] = agentsConf;
   }
 
-  // 6. Apply channels section
+  // 7. Apply channels section
   if (patch.channels?.telegram) {
     const channels = (config["channels"] ?? {}) as Record<string, unknown>;
     const telegram = (channels["telegram"] ?? {}) as Record<string, unknown>;
@@ -623,7 +712,7 @@ export async function applyConfigPatch(
     config["channels"] = channels;
   }
 
-  // 7. Apply plugins section
+  // 8. Apply plugins section
   if (patch.plugins?.mem0) {
     const plugins = (config["plugins"] ?? {}) as Record<string, unknown>;
     const mem0 = (plugins["@mem0/openclaw-mem0"] ?? {}) as Record<string, unknown>;
@@ -646,7 +735,7 @@ export async function applyConfigPatch(
     config["plugins"] = plugins;
   }
 
-  // 8. Apply gateway section (only hot-reloadable fields)
+  // 9. Apply gateway section (only hot-reloadable fields)
   if (patch.gateway) {
     const gw = (config["gateway"] ?? {}) as Record<string, unknown>;
     const reload = (gw["reload"] ?? {}) as Record<string, unknown>;
@@ -658,10 +747,10 @@ export async function applyConfigPatch(
     config["gateway"] = gw;
   }
 
-  // 9. Classify changes
+  // 10. Classify changes
   const classification = classifyChanges(patch);
 
-  // 10. Write openclaw.json atomically (if file changes needed)
+  // 11. Write openclaw.json atomically (if file changes needed)
   if (!classification.dbOnly) {
     const tmpPath = configPath + ".tmp";
     const content = JSON.stringify(config, null, 2);
@@ -670,7 +759,7 @@ export async function applyConfigPatch(
     await conn.exec(`mv "${tmpPath}" "${configPath}"`);
   }
 
-  // 11. Write .env if changed
+  // 12. Write .env if changed
   if (envChanged) {
     const tmpEnvPath = envPath + ".tmp";
     await conn.writeFile(tmpEnvPath, serializeEnv(envMap));
