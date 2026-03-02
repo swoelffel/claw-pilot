@@ -2,6 +2,7 @@
 import type { Hono } from "hono";
 import type { RouteDeps } from "../route-deps.js";
 import { apiError } from "../route-deps.js";
+import { logger } from "../../lib/logger.js";
 import type { WizardAnswers } from "../../core/config-generator.js";
 import { Destroyer } from "../../core/destroyer.js";
 import { Provisioner } from "../../core/provisioner.js";
@@ -60,7 +61,7 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
       payload.general.displayName = instance.display_name ?? "";
       return c.json(payload);
     } catch (err) {
-      console.error(`[config] GET /config error for slug=${slug}:`, err);
+      logger.error(`[config] GET /config error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`);
       return apiError(c, 500, "CONFIG_READ_FAILED", err instanceof Error ? err.message : "Failed to read config");
     }
   });
@@ -84,7 +85,7 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
-    console.log(`[config] PATCH /config slug=${slug} patch=${JSON.stringify(patch)}`);
+    logger.info(`[config] PATCH /config slug=${slug} patch=${JSON.stringify(patch)}`);
 
     try {
       const result = await applyConfigPatch(
@@ -105,10 +106,10 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
         }
       }
 
-      console.log(`[config] PATCH /config slug=${slug} result=${JSON.stringify(result)}`);
+      logger.info(`[config] PATCH /config slug=${slug} result=${JSON.stringify(result)}`);
       return c.json(result);
     } catch (err) {
-      console.error(`[config] PATCH /config error for slug=${slug}:`, err);
+      logger.error(`[config] PATCH /config error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`);
       return apiError(c, 500, "CONFIG_PATCH_FAILED", err instanceof Error ? err.message : "Failed to apply config");
     }
   });

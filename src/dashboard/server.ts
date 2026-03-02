@@ -72,6 +72,9 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   const updater = new Updater(conn, registry, lifecycle);
   const tokenCache = new TokenCache(conn);
 
+  // Public healthcheck — no auth required (for systemd, load balancers, monitoring)
+  app.get("/health", (c) => c.json({ ok: true, service: "claw-pilot" }));
+
   // Security headers middleware
   app.use("*", async (c, next) => {
     await next();
