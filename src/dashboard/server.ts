@@ -2,6 +2,7 @@
 import { Hono, type Context } from "hono";
 import { serve } from "@hono/node-server";
 import { WebSocketServer } from "ws";
+import { timingSafeEqual } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,10 +27,11 @@ import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 import { PROVIDER_CATALOG } from "../lib/provider-catalog.js";
 import type { ProviderInfo } from "../lib/provider-catalog.js";
 import { readGatewayToken } from "../lib/env-reader.js";
-import { readInstanceConfig, applyConfigPatch } from "../core/config-updater.js";
+import { readInstanceConfig, applyConfigPatch, ConfigPatchSchema } from "../core/config-updater.js";
 import type { ConfigPatch } from "../core/config-updater.js";
 import { UpdateChecker } from "../core/update-checker.js";
 import { Updater } from "../core/updater.js";
+import { createRateLimiter } from "./rate-limit.js";
 
 // Resolve dist/ui/ relative to this bundle chunk.
 // When bundled: this file is at <install>/dist/server-*.mjs
@@ -60,6 +62,12 @@ export interface DashboardOptions {
   conn: ServerConnection;
 }
 
+/** Timing-safe string comparison to prevent timing attacks on token validation. */
+function safeTokenCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a, "utf-8"), Buffer.from(b, "utf-8"));
+}
+
 export async function startDashboard(options: DashboardOptions): Promise<void> {
   const { port, token, registry, conn } = options;
   const app = new Hono();
@@ -80,10 +88,29 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     return c.json({ error: message, code }, status as 400 | 401 | 403 | 404 | 409 | 500);
   }
 
-  // Auth middleware for API routes
+  // Security headers middleware
+  app.use("*", async (c, next) => {
+    await next();
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header("X-Frame-Options", "DENY");
+    c.header("Referrer-Policy", "no-referrer");
+    c.header(
+      "Content-Security-Policy",
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'",
+    );
+  });
+
+  // Rate limiting on API routes (60 req/min per IP)
+  app.use("/api/*", createRateLimiter({ maxRequests: 60, windowMs: 60_000 }));
+  // Stricter rate limit on expensive operations
+  app.use("/api/instances", createRateLimiter({ maxRequests: 10, windowMs: 60_000 }));
+  app.use("/api/openclaw/update", createRateLimiter({ maxRequests: 1, windowMs: 300_000 }));
+
+  // Auth middleware for API routes (timing-safe comparison)
+  const expectedBearer = `Bearer ${token}`;
   app.use("/api/*", async (c, next) => {
-    const auth = c.req.header("Authorization");
-    if (auth !== `Bearer ${token}`) {
+    const auth = c.req.header("Authorization") ?? "";
+    if (!safeTokenCompare(auth, expectedBearer)) {
       return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
     }
     await next();
@@ -144,7 +171,13 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
 
     let patch: ConfigPatch;
     try {
-      patch = await c.req.json() as ConfigPatch;
+      const raw = await c.req.json();
+      const result = ConfigPatchSchema.safeParse(raw);
+      if (!result.success) {
+        const issues = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+        return apiError(c, 400, "INVALID_BODY", `Invalid config patch: ${issues}`);
+      }
+      patch = result.data as ConfigPatch;
     } catch {
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
@@ -540,6 +573,9 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     }
     if (typeof body.content !== "string") {
       return apiError(c, 400, "FIELD_REQUIRED", "content is required");
+    }
+    if (body.content.length > 1_048_576) {
+      return apiError(c, 413, "CONTENT_TOO_LARGE", "File content exceeds 1MB limit");
     }
 
     try {
@@ -1174,6 +1210,11 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
+    // Prevent database bloat — reject files larger than 1MB
+    if (body.content.length > 1_048_576) {
+      return apiError(c, 413, "CONTENT_TOO_LARGE", "File content exceeds 1MB limit");
+    }
+
     const agent = registry.getBlueprintAgent(id, agentId);
     if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
@@ -1469,8 +1510,8 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   const wss = new WebSocketServer({ server: server as any });
   wss.on("connection", (ws, req) => {
     const url = new URL(req.url ?? "/", `http://localhost`);
-    const wsToken = url.searchParams.get("token");
-    if (wsToken !== token) {
+    const wsToken = url.searchParams.get("token") ?? "";
+    if (!safeTokenCompare(wsToken, token)) {
       ws.close(1008, "Unauthorized");
       return;
     }

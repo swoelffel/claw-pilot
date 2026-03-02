@@ -16,8 +16,12 @@ export class OpenClawCLI {
   async install(): Promise<boolean> {
     const url =
       process.env["OPENCLAW_INSTALL_URL"] ?? constants.OPENCLAW_INSTALL_URL;
+    // Validate URL to prevent shell injection via env var override
+    if (!url.startsWith("https://")) {
+      throw new Error(`OPENCLAW_INSTALL_URL must start with https:// (got: ${url.slice(0, 40)})`);
+    }
     const result = await this.conn.exec(
-      `curl -fsSL ${url} | sh 2>&1`,
+      `curl -fsSL ${shellEscape(url)} | sh 2>&1`,
     );
     if (result.exitCode !== 0) {
       return false;
