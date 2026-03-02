@@ -6,6 +6,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.6.7] — 2026-03-02
+
+### Added
+- Instance Settings view: manage multiple AI providers per instance (add, remove, update API keys) directly from the dashboard
+- Heartbeat model selector: `<select>` with `<optgroup>` per configured provider, dynamically updated as providers are added/removed
+- i18n: `btn-settings` translated in all 6 locales (en/fr/de/es/it/pt)
+
+### Changed
+- `maskSecret()`: new format `8chars***4chars` (e.g. `sk-ant-a***SQAA`) for better readability
+- Instance card footer: added `gap` to prevent crowding between agent count and action buttons across all locales
+
+### Fixed
+- `OPENCODE_API_KEY` env var was incorrectly set to `""` in config-generator — now correctly resolved; provisioner handles optional-key providers gracefully
+
+---
+
 ## [0.6.6] — 2026-03-01
 
 ### Added
