@@ -95,6 +95,13 @@ const DEFAULT_CONFIG: Record<string, string> = {
 
 interface Migration {
   version: number;
+  /**
+   * Set to true for migrations that need PRAGMA foreign_keys = OFF.
+   * SQLite does not allow changing foreign_keys pragma inside a transaction,
+   * so the migration framework will disable FK enforcement before starting
+   * the transaction and re-enable it after.
+   */
+  disableFk?: boolean;
   up(db: Database.Database): void;
 }
 
@@ -218,12 +225,14 @@ const MIGRATIONS: Migration[] = [
   {
     // v4: remove nginx_domain column from instances table.
     // SQLite < 3.35.0 does not support DROP COLUMN, so we recreate the table.
-    // FK enforcement is temporarily disabled to allow DROP TABLE instances
-    // (agents and agent_links reference it via ON DELETE CASCADE).
+    // FK enforcement must be disabled to allow DROP TABLE instances without
+    // cascading deletes to agents/agent_links (which reference instances via
+    // ON DELETE CASCADE). PRAGMA foreign_keys cannot be changed inside a
+    // transaction, so disableFk=true tells initDatabase to set it before
+    // starting the transaction.
     version: 4,
+    disableFk: true,
     up(db) {
-      // Disable FK enforcement for the duration of the table swap
-      db.pragma("foreign_keys = OFF");
       db.exec(`
         CREATE TABLE instances_v4 (
           id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -249,8 +258,6 @@ const MIGRATIONS: Migration[] = [
         DROP TABLE instances;
         ALTER TABLE instances_v4 RENAME TO instances;
       `);
-      // Re-enable FK enforcement
-      db.pragma("foreign_keys = ON");
     },
   },
 ];
@@ -304,11 +311,25 @@ export function initDatabase(dbPath: string): Database.Database {
   for (const migration of MIGRATIONS) {
     if (migration.version <= currentVersion) continue;
 
-    // Each migration runs in its own transaction so a failure is atomic
-    db.transaction(() => {
-      migration.up(db);
-      db.prepare("UPDATE schema_version SET version = ?").run(migration.version);
-    })();
+    // Migrations that need FK disabled must set disableFk=true.
+    // PRAGMA foreign_keys cannot be changed inside a transaction (SQLite
+    // silently ignores it), so we disable it before starting the transaction
+    // and restore it after.
+    if (migration.disableFk) {
+      db.pragma("foreign_keys = OFF");
+    }
+
+    try {
+      // Each migration runs in its own transaction so a failure is atomic
+      db.transaction(() => {
+        migration.up(db);
+        db.prepare("UPDATE schema_version SET version = ?").run(migration.version);
+      })();
+    } finally {
+      if (migration.disableFk) {
+        db.pragma("foreign_keys = ON");
+      }
+    }
   }
 
   return db;
