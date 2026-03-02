@@ -18,7 +18,7 @@ export const tokenStyles = css`
 
     --text-primary:   #e2e8f0;
     --text-secondary: #94a3b8;
-    --text-muted:     #4a5568;
+    --text-muted:     #64748b;
 
     --state-running:  #10b981;
     --state-stopped:  #64748b;

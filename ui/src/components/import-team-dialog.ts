@@ -6,12 +6,13 @@ import type { PanelContext } from "../types.js";
 import { importInstanceTeam, importBlueprintTeam } from "../api.js";
 import type { TeamImportResult } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
+import { DialogMixin } from "../lib/dialog-mixin.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { spinnerStyles, errorBannerStyles, buttonStyles } from "../styles/shared.js";
 
 @localized()
 @customElement("cp-import-team-dialog")
-export class ImportTeamDialog extends LitElement {
+export class ImportTeamDialog extends DialogMixin(LitElement) {
   static styles = [tokenStyles, spinnerStyles, errorBannerStyles, buttonStyles, css`
     :host { display: block; }
 

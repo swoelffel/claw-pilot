@@ -5,12 +5,13 @@ import { localized, msg } from "@lit/localize";
 import type { InstanceInfo } from "../types.js";
 import { deleteInstance } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
+import { DialogMixin } from "../lib/dialog-mixin.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { spinnerStyles, errorBannerStyles, buttonStyles } from "../styles/shared.js";
 
 @localized()
 @customElement("cp-delete-instance-dialog")
-export class DeleteInstanceDialog extends LitElement {
+export class DeleteInstanceDialog extends DialogMixin(LitElement) {
   static styles = [tokenStyles, spinnerStyles, errorBannerStyles, buttonStyles, css`
     :host { display: block; }
 

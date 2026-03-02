@@ -6,6 +6,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.7.1] — 2026-03-02
+
+### Added
+- Hash-based URL routing: browser back/forward, refresh persistence (`#/`, `#/instances/:slug/builder`, `#/instances/:slug/settings`, `#/blueprints`, `#/blueprints/:id/builder`)
+- Public `GET /health` endpoint (no auth) for systemd/monitoring/load balancers
+- Dialog accessibility: focus trap, Escape key, `aria-modal="true"` on all 5 dialogs via `DialogMixin`
+- Gateway token cache (`TokenCache`) eliminates N disk reads per API call
+
+### Changed
+- `server.ts` split from 1522 lines into 5 route modules (`instances`, `blueprints`, `teams`, `system`) + `route-deps.ts`
+- `config-updater.ts` split from 848 lines into `config-types.ts`, `config-helpers.ts`, `config-reader.ts`, `config-writer.ts` (barrel re-export preserves all imports)
+- `console.log/error` in dashboard routes migrated to structured `logger`
+
+### Fixed
+- Shell injection risk in `config-updater.ts`: `conn.exec("mv ...")` → `conn.execFile("mv", [...])`
+- Timing-safe token comparison (`crypto.timingSafeEqual`) for HTTP and WebSocket auth
+- HTTP security headers: CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
+- `ConfigPatch` API body validated at runtime with Zod `.strict()` schema
+- OpenClaw install URL validated before shell interpolation
+- Rate limiting on API routes (60 req/min) and expensive operations
+- Blueprint file upload size capped at 1 MB
+- WCAG AA color contrast fix: `--text-muted` raised from #4a5568 (~2.8:1) to #64748b (~4.6:1)
+- Token URL leak: `#token=` hash cleaned from address bar after login
+
+### Tests
+- 55 new tests: 38 API route integration tests + 17 `classifyChanges` unit tests (total: 184 tests)
+
+---
+
 ## [0.7.0] — 2026-03-02
 
 ### Added

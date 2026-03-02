@@ -4,12 +4,13 @@ import { localized, msg } from "@lit/localize";
 import type { AgentDefinition, Blueprint, CreateInstanceRequest, ProviderInfo, ProvidersResponse } from "../types.js";
 import { fetchNextPort, createInstance, fetchProviders, fetchBlueprints } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
+import { DialogMixin } from "../lib/dialog-mixin.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { sectionLabelStyles, spinnerStyles, errorBannerStyles, buttonStyles } from "../styles/shared.js";
 
 @localized()
 @customElement("cp-create-dialog")
-export class CreateDialog extends LitElement {
+export class CreateDialog extends DialogMixin(LitElement) {
   static styles = [tokenStyles, sectionLabelStyles, spinnerStyles, errorBannerStyles, buttonStyles, css`
     :host {
       display: block;

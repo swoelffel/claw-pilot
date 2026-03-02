@@ -331,8 +331,69 @@ export class CpApp extends LitElement {
   private _ws: WebSocket | null = null;
   private _wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /** Guard to prevent hash→route→hash feedback loops. */
+  private _updatingHash = false;
+
+  // ---------------------------------------------------------------------------
+  // Hash-based routing — sync URL ↔ _route
+  // ---------------------------------------------------------------------------
+
+  /** Convert a Route to a hash string (without the leading #). */
+  private static _routeToHash(route: Route): string {
+    switch (route.view) {
+      case "cluster":            return "/";
+      case "agents-builder":     return `/instances/${route.slug}/builder`;
+      case "instance-settings":  return `/instances/${route.slug}/settings`;
+      case "blueprints":         return "/blueprints";
+      case "blueprint-builder":  return `/blueprints/${route.blueprintId}/builder`;
+    }
+  }
+
+  /** Parse a hash string into a Route (returns cluster view for unknown hashes). */
+  private static _hashToRoute(hash: string): Route {
+    // Strip leading # and /
+    const path = hash.replace(/^#?\/?/, "");
+    if (!path || path === "/") return { view: "cluster" };
+
+    // /instances/:slug/builder
+    const builderMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/builder$/);
+    if (builderMatch) return { view: "agents-builder", slug: builderMatch[1]! };
+
+    // /instances/:slug/settings
+    const settingsMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/settings$/);
+    if (settingsMatch) return { view: "instance-settings", slug: settingsMatch[1]! };
+
+    // /blueprints/:id/builder
+    const bpBuilderMatch = path.match(/^blueprints\/(\d+)\/builder$/);
+    if (bpBuilderMatch) return { view: "blueprint-builder", blueprintId: Number(bpBuilderMatch[1]) };
+
+    // /blueprints
+    if (path === "blueprints") return { view: "blueprints" };
+
+    return { view: "cluster" };
+  }
+
+  private _onHashChange = (): void => {
+    if (this._updatingHash) return;
+    this._route = CpApp._hashToRoute(location.hash);
+  };
+
+  /** Push the current route into the URL hash (called from updated()). */
+  private _syncHashFromRoute(): void {
+    const target = CpApp._routeToHash(this._route);
+    const current = location.hash.replace(/^#?\/?/, "");
+    const targetNorm = target.replace(/^\//, "");
+    if (current === targetNorm) return;
+    this._updatingHash = true;
+    location.hash = `#${target}`;
+    this._updatingHash = false;
+  }
+
   override connectedCallback(): void {
     super.connectedCallback();
+    // Restore route from URL hash on first load
+    this._route = CpApp._hashToRoute(location.hash);
+    window.addEventListener("hashchange", this._onHashChange);
     this._connectWs();
     document.addEventListener("click", this._onDocClick);
     window.addEventListener("lit-localize-status", this._onLocaleStatus);
@@ -340,10 +401,17 @@ export class CpApp extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    window.removeEventListener("hashchange", this._onHashChange);
     this._ws?.close();
     if (this._wsReconnectTimer) clearTimeout(this._wsReconnectTimer);
     document.removeEventListener("click", this._onDocClick);
     window.removeEventListener("lit-localize-status", this._onLocaleStatus);
+  }
+
+  override updated(changed: Map<string, unknown>): void {
+    if (changed.has("_route")) {
+      this._syncHashFromRoute();
+    }
   }
 
   private _connectWs(): void {

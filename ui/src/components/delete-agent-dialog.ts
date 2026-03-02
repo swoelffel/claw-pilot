@@ -5,12 +5,13 @@ import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo, BuilderData } from "../types.js";
 import { deleteAgent } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
+import { DialogMixin } from "../lib/dialog-mixin.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { spinnerStyles, errorBannerStyles, buttonStyles } from "../styles/shared.js";
 
 @localized()
 @customElement("cp-delete-agent-dialog")
-export class DeleteAgentDialog extends LitElement {
+export class DeleteAgentDialog extends DialogMixin(LitElement) {
   static styles = [tokenStyles, spinnerStyles, errorBannerStyles, buttonStyles, css`
     :host { display: block; }
 
