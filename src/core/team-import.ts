@@ -443,20 +443,27 @@ function mergeTeamIntoConfig(
       return entry;
     });
 
-  // If the default agent (main) has spawn links, add a dedicated list[] entry
-  // for "main" carrying subagents.allowAgents. This is the only valid location
-  // for allowAgents in openclaw.json — OpenClaw rejects it in defaults.subagents.
-  // agent-sync.ts reads list[].subagents.allowAgents first (priority over defaults).
+  // Always prepend a dedicated list[] entry for the default agent (main).
+  // - "default": true is required so OpenClaw knows which agent is the default;
+  //   without it, OpenClaw picks the first entry alphabetically.
+  // - "name" preserves the display name.
+  // - subagents.allowAgents carries spawn links (only valid location in list[],
+  //   OpenClaw rejects it in defaults.subagents).
+  // Prepend so main appears first in the list, matching the source instance order.
   if (defaultAgent) {
     const mainSpawnTargets = team.links
       .filter((l) => l.type === "spawn" && l.source === defaultAgent.id)
       .map((l) => l.target);
+    const mainEntry: Record<string, unknown> = {
+      id: defaultAgent.id,
+      default: true,
+    };
+    if (defaultAgent.name) mainEntry["name"] = defaultAgent.name;
+    if (defaultAgent.config?.model !== undefined) mainEntry["model"] = defaultAgent.config.model;
     if (mainSpawnTargets.length > 0) {
-      agentsList.push({
-        id: defaultAgent.id,
-        subagents: { allowAgents: mainSpawnTargets },
-      });
+      mainEntry["subagents"] = { allowAgents: mainSpawnTargets };
     }
+    agentsList.unshift(mainEntry);
   }
 
   agentsConf["list"] = agentsList;
