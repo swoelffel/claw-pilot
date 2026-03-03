@@ -1378,7 +1378,7 @@ export class InstanceSettings extends LitElement {
             <p style="color:var(--text-muted);font-size:13px;margin:0 0 12px">
               ${msg("Telegram is not configured for this instance.", { id: "settings-telegram-not-configured" })}
             </p>
-            <button class="btn-secondary" @click=${() => { this._addingTelegram = true; }}>
+            <button class="btn btn-ghost" @click=${() => { this._addingTelegram = true; }}>
               ${msg("Configure Telegram", { id: "settings-configure-telegram" })}
             </button>
           `}
@@ -1466,11 +1466,11 @@ export class InstanceSettings extends LitElement {
           </select>
         </div>
         <div class="field full-width" style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
-          <button class="btn-secondary" @click=${cancel}>
+          <button class="btn btn-ghost" @click=${cancel}>
             ${msg("Cancel", { id: "settings-cancel" })}
           </button>
           <button
-            class="btn-primary"
+            class="btn btn-primary"
             ?disabled=${!token.trim() || this._saving}
             @click=${add}
           >
