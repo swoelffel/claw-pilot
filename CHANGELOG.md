@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.7.4] — 2026-03-03
+
+### Fixed
+- Control UI now works through SSH tunnels: generated configs include `gateway.controlUi.allowedOrigins: ["*"]` so the browser's `Origin: http://localhost:<local-port>` header is accepted by the gateway. Existing instances on VM01 patched in-place.
+
+---
+
 ## [0.7.3] — 2026-03-03
 
 ### Changed
