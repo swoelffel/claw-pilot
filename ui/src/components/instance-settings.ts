@@ -6,8 +6,9 @@ import { fetchInstanceConfig, patchInstanceConfig, fetchProviders } from "../api
 import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { badgeStyles, buttonStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
+import "./instance-devices.js";
 
-type SidebarSection = "general" | "agents" | "telegram" | "plugins" | "gateway";
+type SidebarSection = "general" | "agents" | "telegram" | "plugins" | "gateway" | "devices";
 
 @localized()
 @customElement("cp-instance-settings")
@@ -521,6 +522,33 @@ export class InstanceSettings extends LitElement {
     .provider-add-row select {
       width: 100%;
     }
+
+    /* --- Nav badge (pending devices count) --- */
+    .nav-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 9px;
+      background: var(--state-error);
+      color: white;
+      font-size: 10px;
+      font-weight: 700;
+      margin-left: 6px;
+    }
+
+    /* --- Save warning banner --- */
+    .save-warning {
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      border-radius: var(--radius-md);
+      padding: 10px 16px;
+      color: var(--state-warning);
+      font-size: 12px;
+      margin-bottom: 16px;
+    }
   `];
 
   @property({ type: String }) slug = "";
@@ -535,6 +563,12 @@ export class InstanceSettings extends LitElement {
 
   // Providers catalog (from /api/providers) — used for "Add provider" dropdown
   @state() private _providerCatalog: ProviderInfo[] = [];
+
+  // Pending devices badge count
+  @state() private _pendingDeviceCount = 0;
+
+  // Warning message after save (e.g. pairingWarning)
+  @state() private _saveWarning = "";
 
   // Dirty tracking — stores modified values
   @state() private _dirty: Record<string, unknown> = {};
@@ -699,6 +733,7 @@ export class InstanceSettings extends LitElement {
     if (!this._hasChanges || this._saving) return;
     if (this._heartbeatEveryError) return;
     this._saving = true;
+    this._saveWarning = "";
     try {
       const patch = this._buildPatch();
       const result: ConfigPatchResult = await patchInstanceConfig(this.slug, patch);
@@ -715,6 +750,10 @@ export class InstanceSettings extends LitElement {
             `${msg("Configuration saved", { id: "settings-saved" })} — ${msg("hot-reload applied", { id: "settings-hot-reload" })}`,
             "success",
           );
+        }
+        // Show pairing warning if port changed
+        if (result.pairingWarning) {
+          this._saveWarning = "Port changed — browser pairing will be lost after restart. Go to the Devices tab to approve the new request.";
         }
         // Reload config to get fresh state
         await this._loadConfig();
@@ -789,6 +828,8 @@ export class InstanceSettings extends LitElement {
 
   private _scrollToSection(section: SidebarSection): void {
     this._activeSection = section;
+    // "devices" is rendered as a standalone panel — no scroll needed
+    if (section === "devices") return;
     const el = this.shadowRoot?.getElementById(`section-${section}`);
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -849,6 +890,15 @@ export class InstanceSettings extends LitElement {
               @click=${() => this._scrollToSection(s.id)}
             >${s.label}</button>
           `)}
+          <button
+            class="sidebar-item ${this._activeSection === "devices" ? "active" : ""}"
+            @click=${() => this._scrollToSection("devices")}
+          >
+            Devices
+            ${this._pendingDeviceCount > 0
+              ? html`<span class="nav-badge">${this._pendingDeviceCount}</span>`
+              : nothing}
+          </button>
         </nav>
       </aside>
     `;
@@ -1494,11 +1544,24 @@ export class InstanceSettings extends LitElement {
       <div class="settings-layout">
         ${this._renderSidebar()}
         <div class="content">
-          ${this._renderGeneralSection()}
-          ${this._renderAgentsSection()}
-          ${this._renderTelegramSection()}
-          ${this._renderPluginsSection()}
-          ${this._renderGatewaySection()}
+          ${this._saveWarning
+            ? html`<div class="save-warning">⚠ ${this._saveWarning}</div>`
+            : nothing}
+          ${this._activeSection === "devices"
+            ? html`
+              <cp-instance-devices
+                .slug=${this.slug}
+                .active=${this._activeSection === "devices"}
+                @pending-count-changed=${(e: CustomEvent<number>) => { this._pendingDeviceCount = e.detail; }}
+              ></cp-instance-devices>
+            `
+            : html`
+              ${this._renderGeneralSection()}
+              ${this._renderAgentsSection()}
+              ${this._renderTelegramSection()}
+              ${this._renderPluginsSection()}
+              ${this._renderGatewaySection()}
+            `}
         </div>
       </div>
 

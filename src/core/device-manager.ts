@@ -3,7 +3,6 @@
 // Reads device files and wraps openclaw devices approve/revoke commands.
 // Always uses ServerConnection — never child_process or fs directly.
 
-import * as path from "node:path";
 import type { ServerConnection } from "../server/connection.js";
 import type { DeviceList, PendingDevice, PairedDevice } from "./devices.js";
 
@@ -17,8 +16,8 @@ export class DeviceManager {
    * Returns empty lists if files don't exist.
    */
   async list(stateDir: string): Promise<DeviceList> {
-    const pendingPath = path.posix.join(stateDir, "devices", "pending.json");
-    const pairedPath = path.posix.join(stateDir, "devices", "paired.json");
+    const pendingPath = `${stateDir}/devices/pending.json`;
+    const pairedPath = `${stateDir}/devices/paired.json`;
 
     let pending: PendingDevice[] = [];
     let paired: PairedDevice[] = [];

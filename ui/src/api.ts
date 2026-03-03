@@ -1,4 +1,4 @@
-import type { InstanceInfo, AgentInfo, CreateInstanceRequest, CreateAgentRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink, Blueprint, BlueprintBuilderData, CreateBlueprintRequest, InstanceConfig, ConfigPatchResult, OpenClawUpdateStatus } from "./types.js";
+import type { InstanceInfo, AgentInfo, CreateInstanceRequest, CreateAgentRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink, Blueprint, BlueprintBuilderData, CreateBlueprintRequest, InstanceConfig, ConfigPatchResult, OpenClawUpdateStatus, DeviceList } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 
 declare global {
@@ -355,4 +355,23 @@ export async function fetchUpdateStatus(): Promise<OpenClawUpdateStatus> {
 
 export async function triggerUpdate(): Promise<{ ok: boolean; jobId: string }> {
   return apiFetch<{ ok: boolean; jobId: string }>("/openclaw/update", { method: "POST" });
+}
+
+// --- Devices API ---
+
+export async function fetchInstanceDevices(slug: string): Promise<DeviceList> {
+  return apiFetch<DeviceList>(`/instances/${slug}/devices`);
+}
+
+export async function approveDevice(slug: string, requestId: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/instances/${slug}/devices/approve`, {
+    method: "POST",
+    body: JSON.stringify({ requestId }),
+  });
+}
+
+export async function revokeDevice(slug: string, deviceId: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/instances/${slug}/devices/${deviceId}`, {
+    method: "DELETE",
+  });
 }
