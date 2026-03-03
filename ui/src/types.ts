@@ -126,6 +126,12 @@ export interface AgentBuilderInfo {
   files: AgentFileSummary[];
 }
 
+export interface AgentMetaPatch {
+  role?: string | null;
+  tags?: string | null;
+  notes?: string | null;
+}
+
 export interface AgentLink {
   source_agent_id: string;
   target_agent_id: string;

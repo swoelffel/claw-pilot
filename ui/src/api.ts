@@ -1,4 +1,4 @@
-import type { InstanceInfo, AgentInfo, CreateInstanceRequest, CreateAgentRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink, Blueprint, BlueprintBuilderData, CreateBlueprintRequest, InstanceConfig, ConfigPatchResult, OpenClawUpdateStatus, DeviceList, TelegramPairingList } from "./types.js";
+import type { InstanceInfo, AgentInfo, CreateInstanceRequest, CreateAgentRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink, Blueprint, BlueprintBuilderData, CreateBlueprintRequest, InstanceConfig, ConfigPatchResult, OpenClawUpdateStatus, DeviceList, TelegramPairingList, AgentMetaPatch } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 
 declare global {
@@ -135,6 +135,17 @@ export async function updateAgentPosition(
   await apiFetch(`/instances/${slug}/agents/${agentId}/position`, {
     method: "PATCH",
     body: JSON.stringify({ x, y }),
+  });
+}
+
+export async function updateAgentMeta(
+  slug: string,
+  agentId: string,
+  patch: AgentMetaPatch,
+): Promise<void> {
+  await apiFetch(`/instances/${slug}/agents/${agentId}/meta`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
   });
 }
 
