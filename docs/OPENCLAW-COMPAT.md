@@ -7,11 +7,11 @@ derive provider/model catalogs, and the procedure to update them on each OpenCla
 
 ## Reference version
 
-**OpenClaw `2026.3.1`** (latest stable tag)
+**OpenClaw `2026.3.2`** (latest stable tag)
 
 ---
 
-## openclaw.json format (v2026.3.1)
+## openclaw.json format (v2026.3.2)
 
 ### Required top-level keys
 
@@ -42,7 +42,7 @@ derive provider/model catalogs, and the procedure to update them on each OpenCla
 | `gateway.bind: "all"` | removed in 2026.3.x — use `"lan"` for equivalent behavior |
 | `env.file` (top-level) | removed |
 
-### New optional keys (since 2026.2.23 through 2026.2.27)
+### New optional keys (since 2026.2.23 through 2026.3.2)
 
 These are additive — no impact on existing configs, but claw-pilot should not generate them
 unless explicitly needed.
@@ -58,6 +58,18 @@ unless explicitly needed.
 | `gateway.http.securityHeaders.strictTransportSecurity` | 2026.2.23 | Optional HSTS for direct HTTPS deployments |
 | `secrets` | 2026.2.26 | External secrets management (audit/configure/apply/reload workflow) |
 | `agents.defaults.heartbeat.directPolicy` | 2026.2.25 | `"allow"` or `"block"` — replaces heartbeat DM toggle |
+| `cli.banner.taglineMode` | 2026.3.2 | `"random" \| "default" \| "off"` — controls CLI banner tagline |
+| `browser.cdpPortRangeStart` | 2026.3.2 | Starting port for CDP port range |
+| `browser.instances[].attachOnly` | 2026.3.2 | Per-instance attach-only mode |
+| `browser.extraArgs` | 2026.3.2 | Extra Chrome launch arguments |
+| `sessions.retry` | 2026.3.2 | Object `{ maxAttempts, backoffMs, retryOn }` — retry policy for sessions |
+| `sessions.webhookToken` | 2026.3.2 | Now accepts `SecretRef` in addition to plain string — additive, existing string configs still valid |
+| `sessions.failureAlert` | 2026.3.2 | Alert config on cron session failures |
+| `sessions.failureDestination` | 2026.3.2 | Destination for cron failure messages |
+| `acp` | 2026.3.2 | New ACP (Agent Communication Protocol) config block — `acp.dispatch.enabled` defaults to `true` |
+| `tools.media.audio.echoTranscript` | 2026.3.2 | Echo audio transcription to chat |
+| `tools.media.audio.echoFormat` | 2026.3.2 | Format for echoed transcription |
+| `tools.sessions_spawn.attachments` | 2026.3.2 | Inline attachments for subagent spawn |
 
 ### Breaking changes in 2026.2.25 (not affecting claw-pilot generated configs)
 
@@ -119,11 +131,21 @@ load balancers, and monitoring.
 
 These can be used from claw-pilot via `conn.exec()` for config validation workflows.
 
+### Breaking changes in 2026.3.2 (not affecting claw-pilot generated configs)
+
+- **`tools.profile` default changed**: the interactive onboarding default changed from
+  `"coding"` to `"messaging"`. claw-pilot explicitly generates `"coding"` — no change needed,
+  but note that OpenClaw's own onboarding now defaults differently.
+- **`acp.dispatch.enabled` defaults to `true`**: ACP dispatch is now on by default. claw-pilot
+  does not generate `acp` config — existing configs without this key will inherit the new default.
+- **Plugin SDK**: `api.registerHttpHandler(...)` removed — no impact on claw-pilot.
+- **Zalo Personal plugin**: migrated to `zca-js` native — no impact on claw-pilot.
+
 ### Minimal valid config skeleton
 
 ```json
 {
-  "meta": { "lastTouchedVersion": "2026.3.1", "lastTouchedAt": "<ISO>" },
+  "meta": { "lastTouchedVersion": "2026.3.2", "lastTouchedAt": "<ISO>" },
   "models": {
     "providers": {
       "anthropic": {
@@ -225,7 +247,7 @@ Derived from:
 > expose them yet (Anthropic, OpenAI, Google, Mistral, xAI, OpenRouter, Kilocode,
 > OpenCode are the supported onboarding paths).
 
-### Model catalog (as of 2026.3.1)
+### Model catalog (as of 2026.3.2)
 
 #### Anthropic
 *(from `@mariozechner/pi-ai` catalog — use `anthropic/<id>` in config)*

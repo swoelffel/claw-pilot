@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.7.5] — 2026-03-03
+
+### Changed
+- OpenClaw compatibility bumped to **2026.3.2**: updated `lastTouchedVersion` in generated configs, provider catalog version reference, and `OPENCLAW-COMPAT.md` with new optional keys (`cli.banner.taglineMode`, `browser.cdpPortRangeStart`, `sessions.retry`, `sessions.webhookToken` SecretRef support, `acp`, `tools.media.audio.*`, `tools.sessions_spawn.attachments`) and breaking changes (`tools.profile` default → `"messaging"`, `acp.dispatch.enabled` → `true` by default)
+
+---
+
 ## [0.7.4] — 2026-03-03
 
 ### Fixed
