@@ -68,6 +68,7 @@ export class InstanceRepository {
       displayName: string;
       telegramBot: string;
       defaultModel: string;
+      port: number;
     }>,
   ): void {
     const sets: string[] = [];
@@ -84,6 +85,10 @@ export class InstanceRepository {
     if (fields.defaultModel !== undefined) {
       sets.push("default_model=?");
       values.push(fields.defaultModel);
+    }
+    if (fields.port !== undefined) {
+      sets.push("port=?");
+      values.push(fields.port);
     }
 
     if (sets.length === 0) return;

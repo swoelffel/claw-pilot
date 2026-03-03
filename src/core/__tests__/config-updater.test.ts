@@ -94,6 +94,7 @@ describe("classifyChanges", () => {
     const result = classifyChanges(patch);
     expect(result.hotReloadOnly).toBe(true);
     expect(result.requiresRestart).toBe(false);
+    expect(result.pairingWarning).toBe(false);
   });
 
   it("gateway.reloadDebounceMs → hotReloadOnly (hot-reload field)", () => {
@@ -101,6 +102,23 @@ describe("classifyChanges", () => {
     const result = classifyChanges(patch);
     expect(result.hotReloadOnly).toBe(true);
     expect(result.requiresRestart).toBe(false);
+    expect(result.pairingWarning).toBe(false);
+  });
+
+  it("gateway.port → requiresRestart + pairingWarning", () => {
+    const patch: ConfigPatch = { gateway: { port: 18795 } };
+    const result = classifyChanges(patch);
+    expect(result.requiresRestart).toBe(true);
+    expect(result.hotReloadOnly).toBe(false);
+    expect(result.restartReason).toContain("gateway.port");
+    expect(result.pairingWarning).toBe(true);
+  });
+
+  it("gateway.port + reloadMode → requiresRestart + pairingWarning", () => {
+    const patch: ConfigPatch = { gateway: { port: 18796, reloadMode: "watch" } };
+    const result = classifyChanges(patch);
+    expect(result.requiresRestart).toBe(true);
+    expect(result.pairingWarning).toBe(true);
   });
 
   // ---------------------------------------------------------------------------

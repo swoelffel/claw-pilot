@@ -310,6 +310,7 @@ export class CpApp extends LitElement {
 
   @state() private _route: Route = { view: "cluster" };
   @state() private _instances: InstanceInfo[] = [];
+  @state() private _blueprintCount: number | null = null;
   @state() private _wsConnected = false;
   @state() private _locale: SupportedLocale = getLocale() as SupportedLocale;
   @state() private _langOpen = false;
@@ -561,6 +562,9 @@ export class CpApp extends LitElement {
       return html`
         <cp-blueprints-view
           @navigate=${this._navigate}
+          @blueprints-loaded=${(e: Event) => {
+            this._blueprintCount = (e as CustomEvent<number>).detail;
+          }}
         ></cp-blueprints-view>
       `;
     }
@@ -605,6 +609,7 @@ export class CpApp extends LitElement {
               @click=${() => { this._route = { view: "blueprints" }; }}
             >
               ${msg("Blueprints", { id: "nav-blueprints" })}
+              ${this._blueprintCount !== null && this._blueprintCount > 0 ? html`<span class="nav-badge">${this._blueprintCount}</span>` : ""}
             </button>
           </nav>
         </div>

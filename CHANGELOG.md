@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.7.6] — 2026-03-03
+
+### Added
+- **Blueprints badge in nav**: the Blueprints tab in the top navigation bar now shows a numeric badge with the blueprint count (same style as the Instances badge). The badge updates dynamically on create/delete and is hidden when no blueprints exist or the view hasn't been visited yet.
+- **Pairing warning on port change**: changing `gateway.port` via `PATCH /api/instances/:slug/config` now returns `pairingWarning: true` in the response. The browser's localStorage is origin-scoped (`localhost:PORT`), so a port change invalidates the existing device pairing — the user must re-approve from the Devices tab (Phase 3) or via `claw-pilot devices approve <slug>` (Phase 2).
+- `gateway.port` is now an accepted field in `ConfigPatch` / `ConfigPatchSchema` (previously only `reloadMode` and `reloadDebounceMs` were exposed). Changing the port also syncs the new value to the registry DB.
+- `port` field added to `InstanceRepository.updateInstance()` for DB consistency on port changes.
+
+---
+
 ## [0.7.5] — 2026-03-03
 
 ### Changed

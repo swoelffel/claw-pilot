@@ -81,11 +81,20 @@ export class BlueprintsView extends LitElement {
     this._error = "";
     try {
       this._blueprints = await fetchBlueprints();
+      this._emitCount();
     } catch (err) {
       this._error = userMessage(err);
     } finally {
       this._loading = false;
     }
+  }
+
+  private _emitCount(): void {
+    this.dispatchEvent(new CustomEvent("blueprints-loaded", {
+      detail: this._blueprints.length,
+      bubbles: true,
+      composed: true,
+    }));
   }
 
   private _onBlueprintClick(e: Event): void {
@@ -102,6 +111,7 @@ export class BlueprintsView extends LitElement {
     try {
       await deleteBlueprint(blueprintId);
       this._blueprints = this._blueprints.filter(bp => bp.id !== blueprintId);
+      this._emitCount();
     } catch (err) {
       this._error = userMessage(err);
     }
@@ -110,6 +120,7 @@ export class BlueprintsView extends LitElement {
   private _onBlueprintCreated(e: Event): void {
     this._showCreateDialog = false;
     this._blueprints = [...this._blueprints, (e as CustomEvent<Blueprint>).detail];
+    this._emitCount();
   }
 
   override render() {

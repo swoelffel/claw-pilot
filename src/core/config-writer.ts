@@ -17,10 +17,11 @@ import type { ConfigPatch, ChangeClassification, ConfigPatchResult } from "./con
 const GATEWAY_HOT_RELOAD_FIELDS = new Set(["reloadMode", "reloadDebounceMs"]);
 
 /** Classify a config patch: hot-reload, restart, or DB-only */
-export function classifyChanges(patch: ConfigPatch): ChangeClassification {
+export function classifyChanges(patch: ConfigPatch): ChangeClassification & { pairingWarning: boolean } {
   let requiresRestart = false;
   let restartReason: string | null = null;
   let hasFileChanges = false;
+  let pairingWarning = false;
 
   // general.displayName is DB-only; other general fields touch the file
   if (patch.general) {
@@ -53,6 +54,10 @@ export function classifyChanges(patch: ConfigPatch): ChangeClassification {
       requiresRestart = true;
       restartReason = `gateway.${nonHotReloadKeys[0]} changed — restart required`;
     }
+    // gateway.port change → browser pairing will be lost (localStorage is origin-scoped)
+    if (patch.gateway.port !== undefined) {
+      pairingWarning = true;
+    }
   }
 
   const dbOnly = !hasFileChanges && patch.general?.displayName !== undefined;
@@ -62,6 +67,7 @@ export function classifyChanges(patch: ConfigPatch): ChangeClassification {
     hotReloadOnly: hasFileChanges && !requiresRestart,
     dbOnly,
     restartReason,
+    pairingWarning,
   };
 }
 
@@ -336,11 +342,16 @@ export async function applyConfigPatch(
     config["plugins"] = plugins;
   }
 
-  // 9. Apply gateway section (only hot-reloadable fields)
+  // 9. Apply gateway section
   if (patch.gateway) {
     const gw = (config["gateway"] ?? {}) as Record<string, unknown>;
     const reload = (gw["reload"] ?? {}) as Record<string, unknown>;
 
+    // port → requires restart + pairing warning; also sync DB registry
+    if (patch.gateway.port !== undefined) {
+      gw["port"] = patch.gateway.port;
+      registry.updateInstance(slug, { port: patch.gateway.port });
+    }
     if (patch.gateway.reloadMode !== undefined) reload["mode"] = patch.gateway.reloadMode;
     if (patch.gateway.reloadDebounceMs !== undefined) reload["debounceMs"] = patch.gateway.reloadDebounceMs;
 
@@ -373,5 +384,6 @@ export async function applyConfigPatch(
     hotReloaded: classification.hotReloadOnly,
     warnings,
     restartReason: classification.restartReason ?? undefined,
+    pairingWarning: classification.pairingWarning || undefined,
   };
 }

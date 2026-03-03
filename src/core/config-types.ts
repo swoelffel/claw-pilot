@@ -116,6 +116,7 @@ export interface ConfigPatch {
     };
   };
   gateway?: {
+    port?: number;
     reloadMode?: string;
     reloadDebounceMs?: number;
   };
@@ -187,6 +188,7 @@ export const ConfigPatchSchema = z.object({
     }).strict().optional(),
   }).strict().optional(),
   gateway: z.object({
+    port: z.number().int().min(1024).max(65535).optional(),
     reloadMode: z.string().optional(),
     reloadDebounceMs: z.number().int().min(0).optional(),
   }).strict().optional(),
@@ -207,4 +209,6 @@ export interface ConfigPatchResult {
   hotReloaded: boolean;
   warnings: string[];
   restartReason?: string;
+  /** True when gateway.port was changed — browser pairing will be lost after restart */
+  pairingWarning?: boolean;
 }
