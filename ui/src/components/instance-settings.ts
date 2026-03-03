@@ -1,8 +1,8 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { InstanceConfig, ConfigPatchResult, ProviderInfo, ProviderEntry } from "../types.js";
-import { fetchInstanceConfig, patchInstanceConfig, fetchProviders } from "../api.js";
+import type { InstanceConfig, ConfigPatchResult, ProviderInfo, ProviderEntry, TelegramPairingList, TelegramPairingRequest } from "../types.js";
+import { fetchInstanceConfig, patchInstanceConfig, fetchProviders, fetchTelegramPairing, approveTelegramPairing } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { badgeStyles, buttonStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
@@ -578,6 +578,13 @@ export class InstanceSettings extends LitElement {
   // Telegram init form state (shown when channels.telegram === null)
   @state() private _addingTelegram = false;
 
+  // Telegram DM pairing state
+  @state() private _telegramPairing: TelegramPairingList | null = null;
+  @state() private _telegramPairingLoading = false;
+  @state() private _telegramPairingError = "";
+  @state() private _approvingCode: string | null = null;
+  private _pairingPollTimer: ReturnType<typeof setInterval> | null = null;
+
   // Field validation errors
   @state() private _heartbeatEveryError = "";
 
@@ -592,6 +599,11 @@ export class InstanceSettings extends LitElement {
     super.connectedCallback();
     this._loadConfig();
     this._loadProviderCatalog();
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this._stopPairingPoll();
   }
 
   private async _loadConfig(): Promise<void> {
@@ -833,6 +845,54 @@ export class InstanceSettings extends LitElement {
 
   private _scrollToSection(section: SidebarSection): void {
     this._activeSection = section;
+    if (section === "telegram") {
+      void this._loadTelegramPairing();
+    } else {
+      this._stopPairingPoll();
+    }
+  }
+
+  // --- Telegram DM pairing ---
+
+  private async _loadTelegramPairing(): Promise<void> {
+    this._telegramPairingLoading = true;
+    this._telegramPairingError = "";
+    try {
+      this._telegramPairing = await fetchTelegramPairing(this.slug);
+      if ((this._telegramPairing.pending.length ?? 0) > 0) {
+        this._startPairingPoll();
+      } else {
+        this._stopPairingPoll();
+      }
+    } catch (err) {
+      this._telegramPairingError = err instanceof Error ? err.message : "Failed to load pairing";
+    } finally {
+      this._telegramPairingLoading = false;
+    }
+  }
+
+  private _startPairingPoll(): void {
+    if (this._pairingPollTimer !== null) return;
+    this._pairingPollTimer = setInterval(() => { void this._loadTelegramPairing(); }, 10_000);
+  }
+
+  private _stopPairingPoll(): void {
+    if (this._pairingPollTimer !== null) {
+      clearInterval(this._pairingPollTimer);
+      this._pairingPollTimer = null;
+    }
+  }
+
+  private async _approvePairing(code: string): Promise<void> {
+    this._approvingCode = code;
+    try {
+      await approveTelegramPairing(this.slug, code);
+      await this._loadTelegramPairing();
+    } catch (err) {
+      this._telegramPairingError = err instanceof Error ? err.message : "Approve failed";
+    } finally {
+      this._approvingCode = null;
+    }
   }
 
   // --- Provider management ---
@@ -877,7 +937,7 @@ export class InstanceSettings extends LitElement {
     const sections: Array<{ id: SidebarSection; label: string; badge?: number }> = [
       { id: "general", label: msg("General", { id: "settings-general" }) },
       { id: "agents", label: msg("Agents", { id: "settings-agents" }) },
-      { id: "telegram", label: "Telegram" },
+      { id: "telegram", label: "Telegram", badge: (this._telegramPairing?.pending.length ?? 0) > 0 ? this._telegramPairing!.pending.length : undefined },
       { id: "plugins", label: "Plugins" },
       { id: "gateway", label: "Gateway" },
       { id: "devices", label: "Devices", badge: this._pendingDeviceCount > 0 ? this._pendingDeviceCount : undefined },
@@ -1372,6 +1432,7 @@ export class InstanceSettings extends LitElement {
               </select>
             </div>
           </div>
+          ${this._renderTelegramPairingSection(tg.dmPolicy)}
         ` : this._addingTelegram
           ? this._renderTelegramInitForm()
           : html`
@@ -1384,6 +1445,90 @@ export class InstanceSettings extends LitElement {
           `}
       </div>
     `;
+  }
+
+  private _renderTelegramPairingSection(dmPolicy: string) {
+    // Only relevant when dmPolicy is "pairing"
+    const effectiveDmPolicy = this._isDirty("channels.telegram.dmPolicy")
+      ? (this._dirty["channels.telegram.dmPolicy"] as string)
+      : dmPolicy;
+
+    if (effectiveDmPolicy !== "pairing") return nothing;
+
+    const pairing = this._telegramPairing;
+    const pending = pairing?.pending ?? [];
+    const approvedCount = pairing?.approved.length ?? 0;
+
+    return html`
+      <div style="margin-top:28px">
+        <div class="section-header" style="display:flex;align-items:center;justify-content:space-between">
+          <span>Pairing Requests</span>
+          <button
+            class="btn-reveal"
+            ?disabled=${this._telegramPairingLoading}
+            @click=${() => void this._loadTelegramPairing()}
+          >${this._telegramPairingLoading ? "…" : "↻"}</button>
+        </div>
+
+        ${this._telegramPairingError ? html`
+          <div class="error-banner" style="margin-bottom:12px">${this._telegramPairingError}</div>
+        ` : nothing}
+
+        ${!pairing && !this._telegramPairingLoading ? html`
+          <p style="color:var(--text-muted);font-size:13px">
+            ${msg("Loading pairing requests…", { id: "settings-pairing-loading" })}
+          </p>
+        ` : nothing}
+
+        ${pairing && pending.length === 0 ? html`
+          <p style="color:var(--text-muted);font-size:13px">
+            ${msg("No pending pairing requests.", { id: "settings-pairing-empty" })}
+          </p>
+        ` : nothing}
+
+        ${pending.map((req: TelegramPairingRequest) => {
+          const isApproving = this._approvingCode === req.code;
+          const username = req.meta?.username ? `@${req.meta.username}` : req.id;
+          const age = this._formatAge(req.lastSeenAt ?? req.createdAt);
+          return html`
+            <div class="provider-card" style="margin-bottom:8px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                  <span style="font-size:13px;font-weight:600;color:var(--text-primary)">${username}</span>
+                  <span style="font-size:11px;font-family:var(--font-mono);color:var(--text-muted)">${req.id}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;flex-shrink:0">
+                  <span style="font-size:13px;font-family:var(--font-mono);font-weight:700;color:var(--text-primary);letter-spacing:0.08em">${req.code}</span>
+                  <span style="font-size:11px;color:var(--text-muted)">${age}</span>
+                  <button
+                    class="btn btn-primary"
+                    style="font-size:12px;padding:5px 12px"
+                    ?disabled=${isApproving}
+                    @click=${() => void this._approvePairing(req.code)}
+                  >${isApproving ? "…" : msg("Approve", { id: "settings-approve" })}</button>
+                </div>
+              </div>
+            </div>
+          `;
+        })}
+
+        ${pairing ? html`
+          <p style="font-size:12px;color:var(--text-muted);margin-top:8px">
+            ${msg("Approved senders", { id: "settings-approved-senders" })}: <strong style="color:var(--text-secondary)">${approvedCount}</strong>
+          </p>
+        ` : nothing}
+      </div>
+    `;
+  }
+
+  private _formatAge(isoDate: string): string {
+    const diff = Date.now() - new Date(isoDate).getTime();
+    const mins = Math.floor(diff / 60_000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
   }
 
   private _renderTelegramInitForm() {
