@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.8.2] — 2026-03-03
+
+### Changed
+- **Settings — navigation par panneau** : chaque section (General, Agents, Telegram, Plugins, Gateway, Devices) est désormais un panneau exclusif — clic sidebar remplace le contenu au lieu de scroller. Cohérence UX avec le comportement déjà en place pour la section Devices.
+- **Settings — Save/Cancel** : masqués quand la section Devices est active (pas de champs éditables dans ce panneau).
+- **Settings — sidebar** : item "Devices" intégré dans la liste standard (plus de bouton séparé).
+
+---
+
 ## [0.8.1] — 2026-03-03
 
 ### Added

@@ -128,7 +128,6 @@ export class InstanceSettings extends LitElement {
 
     .section {
       margin-bottom: 32px;
-      scroll-margin-top: 80px;
     }
 
     .section-header {
@@ -828,10 +827,6 @@ export class InstanceSettings extends LitElement {
 
   private _scrollToSection(section: SidebarSection): void {
     this._activeSection = section;
-    // "devices" is rendered as a standalone panel — no scroll needed
-    if (section === "devices") return;
-    const el = this.shadowRoot?.getElementById(`section-${section}`);
-    el?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   // --- Provider management ---
@@ -873,12 +868,13 @@ export class InstanceSettings extends LitElement {
   // --- Render helpers ---
 
   private _renderSidebar() {
-    const sections: Array<{ id: SidebarSection; label: string }> = [
+    const sections: Array<{ id: SidebarSection; label: string; badge?: number }> = [
       { id: "general", label: msg("General", { id: "settings-general" }) },
       { id: "agents", label: msg("Agents", { id: "settings-agents" }) },
       { id: "telegram", label: "Telegram" },
       { id: "plugins", label: "Plugins" },
       { id: "gateway", label: "Gateway" },
+      { id: "devices", label: "Devices", badge: this._pendingDeviceCount > 0 ? this._pendingDeviceCount : undefined },
     ];
 
     return html`
@@ -888,17 +884,13 @@ export class InstanceSettings extends LitElement {
             <button
               class="sidebar-item ${this._activeSection === s.id ? "active" : ""}"
               @click=${() => this._scrollToSection(s.id)}
-            >${s.label}</button>
+            >
+              ${s.label}
+              ${s.badge !== undefined
+                ? html`<span class="nav-badge">${s.badge}</span>`
+                : nothing}
+            </button>
           `)}
-          <button
-            class="sidebar-item ${this._activeSection === "devices" ? "active" : ""}"
-            @click=${() => this._scrollToSection("devices")}
-          >
-            Devices
-            ${this._pendingDeviceCount > 0
-              ? html`<span class="nav-badge">${this._pendingDeviceCount}</span>`
-              : nothing}
-          </button>
         </nav>
       </aside>
     `;
@@ -1095,7 +1087,7 @@ export class InstanceSettings extends LitElement {
     const currentModelInList = allModels.includes(currentDefaultModel);
 
     return html`
-      <div class="section" id="section-general">
+      <div class="section">
         <div class="section-header">${msg("General", { id: "settings-general" })}</div>
         <div class="field-grid">
           <div class="field">
@@ -1172,7 +1164,7 @@ export class InstanceSettings extends LitElement {
     const heartbeatModelInList = allHeartbeatModels.includes(currentHeartbeatModel);
 
     return html`
-      <div class="section" id="section-agents">
+      <div class="section">
         <div class="section-header">${msg("Agents — Defaults", { id: "settings-agent-defaults" })}</div>
         <div class="field-grid">
           <div class="field">
@@ -1299,7 +1291,7 @@ export class InstanceSettings extends LitElement {
     const tg = c.channels.telegram;
 
     return html`
-      <div class="section" id="section-telegram">
+      <div class="section">
         <div class="section-header">Telegram</div>
         ${tg ? html`
           <div class="field-grid">
@@ -1386,7 +1378,7 @@ export class InstanceSettings extends LitElement {
     const mem0 = c.plugins.mem0;
 
     return html`
-      <div class="section" id="section-plugins">
+      <div class="section">
         <div class="section-header">
           Plugins
           <span class="restart-badge" style="margin-left:8px">restart</span>
@@ -1442,7 +1434,7 @@ export class InstanceSettings extends LitElement {
     const c = this._config!;
 
     return html`
-      <div class="section" id="section-gateway">
+      <div class="section">
         <div class="section-header">Gateway</div>
         <div class="field-grid">
           <div class="field">
@@ -1524,7 +1516,7 @@ export class InstanceSettings extends LitElement {
           </span>
         </div>
         <div class="header-right">
-          ${this._hasChanges ? html`
+          ${this._hasChanges && this._activeSection !== "devices" ? html`
             <button
               class="btn btn-ghost"
               @click=${this._cancel}
@@ -1544,24 +1536,23 @@ export class InstanceSettings extends LitElement {
       <div class="settings-layout">
         ${this._renderSidebar()}
         <div class="content">
-          ${this._saveWarning
+          ${this._saveWarning && this._activeSection !== "devices"
             ? html`<div class="save-warning">⚠ ${this._saveWarning}</div>`
             : nothing}
+          ${this._activeSection === "general" ? this._renderGeneralSection() : nothing}
+          ${this._activeSection === "agents" ? this._renderAgentsSection() : nothing}
+          ${this._activeSection === "telegram" ? this._renderTelegramSection() : nothing}
+          ${this._activeSection === "plugins" ? this._renderPluginsSection() : nothing}
+          ${this._activeSection === "gateway" ? this._renderGatewaySection() : nothing}
           ${this._activeSection === "devices"
             ? html`
               <cp-instance-devices
                 .slug=${this.slug}
-                .active=${this._activeSection === "devices"}
+                .active=${true}
                 @pending-count-changed=${(e: CustomEvent<number>) => { this._pendingDeviceCount = e.detail; }}
               ></cp-instance-devices>
             `
-            : html`
-              ${this._renderGeneralSection()}
-              ${this._renderAgentsSection()}
-              ${this._renderTelegramSection()}
-              ${this._renderPluginsSection()}
-              ${this._renderGatewaySection()}
-            `}
+            : nothing}
         </div>
       </div>
 
