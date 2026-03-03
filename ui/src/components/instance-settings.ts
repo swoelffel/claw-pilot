@@ -593,6 +593,10 @@ export class InstanceSettings extends LitElement {
       overflow: hidden;
     }
 
+    .agent-panel-drawer.expanded {
+      width: 100vw;
+    }
+
     .agent-panel-drawer cp-agent-detail-panel {
       position: relative;
       width: 100%;
@@ -651,6 +655,7 @@ export class InstanceSettings extends LitElement {
   @state() private _editingAgentAllAgents: AgentBuilderInfo[] = [];
   @state() private _loadingAgentPanel = false;
   @state() private _agentPanelError = "";
+  @state() private _panelExpanded = false;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -1903,14 +1908,15 @@ export class InstanceSettings extends LitElement {
       </div>
 
       ${this._editingAgent ? html`
-        <div class="agent-panel-backdrop" @click=${() => { this._editingAgent = null; }}></div>
-        <div class="agent-panel-drawer">
+        <div class="agent-panel-backdrop" @click=${() => { this._editingAgent = null; this._panelExpanded = false; }}></div>
+        <div class="agent-panel-drawer ${this._panelExpanded ? "expanded" : ""}">
           <cp-agent-detail-panel
             .agent=${this._editingAgent}
             .links=${this._editingAgentLinks}
             .allAgents=${this._editingAgentAllAgents}
             .context=${{ kind: "instance", slug: this.slug } as PanelContext}
-            @panel-close=${() => { this._editingAgent = null; }}
+            @panel-close=${() => { this._editingAgent = null; this._panelExpanded = false; }}
+            @panel-expand-changed=${(e: CustomEvent<{ expanded: boolean }>) => { this._panelExpanded = e.detail.expanded; }}
             @agent-meta-updated=${async () => {
               await Promise.all([
                 this._openAgentPanel(this._editingAgent!.agent_id),
