@@ -1408,10 +1408,9 @@ export class InstanceSettings extends LitElement {
                         @click=${() => void this._openAgentPanel(agent.id)}
                       >
                         ${this._loadingAgentPanel ? "…" : html`
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
                           </svg>
                         `}
                       </button>
@@ -1912,7 +1911,12 @@ export class InstanceSettings extends LitElement {
             .allAgents=${this._editingAgentAllAgents}
             .context=${{ kind: "instance", slug: this.slug } as PanelContext}
             @panel-close=${() => { this._editingAgent = null; }}
-            @agent-meta-updated=${() => void this._openAgentPanel(this._editingAgent!.agent_id)}
+            @agent-meta-updated=${async () => {
+              await Promise.all([
+                this._openAgentPanel(this._editingAgent!.agent_id),
+                fetchInstanceConfig(this.slug).then(cfg => { this._config = cfg; }),
+              ]);
+            }}
           ></cp-agent-detail-panel>
         </div>
       ` : nothing}
