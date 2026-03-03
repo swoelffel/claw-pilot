@@ -12,7 +12,7 @@ export interface ProviderInfo {
 /**
  * Provider catalog — kept in sync with OpenClaw model registry.
  * Source: src/openclaw/node_modules/@mariozechner/pi-ai/dist/models.generated.js
- * OpenClaw version reference: 2026.2.27
+ * OpenClaw version reference: 2026.3.1
  * Update this catalog on each OpenClaw release (see docs/OPENCLAW-COMPAT.md).
  */
 export const PROVIDER_CATALOG: ProviderInfo[] = [
@@ -23,8 +23,11 @@ export const PROVIDER_CATALOG: ProviderInfo[] = [
     defaultModel: "anthropic/claude-haiku-4-5",
     models: [
       "anthropic/claude-opus-4-5",
+      "anthropic/claude-opus-4-5-20251101",
       "anthropic/claude-opus-4-1",
+      "anthropic/claude-opus-4-0",
       "anthropic/claude-sonnet-4-5",
+      "anthropic/claude-sonnet-4-0",
       "anthropic/claude-haiku-4-5",
     ],
   },
@@ -36,9 +39,16 @@ export const PROVIDER_CATALOG: ProviderInfo[] = [
     models: [
       "openai/gpt-5.2",
       "openai/gpt-5.1-codex",
+      "openai/gpt-5.1-codex-max",
+      "openai/gpt-5.1-codex-mini",
       "openai/gpt-5.1",
       "openai/gpt-5",
+      "openai/gpt-5-codex",
+      "openai/gpt-5-mini",
+      "openai/gpt-5-chat-latest",
       "openai/gpt-4.1",
+      "openai/gpt-4.1-mini",
+      "openai/gpt-4.1-nano",
       "openai/o3",
       "openai/o4-mini",
     ],
@@ -62,6 +72,12 @@ export const PROVIDER_CATALOG: ProviderInfo[] = [
     defaultModel: "mistral/mistral-large-latest",
     models: [
       "mistral/mistral-large-latest",
+      "mistral/magistral-medium-latest",
+      "mistral/magistral-small",
+      "mistral/mistral-medium-latest",
+      "mistral/mistral-small-latest",
+      "mistral/devstral-medium-latest",
+      "mistral/devstral-small-2507",
     ],
   },
   {
@@ -71,6 +87,11 @@ export const PROVIDER_CATALOG: ProviderInfo[] = [
     defaultModel: "xai/grok-4",
     models: [
       "xai/grok-4",
+      "xai/grok-4-fast",
+      "xai/grok-4-1-fast",
+      "xai/grok-code-fast-1",
+      "xai/grok-3",
+      "xai/grok-3-mini",
     ],
   },
   {
@@ -89,6 +110,14 @@ export const PROVIDER_CATALOG: ProviderInfo[] = [
     defaultModel: "kilocode/anthropic/claude-opus-4.6",
     models: [
       "kilocode/anthropic/claude-opus-4.6",
+      "kilocode/anthropic/claude-sonnet-4.5",
+      "kilocode/openai/gpt-5.2",
+      "kilocode/google/gemini-3-pro-preview",
+      "kilocode/google/gemini-3-flash-preview",
+      "kilocode/x-ai/grok-code-fast-1",
+      "kilocode/moonshotai/kimi-k2.5",
+      "kilocode/z-ai/glm-5:free",
+      "kilocode/minimax/minimax-m2.5:free",
     ],
   },
   {

@@ -114,7 +114,7 @@ export function generateConfig(answers: WizardAnswers): string {
 
   const config: Record<string, unknown> = {
     meta: {
-      lastTouchedVersion: "2026.2.27",
+      lastTouchedVersion: "2026.3.1",
       lastTouchedAt: new Date().toISOString(),
     },
     ...(Object.keys(authBlock).length > 0 ? { auth: authBlock } : {}),

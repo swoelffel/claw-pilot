@@ -2,6 +2,7 @@
 import * as path from "node:path";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry } from "./registry.js";
+import type { PortAllocator } from "./port-allocator.js";
 import { InstanceNotFoundError } from "../lib/errors.js";
 import { getSystemdDir, getServiceManager, getLaunchdPlistPath } from "../lib/platform.js";
 
@@ -10,6 +11,7 @@ export class Destroyer {
     private conn: ServerConnection,
     private registry: Registry,
     private xdgRuntimeDir: string,
+    private portAllocator?: PortAllocator,
   ) {}
 
   async destroy(slug: string): Promise<void> {
@@ -53,8 +55,9 @@ export class Destroyer {
     // 5. Remove state directory (same on both platforms)
     await this.conn.remove(instance.state_dir, { recursive: true });
 
-    // 6. Release port in registry
+    // 6. Release port in registry (gateway + sidecar ports P+1, P+2, P+4)
     this.registry.releasePort(instance.server_id, instance.port);
+    this.portAllocator?.releaseSidecarPorts(instance.server_id, instance.port);
 
     // 7. Delete agents from registry
     this.registry.deleteAgents(instance.id);

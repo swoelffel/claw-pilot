@@ -234,8 +234,9 @@ export class Provisioner {
       });
       instanceRegistered = true;
 
-      // Register port
+      // Register port (gateway + sidecar ports P+1, P+2, P+4)
       this.registry.allocatePort(serverId, answers.port, slug);
+      this.portAllocator.reserveSidecarPorts(serverId, answers.port, slug);
       portAllocated = true;
 
       // Register agents
@@ -385,7 +386,10 @@ export class Provisioner {
 
     // 4. Remove DB entries (synchronous — no try needed, but wrap for safety)
     if (portAllocated) {
-      try { this.registry.releasePort(serverId, port); } catch { /* ignore */ }
+      try {
+        this.registry.releasePort(serverId, port);
+        this.portAllocator.releaseSidecarPorts(serverId, port);
+      } catch { /* ignore */ }
     }
     if (instanceRegistered) {
       try {
