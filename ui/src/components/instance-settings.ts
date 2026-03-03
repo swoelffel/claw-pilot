@@ -1,12 +1,13 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { InstanceConfig, ConfigPatchResult, ProviderInfo, ProviderEntry, TelegramPairingList, TelegramPairingRequest } from "../types.js";
-import { fetchInstanceConfig, patchInstanceConfig, fetchProviders, fetchTelegramPairing, approveTelegramPairing } from "../api.js";
+import type { InstanceConfig, ConfigPatchResult, ProviderInfo, ProviderEntry, TelegramPairingList, TelegramPairingRequest, AgentBuilderInfo, AgentLink, PanelContext } from "../types.js";
+import { fetchInstanceConfig, patchInstanceConfig, fetchProviders, fetchTelegramPairing, approveTelegramPairing, fetchBuilderData } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { badgeStyles, buttonStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
 import "./instance-devices.js";
+import "./agent-detail-panel.js";
 
 type SidebarSection = "general" | "agents" | "telegram" | "plugins" | "gateway" | "devices";
 
@@ -548,6 +549,55 @@ export class InstanceSettings extends LitElement {
       font-size: 12px;
       margin-bottom: 16px;
     }
+
+    /* Bouton édition dans la table agents */
+    .btn-agent-edit {
+      background: none;
+      border: 1px solid var(--bg-border);
+      color: var(--text-muted);
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .btn-agent-edit:hover {
+      color: var(--text-primary);
+      border-color: var(--text-muted);
+    }
+
+    .btn-agent-edit:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Backdrop semi-transparent */
+    .agent-panel-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.35);
+      z-index: 100;
+    }
+
+    /* Drawer latéral fixe */
+    .agent-panel-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 420px;
+      height: 100vh;
+      z-index: 101;
+      box-shadow: -4px 0 24px rgba(0, 0, 0, 0.2);
+      overflow: hidden;
+    }
+
+    .agent-panel-drawer cp-agent-detail-panel {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
   `];
 
   @property({ type: String }) slug = "";
@@ -594,6 +644,13 @@ export class InstanceSettings extends LitElement {
   @state() private _removedProviders: string[] = [];
   @state() private _updatedKeys: Record<string, string> = {};
   @state() private _showAddProvider = false;
+
+  // --- Overlay agent panel ---
+  @state() private _editingAgent: AgentBuilderInfo | null = null;
+  @state() private _editingAgentLinks: AgentLink[] = [];
+  @state() private _editingAgentAllAgents: AgentBuilderInfo[] = [];
+  @state() private _loadingAgentPanel = false;
+  @state() private _agentPanelError = "";
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -1333,6 +1390,7 @@ export class InstanceSettings extends LitElement {
                   <th>${msg("Name", { id: "settings-agent-name" })}</th>
                   <th>${msg("Model", { id: "settings-agent-model" })}</th>
                   <th>${msg("Workspace", { id: "settings-agent-workspace" })}</th>
+                  <th>${msg("Actions", { id: "settings-agent-actions" })}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1342,6 +1400,22 @@ export class InstanceSettings extends LitElement {
                     <td>${agent.name}</td>
                     <td class="mono">${agent.model ?? "—"}</td>
                     <td class="mono">${agent.workspace}</td>
+                    <td>
+                      <button
+                        class="btn-agent-edit"
+                        title=${msg("Edit agent", { id: "settings-agent-edit-btn" })}
+                        ?disabled=${this._loadingAgentPanel}
+                        @click=${() => void this._openAgentPanel(agent.id)}
+                      >
+                        ${this._loadingAgentPanel ? "…" : html`
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          </svg>
+                        `}
+                      </button>
+                    </td>
                   </tr>
                 `)}
               </tbody>
@@ -1729,6 +1803,26 @@ export class InstanceSettings extends LitElement {
     `;
   }
 
+  private async _openAgentPanel(agentId: string): Promise<void> {
+    this._loadingAgentPanel = true;
+    this._agentPanelError = "";
+    try {
+      const data = await fetchBuilderData(this.slug);
+      const agent = data.agents.find(a => a.agent_id === agentId);
+      if (!agent) {
+        this._agentPanelError = "Agent not found";
+        return;
+      }
+      this._editingAgent = agent;
+      this._editingAgentLinks = data.links;
+      this._editingAgentAllAgents = data.agents;
+    } catch (err) {
+      this._agentPanelError = userMessage(err);
+    } finally {
+      this._loadingAgentPanel = false;
+    }
+  }
+
   override render() {
     if (this._loading) {
       return html`
@@ -1808,6 +1902,20 @@ export class InstanceSettings extends LitElement {
             : nothing}
         </div>
       </div>
+
+      ${this._editingAgent ? html`
+        <div class="agent-panel-backdrop" @click=${() => { this._editingAgent = null; }}></div>
+        <div class="agent-panel-drawer">
+          <cp-agent-detail-panel
+            .agent=${this._editingAgent}
+            .links=${this._editingAgentLinks}
+            .allAgents=${this._editingAgentAllAgents}
+            .context=${{ kind: "instance", slug: this.slug } as PanelContext}
+            @panel-close=${() => { this._editingAgent = null; }}
+            @agent-meta-updated=${() => void this._openAgentPanel(this._editingAgent!.agent_id)}
+          ></cp-agent-detail-panel>
+        </div>
+      ` : nothing}
 
       ${this._toast ? html`
         <div class="toast ${this._toast.type}">${this._toast.message}</div>
