@@ -7,11 +7,11 @@ derive provider/model catalogs, and the procedure to update them on each OpenCla
 
 ## Reference version
 
-**OpenClaw `2026.2.27`** (latest stable tag)
+**OpenClaw `2026.3.1`** (latest stable tag)
 
 ---
 
-## openclaw.json format (v2026.2.27)
+## openclaw.json format (v2026.3.1)
 
 ### Required top-level keys
 
@@ -20,7 +20,7 @@ derive provider/model catalogs, and the procedure to update them on each OpenCla
 | `meta.lastTouchedVersion` | Must match the installed OpenClaw version |
 | `meta.lastTouchedAt` | ISO 8601 timestamp (numeric Unix ms also accepted since 2026.2.24) |
 | `agents.defaults.model` | Object `{ primary: "provider/model" }` — **not** a string |
-| `gateway.bind` | `"loopback"` or `"all"` — **not** `host` |
+| `gateway.bind` | `"loopback"`, `"lan"`, `"auto"`, `"custom"`, or `"tailnet"` — `"all"` removed in 2026.3.x |
 | `gateway.auth.mode` | `"token"` — **not** `type` |
 
 ### Removed / renamed keys (do NOT use)
@@ -39,6 +39,7 @@ derive provider/model catalogs, and the procedure to update them on each OpenCla
 | `bindings[].match.channel` + `match.accountId` | new format |
 | `gateway.host` | `gateway.bind` |
 | `gateway.auth.type` | `gateway.auth.mode` |
+| `gateway.bind: "all"` | removed in 2026.3.x — use `"lan"` for equivalent behavior |
 | `env.file` (top-level) | removed |
 
 ### New optional keys (since 2026.2.23 through 2026.2.27)
@@ -71,11 +72,58 @@ unless explicitly needed.
 - **Sandbox path alias guard**: broken symlink targets now rejected — no impact on
   claw-pilot generated workspace paths.
 
+### Breaking changes in 2026.3.x
+
+#### Port reservation per instance
+
+OpenClaw 2026.3.x automatically reserves **4 ports** per instance on startup:
+
+| Offset | Port | Role |
+|--------|------|------|
+| P | gateway principal (configured port) |
+| P+1 | internal bridge |
+| P+2 | browser control server (`DEFAULT_BROWSER_CONTROL_PORT`) |
+| P+4 | canvas host (`DEFAULT_CANVAS_HOST_PORT`) |
+
+Note: P+3 is intentionally not reserved.
+
+**Impact on claw-pilot**: the port allocator now uses a minimum step of 5 between instances
+and reserves P+1, P+2, P+4 in the `ports` table. The default port range has been extended
+from 18789–18799 to 18789–18838 (10 instances).
+
+#### `gateway.bind: "all"` removed
+
+The Zod schema in 2026.3.x no longer accepts `"all"` as a value for `gateway.bind`.
+
+Valid values: `"auto" | "lan" | "loopback" | "custom" | "tailnet"`
+
+Migration: replace `"all"` with `"lan"` for equivalent behavior (bind to all LAN interfaces).
+claw-pilot generated configs use `"loopback"` — no change needed.
+
+#### New native health endpoints
+
+The gateway now exposes health probe endpoints natively (no auth required):
+
+- `GET /health` — returns `{"ok":true}`
+- `GET /healthz` — alias
+- `GET /ready` — returns `{"ok":true}` when gateway is ready
+- `GET /readyz` — alias
+
+These are available without authentication and suitable for systemd `ExecStartPost=` probes,
+load balancers, and monitoring.
+
+#### New CLI commands
+
+- `openclaw config validate [--json]` — validate `openclaw.json` against the Zod schema
+- `openclaw config file` — print the path to the active config file
+
+These can be used from claw-pilot via `conn.exec()` for config validation workflows.
+
 ### Minimal valid config skeleton
 
 ```json
 {
-  "meta": { "lastTouchedVersion": "2026.2.27", "lastTouchedAt": "<ISO>" },
+  "meta": { "lastTouchedVersion": "2026.3.1", "lastTouchedAt": "<ISO>" },
   "models": {
     "providers": {
       "anthropic": {
@@ -97,7 +145,7 @@ unless explicitly needed.
     "agentToAgent": { "enabled": true, "allow": ["main"] }
   },
   "gateway": {
-    "port": 18790,
+    "port": 18789,
     "mode": "local",
     "bind": "loopback",
     "auth": { "mode": "token", "token": "${OPENCLAW_GW_AUTH_TOKEN}" },
@@ -177,16 +225,19 @@ Derived from:
 > expose them yet (Anthropic, OpenAI, Google, Mistral, xAI, OpenRouter, Kilocode,
 > OpenCode are the supported onboarding paths).
 
-### Model catalog (as of 2026.2.27)
+### Model catalog (as of 2026.3.1)
 
 #### Anthropic
 *(from `@mariozechner/pi-ai` catalog — use `anthropic/<id>` in config)*
 - `anthropic/claude-opus-4-5` *(default — latest Opus)*
+- `anthropic/claude-opus-4-5-20251101`
 - `anthropic/claude-opus-4-1`
 - `anthropic/claude-opus-4-1-20250805`
+- `anthropic/claude-opus-4-0`
 - `anthropic/claude-opus-4-20250514`
 - `anthropic/claude-sonnet-4-5`
 - `anthropic/claude-sonnet-4-5-20250929`
+- `anthropic/claude-sonnet-4-0`
 - `anthropic/claude-sonnet-4-20250514`
 - `anthropic/claude-haiku-4-5`
 - `anthropic/claude-haiku-4-5-20251001`
@@ -199,7 +250,12 @@ Derived from:
 - `openai/gpt-5.2`
 - `openai/gpt-5.1`
 - `openai/gpt-5`
+- `openai/gpt-5-codex`
+- `openai/gpt-5-mini`
+- `openai/gpt-5-chat-latest`
 - `openai/gpt-4.1`
+- `openai/gpt-4.1-mini`
+- `openai/gpt-4.1-nano`
 - `openai/o3`
 - `openai/o4-mini`
 
@@ -214,15 +270,19 @@ Derived from:
 #### Mistral
 *(from `@mariozechner/pi-ai` catalog — use `mistral/<id>` in config)*
 - `mistral/mistral-large-latest` *(default)*
+- `mistral/magistral-medium-latest`
+- `mistral/magistral-small`
 - `mistral/mistral-medium-latest`
 - `mistral/mistral-small-latest`
 - `mistral/devstral-medium-latest`
+- `mistral/devstral-small-2507`
 
 #### xAI
 *(from `@mariozechner/pi-ai` catalog — use `xai/<id>` in config)*
 - `xai/grok-4` *(default)*
 - `xai/grok-4-fast`
 - `xai/grok-4-1-fast`
+- `xai/grok-code-fast-1`
 - `xai/grok-3`
 - `xai/grok-3-mini`
 
@@ -230,7 +290,16 @@ Derived from:
 - `openrouter/auto` *(default)*
 
 #### Kilocode *(since 2026.2.23)*
+*(from `src/openclaw/src/providers/kilocode-shared.ts` — use `kilocode/<id>` in config)*
 - `kilocode/anthropic/claude-opus-4.6` *(default)*
+- `kilocode/anthropic/claude-sonnet-4.5`
+- `kilocode/openai/gpt-5.2`
+- `kilocode/google/gemini-3-pro-preview`
+- `kilocode/google/gemini-3-flash-preview`
+- `kilocode/x-ai/grok-code-fast-1`
+- `kilocode/moonshotai/kimi-k2.5`
+- `kilocode/z-ai/glm-5:free`
+- `kilocode/minimax/minimax-m2.5:free`
 
 > Uses `auth.profiles` like opencode. No `models.providers` entry needed.
 > API key env var: `KILOCODE_API_KEY`.
@@ -269,6 +338,7 @@ Derived from:
 3. Re-read `onboard-auth.models.ts` for new providers or default model changes.
 4. Re-read `kilocode-shared.ts` and `opencode-zen-models.ts` for new models.
 5. Re-read `secrets/provider-env-vars.ts` for new provider env var names.
-6. Update the files above.
-7. Run `pnpm test` — all tests must pass.
-8. Bump `version` in `package.json` if the catalog change is user-visible.
+6. Check `src/config/port-defaults.ts` for changes to sidecar port offsets.
+7. Update the files above.
+8. Run `pnpm test` — all tests must pass.
+9. Bump `version` in `package.json` if the catalog change is user-visible.

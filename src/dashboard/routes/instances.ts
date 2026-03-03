@@ -605,7 +605,8 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
   app.delete("/api/instances/:slug", async (c) => {
     const slug = c.req.param("slug");
     try {
-      const destroyer = new Destroyer(conn, registry, xdgRuntimeDir);
+      const portAllocator = new PortAllocator(registry, conn);
+      const destroyer = new Destroyer(conn, registry, xdgRuntimeDir, portAllocator);
       await destroyer.destroy(slug);
       tokenCache.invalidate(slug);
       return c.json({ ok: true, slug });
