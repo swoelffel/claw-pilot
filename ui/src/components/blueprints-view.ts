@@ -26,10 +26,6 @@ export class BlueprintsView extends LitElement {
       margin-bottom: 20px;
     }
 
-    .section-title {
-      margin-bottom: 0;
-    }
-
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -124,38 +120,43 @@ export class BlueprintsView extends LitElement {
   }
 
   override render() {
-    return html`
-      <div class="section-header">
-        <div class="section-title section-label">
-          ${msg("Blueprints", { id: "bp-title" })}
-        </div>
-        <button
-          class="btn btn-primary"
-          @click=${() => { this._showCreateDialog = true; }}
-        >+ ${msg("New Blueprint", { id: "bp-btn-create" })}</button>
-      </div>
+    if (this._loading) {
+      return html`<div class="loading">${msg("Loading blueprints...", { id: "loading-blueprints" })}</div>`;
+    }
 
+    return html`
       ${this._error ? html`<div class="error-banner">${this._error}</div>` : ""}
 
-      ${this._loading ? html`
-        <div class="loading">Loading blueprints…</div>
-      ` : this._blueprints.length === 0 ? html`
-        <div class="empty">
-          <div class="empty-icon">📋</div>
-          <div>${msg("No blueprints yet", { id: "bp-empty" })}</div>
-          <div class="empty-hint">${msg("Create your first team blueprint to get started.", { id: "bp-empty-hint" })}</div>
+      <div class="section-header">
+        <div class="section-title">
+          ${this._blueprints.length} ${this._blueprints.length !== 1
+            ? msg("blueprints", { id: "blueprint-count-many" })
+            : msg("blueprint", { id: "blueprint-count-one" })}
         </div>
-      ` : html`
-        <div class="grid">
-          ${this._blueprints.map(bp => html`
-            <cp-blueprint-card
-              .blueprint=${bp}
-              @blueprint-click=${this._onBlueprintClick}
-              @blueprint-delete=${this._onBlueprintDelete}
-            ></cp-blueprint-card>
-          `)}
-        </div>
-      `}
+        <button class="btn btn-primary" @click=${() => { this._showCreateDialog = true; }}>
+          ${msg("+ New Blueprint", { id: "bp-btn-create" })}
+        </button>
+      </div>
+
+      ${this._blueprints.length === 0
+        ? html`
+            <div class="empty">
+              <div class="empty-icon">📋</div>
+              <div>${msg("No blueprints yet", { id: "bp-empty" })}</div>
+              <div class="empty-hint">${msg("Create your first team blueprint to get started.", { id: "bp-empty-hint" })}</div>
+            </div>
+          `
+        : html`
+            <div class="grid">
+              ${this._blueprints.map(bp => html`
+                <cp-blueprint-card
+                  .blueprint=${bp}
+                  @blueprint-click=${this._onBlueprintClick}
+                  @blueprint-delete=${this._onBlueprintDelete}
+                ></cp-blueprint-card>
+              `)}
+            </div>
+          `}
 
       ${this._showCreateDialog ? html`
         <cp-create-blueprint-dialog
