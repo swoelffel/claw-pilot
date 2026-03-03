@@ -575,6 +575,9 @@ export class InstanceSettings extends LitElement {
   // Secret editing state
   @state() private _editingBotToken = false;
 
+  // Telegram init form state (shown when channels.telegram === null)
+  @state() private _addingTelegram = false;
+
   // Field validation errors
   @state() private _heartbeatEveryError = "";
 
@@ -603,6 +606,7 @@ export class InstanceSettings extends LitElement {
       this._updatedKeys = {};
       this._editingKeyForProvider = null;
       this._showAddProvider = false;
+      this._addingTelegram = false;
     } catch (err) {
       this._error = userMessage(err);
     } finally {
@@ -757,6 +761,7 @@ export class InstanceSettings extends LitElement {
         // Reload config to get fresh state
         await this._loadConfig();
         this._editingBotToken = false;
+        this._addingTelegram = false;
       }
     } catch (err) {
       this._showToast(userMessage(err), "error");
@@ -769,6 +774,7 @@ export class InstanceSettings extends LitElement {
     this._dirty = {};
     this._heartbeatEveryError = "";
     this._editingBotToken = false;
+    this._addingTelegram = false;
     this._addedProviders = [];
     this._removedProviders = [];
     this._updatedKeys = {};
@@ -1338,7 +1344,7 @@ export class InstanceSettings extends LitElement {
                 class="field-input ${this._isDirty("channels.telegram.dmPolicy") ? "changed" : ""}"
                 @change=${(e: Event) => this._setDirty("channels.telegram.dmPolicy", (e.target as HTMLSelectElement).value)}
               >
-                ${["pairing", "open", "closed"].map((p) => html`
+                ${["pairing", "open", "allowlist", "disabled"].map((p) => html`
                   <option value=${p} ?selected=${p === this._getDirty("channels.telegram.dmPolicy", tg.dmPolicy)}>${p}</option>
                 `)}
               </select>
@@ -1349,7 +1355,7 @@ export class InstanceSettings extends LitElement {
                 class="field-input ${this._isDirty("channels.telegram.groupPolicy") ? "changed" : ""}"
                 @change=${(e: Event) => this._setDirty("channels.telegram.groupPolicy", (e.target as HTMLSelectElement).value)}
               >
-                ${["allowlist", "open", "closed"].map((p) => html`
+                ${["allowlist", "open", "disabled"].map((p) => html`
                   <option value=${p} ?selected=${p === this._getDirty("channels.telegram.groupPolicy", tg.groupPolicy)}>${p}</option>
                 `)}
               </select>
@@ -1366,9 +1372,111 @@ export class InstanceSettings extends LitElement {
               </select>
             </div>
           </div>
-        ` : html`
-          <p style="color:var(--text-muted);font-size:13px">${msg("Telegram is not configured for this instance.", { id: "settings-telegram-not-configured" })}</p>
-        `}
+        ` : this._addingTelegram
+          ? this._renderTelegramInitForm()
+          : html`
+            <p style="color:var(--text-muted);font-size:13px;margin:0 0 12px">
+              ${msg("Telegram is not configured for this instance.", { id: "settings-telegram-not-configured" })}
+            </p>
+            <button class="btn-secondary" @click=${() => { this._addingTelegram = true; }}>
+              ${msg("Configure Telegram", { id: "settings-configure-telegram" })}
+            </button>
+          `}
+      </div>
+    `;
+  }
+
+  private _renderTelegramInitForm() {
+    const token = (this._dirty["channels.telegram.botToken"] as string | undefined) ?? "";
+    const dmPolicy = (this._dirty["channels.telegram.dmPolicy"] as string | undefined) ?? "pairing";
+    const groupPolicy = (this._dirty["channels.telegram.groupPolicy"] as string | undefined) ?? "allowlist";
+    const streamMode = (this._dirty["channels.telegram.streamMode"] as string | undefined) ?? "partial";
+
+    const cancel = () => {
+      this._addingTelegram = false;
+      delete this._dirty["channels.telegram.botToken"];
+      delete this._dirty["channels.telegram.dmPolicy"];
+      delete this._dirty["channels.telegram.groupPolicy"];
+      delete this._dirty["channels.telegram.streamMode"];
+      delete this._dirty["channels.telegram.enabled"];
+      this.requestUpdate();
+    };
+
+    const add = async () => {
+      if (!token.trim()) return;
+      this._setDirty("channels.telegram.enabled", true);
+      await this._save();
+    };
+
+    return html`
+      <div class="field-grid">
+        <div class="field full-width">
+          <label class="field-label">
+            Bot Token
+            <span class="restart-badge">hot-reload</span>
+          </label>
+          <div class="secret-row">
+            <input
+              class="field-input mono ${token ? "changed" : ""}"
+              type="text"
+              placeholder=${msg("Paste token from BotFather", { id: "settings-paste-bot-token" })}
+              .value=${token}
+              @input=${(e: Event) => this._setDirty("channels.telegram.botToken", (e.target as HTMLInputElement).value)}
+            />
+            <a
+              href="https://t.me/BotFather"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn-reveal"
+              title=${msg("Open BotFather in Telegram", { id: "settings-open-botfather" })}
+            >BotFather ↗</a>
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label">DM Policy</label>
+          <select
+            class="field-input"
+            @change=${(e: Event) => this._setDirty("channels.telegram.dmPolicy", (e.target as HTMLSelectElement).value)}
+          >
+            ${["pairing", "open", "allowlist", "disabled"].map((p) => html`
+              <option value=${p} ?selected=${p === dmPolicy}>${p}</option>
+            `)}
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Group Policy</label>
+          <select
+            class="field-input"
+            @change=${(e: Event) => this._setDirty("channels.telegram.groupPolicy", (e.target as HTMLSelectElement).value)}
+          >
+            ${["allowlist", "open", "disabled"].map((p) => html`
+              <option value=${p} ?selected=${p === groupPolicy}>${p}</option>
+            `)}
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Stream Mode</label>
+          <select
+            class="field-input"
+            @change=${(e: Event) => this._setDirty("channels.telegram.streamMode", (e.target as HTMLSelectElement).value)}
+          >
+            ${["partial", "full", "off"].map((p) => html`
+              <option value=${p} ?selected=${p === streamMode}>${p}</option>
+            `)}
+          </select>
+        </div>
+        <div class="field full-width" style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+          <button class="btn-secondary" @click=${cancel}>
+            ${msg("Cancel", { id: "settings-cancel" })}
+          </button>
+          <button
+            class="btn-primary"
+            ?disabled=${!token.trim() || this._saving}
+            @click=${add}
+          >
+            ${this._saving ? msg("Saving…", { id: "settings-saving" }) : msg("Add", { id: "settings-add" })}
+          </button>
+        </div>
       </div>
     `;
   }
