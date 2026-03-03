@@ -142,6 +142,10 @@ export function generateConfig(answers: WizardAnswers): string {
       port: answers.port,
       mode: "local",
       bind: "loopback",
+      controlUi: {
+        // Allow any origin so the Control UI works through SSH tunnels
+        allowedOrigins: ["*"],
+      },
       auth: {
         mode: "token",
         token: "${OPENCLAW_GW_AUTH_TOKEN}",
