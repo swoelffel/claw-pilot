@@ -6,6 +6,43 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.8.1] — 2026-03-03
+
+### Added
+- **API REST devices** : 3 nouvelles routes sur le dashboard :
+  - `GET /api/instances/:slug/devices` — retourne `{ pending, paired }`
+  - `POST /api/instances/:slug/devices/approve` — approuve une demande (`{ requestId }`)
+  - `DELETE /api/instances/:slug/devices/:deviceId` — révoque un device
+- **Composant `cp-instance-devices`** (`ui/src/components/instance-devices.ts`) :
+  - Section Pending avec fond ambre, bouton [Approve] par device, [Approve all] si plusieurs
+  - Section Paired avec badge `cli` (non révocable), confirmation inline avant révocation
+  - Polling automatique toutes les 5s si des demandes sont en attente
+  - Event `pending-count-changed` pour synchroniser le badge de l'onglet parent
+- **Onglet Devices dans Settings** (`cp-instance-settings`) :
+  - Nouvel onglet "Devices" dans la sidebar, visible pour toutes les instances
+  - Badge rouge sur l'onglet si des demandes sont en attente
+  - Toast ambre si `pairingWarning` est retourné après un changement de port
+- **Bannière pending devices sur les cards** (`cp-instance-card`) :
+  - Bannière ambre sous la card si `pendingDevices > 0` avec bouton "Go to Devices"
+- **`pendingDevices` dans le health check** (`src/core/health.ts`) :
+  - Lecture best-effort de `<stateDir>/devices/pending.json` à chaque health check
+  - Propagé dans les `health_update` WebSocket → cards mises à jour en temps réel
+
+---
+
+## [0.8.0] — 2026-03-03
+
+### Added
+- **`claw-pilot devices` CLI** — nouvelle commande avec 3 sous-commandes pour gérer le pairing OpenClaw sans SSH manuel :
+  - `claw-pilot devices list <slug>` — affiche les demandes en attente (en jaune) et les devices pairés avec timestamps relatifs
+  - `claw-pilot devices approve <slug> [requestId]` — approuve une ou toutes les demandes en attente
+  - `claw-pilot devices revoke <slug> <deviceId>` — révoque un device pairé (avec vérification préalable dans la liste)
+- `src/core/devices.ts` — types `PendingDevice`, `PairedDevice`, `DeviceList`
+- `src/core/device-manager.ts` — `DeviceManager` : lit `<stateDir>/devices/pending.json` + `paired.json` via `ServerConnection`, wraps `openclaw devices approve/revoke`
+- `src/core/__tests__/device-manager.test.ts` — 8 tests (list vide, pending, paired, approve, revoke, erreurs)
+
+---
+
 ## [0.7.6] — 2026-03-03
 
 ### Added

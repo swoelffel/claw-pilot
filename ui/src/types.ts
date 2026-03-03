@@ -16,6 +16,7 @@ export interface InstanceInfo {
   gateway?: "healthy" | "unhealthy" | "unknown";
   systemd?: "active" | "inactive" | "failed" | "unknown";
   agentCount?: number;
+  pendingDevices?: number;
   // gateway token for zero-friction Control UI login
   gatewayToken?: string | null;
 }
@@ -41,6 +42,7 @@ export interface HealthUpdate {
       pid?: number;
       uptime?: string;
       agentCount?: number;
+      pendingDevices?: number;
       telegram?: "connected" | "disconnected" | "not_configured";
     }>;
   };
@@ -275,6 +277,38 @@ export interface ConfigPatchResult {
   hotReloaded: boolean;
   warnings: string[];
   restartReason?: string;
+  pairingWarning?: boolean;
+}
+
+// Device pairing types
+
+export interface PendingDevice {
+  requestId: string;
+  deviceId: string;
+  publicKey: string;
+  platform: string;
+  clientId: string;
+  clientMode: string;
+  role: string;
+  ts: number;
+}
+
+export interface PairedDevice {
+  deviceId: string;
+  publicKey: string;
+  platform: string;
+  clientId: string;
+  clientMode: string;
+  role: string;
+  scopes: string[];
+  tokens: Record<string, { token: string; createdAtMs: number; lastUsedAtMs?: number }>;
+  createdAtMs: number;
+  approvedAtMs: number;
+}
+
+export interface DeviceList {
+  pending: PendingDevice[];
+  paired: PairedDevice[];
 }
 
 /** Etat de la mise a jour OpenClaw — GET /api/openclaw/update-status */

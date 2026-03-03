@@ -3,7 +3,6 @@
 // Reads device files and wraps openclaw devices approve/revoke commands.
 // Always uses ServerConnection — never child_process or fs directly.
 
-import * as path from "node:path";
 import type { ServerConnection } from "../server/connection.js";
 import type { DeviceList, PendingDevice, PairedDevice } from "./devices.js";
 
@@ -15,24 +14,29 @@ export class DeviceManager {
   /**
    * Read pending.json + paired.json from stateDir.
    * Returns empty lists if files don't exist.
+   *
+   * OpenClaw stores devices as either an array OR a keyed object
+   * (format evolved across versions). Both are handled.
    */
   async list(stateDir: string): Promise<DeviceList> {
-    const pendingPath = path.posix.join(stateDir, "devices", "pending.json");
-    const pairedPath = path.posix.join(stateDir, "devices", "paired.json");
+    const pendingPath = `${stateDir}/devices/pending.json`;
+    const pairedPath = `${stateDir}/devices/paired.json`;
 
     let pending: PendingDevice[] = [];
     let paired: PairedDevice[] = [];
 
     try {
       const raw = await this.conn.readFile(pendingPath);
-      pending = JSON.parse(raw) as PendingDevice[];
+      const parsed = JSON.parse(raw) as PendingDevice[] | Record<string, PendingDevice>;
+      pending = Array.isArray(parsed) ? parsed : Object.values(parsed);
     } catch {
       // File doesn't exist or is unreadable — return empty list
     }
 
     try {
       const raw = await this.conn.readFile(pairedPath);
-      paired = JSON.parse(raw) as PairedDevice[];
+      const parsed = JSON.parse(raw) as PairedDevice[] | Record<string, PairedDevice>;
+      paired = Array.isArray(parsed) ? parsed : Object.values(parsed);
     } catch {
       // File doesn't exist or is unreadable — return empty list
     }

@@ -198,6 +198,37 @@ export class InstanceCard extends LitElement {
       font-size: 11px;
       color: var(--state-error);
     }
+
+    .pairing-banner {
+      margin-top: 10px;
+      padding: 8px 12px;
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      color: var(--state-warning);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .pairing-banner-btn {
+      flex-shrink: 0;
+      padding: 3px 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      background: rgba(245, 158, 11, 0.12);
+      color: var(--state-warning);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .pairing-banner-btn:hover {
+      background: rgba(245, 158, 11, 0.2);
+    }
   `];
 
   @property({ type: Object }) instance!: InstanceInfo;
@@ -358,6 +389,24 @@ export class InstanceCard extends LitElement {
             >${msg("Settings", { id: "btn-settings" })}</button>
           </div>
         </div>
+
+        ${inst.pendingDevices && inst.pendingDevices > 0
+          ? html`
+            <div class="pairing-banner">
+              ⚠ ${inst.pendingDevices === 1
+                ? "1 device pairing request pending"
+                : `${inst.pendingDevices} device pairing requests pending`}
+              <button class="pairing-banner-btn" @click=${(e: Event) => {
+                e.stopPropagation();
+                this.dispatchEvent(new CustomEvent("navigate", {
+                  detail: { view: "instance-settings", slug: inst.slug, section: "devices" },
+                  bubbles: true,
+                  composed: true,
+                }));
+              }}>Go to Devices</button>
+            </div>
+          `
+          : nothing}
 
         ${this._error
           ? html`<div class="error-msg">${this._error}</div>`

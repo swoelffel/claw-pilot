@@ -16,6 +16,7 @@ export interface HealthStatus {
   agentCount?: number;
   telegram?: "connected" | "disconnected" | "not_configured";
   pairedDevices?: number;
+  pendingDevices?: number;
 }
 
 export class HealthChecker {
@@ -111,6 +112,16 @@ export class HealthChecker {
       status.telegram = connected ? "connected" : "disconnected";
     } else {
       status.telegram = "not_configured";
+    }
+
+    // 6. Pending device count (best-effort — non-fatal)
+    try {
+      const pendingPath = `${instance.state_dir}/devices/pending.json`;
+      const raw = await this.conn.readFile(pendingPath);
+      const pending = JSON.parse(raw) as Array<unknown>;
+      status.pendingDevices = pending.length;
+    } catch {
+      status.pendingDevices = 0;
     }
 
     // Update registry state
