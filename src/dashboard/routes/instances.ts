@@ -18,6 +18,7 @@ import type { ProviderInfo } from "../../lib/provider-catalog.js";
 import { readInstanceConfig, applyConfigPatch, ConfigPatchSchema } from "../../core/config-updater.js";
 import type { ConfigPatch } from "../../core/config-updater.js";
 import { DeviceManager } from "../../core/device-manager.js";
+import { TelegramPairingManager } from "../../core/telegram-pairing-manager.js";
 
 export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
   const { registry, conn, health, lifecycle, tokenCache, xdgRuntimeDir } = deps;
@@ -727,6 +728,33 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
       return c.json({ ok: true });
     } catch (err) {
       return apiError(c, 500, "REVOKE_FAILED", err instanceof Error ? err.message : "Revoke failed");
+    }
+  });
+
+  // GET /api/instances/:slug/telegram/pairing — list pending + approved DM pairing
+  app.get("/api/instances/:slug/telegram/pairing", async (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
+    const tm = new TelegramPairingManager(conn);
+    const pairing = await tm.list(instance.state_dir);
+    return c.json(pairing);
+  });
+
+  // POST /api/instances/:slug/telegram/pairing/approve — approve a pending DM pairing code
+  app.post("/api/instances/:slug/telegram/pairing/approve", async (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
+    let body: { code?: string };
+    try { body = await c.req.json(); } catch { return apiError(c, 400, "INVALID_JSON", "Invalid JSON"); }
+    if (!body.code) return apiError(c, 400, "FIELD_REQUIRED", "code is required");
+    const tm = new TelegramPairingManager(conn);
+    try {
+      await tm.approve(instance.state_dir, body.code);
+      return c.json({ ok: true });
+    } catch (err) {
+      return apiError(c, 500, "APPROVE_FAILED", err instanceof Error ? err.message : "Approve failed");
     }
   });
 

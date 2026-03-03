@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.8.3] — 2026-03-03
+
+### Added
+- **Settings Telegram — formulaire d'initialisation** : quand Telegram n'est pas encore configuré, un bouton "Configure Telegram" révèle un formulaire inline (botToken, dmPolicy, groupPolicy, streamMode) avec lien direct vers BotFather. Le backend crée le bloc `channels.telegram` depuis zéro sans modification nécessaire.
+- **Settings Telegram — gestion du pairing DM** : panneau "Pairing Requests" visible quand `dmPolicy === "pairing"`. Affiche les demandes en attente (username, ID, code 8 chars, âge) avec bouton [Approve] par requête. Polling automatique toutes les 10s si des demandes sont en attente. Badge rouge sur l'item Telegram de la sidebar. Compteur des senders approuvés.
+- **API** : 2 nouvelles routes — `GET /api/instances/:slug/telegram/pairing` et `POST .../approve`.
+- **Core** : `TelegramPairingManager` — lit `credentials/telegram-pairing.json` + `telegram-allowFrom.json`, wrappe `openclaw pairing approve telegram <CODE>`.
+
+### Fixed
+- **Settings Telegram — valeurs dmPolicy/groupPolicy** : `"closed"` remplacé par `"disabled"` (valeur correcte du schéma OpenClaw). dmPolicy expose désormais `pairing / open / allowlist / disabled`, groupPolicy expose `allowlist / open / disabled`.
+- **Settings Telegram — boutons** : classes `btn-secondary`/`btn-primary` corrigées en `btn btn-ghost`/`btn btn-primary` conformément au design system.
+
+---
+
 ## [0.8.2] — 2026-03-03
 
 ### Changed

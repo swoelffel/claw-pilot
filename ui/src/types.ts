@@ -311,6 +311,27 @@ export interface DeviceList {
   paired: PairedDevice[];
 }
 
+// Telegram DM pairing types
+
+export interface TelegramPairingRequest {
+  /** Telegram numeric user ID (string) */
+  id: string;
+  /** 8-char uppercase pairing code */
+  code: string;
+  /** ISO timestamp — request created */
+  createdAt: string;
+  /** ISO timestamp — last contact from this user */
+  lastSeenAt: string;
+  /** Channel-specific metadata */
+  meta: { accountId?: string; username?: string };
+}
+
+export interface TelegramPairingList {
+  pending: TelegramPairingRequest[];
+  /** Array of approved Telegram user IDs */
+  approved: string[];
+}
+
 /** Etat de la mise a jour OpenClaw — GET /api/openclaw/update-status */
 export interface OpenClawUpdateStatus {
   // Versions

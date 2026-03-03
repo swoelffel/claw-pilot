@@ -1,4 +1,4 @@
-import type { InstanceInfo, AgentInfo, CreateInstanceRequest, CreateAgentRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink, Blueprint, BlueprintBuilderData, CreateBlueprintRequest, InstanceConfig, ConfigPatchResult, OpenClawUpdateStatus, DeviceList } from "./types.js";
+import type { InstanceInfo, AgentInfo, CreateInstanceRequest, CreateAgentRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink, Blueprint, BlueprintBuilderData, CreateBlueprintRequest, InstanceConfig, ConfigPatchResult, OpenClawUpdateStatus, DeviceList, TelegramPairingList } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 
 declare global {
@@ -373,5 +373,18 @@ export async function approveDevice(slug: string, requestId: string): Promise<{ 
 export async function revokeDevice(slug: string, deviceId: string): Promise<{ ok: boolean }> {
   return apiFetch<{ ok: boolean }>(`/instances/${slug}/devices/${deviceId}`, {
     method: "DELETE",
+  });
+}
+
+// --- Telegram DM pairing API ---
+
+export async function fetchTelegramPairing(slug: string): Promise<TelegramPairingList> {
+  return apiFetch<TelegramPairingList>(`/instances/${slug}/telegram/pairing`);
+}
+
+export async function approveTelegramPairing(slug: string, code: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/instances/${slug}/telegram/pairing/approve`, {
+    method: "POST",
+    body: JSON.stringify({ code }),
   });
 }
