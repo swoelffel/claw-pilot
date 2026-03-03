@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.7.3] — 2026-03-03
+
+### Changed
+- Instance card: OpenClaw version moved from footer to meta section — displayed inline with the port on the same row (`PORT :18789   openclaw v2026.3.1`), footer now shows agent count only
+
+---
+
 ## [0.7.2] — 2026-03-02
 
 ### Changed

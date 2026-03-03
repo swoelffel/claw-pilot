@@ -58,6 +58,20 @@ export class InstanceCard extends LitElement {
       margin-bottom: 0;
     }
 
+    .meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .openclaw-version {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      flex-shrink: 0;
+    }
+
     .meta-item {
       display: flex;
       align-items: center;
@@ -269,9 +283,14 @@ export class InstanceCard extends LitElement {
         </div>
 
         <div class="meta">
-          <div class="meta-item">
-            <span class="meta-label">${msg("Port", { id: "meta-port" })}</span>
-            <span class="meta-value">:${inst.port}</span>
+          <div class="meta-row">
+            <div class="meta-item">
+              <span class="meta-label">${msg("Port", { id: "meta-port" })}</span>
+              <span class="meta-value">:${inst.port}</span>
+            </div>
+            ${this.openclawVersion
+              ? html`<span class="openclaw-version">openclaw v${this.openclawVersion}</span>`
+              : nothing}
           </div>
           ${inst.telegram_bot
             ? html`
@@ -300,9 +319,6 @@ export class InstanceCard extends LitElement {
                   <span class="meta-value">:${inst.agentCount}</span>
                 `
               : ""}
-            ${this.openclawVersion
-              ? html`<span class="meta-value" style="margin-left:8px;font-size:11px;color:var(--text-muted)">openclaw v${this.openclawVersion}</span>`
-              : nothing}
           </div>
           <div class="card-footer-actions">
             ${inst.state === "running"
