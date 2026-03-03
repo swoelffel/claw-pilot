@@ -4,6 +4,7 @@ import { localized, msg } from "@lit/localize";
 import { initLocale, switchLocale, getLocale, allLocales, type SupportedLocale } from "./localization.js";
 import { createRef, ref, type Ref } from "lit/directives/ref.js";
 import type { InstanceInfo, WsMessage } from "./types.js";
+import { fetchBlueprints } from "./api.js";
 import { tokenStyles } from "./styles/tokens.js";
 import "./components/cluster-view.js";
 import "./components/agents-builder.js";
@@ -398,6 +399,8 @@ export class CpApp extends LitElement {
     this._connectWs();
     document.addEventListener("click", this._onDocClick);
     window.addEventListener("lit-localize-status", this._onLocaleStatus);
+    // Pre-fetch blueprint count so the badge is visible from the start
+    void fetchBlueprints().then((bps) => { this._blueprintCount = bps.length; }).catch(() => {});
   }
 
   override disconnectedCallback(): void {
@@ -600,17 +603,11 @@ export class CpApp extends LitElement {
             <button
               class="nav-tab ${this._route.view === "cluster" || this._route.view === "agents-builder" || this._route.view === "instance-settings" ? "active" : ""}"
               @click=${() => { this._route = { view: "cluster" }; }}
-            >
-              ${msg("Instances", { id: "nav-instances" })}
-              ${instanceCount > 0 ? html`<span class="nav-badge">${instanceCount}</span>` : ""}
-            </button>
+            >${msg("Instances", { id: "nav-instances" })}${instanceCount > 0 ? html`<span class="nav-badge">${instanceCount}</span>` : ""}</button>
             <button
               class="nav-tab ${this._route.view === "blueprints" || this._route.view === "blueprint-builder" ? "active" : ""}"
               @click=${() => { this._route = { view: "blueprints" }; }}
-            >
-              ${msg("Blueprints", { id: "nav-blueprints" })}
-              ${this._blueprintCount !== null && this._blueprintCount > 0 ? html`<span class="nav-badge">${this._blueprintCount}</span>` : ""}
-            </button>
+            >${msg("Blueprints", { id: "nav-blueprints" })}${this._blueprintCount !== null && this._blueprintCount > 0 ? html`<span class="nav-badge">${this._blueprintCount}</span>` : ""}</button>
           </nav>
         </div>
         <div class="header-right">
