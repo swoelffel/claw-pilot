@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.9.0] — 2026-03-03
+
+### Added
+- **Agent Detail Panel — mode édition** : bouton crayon (✏ SVG) dans le header du panel pour éditer les champs principaux d'un agent — `name`, `model` (via selects Provider/Model), `role`, `tags` (CSV), `notes`. Sauvegarde double-source en parallèle : `openclaw.json` via `PATCH /config` pour name/model, SQLite via le nouvel endpoint `PATCH /agents/:id/meta` pour role/tags/notes.
+- **Settings — bouton d'accès au panel agent** : colonne "Actions" dans la table agents de la page Settings avec un bouton crayon par ligne. Ouvre le panel complet en drawer latéral fixe (420px) avec backdrop semi-transparent. Après sauvegarde, la table et le panel se rechargent automatiquement.
+- **API** : nouvel endpoint `PATCH /api/instances/:slug/agents/:agentId/meta` — persiste `role`, `tags`, `notes` en SQLite (validation Zod, sans redémarrage du daemon).
+
+### Changed
+- **Agent Detail Panel — boutons header** : expand et close remplacés par des SVG 18×18 (chevron et croix) — plus lisibles. Bouton crayon fichiers (AGENTS.md, SOUL.md…) aligné sur le même SVG.
+- **Agent Detail Panel — expand depuis Settings** : le drawer Settings écoute l'événement `panel-expand-changed` et passe en `width: 100vw` pour un expand plein écran fonctionnel.
+
+---
+
 ## [0.8.3] — 2026-03-03
 
 ### Added
