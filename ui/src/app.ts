@@ -3,7 +3,7 @@ import { customElement, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { initLocale, switchLocale, getLocale, allLocales, type SupportedLocale } from "./localization.js";
 import { createRef, ref, type Ref } from "lit/directives/ref.js";
-import type { InstanceInfo, WsMessage } from "./types.js";
+import type { InstanceInfo, WsMessage, SelfUpdateStatus } from "./types.js";
 import { fetchBlueprints } from "./api.js";
 import { tokenStyles } from "./styles/tokens.js";
 import "./components/cluster-view.js";
@@ -11,6 +11,7 @@ import "./components/agents-builder.js";
 import "./components/blueprints-view.js";
 import "./components/blueprint-builder.js";
 import "./components/instance-settings.js";
+import "./components/self-update-banner.js";
 
 // Initialize locale — resolved before first render via localeReady promise
 export const localeReady = initLocale();
@@ -315,6 +316,10 @@ export class CpApp extends LitElement {
   @state() private _wsConnected = false;
   @state() private _locale: SupportedLocale = getLocale() as SupportedLocale;
   @state() private _langOpen = false;
+  @state() private _selfUpdateStatus: SelfUpdateStatus | null = null;
+
+  private _selfUpdatePollTimer: ReturnType<typeof setInterval> | null = null;
+  private static readonly SELF_UPDATE_POLL_MS = 60_000;
 
   private _langWrapperRef: Ref<HTMLElement> = createRef();
   private _onDocClick = (e: MouseEvent) => {
@@ -401,6 +406,9 @@ export class CpApp extends LitElement {
     window.addEventListener("lit-localize-status", this._onLocaleStatus);
     // Pre-fetch blueprint count so the badge is visible from the start
     void fetchBlueprints().then((bps) => { this._blueprintCount = bps.length; }).catch(() => {});
+    // Self-update polling — check immediately then every 60s
+    void this._pollSelfUpdate();
+    this._selfUpdatePollTimer = setInterval(() => { void this._pollSelfUpdate(); }, CpApp.SELF_UPDATE_POLL_MS);
   }
 
   override disconnectedCallback(): void {
@@ -408,6 +416,7 @@ export class CpApp extends LitElement {
     window.removeEventListener("hashchange", this._onHashChange);
     this._ws?.close();
     if (this._wsReconnectTimer) clearTimeout(this._wsReconnectTimer);
+    if (this._selfUpdatePollTimer) clearInterval(this._selfUpdatePollTimer);
     document.removeEventListener("click", this._onDocClick);
     window.removeEventListener("lit-localize-status", this._onLocaleStatus);
   }
@@ -541,6 +550,39 @@ export class CpApp extends LitElement {
     this._route = { view: "cluster" };
   }
 
+  private async _pollSelfUpdate(): Promise<void> {
+    const token = window.__CP_TOKEN__ ?? "";
+    try {
+      const res = await fetch("/api/self/update-status", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as SelfUpdateStatus;
+      this._selfUpdateStatus = data;
+      // Si un job est en cours, accelrer le polling pour rafraichir l'etat
+      if (data.status === "running") {
+        setTimeout(() => { void this._pollSelfUpdate(); }, 3_000);
+      }
+    } catch {
+      // Silencieux — le serveur peut etre en cours de restart
+    }
+  }
+
+  private async _onSelfUpdateStart(): Promise<void> {
+    const token = window.__CP_TOKEN__ ?? "";
+    try {
+      const res = await fetch("/api/self/update", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      // Rafraichir immediatement pour afficher l'etat "running"
+      void this._pollSelfUpdate();
+    } catch {
+      // Silencieux
+    }
+  }
+
   private _renderMain() {
     if (this._route.view === "cluster") {
       return html`
@@ -622,7 +664,8 @@ export class CpApp extends LitElement {
         </div>
       </header>
 
-      <main>
+      <main @cp-self-update-start=${this._onSelfUpdateStart}>
+        <cp-self-update-banner .status=${this._selfUpdateStatus}></cp-self-update-banner>
         ${this._renderMain()}
       </main>
 

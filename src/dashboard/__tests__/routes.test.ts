@@ -22,6 +22,8 @@ import { registerSystemRoutes } from "../routes/system.js";
 import type { HealthStatus } from "../../core/health.js";
 import type { UpdateStatus } from "../../core/update-checker.js";
 import type { UpdateJob } from "../../core/updater.js";
+import type { SelfUpdateStatus } from "../../core/self-update-checker.js";
+import type { SelfUpdateJob } from "../../core/self-updater.js";
 
 // ---------------------------------------------------------------------------
 // Test token
@@ -113,6 +115,33 @@ class StubUpdater {
   }
 }
 
+class StubSelfUpdateChecker {
+  async check(): Promise<SelfUpdateStatus> {
+    return {
+      currentVersion: "0.11.0",
+      latestVersion: "0.11.0",
+      latestTag: "v0.11.0",
+      updateAvailable: false,
+    };
+  }
+}
+
+class StubSelfUpdater {
+  private _job: SelfUpdateJob = { status: "idle", jobId: "" };
+
+  getJob(): SelfUpdateJob {
+    return { ...this._job };
+  }
+
+  run(_fromVersion?: string, _toVersion?: string, _tag?: string): void {
+    this._job = {
+      status: "running",
+      jobId: "test-self-job-id",
+      startedAt: new Date().toISOString(),
+    };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Test harness — builds a Hono app with all routes + auth middleware
 // ---------------------------------------------------------------------------
@@ -156,6 +185,8 @@ function createTestApp(): TestContext {
     lifecycle: lifecycle as unknown as RouteDeps["lifecycle"],
     updateChecker: new StubUpdateChecker() as unknown as RouteDeps["updateChecker"],
     updater: updater as unknown as RouteDeps["updater"],
+    selfUpdateChecker: new StubSelfUpdateChecker() as unknown as RouteDeps["selfUpdateChecker"],
+    selfUpdater: new StubSelfUpdater() as unknown as RouteDeps["selfUpdater"],
     tokenCache,
     xdgRuntimeDir: "/run/user/1000",
   };

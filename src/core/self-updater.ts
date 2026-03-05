@@ -1,0 +1,136 @@
+// src/core/self-updater.ts
+import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import * as path from "node:path";
+import type { ServerConnection } from "../server/connection.js";
+import { constants } from "../lib/constants.js";
+import { logger } from "../lib/logger.js";
+
+export type SelfUpdateJobStatus = "idle" | "running" | "done" | "error";
+
+export interface SelfUpdateJob {
+  status: SelfUpdateJobStatus;
+  jobId: string;
+  startedAt?: string;
+  finishedAt?: string;
+  message?: string;
+  fromVersion?: string;
+  toVersion?: string;
+}
+
+export class SelfUpdater {
+  private _job: SelfUpdateJob = { status: "idle", jobId: "" };
+
+  constructor(private conn: ServerConnection) {}
+
+  getJob(): SelfUpdateJob {
+    return { ...this._job };
+  }
+
+  // Lance la mise a jour en background (non-bloquant)
+  run(fromVersion?: string, toVersion?: string, tag?: string): void {
+    if (this._job.status === "running") return;
+
+    const jobId = randomUUID();
+    this._job = {
+      status: "running",
+      jobId,
+      startedAt: new Date().toISOString(),
+      fromVersion,
+      toVersion,
+    };
+
+    this._execute(jobId, tag).catch(() => {
+      // Erreurs capturees dans _execute
+    });
+  }
+
+  private async _execute(jobId: string, tag?: string): Promise<void> {
+    const installDir = this._resolveInstallDir();
+    const targetRef = tag ?? "main";
+
+    logger.info(`[self-updater] Starting claw-pilot update to ${targetRef} in ${installDir}`);
+
+    try {
+      // 1. git fetch
+      const fetch = await this.conn.exec(
+        `git -C "${installDir}" fetch --tags --prune`,
+        { timeout: 60_000 },
+      );
+      if (fetch.exitCode !== 0) {
+        throw new Error(fetch.stderr.trim() || fetch.stdout.trim() || "git fetch failed");
+      }
+
+      // 2. git checkout tag
+      const checkout = await this.conn.exec(
+        `git -C "${installDir}" checkout "${targetRef}"`,
+        { timeout: 30_000 },
+      );
+      if (checkout.exitCode !== 0) {
+        throw new Error(checkout.stderr.trim() || checkout.stdout.trim() || "git checkout failed");
+      }
+
+      // 3. pnpm install
+      const install = await this.conn.exec(
+        `pnpm --dir "${installDir}" install --frozen-lockfile`,
+        { timeout: 180_000 },
+      );
+      if (install.exitCode !== 0) {
+        throw new Error(install.stderr.trim() || install.stdout.trim() || "pnpm install failed");
+      }
+
+      // 4. pnpm build
+      const build = await this.conn.exec(
+        `pnpm --dir "${installDir}" build`,
+        { timeout: constants.SELF_UPDATE_TIMEOUT },
+      );
+      if (build.exitCode !== 0) {
+        throw new Error(build.stderr.trim() || build.stdout.trim() || "pnpm build failed");
+      }
+
+      const msg = `Updated successfully to ${targetRef}. Restarting dashboard service…`;
+      logger.info(`[self-updater] ${msg}`);
+
+      this._job = {
+        ...this._job,
+        jobId,
+        status: "done",
+        finishedAt: new Date().toISOString(),
+        message: msg,
+      };
+
+      // 5. systemctl restart — tue le process en cours, donc en dernier
+      // On ne verifie pas le code de retour : le process sera tue avant
+      this.conn.exec(
+        "systemctl --user restart claw-pilot-dashboard.service",
+        { timeout: 10_000 },
+      ).catch(() => {
+        // Attendu : le process est tue par le restart
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      logger.info(`[self-updater] Update failed: ${msg}`);
+
+      this._job = {
+        ...this._job,
+        jobId,
+        status: "error",
+        finishedAt: new Date().toISOString(),
+        message: msg,
+      };
+    }
+  }
+
+  // Remonte depuis dist/index.mjs → racine du projet (ou /opt/claw-pilot en fallback)
+  _resolveInstallDir(): string {
+    try {
+      const thisFile = fileURLToPath(import.meta.url);
+      // dist/server-*.mjs ou dist/index.mjs → parent = dist/ → parent = racine
+      const distDir = path.dirname(thisFile);
+      const candidate = path.resolve(distDir, "..");
+      return candidate;
+    } catch {
+      return "/opt/claw-pilot";
+    }
+  }
+}

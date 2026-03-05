@@ -14,8 +14,11 @@ import { Monitor } from "./monitor.js";
 import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 import { UpdateChecker } from "../core/update-checker.js";
 import { Updater } from "../core/updater.js";
+import { SelfUpdateChecker } from "../core/self-update-checker.js";
+import { SelfUpdater } from "../core/self-updater.js";
 import { createRateLimiter } from "./rate-limit.js";
 import { TokenCache } from "./token-cache.js";
+import { constants } from "../lib/constants.js";
 import { apiError } from "./route-deps.js";
 import type { RouteDeps } from "./route-deps.js";
 import { registerInstanceRoutes } from "./routes/instances.js";
@@ -70,6 +73,8 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   const monitor = new Monitor(health);
   const updateChecker = new UpdateChecker(conn);
   const updater = new Updater(conn, registry, lifecycle);
+  const selfUpdateChecker = new SelfUpdateChecker();
+  const selfUpdater = new SelfUpdater(conn);
   const tokenCache = new TokenCache(conn);
 
   // Public healthcheck — no auth required (for systemd, load balancers, monitoring)
@@ -92,6 +97,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   // Stricter rate limit on expensive operations
   app.use("/api/instances", createRateLimiter({ maxRequests: 10, windowMs: 60_000 }));
   app.use("/api/openclaw/update", createRateLimiter({ maxRequests: 1, windowMs: 300_000 }));
+  app.use("/api/self/update", createRateLimiter({ maxRequests: 1, windowMs: constants.SELF_UPDATE_RATE_LIMIT_MS }));
 
   // Auth middleware for API routes (timing-safe comparison)
   const expectedBearer = `Bearer ${token}`;
@@ -104,7 +110,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   });
 
   // --- API routes (delegated to route modules) ---
-  const deps: RouteDeps = { registry, conn, health, lifecycle, updateChecker, updater, tokenCache, xdgRuntimeDir };
+  const deps: RouteDeps = { registry, conn, health, lifecycle, updateChecker, updater, selfUpdateChecker, selfUpdater, tokenCache, xdgRuntimeDir };
   registerInstanceRoutes(app, deps);
   registerBlueprintRoutes(app, deps);
   registerTeamRoutes(app, deps);

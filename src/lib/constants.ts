@@ -36,4 +36,12 @@ export const constants = {
 
   // OpenClaw install script URL (overridable via OPENCLAW_INSTALL_URL env var)
   OPENCLAW_INSTALL_URL: "https://openclaw.ai/install.sh",
+
+  // Self-update (claw-pilot)
+  GITHUB_REPO: "swoelffel/claw-pilot",
+  GITHUB_API_BASE: "https://api.github.com",
+  SELF_UPDATE_CHECK_TIMEOUT: 5_000,    // fetch GitHub API (ms)
+  SELF_UPDATE_TIMEOUT: 600_000,        // git + build timeout (ms) — 10 min
+  SELF_UPDATE_RATE_LIMIT_MS: 300_000,  // rate limit POST /api/self/update
+  SELF_UPDATE_POLL_INTERVAL: 60_000,   // polling UI (ms)
 } as const;

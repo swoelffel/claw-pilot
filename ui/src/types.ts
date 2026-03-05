@@ -361,6 +361,23 @@ export interface AdoptResult {
   errors: string[];
 }
 
+/** Etat de la mise a jour de claw-pilot lui-meme — GET /api/self/update-status */
+export interface SelfUpdateStatus {
+  // Versions
+  currentVersion: string;
+  latestVersion: string | null;
+  latestTag: string | null;
+  updateAvailable: boolean;
+  // Job en cours (polling)
+  status: "idle" | "running" | "done" | "error";
+  jobId?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  message?: string;
+  fromVersion?: string;
+  toVersion?: string;
+}
+
 /** Etat de la mise a jour OpenClaw — GET /api/openclaw/update-status */
 export interface OpenClawUpdateStatus {
   // Versions
