@@ -22,6 +22,7 @@ import { DeviceManager } from "../../core/device-manager.js";
 import { TelegramPairingManager } from "../../core/telegram-pairing-manager.js";
 import { InstanceDiscovery } from "../../core/discovery.js";
 import { getOpenClawHome } from "../../lib/platform.js";
+import { OpenClawCLI } from "../../core/openclaw-cli.js";
 
 export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
   const { registry, conn, health, lifecycle, tokenCache, xdgRuntimeDir } = deps;
@@ -46,9 +47,6 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
   // POST /api/instances/discover — scan system for new OpenClaw instances (no DB write)
   // MUST be declared before /api/instances/:slug to avoid Hono route collision
   app.post("/api/instances/discover", async (c) => {
-    const server = registry.getLocalServer();
-    if (!server) return apiError(c, 503, "SERVER_NOT_INIT", "Server not initialized. Run claw-pilot init first.");
-
     try {
       const openclawHome = getOpenClawHome();
       const discovery = new InstanceDiscovery(conn, registry, openclawHome, xdgRuntimeDir);
@@ -80,9 +78,6 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
   });
 
   app.post("/api/instances/discover/adopt", async (c) => {
-    const server = registry.getLocalServer();
-    if (!server) return apiError(c, 503, "SERVER_NOT_INIT", "Server not initialized. Run claw-pilot init first.");
-
     let body: { slugs: string[] };
     try {
       const raw = await c.req.json();
@@ -97,6 +92,20 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
 
     try {
       const openclawHome = getOpenClawHome();
+
+      // Equivalent of `claw-pilot init` step 4: ensure local server is registered
+      // This is required before adoption so that lifecycle (start/stop/restart) works.
+      const hostname = await conn.hostname();
+      const server = registry.upsertLocalServer(hostname, openclawHome);
+
+      // Detect openclaw binary and register its path/version (best-effort)
+      const cli = new OpenClawCLI(conn);
+      const openclaw = await cli.detect();
+      if (openclaw) {
+        registry.updateServerBin(openclaw.bin, openclaw.version);
+        logger.info(`[discover] openclaw detected: ${openclaw.version}`);
+      }
+
       const discovery = new InstanceDiscovery(conn, registry, openclawHome, xdgRuntimeDir);
       const result = await discovery.scan();
 
