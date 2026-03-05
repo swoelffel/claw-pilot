@@ -55,6 +55,25 @@ openclaw_is_valid() {
   return 0
 }
 
+# Helper: resolve the absolute path of node (handles nvm, volta, fnm, etc.)
+resolve_node_bin() {
+  # command -v respects the current shell PATH (nvm/volta/fnm already loaded)
+  NODE_BIN=$(command -v node 2>/dev/null)
+  if [ -z "$NODE_BIN" ]; then
+    # Fallback: scan common non-PATH locations
+    for candidate in \
+      "$HOME/.nvm/versions/node/"*/bin/node \
+      "$HOME/.volta/bin/node" \
+      "$HOME/.fnm/node-versions/"*/installation/bin/node \
+      /usr/local/bin/node \
+      /usr/bin/node; do
+      # glob may not expand — skip literal patterns
+      [ -f "$candidate" ] && NODE_BIN="$candidate" && break
+    done
+  fi
+  printf '%s' "$NODE_BIN"
+}
+
 # 1. Banner
 log "Installing claw-pilot v${CLAW_PILOT_VERSION} from ${REPO_URL}"
 echo ""
@@ -149,12 +168,23 @@ fi
 # 8. Check OpenClaw — install before building claw-pilot so 'claw-pilot init' works immediately
 OPENCLAW_BIN=""
 _find_openclaw() {
-  for p in \
-    "$(command -v openclaw 2>/dev/null)" \
-    "$HOME/.npm-global/bin/openclaw" \
-    "/opt/openclaw/.npm-global/bin/openclaw" \
-    "/opt/homebrew/bin/openclaw" \
-    "/usr/local/bin/openclaw"; do
+  # Build candidate list — include nvm/volta/fnm node bin dirs
+  _oc_candidates="$(command -v openclaw 2>/dev/null)
+$HOME/.npm-global/bin/openclaw
+/opt/openclaw/.npm-global/bin/openclaw
+/opt/homebrew/bin/openclaw
+/usr/local/bin/openclaw"
+
+  # Append all nvm-managed node bin dirs (glob expanded by shell)
+  for _nvm_bin in "$HOME/.nvm/versions/node/"*/bin; do
+    [ -d "$_nvm_bin" ] && _oc_candidates="$_oc_candidates
+$_nvm_bin/openclaw"
+  done
+  # Volta
+  [ -d "$HOME/.volta/bin" ] && _oc_candidates="$_oc_candidates
+$HOME/.volta/bin/openclaw"
+
+  for p in $_oc_candidates; do
     [ -z "$p" ] && continue
     if openclaw_is_valid "$p"; then
       OPENCLAW_BIN="$p"
@@ -287,25 +317,39 @@ fi
 log "Building CLI and UI..."
 ( cd "$INSTALL_DIR" && pnpm run build:cli && pnpm run build:ui )
 
-# 11. Link binary globally
-log "Linking claw-pilot binary..."
-PNPM_GLOBAL_BIN=$(pnpm bin --global 2>/dev/null || echo "")
+# 11. Install claw-pilot wrapper binary
+#     A wrapper script is used instead of a symlink so that the correct node
+#     binary is always invoked, even when node is installed via nvm/volta/fnm
+#     and not present in the system PATH.
+log "Installing claw-pilot wrapper binary..."
+NODE_BIN=$(resolve_node_bin)
+[ -z "$NODE_BIN" ] && error "Cannot locate node binary. Make sure Node.js is installed."
+log "Using node at: $NODE_BIN"
 
-if [ -n "$PNPM_GLOBAL_BIN" ]; then
-  ln -sf "$INSTALL_DIR/dist/index.mjs" "$PNPM_GLOBAL_BIN/claw-pilot"
-  chmod +x "$INSTALL_DIR/dist/index.mjs"
-  LINK_PATH="$PNPM_GLOBAL_BIN/claw-pilot"
+WRAPPER_CONTENT="#!/bin/sh
+exec \"$NODE_BIN\" \"$INSTALL_DIR/dist/index.mjs\" \"\$@\""
+
+WRAPPER_TARGET="/usr/local/bin/claw-pilot"
+_write_wrapper() {
+  printf '%s\n' "$WRAPPER_CONTENT" > "$WRAPPER_TARGET"
+  chmod +x "$WRAPPER_TARGET"
+}
+
+if _write_wrapper 2>/dev/null; then
+  LINK_PATH="$WRAPPER_TARGET"
+elif command -v sudo >/dev/null 2>&1; then
+  sudo sh -c "printf '%s\n' '$WRAPPER_CONTENT' > '$WRAPPER_TARGET' && chmod +x '$WRAPPER_TARGET'"
+  LINK_PATH="$WRAPPER_TARGET"
 else
-  LINK_TARGET="/usr/local/bin/claw-pilot"
-  if ln -sf "$INSTALL_DIR/dist/index.mjs" "$LINK_TARGET" 2>/dev/null; then
-    chmod +x "$INSTALL_DIR/dist/index.mjs"
-    LINK_PATH="$LINK_TARGET"
-  elif command -v sudo >/dev/null 2>&1; then
-    sudo ln -sf "$INSTALL_DIR/dist/index.mjs" "$LINK_TARGET"
-    sudo chmod +x "$INSTALL_DIR/dist/index.mjs"
-    LINK_PATH="$LINK_TARGET"
+  # Fallback: pnpm global bin dir
+  PNPM_GLOBAL_BIN=$(pnpm bin --global 2>/dev/null || echo "")
+  if [ -n "$PNPM_GLOBAL_BIN" ]; then
+    WRAPPER_TARGET="$PNPM_GLOBAL_BIN/claw-pilot"
+    printf '%s\n' "$WRAPPER_CONTENT" > "$WRAPPER_TARGET"
+    chmod +x "$WRAPPER_TARGET"
+    LINK_PATH="$WRAPPER_TARGET"
   else
-    error "Cannot create symlink in /usr/local/bin. Add $(dirname "$INSTALL_DIR/dist/index.mjs") to PATH manually."
+    error "Cannot install claw-pilot wrapper. Add $INSTALL_DIR/dist/ to PATH manually."
   fi
 fi
 
