@@ -6,6 +6,7 @@ import { InstanceNotFoundError, GatewayUnhealthyError } from "../lib/errors.js";
 import { constants } from "../lib/constants.js";
 import { pollUntilReady } from "../lib/poll.js";
 import { getServiceManager, getLaunchdPlistPath } from "../lib/platform.js";
+import { logger } from "../lib/logger.js";
 
 export class Lifecycle {
   private sm = getServiceManager();
@@ -41,7 +42,7 @@ export class Lifecycle {
     } else {
       await this.systemctl("start", instance.systemd_unit);
     }
-    await this.waitForHealth(instance.port, slug, constants.GATEWAY_READY_TIMEOUT);
+    await this.waitForHealth(instance.port, slug, instance.state_dir, constants.GATEWAY_READY_TIMEOUT);
     this.registry.updateInstanceState(slug, "running");
     this.registry.logEvent(slug, "started");
   }
@@ -69,7 +70,7 @@ export class Lifecycle {
     } else {
       await this.systemctl("restart", instance.systemd_unit);
     }
-    await this.waitForHealth(instance.port, slug, constants.GATEWAY_READY_TIMEOUT);
+    await this.waitForHealth(instance.port, slug, instance.state_dir, constants.GATEWAY_READY_TIMEOUT);
     this.registry.updateInstanceState(slug, "running");
     this.registry.logEvent(slug, "restarted");
   }
@@ -97,6 +98,7 @@ export class Lifecycle {
   private async waitForHealth(
     port: number,
     slug: string,
+    stateDir: string,
     timeoutMs: number,
   ): Promise<void> {
     try {
@@ -111,7 +113,52 @@ export class Lifecycle {
         label: `gateway ${slug}:${port}`,
       });
     } catch {
-      throw new GatewayUnhealthyError(slug, port);
+      const detail = await this.readGatewayErrorDetail(stateDir);
+      throw new GatewayUnhealthyError(slug, port, detail ?? undefined);
     }
+  }
+
+  /**
+   * Read the last meaningful error line from gateway.err.log (systemd stderr capture).
+   * Falls back to gateway.log if err.log is empty or missing.
+   * Returns null if no useful detail found.
+   */
+  private async readGatewayErrorDetail(stateDir: string): Promise<string | null> {
+    const candidates = [
+      `${stateDir}/logs/gateway.err.log`,
+      `${stateDir}/logs/gateway.log`,
+    ];
+
+    // Known error patterns from OpenClaw diagnostics
+    const errorPatterns = [
+      /gateway start blocked[^.\n]*/i,
+      /refusing to bind gateway[^.\n]*/i,
+      /gateway auth mode[^.\n]*/i,
+      /failed to bind gateway socket[^.\n]*/i,
+      /error[^.\n]*/i,
+    ];
+
+    for (const logPath of candidates) {
+      try {
+        const content = await this.conn.readFile(logPath);
+        const lines = content.split("\n").filter((l) => l.trim());
+        // Scan from the end for a known error pattern
+        for (let i = lines.length - 1; i >= Math.max(0, lines.length - 50); i--) {
+          const line = lines[i]!;
+          for (const pattern of errorPatterns) {
+            const match = line.match(pattern);
+            if (match) {
+              // Strip JSONL timestamp prefix if present, return clean message
+              const clean = line.replace(/^\d{4}-\d{2}-\d{2}T[\d:.+Z]+\s+/, "").trim();
+              logger.dim(`[lifecycle] gateway error detail: ${clean}`);
+              return clean;
+            }
+          }
+        }
+      } catch {
+        // Log file missing or unreadable — try next
+      }
+    }
+    return null;
   }
 }

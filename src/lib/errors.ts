@@ -43,10 +43,8 @@ export class OpenClawNotFoundError extends ClawPilotError {
 }
 
 export class GatewayUnhealthyError extends ClawPilotError {
-  constructor(slug: string, port: number) {
-    super(
-      `Gateway for "${slug}" not responding on port ${port}`,
-      "GATEWAY_UNHEALTHY",
-    );
+  constructor(slug: string, port: number, detail?: string) {
+    const base = `Gateway for "${slug}" not responding on port ${port}`;
+    super(detail ? `${base} — ${detail}` : base, "GATEWAY_UNHEALTHY");
   }
 }

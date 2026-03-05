@@ -121,8 +121,21 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
         try {
           const agentSync = new AgentSync(conn, registry);
           await discovery.adopt(instance, server.id, agentSync);
-          adopted.push(slug);
           logger.info(`[discover] adopted instance: ${slug}`);
+
+          // Ensure gateway.mode=local is set — required for OpenClaw to start.
+          // Instances created by claw-pilot already have it, but manually installed
+          // instances may not. We patch openclaw.json non-destructively.
+          await ensureGatewayModeLocal(conn, instance.configPath, slug);
+
+          // Restart the service so the patched config takes effect
+          conn.execFile("systemctl", ["--user", "restart", instance.systemdUnit ?? `openclaw-${slug}.service`], {
+            env: { XDG_RUNTIME_DIR: xdgRuntimeDir },
+          }).catch((err: unknown) => {
+            logger.dim(`[discover] restart after adopt failed for ${slug} (non-fatal): ${err}`);
+          });
+
+          adopted.push(slug);
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Unknown error";
           errors.push(`${slug}: ${msg}`);
@@ -974,4 +987,48 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
       return apiError(c, 500, "PROVISION_FAILED", msg);
     }
   });
+}
+
+/**
+ * Ensure gateway.mode=local is set in openclaw.json.
+ * Instances created by claw-pilot already have it via config-generator.
+ * Manually installed instances may not — this patches them non-destructively.
+ */
+async function ensureGatewayModeLocal(
+  conn: import("../../server/connection.js").ServerConnection,
+  configPath: string,
+  slug: string,
+): Promise<void> {
+  let raw: string;
+  try {
+    raw = await conn.readFile(configPath);
+  } catch {
+    logger.dim(`[discover] cannot read config for ${slug} — skipping gateway.mode patch`);
+    return;
+  }
+
+  let config: Record<string, unknown>;
+  try {
+    config = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    logger.dim(`[discover] invalid JSON in config for ${slug} — skipping gateway.mode patch`);
+    return;
+  }
+
+  const gateway = config["gateway"] as Record<string, unknown> | undefined;
+  if (gateway?.["mode"] === "local") return; // already set, nothing to do
+
+  // Patch: set gateway.mode=local
+  if (!gateway) {
+    config["gateway"] = { mode: "local" };
+  } else {
+    gateway["mode"] = "local";
+  }
+
+  try {
+    await conn.writeFile(configPath, JSON.stringify(config, null, 2));
+    logger.info(`[discover] patched gateway.mode=local in ${configPath}`);
+  } catch (err) {
+    logger.warn(`[discover] failed to patch gateway.mode for ${slug}: ${err}`);
+  }
 }
