@@ -338,6 +338,29 @@ export interface TelegramPairingList {
   approved: string[];
 }
 
+// Discover instances types
+
+export interface DiscoveredInstanceInfo {
+  slug: string;
+  stateDir: string;
+  port: number;
+  agentCount: number;
+  gatewayHealthy: boolean;
+  systemdState: string | null;
+  telegramBot: string | null;
+  defaultModel: string | null;
+  source: string;
+}
+
+export interface DiscoverResult {
+  found: DiscoveredInstanceInfo[];
+}
+
+export interface AdoptResult {
+  adopted: string[];
+  errors: string[];
+}
+
 /** Etat de la mise a jour OpenClaw — GET /api/openclaw/update-status */
 export interface OpenClawUpdateStatus {
   // Versions

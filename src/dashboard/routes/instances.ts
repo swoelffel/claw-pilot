@@ -20,6 +20,8 @@ import type { ConfigPatch } from "../../core/config-updater.js";
 import { z } from "zod/v4";
 import { DeviceManager } from "../../core/device-manager.js";
 import { TelegramPairingManager } from "../../core/telegram-pairing-manager.js";
+import { InstanceDiscovery } from "../../core/discovery.js";
+import { getOpenClawHome } from "../../lib/platform.js";
 
 export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
   const { registry, conn, health, lifecycle, tokenCache, xdgRuntimeDir } = deps;
@@ -39,6 +41,91 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
       }),
     );
     return c.json(enriched);
+  });
+
+  // POST /api/instances/discover — scan system for new OpenClaw instances (no DB write)
+  // MUST be declared before /api/instances/:slug to avoid Hono route collision
+  app.post("/api/instances/discover", async (c) => {
+    const server = registry.getLocalServer();
+    if (!server) return apiError(c, 503, "SERVER_NOT_INIT", "Server not initialized. Run claw-pilot init first.");
+
+    try {
+      const openclawHome = getOpenClawHome();
+      const discovery = new InstanceDiscovery(conn, registry, openclawHome, xdgRuntimeDir);
+      const result = await discovery.scan();
+
+      const found = result.newInstances.map((inst) => ({
+        slug: inst.slug,
+        stateDir: inst.stateDir,
+        port: inst.port,
+        agentCount: inst.agents.length,
+        gatewayHealthy: inst.gatewayHealthy,
+        systemdState: inst.systemdState,
+        telegramBot: inst.telegramBot,
+        defaultModel: inst.defaultModel,
+        source: inst.source,
+      }));
+
+      return c.json({ found });
+    } catch (err) {
+      logger.error(`[discover] scan error: ${err instanceof Error ? err.message : String(err)}`);
+      return apiError(c, 500, "DISCOVER_FAILED", err instanceof Error ? err.message : "Discovery failed");
+    }
+  });
+
+  // POST /api/instances/discover/adopt — adopt discovered instances into DB
+  // MUST be declared before /api/instances/:slug to avoid Hono route collision
+  const AdoptBodySchema = z.object({
+    slugs: z.array(z.string()).min(1).max(20),
+  });
+
+  app.post("/api/instances/discover/adopt", async (c) => {
+    const server = registry.getLocalServer();
+    if (!server) return apiError(c, 503, "SERVER_NOT_INIT", "Server not initialized. Run claw-pilot init first.");
+
+    let body: { slugs: string[] };
+    try {
+      const raw = await c.req.json();
+      const parsed = AdoptBodySchema.safeParse(raw);
+      if (!parsed.success) {
+        return apiError(c, 400, "INVALID_BODY", `Invalid body: ${parsed.error.issues.map((i) => i.message).join("; ")}`);
+      }
+      body = parsed.data;
+    } catch {
+      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+    }
+
+    try {
+      const openclawHome = getOpenClawHome();
+      const discovery = new InstanceDiscovery(conn, registry, openclawHome, xdgRuntimeDir);
+      const result = await discovery.scan();
+
+      const adopted: string[] = [];
+      const errors: string[] = [];
+
+      for (const slug of body.slugs) {
+        const instance = result.newInstances.find((i) => i.slug === slug);
+        if (!instance) {
+          errors.push(`${slug}: not found in scan results (may already be registered)`);
+          continue;
+        }
+        try {
+          const agentSync = new AgentSync(conn, registry);
+          await discovery.adopt(instance, server.id, agentSync);
+          adopted.push(slug);
+          logger.info(`[discover] adopted instance: ${slug}`);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Unknown error";
+          errors.push(`${slug}: ${msg}`);
+          logger.error(`[discover] adopt error for ${slug}: ${msg}`);
+        }
+      }
+
+      return c.json({ adopted, errors });
+    } catch (err) {
+      logger.error(`[discover] adopt scan error: ${err instanceof Error ? err.message : String(err)}`);
+      return apiError(c, 500, "DISCOVER_FAILED", err instanceof Error ? err.message : "Discovery failed");
+    }
   });
 
   app.get("/api/instances/:slug", async (c) => {

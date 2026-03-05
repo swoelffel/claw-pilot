@@ -144,9 +144,13 @@ export class InstanceDiscovery {
       const stateDirMatch = showResult.stdout.match(
         /OPENCLAW_STATE_DIR=(\S+)/,
       );
-      if (!stateDirMatch) continue;
 
-      const stateDir = stateDirMatch[1]!;
+      // Extract port override from unit env (used when port is not in openclaw.json)
+      const portEnvMatch = showResult.stdout.match(/OPENCLAW_GATEWAY_PORT=(\d+)/);
+      const portOverride = portEnvMatch ? parseInt(portEnvMatch[1]!, 10) : undefined;
+
+      // Fallback stateDir: use openclawHome (legacy single-instance layout)
+      const stateDir = stateDirMatch ? stateDirMatch[1]! : `${this.openclawHome}/${constants.OPENCLAW_LEGACY_DIR}`;
       const configPath = `${stateDir}/openclaw.json`;
       if (!(await this.conn.exists(configPath))) continue;
 
@@ -155,6 +159,7 @@ export class InstanceDiscovery {
         stateDir,
         configPath,
         "systemd",
+        portOverride,
       );
       if (instance) {
         instance.systemdUnit = `openclaw-${slug}.service`;
@@ -295,6 +300,7 @@ export class InstanceDiscovery {
     stateDir: string,
     configPath: string,
     source: DiscoveredInstance["source"],
+    portOverride?: number,
   ): Promise<DiscoveredInstance | null> {
     let configRaw: string;
     try {
@@ -313,7 +319,9 @@ export class InstanceDiscovery {
     }
 
     const gateway = config["gateway"] as Record<string, unknown> | undefined;
-    const port = gateway?.["port"];
+    const portFromConfig = gateway?.["port"];
+    // Accept port from config JSON or from systemd unit env (portOverride)
+    const port = typeof portFromConfig === "number" ? portFromConfig : portOverride;
     if (typeof port !== "number") return null;
 
     // Extract agents

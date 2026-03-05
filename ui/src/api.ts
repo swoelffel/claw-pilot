@@ -1,4 +1,4 @@
-import type { InstanceInfo, AgentInfo, CreateInstanceRequest, CreateAgentRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink, Blueprint, BlueprintBuilderData, CreateBlueprintRequest, InstanceConfig, ConfigPatchResult, OpenClawUpdateStatus, DeviceList, TelegramPairingList, AgentMetaPatch } from "./types.js";
+import type { InstanceInfo, AgentInfo, CreateInstanceRequest, CreateAgentRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink, Blueprint, BlueprintBuilderData, CreateBlueprintRequest, InstanceConfig, ConfigPatchResult, OpenClawUpdateStatus, DeviceList, TelegramPairingList, AgentMetaPatch, DiscoverResult, AdoptResult } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 
 declare global {
@@ -397,5 +397,18 @@ export async function approveTelegramPairing(slug: string, code: string): Promis
   return apiFetch<{ ok: boolean }>(`/instances/${slug}/telegram/pairing/approve`, {
     method: "POST",
     body: JSON.stringify({ code }),
+  });
+}
+
+// --- Discover instances API ---
+
+export async function discoverInstances(): Promise<DiscoverResult> {
+  return apiFetch<DiscoverResult>("/instances/discover", { method: "POST" });
+}
+
+export async function adoptInstances(slugs: string[]): Promise<AdoptResult> {
+  return apiFetch<AdoptResult>("/instances/discover/adopt", {
+    method: "POST",
+    body: JSON.stringify({ slugs }),
   });
 }

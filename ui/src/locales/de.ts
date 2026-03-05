@@ -243,4 +243,15 @@ export const templates = {
   "err-file-save-failed": "Datei konnte nicht gespeichert werden.",
   "err-link-update-failed": "Agent-Links konnten nicht aktualisiert werden.",
   "err-unknown": "Ein unerwarteter Fehler ist aufgetreten.",
+
+  // discover-dialog.ts + cluster-view.ts (v0.10.0)
+  "discover-btn": "Instanzen entdecken",
+  "discover-dialog-title": "Instanzen entdecken",
+  "discover-scanning": "System wird gescannt...",
+  "discover-scanning-hint": "Suche nach OpenClaw-Instanzen",
+  "discover-none-found": "Keine OpenClaw-Instanzen auf diesem System gefunden.",
+  "discover-found-n": "{n} Instanz(en) auf diesem System gefunden:",
+  "discover-adopt-btn": "Alle übernehmen ({n})",
+  "discover-adopting": "Instanzen werden registriert...",
+  "discover-done": "{n} Instanz(en) erfolgreich registriert.",
 };

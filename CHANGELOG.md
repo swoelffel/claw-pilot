@@ -6,6 +6,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.10.1] — 2026-03-05
+
+### Fixed
+- **Discover instances** : détection des instances OpenClaw en layout single-instance (service `openclaw-gateway.service` sans `OPENCLAW_STATE_DIR`). Le port est désormais extrait depuis `OPENCLAW_GATEWAY_PORT` dans les variables d'env du unit systemd, et `~/.openclaw/` est utilisé comme stateDir de fallback.
+
+---
+
+## [0.10.0] — 2026-03-05
+
+### Added
+- **Discover instances** : bouton "Discover instances" dans l'état vide de la vue Instances (0 instances en DB). Lance un scan du système (directory, systemd/launchd, port scan) via le nouveau dialog `cp-discover-dialog`, affiche les instances trouvées avec leur état (running/stopped, port, Telegram bot, modèle, nombre d'agents), et les adopte en un clic dans la DB.
+- **API** : 2 nouvelles routes — `POST /api/instances/discover` (scan sans écriture DB) et `POST /api/instances/discover/adopt` (adoption des slugs sélectionnés). Déclarées avant les routes paramétriques pour éviter la collision Hono `/:slug`.
+- **i18n** : 9 nouvelles strings dans les 6 locales (EN, FR, DE, ES, IT, PT) pour le dialog discover.
+
+---
+
 ## [0.9.0] — 2026-03-03
 
 ### Added

@@ -10,6 +10,7 @@ import "./instance-card.js";
 import "./create-dialog.js";
 import "./delete-instance-dialog.js";
 import "./update-banner.js";
+import "./discover-dialog.js";
 
 @localized()
 @customElement("cp-cluster-view")
@@ -42,6 +43,10 @@ export class ClusterView extends LitElement {
       margin-bottom: 12px;
     }
 
+    .empty-actions {
+      margin-top: 20px;
+    }
+
     .loading {
       text-align: center;
       padding: 60px 20px;
@@ -67,6 +72,7 @@ export class ClusterView extends LitElement {
   @state() private _error = "";
   @state() private _showCreateDialog = false;
   @state() private _deleteTarget: InstanceInfo | null = null;
+  @state() private _showDiscoverDialog = false;
   @state() private _updateStatus: OpenClawUpdateStatus | null = null;
 
   private _pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -196,6 +202,14 @@ export class ClusterView extends LitElement {
             <div class="empty">
               <div class="empty-icon">&#9634;</div>
               ${msg("No instances found", { id: "no-instances-found" })}
+              <div class="empty-actions">
+                <button
+                  class="btn btn-secondary"
+                  @click=${() => { this._showDiscoverDialog = true; }}
+                >
+                  ${msg("Discover instances", { id: "discover-btn" })}
+                </button>
+              </div>
             </div>
           `
         : html`
@@ -237,6 +251,18 @@ export class ClusterView extends LitElement {
                 this._load();
               }}
             ></cp-delete-instance-dialog>
+          `
+        : ""}
+
+      ${this._showDiscoverDialog
+        ? html`
+            <cp-discover-dialog
+              @close-dialog=${() => { this._showDiscoverDialog = false; }}
+              @instances-adopted=${() => {
+                this._showDiscoverDialog = false;
+                void this._load();
+              }}
+            ></cp-discover-dialog>
           `
         : ""}
     `;

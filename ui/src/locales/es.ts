@@ -243,4 +243,15 @@ export const templates = {
   "err-file-save-failed": "Error al guardar el archivo.",
   "err-link-update-failed": "Error al actualizar los enlaces del agente.",
   "err-unknown": "Se produjo un error inesperado.",
+
+  // discover-dialog.ts + cluster-view.ts (v0.10.0)
+  "discover-btn": "Descubrir instancias",
+  "discover-dialog-title": "Descubrir instancias",
+  "discover-scanning": "Escaneando el sistema...",
+  "discover-scanning-hint": "Buscando instancias de OpenClaw",
+  "discover-none-found": "No se encontraron instancias de OpenClaw en este sistema.",
+  "discover-found-n": "Se encontraron {n} instancia(s) en este sistema:",
+  "discover-adopt-btn": "Adoptar todas ({n})",
+  "discover-adopting": "Registrando instancias...",
+  "discover-done": "{n} instancia(s) registrada(s) correctamente.",
 };
