@@ -244,4 +244,15 @@ export const templates = {
   "err-file-save-failed": "Échec de la sauvegarde.",
   "err-link-update-failed": "Échec de mise à jour des liens.",
   "err-unknown": "Une erreur inattendue s'est produite.",
+
+  // discover-dialog.ts + cluster-view.ts (v0.10.0)
+  "discover-btn": "Découvrir les instances",
+  "discover-dialog-title": "Découvrir les instances",
+  "discover-scanning": "Scan en cours...",
+  "discover-scanning-hint": "Recherche d'instances OpenClaw",
+  "discover-none-found": "Aucune instance OpenClaw trouvée sur ce système.",
+  "discover-found-n": "Trouvé {n} instance(s) sur ce système :",
+  "discover-adopt-btn": "Adopter tout ({n})",
+  "discover-adopting": "Enregistrement en cours...",
+  "discover-done": "{n} instance(s) enregistrée(s) avec succès.",
 };
