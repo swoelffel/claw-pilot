@@ -59,7 +59,18 @@ openclaw_is_valid() {
 log "Installing claw-pilot v${CLAW_PILOT_VERSION} from ${REPO_URL}"
 echo ""
 
-# 2. Check OS
+# 2. Check sudo privileges (required for apt installs, /opt clone, /usr/local/bin link)
+if [ "$(id -u)" != "0" ]; then
+  if ! command -v sudo >/dev/null 2>&1; then
+    error "sudo is not installed. Run this script as root or install sudo first."
+  fi
+  if ! sudo -n true 2>/dev/null && ! sudo -v 2>/dev/null; then
+    error "This script requires sudo privileges. Run as a sudoer or as root."
+  fi
+  log "sudo privileges confirmed."
+fi
+
+# 3. Check OS
 OS=$(uname -s)
 case "$OS" in
   Linux)  log "Detected Linux" ;;
@@ -67,7 +78,7 @@ case "$OS" in
   *)      error "Unsupported OS: $OS" ;;
 esac
 
-# 3. Check Node.js
+# 4. Check Node.js
 if ! command -v node >/dev/null 2>&1; then
   error "Node.js not found. Install Node.js >= $MIN_NODE_VERSION first: https://nodejs.org"
 fi
@@ -77,7 +88,7 @@ if [ "$NODE_VERSION" -lt "$MIN_NODE_VERSION" ]; then
 fi
 log "Node.js $(node -v)"
 
-# 4. Check git — auto-install on Linux if missing
+# 5. Check git — auto-install on Linux if missing
 if ! command -v git >/dev/null 2>&1; then
   if [ "$OS" = "Linux" ]; then
     log "git not found — installing via package manager..."
@@ -93,7 +104,7 @@ else
   log "git $(git --version)"
 fi
 
-# 5. Check pnpm (install if missing, configure if needed)
+# 6. Check pnpm (install if missing, configure if needed)
 if ! command -v pnpm >/dev/null 2>&1; then
   warn "pnpm not found, installing via npm..."
   npm install -g pnpm
@@ -110,7 +121,7 @@ if ! pnpm bin --global >/dev/null 2>&1; then
 fi
 log "pnpm $(pnpm --version)"
 
-# 6. Check build tools (required for better-sqlite3 native bindings)
+# 7. Check build tools (required for better-sqlite3 native bindings)
 #    Done early so we fail fast before cloning / compiling anything.
 BUILD_TOOLS_OK=1
 for tool in cc make python3; do
@@ -135,7 +146,7 @@ if [ "$BUILD_TOOLS_OK" -eq 0 ]; then
   fi
 fi
 
-# 7. Check OpenClaw — install before building claw-pilot so 'claw-pilot init' works immediately
+# 8. Check OpenClaw — install before building claw-pilot so 'claw-pilot init' works immediately
 OPENCLAW_BIN=""
 _find_openclaw() {
   for p in \
@@ -203,7 +214,7 @@ else
   fi
 fi
 
-# 8. Clone or update the repository
+# 9. Clone or update the repository
 log "Installing claw-pilot from ${REPO_URL}..."
 if [ -d "$INSTALL_DIR/.git" ]; then
   log "Updating existing installation at $INSTALL_DIR..."
@@ -265,7 +276,7 @@ else
   fi
 fi
 
-# 9. Install dependencies and build
+# 10. Install dependencies and build
 log "Installing dependencies (compiling better-sqlite3 native bindings)..."
 ARCH=$(uname -m)
 if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
@@ -276,7 +287,7 @@ fi
 log "Building CLI and UI..."
 ( cd "$INSTALL_DIR" && pnpm run build:cli && pnpm run build:ui )
 
-# 10. Link binary globally
+# 11. Link binary globally
 log "Linking claw-pilot binary..."
 PNPM_GLOBAL_BIN=$(pnpm bin --global 2>/dev/null || echo "")
 
@@ -298,7 +309,7 @@ else
   fi
 fi
 
-# 11. Verify
+# 12. Verify
 if command -v claw-pilot >/dev/null 2>&1; then
   log "claw-pilot $(claw-pilot --version) installed successfully! (linked at $LINK_PATH)"
 else
@@ -308,7 +319,7 @@ else
   warn "Or run directly: node $INSTALL_DIR/dist/index.mjs"
 fi
 
-# 12. Initialize
+# 13. Initialize
 echo ""
 log "Running 'claw-pilot init' to set up the registry..."
 if command -v claw-pilot >/dev/null 2>&1; then
@@ -318,7 +329,7 @@ else
 fi
 $CLAW_PILOT_CMD init --yes
 
-# 13. Install dashboard as systemd service (Linux only)
+# 14. Install dashboard as systemd service (Linux only)
 if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
   echo ""
   log "Setting up dashboard as a systemd service..."
