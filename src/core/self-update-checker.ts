@@ -41,8 +41,9 @@ export class SelfUpdateChecker {
     // Utilise le cache pour eviter de relire package.json a chaque appel
     if (this._currentVersion) return this._currentVersion;
     try {
-      // Remonte depuis dist/ vers la racine du projet
-      const pkg = require("../../package.json") as { version?: string };
+      // Apres bundling, tous les chunks sont dans dist/ — un seul niveau remonte
+      // vers la racine du projet (meme pattern que src/index.ts).
+      const pkg = require("../package.json") as { version?: string };
       this._currentVersion = pkg.version ?? "0.0.0";
       return this._currentVersion;
     } catch {
