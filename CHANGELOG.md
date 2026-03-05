@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.10.2] — 2026-03-05
+
+### Fixed
+- **Adopt** : patch automatique de `gateway.mode=local` dans `openclaw.json` lors de l'adoption d'une instance installée manuellement (sans ce champ, OpenClaw refuse de démarrer). Le service systemd est redémarré automatiquement après le patch.
+- **Adopt** : token gateway désormais lu depuis `openclaw.json → gateway.auth.token` en fallback si `<stateDir>/.env` est absent (instances manuelles). Le bouton "UI" de la carte instance injecte maintenant correctement `#token=` dans l'URL.
+- **Lifecycle errors** : en cas d'échec de démarrage/redémarrage, le message d'erreur affiché inclut désormais la dernière ligne d'erreur de `<stateDir>/logs/gateway.err.log` (ex: "Gateway start blocked: set gateway.mode=local") au lieu du générique "Action échouée. Vérifiez les logs serveur."
+
+---
+
 ## [0.10.1] — 2026-03-05
 
 ### Fixed
