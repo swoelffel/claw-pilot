@@ -12,6 +12,7 @@ RAW_BASE="https://raw.githubusercontent.com/${REPO}/main"
 MIN_NODE_VERSION=22
 INSTALL_DIR="${CLAW_PILOT_INSTALL_DIR:-/opt/claw-pilot}"
 OPENCLAW_INSTALL_URL="${OPENCLAW_INSTALL_URL:-https://openclaw.ai/install.sh}"
+OPENCLAW_INSTALL_TIMEOUT=600
 
 # Resolve version from package.json on GitHub
 CLAW_PILOT_VERSION=$(curl -fsSL "${RAW_BASE}/package.json" 2>/dev/null \
@@ -27,6 +28,32 @@ NC='\033[0m'
 log()   { printf "${GREEN}[+]${NC} %s\n" "$1"; }
 warn()  { printf "${YELLOW}[!]${NC} %s\n" "$1"; }
 error() { printf "${RED}[x]${NC} %s\n" "$1"; exit 1; }
+
+# Helper: run apt-get or dnf with sudo if needed
+_apt() { command -v sudo >/dev/null 2>&1 && sudo apt-get "$@" || apt-get "$@"; }
+_dnf() { command -v sudo >/dev/null 2>&1 && sudo dnf "$@" || dnf "$@"; }
+
+# Helper: install a package via the available package manager (Linux only)
+install_pkg() {
+  pkg_apt="$1"  # package name for apt
+  pkg_dnf="$2"  # package name for dnf (optional, defaults to pkg_apt)
+  pkg_dnf="${pkg_dnf:-$pkg_apt}"
+  if command -v apt-get >/dev/null 2>&1; then
+    _apt install -y "$pkg_apt"
+  elif command -v dnf >/dev/null 2>&1; then
+    _dnf install -y "$pkg_dnf"
+  else
+    return 1
+  fi
+}
+
+# Helper: validate an openclaw binary is actually functional (not a broken symlink)
+openclaw_is_valid() {
+  bin="$1"
+  [ -f "$bin" ] || return 1
+  "$bin" --version >/dev/null 2>&1 || return 1
+  return 0
+}
 
 # 1. Banner
 log "Installing claw-pilot v${CLAW_PILOT_VERSION} from ${REPO_URL}"
@@ -50,9 +77,20 @@ if [ "$NODE_VERSION" -lt "$MIN_NODE_VERSION" ]; then
 fi
 log "Node.js $(node -v)"
 
-# 4. Check git
+# 4. Check git — auto-install on Linux if missing
 if ! command -v git >/dev/null 2>&1; then
-  error "git not found. Install git first."
+  if [ "$OS" = "Linux" ]; then
+    log "git not found — installing via package manager..."
+    if ! install_pkg git; then
+      error "git not found and no supported package manager available. Install git manually."
+    fi
+    command -v git >/dev/null 2>&1 || error "git still not found after install. Aborting."
+    log "git $(git --version)"
+  else
+    error "git not found. Install git first (e.g. xcode-select --install on macOS)."
+  fi
+else
+  log "git $(git --version)"
 fi
 
 # 5. Check pnpm (install if missing, configure if needed)
@@ -72,31 +110,100 @@ if ! pnpm bin --global >/dev/null 2>&1; then
 fi
 log "pnpm $(pnpm --version)"
 
-# 6. Check OpenClaw (optional — claw-pilot can install it automatically)
-OPENCLAW_FOUND=0
-if command -v openclaw >/dev/null 2>&1; then
-  log "OpenClaw $(openclaw --version 2>/dev/null || echo 'unknown')"
-  OPENCLAW_FOUND=1
-else
-  for p in "$HOME/.npm-global/bin/openclaw" \
-            "/opt/openclaw/.npm-global/bin/openclaw" \
-            "/opt/homebrew/bin/openclaw" \
-            "/usr/local/bin/openclaw"; do
-    if [ -x "$p" ]; then
-      log "OpenClaw found at $p (not in PATH)"
-      OPENCLAW_FOUND=1
-      break
+# 6. Check build tools (required for better-sqlite3 native bindings)
+#    Done early so we fail fast before cloning / compiling anything.
+BUILD_TOOLS_OK=1
+for tool in cc make python3; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    warn "Build tool '$tool' not found."
+    BUILD_TOOLS_OK=0
+  fi
+done
+if [ "$BUILD_TOOLS_OK" -eq 0 ]; then
+  if [ "$OS" = "Darwin" ]; then
+    error "Missing build tools. Install them with: xcode-select --install"
+  elif command -v apt-get >/dev/null 2>&1 || command -v dnf >/dev/null 2>&1; then
+    log "Installing missing build tools (build-essential / python3)..."
+    install_pkg build-essential "gcc make" || true
+    install_pkg python3
+    for tool in cc make python3; do
+      command -v "$tool" >/dev/null 2>&1 || error "Build tool '$tool' still not found after install. Aborting."
+    done
+    log "Build tools ready."
+  else
+    error "Missing build tools and no supported package manager found. Install manually: gcc make python3"
+  fi
+fi
+
+# 7. Check OpenClaw — install before building claw-pilot so 'claw-pilot init' works immediately
+OPENCLAW_BIN=""
+_find_openclaw() {
+  for p in \
+    "$(command -v openclaw 2>/dev/null)" \
+    "$HOME/.npm-global/bin/openclaw" \
+    "/opt/openclaw/.npm-global/bin/openclaw" \
+    "/opt/homebrew/bin/openclaw" \
+    "/usr/local/bin/openclaw"; do
+    [ -z "$p" ] && continue
+    if openclaw_is_valid "$p"; then
+      OPENCLAW_BIN="$p"
+      return 0
     fi
   done
+  return 1
+}
+
+if _find_openclaw; then
+  log "OpenClaw $($OPENCLAW_BIN --version 2>/dev/null) found at $OPENCLAW_BIN"
+else
+  warn "OpenClaw not found — installing now..."
+
+  # Warn if low memory and no swap (libopus compiles from source and is memory-intensive)
+  if [ "$OS" = "Linux" ]; then
+    TOTAL_MEM_KiB=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0)
+    SWAP_KiB=$(grep SwapTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0)
+    TOTAL_MEM_MiB=$((TOTAL_MEM_KiB / 1024))
+    if [ "$TOTAL_MEM_MiB" -lt 1536 ] && [ "$SWAP_KiB" -eq 0 ]; then
+      warn "Low memory detected (${TOTAL_MEM_MiB} MiB RAM, no swap)."
+      warn "OpenClaw installation compiles native modules (libopus) from source."
+      warn "This may fail due to OOM. Consider adding a swapfile first:"
+      warn "  sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile"
+      warn "  sudo mkswap /swapfile && sudo swapon /swapfile"
+      warn "Continuing anyway..."
+    fi
+
+    ARCH=$(uname -m)
+    if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+      log "ARM64 detected — OpenClaw will compile native modules from source."
+      log "This may take several minutes (libopus, ~5 min on 1 vCPU). Please wait..."
+    fi
+  fi
+
+  # Run installer with timeout to avoid hanging indefinitely
+  OPENCLAW_INSTALLED=0
+  if command -v timeout >/dev/null 2>&1; then
+    if timeout "$OPENCLAW_INSTALL_TIMEOUT" sh -c \
+        "curl -fsSL --proto '=https' --tlsv1.2 '$OPENCLAW_INSTALL_URL' | bash"; then
+      OPENCLAW_INSTALLED=1
+    fi
+  else
+    # No timeout command available — run without guard
+    if sh -c "curl -fsSL --proto '=https' --tlsv1.2 '$OPENCLAW_INSTALL_URL' | bash"; then
+      OPENCLAW_INSTALLED=1
+    fi
+  fi
+
+  if [ "$OPENCLAW_INSTALLED" -eq 1 ] && _find_openclaw; then
+    log "OpenClaw $($OPENCLAW_BIN --version 2>/dev/null) installed successfully."
+  else
+    warn "OpenClaw installation failed or binary not functional after install."
+    warn "You can install it manually and re-run this script:"
+    warn "  curl -fsSL $OPENCLAW_INSTALL_URL | bash"
+    warn "Continuing claw-pilot installation — you will need OpenClaw to create instances."
+  fi
 fi
 
-if [ "$OPENCLAW_FOUND" -eq 0 ]; then
-  warn "OpenClaw CLI not found."
-  warn "claw-pilot will offer to install it automatically on first run ('claw-pilot init')."
-  warn "To install it now manually: curl -fsSL $OPENCLAW_INSTALL_URL | sh"
-fi
-
-# 7. Clone or update the repository
+# 8. Clone or update the repository
 log "Installing claw-pilot from ${REPO_URL}..."
 if [ -d "$INSTALL_DIR/.git" ]; then
   log "Updating existing installation at $INSTALL_DIR..."
@@ -105,7 +212,7 @@ if [ -d "$INSTALL_DIR/.git" ]; then
   ( cd "$INSTALL_DIR" && pnpm install --frozen-lockfile && pnpm run build:cli && pnpm run build:ui )
   log "claw-pilot $(node "$INSTALL_DIR/dist/index.mjs" --version 2>/dev/null) updated successfully!"
   # Manage dashboard service (Linux only)
-  if [ "$(uname)" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
+  if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
     CLAW_PILOT_BIN="node $INSTALL_DIR/dist/index.mjs"
     if command -v claw-pilot >/dev/null 2>&1; then
       CLAW_PILOT_BIN="claw-pilot"
@@ -115,11 +222,9 @@ if [ -d "$INSTALL_DIR/.git" ]; then
       XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user restart claw-pilot-dashboard.service
       log "Dashboard service restarted."
     else
-      # Service not running — install it if not already installed
       SERVICE_FILE="$HOME/.config/systemd/user/claw-pilot-dashboard.service"
       if [ ! -f "$SERVICE_FILE" ]; then
         log "Installing dashboard as systemd service..."
-        # Kill any manually-started dashboard process on port 19000
         DASHBOARD_PID=$(lsof -ti:19000 2>/dev/null || true)
         if [ -n "$DASHBOARD_PID" ]; then
           warn "Stopping manual dashboard process (PID $DASHBOARD_PID) on port 19000..."
@@ -137,8 +242,16 @@ if [ -d "$INSTALL_DIR/.git" ]; then
   fi
   exit 0
 else
+  # Handle corrupted install dir (exists but not a git repo)
   if [ -d "$INSTALL_DIR" ]; then
-    error "$INSTALL_DIR already exists but is not a git repo. Remove it first or set CLAW_PILOT_INSTALL_DIR."
+    warn "$INSTALL_DIR exists but is not a git repository (corrupted or partial install)."
+    warn "Removing it and starting fresh..."
+    if command -v sudo >/dev/null 2>&1; then
+      sudo rm -rf "$INSTALL_DIR"
+    else
+      rm -rf "$INSTALL_DIR"
+    fi
+    log "Removed $INSTALL_DIR."
   fi
   # Try to clone as current user; use sudo only if needed
   if git clone "$REPO_URL" "$INSTALL_DIR" 2>/dev/null; then
@@ -152,53 +265,12 @@ else
   fi
 fi
 
-# 8. Check build tools (required for better-sqlite3 native bindings)
-BUILD_TOOLS_OK=1
-for tool in cc make python3; do
-  if ! command -v "$tool" >/dev/null 2>&1; then
-    warn "Build tool '$tool' not found."
-    BUILD_TOOLS_OK=0
-  fi
-done
-if [ "$BUILD_TOOLS_OK" -eq 0 ]; then
-  if [ "$(uname)" = "Darwin" ]; then
-    error "Missing build tools. Install them with: xcode-select --install"
-  elif command -v apt-get >/dev/null 2>&1; then
-    log "Installing missing build tools via apt (build-essential python3)..."
-    if command -v sudo >/dev/null 2>&1; then
-      sudo apt-get install -y build-essential python3
-    else
-      apt-get install -y build-essential python3
-    fi
-    # Re-check after install
-    for tool in cc make python3; do
-      if ! command -v "$tool" >/dev/null 2>&1; then
-        error "Build tool '$tool' still not found after apt install. Aborting."
-      fi
-    done
-    log "Build tools installed successfully."
-  elif command -v dnf >/dev/null 2>&1; then
-    log "Installing missing build tools via dnf (gcc make python3)..."
-    if command -v sudo >/dev/null 2>&1; then
-      sudo dnf install -y gcc make python3
-    else
-      dnf install -y gcc make python3
-    fi
-    for tool in cc make python3; do
-      if ! command -v "$tool" >/dev/null 2>&1; then
-        error "Build tool '$tool' still not found after dnf install. Aborting."
-      fi
-    done
-    log "Build tools installed successfully."
-  else
-    error "Missing build tools and no supported package manager found. Install manually: gcc make python3"
-  fi
-fi
-
 # 9. Install dependencies and build
-# Note: better-sqlite3 native bindings are compiled automatically via
-# pnpm.onlyBuiltDependencies in package.json (requires python3 + make + g++)
-log "Installing dependencies (includes compiling better-sqlite3 native bindings)..."
+log "Installing dependencies (compiling better-sqlite3 native bindings)..."
+ARCH=$(uname -m)
+if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+  log "ARM64 detected — native compilation may take several minutes. Please wait..."
+fi
 ( cd "$INSTALL_DIR" && pnpm install --frozen-lockfile )
 
 log "Building CLI and UI..."
@@ -213,7 +285,6 @@ if [ -n "$PNPM_GLOBAL_BIN" ]; then
   chmod +x "$INSTALL_DIR/dist/index.mjs"
   LINK_PATH="$PNPM_GLOBAL_BIN/claw-pilot"
 else
-  # Fallback: /usr/local/bin (may need sudo)
   LINK_TARGET="/usr/local/bin/claw-pilot"
   if ln -sf "$INSTALL_DIR/dist/index.mjs" "$LINK_TARGET" 2>/dev/null; then
     chmod +x "$INSTALL_DIR/dist/index.mjs"
@@ -248,11 +319,10 @@ fi
 $CLAW_PILOT_CMD init --yes
 
 # 13. Install dashboard as systemd service (Linux only)
-if [ "$(uname)" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
+if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
   echo ""
   log "Setting up dashboard as a systemd service..."
 
-  # Kill any manually-started dashboard process on port 19000
   DASHBOARD_PID=$(lsof -ti:19000 2>/dev/null || true)
   if [ -n "$DASHBOARD_PID" ]; then
     warn "Stopping manual dashboard process (PID $DASHBOARD_PID) on port 19000..."
@@ -260,7 +330,6 @@ if [ "$(uname)" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
     sleep 2
   fi
 
-  # Install the service (this also enables + starts it)
   if $CLAW_PILOT_CMD service install; then
     log "Dashboard service installed and started."
     log "View logs: journalctl --user -u claw-pilot-dashboard.service -f"
