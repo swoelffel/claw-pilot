@@ -156,16 +156,42 @@ fi
 BUILD_TOOLS_OK=1
 for tool in cc make python3; do
   if ! command -v "$tool" >/dev/null 2>&1; then
-    warn "Build tool '$tool' not found — better-sqlite3 compilation may fail."
+    warn "Build tool '$tool' not found."
     BUILD_TOOLS_OK=0
   fi
 done
 if [ "$BUILD_TOOLS_OK" -eq 0 ]; then
   if [ "$(uname)" = "Darwin" ]; then
-    warn "Install missing build tools with: xcode-select --install"
+    error "Missing build tools. Install them with: xcode-select --install"
+  elif command -v apt-get >/dev/null 2>&1; then
+    log "Installing missing build tools via apt (build-essential python3)..."
+    if command -v sudo >/dev/null 2>&1; then
+      sudo apt-get install -y build-essential python3
+    else
+      apt-get install -y build-essential python3
+    fi
+    # Re-check after install
+    for tool in cc make python3; do
+      if ! command -v "$tool" >/dev/null 2>&1; then
+        error "Build tool '$tool' still not found after apt install. Aborting."
+      fi
+    done
+    log "Build tools installed successfully."
+  elif command -v dnf >/dev/null 2>&1; then
+    log "Installing missing build tools via dnf (gcc make python3)..."
+    if command -v sudo >/dev/null 2>&1; then
+      sudo dnf install -y gcc make python3
+    else
+      dnf install -y gcc make python3
+    fi
+    for tool in cc make python3; do
+      if ! command -v "$tool" >/dev/null 2>&1; then
+        error "Build tool '$tool' still not found after dnf install. Aborting."
+      fi
+    done
+    log "Build tools installed successfully."
   else
-    warn "Install missing build tools with: sudo apt install build-essential python3  (Debian/Ubuntu)"
-    warn "  or: sudo dnf install gcc make python3  (Fedora/RHEL)"
+    error "Missing build tools and no supported package manager found. Install manually: gcc make python3"
   fi
 fi
 
