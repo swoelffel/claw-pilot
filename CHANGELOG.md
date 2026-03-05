@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.10.1] — 2026-03-05
+
+### Fixed
+- **Discover instances** : détection des instances OpenClaw en layout single-instance (service `openclaw-gateway.service` sans `OPENCLAW_STATE_DIR`). Le port est désormais extrait depuis `OPENCLAW_GATEWAY_PORT` dans les variables d'env du unit systemd, et `~/.openclaw/` est utilisé comme stateDir de fallback.
+
+---
+
 ## [0.10.0] — 2026-03-05
 
 ### Added
