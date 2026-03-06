@@ -1,4 +1,5 @@
 // src/core/blueprint-deployer.ts
+import * as path from "node:path";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
 import { createHash } from "node:crypto";
@@ -22,7 +23,6 @@ export class BlueprintDeployer {
     const blueprintLinks = this.registry.listBlueprintLinks(blueprintId);
 
     // 4. Read openclaw.json
-    const path = await import("node:path");
     const configRaw = await this.conn.readFile(instance.config_path);
     const config = JSON.parse(configRaw) as Record<string, unknown>;
 

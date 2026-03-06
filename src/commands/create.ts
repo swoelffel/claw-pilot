@@ -62,9 +62,10 @@ export function createCommand(): Command {
         const provisioner = new Provisioner(conn, registry, portAllocator);
         const result = await provisioner.provision(answers, server.id);
 
+        const pairing = new PairingManager(conn, registry);
+
         logger.step("Bootstrapping device pairing...");
         try {
-          const pairing = new PairingManager(conn, registry);
           await pairing.bootstrapDevicePairing(result.slug);
           logger.success("Device pairing approved.");
         } catch (err) {
@@ -79,7 +80,6 @@ export function createCommand(): Command {
             `Open Telegram and start a chat with the bot. The bot will send a pairing code.`,
           );
           try {
-            const pairing = new PairingManager(conn, registry);
             const code = await pairing.waitForTelegramPairing(result.slug);
             logger.success(`Telegram paired (code: ${code}).`);
           } catch (err) {

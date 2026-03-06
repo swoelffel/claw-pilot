@@ -1,4 +1,5 @@
 // src/commands/logs.ts
+import * as childProcess from "node:child_process";
 import { Command } from "commander";
 import { InstanceNotFoundError } from "../lib/errors.js";
 import { shellEscape } from "../lib/shell.js";
@@ -23,8 +24,7 @@ export function logsCommand(): Command {
         const logPath = `${instance.state_dir}/logs/gateway.log`;
 
         if (opts.follow) {
-          const { spawn } = await import("node:child_process");
-          const child = spawn("tail", ["-f", "-n", String(lines), logPath], {
+          const child = childProcess.spawn("tail", ["-f", "-n", String(lines), logPath], {
             stdio: "inherit",
           });
           process.on("SIGINT", () => {

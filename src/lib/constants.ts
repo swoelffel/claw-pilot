@@ -37,6 +37,12 @@ export const constants = {
   // OpenClaw install script URL (overridable via OPENCLAW_INSTALL_URL env var)
   OPENCLAW_INSTALL_URL: "https://openclaw.ai/install.sh",
 
+  // PATH prefix for non-interactive SSH sessions on Linux servers
+  OPENCLAW_PATH_PREFIX: "export PATH=~/.npm-global/bin:/usr/local/bin:/usr/bin:/bin",
+
+  // OpenClaw log directory (JSONL logs written by the daemon)
+  OPENCLAW_LOG_DIR: "/tmp/openclaw",
+
   // Self-update (claw-pilot)
   GITHUB_REPO: "swoelffel/claw-pilot",
   GITHUB_API_BASE: "https://api.github.com",

@@ -6,8 +6,7 @@
 
 import type { ServerConnection } from "../server/connection.js";
 import { shellEscape } from "../lib/shell.js";
-
-const PATH_PREFIX = "export PATH=~/.npm-global/bin:/usr/local/bin:/usr/bin:/bin";
+import { constants } from "../lib/constants.js";
 
 export interface TelegramPairingRequest {
   /** Telegram numeric user ID (string) */
@@ -77,7 +76,7 @@ export class TelegramPairingManager {
       throw new Error(`Invalid pairing code format: ${code}`);
     }
     const result = await this.conn.exec(
-      `${PATH_PREFIX} && OPENCLAW_STATE_DIR=${stateDir} openclaw pairing approve telegram ${shellEscape(code)}`,
+      `${constants.OPENCLAW_PATH_PREFIX} && OPENCLAW_STATE_DIR=${stateDir} openclaw pairing approve telegram ${shellEscape(code)}`,
     );
     if (result.exitCode !== 0) {
       throw new Error(result.stderr || "pairing approve failed");

@@ -1,6 +1,8 @@
 // src/commands/service.ts
 import { Command } from "commander";
 import { getServiceManager } from "../lib/platform.js";
+
+const DASHBOARD_LOG_PATH = "~/.claw-pilot/dashboard.log";
 import {
   installDashboardService,
   uninstallDashboardService,
@@ -27,7 +29,7 @@ export function serviceCommand(): Command {
         });
         console.log("[+] Dashboard service installed successfully.");
         if (sm === "launchd") {
-          console.log(`    View logs: tail -f ~/.claw-pilot/dashboard.log`);
+          console.log(`    View logs: tail -f ${DASHBOARD_LOG_PATH}`);
         } else {
           console.log(`    View logs: journalctl --user -u claw-pilot-dashboard.service -f`);
         }
@@ -85,7 +87,7 @@ export function serviceCommand(): Command {
           console.log("");
           console.log("  To install: claw-pilot service install");
           if (sm === "launchd") {
-            console.log("  To view logs: tail -f ~/.claw-pilot/dashboard.log");
+            console.log(`  To view logs: tail -f ${DASHBOARD_LOG_PATH}`);
           } else {
             console.log("  To view logs: journalctl --user -u claw-pilot-dashboard.service -n 50");
           }

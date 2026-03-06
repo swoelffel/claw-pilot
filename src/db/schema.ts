@@ -3,8 +3,8 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import * as path from "node:path";
 
-// Bump this when adding new migrations — base schema version (migrations tracked separately)
-const SCHEMA_VERSION = 1;
+// Base schema version — bump only when adding new migrations (migrations tracked separately)
+const BASE_SCHEMA_VERSION = 1;
 
 const SCHEMA_SQL = `
 -- Schema version tracking
@@ -107,7 +107,7 @@ interface Migration {
 
 /**
  * Ordered list of migrations. Each migration must have a unique, monotonically
- * increasing version number greater than SCHEMA_VERSION (1).
+ * increasing version number greater than BASE_SCHEMA_VERSION (1).
  * Migrations are applied in order, inside individual transactions.
  */
 const MIGRATIONS: Migration[] = [
@@ -301,7 +301,7 @@ export function initDatabase(dbPath: string): Database.Database {
     // --- Fresh database: create base schema + seed config ---
     db.exec(SCHEMA_SQL);
     db.prepare("INSERT INTO schema_version (version) VALUES (?)").run(
-      SCHEMA_VERSION,
+      BASE_SCHEMA_VERSION,
     );
 
     // Insert default config
@@ -317,7 +317,7 @@ export function initDatabase(dbPath: string): Database.Database {
   const row = db
     .prepare("SELECT version FROM schema_version")
     .get() as { version: number } | undefined;
-  const currentVersion = row?.version ?? SCHEMA_VERSION;
+  const currentVersion = row?.version ?? BASE_SCHEMA_VERSION;
 
   for (const migration of MIGRATIONS) {
     if (migration.version <= currentVersion) continue;

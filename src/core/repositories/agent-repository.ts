@@ -1,10 +1,7 @@
 // src/core/repositories/agent-repository.ts
 import type Database from "better-sqlite3";
 import type { AgentRecord, AgentFileRecord, AgentLinkRecord } from "../registry.js";
-
-function now(): string {
-  return new Date().toISOString().replace("T", " ").slice(0, 19);
-}
+import { now } from "../../lib/date.js";
 
 export class AgentRepository {
   constructor(private db: Database.Database) {}

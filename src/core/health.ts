@@ -1,4 +1,5 @@
 // src/core/health.ts
+import * as path from "node:path";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry } from "./registry.js";
 import { InstanceNotFoundError } from "../lib/errors.js";
@@ -20,6 +21,8 @@ export interface HealthStatus {
 }
 
 export class HealthChecker {
+  private readonly _sm = getServiceManager();
+
   constructor(
     private conn: ServerConnection,
     private registry: Registry,
@@ -38,8 +41,7 @@ export class HealthChecker {
     };
 
     // 1. Service status (systemd or launchd)
-    const sm = getServiceManager();
-    if (sm === "systemd") {
+    if (this._sm === "systemd") {
       const systemdResult = await this.conn.execFile(
         "systemctl",
         ["--user", "is-active", instance.systemd_unit],
@@ -64,7 +66,7 @@ export class HealthChecker {
     }
 
     // 3. PID and uptime (systemd only — launchd does not expose these easily)
-    if (sm === "systemd" && status.systemd === "active") {
+    if (this._sm === "systemd" && status.systemd === "active") {
       const [pidResult, uptimeResult] = await Promise.all([
         this.conn.execFile(
           "systemctl",
@@ -104,7 +106,7 @@ export class HealthChecker {
       // OpenClaw logs are JSONL in /tmp/openclaw/openclaw-YYYY-MM-DD.log
       // Look for "Telegram: ok" in today's log (last 200 lines is enough)
       const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-      const logPath = `/tmp/openclaw/openclaw-${today}.log`;
+      const logPath = path.join(constants.OPENCLAW_LOG_DIR, `openclaw-${today}.log`);
       const logResult = await this.conn.exec(
         `tail -200 ${shellEscape(logPath)} 2>/dev/null | grep -c "Telegram: ok" || echo 0`,
       );
