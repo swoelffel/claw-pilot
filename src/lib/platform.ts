@@ -61,8 +61,11 @@ export function getDashboardServicePath(): string {
 
 export type ServiceManager = "systemd" | "launchd";
 
+export const SERVICE_MANAGER: ServiceManager = isDarwin() ? "launchd" : "systemd";
+
+/** @deprecated Use SERVICE_MANAGER constant directly */
 export function getServiceManager(): ServiceManager {
-  return isDarwin() ? "launchd" : "systemd";
+  return SERVICE_MANAGER;
 }
 
 // --- launchd helpers (macOS) ---

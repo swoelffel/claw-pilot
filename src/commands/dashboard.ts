@@ -20,6 +20,8 @@ export function dashboardCommand(): Command {
       String(constants.DASHBOARD_PORT),
     )
     .action(async (opts: { port: string }) => {
+      // db stays open intentionally: the dashboard runs until SIGTERM.
+      // db.close() is not called because the process exits after startDashboard() resolves.
       const db = initDatabase(getDbPath());
       const registry = new Registry(db);
       const conn = new LocalConnection();

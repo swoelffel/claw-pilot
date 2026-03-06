@@ -2,6 +2,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import { statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { ServerConnection } from "../server/connection.js";
 import {
   getSystemdDir,
@@ -33,7 +34,7 @@ export interface DashboardServiceStatus {
  * Uses import.meta.url to find the binary relative to this file — local filesystem only.
  */
 function resolveClawPilotBin(): string {
-  const currentDir = path.dirname(new URL(import.meta.url).pathname);
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
   // In dev: src/core/ -> go up 2 levels to project root, then dist/index.mjs
   // In prod (bundled): dist/ -> dist/index.mjs
   const candidates = [

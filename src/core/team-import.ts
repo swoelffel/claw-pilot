@@ -8,6 +8,7 @@ import type Database from "better-sqlite3";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
 import { TeamFileSchema, type TeamFile } from "./team-schema.js";
+import { now } from "../lib/date.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -83,6 +84,126 @@ export function parseAndValidateTeam(
 }
 
 // ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+type ImportTarget =
+  | { type: "blueprint"; blueprintId: number }
+  | { type: "instance"; instanceId: number; configPath: string };
+
+/**
+ * Core DB transaction shared by importBlueprintTeam and importInstanceTeam.
+ * Returns the number of files written.
+ */
+function _importTeamCore(
+  db: Database.Database,
+  target: ImportTarget,
+  team: TeamFile,
+): number {
+  let filesWritten = 0;
+
+  db.transaction(() => {
+    // 1. Delete existing agent_files
+    const existingAgents =
+      target.type === "blueprint"
+        ? (db.prepare("SELECT id FROM agents WHERE blueprint_id = ?").all(target.blueprintId) as { id: number }[])
+        : (db.prepare("SELECT id FROM agents WHERE instance_id = ?").all(target.instanceId) as { id: number }[]);
+
+    for (const agent of existingAgents) {
+      db.prepare("DELETE FROM agent_files WHERE agent_id = ?").run(agent.id);
+    }
+
+    // 2. Delete existing agent_links
+    if (target.type === "blueprint") {
+      db.prepare("DELETE FROM agent_links WHERE blueprint_id = ?").run(target.blueprintId);
+      db.prepare("DELETE FROM agents WHERE blueprint_id = ?").run(target.blueprintId);
+    } else {
+      db.prepare("DELETE FROM agent_links WHERE instance_id = ?").run(target.instanceId);
+      db.prepare("DELETE FROM agents WHERE instance_id = ?").run(target.instanceId);
+    }
+
+    // 3. Insert new agents + files
+    const openclawHome =
+      target.type === "instance" ? path.dirname(target.configPath) : null;
+
+    for (const agent of team.agents) {
+      const workspacePath =
+        target.type === "blueprint"
+          ? `blueprint://${target.blueprintId}/${agent.id}`
+          : agent.is_default
+            ? path.join(openclawHome!, "workspaces", "workspace")
+            : path.join(openclawHome!, "workspaces", `workspace-${agent.id}`);
+
+      const tagsJson = agent.meta?.tags ? JSON.stringify(agent.meta.tags) : null;
+      let modelValue: string | null = null;
+      if (agent.config?.model) {
+        modelValue =
+          typeof agent.config.model === "string"
+            ? agent.config.model
+            : JSON.stringify(agent.config.model);
+      }
+
+      if (target.type === "blueprint") {
+        db.prepare(
+          `INSERT INTO agents (blueprint_id, agent_id, name, model, workspace_path, is_default,
+           role, tags, notes, position_x, position_y)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).run(
+          target.blueprintId, agent.id, agent.name, modelValue, workspacePath,
+          agent.is_default ? 1 : 0, agent.meta?.role ?? null, tagsJson,
+          agent.meta?.notes ?? null, agent.meta?.position?.x ?? null, agent.meta?.position?.y ?? null,
+        );
+      } else {
+        db.prepare(
+          `INSERT INTO agents (instance_id, agent_id, name, model, workspace_path, is_default,
+           role, tags, notes, position_x, position_y)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).run(
+          target.instanceId, agent.id, agent.name, modelValue, workspacePath,
+          agent.is_default ? 1 : 0, agent.meta?.role ?? null, tagsJson,
+          agent.meta?.notes ?? null, agent.meta?.position?.x ?? null, agent.meta?.position?.y ?? null,
+        );
+      }
+
+      // Get the inserted agent's DB id
+      const inserted =
+        target.type === "blueprint"
+          ? (db.prepare("SELECT id FROM agents WHERE blueprint_id = ? AND agent_id = ?").get(target.blueprintId, agent.id) as { id: number })
+          : (db.prepare("SELECT id FROM agents WHERE instance_id = ? AND agent_id = ?").get(target.instanceId, agent.id) as { id: number });
+
+      // Insert files
+      if (agent.files) {
+        for (const [filename, content] of Object.entries(agent.files)) {
+          const contentHash = createHash("sha256").update(content).digest("hex").slice(0, 16);
+          db.prepare(
+            `INSERT INTO agent_files (agent_id, filename, content, content_hash, updated_at)
+             VALUES (?, ?, ?, ?, ?)`,
+          ).run(inserted.id, filename, content, contentHash, now());
+          filesWritten++;
+        }
+      }
+    }
+
+    // 4. Insert links
+    for (const link of team.links) {
+      if (target.type === "blueprint") {
+        db.prepare(
+          `INSERT OR IGNORE INTO agent_links (blueprint_id, source_agent_id, target_agent_id, link_type)
+           VALUES (?, ?, ?, ?)`,
+        ).run(target.blueprintId, link.source, link.target, link.type);
+      } else {
+        db.prepare(
+          `INSERT OR IGNORE INTO agent_links (instance_id, source_agent_id, target_agent_id, link_type)
+           VALUES (?, ?, ?, ?)`,
+        ).run(target.instanceId, link.source, link.target, link.type);
+      }
+    }
+  })();
+
+  return filesWritten;
+}
+
+// ---------------------------------------------------------------------------
 // Import into blueprint (DB only)
 // ---------------------------------------------------------------------------
 
@@ -96,14 +217,10 @@ export function importBlueprintTeam(
   const blueprint = registry.getBlueprint(blueprintId);
   if (!blueprint) throw new Error(`Blueprint ${blueprintId} not found`);
 
-  // Current state for dry-run summary
   const currentAgents = registry.listBlueprintAgents(blueprintId);
 
   if (dryRun) {
-    const filesToWrite = team.agents.reduce(
-      (sum, a) => sum + Object.keys(a.files ?? {}).length,
-      0,
-    );
+    const filesToWrite = team.agents.reduce((sum, a) => sum + Object.keys(a.files ?? {}).length, 0);
     return {
       ok: true,
       dry_run: true,
@@ -117,88 +234,7 @@ export function importBlueprintTeam(
     };
   }
 
-  let filesWritten = 0;
-
-  // Run everything in a single transaction
-  db.transaction(() => {
-    // 1. Delete existing agent_files for all blueprint agents
-    for (const agent of currentAgents) {
-      db.prepare("DELETE FROM agent_files WHERE agent_id = ?").run(agent.id);
-    }
-
-    // 2. Delete existing agent_links
-    db.prepare("DELETE FROM agent_links WHERE blueprint_id = ?").run(blueprintId);
-
-    // 3. Delete existing agents
-    db.prepare("DELETE FROM agents WHERE blueprint_id = ?").run(blueprintId);
-
-    // 4. Insert new agents + files
-    for (const agent of team.agents) {
-      const workspacePath = `blueprint://${blueprintId}/${agent.id}`;
-      const tagsJson = agent.meta?.tags ? JSON.stringify(agent.meta.tags) : null;
-
-      // Determine model value
-      let modelValue: string | null = null;
-      if (agent.config?.model) {
-        modelValue =
-          typeof agent.config.model === "string"
-            ? agent.config.model
-            : JSON.stringify(agent.config.model);
-      }
-
-      db.prepare(
-        `INSERT INTO agents (blueprint_id, agent_id, name, model, workspace_path, is_default,
-         role, tags, notes, position_x, position_y)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        blueprintId,
-        agent.id,
-        agent.name,
-        modelValue,
-        workspacePath,
-        agent.is_default ? 1 : 0,
-        agent.meta?.role ?? null,
-        tagsJson,
-        agent.meta?.notes ?? null,
-        agent.meta?.position?.x ?? null,
-        agent.meta?.position?.y ?? null,
-      );
-
-      // Get the inserted agent's DB id
-      const inserted = db
-        .prepare("SELECT id FROM agents WHERE blueprint_id = ? AND agent_id = ?")
-        .get(blueprintId, agent.id) as { id: number };
-
-      // Insert files
-      if (agent.files) {
-        for (const [filename, content] of Object.entries(agent.files)) {
-          const contentHash = createHash("sha256")
-            .update(content)
-            .digest("hex")
-            .slice(0, 16);
-          db.prepare(
-            `INSERT INTO agent_files (agent_id, filename, content, content_hash, updated_at)
-             VALUES (?, ?, ?, ?, ?)`,
-          ).run(
-            inserted.id,
-            filename,
-            content,
-            contentHash,
-            new Date().toISOString().replace("T", " ").slice(0, 19),
-          );
-          filesWritten++;
-        }
-      }
-    }
-
-    // 5. Insert links
-    for (const link of team.links) {
-      db.prepare(
-        `INSERT OR IGNORE INTO agent_links (blueprint_id, source_agent_id, target_agent_id, link_type)
-         VALUES (?, ?, ?, ?)`,
-      ).run(blueprintId, link.source, link.target, link.type);
-    }
-  })();
+  const filesWritten = _importTeamCore(db, { type: "blueprint", blueprintId }, team);
 
   return {
     ok: true,
@@ -221,14 +257,10 @@ export async function importInstanceTeam(
   xdgRuntimeDir: string,
   dryRun = false,
 ): Promise<ImportResult | DryRunResult> {
-  // Current state for dry-run summary
   const currentAgents = registry.listAgents(instance.slug);
 
   if (dryRun) {
-    const filesToWrite = team.agents.reduce(
-      (sum, a) => sum + Object.keys(a.files ?? {}).length,
-      0,
-    );
+    const filesToWrite = team.agents.reduce((sum, a) => sum + Object.keys(a.files ?? {}).length, 0);
     return {
       ok: true,
       dry_run: true,
@@ -242,93 +274,12 @@ export async function importInstanceTeam(
     };
   }
 
-  let filesWritten = 0;
-
   // --- Phase A: DB transaction ---
-  db.transaction(() => {
-    // 1. Delete existing agent_files for all instance agents
-    for (const agent of currentAgents) {
-      db.prepare("DELETE FROM agent_files WHERE agent_id = ?").run(agent.id);
-    }
-
-    // 2. Delete existing agent_links
-    db.prepare("DELETE FROM agent_links WHERE instance_id = ?").run(instance.id);
-
-    // 3. Delete existing agents
-    db.prepare("DELETE FROM agents WHERE instance_id = ?").run(instance.id);
-
-    // 4. Insert new agents + files
-    const openclawHome = path.dirname(instance.config_path);
-
-    for (const agent of team.agents) {
-      // agent-sync.ts resolves workspace paths as stateDir/workspaces/{workspace}.
-      // We must use the same convention so that the post-import sync finds the files.
-      const workspacePath = agent.is_default
-        ? path.join(openclawHome, "workspaces", "workspace")
-        : path.join(openclawHome, "workspaces", `workspace-${agent.id}`);
-
-      const tagsJson = agent.meta?.tags ? JSON.stringify(agent.meta.tags) : null;
-
-      let modelValue: string | null = null;
-      if (agent.config?.model) {
-        modelValue =
-          typeof agent.config.model === "string"
-            ? agent.config.model
-            : JSON.stringify(agent.config.model);
-      }
-
-      db.prepare(
-        `INSERT INTO agents (instance_id, agent_id, name, model, workspace_path, is_default,
-         role, tags, notes, position_x, position_y)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        instance.id,
-        agent.id,
-        agent.name,
-        modelValue,
-        workspacePath,
-        agent.is_default ? 1 : 0,
-        agent.meta?.role ?? null,
-        tagsJson,
-        agent.meta?.notes ?? null,
-        agent.meta?.position?.x ?? null,
-        agent.meta?.position?.y ?? null,
-      );
-
-      // Get the inserted agent's DB id
-      const inserted = db
-        .prepare("SELECT id FROM agents WHERE instance_id = ? AND agent_id = ?")
-        .get(instance.id, agent.id) as { id: number };
-
-      // Insert files
-      if (agent.files) {
-        for (const [filename, content] of Object.entries(agent.files)) {
-          const contentHash = createHash("sha256")
-            .update(content)
-            .digest("hex")
-            .slice(0, 16);
-          db.prepare(
-            `INSERT INTO agent_files (agent_id, filename, content, content_hash, updated_at)
-             VALUES (?, ?, ?, ?, ?)`,
-          ).run(
-            inserted.id,
-            filename,
-            content,
-            contentHash,
-            new Date().toISOString().replace("T", " ").slice(0, 19),
-          );
-        }
-      }
-    }
-
-    // 5. Insert links
-    for (const link of team.links) {
-      db.prepare(
-        `INSERT OR IGNORE INTO agent_links (instance_id, source_agent_id, target_agent_id, link_type)
-         VALUES (?, ?, ?, ?)`,
-      ).run(instance.id, link.source, link.target, link.type);
-    }
-  })();
+  _importTeamCore(
+    db,
+    { type: "instance", instanceId: instance.id, configPath: instance.config_path },
+    team,
+  );
 
   // --- Phase B: Filesystem operations ---
 
@@ -340,7 +291,7 @@ export async function importInstanceTeam(
 
   // B2. Write workspace files to disk
   const openclawHome = path.dirname(instance.config_path);
-  filesWritten = await syncWorkspacesToDisk(conn, openclawHome, team);
+  const filesWritten = await syncWorkspacesToDisk(conn, openclawHome, team);
 
   // B3. Restart daemon (best-effort, don't fail the import)
   try {
@@ -361,34 +312,23 @@ export async function importInstanceTeam(
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Merge team data into an existing openclaw.json config.
- * Only modifies agents.defaults, agents.list[], and tools.agentToAgent.
- * All other sections (providers, telegram, mem0, etc.) are preserved.
- */
-function mergeTeamIntoConfig(
-  config: Record<string, unknown>,
+/** Update agents.defaults from team.defaults and the default agent's config. */
+function buildDefaultsSection(
+  existingDefaults: Record<string, unknown>,
   team: TeamFile,
-): void {
-  // Ensure agents section exists
-  if (!config["agents"] || typeof config["agents"] !== "object") {
-    config["agents"] = {};
-  }
-  const agentsConf = config["agents"] as Record<string, unknown>;
+): Record<string, unknown> {
+  let merged: Record<string, unknown> = { ...existingDefaults };
 
-  // 1. Update agents.defaults
+  // Apply top-level team.defaults first
   if (team.defaults) {
-    const existingDefaults = (agentsConf["defaults"] ?? {}) as Record<string, unknown>;
-    agentsConf["defaults"] = { ...existingDefaults, ...team.defaults };
+    merged = { ...merged, ...team.defaults };
   }
 
-  // Also merge the default agent's config into agents.defaults
+  // Then merge the default agent's config into agents.defaults
   const defaultAgent = team.agents.find((a) => a.is_default);
   if (defaultAgent?.config) {
-    const existingDefaults = (agentsConf["defaults"] ?? {}) as Record<string, unknown>;
     const { model, identity, subagents, heartbeat, sandbox, tools, params, skills, humanDelay, groupChat } =
       defaultAgent.config;
-    const merged: Record<string, unknown> = { ...existingDefaults };
     if (model !== undefined) merged["model"] = model;
     if (identity !== undefined) merged["identity"] = identity;
     if (subagents !== undefined) merged["subagents"] = { ...(merged["subagents"] as Record<string, unknown> ?? {}), ...subagents };
@@ -399,10 +339,14 @@ function mergeTeamIntoConfig(
     if (skills !== undefined) merged["skills"] = skills;
     if (humanDelay !== undefined) merged["humanDelay"] = humanDelay;
     if (groupChat !== undefined) merged["groupChat"] = groupChat;
-    agentsConf["defaults"] = merged;
   }
 
-  // 2. Rebuild agents.list[] from non-default agents
+  return merged;
+}
+
+/** Build the agents.list[] array from non-default agents + default agent entry. */
+function buildAgentsList(team: TeamFile): Array<Record<string, unknown>> {
+  // Rebuild agents.list[] from non-default agents
   // NOTE: spawn links for the default agent (main) are handled via a dedicated
   // list[] entry for "main" appended below. OpenClaw rejects allowAgents inside
   // agents.defaults.subagents — it is only valid inside list[].subagents.
@@ -450,6 +394,7 @@ function mergeTeamIntoConfig(
   // - subagents.allowAgents carries spawn links (only valid location in list[],
   //   OpenClaw rejects it in defaults.subagents).
   // Prepend so main appears first in the list, matching the source instance order.
+  const defaultAgent = team.agents.find((a) => a.is_default);
   if (defaultAgent) {
     const mainSpawnTargets = team.links
       .filter((l) => l.type === "spawn" && l.source === defaultAgent.id)
@@ -466,14 +411,34 @@ function mergeTeamIntoConfig(
     agentsList.unshift(mainEntry);
   }
 
-  agentsConf["list"] = agentsList;
+  return agentsList;
+}
 
-  // 3. Update tools.agentToAgent
-  if (team.agent_to_agent) {
-    if (!config["tools"] || typeof config["tools"] !== "object") {
-      config["tools"] = {};
-    }
-    (config["tools"] as Record<string, unknown>)["agentToAgent"] = team.agent_to_agent;
+/** Extract tools.agentToAgent from team if present. */
+function buildAgentToAgentSection(team: TeamFile): unknown | undefined {
+  return team.agent_to_agent;
+}
+
+/**
+ * Merge team data into an existing openclaw.json config.
+ * Only modifies agents.defaults, agents.list[], and tools.agentToAgent.
+ * All other sections (providers, telegram, mem0, etc.) are preserved.
+ */
+function mergeTeamIntoConfig(
+  config: Record<string, unknown>,
+  team: TeamFile,
+): void {
+  if (!config["agents"] || typeof config["agents"] !== "object") config["agents"] = {};
+  const agentsConf = config["agents"] as Record<string, unknown>;
+
+  const existingDefaults = (agentsConf["defaults"] ?? {}) as Record<string, unknown>;
+  agentsConf["defaults"] = buildDefaultsSection(existingDefaults, team);
+  agentsConf["list"] = buildAgentsList(team);
+
+  const a2a = buildAgentToAgentSection(team);
+  if (a2a !== undefined) {
+    if (!config["tools"] || typeof config["tools"] !== "object") config["tools"] = {};
+    (config["tools"] as Record<string, unknown>)["agentToAgent"] = a2a;
   }
 }
 

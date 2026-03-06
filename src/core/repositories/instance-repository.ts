@@ -1,10 +1,7 @@
 // src/core/repositories/instance-repository.ts
 import type Database from "better-sqlite3";
 import type { InstanceRecord } from "../registry.js";
-
-function now(): string {
-  return new Date().toISOString().replace("T", " ").slice(0, 19);
-}
+import { now } from "../../lib/date.js";
 
 export class InstanceRepository {
   constructor(private db: Database.Database) {}

@@ -1,7 +1,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { InstanceConfig, ConfigPatchResult, ProviderInfo, ProviderEntry, TelegramPairingList, TelegramPairingRequest, AgentBuilderInfo, AgentLink, PanelContext } from "../types.js";
+import type { InstanceConfig, ConfigPatchResult, ProviderInfo, ProviderEntry, TelegramPairingList, TelegramPairingRequest, AgentBuilderInfo, AgentLink, PanelContext, SidebarSection } from "../types.js";
 import { fetchInstanceConfig, patchInstanceConfig, fetchProviders, fetchTelegramPairing, approveTelegramPairing, fetchBuilderData } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
@@ -9,7 +9,6 @@ import { badgeStyles, buttonStyles, spinnerStyles, errorBannerStyles } from "../
 import "./instance-devices.js";
 import "./agent-detail-panel.js";
 
-type SidebarSection = "general" | "agents" | "telegram" | "plugins" | "gateway" | "devices";
 
 @localized()
 @customElement("cp-instance-settings")
@@ -605,6 +604,7 @@ export class InstanceSettings extends LitElement {
   `];
 
   @property({ type: String }) slug = "";
+  @property({ type: String }) initialSection: SidebarSection = "general";
 
   @state() private _config: InstanceConfig | null = null;
   @state() private _loading = true;
@@ -659,6 +659,7 @@ export class InstanceSettings extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
+    if (this.initialSection) this._activeSection = this.initialSection;
     this._loadConfig();
     this._loadProviderCatalog();
   }
@@ -815,7 +816,7 @@ export class InstanceSettings extends LitElement {
       const patch = this._buildPatch();
       const result: ConfigPatchResult = await patchInstanceConfig(this.slug, patch);
       if (result.ok) {
-        if (result.restarted) {
+        if (result.requiresRestart) {
           this._showToast(
             result.restartReason
               ? `${msg("Configuration saved", { id: "settings-saved" })} — ${msg("instance restarted", { id: "settings-restarted" })} (${result.restartReason})`

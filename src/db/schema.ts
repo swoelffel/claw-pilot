@@ -3,8 +3,8 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import * as path from "node:path";
 
-// Bump this when adding new migrations — base schema version (migrations tracked separately)
-const SCHEMA_VERSION = 1;
+// Base schema version — bump only when adding new migrations (migrations tracked separately)
+const BASE_SCHEMA_VERSION = 1;
 
 const SCHEMA_SQL = `
 -- Schema version tracking
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS events (
 
 const DEFAULT_CONFIG: Record<string, string> = {
   port_range_start: "18789",
-  port_range_end: "18799",
+  port_range_end: "18838",
   dashboard_port: "19000",
   health_check_interval_ms: "10000",
   openclaw_user: "openclaw",
@@ -107,7 +107,7 @@ interface Migration {
 
 /**
  * Ordered list of migrations. Each migration must have a unique, monotonically
- * increasing version number greater than SCHEMA_VERSION (1).
+ * increasing version number greater than BASE_SCHEMA_VERSION (1).
  * Migrations are applied in order, inside individual transactions.
  */
 const MIGRATIONS: Migration[] = [
@@ -260,6 +260,17 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v5: align port_range_end default with constants.ts (18838 instead of 18799).
+    // Only updates existing DBs where the value is still the old default (<18838).
+    version: 5,
+    up(db) {
+      db.exec(`
+        UPDATE config SET value = '18838'
+        WHERE key = 'port_range_end' AND CAST(value AS INTEGER) < 18838;
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -290,7 +301,7 @@ export function initDatabase(dbPath: string): Database.Database {
     // --- Fresh database: create base schema + seed config ---
     db.exec(SCHEMA_SQL);
     db.prepare("INSERT INTO schema_version (version) VALUES (?)").run(
-      SCHEMA_VERSION,
+      BASE_SCHEMA_VERSION,
     );
 
     // Insert default config
@@ -306,7 +317,7 @@ export function initDatabase(dbPath: string): Database.Database {
   const row = db
     .prepare("SELECT version FROM schema_version")
     .get() as { version: number } | undefined;
-  const currentVersion = row?.version ?? SCHEMA_VERSION;
+  const currentVersion = row?.version ?? BASE_SCHEMA_VERSION;
 
   for (const migration of MIGRATIONS) {
     if (migration.version <= currentVersion) continue;

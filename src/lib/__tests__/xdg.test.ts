@@ -21,6 +21,7 @@ function makeConn(stdout: string): ServerConnection {
     chmod: async () => {},
     readdir: async () => [],
     copyFile: async () => {},
+    rename: async () => {},
     hostname: async () => "localhost",
     platform: async () => "linux",
   };
@@ -54,6 +55,7 @@ describe("resolveXdgRuntimeDir", () => {
       chmod: async () => {},
       readdir: async () => [],
       copyFile: async () => {},
+      rename: async () => {},
       hostname: async () => "localhost",
       platform: async () => "linux",
     };

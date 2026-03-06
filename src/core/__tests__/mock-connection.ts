@@ -100,6 +100,13 @@ export class MockConnection implements ServerConnection {
     this.files.set(dest, content);
   }
 
+  async rename(src: string, dst: string): Promise<void> {
+    const content = this.files.get(src);
+    if (content === undefined) throw new Error(`Source not found: ${src}`);
+    this.files.set(dst, content);
+    this.files.delete(src);
+  }
+
   async hostname(): Promise<string> {
     return "test-host";
   }

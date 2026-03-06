@@ -1,4 +1,5 @@
 // src/core/agent-provisioner.ts
+import * as path from "node:path";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
 import { EDITABLE_FILES } from "./agent-sync.js";
@@ -31,7 +32,6 @@ export class AgentProvisioner {
     // 2. Determine workspace dir from instance config_path
     // config_path is like /home/openclaw/.openclaw/openclaw.json
     // openclawHome is the directory containing openclaw.json
-    const path = await import("node:path");
     const openclawHome = path.dirname(instance.config_path);
     const workspaceDir = path.join(openclawHome, `workspace-${data.agentSlug}`);
 
@@ -170,7 +170,6 @@ export class AgentProvisioner {
     }
 
     // 3. Write to disk
-    const path = await import("node:path");
     const filePath = path.join(agent.workspace_path, filename);
     await this.conn.writeFile(filePath, content);
 

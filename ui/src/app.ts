@@ -3,7 +3,7 @@ import { customElement, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { initLocale, switchLocale, getLocale, allLocales, type SupportedLocale } from "./localization.js";
 import { createRef, ref, type Ref } from "lit/directives/ref.js";
-import type { InstanceInfo, WsMessage, SelfUpdateStatus } from "./types.js";
+import type { InstanceInfo, WsMessage, SelfUpdateStatus, SidebarSection } from "./types.js";
 import { fetchBlueprints } from "./api.js";
 import { tokenStyles } from "./styles/tokens.js";
 import "./components/cluster-view.js";
@@ -28,7 +28,7 @@ type Route =
   | { view: "agents-builder"; slug: string }
   | { view: "blueprints" }
   | { view: "blueprint-builder"; blueprintId: number }
-  | { view: "instance-settings"; slug: string };
+  | { view: "instance-settings"; slug: string; initialSection?: SidebarSection };
 
 @localized()
 @customElement("cp-app")
@@ -481,6 +481,8 @@ export class CpApp extends LitElement {
           slug: string;
           gateway: "healthy" | "unhealthy" | "unknown";
           systemd: "active" | "inactive" | "failed" | "unknown";
+          agentCount?: number;
+          pendingDevices?: number;
         }>;
       };
       const updates = payload.instances ?? [];
@@ -498,16 +500,27 @@ export class CpApp extends LitElement {
                 : update.systemd === "failed"
                   ? "error"
                   : "unknown";
+          const newAgentCount = update.agentCount ?? inst.agentCount;
+          const newPendingDevices = update.pendingDevices ?? inst.pendingDevices;
           // Only create a new object if something actually changed
           if (
             inst.gateway === update.gateway &&
             inst.systemd === update.systemd &&
-            inst.state === newState
+            inst.state === newState &&
+            inst.agentCount === newAgentCount &&
+            inst.pendingDevices === newPendingDevices
           ) {
             return inst;
           }
           changed = true;
-          return { ...inst, gateway: update.gateway, systemd: update.systemd, state: newState };
+          return {
+            ...inst,
+            gateway: update.gateway,
+            systemd: update.systemd,
+            state: newState,
+            agentCount: newAgentCount,
+            pendingDevices: newPendingDevices,
+          };
         });
         // Only reassign (triggering Lit re-render) when at least one instance changed
         if (changed) {
@@ -518,9 +531,9 @@ export class CpApp extends LitElement {
   }
 
   private _navigate(e: Event): void {
-    const detail = (e as CustomEvent<{ slug?: string | null; view?: string; blueprintId?: number }>).detail;
+    const detail = (e as CustomEvent<{ slug?: string | null; view?: string; blueprintId?: number; section?: SidebarSection }>).detail;
     if (detail.view === "instance-settings" && detail.slug) {
-      this._route = { view: "instance-settings", slug: detail.slug };
+      this._route = { view: "instance-settings", slug: detail.slug, initialSection: detail.section };
     } else if (detail.view === "agents-builder" && detail.slug) {
       this._route = { view: "agents-builder", slug: detail.slug };
     } else if (detail.view === "blueprints") {
@@ -625,6 +638,7 @@ export class CpApp extends LitElement {
       return html`
         <cp-instance-settings
           .slug=${this._route.slug}
+          .initialSection=${this._route.initialSection ?? "general"}
           @navigate=${this._navigate}
         ></cp-instance-settings>
       `;

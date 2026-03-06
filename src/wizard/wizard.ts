@@ -32,12 +32,12 @@ export async function runWizard(
   // Step 3: Agent team
   const { agents } = await promptAgents();
 
-  // Step 4: Default model
-  const defaultModel = await promptModel();
-
-  // Step 5: Provider + API key
+  // Step 4: Provider + API key
   const existingInstances = registry.listInstances();
   const { provider, apiKey } = await promptProvider(existingInstances);
+
+  // Step 5: Default model (now with known provider)
+  const defaultModel = await promptModel(provider);
 
   // Step 6: Telegram
   const telegram = await promptTelegram();

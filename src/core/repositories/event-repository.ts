@@ -1,9 +1,6 @@
 // src/core/repositories/event-repository.ts
 import type Database from "better-sqlite3";
-
-function now(): string {
-  return new Date().toISOString().replace("T", " ").slice(0, 19);
-}
+import { now } from "../../lib/date.js";
 
 export interface EventRecord {
   id: number;

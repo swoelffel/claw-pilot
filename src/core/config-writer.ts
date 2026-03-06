@@ -72,6 +72,28 @@ export function classifyChanges(patch: ConfigPatch): ChangeClassification & { pa
 }
 
 // ---------------------------------------------------------------------------
+// Provider detection helper
+// ---------------------------------------------------------------------------
+
+/** Detect the current provider from an existing openclaw.json config object. */
+function detectCurrentProvider(config: Record<string, unknown>): string {
+  const models = config["models"] as Record<string, unknown> | undefined;
+  const providers = models?.["providers"] as Record<string, unknown> | undefined;
+  if (providers) {
+    const ids = Object.keys(providers);
+    if (ids.length > 0) return ids[0]!;
+  }
+  const auth = config["auth"] as Record<string, unknown> | undefined;
+  const profiles = auth?.["profiles"] as Record<string, Record<string, unknown>> | undefined;
+  if (profiles) {
+    for (const profile of Object.values(profiles)) {
+      if (profile["provider"]) return profile["provider"] as string;
+    }
+  }
+  return "unknown";
+}
+
+// ---------------------------------------------------------------------------
 // Provider base URLs (used when adding a new provider)
 // ---------------------------------------------------------------------------
 
@@ -144,23 +166,7 @@ export async function applyConfigPatch(
     // Legacy retro-compat: general.provider / general.apiKey
     // Treat as providers.update for the given provider
     if (g.provider !== undefined || g.apiKey !== undefined) {
-      const legacyProvider = g.provider ?? (() => {
-        // Detect current provider from config
-        const models = config["models"] as Record<string, unknown> | undefined;
-        const providers = models?.["providers"] as Record<string, unknown> | undefined;
-        if (providers) {
-          const ids = Object.keys(providers);
-          if (ids.length > 0) return ids[0]!;
-        }
-        const auth = config["auth"] as Record<string, unknown> | undefined;
-        const profiles = auth?.["profiles"] as Record<string, Record<string, unknown>> | undefined;
-        if (profiles) {
-          for (const profile of Object.values(profiles)) {
-            if (profile["provider"]) return profile["provider"] as string;
-          }
-        }
-        return "unknown";
-      })();
+      const legacyProvider = g.provider ?? detectCurrentProvider(config);
 
       if (g.apiKey !== undefined) {
         const envVar = PROVIDER_ENV_VARS[legacyProvider] ?? "";
@@ -367,20 +373,20 @@ export async function applyConfigPatch(
     const tmpPath = configPath + ".tmp";
     const content = JSON.stringify(config, null, 2);
     await conn.writeFile(tmpPath, content);
-    // Atomic rename — use execFile to avoid shell injection risks
-    await conn.execFile("mv", [tmpPath, configPath]);
+    // Atomic rename
+    await conn.rename(tmpPath, configPath);
   }
 
   // 12. Write .env if changed
   if (envChanged) {
     const tmpEnvPath = envPath + ".tmp";
     await conn.writeFile(tmpEnvPath, serializeEnv(envMap));
-    await conn.execFile("mv", [tmpEnvPath, envPath]);
+    await conn.rename(tmpEnvPath, envPath);
   }
 
   return {
     ok: true,
-    restarted: classification.requiresRestart,
+    requiresRestart: classification.requiresRestart,
     hotReloaded: classification.hotReloadOnly,
     warnings,
     restartReason: classification.restartReason ?? undefined,

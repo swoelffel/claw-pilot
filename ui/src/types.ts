@@ -1,3 +1,5 @@
+export type SidebarSection = "general" | "agents" | "telegram" | "plugins" | "gateway" | "devices";
+
 export interface InstanceInfo {
   id: number;
   slug: string;
@@ -279,7 +281,7 @@ export interface InstanceConfig {
 /** Result of PATCH /api/instances/:slug/config */
 export interface ConfigPatchResult {
   ok: boolean;
-  restarted: boolean;
+  requiresRestart: boolean;
   hotReloaded: boolean;
   warnings: string[];
   restartReason?: string;

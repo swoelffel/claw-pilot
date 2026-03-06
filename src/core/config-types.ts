@@ -205,7 +205,7 @@ export interface ChangeClassification {
 /** Result of applying a config patch */
 export interface ConfigPatchResult {
   ok: boolean;
-  restarted: boolean;
+  requiresRestart: boolean;
   hotReloaded: boolean;
   warnings: string[];
   restartReason?: string;
