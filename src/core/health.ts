@@ -38,6 +38,8 @@ export class HealthChecker {
       port: instance.port,
       gateway: "unknown",
       systemd: "unknown",
+      agentCount: 0,
+      pendingDevices: 0,
     };
 
     // 1. Service status (systemd or launchd)

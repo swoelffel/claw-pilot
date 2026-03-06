@@ -9,4 +9,7 @@ export default defineConfig({
   dts: false,
   banner: { js: "#!/usr/bin/env node" },
   external: ["better-sqlite3", "@hono/node-server"],
+  // Disable tree-shaking: rolldown aggressively eliminates property assignments
+  // on objects that are serialized via JSON.stringify / c.json() at runtime.
+  treeshake: false,
 });
