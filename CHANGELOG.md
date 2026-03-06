@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.11.2] — 2026-03-06
+
+### Fixed
+- **Self-update** : correction du PATH manquant en session non-interactive — `pnpm` et `node` (via nvm) n'étaient pas trouvés lors de l'exécution de `pnpm install` et `pnpm build` depuis le dashboard. Toutes les commandes d'update préfixent désormais le PATH avec `~/.nvm/versions/node/v24.14.0/bin`.
+
+---
+
 ## [0.11.1] — 2026-03-06
 
 ### Fixed

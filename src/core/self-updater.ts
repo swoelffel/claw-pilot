@@ -45,6 +45,17 @@ export class SelfUpdater {
     });
   }
 
+  // PATH etendu pour les sessions non-interactives (nvm, pnpm, node)
+  private static readonly _PATH =
+    "~/.nvm/versions/node/v24.14.0/bin:~/.npm-global/bin:/usr/local/bin:/usr/bin:/bin";
+
+  private _exec(cmd: string, opts?: { timeout?: number }) {
+    return this.conn.exec(
+      `export PATH="${SelfUpdater._PATH}:$PATH" && ${cmd}`,
+      opts,
+    );
+  }
+
   private async _execute(jobId: string, tag?: string): Promise<void> {
     const installDir = this._resolveInstallDir();
     const targetRef = tag ?? "main";
@@ -53,7 +64,7 @@ export class SelfUpdater {
 
     try {
       // 1. git fetch
-      const fetch = await this.conn.exec(
+      const fetch = await this._exec(
         `git -C "${installDir}" fetch --tags --prune`,
         { timeout: 60_000 },
       );
@@ -62,7 +73,7 @@ export class SelfUpdater {
       }
 
       // 2. git checkout tag
-      const checkout = await this.conn.exec(
+      const checkout = await this._exec(
         `git -C "${installDir}" checkout "${targetRef}"`,
         { timeout: 30_000 },
       );
@@ -71,7 +82,7 @@ export class SelfUpdater {
       }
 
       // 3. pnpm install
-      const install = await this.conn.exec(
+      const install = await this._exec(
         `pnpm --dir "${installDir}" install --frozen-lockfile`,
         { timeout: 180_000 },
       );
@@ -80,7 +91,7 @@ export class SelfUpdater {
       }
 
       // 4. pnpm build
-      const build = await this.conn.exec(
+      const build = await this._exec(
         `pnpm --dir "${installDir}" build`,
         { timeout: constants.SELF_UPDATE_TIMEOUT },
       );
@@ -101,7 +112,7 @@ export class SelfUpdater {
 
       // 5. systemctl restart — tue le process en cours, donc en dernier
       // On ne verifie pas le code de retour : le process sera tue avant
-      this.conn.exec(
+      this._exec(
         "systemctl --user restart claw-pilot-dashboard.service",
         { timeout: 10_000 },
       ).catch(() => {
