@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS events (
 
 const DEFAULT_CONFIG: Record<string, string> = {
   port_range_start: "18789",
-  port_range_end: "18799",
+  port_range_end: "18838",
   dashboard_port: "19000",
   health_check_interval_ms: "10000",
   openclaw_user: "openclaw",
@@ -257,6 +257,17 @@ const MIGRATIONS: Migration[] = [
           FROM instances;
         DROP TABLE instances;
         ALTER TABLE instances_v4 RENAME TO instances;
+      `);
+    },
+  },
+  {
+    // v5: align port_range_end default with constants.ts (18838 instead of 18799).
+    // Only updates existing DBs where the value is still the old default (<18838).
+    version: 5,
+    up(db) {
+      db.exec(`
+        UPDATE config SET value = '18838'
+        WHERE key = 'port_range_end' AND CAST(value AS INTEGER) < 18838;
       `);
     },
   },

@@ -5,6 +5,7 @@
 
 import type { ServerConnection } from "../server/connection.js";
 import type { DeviceList, PendingDevice, PairedDevice } from "./devices.js";
+import { shellEscape } from "../lib/shell.js";
 
 const PATH_PREFIX = "export PATH=~/.npm-global/bin:/usr/local/bin:/usr/bin:/bin";
 
@@ -47,7 +48,7 @@ export class DeviceManager {
   /** Approve a pending device request via `openclaw devices approve <requestId>` */
   async approve(stateDir: string, requestId: string): Promise<void> {
     const result = await this.conn.exec(
-      `${PATH_PREFIX} && OPENCLAW_STATE_DIR=${stateDir} openclaw devices approve ${requestId}`,
+      `${PATH_PREFIX} && OPENCLAW_STATE_DIR=${stateDir} openclaw devices approve ${shellEscape(requestId)}`,
     );
     if (result.exitCode !== 0) {
       throw new Error(result.stderr || "approve failed");
@@ -57,7 +58,7 @@ export class DeviceManager {
   /** Revoke a paired device via `openclaw devices revoke <deviceId>` */
   async revoke(stateDir: string, deviceId: string): Promise<void> {
     const result = await this.conn.exec(
-      `${PATH_PREFIX} && OPENCLAW_STATE_DIR=${stateDir} openclaw devices revoke ${deviceId}`,
+      `${PATH_PREFIX} && OPENCLAW_STATE_DIR=${stateDir} openclaw devices revoke ${shellEscape(deviceId)}`,
     );
     if (result.exitCode !== 0) {
       throw new Error(result.stderr || "revoke failed");

@@ -452,13 +452,14 @@ export class Provisioner {
         .replace(/\{\{date\}\}/g, date)
         .replace(
           /\{\{#each agents\}\}([\s\S]*?)\{\{\/each\}\}/g,
-          context.agents
-            .map((a) =>
-              `$1`
-                .replace(/\{\{this\.id\}\}/g, a.id)
-                .replace(/\{\{this\.name\}\}/g, a.name),
-            )
-            .join(""),
+          (_match, capturedBlock: string) =>
+            context.agents
+              .map((a) =>
+                capturedBlock
+                  .replace(/\{\{this\.id\}\}/g, a.id)
+                  .replace(/\{\{this\.name\}\}/g, a.name),
+              )
+              .join(""),
         );
 
       await this.conn.writeFile(path.join(workspacePath, file), content);

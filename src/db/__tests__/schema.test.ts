@@ -150,14 +150,14 @@ describe("initDatabase — fresh database", () => {
     const db = initDatabase(dbPath);
     const registry = new Registry(db);
     expect(registry.getConfig("port_range_start")).toBe("18789");
-    expect(registry.getConfig("port_range_end")).toBe("18799");
+    expect(registry.getConfig("port_range_end")).toBe("18838");
     expect(registry.getConfig("dashboard_port")).toBe("19000");
     db.close();
   });
 
-  it("reaches the latest schema version (4)", () => {
+  it("reaches the latest schema version (5)", () => {
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(4);
+    expect(schemaVersion(db)).toBe(5);
     db.close();
   });
 
@@ -202,12 +202,12 @@ describe("initDatabase — fresh database", () => {
 // ---------------------------------------------------------------------------
 
 describe("migration v1 → v4", () => {
-  it("applies all migrations and reaches version 4", () => {
+  it("applies all migrations and reaches version 5", () => {
     const v1 = buildV1Db(dbPath);
     v1.close();
 
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(4);
+    expect(schemaVersion(db)).toBe(5);
     db.close();
   });
 
@@ -300,7 +300,7 @@ describe("migration v1 → v4", () => {
 // ---------------------------------------------------------------------------
 
 describe("migration v2 → v4", () => {
-  it("applies only v3 and v4 migrations when starting from v2", () => {
+  it("applies only v3, v4 and v5 migrations when starting from v2", () => {
     // Build v1 then apply v2 manually
     const v1 = buildV1Db(dbPath);
     seedV1Data(v1);
@@ -334,7 +334,7 @@ describe("migration v2 → v4", () => {
     v1.close();
 
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(4);
+    expect(schemaVersion(db)).toBe(5);
     expect(tableNames(db)).toContain("blueprints");
     expect(columnNames(db, "agents")).toContain("blueprint_id");
     expect(columnNames(db, "instances")).not.toContain("nginx_domain");

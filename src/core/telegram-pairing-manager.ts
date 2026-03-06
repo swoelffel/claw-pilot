@@ -5,6 +5,7 @@
 // Mirrors the DeviceManager pattern exactly.
 
 import type { ServerConnection } from "../server/connection.js";
+import { shellEscape } from "../lib/shell.js";
 
 const PATH_PREFIX = "export PATH=~/.npm-global/bin:/usr/local/bin:/usr/bin:/bin";
 
@@ -72,8 +73,11 @@ export class TelegramPairingManager {
 
   /** Approve a pending DM pairing request via `openclaw pairing approve telegram <CODE>` */
   async approve(stateDir: string, code: string): Promise<void> {
+    if (!/^[A-Z0-9]{1,32}$/.test(code)) {
+      throw new Error(`Invalid pairing code format: ${code}`);
+    }
     const result = await this.conn.exec(
-      `${PATH_PREFIX} && OPENCLAW_STATE_DIR=${stateDir} openclaw pairing approve telegram ${code}`,
+      `${PATH_PREFIX} && OPENCLAW_STATE_DIR=${stateDir} openclaw pairing approve telegram ${shellEscape(code)}`,
     );
     if (result.exitCode !== 0) {
       throw new Error(result.stderr || "pairing approve failed");
