@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.12.1] — 2026-03-06
+
+### Fixed
+- **Self-update** : le navigateur se recharge automatiquement après la fin d'une mise à jour (`status === "done"`), sans intervention manuelle.
+
+---
+
 ## [0.12.0] — 2026-03-06
 
 ### Added
