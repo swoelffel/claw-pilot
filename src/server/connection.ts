@@ -43,6 +43,9 @@ export interface ServerConnection {
   /** Copy file */
   copyFile(src: string, dest: string): Promise<void>;
 
+  /** Atomically rename/move a file (same filesystem) */
+  rename(src: string, dst: string): Promise<void>;
+
   /** Server info */
   hostname(): Promise<string>;
   platform(): Promise<string>;

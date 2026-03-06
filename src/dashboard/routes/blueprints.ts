@@ -6,6 +6,7 @@ import type { Hono } from "hono";
 import type { Registry } from "../../core/registry.js";
 import type { RouteDeps } from "../route-deps.js";
 import { apiError } from "../route-deps.js";
+import { buildAgentPayload } from "./_helpers.js";
 
 /**
  * Seed workspace files (AGENTS.md, SOUL.md, etc.) for a blueprint agent.
@@ -78,29 +79,9 @@ async function seedBlueprintMainAgent(reg: Registry, blueprintId: number): Promi
 function buildBlueprintPayload(blueprintId: number, reg: Registry) {
   const data = reg.getBlueprintBuilderData(blueprintId);
   if (!data) return null;
-  const agentsWithFiles = data.agents.map((agent) => {
-    const files = reg.listAgentFiles(agent.id).map((f) => ({
-      filename: f.filename,
-      content_hash: f.content_hash,
-      size: f.content ? f.content.length : 0,
-      updated_at: f.updated_at,
-    }));
-    return {
-      id: agent.id,
-      agent_id: agent.agent_id,
-      name: agent.name,
-      model: agent.model,
-      workspace_path: agent.workspace_path,
-      is_default: agent.is_default === 1,
-      role: agent.role ?? null,
-      tags: agent.tags ?? null,
-      notes: agent.notes ?? null,
-      synced_at: agent.synced_at ?? null,
-      position_x: agent.position_x ?? null,
-      position_y: agent.position_y ?? null,
-      files,
-    };
-  });
+  const agentsWithFiles = data.agents.map((agent) =>
+    buildAgentPayload(agent, reg.listAgentFiles(agent.id))
+  );
 
   return {
     blueprint: data.blueprint,

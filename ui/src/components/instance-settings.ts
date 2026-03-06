@@ -815,7 +815,7 @@ export class InstanceSettings extends LitElement {
       const patch = this._buildPatch();
       const result: ConfigPatchResult = await patchInstanceConfig(this.slug, patch);
       if (result.ok) {
-        if (result.restarted) {
+        if (result.requiresRestart) {
           this._showToast(
             result.restartReason
               ? `${msg("Configuration saved", { id: "settings-saved" })} — ${msg("instance restarted", { id: "settings-restarted" })} (${result.restartReason})`

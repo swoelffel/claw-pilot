@@ -5,6 +5,7 @@ import type { AgentSync } from "./agent-sync.js";
 import { constants } from "../lib/constants.js";
 import { logger } from "../lib/logger.js";
 import { getServiceManager, getLaunchdDir, getLaunchdLabel, getLaunchdPlistPath } from "../lib/platform.js";
+import { normaliseModel } from "../lib/model-helpers.js";
 
 export interface DiscoveredAgent {
   id: string;
@@ -334,13 +335,7 @@ export class InstanceDiscovery {
       Record<string, unknown>
     >;
     // model can be a string or an object like {"primary": "..."}
-    const rawModel = agentsDefaults?.["model"];
-    const defaultModel: string | null =
-      typeof rawModel === "string"
-        ? rawModel
-        : rawModel !== null && typeof rawModel === "object"
-          ? JSON.stringify(rawModel)
-          : null;
+    const defaultModel: string | null = normaliseModel(agentsDefaults?.["model"]);
 
     // Main agent
     agents.push({
@@ -356,10 +351,7 @@ export class InstanceDiscovery {
       agents.push({
         id: agent["id"] as string,
         name: (agent["name"] as string | undefined) ?? (agent["id"] as string),
-        model: (() => {
-          const m = agent["model"];
-          return typeof m === "string" ? m : m !== null && typeof m === "object" ? JSON.stringify(m) : defaultModel;
-        })(),
+        model: normaliseModel(agent["model"]) ?? defaultModel,
         workspacePath: resolveAgentWorkspacePath(stateDir, agent["id"] as string, agent["workspace"] as string | undefined, agentsList),
         isDefault: false,
       });

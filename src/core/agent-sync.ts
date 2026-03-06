@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
 import { resolveAgentWorkspacePath } from "./discovery.js";
+import { normaliseModel } from "../lib/model-helpers.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -73,13 +74,6 @@ export interface SyncedLink {
 
 function hashContent(content: string): string {
   return createHash("sha256").update(content, "utf8").digest("hex");
-}
-
-/** Normalise a model value that may be a string or an object. */
-function normaliseModel(raw: unknown): string | null {
-  if (typeof raw === "string") return raw;
-  if (raw !== null && typeof raw === "object") return JSON.stringify(raw);
-  return null;
 }
 
 // ---------------------------------------------------------------------------

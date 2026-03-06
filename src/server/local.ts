@@ -101,6 +101,10 @@ export class LocalConnection implements ServerConnection {
     await fs.copyFile(src, dest);
   }
 
+  async rename(src: string, dst: string): Promise<void> {
+    await fs.rename(src, dst);
+  }
+
   async hostname(): Promise<string> {
     return os.hostname();
   }

@@ -279,7 +279,7 @@ export interface InstanceConfig {
 /** Result of PATCH /api/instances/:slug/config */
 export interface ConfigPatchResult {
   ok: boolean;
-  restarted: boolean;
+  requiresRestart: boolean;
   hotReloaded: boolean;
   warnings: string[];
   restartReason?: string;

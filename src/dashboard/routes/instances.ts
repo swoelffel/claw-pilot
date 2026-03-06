@@ -23,6 +23,7 @@ import { TelegramPairingManager } from "../../core/telegram-pairing-manager.js";
 import { InstanceDiscovery } from "../../core/discovery.js";
 import { getOpenClawHome } from "../../lib/platform.js";
 import { OpenClawCLI } from "../../core/openclaw-cli.js";
+import { buildAgentPayload } from "./_helpers.js";
 
 export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
   const { registry, conn, health, lifecycle, tokenCache, xdgRuntimeDir } = deps;
@@ -210,7 +211,7 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
       );
 
       // If restart required and instance is running, restart the daemon
-      if (result.restarted && instance.state === "running") {
+      if (result.requiresRestart && instance.state === "running") {
         try {
           await lifecycle.restart(slug);
         } catch (err) {
@@ -257,29 +258,9 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
     const links = registry.listAgentLinks(instance.id);
 
     // For each agent, attach a file summary (no content — content is fetched separately)
-    const agentsWithFiles = agents.map((agent) => {
-      const files = registry.listAgentFiles(agent.id).map((f) => ({
-        filename: f.filename,
-        content_hash: f.content_hash,
-        size: f.content ? f.content.length : 0,
-        updated_at: f.updated_at,
-      }));
-      return {
-        id: agent.id,
-        agent_id: agent.agent_id,
-        name: agent.name,
-        model: agent.model,
-        workspace_path: agent.workspace_path,
-        is_default: agent.is_default === 1,
-        role: agent.role ?? null,
-        tags: agent.tags ?? null,
-        notes: agent.notes ?? null,
-        synced_at: agent.synced_at ?? null,
-        position_x: agent.position_x ?? null,
-        position_y: agent.position_y ?? null,
-        files,
-      };
-    });
+    const agentsWithFiles = agents.map((agent) =>
+      buildAgentPayload(agent, registry.listAgentFiles(agent.id))
+    );
 
     return c.json({
       instance: {
@@ -389,29 +370,9 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
     // Return fresh builder payload
     const agents = registry.listAgents(slug);
     const links = registry.listAgentLinks(instance.id);
-    const agentsWithFiles = agents.map((agent) => {
-      const files = registry.listAgentFiles(agent.id).map((f) => ({
-        filename: f.filename,
-        content_hash: f.content_hash,
-        size: f.content ? f.content.length : 0,
-        updated_at: f.updated_at,
-      }));
-      return {
-        id: agent.id,
-        agent_id: agent.agent_id,
-        name: agent.name,
-        model: agent.model,
-        workspace_path: agent.workspace_path,
-        is_default: agent.is_default === 1,
-        role: agent.role ?? null,
-        tags: agent.tags ?? null,
-        notes: agent.notes ?? null,
-        synced_at: agent.synced_at ?? null,
-        position_x: agent.position_x ?? null,
-        position_y: agent.position_y ?? null,
-        files,
-      };
-    });
+    const agentsWithFiles = agents.map((agent) =>
+      buildAgentPayload(agent, registry.listAgentFiles(agent.id))
+    );
 
     return c.json({
       instance: {
@@ -455,29 +416,9 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps) {
     // Return fresh builder payload
     const agents = registry.listAgents(slug);
     const links = registry.listAgentLinks(instance.id);
-    const agentsWithFiles = agents.map((agent) => {
-      const files = registry.listAgentFiles(agent.id).map((f) => ({
-        filename: f.filename,
-        content_hash: f.content_hash,
-        size: f.content ? f.content.length : 0,
-        updated_at: f.updated_at,
-      }));
-      return {
-        id: agent.id,
-        agent_id: agent.agent_id,
-        name: agent.name,
-        model: agent.model,
-        workspace_path: agent.workspace_path,
-        is_default: agent.is_default === 1,
-        role: agent.role ?? null,
-        tags: agent.tags ?? null,
-        notes: agent.notes ?? null,
-        synced_at: agent.synced_at ?? null,
-        position_x: agent.position_x ?? null,
-        position_y: agent.position_y ?? null,
-        files,
-      };
-    });
+    const agentsWithFiles = agents.map((agent) =>
+      buildAgentPayload(agent, registry.listAgentFiles(agent.id))
+    );
 
     return c.json({
       instance: {

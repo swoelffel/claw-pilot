@@ -361,34 +361,23 @@ export async function importInstanceTeam(
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Merge team data into an existing openclaw.json config.
- * Only modifies agents.defaults, agents.list[], and tools.agentToAgent.
- * All other sections (providers, telegram, mem0, etc.) are preserved.
- */
-function mergeTeamIntoConfig(
-  config: Record<string, unknown>,
+/** Update agents.defaults from team.defaults and the default agent's config. */
+function buildDefaultsSection(
+  existingDefaults: Record<string, unknown>,
   team: TeamFile,
-): void {
-  // Ensure agents section exists
-  if (!config["agents"] || typeof config["agents"] !== "object") {
-    config["agents"] = {};
-  }
-  const agentsConf = config["agents"] as Record<string, unknown>;
+): Record<string, unknown> {
+  let merged: Record<string, unknown> = { ...existingDefaults };
 
-  // 1. Update agents.defaults
+  // Apply top-level team.defaults first
   if (team.defaults) {
-    const existingDefaults = (agentsConf["defaults"] ?? {}) as Record<string, unknown>;
-    agentsConf["defaults"] = { ...existingDefaults, ...team.defaults };
+    merged = { ...merged, ...team.defaults };
   }
 
-  // Also merge the default agent's config into agents.defaults
+  // Then merge the default agent's config into agents.defaults
   const defaultAgent = team.agents.find((a) => a.is_default);
   if (defaultAgent?.config) {
-    const existingDefaults = (agentsConf["defaults"] ?? {}) as Record<string, unknown>;
     const { model, identity, subagents, heartbeat, sandbox, tools, params, skills, humanDelay, groupChat } =
       defaultAgent.config;
-    const merged: Record<string, unknown> = { ...existingDefaults };
     if (model !== undefined) merged["model"] = model;
     if (identity !== undefined) merged["identity"] = identity;
     if (subagents !== undefined) merged["subagents"] = { ...(merged["subagents"] as Record<string, unknown> ?? {}), ...subagents };
@@ -399,10 +388,14 @@ function mergeTeamIntoConfig(
     if (skills !== undefined) merged["skills"] = skills;
     if (humanDelay !== undefined) merged["humanDelay"] = humanDelay;
     if (groupChat !== undefined) merged["groupChat"] = groupChat;
-    agentsConf["defaults"] = merged;
   }
 
-  // 2. Rebuild agents.list[] from non-default agents
+  return merged;
+}
+
+/** Build the agents.list[] array from non-default agents + default agent entry. */
+function buildAgentsList(team: TeamFile): Array<Record<string, unknown>> {
+  // Rebuild agents.list[] from non-default agents
   // NOTE: spawn links for the default agent (main) are handled via a dedicated
   // list[] entry for "main" appended below. OpenClaw rejects allowAgents inside
   // agents.defaults.subagents — it is only valid inside list[].subagents.
@@ -450,6 +443,7 @@ function mergeTeamIntoConfig(
   // - subagents.allowAgents carries spawn links (only valid location in list[],
   //   OpenClaw rejects it in defaults.subagents).
   // Prepend so main appears first in the list, matching the source instance order.
+  const defaultAgent = team.agents.find((a) => a.is_default);
   if (defaultAgent) {
     const mainSpawnTargets = team.links
       .filter((l) => l.type === "spawn" && l.source === defaultAgent.id)
@@ -466,14 +460,34 @@ function mergeTeamIntoConfig(
     agentsList.unshift(mainEntry);
   }
 
-  agentsConf["list"] = agentsList;
+  return agentsList;
+}
 
-  // 3. Update tools.agentToAgent
-  if (team.agent_to_agent) {
-    if (!config["tools"] || typeof config["tools"] !== "object") {
-      config["tools"] = {};
-    }
-    (config["tools"] as Record<string, unknown>)["agentToAgent"] = team.agent_to_agent;
+/** Extract tools.agentToAgent from team if present. */
+function buildAgentToAgentSection(team: TeamFile): unknown | undefined {
+  return team.agent_to_agent;
+}
+
+/**
+ * Merge team data into an existing openclaw.json config.
+ * Only modifies agents.defaults, agents.list[], and tools.agentToAgent.
+ * All other sections (providers, telegram, mem0, etc.) are preserved.
+ */
+function mergeTeamIntoConfig(
+  config: Record<string, unknown>,
+  team: TeamFile,
+): void {
+  if (!config["agents"] || typeof config["agents"] !== "object") config["agents"] = {};
+  const agentsConf = config["agents"] as Record<string, unknown>;
+
+  const existingDefaults = (agentsConf["defaults"] ?? {}) as Record<string, unknown>;
+  agentsConf["defaults"] = buildDefaultsSection(existingDefaults, team);
+  agentsConf["list"] = buildAgentsList(team);
+
+  const a2a = buildAgentToAgentSection(team);
+  if (a2a !== undefined) {
+    if (!config["tools"] || typeof config["tools"] !== "object") config["tools"] = {};
+    (config["tools"] as Record<string, unknown>)["agentToAgent"] = a2a;
   }
 }
 

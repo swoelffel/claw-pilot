@@ -8,6 +8,181 @@ import { logger } from "../lib/logger.js";
 import { withContext } from "./_context.js";
 import { exportInstanceTeam, exportBlueprintTeam, serializeTeamYaml } from "../core/team-export.js";
 import { parseAndValidateTeam, importInstanceTeam, importBlueprintTeam } from "../core/team-import.js";
+import type { Registry } from "../core/registry.js";
+import type { ServerConnection } from "../server/connection.js";
+import type Database from "better-sqlite3";
+
+async function handleBlueprintImport(
+  blueprintArg: string,
+  filePath: string,
+  opts: { dryRun?: boolean; yes?: boolean },
+  deps: { registry: Registry; db: Database.Database },
+): Promise<void> {
+  // Read and validate file
+  logger.step(`Validating ${filePath}...`);
+  let yamlContent: string;
+  try {
+    yamlContent = await fs.readFile(path.resolve(filePath), "utf-8");
+  } catch {
+    logger.error(`Could not read file: ${filePath}`);
+    process.exit(1);
+  }
+
+  const parsed = parseAndValidateTeam(yamlContent);
+  if (!parsed.success) {
+    logger.error("Validation failed:");
+    if (parsed.error.message) {
+      logger.fail(parsed.error.message);
+    }
+    if (parsed.error.details) {
+      for (const d of parsed.error.details) {
+        logger.fail(`  ${d.path ? d.path + ": " : ""}${d.message}`);
+      }
+    }
+    process.exit(1);
+  }
+
+  const team = parsed.data;
+  const fileCount = team.agents.reduce(
+    (sum, a) => sum + Object.keys(a.files ?? {}).length,
+    0,
+  );
+
+  const blueprints = deps.registry.listBlueprints();
+  const bp =
+    blueprints.find((b) => b.name === blueprintArg) ??
+    blueprints.find((b) => b.id === Number(blueprintArg));
+  if (!bp) {
+    logger.error(`Blueprint "${blueprintArg}" not found.`);
+    process.exit(1);
+  }
+
+  const currentAgents = deps.registry.listBlueprintAgents(bp.id);
+
+  console.log(`  Format version: ${team.version}`);
+  if (team.source) console.log(`  Source: ${team.source}`);
+  console.log(`  Agents: ${team.agents.length} (current: ${currentAgents.length} — will be replaced)`);
+  console.log(`  Links: ${team.links.length}`);
+  console.log(`  Files: ${fileCount}`);
+
+  if (opts.dryRun) {
+    console.log(chalk.dim("\nDry run complete. No changes made."));
+    return;
+  }
+
+  if (!opts.yes) {
+    console.log(
+      chalk.yellow(
+        `\nWARNING: This will replace ALL agents, files, and links for blueprint "${bp.name}".`,
+      ),
+    );
+    console.log(chalk.yellow("This action cannot be undone.\n"));
+    const proceed = await confirm({ message: "Proceed?", default: false });
+    if (!proceed) {
+      console.log("Aborted.");
+      return;
+    }
+  }
+
+  logger.step("Importing...");
+  const result = importBlueprintTeam(deps.db, deps.registry, bp.id, team);
+  if ("agents_imported" in result) {
+    logger.success(`Removed ${currentAgents.length} existing agents`);
+    logger.success(`Created ${result.agents_imported} agents`);
+    logger.success(`Written ${result.files_written} workspace files`);
+    logger.success(`Created ${result.links_imported} links`);
+    console.log(chalk.green("\nImport complete."));
+  }
+}
+
+async function handleInstanceImport(
+  slug: string,
+  filePath: string,
+  opts: { dryRun?: boolean; yes?: boolean },
+  deps: { registry: Registry; conn: ServerConnection; db: Database.Database; xdgRuntimeDir: string },
+): Promise<void> {
+  // Read and validate file
+  logger.step(`Validating ${filePath}...`);
+  let yamlContent: string;
+  try {
+    yamlContent = await fs.readFile(path.resolve(filePath), "utf-8");
+  } catch {
+    logger.error(`Could not read file: ${filePath}`);
+    process.exit(1);
+  }
+
+  const parsed = parseAndValidateTeam(yamlContent);
+  if (!parsed.success) {
+    logger.error("Validation failed:");
+    if (parsed.error.message) {
+      logger.fail(parsed.error.message);
+    }
+    if (parsed.error.details) {
+      for (const d of parsed.error.details) {
+        logger.fail(`  ${d.path ? d.path + ": " : ""}${d.message}`);
+      }
+    }
+    process.exit(1);
+  }
+
+  const team = parsed.data;
+  const fileCount = team.agents.reduce(
+    (sum, a) => sum + Object.keys(a.files ?? {}).length,
+    0,
+  );
+
+  const instance = deps.registry.getInstance(slug);
+  if (!instance) {
+    logger.error(`Instance "${slug}" not found.`);
+    process.exit(1);
+  }
+
+  const currentAgents = deps.registry.listAgents(slug);
+
+  console.log(`  Format version: ${team.version}`);
+  if (team.source) console.log(`  Source: ${team.source}`);
+  console.log(`  Agents: ${team.agents.length} (current: ${currentAgents.length} — will be replaced)`);
+  console.log(`  Links: ${team.links.length}`);
+  console.log(`  Files: ${fileCount}`);
+
+  if (opts.dryRun) {
+    console.log(chalk.dim("\nDry run complete. No changes made."));
+    return;
+  }
+
+  if (!opts.yes) {
+    console.log(
+      chalk.yellow(
+        `\nWARNING: This will replace ALL agents, files, and links for instance "${slug}".`,
+      ),
+    );
+    console.log(chalk.yellow("This action cannot be undone.\n"));
+    const proceed = await confirm({ message: "Proceed?", default: false });
+    if (!proceed) {
+      console.log("Aborted.");
+      return;
+    }
+  }
+
+  logger.step("Importing...");
+  const result = await importInstanceTeam(
+    deps.db,
+    deps.registry,
+    deps.conn,
+    instance,
+    team,
+    deps.xdgRuntimeDir,
+  );
+  if ("agents_imported" in result) {
+    logger.success(`Removed ${currentAgents.length} existing agents`);
+    logger.success(`Created ${result.agents_imported} agents`);
+    logger.success(`Written ${result.files_written} workspace files`);
+    logger.success(`Created ${result.links_imported} links`);
+    logger.success("Regenerated openclaw.json");
+    logger.success("Restarted daemon");
+    console.log(chalk.green("\nImport complete."));
+  }
+}
 
 export function teamCommand(): Command {
   const team = new Command("team").description("Export/import agent teams as YAML files");
@@ -106,141 +281,21 @@ export function teamCommand(): Command {
             process.exit(1);
           }
 
-          // Read and validate file
-          logger.step(`Validating ${filePath}...`);
-          let yamlContent: string;
-          try {
-            yamlContent = await fs.readFile(path.resolve(filePath), "utf-8");
-          } catch {
-            logger.error(`Could not read file: ${filePath}`);
-            process.exit(1);
-          }
-
-          const parsed = parseAndValidateTeam(yamlContent);
-          if (!parsed.success) {
-            logger.error("Validation failed:");
-            if (parsed.error.message) {
-              logger.fail(parsed.error.message);
-            }
-            if (parsed.error.details) {
-              for (const d of parsed.error.details) {
-                logger.fail(`  ${d.path ? d.path + ": " : ""}${d.message}`);
-              }
-            }
-            process.exit(1);
-          }
-
-          const team = parsed.data;
-          const fileCount = team.agents.reduce(
-            (sum, a) => sum + Object.keys(a.files ?? {}).length,
-            0,
-          );
-
           if (opts.blueprint) {
-            // Import into blueprint
-            const blueprints = registry.listBlueprints();
-            const bp =
-              blueprints.find((b) => b.name === opts.blueprint) ??
-              blueprints.find((b) => b.id === Number(opts.blueprint));
-            if (!bp) {
-              logger.error(`Blueprint "${opts.blueprint}" not found.`);
-              process.exit(1);
-            }
-
-            const currentAgents = registry.listBlueprintAgents(bp.id);
-
-            console.log(`  Format version: ${team.version}`);
-            if (team.source) console.log(`  Source: ${team.source}`);
-            console.log(`  Agents: ${team.agents.length} (current: ${currentAgents.length} — will be replaced)`);
-            console.log(`  Links: ${team.links.length}`);
-            console.log(`  Files: ${fileCount}`);
-
-            if (opts.dryRun) {
-              console.log(chalk.dim("\nDry run complete. No changes made."));
-              return;
-            }
-
-            if (!opts.yes) {
-              console.log(
-                chalk.yellow(
-                  `\nWARNING: This will replace ALL agents, files, and links for blueprint "${bp.name}".`,
-                ),
-              );
-              console.log(chalk.yellow("This action cannot be undone.\n"));
-              const proceed = await confirm({ message: "Proceed?", default: false });
-              if (!proceed) {
-                console.log("Aborted.");
-                return;
-              }
-            }
-
-            logger.step("Importing...");
-            const result = importBlueprintTeam(db, registry, bp.id, team);
-            if ("agents_imported" in result) {
-              logger.success(`Removed ${currentAgents.length} existing agents`);
-              logger.success(`Created ${result.agents_imported} agents`);
-              logger.success(`Written ${result.files_written} workspace files`);
-              logger.success(`Created ${result.links_imported} links`);
-              console.log(chalk.green("\nImport complete."));
-            }
+            // Dispatch to blueprint handler
+            await handleBlueprintImport(opts.blueprint, filePath, opts, { registry, db });
           } else {
-            // Import into instance
+            // Dispatch to instance handler
             if (!slug) {
               logger.error("Please provide an instance slug or use --blueprint.");
               process.exit(1);
             }
-
-            const instance = registry.getInstance(slug);
-            if (!instance) {
-              logger.error(`Instance "${slug}" not found.`);
-              process.exit(1);
-            }
-
-            const currentAgents = registry.listAgents(slug);
-
-            console.log(`  Format version: ${team.version}`);
-            if (team.source) console.log(`  Source: ${team.source}`);
-            console.log(`  Agents: ${team.agents.length} (current: ${currentAgents.length} — will be replaced)`);
-            console.log(`  Links: ${team.links.length}`);
-            console.log(`  Files: ${fileCount}`);
-
-            if (opts.dryRun) {
-              console.log(chalk.dim("\nDry run complete. No changes made."));
-              return;
-            }
-
-            if (!opts.yes) {
-              console.log(
-                chalk.yellow(
-                  `\nWARNING: This will replace ALL agents, files, and links for instance "${slug}".`,
-                ),
-              );
-              console.log(chalk.yellow("This action cannot be undone.\n"));
-              const proceed = await confirm({ message: "Proceed?", default: false });
-              if (!proceed) {
-                console.log("Aborted.");
-                return;
-              }
-            }
-
-            logger.step("Importing...");
-            const result = await importInstanceTeam(
-              db,
+            await handleInstanceImport(slug, filePath, opts, {
               registry,
               conn,
-              instance,
-              team,
+              db,
               xdgRuntimeDir,
-            );
-            if ("agents_imported" in result) {
-              logger.success(`Removed ${currentAgents.length} existing agents`);
-              logger.success(`Created ${result.agents_imported} agents`);
-              logger.success(`Written ${result.files_written} workspace files`);
-              logger.success(`Created ${result.links_imported} links`);
-              logger.success("Regenerated openclaw.json");
-              logger.success("Restarted daemon");
-              console.log(chalk.green("\nImport complete."));
-            }
+            });
           }
         });
       },
