@@ -775,3 +775,166 @@ describe("PATCH /api/blueprints/:id/agents/:agentId/spawn-links", () => {
     expect(body.links[0].link_type).toBe("spawn");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Device routes
+// ---------------------------------------------------------------------------
+
+describe("Device routes", () => {
+  it("GET /api/instances/:slug/devices — returns empty device list when no files", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/devices", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.pending).toEqual([]);
+    expect(body.paired).toEqual([]);
+  });
+
+  it("GET /api/instances/:slug/devices — returns 404 for unknown slug", async () => {
+    const res = await ctx.app.request("/api/instances/nonexistent/devices", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("POST /api/instances/:slug/devices/approve — returns 400 when requestId missing", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/devices/approve", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("FIELD_REQUIRED");
+  });
+
+  it("POST /api/instances/:slug/devices/approve — returns 404 for unknown slug", async () => {
+    const res = await ctx.app.request("/api/instances/nonexistent/devices/approve", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ requestId: "req-123" }),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("DELETE /api/instances/:slug/devices/:deviceId — returns 404 for unknown slug", async () => {
+    const res = await ctx.app.request("/api/instances/nonexistent/devices/device-abc", {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("GET /api/instances/:slug/devices — returns device list when files exist", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    // Seed device files
+    ctx.conn.files.set(
+      `/opt/openclaw/.openclaw-demo1/devices/pending.json`,
+      JSON.stringify([{ id: "req-1", name: "My Phone", createdAt: "2026-01-01T00:00:00Z" }]),
+    );
+    ctx.conn.files.set(
+      `/opt/openclaw/.openclaw-demo1/devices/paired.json`,
+      JSON.stringify([]),
+    );
+
+    const res = await ctx.app.request("/api/instances/demo1/devices", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.pending).toHaveLength(1);
+    expect(body.paired).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Telegram pairing routes
+// ---------------------------------------------------------------------------
+
+describe("Telegram pairing routes", () => {
+  it("GET /api/instances/:slug/telegram/pairing — returns empty pairing list", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/telegram/pairing", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.pending).toEqual([]);
+    expect(body.approved).toEqual([]);
+  });
+
+  it("GET /api/instances/:slug/telegram/pairing — returns 404 for unknown slug", async () => {
+    const res = await ctx.app.request("/api/instances/nonexistent/telegram/pairing", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("POST /api/instances/:slug/telegram/pairing/approve — returns 400 when code missing", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/telegram/pairing/approve", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("FIELD_REQUIRED");
+  });
+
+  it("POST /api/instances/:slug/telegram/pairing/approve — returns 404 for unknown slug", async () => {
+    const res = await ctx.app.request("/api/instances/nonexistent/telegram/pairing/approve", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ code: "ABCD1234" }),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("GET /api/instances/:slug/telegram/pairing — returns pairing data when files exist", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    // Seed telegram pairing files
+    ctx.conn.files.set(
+      `/opt/openclaw/.openclaw-demo1/credentials/telegram-pairing.json`,
+      JSON.stringify({
+        version: 1,
+        requests: [
+          {
+            id: "123456789",
+            code: "ABCD1234",
+            createdAt: "2026-01-01T00:00:00Z",
+            lastSeenAt: "2026-01-01T00:00:00Z",
+            meta: { username: "testuser" },
+          },
+        ],
+      }),
+    );
+    ctx.conn.files.set(
+      `/opt/openclaw/.openclaw-demo1/credentials/telegram-allowFrom.json`,
+      JSON.stringify({ version: 1, allowFrom: ["987654321"] }),
+    );
+
+    const res = await ctx.app.request("/api/instances/demo1/telegram/pairing", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.pending).toHaveLength(1);
+    expect(body.pending[0].code).toBe("ABCD1234");
+    expect(body.approved).toHaveLength(1);
+    expect(body.approved[0]).toBe("987654321");
+  });
+});
