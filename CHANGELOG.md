@@ -6,6 +6,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.12.0] — 2026-03-06
+
+### Added
+- **Tests** : 296 tests couvrant provisioner, agent-sync, team-import et routes dashboard (22 fichiers de test)
+
+### Changed
+- **Architecture routes** : `src/dashboard/routes/instances.ts` (1036 lignes) découpé en 6 modules spécialisés (`lifecycle`, `config`, `agents`, `devices`, `discover`, `index`)
+- **Team import** : refactoring DRY — logique dupliquée entre `team.ts` et `instances.ts` centralisée dans `core/team-import.ts`
+- **Build** : `treeshake: false` dans tsdown pour éviter que rolldown élimine les property assignments sérialisés dynamiquement via `c.json()`
+
+### Fixed
+- **Device pairing banner** : `pendingDevices` n'était pas propagé via WebSocket ni retourné par `/api/instances` — corrigé à deux niveaux : parsing `pending.json` (objet keyed vs array), propagation WS dans `_handleWsMessage`
+- **Navigation directe Devices** : le champ `section` était perdu dans la chaîne `instance-card → cluster-view → app → instance-settings` — corrigé end-to-end (`Route` type, `_navigate`, `_onNavigate`, `connectedCallback`)
+- **Boutons Approve** : spinner + disabled pendant l'appel API pour éviter les double-clics
+- **Sécurité** : suppression de tokens exposés dans les logs, validation des entrées renforcée
+- **DB** : incohérences de schéma corrigées, migrations additives uniquement
+
+---
+
 ## [0.11.2] — 2026-03-06
 
 ### Fixed
