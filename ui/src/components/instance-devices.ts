@@ -147,8 +147,23 @@ export class InstanceDevices extends LitElement {
     }
 
     .btn-approve:disabled {
-      opacity: 0.5;
+      opacity: 0.6;
       cursor: not-allowed;
+    }
+
+    .spinner-inline {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border: 2px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
 
     .btn-approve-all {
@@ -295,6 +310,8 @@ export class InstanceDevices extends LitElement {
   @state() private _error = "";
   @state() private _confirmRevoke: string | null = null;
   @state() private _pollTimer: ReturnType<typeof setInterval> | null = null;
+  @state() private _approvingIds: Set<string> = new Set();
+  @state() private _approvingAll = false;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -355,24 +372,43 @@ export class InstanceDevices extends LitElement {
   }
 
   private async _approve(requestId: string): Promise<void> {
+    this._approvingIds = new Set([...this._approvingIds, requestId]);
+    this._error = "";
     try {
       await approveDevice(this.slug, requestId);
       await this._load();
     } catch (err) {
       this._error = userMessage(err);
+    } finally {
+      const next = new Set(this._approvingIds);
+      next.delete(requestId);
+      this._approvingIds = next;
     }
   }
 
   private async _approveAll(): Promise<void> {
     if (!this._devices) return;
+    this._approvingAll = true;
+    this._error = "";
     for (const d of this._devices.pending) {
-      try {
-        await approveDevice(this.slug, d.requestId);
-      } catch {
-        // Continue with remaining devices even if one fails
-      }
+      this._approvingIds = new Set([...this._approvingIds, d.requestId]);
     }
-    await this._load();
+    try {
+      for (const d of this._devices.pending) {
+        try {
+          await approveDevice(this.slug, d.requestId);
+        } catch {
+          // Continue with remaining devices even if one fails
+        } finally {
+          const next = new Set(this._approvingIds);
+          next.delete(d.requestId);
+          this._approvingIds = next;
+        }
+      }
+      await this._load();
+    } finally {
+      this._approvingAll = false;
+    }
   }
 
   private async _revoke(deviceId: string): Promise<void> {
@@ -387,6 +423,7 @@ export class InstanceDevices extends LitElement {
   }
 
   private _renderPendingDevice(d: PendingDevice) {
+    const isApproving = this._approvingIds.has(d.requestId);
     return html`
       <div class="device-row">
         <span class="device-platform">${d.platform}</span>
@@ -395,8 +432,12 @@ export class InstanceDevices extends LitElement {
         <div class="device-actions">
           <button
             class="btn-approve"
+            ?disabled=${isApproving}
             @click=${() => { void this._approve(d.requestId); }}
-          >Approve</button>
+          >${isApproving
+            ? html`<span class="spinner-inline"></span>`
+            : "Approve"
+          }</button>
         </div>
       </div>
     `;
@@ -452,7 +493,9 @@ export class InstanceDevices extends LitElement {
               <div class="pending-header">
                 <span class="pending-title">Pending (${devices.pending.length})</span>
                 ${devices.pending.length > 1
-                  ? html`<button class="btn-approve-all" @click=${() => { void this._approveAll(); }}>Approve all</button>`
+                  ? html`<button class="btn-approve-all" ?disabled=${this._approvingAll} @click=${() => { void this._approveAll(); }}>
+                      ${this._approvingAll ? html`<span class="spinner-inline"></span>` : "Approve all"}
+                    </button>`
                   : nothing}
               </div>
               ${devices.pending.map((d) => this._renderPendingDevice(d))}
