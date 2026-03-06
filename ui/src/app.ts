@@ -571,10 +571,15 @@ export class CpApp extends LitElement {
       });
       if (!res.ok) return;
       const data = (await res.json()) as SelfUpdateStatus;
+      const wasRunning = this._selfUpdateStatus?.status === "running";
       this._selfUpdateStatus = data;
-      // Si un job est en cours, accelrer le polling pour rafraichir l'etat
+      // Si un job est en cours, accelerer le polling pour rafraichir l'etat
       if (data.status === "running") {
         setTimeout(() => { void this._pollSelfUpdate(); }, 3_000);
+      }
+      // Si le job vient de passer a "done", recharger la page pour charger le nouveau bundle
+      if (wasRunning && data.status === "done") {
+        setTimeout(() => { location.reload(); }, 2_000);
       }
     } catch {
       // Silencieux — le serveur peut etre en cours de restart
