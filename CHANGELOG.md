@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.11.0] — 2026-03-06
+
+### Added
+- **Self-update** : claw-pilot peut désormais se mettre à jour lui-même via GitHub Releases. Le dashboard affiche une bannière dès qu'une nouvelle version est disponible, et la commande CLI `claw-pilot update [--check] [--yes]` permet de déclencher la mise à jour (git fetch + checkout tag + pnpm build + redémarrage systemd automatique).
+
+### Fixed
+- **Self-update checker** : correction du chemin `require()` vers `package.json` après bundling tsdown (`../package.json` au lieu de `../../package.json`), qui causait `currentVersion: "0.0.0"`.
+
+---
+
 ## [0.10.2] — 2026-03-05
 
 ### Fixed
