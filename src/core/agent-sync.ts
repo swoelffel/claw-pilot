@@ -2,6 +2,7 @@
 import { createHash } from "node:crypto";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
+import { resolveAgentWorkspacePath } from "./discovery.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -135,22 +136,13 @@ export class AgentSync {
 
     const configAgents: ConfigAgent[] = [];
 
-    /** Resolve a workspace field to an absolute path.
-     *  If the value is already absolute, use it as-is.
-     *  Otherwise treat it as a relative name under {stateDir}/workspaces/. */
-    const resolveWorkspace = (workspace: string | undefined, fallback: string): string => {
-      if (!workspace) return `${stateDir}/workspaces/${fallback}`;
-      if (workspace.startsWith("/")) return workspace;
-      return `${stateDir}/workspaces/${workspace}`;
-    };
-
     // Main agent — use defaults.workspace if present
     const defaultWorkspace = agentsDefaults?.["workspace"] as string | undefined;
     configAgents.push({
       agentId: "main",
       name: (agentsDefaults?.["name"] as string | undefined) ?? "Main",
       model: defaultModel,
-      workspacePath: resolveWorkspace(defaultWorkspace, "main"),
+      workspacePath: resolveAgentWorkspacePath(stateDir, "main", defaultWorkspace, agentsList),
       isDefault: true,
       rawBlock: agentsDefaults ?? {},
     });
@@ -164,7 +156,7 @@ export class AgentSync {
         agentId,
         name: (agent["name"] as string | undefined) ?? agentId,
         model: normaliseModel(agent["model"]) ?? defaultModel,
-        workspacePath: resolveWorkspace(agent["workspace"] as string | undefined, agentId),
+        workspacePath: resolveAgentWorkspacePath(stateDir, agentId, agent["workspace"] as string | undefined, agentsList),
         isDefault: false,
         rawBlock: agent,
       });

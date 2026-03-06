@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.11.1] — 2026-03-06
+
+### Fixed
+- **Discover / Agent sync** : correction du chemin workspace pour les instances OpenClaw installées manuellement (layout natif). L'agent "main" d'une instance sans `agents.list` ni `agents.defaults.workspace` pointe désormais sur `<stateDir>/workspace/` (singulier, convention OpenClaw) au lieu de `<stateDir>/workspaces/main/` (layout claw-pilot). Les fichiers AGENTS.md, SOUL.md, etc. sont correctement lus et affichés dans le dashboard.
+
+---
+
 ## [0.11.0] — 2026-03-06
 
 ### Added
