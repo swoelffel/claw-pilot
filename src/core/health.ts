@@ -119,10 +119,12 @@ export class HealthChecker {
     }
 
     // 6. Pending device count (best-effort — non-fatal)
+    // pending.json can be an array OR an object keyed by requestId — handle both
     try {
       const pendingPath = `${instance.state_dir}/devices/pending.json`;
       const raw = await this.conn.readFile(pendingPath);
-      const pending = JSON.parse(raw) as Array<unknown>;
+      const parsed = JSON.parse(raw) as Array<unknown> | Record<string, unknown>;
+      const pending = Array.isArray(parsed) ? parsed : Object.values(parsed);
       status.pendingDevices = pending.length;
     } catch {
       status.pendingDevices = 0;
