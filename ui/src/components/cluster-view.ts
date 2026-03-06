@@ -161,10 +161,10 @@ export class ClusterView extends LitElement {
   }
 
   private _onNavigate(e: Event): void {
-    const slug = (e as CustomEvent<{ slug: string }>).detail.slug;
+    const detail = (e as CustomEvent<Record<string, unknown>>).detail;
     this.dispatchEvent(
       new CustomEvent("navigate", {
-        detail: { slug },
+        detail,
         bubbles: true,
         composed: true,
       }),

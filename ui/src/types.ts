@@ -1,3 +1,5 @@
+export type SidebarSection = "general" | "agents" | "telegram" | "plugins" | "gateway" | "devices";
+
 export interface InstanceInfo {
   id: number;
   slug: string;
