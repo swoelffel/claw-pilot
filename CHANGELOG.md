@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.12.3] — 2026-03-08
+
+### Changed
+- **UI — bandeaux de mise à jour** : refactorisation vers un composant partagé `cp-update-banner-base` (factorisation du CSS et de la structure HTML dupliqués entre `cp-update-banner` et `cp-self-update-banner`)
+- **UX — bandeau claw-pilot** : ajout d'un bouton × de dismiss manuel sur l'état `done` (sécurité si le `location.reload()` automatique n'arrive pas après le restart systemd)
+- **Cohérence** : titre d'erreur OpenClaw aligné sur le pattern contextuel (`"OpenClaw update failed"` au lieu de `"Update failed"` générique)
+- **Événements** : renommage `cp-update-start` → `cp-update-action` et `cp-self-update-start` → `cp-update-action` (nom unifié pour les deux bandeaux)
+
+---
+
 ## [0.12.2] — 2026-03-08
 
 ### Changed

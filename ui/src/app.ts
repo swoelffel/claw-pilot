@@ -683,7 +683,7 @@ export class CpApp extends LitElement {
         </div>
       </header>
 
-      <main @cp-self-update-start=${this._onSelfUpdateStart}>
+      <main @cp-update-action=${this._onSelfUpdateStart}>
         <cp-self-update-banner .status=${this._selfUpdateStatus}></cp-self-update-banner>
         ${this._renderMain()}
       </main>

@@ -183,7 +183,7 @@ export class ClusterView extends LitElement {
 
       <cp-update-banner
         .status=${this._updateStatus}
-        @cp-update-start=${this._handleUpdateStart}
+        @cp-update-action=${this._handleUpdateStart}
       ></cp-update-banner>
 
       <div class="section-header">
