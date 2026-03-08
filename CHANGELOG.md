@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.12.4] — 2026-03-08
+
+### Fixed
+- **Self-update — reload automatique** : corrige la race condition où `systemctl restart` tuait le process Node avant que le poll frontend (3s) puisse lire `status: "done"`, empêchant le `location.reload()` automatique. Le reload est maintenant déclenché sur la reconnexion WebSocket : quand le WS se reconnecte alors qu'un job `running` était en cours, c'est la preuve que le serveur a redémarré → reload immédiat du bundle.
+
+---
+
 ## [0.12.3] — 2026-03-08
 
 ### Changed

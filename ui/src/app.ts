@@ -441,6 +441,11 @@ export class CpApp extends LitElement {
 
     this._ws.addEventListener("open", () => {
       this._wsConnected = true;
+      // Si un self-update était en cours et que le WS vient de se reconnecter,
+      // c'est que le serveur a redémarré après le build → recharger le bundle.
+      if (this._selfUpdateStatus?.status === "running") {
+        location.reload();
+      }
     });
 
     this._ws.addEventListener("close", () => {
