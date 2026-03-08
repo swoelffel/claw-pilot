@@ -12,7 +12,7 @@ export interface ProviderInfo {
 /**
  * Provider catalog — kept in sync with OpenClaw model registry.
  * Source: src/openclaw/node_modules/@mariozechner/pi-ai/dist/models.generated.js
- * OpenClaw version reference: 2026.3.2
+ * OpenClaw version reference: 2026.3.7
  * Update this catalog on each OpenClaw release (see docs/OPENCLAW-COMPAT.md).
  */
 export const PROVIDER_CATALOG: ProviderInfo[] = [
@@ -38,6 +38,8 @@ export const PROVIDER_CATALOG: ProviderInfo[] = [
     defaultModel: "openai/gpt-5.1-codex",
     models: [
       "openai/gpt-5.2",
+      "openai/gpt-5.2-codex",
+      "openai/gpt-5.2-pro",
       "openai/gpt-5.1-codex",
       "openai/gpt-5.1-codex-max",
       "openai/gpt-5.1-codex-mini",
@@ -57,9 +59,11 @@ export const PROVIDER_CATALOG: ProviderInfo[] = [
     id: "google",
     label: "Google Gemini",
     requiresKey: true,
-    defaultModel: "google/gemini-3-pro-preview",
+    defaultModel: "google/gemini-3.1-pro-preview",
     models: [
+      "google/gemini-3.1-pro-preview",
       "google/gemini-3-pro-preview",
+      "google/gemini-3.1-flash-lite-preview",
       "google/gemini-3-flash-preview",
       "google/gemini-2.5-pro",
       "google/gemini-2.5-flash",

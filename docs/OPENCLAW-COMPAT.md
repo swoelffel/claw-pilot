@@ -7,11 +7,11 @@ derive provider/model catalogs, and the procedure to update them on each OpenCla
 
 ## Reference version
 
-**OpenClaw `2026.3.2`** (latest stable tag)
+**OpenClaw `2026.3.7`** (latest stable tag)
 
 ---
 
-## openclaw.json format (v2026.3.2)
+## openclaw.json format (v2026.3.7)
 
 ### Required top-level keys
 
@@ -42,7 +42,7 @@ derive provider/model catalogs, and the procedure to update them on each OpenCla
 | `gateway.bind: "all"` | removed in 2026.3.x — use `"lan"` for equivalent behavior |
 | `env.file` (top-level) | removed |
 
-### New optional keys (since 2026.2.23 through 2026.3.2)
+### New optional keys (since 2026.2.23 through 2026.3.7)
 
 These are additive — no impact on existing configs, but claw-pilot should not generate them
 unless explicitly needed.
@@ -70,6 +70,13 @@ unless explicitly needed.
 | `tools.media.audio.echoTranscript` | 2026.3.2 | Echo audio transcription to chat |
 | `tools.media.audio.echoFormat` | 2026.3.2 | Format for echoed transcription |
 | `tools.sessions_spawn.attachments` | 2026.3.2 | Inline attachments for subagent spawn |
+| `plugins.slots.contextEngine` | 2026.3.7 | New plugin slot for context engine |
+| `plugins.entries.<id>.hooks.allowPromptInjection` | 2026.3.7 | Allow prompt injection per plugin entry |
+| `agents.defaults.compaction.postCompactionSections` | 2026.3.7 | Sections to append after compaction |
+| `messages.tts.openai.baseUrl` | 2026.3.7 | Custom base URL for OpenAI TTS |
+| `channels.slack.typingReaction` | 2026.3.7 | Emoji reaction while typing in Slack |
+| `channels.discord.allowBots` | 2026.3.7 | `"mentions"` — allow bot mentions in Discord |
+| `cron.retry.retryOn` | 2026.3.7 | `"overloaded"` — retry cron sessions on overload |
 
 ### Breaking changes in 2026.2.25 (not affecting claw-pilot generated configs)
 
@@ -131,6 +138,13 @@ load balancers, and monitoring.
 
 These can be used from claw-pilot via `conn.exec()` for config validation workflows.
 
+### Breaking changes in 2026.3.7 (not affecting claw-pilot generated configs)
+
+- **Google default model renamed**: `gemini-3-pro-preview` → `gemini-3.1-pro-preview` (runtime
+  alias, not in pi-ai catalog). claw-pilot's `provider-catalog.ts` updated accordingly.
+- **MiniMax model removed**: `MiniMax-M2.5-Lightning` removed from MiniMax catalog. Not exposed
+  in claw-pilot — no action required.
+
 ### Breaking changes in 2026.3.2 (not affecting claw-pilot generated configs)
 
 - **`tools.profile` default changed**: the interactive onboarding default changed from
@@ -145,7 +159,7 @@ These can be used from claw-pilot via `conn.exec()` for config validation workfl
 
 ```json
 {
-  "meta": { "lastTouchedVersion": "2026.3.2", "lastTouchedAt": "<ISO>" },
+  "meta": { "lastTouchedVersion": "2026.3.7", "lastTouchedAt": "<ISO>" },
   "models": {
     "providers": {
       "anthropic": {
@@ -247,7 +261,7 @@ Derived from:
 > expose them yet (Anthropic, OpenAI, Google, Mistral, xAI, OpenRouter, Kilocode,
 > OpenCode are the supported onboarding paths).
 
-### Model catalog (as of 2026.3.2)
+### Model catalog (as of 2026.3.7)
 
 #### Anthropic
 *(from `@mariozechner/pi-ai` catalog — use `anthropic/<id>` in config)*
@@ -269,6 +283,8 @@ Derived from:
 - `openai/gpt-5.1-codex` *(default)*
 - `openai/gpt-5.1-codex-max`
 - `openai/gpt-5.1-codex-mini`
+- `openai/gpt-5.2-codex` *(new in 2026.3.7)*
+- `openai/gpt-5.2-pro` *(new in 2026.3.7)*
 - `openai/gpt-5.2`
 - `openai/gpt-5.1`
 - `openai/gpt-5`
@@ -283,7 +299,8 @@ Derived from:
 
 #### Google
 *(from `@mariozechner/pi-ai` catalog — use `google/<id>` in config)*
-- `google/gemini-3-pro-preview` *(default)*
+- `google/gemini-3.1-pro-preview` *(default — renamed from gemini-3-pro-preview in 2026.3.7)*
+- `google/gemini-3.1-flash-lite-preview` *(new in 2026.3.7)*
 - `google/gemini-3-flash-preview`
 - `google/gemini-2.5-pro`
 - `google/gemini-2.5-flash`

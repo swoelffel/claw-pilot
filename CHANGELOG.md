@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.12.2] — 2026-03-08
+
+### Changed
+- **OpenClaw compat** : alignement sur `v2026.3.7` — Google default model renommé `gemini-3.1-pro-preview`, ajout `gemini-3.1-flash-lite-preview`, ajout `gpt-5.2-codex` et `gpt-5.2-pro` (OpenAI), nouveaux champs optionnels documentés dans `OPENCLAW-COMPAT.md`
+
+---
+
 ## [0.12.1] — 2026-03-06
 
 ### Fixed
