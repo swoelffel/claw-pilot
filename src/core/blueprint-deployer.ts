@@ -26,21 +26,32 @@ export class BlueprintDeployer {
     const configRaw = await this.conn.readFile(instance.config_path);
     const config = JSON.parse(configRaw) as Record<string, unknown>;
 
-    const openclawHome = path.dirname(instance.config_path);
+    const stateDir = path.dirname(instance.config_path);
     const agentsConf = (config["agents"] ?? {}) as Record<string, unknown>;
     config["agents"] = agentsConf;
     if (!Array.isArray(agentsConf["list"])) {
       agentsConf["list"] = [];
     }
 
-    // 5. For each blueprint agent: create workspace + write files + add to config
+    // 5. For each blueprint agent: write files + register in DB + update config
     for (const bpAgent of blueprintAgents) {
-      const workspaceDir = path.join(openclawHome, `workspace-${bpAgent.agent_id}`);
+      const isDefault = bpAgent.is_default === 1;
 
-      // Create workspace directory
-      await this.conn.mkdir(workspaceDir);
+      // Workspace path follows OpenClaw convention:
+      //   main (isDefault) → stateDir/workspaces/workspace  (already created by Provisioner)
+      //   secondary agents → stateDir/workspaces/workspace-<agent_id>
+      const workspaceDir = isDefault
+        ? path.join(stateDir, "workspaces", "workspace")
+        : path.join(stateDir, "workspaces", `workspace-${bpAgent.agent_id}`);
+
+      // Create workspace directory only for secondary agents
+      // (main workspace already exists, created by Provisioner step 5)
+      if (!isDefault) {
+        await this.conn.mkdir(workspaceDir);
+      }
 
       // Read files from DB and write to disk
+      // For main: overwrites the generic templates with blueprint content
       const files = this.registry.listAgentFiles(bpAgent.id);
       for (const file of files) {
         if (file.content) {
@@ -51,8 +62,8 @@ export class BlueprintDeployer {
         }
       }
 
-      // If no files in DB, write minimal placeholders
-      if (files.length === 0) {
+      // If no files in DB, write minimal placeholders (secondary agents only)
+      if (files.length === 0 && !isDefault) {
         const minimalFiles = ["AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md", "USER.md", "HEARTBEAT.md"];
         for (const filename of minimalFiles) {
           await this.conn.writeFile(
@@ -62,25 +73,28 @@ export class BlueprintDeployer {
         }
       }
 
-      // Add agent to openclaw.json agents.list[]
-      const agentEntry: Record<string, unknown> = {
-        id: bpAgent.agent_id,
-        name: bpAgent.name,
-        workspace: workspaceDir,
-      };
-      if (bpAgent.model) {
-        agentEntry["model"] = bpAgent.model;
-      }
+      // Add to agents.list[] only for secondary agents
+      // (main is implicit via agents.defaults — adding it to list[] would create a duplicate)
+      if (!isDefault) {
+        const agentEntry: Record<string, unknown> = {
+          id: bpAgent.agent_id,
+          name: bpAgent.name,
+          workspace: `workspace-${bpAgent.agent_id}`, // relative path (resolved by OpenClaw from stateDir/workspaces/)
+        };
+        if (bpAgent.model) {
+          agentEntry["model"] = bpAgent.model;
+        }
 
-      // Add spawn links for this agent
-      const spawnTargets = blueprintLinks
-        .filter(l => l.source_agent_id === bpAgent.agent_id && l.link_type === "spawn")
-        .map(l => l.target_agent_id);
-      if (spawnTargets.length > 0) {
-        agentEntry["subagents"] = { allowAgents: spawnTargets };
-      }
+        // Add spawn links for this agent
+        const spawnTargets = blueprintLinks
+          .filter(l => l.source_agent_id === bpAgent.agent_id && l.link_type === "spawn")
+          .map(l => l.target_agent_id);
+        if (spawnTargets.length > 0) {
+          agentEntry["subagents"] = { allowAgents: spawnTargets };
+        }
 
-      (agentsConf["list"] as unknown[]).push(agentEntry);
+        (agentsConf["list"] as unknown[]).push(agentEntry);
+      }
 
       // Register agent in DB (linked to instance)
       this.registry.upsertAgent(instance.id, {
@@ -88,7 +102,7 @@ export class BlueprintDeployer {
         name: bpAgent.name,
         model: bpAgent.model ?? undefined,
         workspacePath: workspaceDir,
-        isDefault: bpAgent.is_default === 1,
+        isDefault,
       });
 
       // Copy files to instance agent DB cache

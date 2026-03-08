@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.12.5] — 2026-03-08
+
+### Fixed
+- **Blueprint deploy** : les données du blueprint (prompts, SOUL.md, AGENTS.md…) n'étaient pas appliquées lors de la création d'une instance. Trois bugs corrigés dans `blueprint-deployer.ts` :
+  - Les workspaces des agents étaient créés au mauvais chemin (`stateDir/workspace-<id>` au lieu de `stateDir/workspaces/workspace-<id>`)
+  - L'agent principal (main) du blueprint était ajouté dans `agents.list[]` au lieu d'écraser les templates génériques dans le workspace par défaut (`workspaces/workspace/`)
+  - Les chemins workspace dans `openclaw.json` étaient absolus au lieu de relatifs
+
+### Added
+- **Tests** : couverture complète du `BlueprintDeployer` (12 tests)
+
+---
+
 ## [0.12.4] — 2026-03-08
 
 ### Fixed
