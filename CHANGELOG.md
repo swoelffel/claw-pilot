@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.12.6] — 2026-03-09
+
+### Fixed
+- **Blueprint deploy — regression v0.12.5** : l'agent principal (main) n'apparaissait plus dans la liste des agents du dashboard, et l'agent par defaut dans OpenClaw etait le premier agent secondaire au lieu de main. Trois corrections :
+  - `blueprint-deployer.ts` : main est remis dans `agents.list[]` avec `default: true` pour que OpenClaw le reconnaisse comme agent par defaut
+  - `blueprint-deployer.ts` : le champ `model` est desormais wrappe dans `{ primary: "..." }` pour tous les agents (format requis par OpenClaw v2026.2.24+)
+  - `config-reader.ts` : synthetise main depuis `agents.defaults` si absent de `agents.list[]` (retrocompatibilite avec les configs pre-v0.12.6)
+
+### Added
+- **Tests** : 2 nouveaux tests blueprint-deployer (model wrapping, secondary agents sans `default: true`)
+
+---
+
 ## [0.12.5] — 2026-03-08
 
 ### Fixed

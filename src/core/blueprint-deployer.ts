@@ -73,24 +73,32 @@ export class BlueprintDeployer {
         }
       }
 
-      // Add to agents.list[] only for secondary agents
-      // (main is implicit via agents.defaults — adding it to list[] would create a duplicate)
-      if (!isDefault) {
+      // Add to agents.list[] for ALL agents:
+      //   - main (isDefault) with default: true so OpenClaw picks it as the default agent
+      //   - secondary agents with their own workspace path
+      {
         const agentEntry: Record<string, unknown> = {
           id: bpAgent.agent_id,
           name: bpAgent.name,
-          workspace: `workspace-${bpAgent.agent_id}`, // relative path (resolved by OpenClaw from stateDir/workspaces/)
+          workspace: isDefault
+            ? "workspace" // main workspace (relative path)
+            : `workspace-${bpAgent.agent_id}`, // relative path (resolved by OpenClaw from stateDir/workspaces/)
         };
+        if (isDefault) {
+          agentEntry["default"] = true;
+        }
         if (bpAgent.model) {
-          agentEntry["model"] = bpAgent.model;
+          agentEntry["model"] = { primary: bpAgent.model }; // OpenClaw v2026.2.24+ expects { primary: "provider/model" }
         }
 
-        // Add spawn links for this agent
-        const spawnTargets = blueprintLinks
-          .filter(l => l.source_agent_id === bpAgent.agent_id && l.link_type === "spawn")
-          .map(l => l.target_agent_id);
-        if (spawnTargets.length > 0) {
-          agentEntry["subagents"] = { allowAgents: spawnTargets };
+        // Add spawn links for this agent (secondary agents only — main spawn links are in agents.defaults.subagents)
+        if (!isDefault) {
+          const spawnTargets = blueprintLinks
+            .filter(l => l.source_agent_id === bpAgent.agent_id && l.link_type === "spawn")
+            .map(l => l.target_agent_id);
+          if (spawnTargets.length > 0) {
+            agentEntry["subagents"] = { allowAgents: spawnTargets };
+          }
         }
 
         (agentsConf["list"] as unknown[]).push(agentEntry);

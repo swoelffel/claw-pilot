@@ -107,24 +107,39 @@ export async function readInstanceConfig(
 
   // Extract agents list
   const agentsList = (agentsConf?.["list"] ?? []) as Array<Record<string, unknown>>;
-  const agents = agentsList.map((a) => {
-    const model = a["model"] as Record<string, unknown> | string | null | undefined;
-    const modelStr = typeof model === "object" && model !== null
-      ? (model["primary"] as string | undefined) ?? null
-      : typeof model === "string" ? model : null;
-    const identity = a["identity"] as Record<string, string> | null | undefined;
-    return {
-      id: a["id"] as string,
-      name: a["name"] as string ?? a["id"] as string,
-      model: modelStr,
-      workspace: (a["workspace"] as string) ?? `workspace-${a["id"]}`,
-      identity: identity ? {
-        name: identity["name"],
-        emoji: identity["emoji"],
-        avatar: identity["avatar"],
-      } : null,
-    };
-  });
+
+  // Synthesize main agent from agents.defaults if not present in agents.list[]
+  // (legacy configs or pre-v0.12.6 deployments may omit main from the list)
+  const hasMainInList = agentsList.some((a) => a["id"] === "main");
+  const mainEntry = hasMainInList ? [] : [{
+    id: "main",
+    name: (defaults?.["name"] as string | undefined) ?? "Main",
+    model: defaultModelStr || null,
+    workspace: (defaults?.["workspace"] as string | undefined) ?? "workspace",
+    identity: null,
+  }];
+
+  const agents = [
+    ...mainEntry,
+    ...agentsList.map((a) => {
+      const model = a["model"] as Record<string, unknown> | string | null | undefined;
+      const modelStr = typeof model === "object" && model !== null
+        ? (model["primary"] as string | undefined) ?? null
+        : typeof model === "string" ? model : null;
+      const identity = a["identity"] as Record<string, string> | null | undefined;
+      return {
+        id: a["id"] as string,
+        name: a["name"] as string ?? a["id"] as string,
+        model: modelStr,
+        workspace: (a["workspace"] as string) ?? `workspace-${a["id"]}`,
+        identity: identity ? {
+          name: identity["name"],
+          emoji: identity["emoji"],
+          avatar: identity["avatar"],
+        } : null,
+      };
+    }),
+  ];
 
   // Extract tools
   const tools = config["tools"] as Record<string, unknown> | undefined;

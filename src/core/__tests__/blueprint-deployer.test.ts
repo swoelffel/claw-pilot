@@ -157,7 +157,7 @@ describe("BlueprintDeployer.deploy()", () => {
     expect(conn.files.get(agentsPath)).toBe("# Custom AGENTS from blueprint\n");
   });
 
-  it("main agent — is NOT added to agents.list[] in openclaw.json", async () => {
+  it("main agent — added to agents.list[] with default: true", async () => {
     seedInstance();
     const instance = registry.getInstance("test-inst")!;
 
@@ -176,8 +176,12 @@ describe("BlueprintDeployer.deploy()", () => {
     await deployer.deploy(bpId, instance);
 
     const config = JSON.parse(conn.files.get(CONFIG_PATH)!);
-    // agents.list should not exist or be empty (main is implicit via agents.defaults)
-    expect(config.agents.list ?? []).toHaveLength(0);
+    // main should be in agents.list[] with default: true
+    expect(config.agents.list).toHaveLength(1);
+    const mainEntry = config.agents.list[0];
+    expect(mainEntry.id).toBe("main");
+    expect(mainEntry.default).toBe(true);
+    expect(mainEntry.workspace).toBe("workspace");
   });
 
   it("main agent — no new directory is created (workspace already exists)", async () => {
@@ -263,6 +267,59 @@ describe("BlueprintDeployer.deploy()", () => {
     expect(entry.workspace).not.toContain("/");
   });
 
+  it("model is wrapped as { primary: ... } in agents.list[] for all agents", async () => {
+    seedInstance();
+    const instance = registry.getInstance("test-inst")!;
+
+    const bpId = seedBlueprint({
+      agents: [
+        {
+          agentId: "main",
+          name: "Main",
+          isDefault: true,
+          model: "anthropic/claude-3-5-sonnet",
+          files: [{ filename: "SOUL.md", content: "# Main\n" }],
+        },
+        {
+          agentId: "researcher",
+          name: "Researcher",
+          model: "openai/gpt-4o",
+          files: [{ filename: "SOUL.md", content: "# Researcher\n" }],
+        },
+      ],
+    });
+
+    const deployer = new BlueprintDeployer(conn, registry);
+    await deployer.deploy(bpId, instance);
+
+    const config = JSON.parse(conn.files.get(CONFIG_PATH)!);
+    const mainEntry = config.agents.list.find((a: { id: string }) => a.id === "main");
+    const researcherEntry = config.agents.list.find((a: { id: string }) => a.id === "researcher");
+
+    // Both should have model wrapped as { primary: "..." }
+    expect(mainEntry.model).toEqual({ primary: "anthropic/claude-3-5-sonnet" });
+    expect(researcherEntry.model).toEqual({ primary: "openai/gpt-4o" });
+  });
+
+  it("secondary agents do NOT have default: true", async () => {
+    seedInstance();
+    const instance = registry.getInstance("test-inst")!;
+
+    const bpId = seedBlueprint({
+      agents: [
+        { agentId: "main", name: "Main", isDefault: true },
+        { agentId: "coder", name: "Coder" },
+      ],
+    });
+
+    const deployer = new BlueprintDeployer(conn, registry);
+    await deployer.deploy(bpId, instance);
+
+    const config = JSON.parse(conn.files.get(CONFIG_PATH)!);
+    const coderEntry = config.agents.list.find((a: { id: string }) => a.id === "coder");
+    expect(coderEntry.default).toBeUndefined();
+  });
+
   it("multi-agent blueprint — main overwrites templates, secondaries get own workspaces", async () => {
     seedInstance();
     const instance = registry.getInstance("test-inst")!;
@@ -304,11 +361,15 @@ describe("BlueprintDeployer.deploy()", () => {
     expect(conn.files.get(`${STATE_DIR}/workspaces/workspace-coder/SOUL.md`)).toBe("# Coder SOUL\n");
     expect(conn.files.get(`${STATE_DIR}/workspaces/workspace-reviewer/SOUL.md`)).toBe("# Reviewer SOUL\n");
 
-    // Config: only secondaries in agents.list[]
+    // Config: ALL agents in agents.list[] (main + secondaries)
     const config = JSON.parse(conn.files.get(CONFIG_PATH)!);
-    expect(config.agents.list).toHaveLength(2);
+    expect(config.agents.list).toHaveLength(3);
     const ids = config.agents.list.map((a: { id: string }) => a.id).sort();
-    expect(ids).toEqual(["coder", "reviewer"]);
+    expect(ids).toEqual(["coder", "main", "reviewer"]);
+
+    // main should have default: true
+    const mainEntry = config.agents.list.find((a: { id: string }) => a.id === "main");
+    expect(mainEntry.default).toBe(true);
 
     // All workspace paths in config should be relative
     for (const entry of config.agents.list) {
