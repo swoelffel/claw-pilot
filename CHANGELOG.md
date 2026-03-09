@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.12.7] — 2026-03-09
+
+### Fixed
+- **Blueprint deploy — double-wrapping model** : le champ `model` des agents en DB etait deja un objet JSON serialise (`{"primary":"opencode/claude-sonnet-4-5"}`), mais le deployer le wrappait une seconde fois dans `{ primary: ... }`, produisant une string non parseable par OpenClaw. Le deployer parse desormais le model avec `JSON.parse()` (fallback sur `{ primary: string }` pour les identifiants bruts).
+- **Blueprint deploy — spawn links de main ignores** : les liens `spawn` de l'agent principal (main → lead-tech, lead-product, lead-marketing) n'etaient pas ecrits dans `agents.list[]` car le code les excluait avec `if (!isDefault)`. Les spawn links sont desormais appliques a tous les agents, y compris main.
+
+### Added
+- 2 nouveaux tests blueprint-deployer (model JSON-serialized, main spawn links)
+
+---
+
 ## [0.12.6] — 2026-03-09
 
 ### Fixed

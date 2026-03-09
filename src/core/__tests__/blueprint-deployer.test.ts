@@ -377,6 +377,68 @@ describe("BlueprintDeployer.deploy()", () => {
     }
   });
 
+  it("model already JSON-serialized in DB — parsed correctly (no double-wrapping)", async () => {
+    seedInstance();
+    const instance = registry.getInstance("test-inst")!;
+
+    const bpId = seedBlueprint({
+      agents: [
+        {
+          agentId: "main",
+          name: "Main",
+          isDefault: true,
+          model: '{"primary":"opencode/claude-sonnet-4-5"}', // JSON-serialized (as stored by blueprint editor)
+          files: [{ filename: "SOUL.md", content: "# Main\n" }],
+        },
+        {
+          agentId: "researcher",
+          name: "Researcher",
+          model: '{"primary":"opencode/claude-haiku-4-5"}',
+          files: [{ filename: "SOUL.md", content: "# Researcher\n" }],
+        },
+      ],
+    });
+
+    const deployer = new BlueprintDeployer(conn, registry);
+    await deployer.deploy(bpId, instance);
+
+    const config = JSON.parse(conn.files.get(CONFIG_PATH)!);
+    const mainEntry = config.agents.list.find((a: { id: string }) => a.id === "main");
+    const researcherEntry = config.agents.list.find((a: { id: string }) => a.id === "researcher");
+
+    // Should be parsed objects, NOT double-wrapped strings
+    expect(mainEntry.model).toEqual({ primary: "opencode/claude-sonnet-4-5" });
+    expect(researcherEntry.model).toEqual({ primary: "opencode/claude-haiku-4-5" });
+  });
+
+  it("main agent — spawn links included in agents.list[] as subagents.allowAgents", async () => {
+    seedInstance();
+    const instance = registry.getInstance("test-inst")!;
+
+    const bpId = seedBlueprint({
+      agents: [
+        { agentId: "main", name: "Main", isDefault: true },
+        { agentId: "lead-tech", name: "Lead Tech" },
+        { agentId: "lead-product", name: "Lead Product" },
+        { agentId: "lead-marketing", name: "Lead Marketing" },
+      ],
+      links: [
+        { source: "main", target: "lead-tech", type: "spawn" },
+        { source: "main", target: "lead-product", type: "spawn" },
+        { source: "main", target: "lead-marketing", type: "spawn" },
+      ],
+    });
+
+    const deployer = new BlueprintDeployer(conn, registry);
+    await deployer.deploy(bpId, instance);
+
+    const config = JSON.parse(conn.files.get(CONFIG_PATH)!);
+    const mainEntry = config.agents.list.find((a: { id: string }) => a.id === "main");
+    expect(mainEntry.subagents.allowAgents.sort()).toEqual(
+      ["lead-marketing", "lead-product", "lead-tech"],
+    );
+  });
+
   it("spawn links — added as subagents.allowAgents on secondary agents", async () => {
     seedInstance();
     const instance = registry.getInstance("test-inst")!;

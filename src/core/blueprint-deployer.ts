@@ -88,17 +88,24 @@ export class BlueprintDeployer {
           agentEntry["default"] = true;
         }
         if (bpAgent.model) {
-          agentEntry["model"] = { primary: bpAgent.model }; // OpenClaw v2026.2.24+ expects { primary: "provider/model" }
+          // bpAgent.model may be either:
+          //   - a JSON-serialized object: '{"primary":"opencode/claude-haiku-4-5"}' → parse it
+          //   - a bare model string: "anthropic/claude-haiku-4-5" → wrap as { primary: "..." }
+          let modelValue: unknown;
+          try {
+            modelValue = JSON.parse(bpAgent.model);
+          } catch {
+            modelValue = { primary: bpAgent.model };
+          }
+          agentEntry["model"] = modelValue;
         }
 
-        // Add spawn links for this agent (secondary agents only — main spawn links are in agents.defaults.subagents)
-        if (!isDefault) {
-          const spawnTargets = blueprintLinks
-            .filter(l => l.source_agent_id === bpAgent.agent_id && l.link_type === "spawn")
-            .map(l => l.target_agent_id);
-          if (spawnTargets.length > 0) {
-            agentEntry["subagents"] = { allowAgents: spawnTargets };
-          }
+        // Add spawn links for this agent (all agents including main)
+        const spawnTargets = blueprintLinks
+          .filter(l => l.source_agent_id === bpAgent.agent_id && l.link_type === "spawn")
+          .map(l => l.target_agent_id);
+        if (spawnTargets.length > 0) {
+          agentEntry["subagents"] = { allowAgents: spawnTargets };
         }
 
         (agentsConf["list"] as unknown[]).push(agentEntry);
