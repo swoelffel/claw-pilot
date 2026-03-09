@@ -84,6 +84,8 @@ function seedBlueprint(opts: {
     name: string;
     isDefault?: boolean;
     model?: string;
+    position_x?: number;
+    position_y?: number;
     files?: Array<{ filename: string; content: string }>;
   }>;
   links?: Array<{ source: string; target: string; type: "spawn" | "a2a" }>;
@@ -97,6 +99,11 @@ function seedBlueprint(opts: {
       isDefault: agent.isDefault ?? false,
       model: agent.model,
     });
+
+    // Set canvas positions if provided
+    if (agent.position_x != null && agent.position_y != null) {
+      registry.updateBlueprintAgentPosition(bpAgent.id, agent.position_x, agent.position_y);
+    }
 
     if (agent.files) {
       for (const file of agent.files) {
@@ -587,5 +594,83 @@ describe("BlueprintDeployer.deploy()", () => {
     expect(conn.files.has(`${wsDir}/SOUL.md`)).toBe(true);
     expect(conn.files.has(`${wsDir}/AGENTS.md`)).toBe(true);
     expect(conn.files.get(`${wsDir}/SOUL.md`)).toBe("# Helper\n");
+  });
+
+  it("agent canvas positions are copied from blueprint to instance", async () => {
+    seedInstance();
+    const instance = registry.getInstance("test-inst")!;
+
+    const bpId = seedBlueprint({
+      agents: [
+        {
+          agentId: "main",
+          name: "Main",
+          isDefault: true,
+          position_x: 400,
+          position_y: 300,
+          files: [{ filename: "SOUL.md", content: "# Main\n" }],
+        },
+        {
+          agentId: "coder",
+          name: "Coder",
+          position_x: 150,
+          position_y: 500,
+          files: [{ filename: "SOUL.md", content: "# Coder\n" }],
+        },
+        {
+          agentId: "reviewer",
+          name: "Reviewer",
+          position_x: 650,
+          position_y: 500,
+          files: [{ filename: "SOUL.md", content: "# Reviewer\n" }],
+        },
+      ],
+    });
+
+    const deployer = new BlueprintDeployer(conn, registry);
+    await deployer.deploy(bpId, instance);
+
+    const agents = registry.listAgents("test-inst");
+
+    const mainAgent = agents.find((a) => a.agent_id === "main");
+    expect(mainAgent).toBeDefined();
+    expect(mainAgent!.position_x).toBe(400);
+    expect(mainAgent!.position_y).toBe(300);
+
+    const coderAgent = agents.find((a) => a.agent_id === "coder");
+    expect(coderAgent).toBeDefined();
+    expect(coderAgent!.position_x).toBe(150);
+    expect(coderAgent!.position_y).toBe(500);
+
+    const reviewerAgent = agents.find((a) => a.agent_id === "reviewer");
+    expect(reviewerAgent).toBeDefined();
+    expect(reviewerAgent!.position_x).toBe(650);
+    expect(reviewerAgent!.position_y).toBe(500);
+  });
+
+  it("agents without blueprint positions — instance positions remain null", async () => {
+    seedInstance();
+    const instance = registry.getInstance("test-inst")!;
+
+    const bpId = seedBlueprint({
+      agents: [
+        {
+          agentId: "main",
+          name: "Main",
+          isDefault: true,
+          // no position_x/position_y
+          files: [{ filename: "SOUL.md", content: "# Main\n" }],
+        },
+      ],
+    });
+
+    const deployer = new BlueprintDeployer(conn, registry);
+    await deployer.deploy(bpId, instance);
+
+    const agents = registry.listAgents("test-inst");
+    const mainAgent = agents.find((a) => a.agent_id === "main");
+    expect(mainAgent).toBeDefined();
+    expect(mainAgent!.position_x).toBeNull();
+    expect(mainAgent!.position_y).toBeNull();
   });
 });

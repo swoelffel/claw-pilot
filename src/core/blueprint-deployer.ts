@@ -112,12 +112,16 @@ export class BlueprintDeployer {
       }
 
       // Register agent in DB (linked to instance)
+      // Copy canvas positions from blueprint so the dashboard renders cards
+      // at the same layout the user designed in the blueprint editor.
       this.registry.upsertAgent(instance.id, {
         agentId: bpAgent.agent_id,
         name: bpAgent.name,
         model: bpAgent.model ?? undefined,
         workspacePath: workspaceDir,
         isDefault,
+        position_x: bpAgent.position_x ?? null,
+        position_y: bpAgent.position_y ?? null,
       });
 
       // Copy files to instance agent DB cache

@@ -60,17 +60,21 @@ export class AgentRepository {
       model?: string;
       workspacePath: string;
       isDefault?: boolean;
+      position_x?: number | null;
+      position_y?: number | null;
     },
   ): AgentRecord {
     this.db
       .prepare(
-        `INSERT INTO agents (instance_id, agent_id, name, model, workspace_path, is_default)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO agents (instance_id, agent_id, name, model, workspace_path, is_default, position_x, position_y)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(instance_id, agent_id) DO UPDATE SET
-           name          = excluded.name,
-           model         = excluded.model,
+           name           = excluded.name,
+           model          = excluded.model,
            workspace_path = excluded.workspace_path,
-           is_default    = excluded.is_default`,
+           is_default     = excluded.is_default,
+           position_x     = excluded.position_x,
+           position_y     = excluded.position_y`,
       )
       .run(
         instanceId,
@@ -79,6 +83,8 @@ export class AgentRepository {
         data.model ?? null,
         data.workspacePath,
         data.isDefault ? 1 : 0,
+        data.position_x ?? null,
+        data.position_y ?? null,
       );
     return this.getAgentByAgentId(instanceId, data.agentId)!;
   }

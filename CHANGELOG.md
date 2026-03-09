@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.12.8] — 2026-03-09
+
+### Fixed
+- **Blueprint deploy — positions des cartes Agent non copiees** : lors de l'instanciation depuis un blueprint, les coordonnees canvas (`position_x`, `position_y`) des agents n'etaient pas transferees vers l'instance. Les agents se retrouvaient avec la disposition par defaut (cercle autour du main) au lieu du layout concu dans l'editeur de blueprint. Le deployer copie desormais les positions via `upsertAgent()`.
+
+### Added
+- 2 nouveaux tests blueprint-deployer (positions copiees, positions null si absentes)
+
+---
+
 ## [0.12.7] — 2026-03-09
 
 ### Fixed
