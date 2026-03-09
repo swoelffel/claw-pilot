@@ -73,8 +73,8 @@ export class AgentRepository {
            model          = excluded.model,
            workspace_path = excluded.workspace_path,
            is_default     = excluded.is_default,
-           position_x     = excluded.position_x,
-           position_y     = excluded.position_y`,
+            position_x     = COALESCE(excluded.position_x, agents.position_x),
+           position_y     = COALESCE(excluded.position_y, agents.position_y)`,
       )
       .run(
         instanceId,

@@ -216,4 +216,70 @@ describe("AgentSync.sync()", () => {
     expect(helperAgent).toBeDefined();
     expect(helperAgent!.is_default).toBe(false);
   });
+
+  it("agent updated — existing canvas positions are preserved", async () => {
+    const instance = seedInstance();
+
+    // First sync: establish baseline
+    conn.files.set(CONFIG_PATH, MINIMAL_CONFIG);
+    const agentSync = new AgentSync(conn, registry);
+    await agentSync.sync(instance);
+
+    // Set positions on the main agent (simulates blueprint deploy or user drag)
+    const mainAgent = registry.listAgents("test-inst").find((a) => a.agent_id === "main");
+    expect(mainAgent).toBeDefined();
+    registry.updateAgentPosition(mainAgent!.id, 400, 300);
+
+    // Verify position is set
+    const before = registry.getAgentByAgentId(instance.id, "main");
+    expect(before!.position_x).toBe(400);
+    expect(before!.position_y).toBe(300);
+
+    // Second sync: config changes (model changed) → triggers upsert
+    const updatedConfig = JSON.stringify({
+      agents: {
+        defaults: { model: "claude-3-opus-20240229" },
+        list: [],
+      },
+    });
+    conn.files.set(CONFIG_PATH, updatedConfig);
+    const result = await agentSync.sync(instance);
+
+    expect(result.changes.agentsUpdated).toContain("main");
+
+    // Positions must be preserved after sync
+    const after = registry.getAgentByAgentId(instance.id, "main");
+    expect(after!.position_x).toBe(400);
+    expect(after!.position_y).toBe(300);
+  });
+
+  it("upsertAgent with null positions does not overwrite existing positions (COALESCE)", async () => {
+    const instance = seedInstance();
+
+    // Create agent with positions via upsert
+    registry.upsertAgent(instance.id, {
+      agentId: "test-agent",
+      name: "Test",
+      workspacePath: "/tmp/test",
+      position_x: 250,
+      position_y: 500,
+    });
+
+    const before = registry.getAgentByAgentId(instance.id, "test-agent");
+    expect(before!.position_x).toBe(250);
+    expect(before!.position_y).toBe(500);
+
+    // Upsert again WITHOUT positions (simulates a caller that omits them)
+    registry.upsertAgent(instance.id, {
+      agentId: "test-agent",
+      name: "Test Updated",
+      workspacePath: "/tmp/test",
+    });
+
+    // Positions must NOT be wiped to null
+    const after = registry.getAgentByAgentId(instance.id, "test-agent");
+    expect(after!.name).toBe("Test Updated");
+    expect(after!.position_x).toBe(250);
+    expect(after!.position_y).toBe(500);
+  });
 });

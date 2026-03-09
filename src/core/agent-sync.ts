@@ -182,7 +182,7 @@ export class AgentSync {
       let agentDbId: number;
 
       if (!existing) {
-        // New agent — upsert creates the row
+        // New agent — upsert creates the row (no position yet → null)
         const created = this.registry.upsertAgent(instance.id, {
           agentId: ca.agentId,
           name: ca.name,
@@ -196,12 +196,15 @@ export class AgentSync {
         agentDbId = existing.id;
         if (existing.config_hash !== configHash) {
           // Config changed — update name/model/workspace via upsert
+          // Preserve existing canvas positions (set by blueprint deploy or user drag)
           this.registry.upsertAgent(instance.id, {
             agentId: ca.agentId,
             name: ca.name,
             model: ca.model ?? undefined,
             workspacePath: ca.workspacePath,
             isDefault: ca.isDefault,
+            position_x: existing.position_x,
+            position_y: existing.position_y,
           });
           agentsUpdated.push(ca.agentId);
         }

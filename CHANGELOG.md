@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.12.9] — 2026-03-09
+
+### Fixed
+- **Agent positions wiped by sync** : `AgentSync.sync()` appelait `upsertAgent()` sans passer `position_x`/`position_y`, ecrasant les positions copiees depuis le blueprint (ou definies par drag) avec `null`. La sync preserve desormais les positions existantes lors de la mise a jour d'un agent.
+- **Defense en profondeur SQL** : le SQL de `upsertAgent()` utilise desormais `COALESCE(excluded.position_x, agents.position_x)` pour ne jamais ecraser une position non-null avec null, meme si un appelant oublie de passer les positions.
+
+### Added
+- 2 nouveaux tests agent-sync (positions preservees apres sync, COALESCE SQL)
+
+---
+
 ## [0.12.8] — 2026-03-09
 
 ### Fixed
