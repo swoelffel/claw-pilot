@@ -7,11 +7,11 @@ derive provider/model catalogs, and the procedure to update them on each OpenCla
 
 ## Reference version
 
-**OpenClaw `2026.3.7`** (latest stable tag)
+**OpenClaw `2026.3.8`** (latest stable tag)
 
 ---
 
-## openclaw.json format (v2026.3.7)
+## openclaw.json format (v2026.3.8)
 
 ### Required top-level keys
 
@@ -42,7 +42,7 @@ derive provider/model catalogs, and the procedure to update them on each OpenCla
 | `gateway.bind: "all"` | removed in 2026.3.x — use `"lan"` for equivalent behavior |
 | `env.file` (top-level) | removed |
 
-### New optional keys (since 2026.2.23 through 2026.3.7)
+### New optional keys (since 2026.2.23 through 2026.3.8)
 
 These are additive — no impact on existing configs, but claw-pilot should not generate them
 unless explicitly needed.
@@ -77,6 +77,9 @@ unless explicitly needed.
 | `channels.slack.typingReaction` | 2026.3.7 | Emoji reaction while typing in Slack |
 | `channels.discord.allowBots` | 2026.3.7 | `"mentions"` — allow bot mentions in Discord |
 | `cron.retry.retryOn` | 2026.3.7 | `"overloaded"` — retry cron sessions on overload |
+| `talk.silenceTimeoutMs` | 2026.3.8 | Configurable silence timeout before auto-send in Talk mode |
+| `browser.relayBindHost` | 2026.3.8 | Explicit non-loopback bind address for Chrome relay (WSL2 / cross-namespace) |
+| `agents.defaults.compaction.model` | 2026.3.8 | Route compaction summarization through a different model than the main session |
 
 ### Breaking changes in 2026.2.25 (not affecting claw-pilot generated configs)
 
@@ -138,6 +141,10 @@ load balancers, and monitoring.
 
 These can be used from claw-pilot via `conn.exec()` for config validation workflows.
 
+### Breaking changes in 2026.3.8 (not affecting claw-pilot generated configs)
+
+- **No breaking changes** affecting claw-pilot generated configs in this release.
+
 ### Breaking changes in 2026.3.7 (not affecting claw-pilot generated configs)
 
 - **Google default model renamed**: `gemini-3-pro-preview` → `gemini-3.1-pro-preview` (runtime
@@ -159,7 +166,7 @@ These can be used from claw-pilot via `conn.exec()` for config validation workfl
 
 ```json
 {
-  "meta": { "lastTouchedVersion": "2026.3.7", "lastTouchedAt": "<ISO>" },
+  "meta": { "lastTouchedVersion": "2026.3.8", "lastTouchedAt": "<ISO>" },
   "models": {
     "providers": {
       "anthropic": {
@@ -261,7 +268,7 @@ Derived from:
 > expose them yet (Anthropic, OpenAI, Google, Mistral, xAI, OpenRouter, Kilocode,
 > OpenCode are the supported onboarding paths).
 
-### Model catalog (as of 2026.3.7)
+### Model catalog (as of 2026.3.8)
 
 #### Anthropic
 *(from `@mariozechner/pi-ai` catalog — use `anthropic/<id>` in config)*
@@ -285,11 +292,14 @@ Derived from:
 - `openai/gpt-5.1-codex-mini`
 - `openai/gpt-5.2-codex` *(new in 2026.3.7)*
 - `openai/gpt-5.2-pro` *(new in 2026.3.7)*
+- `openai/gpt-5.2-chat-latest` *(new in 2026.3.8)*
 - `openai/gpt-5.2`
 - `openai/gpt-5.1`
 - `openai/gpt-5`
 - `openai/gpt-5-codex`
+- `openai/gpt-5-pro` *(new in 2026.3.8)*
 - `openai/gpt-5-mini`
+- `openai/gpt-5-nano` *(new in 2026.3.8)*
 - `openai/gpt-5-chat-latest`
 - `openai/gpt-4.1`
 - `openai/gpt-4.1-mini`
@@ -300,8 +310,15 @@ Derived from:
 #### Google
 *(from `@mariozechner/pi-ai` catalog — use `google/<id>` in config)*
 - `google/gemini-3.1-pro-preview` *(default — renamed from gemini-3-pro-preview in 2026.3.7)*
+- `google/gemini-3-pro` *(new in 2026.3.8)*
+- `google/gemini-3-pro-high` *(new in 2026.3.8)*
+- `google/gemini-3-pro-low` *(new in 2026.3.8)*
+- `google/gemini-3-pro-preview`
 - `google/gemini-3.1-flash-lite-preview` *(new in 2026.3.7)*
+- `google/gemini-3-flash` *(new in 2026.3.8)*
 - `google/gemini-3-flash-preview`
+- `google/gemini-flash-latest` *(new in 2026.3.8)*
+- `google/gemini-flash-lite-latest` *(new in 2026.3.8)*
 - `google/gemini-2.5-pro`
 - `google/gemini-2.5-flash`
 - `google/gemini-2.5-flash-lite`

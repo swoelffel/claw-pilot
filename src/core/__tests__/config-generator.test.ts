@@ -143,10 +143,10 @@ describe("generateConfig", () => {
     expect(config.channels).toBeUndefined();
   });
 
-  it("does NOT include slug in meta (v2026.3.7)", () => {
+  it("does NOT include slug in meta (v2026.3.8)", () => {
     const config = JSON.parse(generateConfig(baseAnswers));
     expect(config.meta.slug).toBeUndefined();
-    expect(config.meta.lastTouchedVersion).toBe("2026.3.7");
+    expect(config.meta.lastTouchedVersion).toBe("2026.3.8");
   });
 });
 

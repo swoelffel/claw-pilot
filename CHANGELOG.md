@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.14.5] — 2026-03-10
+
+### Changed
+- **OpenClaw compat** : alignement sur `v2026.3.8` — nouveaux modèles Google (`gemini-3-pro`, `gemini-3-pro-high`, `gemini-3-pro-low`, `gemini-3-flash`, `gemini-flash-latest`, `gemini-flash-lite-latest`), nouveaux modèles OpenAI (`gpt-5.2-chat-latest`, `gpt-5-pro`, `gpt-5-nano`), nouveaux champs optionnels documentés (`talk.silenceTimeoutMs`, `browser.relayBindHost`, `agents.defaults.compaction.model`)
+
+---
+
 ## [0.14.4] — 2026-03-10
 
 ### Fixed
