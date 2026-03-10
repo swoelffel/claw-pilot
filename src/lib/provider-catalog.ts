@@ -22,6 +22,8 @@ export const PROVIDER_CATALOG: ProviderInfo[] = [
     requiresKey: true,
     defaultModel: "anthropic/claude-haiku-4-5",
     models: [
+      "anthropic/claude-opus-4-6",
+      "anthropic/claude-sonnet-4-6",
       "anthropic/claude-opus-4-5",
       "anthropic/claude-opus-4-5-20251101",
       "anthropic/claude-opus-4-1",

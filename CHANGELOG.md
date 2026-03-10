@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.14.6] — 2026-03-10
+
+### Changed
+- **Anthropic catalog** : ajout de `claude-opus-4-6` (DEFAULT_MODEL OpenClaw) et `claude-sonnet-4-6` — modèles non encore dans le catalog pi-ai statique mais acceptés par le runtime Anthropic via forward-compat
+
+---
+
 ## [0.14.5] — 2026-03-10
 
 ### Changed

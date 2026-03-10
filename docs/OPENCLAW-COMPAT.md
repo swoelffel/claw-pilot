@@ -271,8 +271,15 @@ Derived from:
 ### Model catalog (as of 2026.3.8)
 
 #### Anthropic
-*(from `@mariozechner/pi-ai` catalog — use `anthropic/<id>` in config)*
-- `anthropic/claude-opus-4-5` *(default — latest Opus)*
+*(from `src/openclaw/src/agents/defaults.ts` + `@mariozechner/pi-ai` catalog — use `anthropic/<id>` in config)*
+
+> **Note:** `claude-opus-4-6` et `claude-sonnet-4-6` sont les modèles par défaut d'OpenClaw
+> (`DEFAULT_MODEL` et alias `sonnet` dans `config/defaults.ts`). Ils ne sont pas encore dans
+> le catalog pi-ai statique mais sont acceptés par le runtime Anthropic via forward-compat.
+
+- `anthropic/claude-opus-4-6` *(OpenClaw DEFAULT_MODEL — from `defaults.ts`)*
+- `anthropic/claude-sonnet-4-6` *(alias `sonnet` — from `config/defaults.ts`)*
+- `anthropic/claude-opus-4-5` *(from pi-ai catalog)*
 - `anthropic/claude-opus-4-5-20251101`
 - `anthropic/claude-opus-4-1`
 - `anthropic/claude-opus-4-1-20250805`
