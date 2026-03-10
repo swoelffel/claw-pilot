@@ -24,7 +24,7 @@ export const templates = {
   "btn-start": "Iniciar",
   "btn-stop": "Detener",
   "btn-restart": "Reiniciar",
-  "btn-open-ui": "⎋ UI",
+  "btn-open-ui": "UI",
   "btn-settings": "Ajustes",
   "action-failed": "Acción fallida",
 

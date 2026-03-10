@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.14.2] — 2026-03-10
+
+### Fixed
+- **Instance Card** : suppression du double `⎋` dans l'item UI du menu popover (icône dans `.menu-icon` + label de la clé i18n `btn-open-ui`). Le `⎋` reste dans l'icône, le label affiche désormais "UI" seul.
+
+---
+
 ## [0.14.1] — 2026-03-10
 
 ### Changed

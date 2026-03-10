@@ -445,7 +445,7 @@ export class InstanceCard extends LitElement {
             @click=${(e: Event) => { e.stopPropagation(); this._menuOpen = false; }}
           >
             <span class="menu-icon">⎋</span>
-            ${msg("⎋ UI", { id: "btn-open-ui" })}
+            ${msg("UI", { id: "btn-open-ui" })}
           </a>
         ` : nothing}
 
