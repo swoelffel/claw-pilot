@@ -37,12 +37,12 @@ export function listCommand(): Command {
 
         for (const s of statuses) {
           const statusLabel =
-            s.gateway === "healthy"
+            s.state === "running"
               ? chalk.green("running")
-              : s.systemd === "inactive"
+              : s.state === "stopped"
                 ? chalk.yellow("stopped")
-                : s.systemd === "failed"
-                  ? chalk.red("failed")
+                : s.state === "error"
+                  ? chalk.red("error")
                   : chalk.gray("unknown");
 
           const telegramLabel =

@@ -40,6 +40,8 @@ export interface HealthUpdate {
     instances: Array<{
       slug: string;
       port: number;
+      /** Pre-computed state from backend — use directly, do not re-derive */
+      state: "running" | "stopped" | "error" | "unknown";
       gateway: "healthy" | "unhealthy" | "unknown";
       systemd: "active" | "inactive" | "failed" | "unknown";
       pid?: number;

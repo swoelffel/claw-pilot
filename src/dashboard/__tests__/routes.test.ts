@@ -55,6 +55,7 @@ class StubHealthChecker {
     return {
       slug,
       port: instance.port,
+      state: "running",
       gateway: "healthy",
       systemd: "active",
       agentCount: 0,
@@ -67,6 +68,7 @@ class StubHealthChecker {
     return instances.map((inst) => ({
       slug: inst.slug,
       port: inst.port,
+      state: "running" as const,
       gateway: "healthy" as const,
       systemd: "active" as const,
       agentCount: 0,
