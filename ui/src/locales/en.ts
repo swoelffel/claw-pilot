@@ -255,4 +255,15 @@ export const templates = {
   "discover-adopt-btn": "Adopt all ({n})",
   "discover-adopting": "Registering instances...",
   "discover-done": "{n} instance(s) registered successfully.",
+
+  // login-view.ts + app.ts (auth — v0.15.0)
+  "login-title": "claw-pilot",
+  "login-label-username": "Username",
+  "login-label-password": "Password",
+  "login-btn-submit": "Sign in",
+  "login-error-invalid-creds": "Invalid credentials",
+  "login-error-rate-limit": "Too many attempts. Please wait a moment.",
+  "login-error-generic": "An error occurred. Please try again.",
+  "login-session-expired": "Your session has expired. Please sign in again.",
+  "app-btn-logout": "Sign out",
 };

@@ -6,6 +6,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.15.0] — 2026-03-10
+
+### Added
+- **Authentification dashboard** : écran de login obligatoire avec sessions SQLite et cookie HttpOnly `__cp_sid`. Quiconque atteint le port 19000 doit désormais s'authentifier avant d'accéder au dashboard.
+- **Commande `claw-pilot auth`** : sous-commandes `setup` (crée/réinitialise le compte admin, affiche le mot de passe une seule fois), `reset` (alias de `setup`), `check` (exit 0/1 silencieux — utilisé par `install.sh`).
+- **Middleware dual auth** : cookie de session en priorité, Bearer token en fallback (compatibilité accès programmatique).
+- **Composant `<cp-login-view>`** : page de login Lit avec autofocus, gestion d'erreurs, bannière d'expiration de session.
+- **Gate d'auth dans `app.ts`** : boot sequence async — vérifie la session via `/api/auth/me` avant d'initialiser le WebSocket et le polling. Bouton "Sign out" dans le header.
+- **Intercepteur 401 global** dans `api.ts` : dispatch `cp:session-expired` → retour automatique à la page de login.
+- **i18n** : 9 nouvelles clés auth (`login-*`, `app-btn-logout`) dans les 6 langues (EN, FR, DE, ES, IT, PT).
+- **`install.sh`** : étape `auth setup` automatique à l'installation ; détection de migration (pas d'admin existant) lors des mises à jour.
+
+### Changed
+- `window.__CP_TOKEN__` n'est plus injecté dans le HTML servi — le token est désormais retourné par `/api/auth/me` après authentification.
+- Schéma DB migré en version 6 : tables `users` et `sessions` ajoutées.
+
+### Security
+- Remplacement du token statique injecté dans le HTML par un système de sessions SQLite avec TTL 24h et sliding window.
+- Hachage des mots de passe via `node:crypto` scrypt (N=16384, r=8, p=1, keylen=64).
+- Rate limiting sur `/api/auth/login` : 5 tentatives par minute par IP.
+- Cookie `__cp_sid` : HttpOnly, SameSite=Strict, Secure si HTTPS détecté via `X-Forwarded-Proto`.
+
+---
+
 ## [0.14.6] — 2026-03-10
 
 ### Changed

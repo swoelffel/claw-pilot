@@ -9,6 +9,7 @@ import type { Updater } from "../core/updater.js";
 import type { SelfUpdateChecker } from "../core/self-update-checker.js";
 import type { SelfUpdater } from "../core/self-updater.js";
 import type { TokenCache } from "./token-cache.js";
+import type { SessionStore } from "./session-store.js";
 
 export interface RouteDeps {
   registry: Registry;
@@ -21,6 +22,7 @@ export interface RouteDeps {
   selfUpdater: SelfUpdater;
   tokenCache: TokenCache;
   xdgRuntimeDir: string;
+  sessionStore: SessionStore;
 }
 
 // Structured error helper — all API error responses go through this function.

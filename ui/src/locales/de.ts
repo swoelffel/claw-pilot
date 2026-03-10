@@ -254,4 +254,15 @@ export const templates = {
   "discover-adopt-btn": "Alle übernehmen ({n})",
   "discover-adopting": "Instanzen werden registriert...",
   "discover-done": "{n} Instanz(en) erfolgreich registriert.",
+
+  // login-view.ts + app.ts (auth — v0.15.0)
+  "login-title": "claw-pilot",
+  "login-label-username": "Benutzername",
+  "login-label-password": "Passwort",
+  "login-btn-submit": "Anmelden",
+  "login-error-invalid-creds": "Ungültige Anmeldedaten",
+  "login-error-rate-limit": "Zu viele Versuche. Bitte warten Sie einen Moment.",
+  "login-error-generic": "Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.",
+  "login-session-expired": "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.",
+  "app-btn-logout": "Abmelden",
 };

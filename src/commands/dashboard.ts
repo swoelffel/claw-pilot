@@ -7,6 +7,7 @@ import { logger } from "../lib/logger.js";
 import { generateDashboardToken } from "../core/secrets.js";
 import { constants } from "../lib/constants.js";
 import { LocalConnection } from "../server/local.js";
+import { SessionStore } from "../dashboard/session-store.js";
 import { parsePositiveInt } from "../lib/validate.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -27,6 +28,17 @@ export function dashboardCommand(): Command {
       const conn = new LocalConnection();
       const port = parsePositiveInt(opts.port, "--port");
 
+      // Verify that an admin account exists before starting the dashboard
+      const adminExists = db
+        .prepare("SELECT 1 FROM users WHERE username = ? LIMIT 1")
+        .get(constants.ADMIN_USERNAME);
+      if (!adminExists) {
+        logger.error(
+          "No admin account found. Run: claw-pilot auth setup",
+        );
+        process.exit(1);
+      }
+
       // Get or generate dashboard token
       const tokenPath = getDashboardTokenPath();
       let token: string;
@@ -39,11 +51,12 @@ export function dashboardCommand(): Command {
         logger.info(`Dashboard token saved to ${tokenPath}`);
       }
 
+      const sessionStore = new SessionStore(db, constants.SESSION_TTL_MS);
+
       // Dynamic import to avoid bundling issues
       const { startDashboard } = await import("../dashboard/server.js");
-      await startDashboard({ port, token, registry, conn });
+      await startDashboard({ port, token, registry, conn, sessionStore });
 
       logger.success(`Dashboard running at http://localhost:${port}`);
-      logger.dim(`Token: ${token.slice(0, 16)}...`);
     });
 }

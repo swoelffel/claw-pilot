@@ -143,6 +143,9 @@ describe("initDatabase — fresh database", () => {
     expect(names).toContain("agent_files");
     expect(names).toContain("agent_links");
     expect(names).toContain("blueprints");
+    // v6: auth tables
+    expect(names).toContain("users");
+    expect(names).toContain("sessions");
     db.close();
   });
 
@@ -155,9 +158,9 @@ describe("initDatabase — fresh database", () => {
     db.close();
   });
 
-  it("reaches the latest schema version (5)", () => {
+  it("reaches the latest schema version (6)", () => {
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(5);
+    expect(schemaVersion(db)).toBe(6);
     db.close();
   });
 
@@ -202,12 +205,12 @@ describe("initDatabase — fresh database", () => {
 // ---------------------------------------------------------------------------
 
 describe("migration v1 → v4", () => {
-  it("applies all migrations and reaches version 5", () => {
+  it("applies all migrations and reaches version 6", () => {
     const v1 = buildV1Db(dbPath);
     v1.close();
 
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(5);
+    expect(schemaVersion(db)).toBe(6);
     db.close();
   });
 
@@ -300,7 +303,7 @@ describe("migration v1 → v4", () => {
 // ---------------------------------------------------------------------------
 
 describe("migration v2 → v4", () => {
-  it("applies only v3, v4 and v5 migrations when starting from v2", () => {
+  it("applies only v3, v4, v5 and v6 migrations when starting from v2", () => {
     // Build v1 then apply v2 manually
     const v1 = buildV1Db(dbPath);
     seedV1Data(v1);
@@ -334,8 +337,10 @@ describe("migration v2 → v4", () => {
     v1.close();
 
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(5);
+    expect(schemaVersion(db)).toBe(6);
     expect(tableNames(db)).toContain("blueprints");
+    expect(tableNames(db)).toContain("users");
+    expect(tableNames(db)).toContain("sessions");
     expect(columnNames(db, "agents")).toContain("blueprint_id");
     expect(columnNames(db, "instances")).not.toContain("nginx_domain");
 

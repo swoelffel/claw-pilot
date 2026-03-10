@@ -4,19 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Claw Pilot Dashboard</title>
-    <script>
-      // Read token from URL hash: #token=xxx, then clean it from the URL
-      (function () {
-        var hash = window.location.hash.slice(1);
-        var params = new URLSearchParams(hash);
-        var token = params.get("token");
-        if (token) {
-          window.__CP_TOKEN__ = token;
-          // Remove token from URL bar to prevent leaking via Referer or browser history
-          history.replaceState(null, "", window.location.pathname);
-        }
-      })();
-    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">

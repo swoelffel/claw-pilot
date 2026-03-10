@@ -27,6 +27,10 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!res.ok) {
+    // Global 401 handler — session expired, redirect to login
+    if (res.status === 401 && path !== "/auth/login" && path !== "/auth/me") {
+      window.dispatchEvent(new CustomEvent("cp:session-expired"));
+    }
     let code = "INTERNAL_ERROR";
     let message = res.statusText;
     try {

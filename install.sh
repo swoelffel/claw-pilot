@@ -281,6 +281,14 @@ if [ -d "$INSTALL_DIR/.git" ]; then
       fi
     fi
   fi
+  # Check if admin account exists (migration from pre-auth version)
+  if ! $CLAW_PILOT_BIN auth check 2>/dev/null; then
+    echo ""
+    log "No admin account found — creating one..."
+    $CLAW_PILOT_BIN auth setup 2>&1
+    echo ""
+    warn "Save the admin password above — you will need it to access the dashboard."
+  fi
   exit 0
 else
   # Handle corrupted install dir (exists but not a git repo)
@@ -373,7 +381,15 @@ else
 fi
 $CLAW_PILOT_CMD init --yes
 
-# 14. Install dashboard as systemd service (Linux only)
+# 14. Create admin account
+echo ""
+log "Creating admin account..."
+$CLAW_PILOT_CMD auth setup 2>&1
+echo ""
+warn "Save the admin password above — you will need it to access the dashboard."
+warn "Reset anytime with: claw-pilot auth reset"
+
+# 16. Install dashboard as systemd service (Linux only)
 if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
   echo ""
   log "Setting up dashboard as a systemd service..."

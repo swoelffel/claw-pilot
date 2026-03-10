@@ -1,5 +1,6 @@
 // src/dashboard/server.ts
 import { Hono } from "hono";
+import { getCookie } from "hono/cookie";
 import { serve } from "@hono/node-server";
 import { WebSocketServer } from "ws";
 import { timingSafeEqual } from "node:crypto";
@@ -18,6 +19,7 @@ import { SelfUpdateChecker } from "../core/self-update-checker.js";
 import { SelfUpdater } from "../core/self-updater.js";
 import { createRateLimiter } from "./rate-limit.js";
 import { TokenCache } from "./token-cache.js";
+import { SessionStore } from "./session-store.js";
 import { constants } from "../lib/constants.js";
 import { apiError } from "./route-deps.js";
 import type { RouteDeps } from "./route-deps.js";
@@ -25,6 +27,7 @@ import { registerInstanceRoutes } from "./routes/instances.js";
 import { registerBlueprintRoutes } from "./routes/blueprints.js";
 import { registerTeamRoutes } from "./routes/teams.js";
 import { registerSystemRoutes } from "./routes/system.js";
+import { registerAuthRoutes } from "./routes/auth.js";
 
 // Resolve dist/ui/ relative to this bundle chunk.
 // When bundled: this file is at <install>/dist/server-*.mjs
@@ -53,6 +56,7 @@ export interface DashboardOptions {
   token: string;
   registry: Registry;
   conn: ServerConnection;
+  sessionStore: SessionStore;
 }
 
 /** Timing-safe string comparison to prevent timing attacks on token validation. */
@@ -62,7 +66,7 @@ function safeTokenCompare(a: string, b: string): boolean {
 }
 
 export async function startDashboard(options: DashboardOptions): Promise<void> {
-  const { port, token, registry, conn } = options;
+  const { port, token, registry, conn, sessionStore } = options;
   const app = new Hono();
 
   // Resolve XDG_RUNTIME_DIR once at startup for the current user
@@ -76,6 +80,12 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   const selfUpdateChecker = new SelfUpdateChecker();
   const selfUpdater = new SelfUpdater(conn);
   const tokenCache = new TokenCache(conn);
+
+  // Periodic session cleanup (every 60s)
+  const cleanupInterval = setInterval(() => {
+    sessionStore.cleanup();
+  }, constants.SESSION_CLEANUP_INTERVAL_MS);
+  if (cleanupInterval.unref) cleanupInterval.unref();
 
   // Public healthcheck — no auth required (for systemd, load balancers, monitoring)
   app.get("/health", (c) => c.json({ ok: true, service: "claw-pilot" }));
@@ -99,31 +109,51 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   app.use("/api/openclaw/update", createRateLimiter({ maxRequests: 1, windowMs: 300_000 }));
   app.use("/api/self/update", createRateLimiter({ maxRequests: 1, windowMs: constants.SELF_UPDATE_RATE_LIMIT_MS }));
 
-  // Auth middleware for API routes (timing-safe comparison)
+  // --- API routes (delegated to route modules) ---
+  const deps: RouteDeps = { registry, conn, health, lifecycle, updateChecker, updater, selfUpdateChecker, selfUpdater, tokenCache, xdgRuntimeDir, sessionStore };
+
+  // Auth routes — registered BEFORE the auth middleware so /api/auth/login is public
+  registerAuthRoutes(app, deps, token);
+
+  // Auth middleware for API routes — dual auth: session cookie (priority) then Bearer token
   const expectedBearer = `Bearer ${token}`;
+  const PUBLIC_ROUTES = ["/api/auth/login"];
+
   app.use("/api/*", async (c, next) => {
-    const auth = c.req.header("Authorization") ?? "";
-    if (!safeTokenCompare(auth, expectedBearer)) {
-      return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
+    // Skip auth for public routes
+    if (PUBLIC_ROUTES.some((r) => c.req.path === r)) {
+      return next();
     }
-    await next();
+
+    // 1. Try session cookie (priority)
+    const sid = getCookie(c, constants.SESSION_COOKIE_NAME);
+    if (sid) {
+      const session = sessionStore.validate(sid);
+      if (session) {
+        return next();
+      }
+    }
+
+    // 2. Fallback: Bearer token (backward compat + programmatic access)
+    const auth = c.req.header("Authorization") ?? "";
+    if (safeTokenCompare(auth, expectedBearer)) {
+      return next();
+    }
+
+    return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
   });
 
-  // --- API routes (delegated to route modules) ---
-  const deps: RouteDeps = { registry, conn, health, lifecycle, updateChecker, updater, selfUpdateChecker, selfUpdater, tokenCache, xdgRuntimeDir };
   registerInstanceRoutes(app, deps);
   registerBlueprintRoutes(app, deps);
   registerTeamRoutes(app, deps);
   registerSystemRoutes(app, deps);
 
   // --- Static file serving ---
-  // Serve index.html with injected token (all non-asset routes → SPA)
+  // Serve index.html as-is — token is no longer injected into HTML.
+  // The SPA obtains the token via GET /api/auth/me after login.
   const serveIndex = async () => {
     const indexPath = path.join(UI_DIST, "index.html");
-    let html = await fs.readFile(indexPath, "utf-8");
-    const injection = `<script>window.__CP_TOKEN__=${JSON.stringify(token)};</script>`;
-    html = html.replace("</head>", `${injection}\n</head>`);
-    return html;
+    return fs.readFile(indexPath, "utf-8");
   };
 
   // SPA root

@@ -79,4 +79,12 @@ export const constants = {
   SELF_UPDATE_TIMEOUT: 600_000,        // git + build timeout (ms) — 10 min
   SELF_UPDATE_RATE_LIMIT_MS: 300_000,  // rate limit POST /api/self/update
   SELF_UPDATE_POLL_INTERVAL: 60_000,   // polling UI (ms)
+
+  // Auth & sessions
+  SESSION_COOKIE_NAME: "__cp_sid",
+  SESSION_TTL_MS: 24 * 60 * 60 * 1000,   // 24h
+  SESSION_CLEANUP_INTERVAL_MS: 60 * 1000, // 1 min
+  AUTH_RATE_LIMIT_MAX: 5,                  // 5 attempts per window
+  AUTH_RATE_LIMIT_WINDOW_MS: 60 * 1000,   // 1 min window
+  ADMIN_USERNAME: "admin",
 } as const;

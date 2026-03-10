@@ -12,6 +12,7 @@ import "./components/blueprints-view.js";
 import "./components/blueprint-builder.js";
 import "./components/instance-settings.js";
 import "./components/self-update-banner.js";
+import "./components/login-view.js";
 
 // Initialize locale — resolved before first render via localeReady promise
 export const localeReady = initLocale();
@@ -308,8 +309,37 @@ export class CpApp extends LitElement {
       line-height: 1.4;
     }
 
+    .btn-logout {
+      display: inline-flex;
+      align-items: center;
+      background: none;
+      border: 1px solid var(--bg-border);
+      border-radius: 5px;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 4px 10px;
+      font-family: inherit;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .btn-logout:hover {
+      border-color: var(--state-error);
+      color: var(--state-error);
+    }
+
+    .auth-checking {
+      display: block;
+      min-height: 100vh;
+      background: var(--bg-base);
+    }
+
   `];
 
+  @state() private _authenticated = false;
+  @state() private _authChecking = true;
+  @state() private _sessionExpired = false;
   @state() private _route: Route = { view: "cluster" };
   @state() private _instances: InstanceInfo[] = [];
   @state() private _blueprintCount: number | null = null;
@@ -398,12 +428,32 @@ export class CpApp extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
+    document.addEventListener("click", this._onDocClick);
+    window.addEventListener("lit-localize-status", this._onLocaleStatus);
+    window.addEventListener("cp:session-expired", this._onSessionExpired);
+    void this._boot();
+  }
+
+  private _onSessionExpired = (): void => {
+    this._authenticated = false;
+    this._sessionExpired = true;
+    window.__CP_TOKEN__ = undefined;
+    this._closeWs();
+  };
+
+  private async _boot(): Promise<void> {
+    await localeReady;
+    await this._checkAuth();
+    if (this._authenticated) {
+      this._initApp();
+    }
+  }
+
+  private _initApp(): void {
     // Restore route from URL hash on first load
     this._route = CpApp._hashToRoute(location.hash);
     window.addEventListener("hashchange", this._onHashChange);
     this._connectWs();
-    document.addEventListener("click", this._onDocClick);
-    window.addEventListener("lit-localize-status", this._onLocaleStatus);
     // Pre-fetch blueprint count so the badge is visible from the start
     void fetchBlueprints().then((bps) => { this._blueprintCount = bps.length; }).catch(() => {});
     // Self-update polling — check immediately then every 60s
@@ -411,11 +461,64 @@ export class CpApp extends LitElement {
     this._selfUpdatePollTimer = setInterval(() => { void this._pollSelfUpdate(); }, CpApp.SELF_UPDATE_POLL_MS);
   }
 
+  private async _checkAuth(): Promise<void> {
+    this._authChecking = true;
+    try {
+      const res = await fetch("/api/auth/me");
+      if (res.ok) {
+        const data = (await res.json()) as { authenticated: boolean; token: string };
+        if (data.authenticated && data.token) {
+          window.__CP_TOKEN__ = data.token;
+          this._authenticated = true;
+        }
+      }
+    } catch {
+      // Network error — not authenticated
+    }
+    this._authChecking = false;
+  }
+
+  private _onAuthenticated(e: Event): void {
+    const { token } = (e as CustomEvent<{ token: string }>).detail;
+    window.__CP_TOKEN__ = token;
+    this._authenticated = true;
+    this._sessionExpired = false;
+    this._initApp();
+  }
+
+  private async _logout(): Promise<void> {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // Ignore errors — proceed with local logout
+    }
+    this._authenticated = false;
+    this._sessionExpired = false;
+    window.__CP_TOKEN__ = undefined;
+    this._closeWs();
+    // Clean up app state
+    window.removeEventListener("hashchange", this._onHashChange);
+    if (this._selfUpdatePollTimer) {
+      clearInterval(this._selfUpdatePollTimer);
+      this._selfUpdatePollTimer = null;
+    }
+  }
+
+  private _closeWs(): void {
+    this._ws?.close();
+    this._ws = null;
+    if (this._wsReconnectTimer) {
+      clearTimeout(this._wsReconnectTimer);
+      this._wsReconnectTimer = null;
+    }
+    this._wsConnected = false;
+  }
+
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     window.removeEventListener("hashchange", this._onHashChange);
-    this._ws?.close();
-    if (this._wsReconnectTimer) clearTimeout(this._wsReconnectTimer);
+    window.removeEventListener("cp:session-expired", this._onSessionExpired);
+    this._closeWs();
     if (this._selfUpdatePollTimer) clearInterval(this._selfUpdatePollTimer);
     document.removeEventListener("click", this._onDocClick);
     window.removeEventListener("lit-localize-status", this._onLocaleStatus);
@@ -430,7 +533,10 @@ export class CpApp extends LitElement {
   private _connectWs(): void {
     const token = window.__CP_TOKEN__ ?? "";
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${protocol}//${location.host}/ws?token=${encodeURIComponent(token)}`;
+    // Pass token as query param for WS auth (cookie not sent on WS upgrade in all browsers)
+    const url = token
+      ? `${protocol}//${location.host}/ws?token=${encodeURIComponent(token)}`
+      : `${protocol}//${location.host}/ws`;
 
     try {
       this._ws = new WebSocket(url);
@@ -644,6 +750,21 @@ export class CpApp extends LitElement {
   }
 
   override render() {
+    // Auth checking — brief blank screen while verifying session
+    if (this._authChecking) {
+      return html`<div class="auth-checking"></div>`;
+    }
+
+    // Not authenticated — show login view
+    if (!this._authenticated) {
+      return html`
+        <cp-login-view
+          .sessionExpired=${this._sessionExpired}
+          @authenticated=${this._onAuthenticated}
+        ></cp-login-view>
+      `;
+    }
+
     const instanceCount = this._instances.length;
 
     return html`
@@ -672,6 +793,9 @@ export class CpApp extends LitElement {
               ? msg("Live", { id: "ws-live" })
               : msg("Offline", { id: "ws-offline" })}
           </div>
+          <button class="btn-logout" @click=${this._logout}>
+            ${msg("Sign out", { id: "app-btn-logout" })}
+          </button>
         </div>
       </header>
 

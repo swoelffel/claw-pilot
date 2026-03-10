@@ -271,6 +271,37 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v6: add users and sessions tables for dashboard authentication.
+    // users: single admin account in v1, prepared for multi-user (role column).
+    // sessions: server-side sessions with TTL, sliding window, audit fields.
+    version: 6,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS users (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          username      TEXT NOT NULL UNIQUE,
+          password_hash TEXT NOT NULL,
+          role          TEXT NOT NULL DEFAULT 'admin' CHECK(role IN ('admin', 'operator', 'viewer')),
+          created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS sessions (
+          id            TEXT PRIMARY KEY,
+          user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+          expires_at    TEXT NOT NULL,
+          last_seen_at  TEXT NOT NULL DEFAULT (datetime('now')),
+          ip_address    TEXT,
+          user_agent    TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

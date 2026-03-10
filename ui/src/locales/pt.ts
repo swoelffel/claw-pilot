@@ -254,4 +254,15 @@ export const templates = {
   "discover-adopt-btn": "Adotar todas ({n})",
   "discover-adopting": "Registrando instâncias...",
   "discover-done": "{n} instância(s) registrada(s) com sucesso.",
+
+  // login-view.ts + app.ts (auth — v0.15.0)
+  "login-title": "claw-pilot",
+  "login-label-username": "Nome de utilizador",
+  "login-label-password": "Palavra-passe",
+  "login-btn-submit": "Entrar",
+  "login-error-invalid-creds": "Credenciais inválidas",
+  "login-error-rate-limit": "Demasiadas tentativas. Por favor, aguarde um momento.",
+  "login-error-generic": "Ocorreu um erro. Por favor, tente novamente.",
+  "login-session-expired": "A sua sessão expirou. Por favor, inicie sessão novamente.",
+  "app-btn-logout": "Sair",
 };

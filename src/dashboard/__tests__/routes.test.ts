@@ -13,6 +13,7 @@ import { initDatabase } from "../../db/schema.js";
 import { Registry } from "../../core/registry.js";
 import { MockConnection } from "../../core/__tests__/mock-connection.js";
 import { TokenCache } from "../token-cache.js";
+import { SessionStore } from "../session-store.js";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { registerInstanceRoutes } from "../routes/instances.js";
@@ -191,6 +192,7 @@ function createTestApp(): TestContext {
     selfUpdater: new StubSelfUpdater() as unknown as RouteDeps["selfUpdater"],
     tokenCache,
     xdgRuntimeDir: "/run/user/1000",
+    sessionStore: new SessionStore(db),
   };
 
   registerInstanceRoutes(app, deps);
