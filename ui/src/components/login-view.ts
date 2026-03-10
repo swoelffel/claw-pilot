@@ -3,6 +3,8 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
 
+declare const __APP_VERSION__: string;
+
 @localized()
 @customElement("cp-login-view")
 export class CpLoginView extends LitElement {
@@ -109,6 +111,14 @@ export class CpLoginView extends LitElement {
         background: rgba(245, 158, 11, 0.1);
         border: 1px solid rgba(245, 158, 11, 0.3);
         border-radius: 4px;
+      }
+
+      .version {
+        text-align: center;
+        margin-top: 20px;
+        font-size: 11px;
+        font-family: var(--font-mono);
+        color: var(--text-muted);
       }
     `,
   ];
@@ -221,6 +231,8 @@ export class CpLoginView extends LitElement {
         ${this._error
           ? html`<p class="error">${this._error}</p>`
           : ""}
+
+        <p class="version">v${__APP_VERSION__}</p>
       </div>
     `;
   }

@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.15.1] — 2026-03-10
+
+### Fixed
+- **Login page** : affichage du numéro de version (`v0.15.1`) en bas de la carte de login
+- **`claw-pilot auth setup/reset`** : suppression de l'INSERT dans `events` incompatible avec les DB existantes (ancien schéma `instance_slug/event_type/detail`)
+
+---
+
 ## [0.15.0] — 2026-03-10
 
 ### Added
