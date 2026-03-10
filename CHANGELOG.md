@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.14.1] — 2026-03-10
+
+### Changed
+- **Instance Card** : bouton Start/Stop déplacé du header vers le menu popover `···` (en première position, coloré vert pour Start / rouge pour Stop). Le header n'affiche plus que le badge d'état et le bouton menu.
+
+---
+
 ## [0.14.0] — 2026-03-10
 
 ### Changed

@@ -255,6 +255,22 @@ export class InstanceCard extends LitElement {
       background: color-mix(in srgb, var(--state-error) 8%, transparent);
     }
 
+    .menu-item.stop {
+      color: var(--state-error);
+    }
+
+    .menu-item.stop:hover {
+      background: color-mix(in srgb, var(--state-error) 8%, transparent);
+    }
+
+    .menu-item.start {
+      color: var(--state-running);
+    }
+
+    .menu-item.start:hover {
+      background: color-mix(in srgb, var(--state-running) 8%, transparent);
+    }
+
     .menu-icon {
       font-size: 14px;
       width: 16px;
@@ -407,6 +423,19 @@ export class InstanceCard extends LitElement {
 
     return html`
       <div class="menu-popover" @click=${(e: Event) => e.stopPropagation()}>
+        <button
+          class="menu-item ${isRunning ? "stop" : "start"}"
+          ?disabled=${this._loading}
+          @click=${(e: Event) => this._action(e, isRunning ? stopInstance : startInstance)}
+        >
+          <span class="menu-icon">${isRunning ? "■" : "▶"}</span>
+          ${isRunning
+            ? msg("Stop", { id: "btn-stop" })
+            : msg("Start", { id: "btn-start" })}
+        </button>
+
+        <div class="menu-separator"></div>
+
         ${isRunning ? html`
           <a
             class="menu-item"
@@ -501,15 +530,6 @@ export class InstanceCard extends LitElement {
               <span class="state-dot"></span>
               ${stateClass}
             </span>
-            <button
-              class="btn ${inst.state === 'running' ? 'btn-stop' : 'btn-start'}"
-              ?disabled=${this._loading}
-              @click=${(e: Event) => this._action(e, inst.state === "running" ? stopInstance : startInstance)}
-            >
-              ${inst.state === "running"
-                ? msg("Stop", { id: "btn-stop" })
-                : msg("Start", { id: "btn-start" })}
-            </button>
             <div class="menu-anchor">
               <button
                 class="btn-menu ${this._menuOpen ? "open" : ""}"
