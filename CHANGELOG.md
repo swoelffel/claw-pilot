@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.14.3] — 2026-03-10
+
+### Fixed
+- **Health check** : une instance dont le service systemd est en état `failed` (crash passé, process terminé) était incorrectement affichée en statut `ERROR` sur le dashboard. Le statut `ERROR` est désormais réservé aux cas où systemd rapporte `active` mais la gateway ne répond pas (process bloqué/zombie). Un service `failed` ou `inactive` sans gateway joignable est maintenant affiché comme `STOPPED`.
+
+---
+
 ## [0.14.2] — 2026-03-10
 
 ### Fixed

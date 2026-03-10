@@ -131,14 +131,15 @@ export class HealthChecker {
     }
 
     // Update registry state
+    // "error" only when systemd reports active but gateway is unreachable (process stuck/zombie).
+    // A "failed" or "inactive" systemd unit with no responding gateway means the instance is
+    // simply stopped — systemd retains "failed" state after a crash even when the process is gone.
     const newState =
       status.gateway === "healthy"
         ? "running"
-        : status.systemd === "inactive"
-          ? "stopped"
-          : status.systemd === "failed"
-            ? "error"
-            : "unknown";
+        : status.systemd === "active"
+          ? "error"
+          : "stopped";
     this.registry.updateInstanceState(slug, newState);
 
     return status;
