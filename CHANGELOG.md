@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.14.4] — 2026-03-10
+
+### Fixed
+- **Health check — source de vérité unique** : la dérivation du state (`running` / `stopped` / `error`) était dupliquée en 3 endroits (backend `health.ts`, WebSocket handler `app.ts`, CLI `list.ts`), chacun avec sa propre logique. Le state est désormais calculé une seule fois dans `HealthChecker.check()`, exposé dans `HealthStatus.state`, et consommé directement par tous les appelants. Corrige le faux statut `ERROR` affiché sur le dashboard web pour les instances stoppées après un crash (le WebSocket handler re-dérivait le state avec l'ancienne logique buggée).
+
+---
+
 ## [0.14.3] — 2026-03-10
 
 ### Fixed

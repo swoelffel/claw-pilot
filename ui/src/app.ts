@@ -3,7 +3,7 @@ import { customElement, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { initLocale, switchLocale, getLocale, allLocales, type SupportedLocale } from "./localization.js";
 import { createRef, ref, type Ref } from "lit/directives/ref.js";
-import type { InstanceInfo, WsMessage, SelfUpdateStatus, SidebarSection } from "./types.js";
+import type { InstanceInfo, WsMessage, HealthUpdate, SelfUpdateStatus, SidebarSection } from "./types.js";
 import { fetchBlueprints } from "./api.js";
 import { tokenStyles } from "./styles/tokens.js";
 import "./components/cluster-view.js";
@@ -481,31 +481,14 @@ export class CpApp extends LitElement {
 
   private _handleWsMessage(msg: WsMessage): void {
     if (msg.type === "health_update") {
-      const payload = msg.payload as {
-        instances?: Array<{
-          slug: string;
-          gateway: "healthy" | "unhealthy" | "unknown";
-          systemd: "active" | "inactive" | "failed" | "unknown";
-          agentCount?: number;
-          pendingDevices?: number;
-          telegram?: "connected" | "disconnected" | "not_configured";
-        }>;
-      };
+      const payload = msg.payload as HealthUpdate["payload"];
       const updates = payload.instances ?? [];
       if (updates.length > 0 && this._instances.length > 0) {
         let changed = false;
         const next = this._instances.map((inst) => {
           const update = updates.find((u) => u.slug === inst.slug);
           if (!update) return inst;
-          // Derive state from health
-          const newState: InstanceInfo["state"] =
-            update.gateway === "healthy"
-              ? "running"
-              : update.systemd === "inactive"
-                ? "stopped"
-                : update.systemd === "failed"
-                  ? "error"
-                  : "unknown";
+          const newState = update.state;
           const newAgentCount = update.agentCount ?? inst.agentCount;
           const newPendingDevices = update.pendingDevices ?? inst.pendingDevices;
           const newTelegram = update.telegram ?? inst.telegram;

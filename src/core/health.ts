@@ -7,9 +7,13 @@ import { constants } from "../lib/constants.js";
 import { shellEscape } from "../lib/shell.js";
 import { getServiceManager, getLaunchdLabel } from "../lib/platform.js";
 
+export type InstanceState = "running" | "stopped" | "error" | "unknown";
+
 export interface HealthStatus {
   slug: string;
   port: number;
+  /** Derived instance state — single source of truth, computed in HealthChecker.check() */
+  state: InstanceState;
   gateway: "healthy" | "unhealthy" | "unknown";
   systemd: "active" | "inactive" | "failed" | "unknown";
   pid?: number;
@@ -36,6 +40,7 @@ export class HealthChecker {
     const status: HealthStatus = {
       slug,
       port: instance.port,
+      state: "unknown",
       gateway: "unknown",
       systemd: "unknown",
       agentCount: 0,
@@ -130,17 +135,17 @@ export class HealthChecker {
       status.pendingDevices = 0;
     }
 
-    // Update registry state
-    // "error" only when systemd reports active but gateway is unreachable (process stuck/zombie).
-    // A "failed" or "inactive" systemd unit with no responding gateway means the instance is
-    // simply stopped — systemd retains "failed" state after a crash even when the process is gone.
-    const newState =
+    // Derive state — single source of truth for all consumers (CLI, WebSocket, API).
+    // "error" only when systemd=active but gateway unreachable (process stuck/zombie).
+    // systemd retains "failed" after a crash even when the process is gone — treat as "stopped".
+    status.state =
       status.gateway === "healthy"
         ? "running"
         : status.systemd === "active"
           ? "error"
           : "stopped";
-    this.registry.updateInstanceState(slug, newState);
+
+    this.registry.updateInstanceState(slug, status.state);
 
     return status;
   }
