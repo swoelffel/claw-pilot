@@ -4,32 +4,16 @@ import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
 import { resolveAgentWorkspacePath } from "./discovery.js";
 import { normaliseModel } from "../lib/model-helpers.js";
+import { constants } from "../lib/constants.js";
 
 // ---------------------------------------------------------------------------
-// Constants
+// Constants (imported from single source of truth)
 // ---------------------------------------------------------------------------
 
-/** Files we attempt to discover in each agent workspace. */
-const DISCOVERABLE_FILES = [
-  "AGENTS.md",
-  "SOUL.md",
-  "TOOLS.md",
-  "IDENTITY.md",
-  "USER.md",
-  "HEARTBEAT.md",
-  "MEMORY.md",
-  "BOOTSTRAP.md",
-] as const;
+const DISCOVERABLE_FILES = constants.DISCOVERABLE_FILES;
 
 /** Subset of discoverable files that the UI is allowed to edit. */
-export const EDITABLE_FILES = new Set([
-  "AGENTS.md",
-  "SOUL.md",
-  "TOOLS.md",
-  "IDENTITY.md",
-  "USER.md",
-  "HEARTBEAT.md",
-]);
+export const EDITABLE_FILES: Set<string> = new Set(constants.EDITABLE_FILES);
 
 // ---------------------------------------------------------------------------
 // Public types

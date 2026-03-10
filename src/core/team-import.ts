@@ -9,6 +9,8 @@ import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
 import { TeamFileSchema, type TeamFile } from "./team-schema.js";
 import { now } from "../lib/date.js";
+import { constants } from "../lib/constants.js";
+import { loadWorkspaceTemplate, type TemplateVars } from "../lib/workspace-templates.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -93,14 +95,29 @@ type ImportTarget =
 
 /**
  * Core DB transaction shared by importBlueprintTeam and importInstanceTeam.
- * Returns the number of files written.
+ *
+ * After inserting the YAML-provided files, gap-fills any missing EXPORTABLE_FILES
+ * with default templates from templates/workspace/. This ensures that blueprints
+ * imported from outside claw-pilot (e.g., with only AGENTS.md + SOUL.md + USER.md)
+ * get a complete set of workspace files.
+ *
+ * Returns the number of files written (YAML + gap-filled).
  */
-function _importTeamCore(
+async function _importTeamCore(
   db: Database.Database,
   target: ImportTarget,
   team: TeamFile,
-): number {
+): Promise<number> {
   let filesWritten = 0;
+
+  // --- Phase 1: DB transaction (synchronous) ---
+  // Collect { agentDbId, agentId, agentName, existingFilenames } for gap-fill phase.
+  const agentsToGapFill: Array<{
+    dbId: number;
+    agentId: string;
+    agentName: string;
+    existingFilenames: Set<string>;
+  }> = [];
 
   db.transaction(() => {
     // 1. Delete existing agent_files
@@ -171,7 +188,8 @@ function _importTeamCore(
           ? (db.prepare("SELECT id FROM agents WHERE blueprint_id = ? AND agent_id = ?").get(target.blueprintId, agent.id) as { id: number })
           : (db.prepare("SELECT id FROM agents WHERE instance_id = ? AND agent_id = ?").get(target.instanceId, agent.id) as { id: number });
 
-      // Insert files
+      // Insert files from YAML
+      const existingFilenames = new Set<string>();
       if (agent.files) {
         for (const [filename, content] of Object.entries(agent.files)) {
           const contentHash = createHash("sha256").update(content).digest("hex").slice(0, 16);
@@ -180,8 +198,17 @@ function _importTeamCore(
              VALUES (?, ?, ?, ?, ?)`,
           ).run(inserted.id, filename, content, contentHash, now());
           filesWritten++;
+          existingFilenames.add(filename);
         }
       }
+
+      // Track for gap-fill phase
+      agentsToGapFill.push({
+        dbId: inserted.id,
+        agentId: agent.id,
+        agentName: agent.name,
+        existingFilenames,
+      });
     }
 
     // 4. Insert links
@@ -200,6 +227,33 @@ function _importTeamCore(
     }
   })();
 
+  // --- Phase 2: Gap-fill missing EXPORTABLE_FILES from templates (async) ---
+  // This runs outside the transaction since template loading is async.
+  // We use a separate INSERT for each gap-filled file.
+  const insertFile = db.prepare(
+    `INSERT INTO agent_files (agent_id, filename, content, content_hash, updated_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  );
+
+  for (const agent of agentsToGapFill) {
+    const missingFiles = constants.EXPORTABLE_FILES.filter(
+      (f) => !agent.existingFilenames.has(f),
+    );
+    if (missingFiles.length === 0) continue;
+
+    const vars: TemplateVars = {
+      agentId: agent.agentId,
+      agentName: agent.agentName,
+    };
+
+    for (const filename of missingFiles) {
+      const content = await loadWorkspaceTemplate(filename, vars);
+      const contentHash = createHash("sha256").update(content).digest("hex").slice(0, 16);
+      insertFile.run(agent.dbId, filename, content, contentHash, now());
+      filesWritten++;
+    }
+  }
+
   return filesWritten;
 }
 
@@ -207,13 +261,13 @@ function _importTeamCore(
 // Import into blueprint (DB only)
 // ---------------------------------------------------------------------------
 
-export function importBlueprintTeam(
+export async function importBlueprintTeam(
   db: Database.Database,
   registry: Registry,
   blueprintId: number,
   team: TeamFile,
   dryRun = false,
-): ImportResult | DryRunResult {
+): Promise<ImportResult | DryRunResult> {
   const blueprint = registry.getBlueprint(blueprintId);
   if (!blueprint) throw new Error(`Blueprint ${blueprintId} not found`);
 
@@ -234,7 +288,7 @@ export function importBlueprintTeam(
     };
   }
 
-  const filesWritten = _importTeamCore(db, { type: "blueprint", blueprintId }, team);
+  const filesWritten = await _importTeamCore(db, { type: "blueprint", blueprintId }, team);
 
   return {
     ok: true,
@@ -274,8 +328,8 @@ export async function importInstanceTeam(
     };
   }
 
-  // --- Phase A: DB transaction ---
-  _importTeamCore(
+  // --- Phase A: DB transaction + gap-fill ---
+  await _importTeamCore(
     db,
     { type: "instance", instanceId: instance.id, configPath: instance.config_path },
     team,
@@ -442,7 +496,11 @@ function mergeTeamIntoConfig(
   }
 }
 
-/** Write workspace files to disk for all agents. */
+/**
+ * Write workspace files to disk for all agents.
+ * Gap-fills missing EXPORTABLE_FILES with default templates — same logic as
+ * the DB gap-fill in _importTeamCore, but for the filesystem.
+ */
 async function syncWorkspacesToDisk(
   conn: ServerConnection,
   openclawHome: string,
@@ -459,9 +517,27 @@ async function syncWorkspacesToDisk(
     // Create workspace directory
     await conn.mkdir(workspacePath);
 
-    // Write files
+    // Write YAML-provided files
+    const writtenFilenames = new Set<string>();
     if (agent.files) {
       for (const [filename, content] of Object.entries(agent.files)) {
+        await conn.writeFile(path.join(workspacePath, filename), content);
+        filesWritten++;
+        writtenFilenames.add(filename);
+      }
+    }
+
+    // Gap-fill missing EXPORTABLE_FILES with templates
+    const missingFiles = constants.EXPORTABLE_FILES.filter(
+      (f) => !writtenFilenames.has(f),
+    );
+    if (missingFiles.length > 0) {
+      const vars: TemplateVars = {
+        agentId: agent.id,
+        agentName: agent.name,
+      };
+      for (const filename of missingFiles) {
+        const content = await loadWorkspaceTemplate(filename, vars);
         await conn.writeFile(path.join(workspacePath, filename), content);
         filesWritten++;
       }

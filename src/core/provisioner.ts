@@ -430,7 +430,7 @@ export class Provisioner {
       "../templates/workspace",
     );
 
-    const files = ["AGENTS.md", "SOUL.md", "TOOLS.md", "USER.md", "MEMORY.md"];
+    const files = constants.TEMPLATE_FILES;
     const date = new Date().toISOString().split("T")[0]!;
 
     for (const file of files) {

@@ -85,7 +85,7 @@ async function handleBlueprintImport(
   }
 
   logger.step("Importing...");
-  const result = importBlueprintTeam(deps.db, deps.registry, bp.id, team);
+  const result = await importBlueprintTeam(deps.db, deps.registry, bp.id, team);
   if ("agents_imported" in result) {
     logger.success(`Removed ${currentAgents.length} existing agents`);
     logger.success(`Created ${result.agents_imported} agents`);

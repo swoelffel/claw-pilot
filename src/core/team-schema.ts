@@ -2,20 +2,14 @@
 // Zod schema for .team.yaml agent team export/import format.
 
 import { z } from "zod";
+import { constants } from "../lib/constants.js";
 
 // ---------------------------------------------------------------------------
-// Constants
+// Constants (re-exported from single source of truth)
 // ---------------------------------------------------------------------------
 
 /** Workspace files included in team exports. */
-export const EXPORTABLE_FILES = [
-  "AGENTS.md",
-  "SOUL.md",
-  "TOOLS.md",
-  "IDENTITY.md",
-  "USER.md",
-  "HEARTBEAT.md",
-] as const;
+export const EXPORTABLE_FILES = constants.EXPORTABLE_FILES;
 
 export type ExportableFile = (typeof EXPORTABLE_FILES)[number];
 

@@ -128,25 +128,27 @@ function seedInstance(slug = "test-inst"): InstanceRecord {
 // ---------------------------------------------------------------------------
 
 describe("importBlueprintTeam()", () => {
-  it("happy path — imports 2 agents + 1 link, returns correct counts", () => {
+  it("happy path — imports 2 agents + 1 link, returns correct counts", async () => {
     const blueprint = seedBlueprint();
     const team = makeTeam();
 
-    const result = importBlueprintTeam(db, registry, blueprint.id, team);
+    const result = await importBlueprintTeam(db, registry, blueprint.id, team);
 
     expect(result.ok).toBe(true);
     if (!("dry_run" in result)) {
       expect(result.agents_imported).toBe(2);
       expect(result.links_imported).toBe(1);
-      expect(result.files_written).toBe(1); // only main has a file (SOUL.md)
+      // main has SOUL.md (1 from YAML) + 5 gap-filled (AGENTS, TOOLS, IDENTITY, USER, HEARTBEAT)
+      // helper has 0 from YAML + 6 gap-filled (all EXPORTABLE_FILES)
+      expect(result.files_written).toBe(12);
     }
   });
 
-  it("happy path — agents are persisted in DB", () => {
+  it("happy path — agents are persisted in DB", async () => {
     const blueprint = seedBlueprint();
     const team = makeTeam();
 
-    importBlueprintTeam(db, registry, blueprint.id, team);
+    await importBlueprintTeam(db, registry, blueprint.id, team);
 
     const agents = registry.listBlueprintAgents(blueprint.id);
     expect(agents).toHaveLength(2);
@@ -155,11 +157,11 @@ describe("importBlueprintTeam()", () => {
     expect(agentIds).toContain("helper");
   });
 
-  it("happy path — links are persisted in DB", () => {
+  it("happy path — links are persisted in DB", async () => {
     const blueprint = seedBlueprint();
     const team = makeTeam();
 
-    importBlueprintTeam(db, registry, blueprint.id, team);
+    await importBlueprintTeam(db, registry, blueprint.id, team);
 
     const links = registry.listBlueprintLinks(blueprint.id);
     expect(links).toHaveLength(1);
@@ -168,11 +170,11 @@ describe("importBlueprintTeam()", () => {
     expect(links[0]!.link_type).toBe("spawn");
   });
 
-  it("dry-run — returns dry_run summary without writing to DB", () => {
+  it("dry-run — returns dry_run summary without writing to DB", async () => {
     const blueprint = seedBlueprint();
     const team = makeTeam();
 
-    const result = importBlueprintTeam(db, registry, blueprint.id, team, true);
+    const result = await importBlueprintTeam(db, registry, blueprint.id, team, true);
 
     expect(result.ok).toBe(true);
     expect("dry_run" in result && result.dry_run).toBe(true);
@@ -190,7 +192,7 @@ describe("importBlueprintTeam()", () => {
     expect(agents).toHaveLength(0);
   });
 
-  it("dry-run — reflects existing agent count in summary", () => {
+  it("dry-run — reflects existing agent count in summary", async () => {
     const blueprint = seedBlueprint();
 
     // Pre-seed an agent in the blueprint
@@ -201,7 +203,7 @@ describe("importBlueprintTeam()", () => {
     });
 
     const team = makeTeam();
-    const result = importBlueprintTeam(db, registry, blueprint.id, team, true);
+    const result = await importBlueprintTeam(db, registry, blueprint.id, team, true);
 
     if ("dry_run" in result) {
       expect(result.summary.agents_to_remove).toBe(1);
@@ -209,7 +211,7 @@ describe("importBlueprintTeam()", () => {
     }
   });
 
-  it("replaces existing agents — old agents are deleted before import", () => {
+  it("replaces existing agents — old agents are deleted before import", async () => {
     const blueprint = seedBlueprint();
 
     // Pre-seed an agent that should be replaced
@@ -222,7 +224,7 @@ describe("importBlueprintTeam()", () => {
     expect(registry.listBlueprintAgents(blueprint.id)).toHaveLength(1);
 
     const team = makeTeam();
-    importBlueprintTeam(db, registry, blueprint.id, team);
+    await importBlueprintTeam(db, registry, blueprint.id, team);
 
     // Old agent should be gone, new agents should be present
     const agents = registry.listBlueprintAgents(blueprint.id);
@@ -233,9 +235,9 @@ describe("importBlueprintTeam()", () => {
     expect(agentIds).toContain("helper");
   });
 
-  it("throws if blueprint not found", () => {
+  it("throws if blueprint not found", async () => {
     const team = makeTeam();
-    expect(() => importBlueprintTeam(db, registry, 9999, team)).toThrow(
+    await expect(importBlueprintTeam(db, registry, 9999, team)).rejects.toThrow(
       "Blueprint 9999 not found",
     );
   });
@@ -370,7 +372,7 @@ describe("importInstanceTeam()", () => {
     expect(conn.files.get(soulPath)).toBe("# Soul content");
   });
 
-  it("happy path — files_written count matches team files", async () => {
+  it("happy path — files_written includes YAML files + gap-filled templates", async () => {
     const instance = seedInstance();
     conn.files.set(CONFIG_PATH, MINIMAL_OPENCLAW_JSON);
 
@@ -386,7 +388,167 @@ describe("importInstanceTeam()", () => {
     );
 
     if (!("dry_run" in result)) {
-      expect(result.files_written).toBe(1);
+      // main: 1 YAML (SOUL.md) + 5 gap-filled (AGENTS, TOOLS, IDENTITY, USER, HEARTBEAT) = 6
+      // helper: 0 YAML + 6 gap-filled (all EXPORTABLE_FILES) = 6
+      // Total: 12
+      expect(result.files_written).toBe(12);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Gap-fill tests (workspace files)
+// ---------------------------------------------------------------------------
+
+describe("gap-fill — missing workspace files seeded from templates", () => {
+  it("blueprint import — partial files get gap-filled to all 6 EXPORTABLE_FILES", async () => {
+    const blueprint = seedBlueprint();
+    // Agent with only AGENTS.md and SOUL.md — missing TOOLS, IDENTITY, USER, HEARTBEAT
+    const team: TeamFile = {
+      version: "1",
+      exported_at: "2026-01-01T00:00:00Z",
+      agents: [
+        {
+          id: "main",
+          name: "Main",
+          is_default: true,
+          files: { "AGENTS.md": "# Custom agents", "SOUL.md": "# Custom soul" },
+        },
+      ],
+      links: [],
+    };
+
+    await importBlueprintTeam(db, registry, blueprint.id, team);
+
+    const agents = registry.listBlueprintAgents(blueprint.id);
+    expect(agents).toHaveLength(1);
+
+    const files = registry.listAgentFiles(agents[0]!.id);
+    const filenames = files.map((f) => f.filename).sort();
+
+    // Should have all 6 EXPORTABLE_FILES
+    expect(filenames).toEqual([
+      "AGENTS.md", "HEARTBEAT.md", "IDENTITY.md", "SOUL.md", "TOOLS.md", "USER.md",
+    ]);
+  });
+
+  it("blueprint import — YAML-provided files are NOT overwritten by templates", async () => {
+    const blueprint = seedBlueprint();
+    const customContent = "# My custom SOUL content — do not overwrite";
+    const team: TeamFile = {
+      version: "1",
+      exported_at: "2026-01-01T00:00:00Z",
+      agents: [
+        {
+          id: "main",
+          name: "Main",
+          is_default: true,
+          files: { "SOUL.md": customContent },
+        },
+      ],
+      links: [],
+    };
+
+    await importBlueprintTeam(db, registry, blueprint.id, team);
+
+    const agents = registry.listBlueprintAgents(blueprint.id);
+    const soulFile = registry.getAgentFileContent(agents[0]!.id, "SOUL.md");
+    expect(soulFile?.content).toBe(customContent);
+  });
+
+  it("blueprint import — agent with ALL 6 files gets zero gap-fills", async () => {
+    const blueprint = seedBlueprint();
+    const team: TeamFile = {
+      version: "1",
+      exported_at: "2026-01-01T00:00:00Z",
+      agents: [
+        {
+          id: "main",
+          name: "Main",
+          is_default: true,
+          files: {
+            "AGENTS.md": "# A",
+            "SOUL.md": "# S",
+            "TOOLS.md": "# T",
+            "IDENTITY.md": "# I",
+            "USER.md": "# U",
+            "HEARTBEAT.md": "# H",
+          },
+        },
+      ],
+      links: [],
+    };
+
+    const result = await importBlueprintTeam(db, registry, blueprint.id, team);
+
+    if (!("dry_run" in result)) {
+      // 6 YAML files, 0 gap-filled
+      expect(result.files_written).toBe(6);
+    }
+  });
+
+  it("instance import — gap-filled files are written to disk", async () => {
+    const instance = seedInstance();
+    conn.files.set(CONFIG_PATH, MINIMAL_OPENCLAW_JSON);
+
+    // Agent with only USER.md — missing 5 other EXPORTABLE_FILES
+    const team: TeamFile = {
+      version: "1",
+      exported_at: "2026-01-01T00:00:00Z",
+      agents: [
+        {
+          id: "main",
+          name: "Main",
+          is_default: true,
+          files: { "USER.md": "# Custom user" },
+        },
+      ],
+      links: [],
+    };
+
+    await importInstanceTeam(db, registry, conn, instance, team, "/run/user/1000");
+
+    const workspaceDir = path.join(STATE_DIR, "workspaces", "workspace");
+
+    // USER.md should have the YAML content
+    expect(conn.files.get(path.join(workspaceDir, "USER.md"))).toBe("# Custom user");
+
+    // Gap-filled files should exist on disk
+    for (const filename of ["AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md", "HEARTBEAT.md"]) {
+      const filePath = path.join(workspaceDir, filename);
+      expect(conn.files.has(filePath)).toBe(true);
+      // Gap-filled content should not be empty
+      expect(conn.files.get(filePath)!.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("instance import — gap-filled files are also in DB", async () => {
+    const instance = seedInstance();
+    conn.files.set(CONFIG_PATH, MINIMAL_OPENCLAW_JSON);
+
+    const team: TeamFile = {
+      version: "1",
+      exported_at: "2026-01-01T00:00:00Z",
+      agents: [
+        {
+          id: "main",
+          name: "Main",
+          is_default: true,
+          files: { "SOUL.md": "# Soul" },
+        },
+      ],
+      links: [],
+    };
+
+    await importInstanceTeam(db, registry, conn, instance, team, "/run/user/1000");
+
+    // Check DB has all 6 files for the agent
+    const agents = registry.listAgents("test-inst");
+    expect(agents).toHaveLength(1);
+    const files = registry.listAgentFiles(agents[0]!.id);
+    const filenames = files.map((f) => f.filename).sort();
+    expect(filenames).toEqual([
+      "AGENTS.md", "HEARTBEAT.md", "IDENTITY.md", "SOUL.md", "TOOLS.md", "USER.md",
+    ]);
   });
 });

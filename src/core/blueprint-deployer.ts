@@ -3,6 +3,7 @@ import * as path from "node:path";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
 import { createHash } from "node:crypto";
+import { constants } from "../lib/constants.js";
 
 export class BlueprintDeployer {
   constructor(
@@ -62,10 +63,11 @@ export class BlueprintDeployer {
         }
       }
 
-      // If no files in DB, write minimal placeholders (secondary agents only)
+      // If no files in DB, write minimal placeholders (secondary agents only).
+      // Uses TEMPLATE_FILES (7 files) — OpenClaw seeds its own templates at
+      // startup if files are empty/minimal, so placeholder content is fine.
       if (files.length === 0 && !isDefault) {
-        const minimalFiles = ["AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md", "USER.md", "HEARTBEAT.md"];
-        for (const filename of minimalFiles) {
+        for (const filename of constants.TEMPLATE_FILES) {
           await this.conn.writeFile(
             path.join(workspaceDir, filename),
             `# ${bpAgent.name}\n`,

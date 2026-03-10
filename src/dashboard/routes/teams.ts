@@ -150,7 +150,7 @@ export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
     logger.info(`[team-import] Validated OK — ${parsed.data.agents.length} agents, ${parsed.data.links.length} links`);
 
     try {
-      const result = importBlueprintTeam(
+      const result = await importBlueprintTeam(
         registry.getDb(),
         registry,
         id,

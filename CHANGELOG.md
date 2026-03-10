@@ -6,6 +6,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.13.0] — 2026-03-10
+
+### Fixed
+- **Workspace files incomplets** : les instances creees sans blueprint manquaient `IDENTITY.md` et `HEARTBEAT.md` (5 fichiers au lieu de 7). Le provisioner utilise desormais `TEMPLATE_FILES` (7 fichiers).
+- **Blueprint deployer — fallback minimalFiles** : les agents secondaires sans fichiers en DB recevaient 6 fichiers placeholder au lieu de 7. Aligne sur `TEMPLATE_FILES`.
+- **Team import — fichiers manquants non combles** : l'import d'un `.team.yaml` avec des agents incomplets (ex: seulement AGENTS.md + SOUL.md + USER.md) ne completait pas les fichiers manquants. L'import detecte desormais les `EXPORTABLE_FILES` absents et les seed depuis les templates (DB + filesystem).
+
+### Added
+- **`workspace-templates.ts`** : helper partage pour charger et appliquer les templates workspace (`loadWorkspaceTemplate`, `applyTemplateVars`). Elimine la duplication de la logique de template entre provisioner, blueprint routes et team import.
+- **Constantes unifiees** : `constants.ts` est desormais la source de verite unique pour les listes de fichiers workspace (`DISCOVERABLE_FILES`, `EDITABLE_FILES`, `TEMPLATE_FILES`, `EXPORTABLE_FILES`). Les 7 listes hardcodees reparties dans le code importent desormais depuis constants.
+- 5 nouveaux tests team-import (gap-fill blueprint, pas d'ecrasement des fichiers YAML, zero gap-fill si complet, gap-fill instance disque + DB)
+
+### Changed
+- `importBlueprintTeam()` est desormais async (necessaire pour le chargement des templates). Les 2 appelants (`commands/team.ts`, `dashboard/routes/teams.ts`) ont ete mis a jour.
+
+---
+
 ## [0.12.9] — 2026-03-09
 
 ### Fixed

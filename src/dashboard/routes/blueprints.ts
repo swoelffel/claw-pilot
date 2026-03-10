@@ -7,6 +7,7 @@ import type { Registry } from "../../core/registry.js";
 import type { RouteDeps } from "../route-deps.js";
 import { apiError } from "../route-deps.js";
 import { buildAgentPayload } from "./_helpers.js";
+import { constants } from "../../lib/constants.js";
 
 /**
  * Seed workspace files (AGENTS.md, SOUL.md, etc.) for a blueprint agent.
@@ -29,8 +30,9 @@ async function seedBlueprintAgentFiles(
     "../templates/workspace",
   );
 
-  // Seed the 6 standard workspace files (no MEMORY.md — runtime only)
-  const templateFiles = ["AGENTS.md", "SOUL.md", "TOOLS.md", "USER.md", "IDENTITY.md", "HEARTBEAT.md"];
+  // Seed the standard workspace files from the single source of truth.
+  // EXPORTABLE_FILES = the 6 editable files (no MEMORY.md — runtime only).
+  const templateFiles = constants.EXPORTABLE_FILES;
   const date = new Date().toISOString().split("T")[0]!;
 
   for (const filename of templateFiles) {

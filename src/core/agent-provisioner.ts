@@ -4,6 +4,7 @@ import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
 import { EDITABLE_FILES } from "./agent-sync.js";
 import { createHash } from "node:crypto";
+import { constants } from "../lib/constants.js";
 
 export interface CreateAgentData {
   agentSlug: string;
@@ -13,10 +14,7 @@ export interface CreateAgentData {
   model: string;
 }
 
-const DISCOVERABLE_FILES = [
-  "AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md",
-  "USER.md", "HEARTBEAT.md", "MEMORY.md", "BOOTSTRAP.md",
-];
+const DISCOVERABLE_FILES = constants.DISCOVERABLE_FILES;
 
 export class AgentProvisioner {
   constructor(
