@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.14.0] — 2026-03-10
+
+### Changed
+- **Instance Card — refonte UX complète** : nouvelle hiérarchie visuelle (display_name en focal 16px/700, slug en secondaire monospace), status bar compacte entre header et meta (gateway health, statut Telegram live, agent count, pending devices cliquable), actions regroupées dans un menu popover `···` (UI, Agents, Settings, Restart, Delete). Le modèle passe en zone meta principale, port et version OpenClaw en ligne technique secondaire.
+- **Instance Card — action Restart** : le bouton Restart est désormais accessible depuis le menu popover (appel `POST /api/instances/:slug/restart`). Était absent de la card, disponible uniquement dans la vue détail.
+- **Instance Card — statut Telegram live** : la pill Telegram affiche l'état de connexion en temps réel (`connected` = bleu, `disconnected` = ambre avec ⚠). Le champ `telegram` est désormais propagé dans `InstanceInfo` et mis à jour via le WebSocket `health_update`.
+- **Instance Card — gateway health distincte** : distinction visuelle entre `running + gateway healthy` (◉ vert) et `running + gateway unhealthy` (◎ rouge). Auparavant, les deux états affichaient le même badge RUNNING.
+- **`InstanceInfo` type** : ajout du champ `telegram?: "connected" | "disconnected" | "not_configured"` (propagé depuis `HealthStatus`).
+- **WebSocket handler (`app.ts`)** : le handler `health_update` propage désormais le champ `telegram` vers les instances en mémoire.
+
+---
+
 ## [0.13.0] — 2026-03-10
 
 ### Fixed

@@ -19,6 +19,7 @@ export interface InstanceInfo {
   systemd?: "active" | "inactive" | "failed" | "unknown";
   agentCount?: number;
   pendingDevices?: number;
+  telegram?: "connected" | "disconnected" | "not_configured";
   // gateway token for zero-friction Control UI login
   gatewayToken?: string | null;
 }

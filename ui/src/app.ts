@@ -488,6 +488,7 @@ export class CpApp extends LitElement {
           systemd: "active" | "inactive" | "failed" | "unknown";
           agentCount?: number;
           pendingDevices?: number;
+          telegram?: "connected" | "disconnected" | "not_configured";
         }>;
       };
       const updates = payload.instances ?? [];
@@ -507,13 +508,15 @@ export class CpApp extends LitElement {
                   : "unknown";
           const newAgentCount = update.agentCount ?? inst.agentCount;
           const newPendingDevices = update.pendingDevices ?? inst.pendingDevices;
+          const newTelegram = update.telegram ?? inst.telegram;
           // Only create a new object if something actually changed
           if (
             inst.gateway === update.gateway &&
             inst.systemd === update.systemd &&
             inst.state === newState &&
             inst.agentCount === newAgentCount &&
-            inst.pendingDevices === newPendingDevices
+            inst.pendingDevices === newPendingDevices &&
+            inst.telegram === newTelegram
           ) {
             return inst;
           }
@@ -525,6 +528,7 @@ export class CpApp extends LitElement {
             state: newState,
             agentCount: newAgentCount,
             pendingDevices: newPendingDevices,
+            telegram: newTelegram,
           };
         });
         // Only reassign (triggering Lit re-render) when at least one instance changed
