@@ -38,12 +38,6 @@ async function runSetup(): Promise<void> {
     const sessionStore = new SessionStore(db);
     sessionStore.deleteAllForUser(user.id);
 
-    // Log audit event
-    db.prepare(`
-      INSERT INTO events (instance_id, type, data, created_at)
-      VALUES (NULL, 'auth_setup', '{}', datetime('now'))
-    `).run();
-
     displayPasswordBox(password);
   });
 }
