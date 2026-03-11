@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.15.2] — 2026-03-11
+
+### Fixed
+- **`install.sh`** : robustesse pnpm — cascade d'installation en 3 méthodes (corepack → get.pnpm.io → npm) avec `fix_npm_permissions()` pour éviter EACCES sur les installations Node système (Linux)
+- **`install.sh`** : compatibilité POSIX sh/dash — remplacement de `${//}` bash-only par `sed`, validé sur dash (Ubuntu/Debian) et `/bin/sh` macOS
+- **`install.sh`** : persistance du PATH — écriture dans `~/.bashrc`/`~/.zshrc`/`~/.profile` après installation du wrapper ; `warn_path_missing()` émet un hint ciblé si le répertoire est absent du PATH original
+- **`install.sh`** : correction word-splitting sur `CLAW_PILOT_BIN` (variable composée `"node /path"` utilisée comme commande)
+- **`install.sh`** : itération POSIX dans `_find_openclaw` — `while IFS= read -r` remplace `for p in $var` (safe avec les chemins contenant des espaces)
+- **`install.sh`** : `run_quiet_step` appelle désormais `error()` en cas d'échec (compatible `set -e`) et affiche les 40 dernières lignes du log
+
+---
+
 ## [0.15.1] — 2026-03-10
 
 ### Fixed
