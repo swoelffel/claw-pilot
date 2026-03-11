@@ -317,6 +317,10 @@ export class AgentDetailPanel extends LitElement {
       flex: 1;
     }
 
+    .save-hint.save-error {
+      color: var(--state-error);
+    }
+
     .btn-cancel-spawn {
       background: none;
       border: 1px solid var(--bg-border);
@@ -1059,6 +1063,7 @@ export class AgentDetailPanel extends LitElement {
     this._pendingRemovals = new Set();
     this._pendingAdditions = new Set();
     this._dropdownOpen = false;
+    this._error = "";
     this.dispatchEvent(new CustomEvent("pending-removals-changed", {
       detail: { pendingRemovals: new Set() },
       bubbles: true,
@@ -1071,6 +1076,7 @@ export class AgentDetailPanel extends LitElement {
     const next = new Set(this._pendingAdditions).add(targetId);
     this._pendingAdditions = next;
     this._dropdownOpen = false;
+    this._error = "";
     this._emitPendingAdditions(next);
   }
 
@@ -1089,6 +1095,7 @@ export class AgentDetailPanel extends LitElement {
       next.add(targetId);
     }
     this._pendingRemovals = next;
+    this._error = "";
     this.dispatchEvent(new CustomEvent("pending-removals-changed", {
       detail: { pendingRemovals: new Set(next) },
       bubbles: true,
@@ -1509,7 +1516,9 @@ export class AgentDetailPanel extends LitElement {
           >${this._saving
             ? msg("Saving...", { id: "adp-saving" })
             : msg("Save", { id: "adp-btn-save" })}</button>
-          <span class="save-hint">${this._pendingRemovals.size + this._pendingAdditions.size} change${(this._pendingRemovals.size + this._pendingAdditions.size) > 1 ? "s" : ""} pending</span>
+          ${this._error
+            ? html`<span class="save-hint save-error">${this._error}</span>`
+            : html`<span class="save-hint">${this._pendingRemovals.size + this._pendingAdditions.size} change${(this._pendingRemovals.size + this._pendingAdditions.size) > 1 ? "s" : ""} pending</span>`}
           <button
             class="btn-cancel-spawn"
             ?disabled=${this._saving}

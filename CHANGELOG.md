@@ -19,6 +19,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.16.3] — 2026-03-11
+
+### Fixed
+- **`LocalConnection.writeFile()` — fallback `sudo tee` sur EACCES** : sur Linux, si `fs.writeFile` échoue avec `EACCES`/`EPERM` (fichier owned par un autre user, ex. `openclaw.json` owned by `openclaw`), retente automatiquement via `printf | base64 -d | sudo tee`. Corrige le bug où le bouton "Save" dans le builder d'agents ne persistait pas les liens de délégation sur les instances dont les configs sont owned by un user différent.
+- **UI — erreur visible dans la save bar** : quand la sauvegarde des liens d'agents échoue (erreur réseau, permission, etc.), le message d'erreur est maintenant affiché directement dans la barre de sauvegarde (à la place du compteur "N change(s) pending") au lieu d'être silencieusement ignoré. L'erreur est effacée dès que l'utilisateur modifie sa sélection ou annule.
+
+---
+
 ## [0.16.2] — 2026-03-11
 
 ### Fixed
