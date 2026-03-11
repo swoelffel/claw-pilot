@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.15.4] — 2026-03-11
+
+### Fixed
+- **`install.sh` — `unterminated 's' command` (sed crash)** : `npm prefix -g` retourne un chemin avec un newline final ; `sed 's|$|/bin|'` ajoutait `/bin` après ce newline, produisant un path multi-ligne passé à `prepend_path_dir()` qui cassait le `sed` interne. Fix : `tr -d '\n'` sur la sortie de `npm prefix -g` avant d'ajouter `/bin`.
+- **`install.sh` — défense en profondeur dans `prepend_path_dir()`** : strip des newlines sur l'argument d'entrée via `tr -d '\n'` pour éviter tout crash sed si un path multi-ligne est passé depuis un autre endroit.
+
+---
+
 ## [0.15.3] — 2026-03-11
 
 ### Fixed

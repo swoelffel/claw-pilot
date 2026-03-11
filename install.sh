@@ -55,7 +55,9 @@ mktempfile() {
 # Inspired by OpenClaw installer — avoids PATH bloat on re-runs.
 # Uses sed for pattern substitution (POSIX sh compatible — works on dash/macOS sh).
 prepend_path_dir() {
-  _dir="${1%/}"
+  # Strip newlines from input — a path with a newline would break the sed below.
+  _dir=$(printf '%s' "${1:-}" | tr -d '\n')
+  _dir="${_dir%/}"
   [ -z "$_dir" ] && return 0
   # Strip existing occurrence(s) of _dir from PATH using sed (POSIX, no ${//})
   _cur=$(printf '%s' ":${PATH:-}:" | sed "s|:${_dir}:|:|g")
@@ -233,8 +235,11 @@ _reload_pnpm_path() {
   prepend_path_dir "$HOME/.local/bin"
   # npm user-local prefix (set by fix_npm_permissions on Linux)
   prepend_path_dir "$HOME/.npm-global/bin"
-  # Also pick up whatever npm reports as its current global bin dir
-  _npm_global_bin=$(npm bin -g 2>/dev/null || npm prefix -g 2>/dev/null | sed 's|$|/bin|' || true)
+  # Also pick up whatever npm reports as its current global bin dir.
+  # "npm bin -g" is deprecated — fall back to "npm prefix -g".
+  # Strip trailing newline from prefix before appending /bin to avoid a
+  # multi-line path that would break the sed in prepend_path_dir.
+  _npm_global_bin=$(npm bin -g 2>/dev/null || { _pfx=$(npm prefix -g 2>/dev/null | tr -d '\n'); [ -n "$_pfx" ] && printf '%s/bin' "$_pfx"; } || true)
   [ -n "$_npm_global_bin" ] && prepend_path_dir "$_npm_global_bin"
   # Also pick up whatever pnpm reports as its global bin (if pnpm is now in PATH)
   if command -v pnpm >/dev/null 2>&1; then
