@@ -44,6 +44,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **Catch vides** — 74 blocs `catch {}` vides remplacés par des logs ou re-throws appropriés
 
 ### Fixed
+- **`hono` mis à jour en 4.12.7** — corrige 2 CVEs high (GHSA-xh87-mx6m-69f3, GHSA-q5qw-h33p-qvwr)
+- **`@hono/node-server` mis à jour en 1.19.11** — corrige 1 CVE high (GHSA-wc8c-qw6v-h7f6)
 - **`localization.ts`** — erreur TS2322 corrigée (`Promise<unknown>` → `Promise<LocaleModule>`)
 - **Imports inutilisés UI** — `importInstanceTeam`, `importBlueprintTeam`, `TeamImportResult`, `BuilderData` supprimés
 - **`ui/src/api.ts`** — spread inutile `?? {}` supprimé
