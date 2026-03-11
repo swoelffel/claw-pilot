@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.16.1] — 2026-03-11
+
+### Changed
+- **UI — liens inter-agents : suppression du concept A2A, renommage spawn → delegate** : les liens `a2a` (`sessions_send`) n'ont pas de sens dans une architecture BMAD où seul `main` initie les conversations. L'UI reflète désormais le modèle réel :
+  - Badge `A2A` et bordure bleue sur les cards supprimés
+  - Badge `SA` renommé `Sub` avec tooltip "Specialized agent, delegated tasks by the orchestrator."
+  - Section "A2A links (bidirectional)" supprimée du panel Info agent
+  - Label "Can spawn" → **"Delegates to"**, "Spawned by" → **"Delegated by"**
+  - Bouton "Add agent" → **"Add delegate"**
+  - Markers SVG renommés `arrow-delegate-*` + aria-labels ajoutés
+  - Toutes les traductions mises à jour (EN, FR, DE, ES, IT, PT)
+
+---
+
 ## [0.16.0] — 2026-03-11
 
 ### Changed

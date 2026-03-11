@@ -89,12 +89,10 @@ export const templates = {
 
   // agent-card-mini.ts
   "acm-badge-default": "Default",
-  "acm-badge-a2a": "A2A",
-  "acm-badge-sa": "SA",
+  "acm-badge-sa": "Sub",
   "acm-files": "files",
   "acm-tooltip-default": "Main entry point for conversations. Orchestrates the agent team.",
-  "acm-tooltip-a2a": "Connected in Agent-to-Agent mode (bidirectional peer).",
-  "acm-tooltip-sa": "SubAgent: specialized agent, invoked by the orchestrator.",
+  "acm-tooltip-sa": "Specialized agent, delegated tasks by the orchestrator.",
 
   // create-agent-dialog.ts
   "cad-title": "New agent",
@@ -140,9 +138,8 @@ export const templates = {
   "adp-label-model": "Model",
   "adp-label-workspace": "Workspace",
   "adp-label-last-sync": "Last sync",
-  "adp-label-a2a": "A2A links (bidirectional)",
-  "adp-label-can-spawn": "Can spawn",
-  "adp-label-spawned-by": "Spawned by",
+  "adp-label-can-spawn": "Delegates to",
+  "adp-label-spawned-by": "Delegated by",
   "adp-label-notes": "Notes",
   "adp-loading-file": "Loading",
   "adp-file-not-available": "File not available.",
@@ -154,7 +151,7 @@ export const templates = {
   "adp-btn-save": "Save",
   "adp-saving": "Saving...",
   "adp-btn-cancel-spawn": "Cancel",
-  "adp-btn-add-spawn": "Add agent",
+  "adp-btn-add-spawn": "Add delegate",
 
   // agent-detail-panel.ts — file editor
   "adf-btn-edit": "Edit",

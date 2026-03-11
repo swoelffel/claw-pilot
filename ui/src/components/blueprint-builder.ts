@@ -599,31 +599,21 @@ export class BlueprintBuilder extends LitElement {
               .pendingAdditions=${this._pendingAdditions}
             ></cp-agent-links-svg>
 
-            ${(() => {
-              const a2aAgentIds = new Set<string>();
-              for (const link of data.links) {
-                if (link.link_type === "a2a") {
-                  a2aAgentIds.add(link.source_agent_id);
-                  a2aAgentIds.add(link.target_agent_id);
-                }
-              }
-              return data.agents.map(agent => {
-                const pos = this._positions.get(agent.agent_id);
-                if (!pos) return "";
-                return html`
-                  <cp-agent-card-mini
-                    data-agent-id=${agent.agent_id}
-                    .agent=${agent}
-                    .selected=${this._selectedAgentId === agent.agent_id}
-                    .isA2A=${a2aAgentIds.has(agent.agent_id)}
-                    .isNew=${this._justCreatedAgentId === agent.agent_id}
-                    .deletable=${!agent.is_default}
-                    style="left: ${pos.x}px; top: ${pos.y}px;"
-                    @agent-delete-requested=${(e: CustomEvent<{ agentId: string }>) => this._onDeleteRequested(e.detail.agentId)}
-                  ></cp-agent-card-mini>
-                `;
-              });
-            })()}
+            ${data.agents.map(agent => {
+              const pos = this._positions.get(agent.agent_id);
+              if (!pos) return "";
+              return html`
+                <cp-agent-card-mini
+                  data-agent-id=${agent.agent_id}
+                  .agent=${agent}
+                  .selected=${this._selectedAgentId === agent.agent_id}
+                  .isNew=${this._justCreatedAgentId === agent.agent_id}
+                  .deletable=${!agent.is_default}
+                  style="left: ${pos.x}px; top: ${pos.y}px;"
+                  @agent-delete-requested=${(e: CustomEvent<{ agentId: string }>) => this._onDeleteRequested(e.detail.agentId)}
+                ></cp-agent-card-mini>
+              `;
+            })}
           ` : ""}
         </div>
 

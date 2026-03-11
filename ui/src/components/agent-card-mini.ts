@@ -29,10 +29,6 @@ export class AgentCardMini extends LitElement {
       position: relative;
     }
 
-    .card.is-a2a {
-      border-color: var(--accent-border);
-    }
-
     .card:hover {
       box-shadow: 0 4px 16px rgba(0,0,0,0.4);
     }
@@ -117,20 +113,6 @@ export class AgentCardMini extends LitElement {
       cursor: help;
     }
 
-    .badge-a2a {
-      font-size: 9px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--accent);
-      background: var(--accent-subtle);
-      border: 1px solid var(--accent-border);
-      border-radius: 3px;
-      padding: 1px 5px;
-      flex-shrink: 0;
-      cursor: help;
-    }
-
     .badge-sa {
       font-size: 9px;
       font-weight: 700;
@@ -184,7 +166,6 @@ export class AgentCardMini extends LitElement {
 
   @property({ type: Object }) agent!: AgentBuilderInfo;
   @property({ type: Boolean }) selected = false;
-  @property({ type: Boolean }) isA2A = false;
   @property({ type: Boolean, reflect: true }) isNew = false;
   @property({ type: Boolean }) deletable = false;
 
@@ -213,7 +194,7 @@ export class AgentCardMini extends LitElement {
 
     return html`
       <div
-        class="card ${a.is_default ? "is-default" : ""} ${this.selected ? "selected" : ""} ${this.isA2A ? "is-a2a" : ""}"
+        class="card ${a.is_default ? "is-default" : ""} ${this.selected ? "selected" : ""}"
         @click=${() => this.dispatchEvent(new CustomEvent("agent-select", { detail: { agentId: a.agent_id }, bubbles: true, composed: true }))}
       >
         <!-- row 1 : name + delete -->
@@ -239,13 +220,11 @@ export class AgentCardMini extends LitElement {
           <span class="agent-id">${a.agent_id}</span>
           <span class="file-count">${a.files.length} ${msg("files", { id: "acm-files" })}</span>
         </div>
-        <!-- row 3 : badge (Default | A2A | SA) + model -->
+        <!-- row 3 : badge (Default | Sub) + model -->
         <div class="card-bottom">
           ${a.is_default
             ? html`<span class="badge-default" title=${msg("Main entry point for conversations. Orchestrates the agent team.", { id: "acm-tooltip-default" })}>${msg("Default", { id: "acm-badge-default" })}</span>`
-            : this.isA2A
-              ? html`<span class="badge-a2a" title=${msg("Connected in Agent-to-Agent mode (bidirectional peer).", { id: "acm-tooltip-a2a" })}>${msg("A2A", { id: "acm-badge-a2a" })}</span>`
-              : html`<span class="badge-sa" title=${msg("SubAgent: specialized agent, invoked by the orchestrator.", { id: "acm-tooltip-sa" })}>${msg("SA", { id: "acm-badge-sa" })}</span>`}
+            : html`<span class="badge-sa" title=${msg("Specialized agent, delegated tasks by the orchestrator.", { id: "acm-tooltip-sa" })}>${msg("Sub", { id: "acm-badge-sa" })}</span>`}
           ${modelShort ? html`<span class="model-label" title=${model ?? ""}>${modelShort}</span>` : ""}
         </div>
       </div>

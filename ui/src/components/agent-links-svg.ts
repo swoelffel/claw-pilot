@@ -32,13 +32,13 @@ export class AgentLinksSvg extends LitElement {
     return html`
       <svg>
         <defs>
-          <marker id="arrow-spawn" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <marker id="arrow-delegate" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
             <path d="M0,0 L0,6 L8,3 z" fill="#666" />
           </marker>
-          <marker id="arrow-spawn-pending-remove" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <marker id="arrow-delegate-pending-remove" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
             <path d="M0,0 L0,6 L8,3 z" fill="#ef4444" />
           </marker>
-          <marker id="arrow-spawn-pending-add" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <marker id="arrow-delegate-pending-add" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
             <path d="M0,0 L0,6 L8,3 z" fill="#10b981" />
           </marker>
         </defs>
@@ -51,7 +51,7 @@ export class AgentLinksSvg extends LitElement {
 
             const isPendingRemove = this.pendingRemovals.has(link.target_agent_id);
             const color = isPendingRemove ? "#ef4444" : "#666";
-            const marker = isPendingRemove ? "url(#arrow-spawn-pending-remove)" : "url(#arrow-spawn)";
+            const marker = isPendingRemove ? "url(#arrow-delegate-pending-remove)" : "url(#arrow-delegate)";
 
             return svg`
               <line
@@ -62,6 +62,7 @@ export class AgentLinksSvg extends LitElement {
                 stroke-dasharray="6 4"
                 stroke-opacity=${isPendingRemove ? "0.8" : "1"}
                 marker-end=${marker}
+                aria-label="delegates to ${link.target_agent_id}"
               />
             `;
           })}
@@ -79,7 +80,8 @@ export class AgentLinksSvg extends LitElement {
                 stroke-width="1.5"
                 stroke-dasharray="6 4"
                 stroke-opacity="0.8"
-                marker-end="url(#arrow-spawn-pending-add)"
+                marker-end="url(#arrow-delegate-pending-add)"
+                aria-label="will delegate to ${targetId}"
               />
             `;
           });

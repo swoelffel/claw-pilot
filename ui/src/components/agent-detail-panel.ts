@@ -234,11 +234,6 @@ export class AgentDetailPanel extends LitElement {
       font-family: var(--font-mono);
     }
 
-    .link-badge.a2a {
-      color: var(--accent);
-      background: var(--accent-subtle);
-    }
-
     .link-badge.spawn {
       color: var(--text-secondary);
     }
@@ -1221,9 +1216,6 @@ export class AgentDetailPanel extends LitElement {
   private _renderInfo() {
     if (this._fieldEditMode) return this._renderFieldEditForm();
     const a = this.agent;
-    const a2aLinks = this.links.filter(l =>
-      l.link_type === "a2a" && (l.source_agent_id === a.agent_id || l.target_agent_id === a.agent_id)
-    );
     const spawnLinks = this.links.filter(l =>
       l.link_type === "spawn" && l.source_agent_id === a.agent_id
     );
@@ -1249,17 +1241,6 @@ export class AgentDetailPanel extends LitElement {
             <span class="info-value">${a.synced_at}</span>
           </div>
         ` : ""}
-        ${a2aLinks.length > 0 ? html`
-          <div class="info-item">
-            <span class="info-label">${msg("A2A links (bidirectional)", { id: "adp-label-a2a" })}</span>
-            <div class="links-list">
-              ${a2aLinks.map(l => {
-                const peer = l.source_agent_id === a.agent_id ? l.target_agent_id : l.source_agent_id;
-                return html`<span class="link-badge a2a">↔ ${peer}</span>`;
-              })}
-            </div>
-          </div>
-        ` : ""}
         ${(() => {
           // Agents already linked as spawn targets (from saved state)
           const linkedIds = new Set(spawnLinks.map(l => l.target_agent_id));
@@ -1273,7 +1254,7 @@ export class AgentDetailPanel extends LitElement {
           if (!hasSpawnSection) return "";
           return html`
             <div class="info-item">
-              <span class="info-label">${msg("Can spawn", { id: "adp-label-can-spawn" })}</span>
+              <span class="info-label">${msg("Delegates to", { id: "adp-label-can-spawn" })}</span>
               <div class="links-list">
                 ${spawnLinks.map(l => {
                   const isPending = this._pendingRemovals.has(l.target_agent_id);
@@ -1323,7 +1304,7 @@ export class AgentDetailPanel extends LitElement {
         })()}
         ${receivedSpawn.length > 0 ? html`
           <div class="info-item">
-            <span class="info-label">${msg("Spawned by", { id: "adp-label-spawned-by" })}</span>
+            <span class="info-label">${msg("Delegated by", { id: "adp-label-spawned-by" })}</span>
             <div class="links-list">
               ${receivedSpawn.map(l => html`<span class="link-badge spawn">← ${l.source_agent_id}</span>`)}
             </div>

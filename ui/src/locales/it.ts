@@ -88,12 +88,10 @@ export const templates = {
 
   // agent-card-mini.ts
   "acm-badge-default": "Predefinito",
-  "acm-badge-a2a": "A2A",
-  "acm-badge-sa": "SA",
+  "acm-badge-sa": "Sub",
   "acm-files": "file",
   "acm-tooltip-default": "Punto di ingresso principale per le conversazioni. Orchestra il team di agenti.",
-  "acm-tooltip-a2a": "Connesso in modalità Agent-to-Agent (peer bidirezionale).",
-  "acm-tooltip-sa": "SottoAgente: agente specializzato, invocato dall'orchestratore.",
+  "acm-tooltip-sa": "Agente specializzato, compiti delegati dall'orchestratore.",
 
   // create-agent-dialog.ts
   "cad-title": "Nuovo agente",
@@ -139,9 +137,8 @@ export const templates = {
   "adp-label-model": "Modello",
   "adp-label-workspace": "Area di lavoro",
   "adp-label-last-sync": "Ultima sync",
-  "adp-label-a2a": "Link A2A (bidirezionali)",
-  "adp-label-can-spawn": "Può spawnare",
-  "adp-label-spawned-by": "Spawnato da",
+  "adp-label-can-spawn": "Delega a",
+  "adp-label-spawned-by": "Delegato da",
   "adp-label-notes": "Note",
   "adp-loading-file": "Caricamento",
   "adp-file-not-available": "File non disponibile.",
@@ -153,7 +150,7 @@ export const templates = {
   "adp-btn-save": "Salva",
   "adp-saving": "Salvataggio...",
   "adp-btn-cancel-spawn": "Annulla",
-  "adp-btn-add-spawn": "Aggiungi agente",
+  "adp-btn-add-spawn": "Aggiungi delegato",
 
   // agent-detail-panel.ts — file editor
   "adf-btn-edit": "Modifica",
