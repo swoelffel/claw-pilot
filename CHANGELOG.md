@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.16.3] — 2026-03-11
+
+### Added
+- **Docs intégrées au repo** : `main-doc.md` (architecture fonctionnelle), `ux-design.md`, `design-rules.md`, `i18n.md` déplacés dans `docs/` — plus de dépendance au monorepo parent
+
+### Changed
+- **CLAUDE.md enrichi** : section UI development avec arbre `ui/src/`, table de référence docs internes, version trackée, suppression des références externes au monorepo
+
+### Fixed
+- **`LocalConnection.writeFile()` — fallback sudo sur EACCES/EPERM** : sur Linux, si `fs.writeFile` échoue avec `EACCES` ou `EPERM`, retente automatiquement via `sudo tee` avec contenu base64-encodé — même pattern que `readFile()` (v0.16.0)
+
+---
+
 ## [0.16.2] — 2026-03-11
 
 ### Fixed

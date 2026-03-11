@@ -4,9 +4,10 @@ Guidance for Claude Code when working in this repository.
 
 ## What this project is
 
-`claw-pilot` is a **CLI + web dashboard** that orchestrates multiple [OpenClaw](https://docs.openclaw.ai) instances on a single Linux server. It handles discovery, provisioning, lifecycle management (via systemd), and device pairing.
+`claw-pilot` v0.16.1 — **CLI + web dashboard** that orchestrates multiple [OpenClaw](https://docs.openclaw.ai) instances on a single Linux server. It handles discovery, provisioning, lifecycle management (via systemd), Nginx config generation, and device pairing.
 
 Not published on npm — installed from source only (`/opt/claw-pilot`).
+GitHub: https://github.com/swoelffel/claw-pilot
 
 ## Tech stack
 
@@ -41,9 +42,15 @@ src/
   lib/              # Shared utilities (logger, constants, errors, platform, poll, xdg, shell...)
   server/           # ServerConnection interface + LocalConnection impl
   wizard/           # Interactive creation wizard (@inquirer/prompts)
-ui/src/             # Frontend (Lit components, built to dist/ui/)
+ui/
+  src/              # Frontend — Lit web components, built to dist/ui/
+    components/     # Reusable UI components (cards, dialogs, status badges...)
+    pages/          # Route-level views (instances list, instance detail, settings)
+    services/       # API client, WebSocket monitor, state management
+    localization/   # i18n via @lit/localize (6 languages)
+    styles/         # Design tokens, shared CSS
 templates/          # Workspace bootstrap files + systemd/nginx templates
-docs/SPEC-MVP.md    # Full technical spec — read this before major changes
+docs/main-doc.md    # Functional architecture — read this before major changes
 ```
 
 ## Data model (SQLite `~/.claw-pilot/registry.db`)
@@ -84,6 +91,20 @@ Gateway tokens and dashboard tokens are auto-generated (`src/core/secrets.ts`). 
 ## Test coverage
 
 Tests are under `src/core/__tests__/` and `src/db/__tests__/`. Run them with `pnpm test:run` before submitting changes to core logic.
+
+## UI development
+
+The dashboard UI uses **Lit** web components with **@lit/localize** for i18n (6 languages).
+Built by Vite into `dist/ui/`, served by the Hono dashboard server on port 19000.
+
+Reference docs:
+
+| Document | Content |
+|----------|---------|
+| `docs/main-doc.md` | Functional architecture overview |
+| `docs/ux-design.md` | All screens, components, visual behaviors |
+| `docs/design-rules.md` | Design system, anti-patterns, delivery checklist |
+| `docs/i18n.md` | i18n architecture, adding languages/features |
 
 ## What NOT to do
 

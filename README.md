@@ -113,7 +113,7 @@ ui/src/
   locales/          i18n strings (en, fr, de, es, it, pt)
 templates/          Workspace bootstrap files (SOUL.md, AGENTS.md, TOOLS.md, …)
 docs/
-  SPEC-MVP.md       Full technical specification
+  main-doc.md       Functional architecture overview
   registry-db.md    SQLite schema reference
 ```
 

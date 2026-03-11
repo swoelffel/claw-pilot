@@ -77,9 +77,25 @@ export class LocalConnection implements ServerConnection {
     content: string,
     mode?: number,
   ): Promise<void> {
-    const dir = path.dirname(filePath);
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(filePath, content, { mode: mode ?? 0o644 });
+    try {
+      const dir = path.dirname(filePath);
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(filePath, content, { mode: mode ?? 0o644 });
+    } catch (err) {
+      // On Linux, fall back to `sudo tee` for files owned by another user.
+      // Content is base64-encoded to avoid shell escaping issues with JSON.
+      if (isLinux) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === "EACCES" || code === "EPERM") {
+          const encoded = Buffer.from(content).toString("base64");
+          const result = await this.exec(
+            `printf '%s' ${JSON.stringify(encoded)} | base64 -d | sudo tee ${JSON.stringify(filePath)} > /dev/null`,
+          );
+          if (result.exitCode === 0) return;
+        }
+      }
+      throw err;
+    }
   }
 
   async mkdir(dirPath: string, options?: { mode?: number }): Promise<void> {

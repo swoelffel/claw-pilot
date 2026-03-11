@@ -80,5 +80,5 @@ Phase 4 — CLI et installation
 
 - Plan complet : `docs/_work/claw-pilot/auth-plan.md`
 - Conventions de code : `src/claw-pilot/CLAUDE.md`
-- Design UI : `docs/_work/claw-pilot/design-rules.md`
-- i18n : `docs/_work/claw-pilot/i18n.md`
+- Design UI : `docs/design-rules.md`
+- i18n : `docs/i18n.md`
