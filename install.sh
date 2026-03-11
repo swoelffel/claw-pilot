@@ -10,6 +10,11 @@ cd "${HOME:-/tmp}" 2>/dev/null || true
 # user's login shell will find the installed binaries without extra config.
 ORIGINAL_PATH="${PATH:-}"
 
+# Prevent corepack from blocking on interactive download prompts in non-interactive
+# sessions (e.g. "curl | sh"). With STRICT=0, corepack falls through transparently
+# if the requested version is not cached, instead of hanging waiting for confirmation.
+export COREPACK_ENABLE_STRICT=0
+
 REPO="swoelffel/claw-pilot"
 REPO_URL="https://github.com/${REPO}.git"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/main"
@@ -241,9 +246,11 @@ _reload_pnpm_path() {
   # multi-line path that would break the sed in prepend_path_dir.
   _npm_global_bin=$(npm bin -g 2>/dev/null || { _pfx=$(npm prefix -g 2>/dev/null | tr -d '\n'); [ -n "$_pfx" ] && printf '%s/bin' "$_pfx"; } || true)
   [ -n "$_npm_global_bin" ] && prepend_path_dir "$_npm_global_bin"
-  # Also pick up whatever pnpm reports as its global bin (if pnpm is now in PATH)
+  # Also pick up whatever pnpm reports as its global bin (if pnpm is now in PATH).
+  # COREPACK_ENABLE_STRICT=0 is already exported globally — belt-and-suspenders here
+  # to ensure corepack shims don't block on download prompts in non-interactive sessions.
   if command -v pnpm >/dev/null 2>&1; then
-    _pnpm_global_bin=$(pnpm bin --global 2>/dev/null || true)
+    _pnpm_global_bin=$(COREPACK_ENABLE_STRICT=0 pnpm bin --global 2>/dev/null || true)
     [ -n "$_pnpm_global_bin" ] && prepend_path_dir "$_pnpm_global_bin"
   fi
 }
@@ -308,10 +315,11 @@ if ! command -v pnpm >/dev/null 2>&1; then
   fi
 fi
 
-# Ensure pnpm global bin dir is in PATH (handles fresh installs in the same session)
-if ! pnpm bin --global >/dev/null 2>&1; then
+# Ensure pnpm global bin dir is in PATH (handles fresh installs in the same session).
+# COREPACK_ENABLE_STRICT=0 prevents corepack shims from blocking on download prompts.
+if ! COREPACK_ENABLE_STRICT=0 pnpm bin --global >/dev/null 2>&1; then
   warn "pnpm global bin dir not configured, running 'pnpm setup'..."
-  pnpm setup 2>/dev/null || true
+  COREPACK_ENABLE_STRICT=0 pnpm setup 2>/dev/null || true
 fi
 _reload_pnpm_path
 
@@ -319,10 +327,10 @@ _reload_pnpm_path
 if ! command -v pnpm >/dev/null 2>&1; then
   error "pnpm installed but not found in PATH. Open a new shell and re-run this script."
 fi
-log "pnpm $(pnpm --version)"
+log "pnpm $(COREPACK_ENABLE_STRICT=0 pnpm --version)"
 
 # Warn if pnpm's bin dir is absent from the user's original login PATH
-_pnpm_bin_dir=$(pnpm bin --global 2>/dev/null || true)
+_pnpm_bin_dir=$(COREPACK_ENABLE_STRICT=0 pnpm bin --global 2>/dev/null || true)
 [ -n "$_pnpm_bin_dir" ] && warn_path_missing "$_pnpm_bin_dir" "pnpm global bin dir ($_pnpm_bin_dir)"
 
 # ── 7. Build tools check ──────────────────────────────────────────────────────

@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.15.5] — 2026-03-11
+
+### Fixed
+- **`install.sh` — hang infini sur corepack shim en session non-interactive** : quand `corepack enable --install-directory ~/.local/bin` crée un shim pnpm, ce shim intercepte tous les appels `pnpm` suivants et tente de télécharger la version demandée depuis npmjs.org en attendant une confirmation interactive → blocage infini dans `curl | sh`. Fix : export `COREPACK_ENABLE_STRICT=0` en début de script (corepack passe en mode transparent, sans prompt) + `COREPACK_ENABLE_STRICT=0` explicite sur tous les appels `pnpm bin --global`, `pnpm setup`, `pnpm --version`.
+
+---
+
 ## [0.15.4] — 2026-03-11
 
 ### Fixed
