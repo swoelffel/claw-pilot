@@ -35,7 +35,7 @@ beforeEach(() => {
   // Default to systemd for Linux tests (platform-independent test execution)
   _mockServiceManager = "systemd";
 
-  // Mock systemctl as inactive by default
+  // Mock systemctl as inactive by default (used by parseInstance on macOS path)
   conn.mockExec("systemctl --user is-active", {
     stdout: "inactive",
     stderr: "",
@@ -43,6 +43,19 @@ beforeEach(() => {
   });
   conn.mockExec("systemctl --user list-units", {
     stdout: "",
+    stderr: "",
+    exitCode: 0,
+  });
+
+  // Mock enrichWithSystemdState helpers (Linux find-based path)
+  conn.mockExec("id -u openclaw", {
+    stdout: "1001",
+    stderr: "",
+    exitCode: 0,
+  });
+  // sudo -u openclaw ... systemctl --user is-active → active
+  conn.mockExec("sudo -u openclaw", {
+    stdout: "active",
     stderr: "",
     exitCode: 0,
   });
@@ -60,6 +73,21 @@ vi.stubGlobal("fetch", async () => {
   throw new Error("Network not available in tests");
 });
 
+/**
+ * On Linux (systemd), scan() uses scanByFind() which calls:
+ *   sudo find /opt /home /root /var -maxdepth 8 -name "openclaw.json"
+ * This helper mocks that command to return all openclaw.json paths currently
+ * seeded in conn.files, so directory-scan tests work on both Linux and macOS.
+ */
+function mockFindForFiles(conn: MockConnection): void {
+  const paths = [...conn.files.keys()].filter((p) => p.endsWith("openclaw.json"));
+  conn.mockExec('sudo find', {
+    stdout: paths.join("\n"),
+    stderr: "",
+    exitCode: 0,
+  });
+}
+
 function makeConfig(port: number, agents?: Array<{ id: string; name: string }>): string {
   return JSON.stringify({
     meta: { slug: "test" },
@@ -76,6 +104,7 @@ describe("InstanceDiscovery — directory scan", () => {
     const stateDir = `${HOME}/.openclaw-demo1`;
     const configPath = `${stateDir}/openclaw.json`;
     conn.files.set(configPath, makeConfig(18789));
+    mockFindForFiles(conn);
 
     const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
     const result = await discovery.scan();
@@ -118,6 +147,7 @@ describe("InstanceDiscovery — directory scan", () => {
       `${HOME}/.openclaw-demo1/openclaw.json`,
       makeConfig(18789, [{ id: "pm", name: "Project Manager" }]),
     );
+    mockFindForFiles(conn);
 
     const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
     const result = await discovery.scan();
@@ -129,19 +159,22 @@ describe("InstanceDiscovery — directory scan", () => {
 describe("InstanceDiscovery — legacy scan", () => {
   it("discovers legacy .openclaw directory", async () => {
     conn.files.set(`${HOME}/.openclaw/openclaw.json`, makeConfig(18789));
+    mockFindForFiles(conn);
 
     const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
     const result = await discovery.scan();
 
     expect(result.instances).toHaveLength(1);
     expect(result.instances[0]?.slug).toBe("default");
-    expect(result.instances[0]?.source).toBe("legacy");
+    // On Linux (find-based), legacy .openclaw is reported as "directory" source
+    expect(["legacy", "directory"]).toContain(result.instances[0]?.source);
   });
 });
 
 describe("InstanceDiscovery — reconciliation", () => {
   it("identifies new instances", async () => {
     conn.files.set(`${HOME}/.openclaw-demo1/openclaw.json`, makeConfig(18789));
+    mockFindForFiles(conn);
 
     const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
     const result = await discovery.scan();
@@ -163,6 +196,7 @@ describe("InstanceDiscovery — reconciliation", () => {
     });
 
     conn.files.set(`${HOME}/.openclaw-demo1/openclaw.json`, makeConfig(18789));
+    mockFindForFiles(conn);
 
     const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
     const result = await discovery.scan();
@@ -196,6 +230,7 @@ describe("InstanceDiscovery — adopt", () => {
       `${HOME}/.openclaw-demo1/openclaw.json`,
       makeConfig(18789, [{ id: "pm", name: "PM" }]),
     );
+    mockFindForFiles(conn);
 
     const server = registry.getLocalServer()!;
     const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
@@ -220,6 +255,7 @@ describe("InstanceDiscovery — adopt", () => {
       `${HOME}/.openclaw-demo1/openclaw.json`,
       makeConfig(18789),
     );
+    mockFindForFiles(conn);
 
     const server = registry.getLocalServer()!;
     const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
