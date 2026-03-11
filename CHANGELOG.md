@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.15.3] — 2026-03-11
+
+### Fixed
+- **`install.sh` — corepack EACCES** : `corepack enable` utilisait le répertoire système (`/usr/bin`) → remplacé par `corepack enable --install-directory ~/.local/bin` (user-local, sans sudo)
+- **`install.sh` — get.pnpm.io SHELL non défini** : le script pnpm ne supporte pas `sh` comme valeur de `$SHELL` en session non-interactive. Détection automatique de `bash` ou `zsh` disponibles ; skip propre si aucun n'est trouvé
+- **`install.sh` — pnpm non détecté après npm install** : `~/.npm-global/bin` et `~/.local/bin` ajoutés à `_reload_pnpm_path()` pour que pnpm soit trouvable immédiatement après installation via npm
+
+---
+
 ## [0.15.2] — 2026-03-11
 
 ### Fixed

@@ -230,6 +230,12 @@ _reload_pnpm_path() {
   prepend_path_dir "$HOME/.local/share/pnpm"
   prepend_path_dir "$HOME/Library/pnpm"
   prepend_path_dir "$HOME/.pnpm/bin"
+  prepend_path_dir "$HOME/.local/bin"
+  # npm user-local prefix (set by fix_npm_permissions on Linux)
+  prepend_path_dir "$HOME/.npm-global/bin"
+  # Also pick up whatever npm reports as its current global bin dir
+  _npm_global_bin=$(npm bin -g 2>/dev/null || npm prefix -g 2>/dev/null | sed 's|$|/bin|' || true)
+  [ -n "$_npm_global_bin" ] && prepend_path_dir "$_npm_global_bin"
   # Also pick up whatever pnpm reports as its global bin (if pnpm is now in PATH)
   if command -v pnpm >/dev/null 2>&1; then
     _pnpm_global_bin=$(pnpm bin --global 2>/dev/null || true)
@@ -242,29 +248,48 @@ if ! command -v pnpm >/dev/null 2>&1; then
 
   PNPM_INSTALLED=0
 
-  # Method 1: corepack (bundled with Node >= 16.9, no sudo needed)
+  # Method 1: corepack — user-local install dir to avoid EACCES on /usr/bin.
+  # Plain "corepack enable" tries to symlink into the system bin dir (root-only).
+  # "--install-directory ~/.local/bin" keeps everything user-local.
   if [ "$PNPM_INSTALLED" -eq 0 ] && command -v corepack >/dev/null 2>&1; then
-    log "Trying corepack enable pnpm..."
-    if corepack enable pnpm 2>/dev/null; then
+    log "Trying corepack enable pnpm (user-local)..."
+    mkdir -p "$HOME/.local/bin"
+    if corepack enable --install-directory "$HOME/.local/bin" pnpm 2>/dev/null; then
+      prepend_path_dir "$HOME/.local/bin"
       _reload_pnpm_path
       command -v pnpm >/dev/null 2>&1 && PNPM_INSTALLED=1
     fi
   fi
 
-  # Method 2: official pnpm install script (user-local, no sudo needed)
+  # Method 2: official pnpm install script (user-local, no sudo needed).
+  # The script requires $SHELL to be set to a supported shell (bash or zsh).
+  # In non-interactive "curl | sh" sessions $SHELL is often unset — detect a
+  # usable shell explicitly rather than passing "sh" which pnpm does not support.
   if [ "$PNPM_INSTALLED" -eq 0 ]; then
     log "Trying official pnpm install script (user-local)..."
-    if curl -fsSL https://get.pnpm.io/install.sh | SHELL="$(command -v sh)" sh 2>/dev/null; then
-      _reload_pnpm_path
-      command -v pnpm >/dev/null 2>&1 && PNPM_INSTALLED=1
+    _pnpm_shell=""
+    for _sh_candidate in bash zsh; do
+      command -v "$_sh_candidate" >/dev/null 2>&1 && _pnpm_shell=$(command -v "$_sh_candidate") && break
+    done
+    if [ -n "$_pnpm_shell" ]; then
+      if curl -fsSL https://get.pnpm.io/install.sh | SHELL="$_pnpm_shell" "$_pnpm_shell" 2>/dev/null; then
+        _reload_pnpm_path
+        command -v pnpm >/dev/null 2>&1 && PNPM_INSTALLED=1
+      fi
+    else
+      warn "bash/zsh not found — skipping get.pnpm.io script (requires bash or zsh)"
     fi
   fi
 
-  # Method 3: npm install -g pnpm — fix permissions first so no EACCES
+  # Method 3: npm install -g pnpm — fix permissions first so no EACCES.
+  # fix_npm_permissions() reconfigures npm prefix to ~/.npm-global on Linux,
+  # then prepend_path_dir ensures ~/.npm-global/bin is in PATH immediately.
   if [ "$PNPM_INSTALLED" -eq 0 ]; then
     log "Trying npm install -g pnpm (fixing permissions if needed)..."
     fix_npm_permissions
     if npm install -g pnpm 2>/dev/null; then
+      # ~/.npm-global/bin is already prepended by fix_npm_permissions —
+      # call _reload_pnpm_path anyway to also pick up pnpm's own global bin.
       _reload_pnpm_path
       command -v pnpm >/dev/null 2>&1 && PNPM_INSTALLED=1
     fi
