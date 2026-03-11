@@ -91,9 +91,7 @@ export class SessionStore {
     } else {
       // In first half — just update last_seen_at
       this.db
-        .prepare(
-          `UPDATE sessions SET last_seen_at = datetime('now') WHERE id = ?`,
-        )
+        .prepare(`UPDATE sessions SET last_seen_at = datetime('now') WHERE id = ?`)
         .run(sessionId);
       return rowToSession(row);
     }
@@ -118,9 +116,7 @@ export class SessionStore {
    * Returns the number of sessions deleted.
    */
   cleanup(): number {
-    const result = this.db
-      .prepare(`DELETE FROM sessions WHERE expires_at < datetime('now')`)
-      .run();
+    const result = this.db.prepare(`DELETE FROM sessions WHERE expires_at < datetime('now')`).run();
     return result.changes;
   }
 }

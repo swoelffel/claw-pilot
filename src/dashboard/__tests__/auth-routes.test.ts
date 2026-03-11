@@ -6,7 +6,6 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { Hono } from "hono";
-import Database from "better-sqlite3";
 import { initDatabase } from "../../db/schema.js";
 import { Registry } from "../../core/registry.js";
 import { MockConnection } from "../../core/__tests__/mock-connection.js";
@@ -55,14 +54,17 @@ async function createTestApp(): Promise<TestCtx> {
 
   // Insert admin user with known password
   const hash = await hashPassword(TEST_PASSWORD);
-  db.prepare(
-    "INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')",
-  ).run(constants.ADMIN_USERNAME, hash);
+  db.prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')").run(
+    constants.ADMIN_USERNAME,
+    hash,
+  );
 
   const deps: RouteDeps = {
     registry,
     conn,
     sessionStore,
+    db,
+    startedAt: Date.now(),
     // The following are not used by auth routes — cast to satisfy the type
     tokenCache: null as unknown as RouteDeps["tokenCache"],
     lifecycle: null as unknown as RouteDeps["lifecycle"],

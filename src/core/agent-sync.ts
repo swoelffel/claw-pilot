@@ -91,12 +91,8 @@ export class AgentSync {
     // 2. Build the expected agent list from config
     // ------------------------------------------------------------------
     const agentsConf = config["agents"] as Record<string, unknown> | undefined;
-    const agentsDefaults = agentsConf?.["defaults"] as
-      | Record<string, unknown>
-      | undefined;
-    const agentsList = (agentsConf?.["list"] ?? []) as Array<
-      Record<string, unknown>
-    >;
+    const agentsDefaults = agentsConf?.["defaults"] as Record<string, unknown> | undefined;
+    const agentsList = (agentsConf?.["list"] ?? []) as Array<Record<string, unknown>>;
 
     const defaultModel = normaliseModel(agentsDefaults?.["model"]);
     const stateDir = instance.state_dir;
@@ -134,7 +130,12 @@ export class AgentSync {
         agentId,
         name: (agent["name"] as string | undefined) ?? agentId,
         model: normaliseModel(agent["model"]) ?? defaultModel,
-        workspacePath: resolveAgentWorkspacePath(stateDir, agentId, agent["workspace"] as string | undefined, agentsList),
+        workspacePath: resolveAgentWorkspacePath(
+          stateDir,
+          agentId,
+          agent["workspace"] as string | undefined,
+          agentsList,
+        ),
         isDefault: false,
         rawBlock: agent,
       });
@@ -150,11 +151,7 @@ export class AgentSync {
 
     // Index existing DB agents by agent_id string
     // We'll remove entries as we process them; what remains at the end is stale.
-    const dbAgents = new Map(
-      this.registry
-        .listAgents(instance.slug)
-        .map((a) => [a.agent_id, a]),
-    );
+    const dbAgents = new Map(this.registry.listAgents(instance.slug).map((a) => [a.agent_id, a]));
 
     const syncedAgents: SyncedAgent[] = [];
     const syncedAt = new Date().toISOString();
@@ -209,11 +206,7 @@ export class AgentSync {
       const fileSummaries: SyncedAgent["files"] = [];
 
       // Index existing DB files for this agent
-      const dbFiles = new Map(
-        this.registry
-          .listAgentFiles(agentDbId)
-          .map((f) => [f.filename, f]),
-      );
+      const dbFiles = new Map(this.registry.listAgentFiles(agentDbId).map((f) => [f.filename, f]));
 
       for (const filename of DISCOVERABLE_FILES) {
         const filePath = `${ca.workspacePath}/${filename}`;
@@ -283,9 +276,7 @@ export class AgentSync {
 
     // A2A links: tools.agentToAgent.allow[] — each pair (a < b) → one link
     const tools = config["tools"] as Record<string, unknown> | undefined;
-    const a2aConf = tools?.["agentToAgent"] as
-      | Record<string, unknown>
-      | undefined;
+    const a2aConf = tools?.["agentToAgent"] as Record<string, unknown> | undefined;
     const a2aAllow = (a2aConf?.["allow"] ?? []) as string[];
 
     for (let i = 0; i < a2aAllow.length; i++) {
@@ -304,7 +295,9 @@ export class AgentSync {
     const mainListEntry = agentsList.find((a) => a["id"] === "main");
     const mainHasListSubagents =
       mainListEntry !== undefined &&
-      Array.isArray((mainListEntry["subagents"] as Record<string, unknown> | undefined)?.["allowAgents"]);
+      Array.isArray(
+        (mainListEntry["subagents"] as Record<string, unknown> | undefined)?.["allowAgents"],
+      );
 
     for (const agent of agentsList) {
       if (!agent["id"]) continue;
@@ -322,9 +315,7 @@ export class AgentSync {
 
     // Spawn links from defaults.subagents.allowAgents[] — only if main has no explicit list entry
     if (!mainHasListSubagents) {
-      const defaultSubagents = agentsDefaults?.["subagents"] as
-        | Record<string, unknown>
-        | undefined;
+      const defaultSubagents = agentsDefaults?.["subagents"] as Record<string, unknown> | undefined;
       const defaultAllowAgents = (defaultSubagents?.["allowAgents"] ?? []) as string[];
       for (const target of defaultAllowAgents) {
         links.push({

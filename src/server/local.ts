@@ -5,6 +5,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import type { ServerConnection, ExecResult, ExecOptions } from "./connection.js";
+import { shellEscape } from "../lib/shell.js";
 
 const isLinux = os.platform() === "linux";
 
@@ -43,7 +44,7 @@ export class LocalConnection implements ServerConnection {
           if (err) {
             resolve({
               stdout: stdout ?? "",
-              stderr: stderr ?? (err.message ?? ""),
+              stderr: stderr ?? err.message ?? "",
               exitCode: (err as NodeJS.ErrnoException & { code?: number }).code ?? 1,
             });
           } else {
@@ -64,7 +65,7 @@ export class LocalConnection implements ServerConnection {
       if (isLinux) {
         const code = (err as NodeJS.ErrnoException).code;
         if (code === "EACCES" || code === "EPERM") {
-          const result = await this.exec(`sudo cat ${JSON.stringify(filePath)} 2>/dev/null`);
+          const result = await this.exec(`sudo cat ${shellEscape(filePath)} 2>/dev/null`);
           if (result.exitCode === 0) return result.stdout;
         }
       }
@@ -72,11 +73,7 @@ export class LocalConnection implements ServerConnection {
     }
   }
 
-  async writeFile(
-    filePath: string,
-    content: string,
-    mode?: number,
-  ): Promise<void> {
+  async writeFile(filePath: string, content: string, mode?: number): Promise<void> {
     try {
       const dir = path.dirname(filePath);
       await fs.mkdir(dir, { recursive: true });
@@ -107,14 +104,12 @@ export class LocalConnection implements ServerConnection {
       await fs.access(filePath);
       return true;
     } catch {
+      // intentionally ignored — any access error means the path does not exist (ENOENT, EACCES, etc.)
       return false;
     }
   }
 
-  async remove(
-    filePath: string,
-    options?: { recursive?: boolean },
-  ): Promise<void> {
+  async remove(filePath: string, options?: { recursive?: boolean }): Promise<void> {
     await fs.rm(filePath, {
       recursive: options?.recursive ?? false,
       force: true,

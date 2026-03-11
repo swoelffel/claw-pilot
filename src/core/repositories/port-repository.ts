@@ -6,16 +6,12 @@ export class PortRepository {
 
   allocatePort(serverId: number, port: number, instanceSlug: string): void {
     this.db
-      .prepare(
-        "INSERT OR REPLACE INTO ports (server_id, port, instance_slug) VALUES (?, ?, ?)",
-      )
+      .prepare("INSERT OR REPLACE INTO ports (server_id, port, instance_slug) VALUES (?, ?, ?)")
       .run(serverId, port, instanceSlug);
   }
 
   releasePort(serverId: number, port: number): void {
-    this.db
-      .prepare("DELETE FROM ports WHERE server_id = ? AND port = ?")
-      .run(serverId, port);
+    this.db.prepare("DELETE FROM ports WHERE server_id = ? AND port = ?").run(serverId, port);
   }
 
   getUsedPorts(serverId: number): number[] {

@@ -5,8 +5,8 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
-import { logger } from "../lib/logger.js";
 import { withContext } from "./_context.js";
+import { CliError } from "../lib/errors.js";
 import { DeviceManager } from "../core/device-manager.js";
 
 // ---------------------------------------------------------------------------
@@ -45,10 +45,9 @@ function devicesListCommand(): Command {
       await withContext(async ({ conn, registry }) => {
         const instance = registry.getInstance(slug);
         if (!instance) {
-          logger.error(
+          throw new CliError(
             `Instance "${slug}" not found. Run 'claw-pilot list' to see available instances.`,
           );
-          process.exit(1);
         }
 
         const dm = new DeviceManager(conn);
@@ -99,10 +98,9 @@ function devicesApproveCommand(): Command {
       await withContext(async ({ conn, registry }) => {
         const instance = registry.getInstance(slug);
         if (!instance) {
-          logger.error(
+          throw new CliError(
             `Instance "${slug}" not found. Run 'claw-pilot list' to see available instances.`,
           );
-          process.exit(1);
         }
 
         const dm = new DeviceManager(conn);
@@ -116,9 +114,7 @@ function devicesApproveCommand(): Command {
         if (requestId) {
           // Approve a specific request
           await dm.approve(instance.state_dir, requestId);
-          console.log(
-            `Approved device request ${requestId.slice(0, 8)} for instance "${slug}".`,
-          );
+          console.log(`Approved device request ${requestId.slice(0, 8)} for instance "${slug}".`);
         } else {
           // Approve all pending requests
           for (const d of pending) {
@@ -145,22 +141,22 @@ function devicesRevokeCommand(): Command {
       await withContext(async ({ conn, registry }) => {
         const instance = registry.getInstance(slug);
         if (!instance) {
-          logger.error(
+          throw new CliError(
             `Instance "${slug}" not found. Run 'claw-pilot list' to see available instances.`,
           );
-          process.exit(1);
         }
 
         const dm = new DeviceManager(conn);
         const { paired } = await dm.list(instance.state_dir);
 
         // Verify the device exists in the paired list
-        const found = paired.find((d) => d.deviceId === deviceId || d.deviceId.startsWith(deviceId));
+        const found = paired.find(
+          (d) => d.deviceId === deviceId || d.deviceId.startsWith(deviceId),
+        );
         if (!found) {
-          logger.error(
+          throw new CliError(
             `Device "${deviceId}" not found in paired devices for instance "${slug}".`,
           );
-          process.exit(1);
         }
 
         await dm.revoke(instance.state_dir, found.deviceId);

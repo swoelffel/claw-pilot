@@ -81,7 +81,7 @@ vi.stubGlobal("fetch", async () => {
  */
 function mockFindForFiles(conn: MockConnection): void {
   const paths = [...conn.files.keys()].filter((p) => p.endsWith("openclaw.json"));
-  conn.mockExec('sudo find', {
+  conn.mockExec("sudo find", {
     stdout: paths.join("\n"),
     stderr: "",
     exitCode: 0,
@@ -132,10 +132,7 @@ describe("InstanceDiscovery — directory scan", () => {
   });
 
   it("skips config without port", async () => {
-    conn.files.set(
-      `${HOME}/.openclaw-nport/openclaw.json`,
-      JSON.stringify({ gateway: {} }),
-    );
+    conn.files.set(`${HOME}/.openclaw-nport/openclaw.json`, JSON.stringify({ gateway: {} }));
 
     const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
     const result = await discovery.scan();
@@ -251,10 +248,7 @@ describe("InstanceDiscovery — adopt", () => {
   });
 
   it("logs a 'discovered' event after adopt", async () => {
-    conn.files.set(
-      `${HOME}/.openclaw-demo1/openclaw.json`,
-      makeConfig(18789),
-    );
+    conn.files.set(`${HOME}/.openclaw-demo1/openclaw.json`, makeConfig(18789));
     mockFindForFiles(conn);
 
     const server = registry.getLocalServer()!;

@@ -36,11 +36,11 @@ export function computePositions(
   if (needsLayout.length > 0) {
     const centerX = canvasWidth / 2;
     const centerY = canvasHeight / 2;
-    const mainAgent = needsLayout.find(a => a.is_default);
+    const mainAgent = needsLayout.find((a) => a.is_default);
     if (mainAgent) {
       positions.set(mainAgent.agent_id, { x: centerX, y: centerY });
     }
-    const others = needsLayout.filter(a => !a.is_default);
+    const others = needsLayout.filter((a) => !a.is_default);
     if (others.length > 0) {
       const radius = Math.min(canvasWidth, canvasHeight) * 0.35;
       const angleStep = (2 * Math.PI) / others.length;

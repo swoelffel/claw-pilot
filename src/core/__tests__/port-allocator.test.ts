@@ -96,7 +96,7 @@ describe("PortAllocator — OpenClaw 2026.3.x sidecar ports", () => {
     allocator.releaseSidecarPorts(serverId, 18789);
 
     const used = registry.getUsedPorts(serverId);
-    expect(used).toContain(18789);   // gateway still registered (released separately)
+    expect(used).toContain(18789); // gateway still registered (released separately)
     expect(used).not.toContain(18790);
     expect(used).not.toContain(18791);
     expect(used).not.toContain(18793);

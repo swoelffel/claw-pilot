@@ -28,7 +28,5 @@ export async function pollUntilReady(opts: PollOptions): Promise<void> {
     await new Promise<void>((r) => setTimeout(r, intervalMs));
   }
 
-  throw new Error(
-    `Timeout after ${timeoutMs}ms${label ? ` waiting for ${label}` : ""}`,
-  );
+  throw new Error(`Timeout after ${timeoutMs}ms${label ? ` waiting for ${label}` : ""}`);
 }

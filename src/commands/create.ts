@@ -8,6 +8,7 @@ import { OpenClawCLI } from "../core/openclaw-cli.js";
 import { runWizard } from "../wizard/wizard.js";
 import { logger } from "../lib/logger.js";
 import { withContext } from "./_context.js";
+import { CliError } from "../lib/errors.js";
 import { constants } from "../lib/constants.js";
 import chalk from "chalk";
 import { readGatewayToken } from "../lib/env-reader.js";
@@ -21,16 +22,14 @@ export function createCommand(): Command {
 
         const server = registry.getLocalServer();
         if (!server) {
-          logger.error("No server registered. Run 'claw-pilot init' first.");
-          process.exit(1);
+          throw new CliError("No server registered. Run 'claw-pilot init' first.");
         }
 
         // Detect OpenClaw — offer to install if missing (before entering the wizard)
         const cli = new OpenClawCLI(conn);
         const openclaw = await cli.detect();
         if (!openclaw) {
-          const installUrl =
-            process.env["OPENCLAW_INSTALL_URL"] ?? constants.OPENCLAW_INSTALL_URL;
+          const installUrl = process.env["OPENCLAW_INSTALL_URL"] ?? constants.OPENCLAW_INSTALL_URL;
           logger.warn("OpenClaw CLI not found.");
           const shouldInstall = await confirm({
             message: `Install OpenClaw automatically? (from ${installUrl})`,
@@ -40,19 +39,16 @@ export function createCommand(): Command {
             logger.info("Installing OpenClaw...");
             const installed = await cli.install();
             if (!installed) {
-              logger.error(
-                `OpenClaw installation failed. Install manually: ${installUrl}`,
+              throw new CliError(
+                `OpenClaw installation failed. Install manually: ${installUrl}\nCannot create instance without OpenClaw.`,
               );
-              logger.error("Cannot create instance without OpenClaw.");
-              process.exit(1);
             }
             const detected = await cli.detect();
             logger.success(`OpenClaw installed: ${detected?.version ?? "unknown"}`);
           } else {
-            logger.error(
+            throw new CliError(
               "OpenClaw is required to create instances. Run 'claw-pilot init' to install it.",
             );
-            process.exit(1);
           }
         }
 
@@ -93,7 +89,7 @@ export function createCommand(): Command {
         const baseUrl = `http://127.0.0.1:${result.port}`;
 
         // Read the freshly-written token (best-effort — provisioner already has it in result)
-        const gatewayToken = result.gatewayToken || await readGatewayToken(conn, result.stateDir);
+        const gatewayToken = result.gatewayToken || (await readGatewayToken(conn, result.stateDir));
         const controlUrl = gatewayToken ? `${baseUrl}/#token=${gatewayToken}` : baseUrl;
 
         console.log(chalk.bold("\n=== Instance created ==="));
@@ -103,8 +99,14 @@ export function createCommand(): Command {
         console.log(`  Agents:       ${result.agentCount}`);
         console.log(`  Control UI:   ${chalk.cyan(controlUrl)}`);
         if (gatewayToken) {
-          console.log(chalk.dim(`\nThe URL above includes the gateway token — open it to log in automatically.`));
-          console.log(chalk.dim(`Run 'claw-pilot token ${result.slug} --open' to reopen at any time.`));
+          console.log(
+            chalk.dim(
+              `\nThe URL above includes the gateway token — open it to log in automatically.`,
+            ),
+          );
+          console.log(
+            chalk.dim(`Run 'claw-pilot token ${result.slug} --open' to reopen at any time.`),
+          );
         }
         console.log("");
       });

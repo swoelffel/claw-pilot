@@ -14,15 +14,12 @@ export class OpenClawCLI {
    * Uses exec() because the command is a shell pipe (curl | sh).
    */
   async install(): Promise<boolean> {
-    const url =
-      process.env["OPENCLAW_INSTALL_URL"] ?? constants.OPENCLAW_INSTALL_URL;
+    const url = process.env["OPENCLAW_INSTALL_URL"] ?? constants.OPENCLAW_INSTALL_URL;
     // Validate URL to prevent shell injection via env var override
     if (!url.startsWith("https://")) {
       throw new Error(`OPENCLAW_INSTALL_URL must start with https:// (got: ${url.slice(0, 40)})`);
     }
-    const result = await this.conn.exec(
-      `curl -fsSL ${shellEscape(url)} | sh 2>&1`,
-    );
+    const result = await this.conn.exec(`curl -fsSL ${shellEscape(url)} | sh 2>&1`);
     if (result.exitCode !== 0) {
       return false;
     }
@@ -69,6 +66,7 @@ export class OpenClawCLI {
       const pkg = JSON.parse(raw) as { version?: string };
       return pkg.version ?? "unknown";
     } catch {
+      // intentionally ignored — package.json unreadable or missing, version is non-critical
       return "unknown";
     }
   }
@@ -89,7 +87,11 @@ export class OpenClawCLI {
    * HOME from /proc/<pid>/environ (Linux only, requires sudo which is a
    * pre-req of the installer).
    */
-  private async _detectFromProcess(): Promise<{ bin: string; version: string; home: string } | null> {
+  private async _detectFromProcess(): Promise<{
+    bin: string;
+    version: string;
+    home: string;
+  } | null> {
     if (isDarwin()) return null; // /proc not available on macOS
 
     const psResult = await this.conn.exec(
@@ -114,7 +116,11 @@ export class OpenClawCLI {
    * Parses ExecStart to extract the dist/index.js path, derives bin from it.
    * Uses sudo to read files in other users' homes.
    */
-  private async _detectFromService(): Promise<{ bin: string; version: string; home: string } | null> {
+  private async _detectFromService(): Promise<{
+    bin: string;
+    version: string;
+    home: string;
+  } | null> {
     const findResult = await this.conn.exec(
       `find /home /opt /root -maxdepth 6 -name "openclaw-*.service" 2>/dev/null | head -20`,
     );
@@ -174,29 +180,20 @@ export class OpenClawCLI {
   }
 
   /** Run an openclaw command for a specific instance */
-  async run(
-    slug: string,
-    stateDir: string,
-    configPath: string,
-    args: string,
-  ): Promise<ExecResult> {
+  async run(slug: string, stateDir: string, configPath: string, args: string): Promise<ExecResult> {
     const home = process.env["HOME"] ?? "";
     // Split args string into array — callers always pass simple args (no pipes/redirections)
     const argsArray = args.split(/\s+/).filter(Boolean);
-    return this.conn.execFile(
-      "openclaw",
-      ["--profile", slug, ...argsArray],
-      {
-        env: {
-          OPENCLAW_STATE_DIR: stateDir,
-          OPENCLAW_CONFIG_PATH: configPath,
-          // Extended PATH covering all known npm-global locations (platform-aware)
-          PATH: isDarwin()
-            ? `/opt/homebrew/bin:${home}/.npm-global/bin:/usr/local/bin:/usr/bin:/bin`
-            : `${home}/.npm-global/bin:/opt/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin`,
-        },
+    return this.conn.execFile("openclaw", ["--profile", slug, ...argsArray], {
+      env: {
+        OPENCLAW_STATE_DIR: stateDir,
+        OPENCLAW_CONFIG_PATH: configPath,
+        // Extended PATH covering all known npm-global locations (platform-aware)
+        PATH: isDarwin()
+          ? `/opt/homebrew/bin:${home}/.npm-global/bin:/usr/local/bin:/usr/bin:/bin`
+          : `${home}/.npm-global/bin:/opt/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin`,
       },
-    );
+    });
   }
 
   /** Install a plugin for an instance */
@@ -210,20 +207,12 @@ export class OpenClawCLI {
   }
 
   /** Run doctor for an instance */
-  async doctor(
-    slug: string,
-    stateDir: string,
-    configPath: string,
-  ): Promise<ExecResult> {
+  async doctor(slug: string, stateDir: string, configPath: string): Promise<ExecResult> {
     return this.run(slug, stateDir, configPath, "doctor");
   }
 
   /** List devices for an instance */
-  async listDevices(
-    slug: string,
-    stateDir: string,
-    configPath: string,
-  ): Promise<ExecResult> {
+  async listDevices(slug: string, stateDir: string, configPath: string): Promise<ExecResult> {
     return this.run(slug, stateDir, configPath, "devices list --json");
   }
 
@@ -234,11 +223,6 @@ export class OpenClawCLI {
     configPath: string,
     requestId: string,
   ): Promise<ExecResult> {
-    return this.run(
-      slug,
-      stateDir,
-      configPath,
-      `devices approve ${requestId}`,
-    );
+    return this.run(slug, stateDir, configPath, `devices approve ${requestId}`);
   }
 }

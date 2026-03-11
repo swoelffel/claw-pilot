@@ -1,0 +1,21 @@
+pre-commit:
+  parallel: true
+  commands:
+    format-check:
+      glob: "*.ts"
+      run: pnpm format:check
+    lint:
+      glob: "src/**/*.ts"
+      run: pnpm lint:all
+    typecheck:
+      run: pnpm typecheck:all
+
+pre-push:
+  commands:
+    test:
+      run: pnpm test:run
+
+commit-msg:
+  commands:
+    commitlint:
+      run: pnpm commitlint --edit {1}

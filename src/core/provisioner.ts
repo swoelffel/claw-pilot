@@ -13,7 +13,14 @@ import { generateGatewayToken } from "./secrets.js";
 import { OpenClawCLI } from "./openclaw-cli.js";
 import { Lifecycle } from "./lifecycle.js";
 import { constants } from "../lib/constants.js";
-import { getOpenClawHome, getSystemdDir, getSystemdUnit, getServiceManager, getLaunchdDir, getLaunchdPlistPath } from "../lib/platform.js";
+import {
+  getOpenClawHome,
+  getSystemdDir,
+  getSystemdUnit,
+  getServiceManager,
+  getLaunchdDir,
+  getLaunchdPlistPath,
+} from "../lib/platform.js";
 import { InstanceAlreadyExistsError, ClawPilotError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
 import { shellEscape } from "../lib/shell.js";
@@ -51,7 +58,10 @@ export async function resolveApiKey(
     const existing = registry.listInstances();
     if (existing.length === 0) {
       if (!requiresKey) return ""; // Optional key, no existing instance — OK
-      throw new ClawPilotError("No existing instance to reuse API key from", "NO_EXISTING_INSTANCE");
+      throw new ClawPilotError(
+        "No existing instance to reuse API key from",
+        "NO_EXISTING_INSTANCE",
+      );
     }
     const existingInst = existing[0]!;
     const existingEnvPath = path.join(existingInst.state_dir, ".env");
@@ -87,7 +97,11 @@ export class Provisioner {
     private portAllocator: PortAllocator,
   ) {}
 
-  async provision(answers: WizardAnswers, serverId: number, blueprintId?: number): Promise<ProvisionResult> {
+  async provision(
+    answers: WizardAnswers,
+    serverId: number,
+    blueprintId?: number,
+  ): Promise<ProvisionResult> {
     const { slug } = answers;
 
     // Step 1: Validation
@@ -96,17 +110,11 @@ export class Provisioner {
     }
     const portFree = await this.portAllocator.verifyPort(serverId, answers.port);
     if (!portFree) {
-      throw new ClawPilotError(
-        `Port ${answers.port} is already in use`,
-        "PORT_CONFLICT",
-      );
+      throw new ClawPilotError(`Port ${answers.port} is already in use`, "PORT_CONFLICT");
     }
 
     const openclawHome = getOpenClawHome();
-    const stateDir = path.join(
-      openclawHome,
-      `${constants.OPENCLAW_STATE_PREFIX}${slug}`,
-    );
+    const stateDir = path.join(openclawHome, `${constants.OPENCLAW_STATE_PREFIX}${slug}`);
     const configPath = path.join(stateDir, "openclaw.json");
     const envPath = path.join(stateDir, ".env");
     const logsDir = path.join(stateDir, "logs");
@@ -116,10 +124,7 @@ export class Provisioner {
     const cli = new OpenClawCLI(this.conn);
     const openclaw = await cli.detect();
     if (!openclaw) {
-      throw new ClawPilotError(
-        "OpenClaw CLI not found",
-        "OPENCLAW_NOT_FOUND",
-      );
+      throw new ClawPilotError("OpenClaw CLI not found", "OPENCLAW_NOT_FOUND");
     }
 
     // Resolve current user UID for XDG_RUNTIME_DIR in systemd service
@@ -166,7 +171,8 @@ export class Provisioner {
       // Step 5: Create workspaces
       logger.step("Creating workspaces...");
       for (const agent of answers.agents) {
-        const workspaceId = agent.workspace ?? (agent.isDefault ? "workspace" : `workspace-${agent.id}`);
+        const workspaceId =
+          agent.workspace ?? (agent.isDefault ? "workspace" : `workspace-${agent.id}`);
         const workspacePath = path.join(stateDir, "workspaces", workspaceId);
         await this.conn.mkdir(workspacePath);
         await this.provisionWorkspaceFiles(workspacePath, {
@@ -223,9 +229,7 @@ export class Provisioner {
         port: answers.port,
         configPath,
         stateDir,
-        systemdUnit: sm === "launchd"
-          ? `ai.openclaw.${slug}`
-          : `openclaw-${slug}.service`,
+        systemdUnit: sm === "launchd" ? `ai.openclaw.${slug}` : `openclaw-${slug}.service`,
         telegramBot: answers.telegram.enabled
           ? undefined // will be set after pairing
           : undefined,
@@ -241,7 +245,8 @@ export class Provisioner {
 
       // Register agents
       for (const agent of answers.agents) {
-        const workspaceId = agent.workspace ?? (agent.isDefault ? "workspace" : `workspace-${agent.id}`);
+        const workspaceId =
+          agent.workspace ?? (agent.isDefault ? "workspace" : `workspace-${agent.id}`);
         this.registry.createAgent(instance.id, {
           agentId: agent.id,
           name: agent.name,
@@ -330,9 +335,18 @@ export class Provisioner {
     port: number;
   }): Promise<void> {
     const {
-      slug, stateDir, serverId, xdgRuntimeDir, sm,
-      stateDirCreated, serviceFileCreated, instanceRegistered,
-      portAllocated, serviceStarted, serviceEnabled, port,
+      slug,
+      stateDir,
+      serverId,
+      xdgRuntimeDir,
+      sm,
+      stateDirCreated,
+      serviceFileCreated,
+      instanceRegistered,
+      portAllocated,
+      serviceStarted,
+      serviceEnabled,
+      port,
     } = ctx;
 
     // 1. Stop service (best-effort)
@@ -341,10 +355,9 @@ export class Provisioner {
         if (sm === "launchd") {
           await this.conn.execFile("launchctl", ["unload", getLaunchdPlistPath(slug)]);
         } else {
-          await this.conn.execFile(
-            "systemctl", ["--user", "stop", getSystemdUnit(slug)],
-            { env: { XDG_RUNTIME_DIR: xdgRuntimeDir } },
-          );
+          await this.conn.execFile("systemctl", ["--user", "stop", getSystemdUnit(slug)], {
+            env: { XDG_RUNTIME_DIR: xdgRuntimeDir },
+          });
         }
       } catch (e) {
         logger.warn(`Rollback: failed to stop service — ${e instanceof Error ? e.message : e}`);
@@ -357,10 +370,9 @@ export class Provisioner {
         if (sm === "launchd") {
           // launchctl unload already disables; nothing extra needed
         } else {
-          await this.conn.execFile(
-            "systemctl", ["--user", "disable", getSystemdUnit(slug)],
-            { env: { XDG_RUNTIME_DIR: xdgRuntimeDir } },
-          );
+          await this.conn.execFile("systemctl", ["--user", "disable", getSystemdUnit(slug)], {
+            env: { XDG_RUNTIME_DIR: xdgRuntimeDir },
+          });
         }
       } catch (e) {
         logger.warn(`Rollback: failed to disable service — ${e instanceof Error ? e.message : e}`);
@@ -370,17 +382,18 @@ export class Provisioner {
     // 3. Remove service file (best-effort)
     if (serviceFileCreated) {
       try {
-        const serviceFilePath = sm === "launchd"
-          ? getLaunchdPlistPath(slug)
-          : path.join(getSystemdDir(), getSystemdUnit(slug));
+        const serviceFilePath =
+          sm === "launchd"
+            ? getLaunchdPlistPath(slug)
+            : path.join(getSystemdDir(), getSystemdUnit(slug));
         await this.conn.remove(serviceFilePath);
         if (sm !== "launchd") {
-          await this.conn.exec(
-            `systemctl --user daemon-reload 2>/dev/null || true`,
-          );
+          await this.conn.exec(`systemctl --user daemon-reload 2>/dev/null || true`);
         }
       } catch (e) {
-        logger.warn(`Rollback: failed to remove service file — ${e instanceof Error ? e.message : e}`);
+        logger.warn(
+          `Rollback: failed to remove service file — ${e instanceof Error ? e.message : e}`,
+        );
       }
     }
 
@@ -389,14 +402,18 @@ export class Provisioner {
       try {
         this.registry.releasePort(serverId, port);
         this.portAllocator.releaseSidecarPorts(serverId, port);
-      } catch { /* ignore */ }
+      } catch {
+        /* intentionally ignored — rollback is best-effort, DB may already be clean */
+      }
     }
     if (instanceRegistered) {
       try {
         const inst = this.registry.getInstance(slug);
         if (inst) this.registry.deleteAgents(inst.id);
         this.registry.deleteInstance(slug);
-      } catch { /* ignore */ }
+      } catch {
+        /* intentionally ignored — rollback is best-effort, DB may already be clean */
+      }
     }
 
     // 5. Remove state directory (best-effort)
@@ -404,7 +421,9 @@ export class Provisioner {
       try {
         await this.conn.remove(stateDir, { recursive: true });
       } catch (e) {
-        logger.warn(`Rollback: failed to remove state dir "${stateDir}" — ${e instanceof Error ? e.message : e}`);
+        logger.warn(
+          `Rollback: failed to remove state dir "${stateDir}" — ${e instanceof Error ? e.message : e}`,
+        );
         logger.warn(`  Remove it manually: rm -rf ${shellEscape(stateDir)}`);
       }
     }
@@ -450,16 +469,14 @@ export class Provisioner {
         .replace(/\{\{instanceSlug\}\}/g, context.instanceSlug)
         .replace(/\{\{instanceName\}\}/g, context.instanceName)
         .replace(/\{\{date\}\}/g, date)
-        .replace(
-          /\{\{#each agents\}\}([\s\S]*?)\{\{\/each\}\}/g,
-          (_match, capturedBlock: string) =>
-            context.agents
-              .map((a) =>
-                capturedBlock
-                  .replace(/\{\{this\.id\}\}/g, a.id)
-                  .replace(/\{\{this\.name\}\}/g, a.name),
-              )
-              .join(""),
+        .replace(/\{\{#each agents\}\}([\s\S]*?)\{\{\/each\}\}/g, (_match, capturedBlock: string) =>
+          context.agents
+            .map((a) =>
+              capturedBlock
+                .replace(/\{\{this\.id\}\}/g, a.id)
+                .replace(/\{\{this\.name\}\}/g, a.name),
+            )
+            .join(""),
         );
 
       await this.conn.writeFile(path.join(workspacePath, file), content);

@@ -360,13 +360,19 @@ describe("BlueprintDeployer.deploy()", () => {
     await deployer.deploy(bpId, instance);
 
     // Main: files overwritten in existing workspace
-    expect(conn.files.get(`${STATE_DIR}/workspaces/workspace/SOUL.md`)).toBe("# Blueprint Main SOUL\n");
+    expect(conn.files.get(`${STATE_DIR}/workspaces/workspace/SOUL.md`)).toBe(
+      "# Blueprint Main SOUL\n",
+    );
 
     // Secondaries: own workspaces created
     expect(conn.dirs.has(`${STATE_DIR}/workspaces/workspace-coder`)).toBe(true);
     expect(conn.dirs.has(`${STATE_DIR}/workspaces/workspace-reviewer`)).toBe(true);
-    expect(conn.files.get(`${STATE_DIR}/workspaces/workspace-coder/SOUL.md`)).toBe("# Coder SOUL\n");
-    expect(conn.files.get(`${STATE_DIR}/workspaces/workspace-reviewer/SOUL.md`)).toBe("# Reviewer SOUL\n");
+    expect(conn.files.get(`${STATE_DIR}/workspaces/workspace-coder/SOUL.md`)).toBe(
+      "# Coder SOUL\n",
+    );
+    expect(conn.files.get(`${STATE_DIR}/workspaces/workspace-reviewer/SOUL.md`)).toBe(
+      "# Reviewer SOUL\n",
+    );
 
     // Config: ALL agents in agents.list[] (main + secondaries)
     const config = JSON.parse(conn.files.get(CONFIG_PATH)!);
@@ -441,9 +447,11 @@ describe("BlueprintDeployer.deploy()", () => {
 
     const config = JSON.parse(conn.files.get(CONFIG_PATH)!);
     const mainEntry = config.agents.list.find((a: { id: string }) => a.id === "main");
-    expect(mainEntry.subagents.allowAgents.sort()).toEqual(
-      ["lead-marketing", "lead-product", "lead-tech"],
-    );
+    expect(mainEntry.subagents.allowAgents.sort()).toEqual([
+      "lead-marketing",
+      "lead-product",
+      "lead-tech",
+    ]);
   });
 
   it("spawn links — added as subagents.allowAgents on secondary agents", async () => {
@@ -456,9 +464,7 @@ describe("BlueprintDeployer.deploy()", () => {
         { agentId: "coder", name: "Coder" },
         { agentId: "tester", name: "Tester" },
       ],
-      links: [
-        { source: "coder", target: "tester", type: "spawn" },
-      ],
+      links: [{ source: "coder", target: "tester", type: "spawn" }],
     });
 
     const deployer = new BlueprintDeployer(conn, registry);
@@ -557,8 +563,12 @@ describe("BlueprintDeployer.deploy()", () => {
 
     const links = registry.listAgentLinks(instance.id);
     expect(links).toHaveLength(2);
-    expect(links.find((l) => l.source_agent_id === "main" && l.target_agent_id === "coder")).toBeDefined();
-    expect(links.find((l) => l.source_agent_id === "coder" && l.target_agent_id === "reviewer")).toBeDefined();
+    expect(
+      links.find((l) => l.source_agent_id === "main" && l.target_agent_id === "coder"),
+    ).toBeDefined();
+    expect(
+      links.find((l) => l.source_agent_id === "coder" && l.target_agent_id === "reviewer"),
+    ).toBeDefined();
   });
 
   it("empty blueprint — returns immediately, no changes", async () => {

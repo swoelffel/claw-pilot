@@ -33,11 +33,17 @@ function resolveCode(code: string): string {
     case "INVALID_JSON":
       return msg("Invalid request format.", { id: "err-invalid-json" });
     case "INVALID_SLUG":
-      return msg("Must be 2-30 lowercase letters, numbers, or hyphens.", { id: "err-invalid-slug" });
+      return msg("Must be 2-30 lowercase letters, numbers, or hyphens.", {
+        id: "err-invalid-slug",
+      });
     case "INVALID_INSTANCE_SLUG":
-      return msg("Instance ID must be 2-30 lowercase letters, numbers, or hyphens.", { id: "err-invalid-instance-slug" });
+      return msg("Instance ID must be 2-30 lowercase letters, numbers, or hyphens.", {
+        id: "err-invalid-instance-slug",
+      });
     case "INVALID_AGENT_ID":
-      return msg("Agent ID must be 2-30 lowercase letters, numbers, or hyphens.", { id: "err-invalid-agent-id" });
+      return msg("Agent ID must be 2-30 lowercase letters, numbers, or hyphens.", {
+        id: "err-invalid-agent-id",
+      });
     case "SLUG_REQUIRED":
       return msg("This name is required.", { id: "err-slug-required" });
     case "BLUEPRINT_NAME_REQUIRED":
@@ -47,7 +53,9 @@ function resolveCode(code: string): string {
     case "BLUEPRINT_NAME_TAKEN":
       return msg("A blueprint with this name already exists.", { id: "err-blueprint-name-taken" });
     case "AGENT_ID_TAKEN":
-      return msg("An agent with this ID already exists in this blueprint.", { id: "err-agent-id-taken" });
+      return msg("An agent with this ID already exists in this blueprint.", {
+        id: "err-agent-id-taken",
+      });
     case "FIELD_REQUIRED":
       return msg("A required field is missing.", { id: "err-field-required" });
     case "FIELD_INVALID":
@@ -61,7 +69,9 @@ function resolveCode(code: string): string {
     case "PORT_CONFLICT":
       return msg("This port is already in use.", { id: "err-port-conflict" });
     case "SERVER_NOT_INIT":
-      return msg("Server not initialized. Run claw-pilot init first.", { id: "err-server-not-init" });
+      return msg("Server not initialized. Run claw-pilot init first.", {
+        id: "err-server-not-init",
+      });
     case "SYNC_FAILED":
       return msg("Agent sync failed. Check server logs.", { id: "err-sync-failed" });
     case "PROVISION_FAILED":

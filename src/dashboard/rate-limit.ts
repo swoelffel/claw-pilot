@@ -36,9 +36,10 @@ export function createRateLimiter(options: RateLimitOptions) {
   if (cleanupInterval.unref) cleanupInterval.unref();
 
   return async (c: Context, next: Next) => {
-    const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
-      ?? c.req.header("x-real-ip")
-      ?? "127.0.0.1";
+    const ip =
+      c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
+      c.req.header("x-real-ip") ??
+      "127.0.0.1";
 
     const now = Date.now();
     let entry = buckets.get(ip);

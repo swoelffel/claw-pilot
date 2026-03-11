@@ -5,7 +5,7 @@ import type { AgentLink } from "../types.js";
 
 @customElement("cp-agent-links-svg")
 export class AgentLinksSvg extends LitElement {
-  static styles = css`
+  static override styles = css`
     :host {
       display: block;
       position: absolute;
@@ -32,26 +32,49 @@ export class AgentLinksSvg extends LitElement {
     return html`
       <svg>
         <defs>
-          <marker id="arrow-delegate" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <marker
+            id="arrow-delegate"
+            markerWidth="8"
+            markerHeight="8"
+            refX="6"
+            refY="3"
+            orient="auto"
+          >
             <path d="M0,0 L0,6 L8,3 z" fill="#666" />
           </marker>
-          <marker id="arrow-delegate-pending-remove" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <marker
+            id="arrow-delegate-pending-remove"
+            markerWidth="8"
+            markerHeight="8"
+            refX="6"
+            refY="3"
+            orient="auto"
+          >
             <path d="M0,0 L0,6 L8,3 z" fill="#ef4444" />
           </marker>
-          <marker id="arrow-delegate-pending-add" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <marker
+            id="arrow-delegate-pending-add"
+            markerWidth="8"
+            markerHeight="8"
+            refX="6"
+            refY="3"
+            orient="auto"
+          >
             <path d="M0,0 L0,6 L8,3 z" fill="#10b981" />
           </marker>
         </defs>
         ${this.links
-          .filter(link => link.link_type === "spawn")
-          .map(link => {
+          .filter((link) => link.link_type === "spawn")
+          .map((link) => {
             const src = this.positions.get(link.source_agent_id);
             const tgt = this.positions.get(link.target_agent_id);
             if (!src || !tgt) return "";
 
             const isPendingRemove = this.pendingRemovals.has(link.target_agent_id);
             const color = isPendingRemove ? "#ef4444" : "#666";
-            const marker = isPendingRemove ? "url(#arrow-delegate-pending-remove)" : "url(#arrow-delegate)";
+            const marker = isPendingRemove
+              ? "url(#arrow-delegate-pending-remove)"
+              : "url(#arrow-delegate)";
 
             return svg`
               <line
@@ -69,7 +92,7 @@ export class AgentLinksSvg extends LitElement {
         ${Array.from(this.pendingAdditions.entries()).flatMap(([sourceId, targets]) => {
           const src = this.positions.get(sourceId);
           if (!src) return [];
-          return Array.from(targets).map(targetId => {
+          return Array.from(targets).map((targetId) => {
             const tgt = this.positions.get(targetId);
             if (!tgt) return "";
             return svg`

@@ -7,22 +7,14 @@ export class ServerRepository {
   constructor(private db: Database.Database) {}
 
   getLocalServer(): ServerRecord | undefined {
-    return this.db
-      .prepare("SELECT * FROM servers WHERE id = 1")
-      .get() as ServerRecord | undefined;
+    return this.db.prepare("SELECT * FROM servers WHERE id = 1").get() as ServerRecord | undefined;
   }
 
-  upsertLocalServer(
-    hostname: string,
-    openclawHome: string,
-    ip?: string,
-  ): ServerRecord {
+  upsertLocalServer(hostname: string, openclawHome: string, ip?: string): ServerRecord {
     const existing = this.getLocalServer();
     if (existing) {
       this.db
-        .prepare(
-          `UPDATE servers SET hostname=?, openclaw_home=?, ip=?, updated_at=? WHERE id=1`,
-        )
+        .prepare(`UPDATE servers SET hostname=?, openclaw_home=?, ip=?, updated_at=? WHERE id=1`)
         .run(hostname, openclawHome, ip ?? null, now());
     } else {
       this.db
@@ -36,9 +28,7 @@ export class ServerRepository {
 
   updateServerBin(bin: string, version: string): void {
     this.db
-      .prepare(
-        `UPDATE servers SET openclaw_bin=?, openclaw_version=?, updated_at=? WHERE id=1`,
-      )
+      .prepare(`UPDATE servers SET openclaw_bin=?, openclaw_version=?, updated_at=? WHERE id=1`)
       .run(bin, version, now());
   }
 }

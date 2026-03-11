@@ -29,18 +29,14 @@ export class Destroyer {
       await this.conn.remove(plistPath);
     } else {
       // 1. Stop service (systemd)
-      await this.conn.execFile(
-        "systemctl",
-        ["--user", "stop", instance.systemd_unit],
-        { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
-      );
+      await this.conn.execFile("systemctl", ["--user", "stop", instance.systemd_unit], {
+        env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir },
+      });
 
       // 2. Disable service
-      await this.conn.execFile(
-        "systemctl",
-        ["--user", "disable", instance.systemd_unit],
-        { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
-      );
+      await this.conn.execFile("systemctl", ["--user", "disable", instance.systemd_unit], {
+        env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir },
+      });
 
       // 3. Remove service file
       const serviceFile = path.join(getSystemdDir(), instance.systemd_unit);

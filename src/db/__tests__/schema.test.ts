@@ -25,8 +25,11 @@ afterEach(() => {
 
 /** Return the list of table names in the DB. */
 function tableNames(db: Database.Database): string[] {
-  return (db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as { name: string }[])
-    .map((t) => t.name);
+  return (
+    db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as {
+      name: string;
+    }[]
+  ).map((t) => t.name);
 }
 
 /** Return the column names of a table. */
@@ -36,7 +39,9 @@ function columnNames(db: Database.Database, table: string): string[] {
 
 /** Return the current schema version stored in the DB. */
 function schemaVersion(db: Database.Database): number {
-  const row = db.prepare("SELECT version FROM schema_version").get() as { version: number } | undefined;
+  const row = db.prepare("SELECT version FROM schema_version").get() as
+    | { version: number }
+    | undefined;
   return row?.version ?? 0;
 }
 
@@ -108,19 +113,34 @@ function buildV1Db(dbPath: string): Database.Database {
 }
 
 /** Seed a server + instance + agent into a v1 DB for migration data-integrity tests. */
-function seedV1Data(db: Database.Database): { serverId: number; instanceId: number; agentId: number } {
-  db.prepare("INSERT INTO servers (hostname, openclaw_home, created_at, updated_at) VALUES (?, ?, ?, ?)")
-    .run("host1", "/opt/openclaw", "2024-01-01", "2024-01-01");
+function seedV1Data(db: Database.Database): {
+  serverId: number;
+  instanceId: number;
+  agentId: number;
+} {
+  db.prepare(
+    "INSERT INTO servers (hostname, openclaw_home, created_at, updated_at) VALUES (?, ?, ?, ?)",
+  ).run("host1", "/opt/openclaw", "2024-01-01", "2024-01-01");
   const serverId = (db.prepare("SELECT last_insert_rowid() as id").get() as { id: number }).id;
 
-  db.prepare(`INSERT INTO instances (server_id, slug, port, config_path, state_dir, systemd_unit, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(serverId, "test-inst", 18789, "/opt/openclaw/.openclaw-test-inst/openclaw.json",
-      "/run/user/1000/openclaw-test-inst", "openclaw-test-inst.service", "2024-01-01", "2024-01-01");
+  db.prepare(
+    `INSERT INTO instances (server_id, slug, port, config_path, state_dir, systemd_unit, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    serverId,
+    "test-inst",
+    18789,
+    "/opt/openclaw/.openclaw-test-inst/openclaw.json",
+    "/run/user/1000/openclaw-test-inst",
+    "openclaw-test-inst.service",
+    "2024-01-01",
+    "2024-01-01",
+  );
   const instanceId = (db.prepare("SELECT last_insert_rowid() as id").get() as { id: number }).id;
 
-  db.prepare("INSERT INTO agents (instance_id, agent_id, name, workspace_path) VALUES (?, ?, ?, ?)")
-    .run(instanceId, "agent-1", "Agent One", "/workspace/agent-1");
+  db.prepare(
+    "INSERT INTO agents (instance_id, agent_id, name, workspace_path) VALUES (?, ?, ?, ?)",
+  ).run(instanceId, "agent-1", "Agent One", "/workspace/agent-1");
   const agentId = (db.prepare("SELECT last_insert_rowid() as id").get() as { id: number }).id;
 
   return { serverId, instanceId, agentId };

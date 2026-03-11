@@ -45,7 +45,9 @@ describe("resolveXdgRuntimeDir", () => {
 
   it("falls back to /run/user/1000 when exec throws", async () => {
     const conn: ServerConnection = {
-      exec: async () => { throw new Error("exec failed"); },
+      exec: async () => {
+        throw new Error("exec failed");
+      },
       execFile: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
       readFile: async () => "",
       writeFile: async () => {},

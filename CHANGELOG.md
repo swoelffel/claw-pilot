@@ -6,6 +6,50 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.17.0] — 2026-03-11
+
+### Added
+- **Prettier** — formatage automatique du code (CLI + UI) ; scripts `format` / `format:check` ; step CI bloquant
+- **lefthook** — pre-commit hooks locaux : format-check + lint + typecheck avant chaque commit, tests avant chaque push
+- **commitlint** — validation des messages de commit (Conventional Commits) via hook `commit-msg`
+- **knip** — détection du dead code (exports inutilisés, dépendances fantômes) ; step CI bloquant ; `OpenClawNotFoundError` supprimé (jamais utilisé)
+- **madge** — détection des imports circulaires (`check:circular`) ; 5 cycles pré-existants identifiés dans `core/registry.ts` et `core/agent-sync.ts`
+- **cspell** — vérification orthographique sur 170 fichiers TypeScript (dictionnaires EN + FR) ; step CI bloquant
+- **`pnpm audit`** — vérification des vulnérabilités connues (`--audit-level=high`) dans le pipeline CI
+- **Typecheck + lint du code UI** — `typecheck:ui` et `lint:ui` couvrent désormais les 40 fichiers Lit dans `ui/src/` ; intégrés dans `typecheck:all` / `lint:all` et dans le CI
+- **`@vitest/coverage-v8`** — provider de coverage explicitement déclaré en devDependency
+- **`/api/health` enrichi** — retourne `version`, `uptime`, `instances.total/running`, `db.sizeBytes`
+- **`/health` public enrichi** — retourne `version` et `uptime`
+- **Request ID middleware** — `X-Request-Id` injecté sur toutes les requêtes Hono (`src/dashboard/request-id.ts`)
+- **Schéma Zod `openclaw.json`** — `OpenClawConfigSchema` dans `src/core/openclaw-config.schema.ts` ; toute la couche de lecture/écriture de config est désormais typée
+- **`instanceGuard()`** — guard centralisé dans `src/lib/guards.ts` pour la résolution d'instance dans les routes
+- **`src/lib/providers.ts`** — URLs de base des providers centralisées
+- **Tests lifecycle + health** — `src/core/__tests__/lifecycle.test.ts` et `health.test.ts` (modules les plus critiques, précédemment sans tests)
+- **Tests config reader/writer** — `src/core/__tests__/config-reader.test.ts` et `config-writer.test.ts`
+- **i18n `instance-devices`** — 11 chaînes extraites vers `msg()` dans `ui/src/components/instance-devices.ts`
+
+### Changed
+- **CI pipeline** — renommé "Quality · Test · Build" ; ordre : security audit → format check → typecheck (CLI+UI) → lint (CLI+UI) → spell check → tests + coverage → dead code (knip) → circular deps → build
+- **Seuils de coverage** — ajustés aux chiffres réels : `lines: 50`, `statements: 50`, `functions: 75`, `branches: 70`
+- **oxlint** — 8 règles supplémentaires activées : `no-var`, `eqeqeq`, `no-implicit-coercion`, `no-return-assign`, `no-throw-literal` + env `node/es2022`
+- **`noFallthroughCasesInSwitch: true`** — ajouté dans `tsconfig.json`
+- **Versions épinglées** — `oxlint` et `tsdown` passent de `"latest"` à `"^1.49.0"` / `"^0.20.3"`
+- **`static override styles`** — 21 composants Lit corrigés pour satisfaire `noImplicitOverride`
+- **`agent-detail-panel.ts`** — CSS extrait dans `ui/src/styles/agent-detail-panel.styles.ts` (1537 → 830 lignes, −46%)
+- **`instance-settings.ts`** — CSS extrait dans `ui/src/styles/instance-settings.styles.ts` (1942 → 1357 lignes, −30%)
+- **`registerAgentRoutes`** — découpé en 6 sous-fichiers dans `src/dashboard/routes/instances/agents/`
+- **`applyConfigPatch`** — refactorisée en 7 fonctions de section dans `src/core/config-writer.ts`
+- **Graceful shutdown** — `SIGTERM`/`SIGINT` gérés proprement dans le dashboard Hono
+- **`CliError`** — remplace les `process.exit(1)` dans les callbacks `withContext()` (28 occurrences corrigées)
+- **Catch vides** — 74 blocs `catch {}` vides remplacés par des logs ou re-throws appropriés
+
+### Fixed
+- **`localization.ts`** — erreur TS2322 corrigée (`Promise<unknown>` → `Promise<LocaleModule>`)
+- **Imports inutilisés UI** — `importInstanceTeam`, `importBlueprintTeam`, `TeamImportResult`, `BuilderData` supprimés
+- **`ui/src/api.ts`** — spread inutile `?? {}` supprimé
+
+---
+
 ## [0.16.3] — 2026-03-11
 
 ### Added

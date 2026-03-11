@@ -78,9 +78,7 @@ function seedInstance(opts: { slug?: string } = {}) {
 describe("Destroyer.destroy()", () => {
   it("throws InstanceNotFoundError for unknown slug", async () => {
     const destroyer = new Destroyer(conn, registry, XDG);
-    await expect(destroyer.destroy("nonexistent")).rejects.toThrow(
-      InstanceNotFoundError,
-    );
+    await expect(destroyer.destroy("nonexistent")).rejects.toThrow(InstanceNotFoundError);
   });
 
   it("issues stop, disable, daemon-reload systemctl commands", async () => {
@@ -188,7 +186,10 @@ describe("Destroyer.destroy() — macOS (launchd)", () => {
     const plistPath = getLaunchdPlistPath(slug);
 
     // Seed plist and state files in mock connection
-    conn.files.set(plistPath, `<plist><dict><key>Label</key><string>ai.openclaw.${slug}</string></dict></plist>`);
+    conn.files.set(
+      plistPath,
+      `<plist><dict><key>Label</key><string>ai.openclaw.${slug}</string></dict></plist>`,
+    );
     conn.files.set(`${stateDir}/openclaw.json`, "{}");
     conn.files.set(`${stateDir}/.env`, "KEY=val");
 

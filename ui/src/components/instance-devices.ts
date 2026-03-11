@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { localized, msg } from "@lit/localize";
 import type { PendingDevice, PairedDevice, DeviceList } from "../types.js";
 import { fetchInstanceDevices, approveDevice, revokeDevice } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
@@ -23,284 +24,294 @@ function lastUsed(d: PairedDevice): number {
   return maxUsed > 0 ? maxUsed : d.approvedAtMs;
 }
 
+@localized()
 @customElement("cp-instance-devices")
 export class InstanceDevices extends LitElement {
-  static styles = [tokenStyles, buttonStyles, spinnerStyles, css`
-    :host {
-      display: block;
-    }
+  static override styles = [
+    tokenStyles,
+    buttonStyles,
+    spinnerStyles,
+    css`
+      :host {
+        display: block;
+      }
 
-    .devices-panel {
-      padding: 0;
-    }
+      .devices-panel {
+        padding: 0;
+      }
 
-    .section-header {
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--text-primary);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      padding-bottom: 12px;
-      border-bottom: 1px solid var(--bg-border);
-      margin-bottom: 16px;
-    }
+      .section-header {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--text-primary);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--bg-border);
+        margin-bottom: 16px;
+      }
 
-    /* --- Pending section --- */
-    .pending-section {
-      background: rgba(245, 158, 11, 0.08);
-      border: 1px solid rgba(245, 158, 11, 0.2);
-      border-radius: var(--radius-md);
-      padding: 12px 16px;
-      margin-bottom: 20px;
-    }
+      /* --- Pending section --- */
+      .pending-section {
+        background: rgba(245, 158, 11, 0.08);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+        border-radius: var(--radius-md);
+        padding: 12px 16px;
+        margin-bottom: 20px;
+      }
 
-    .pending-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 10px;
-    }
+      .pending-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
+      }
 
-    .pending-title {
-      font-size: 12px;
-      font-weight: 700;
-      color: var(--state-warning);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
+      .pending-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--state-warning);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
 
-    /* --- Device rows --- */
-    .device-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 0;
-      border-bottom: 1px solid var(--bg-border);
-    }
+      /* --- Device rows --- */
+      .device-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--bg-border);
+      }
 
-    .device-row:last-child {
-      border-bottom: none;
-    }
+      .device-row:last-child {
+        border-bottom: none;
+      }
 
-    .device-platform {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-primary);
-      font-family: var(--font-mono);
-      min-width: 80px;
-    }
+      .device-platform {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-primary);
+        font-family: var(--font-mono);
+        min-width: 80px;
+      }
 
-    .device-client {
-      font-size: 12px;
-      color: var(--text-secondary);
-      flex: 1;
-    }
+      .device-client {
+        font-size: 12px;
+        color: var(--text-secondary);
+        flex: 1;
+      }
 
-    .device-role {
-      font-size: 11px;
-      color: var(--text-muted);
-    }
+      .device-role {
+        font-size: 11px;
+        color: var(--text-muted);
+      }
 
-    .device-time {
-      font-size: 11px;
-      color: var(--text-muted);
-      white-space: nowrap;
-    }
+      .device-time {
+        font-size: 11px;
+        color: var(--text-muted);
+        white-space: nowrap;
+      }
 
-    .device-actions {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-shrink: 0;
-    }
+      .device-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+      }
 
-    /* --- Badges --- */
-    .badge-cli {
-      display: inline-flex;
-      align-items: center;
-      padding: 2px 7px;
-      border-radius: var(--radius-sm);
-      background: rgba(100, 116, 139, 0.12);
-      color: var(--text-muted);
-      font-size: 10px;
-      font-weight: 700;
-      font-family: var(--font-mono);
-      border: 1px solid rgba(100, 116, 139, 0.2);
-    }
+      /* --- Badges --- */
+      .badge-cli {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 7px;
+        border-radius: var(--radius-sm);
+        background: rgba(100, 116, 139, 0.12);
+        color: var(--text-muted);
+        font-size: 10px;
+        font-weight: 700;
+        font-family: var(--font-mono);
+        border: 1px solid rgba(100, 116, 139, 0.2);
+      }
 
-    /* --- Buttons --- */
-    .btn-approve {
-      padding: 4px 12px;
-      border-radius: var(--radius-sm);
-      border: 1px solid rgba(16, 185, 129, 0.3);
-      background: rgba(16, 185, 129, 0.08);
-      color: var(--state-running);
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.15s;
-      white-space: nowrap;
-    }
+      /* --- Buttons --- */
+      .btn-approve {
+        padding: 4px 12px;
+        border-radius: var(--radius-sm);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        background: rgba(16, 185, 129, 0.08);
+        color: var(--state-running);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s;
+        white-space: nowrap;
+      }
 
-    .btn-approve:hover {
-      background: rgba(16, 185, 129, 0.15);
-    }
+      .btn-approve:hover {
+        background: rgba(16, 185, 129, 0.15);
+      }
 
-    .btn-approve:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
+      .btn-approve:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
 
-    .spinner-inline {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border: 2px solid currentColor;
-      border-top-color: transparent;
-      border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-      vertical-align: middle;
-    }
+      .spinner-inline {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border: 2px solid currentColor;
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+        vertical-align: middle;
+      }
 
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
 
-    .btn-approve-all {
-      padding: 3px 10px;
-      border-radius: var(--radius-sm);
-      border: 1px solid rgba(16, 185, 129, 0.3);
-      background: rgba(16, 185, 129, 0.08);
-      color: var(--state-running);
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
+      .btn-approve-all {
+        padding: 3px 10px;
+        border-radius: var(--radius-sm);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        background: rgba(16, 185, 129, 0.08);
+        color: var(--state-running);
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
 
-    .btn-approve-all:hover {
-      background: rgba(16, 185, 129, 0.15);
-    }
+      .btn-approve-all:hover {
+        background: rgba(16, 185, 129, 0.15);
+      }
 
-    .btn-revoke {
-      width: 24px;
-      height: 24px;
-      border-radius: var(--radius-sm);
-      border: 1px solid transparent;
-      background: transparent;
-      color: var(--text-muted);
-      font-size: 14px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.15s;
-    }
+      .btn-revoke {
+        width: 24px;
+        height: 24px;
+        border-radius: var(--radius-sm);
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 14px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s;
+      }
 
-    .btn-revoke:hover {
-      color: var(--state-error);
-      border-color: rgba(239, 68, 68, 0.3);
-      background: rgba(239, 68, 68, 0.08);
-    }
+      .btn-revoke:hover {
+        color: var(--state-error);
+        border-color: rgba(239, 68, 68, 0.3);
+        background: rgba(239, 68, 68, 0.08);
+      }
 
-    /* --- Confirm inline --- */
-    .confirm-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      color: var(--state-error);
-    }
+      /* --- Confirm inline --- */
+      .confirm-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: var(--state-error);
+      }
 
-    .btn-confirm {
-      padding: 3px 8px;
-      border-radius: var(--radius-sm);
-      border: 1px solid rgba(239, 68, 68, 0.3);
-      background: rgba(239, 68, 68, 0.08);
-      color: var(--state-error);
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
+      .btn-confirm {
+        padding: 3px 8px;
+        border-radius: var(--radius-sm);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        background: rgba(239, 68, 68, 0.08);
+        color: var(--state-error);
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
 
-    .btn-confirm:hover {
-      background: rgba(239, 68, 68, 0.15);
-    }
+      .btn-confirm:hover {
+        background: rgba(239, 68, 68, 0.15);
+      }
 
-    .btn-cancel-confirm {
-      padding: 3px 8px;
-      border-radius: var(--radius-sm);
-      border: 1px solid var(--bg-border);
-      background: transparent;
-      color: var(--text-muted);
-      font-size: 11px;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
+      .btn-cancel-confirm {
+        padding: 3px 8px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--bg-border);
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 11px;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
 
-    .btn-cancel-confirm:hover {
-      background: var(--bg-hover);
-    }
+      .btn-cancel-confirm:hover {
+        background: var(--bg-hover);
+      }
 
-    /* --- Paired section --- */
-    .paired-section {
-      margin-bottom: 20px;
-    }
+      /* --- Paired section --- */
+      .paired-section {
+        margin-bottom: 20px;
+      }
 
-    .paired-title {
-      font-size: 12px;
-      font-weight: 700;
-      color: var(--text-secondary);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 10px;
-    }
+      .paired-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 10px;
+      }
 
-    .paired-list {
-      border: 1px solid var(--bg-border);
-      border-radius: var(--radius-md);
-      overflow: hidden;
-    }
+      .paired-list {
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-md);
+        overflow: hidden;
+      }
 
-    .paired-list .device-row {
-      padding: 8px 12px;
-    }
+      .paired-list .device-row {
+        padding: 8px 12px;
+      }
 
-    /* --- Footer --- */
-    .footer {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
+      /* --- Footer --- */
+      .footer {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
 
-    .btn-refresh {
-      padding: 5px 12px;
-      border-radius: var(--radius-sm);
-      border: 1px solid var(--bg-border);
-      background: transparent;
-      color: var(--text-secondary);
-      font-size: 12px;
-      cursor: pointer;
-      transition: background 0.15s, color 0.15s;
-    }
+      .btn-refresh {
+        padding: 5px 12px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--bg-border);
+        background: transparent;
+        color: var(--text-secondary);
+        font-size: 12px;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
 
-    .btn-refresh:hover {
-      background: var(--bg-hover);
-      color: var(--text-primary);
-    }
+      .btn-refresh:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+      }
 
-    .error-msg {
-      font-size: 12px;
-      color: var(--state-error);
-    }
+      .error-msg {
+        font-size: 12px;
+        color: var(--state-error);
+      }
 
-    .empty-msg {
-      font-size: 13px;
-      color: var(--text-muted);
-      padding: 12px 0;
-    }
-  `];
+      .empty-msg {
+        font-size: 13px;
+        color: var(--text-muted);
+        padding: 12px 0;
+      }
+    `,
+  ];
 
   @property({ type: String }) slug = "";
   @property({ type: Boolean }) active = false;
@@ -341,11 +352,13 @@ export class InstanceDevices extends LitElement {
     try {
       this._devices = await fetchInstanceDevices(this.slug);
       // Emit pending count for parent badge
-      this.dispatchEvent(new CustomEvent("pending-count-changed", {
-        detail: this._devices?.pending.length ?? 0,
-        bubbles: true,
-        composed: true,
-      }));
+      this.dispatchEvent(
+        new CustomEvent("pending-count-changed", {
+          detail: this._devices?.pending.length ?? 0,
+          bubbles: true,
+          composed: true,
+        }),
+      );
       // Start polling if there are pending devices, stop otherwise
       if ((this._devices?.pending.length ?? 0) > 0) {
         this._startPolling();
@@ -361,7 +374,9 @@ export class InstanceDevices extends LitElement {
 
   private _startPolling(): void {
     if (this._pollTimer !== null) return;
-    this._pollTimer = setInterval(() => { void this._load(); }, 5000);
+    this._pollTimer = setInterval(() => {
+      void this._load();
+    }, 5000);
   }
 
   private _stopPolling(): void {
@@ -433,11 +448,14 @@ export class InstanceDevices extends LitElement {
           <button
             class="btn-approve"
             ?disabled=${isApproving}
-            @click=${() => { void this._approve(d.requestId); }}
-          >${isApproving
-            ? html`<span class="spinner-inline"></span>`
-            : "Approve"
-          }</button>
+            @click=${() => {
+              void this._approve(d.requestId);
+            }}
+          >
+            ${isApproving
+              ? html`<span class="spinner-inline"></span>`
+              : msg("Approve", { id: "idev-btn-approve" })}
+          </button>
         </div>
       </div>
     `;
@@ -459,17 +477,35 @@ export class InstanceDevices extends LitElement {
             : isConfirming
               ? html`
                   <div class="confirm-row">
-                    <span>Revoke?</span>
-                    <button class="btn-confirm" @click=${() => { void this._revoke(d.deviceId); }}>Confirm</button>
-                    <button class="btn-cancel-confirm" @click=${() => { this._confirmRevoke = null; }}>Cancel</button>
+                    <span>${msg("Revoke?", { id: "idev-confirm-revoke" })}</span>
+                    <button
+                      class="btn-confirm"
+                      @click=${() => {
+                        void this._revoke(d.deviceId);
+                      }}
+                    >
+                      ${msg("Confirm", { id: "idev-btn-confirm" })}
+                    </button>
+                    <button
+                      class="btn-cancel-confirm"
+                      @click=${() => {
+                        this._confirmRevoke = null;
+                      }}
+                    >
+                      ${msg("Cancel", { id: "idev-btn-cancel" })}
+                    </button>
                   </div>
                 `
               : html`
                   <button
                     class="btn-revoke"
-                    title="Revoke device"
-                    @click=${() => { this._confirmRevoke = d.deviceId; }}
-                  >✕</button>
+                    title=${msg("Revoke device", { id: "idev-btn-revoke-title" })}
+                    @click=${() => {
+                      this._confirmRevoke = d.deviceId;
+                    }}
+                  >
+                    ✕
+                  </button>
                 `}
         </div>
       </div>
@@ -481,48 +517,64 @@ export class InstanceDevices extends LitElement {
 
     return html`
       <div class="devices-panel">
-        <div class="section-header">Devices</div>
+        <div class="section-header">${msg("Devices", { id: "idev-section-title" })}</div>
 
-        ${this._loading && !devices
-          ? html`<div class="spinner"></div>`
-          : nothing}
-
+        ${this._loading && !devices ? html`<div class="spinner"></div>` : nothing}
         ${devices && devices.pending.length > 0
           ? html`
-            <div class="pending-section">
-              <div class="pending-header">
-                <span class="pending-title">Pending (${devices.pending.length})</span>
-                ${devices.pending.length > 1
-                  ? html`<button class="btn-approve-all" ?disabled=${this._approvingAll} @click=${() => { void this._approveAll(); }}>
-                      ${this._approvingAll ? html`<span class="spinner-inline"></span>` : "Approve all"}
-                    </button>`
-                  : nothing}
+              <div class="pending-section">
+                <div class="pending-header">
+                  <span class="pending-title"
+                    >${msg("Pending", { id: "idev-pending-title" })}
+                    (${devices.pending.length})</span
+                  >
+                  ${devices.pending.length > 1
+                    ? html`<button
+                        class="btn-approve-all"
+                        ?disabled=${this._approvingAll}
+                        @click=${() => {
+                          void this._approveAll();
+                        }}
+                      >
+                        ${this._approvingAll
+                          ? html`<span class="spinner-inline"></span>`
+                          : msg("Approve all", { id: "idev-btn-approve-all" })}
+                      </button>`
+                    : nothing}
+                </div>
+                ${devices.pending.map((d) => this._renderPendingDevice(d))}
               </div>
-              ${devices.pending.map((d) => this._renderPendingDevice(d))}
-            </div>
-          `
+            `
           : nothing}
-
         ${devices
           ? html`
-            <div class="paired-section">
-              <div class="paired-title">Paired (${devices.paired.length})</div>
-              ${devices.paired.length > 0
-                ? html`
-                  <div class="paired-list">
-                    ${devices.paired.map((d) => this._renderPairedDevice(d))}
-                  </div>
-                `
-                : html`<p class="empty-msg">No paired devices.</p>`}
-            </div>
-          `
+              <div class="paired-section">
+                <div class="paired-title">
+                  ${msg("Paired", { id: "idev-paired-title" })} (${devices.paired.length})
+                </div>
+                ${devices.paired.length > 0
+                  ? html`
+                      <div class="paired-list">
+                        ${devices.paired.map((d) => this._renderPairedDevice(d))}
+                      </div>
+                    `
+                  : html`<p class="empty-msg">
+                      ${msg("No paired devices.", { id: "idev-no-paired" })}
+                    </p>`}
+              </div>
+            `
           : nothing}
 
         <div class="footer">
-          <button class="btn-refresh" @click=${() => { void this._load(); }}>↻ Refresh</button>
-          ${this._error
-            ? html`<span class="error-msg">${this._error}</span>`
-            : nothing}
+          <button
+            class="btn-refresh"
+            @click=${() => {
+              void this._load();
+            }}
+          >
+            ↻ ${msg("Refresh", { id: "idev-btn-refresh" })}
+          </button>
+          ${this._error ? html`<span class="error-msg">${this._error}</span>` : nothing}
         </div>
       </div>
     `;

@@ -28,7 +28,8 @@ export const badgeStyles = css`
     color: var(--state-error);
     border: 1px solid rgba(239, 68, 68, 0.25);
   }
-  .badge.unknown, .badge.warning {
+  .badge.unknown,
+  .badge.warning {
     background: rgba(245, 158, 11, 0.08);
     color: var(--state-warning);
     border: 1px solid rgba(245, 158, 11, 0.25);
@@ -50,7 +51,9 @@ export const buttonStyles = css`
     font-weight: 600;
     cursor: pointer;
     border: 1px solid transparent;
-    transition: opacity 0.15s, background 0.15s;
+    transition:
+      opacity 0.15s,
+      background 0.15s;
     font-family: var(--font-ui);
   }
   .btn:disabled {
@@ -124,7 +127,9 @@ export const spinnerStyles = css`
     animation: spin 0.8s linear infinite;
   }
   @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
 `;
 

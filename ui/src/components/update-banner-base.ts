@@ -19,7 +19,7 @@ type UpdateStatus = OpenClawUpdateStatus | SelfUpdateStatus;
 @localized()
 @customElement("cp-update-banner-base")
 export class UpdateBannerBase extends LitElement {
-  static styles = [
+  static override styles = [
     tokenStyles,
     css`
       :host {
@@ -157,7 +157,9 @@ export class UpdateBannerBase extends LitElement {
         background: transparent;
         color: var(--state-running);
         opacity: 0.6;
-        transition: opacity 0.15s, background 0.15s;
+        transition:
+          opacity 0.15s,
+          background 0.15s;
         font-family: var(--font-ui);
       }
 
@@ -181,7 +183,9 @@ export class UpdateBannerBase extends LitElement {
       }
 
       @keyframes spin {
-        to { transform: rotate(360deg); }
+        to {
+          transform: rotate(360deg);
+        }
       }
 
       /* Tags de version */
@@ -279,7 +283,9 @@ export class UpdateBannerBase extends LitElement {
                   class="btn-dismiss"
                   aria-label=${msg("Dismiss")}
                   @click=${this._handleDismiss}
-                >×</button>
+                >
+                  ×
+                </button>
               `
             : nothing}
         </div>
@@ -292,15 +298,13 @@ export class UpdateBannerBase extends LitElement {
           <div class="banner-left">
             <span class="banner-icon">✕</span>
             <div class="banner-text">
-              <span class="banner-title">
-                ${msg(html`${this.productName} update failed`)}
-              </span>
-              <span class="banner-sub">${message ?? msg("An error occurred during the update")}</span>
+              <span class="banner-title"> ${msg(html`${this.productName} update failed`)} </span>
+              <span class="banner-sub"
+                >${message ?? msg("An error occurred during the update")}</span
+              >
             </div>
           </div>
-          <button class="btn-retry" @click=${this._handleAction}>
-            ${msg("Retry")}
-          </button>
+          <button class="btn-retry" @click=${this._handleAction}>${msg("Retry")}</button>
         </div>
       `;
     }
@@ -325,9 +329,7 @@ export class UpdateBannerBase extends LitElement {
               </span>
             </div>
           </div>
-          <button class="btn-update" @click=${this._handleAction}>
-            ${this.buttonLabel}
-          </button>
+          <button class="btn-update" @click=${this._handleAction}>${this.buttonLabel}</button>
         </div>
       `;
     }

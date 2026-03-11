@@ -11,16 +11,7 @@ export interface SystemdOptions {
 }
 
 export function generateSystemdService(options: SystemdOptions): string {
-  const {
-    slug,
-    displayName,
-    port,
-    stateDir,
-    configPath,
-    openclawHome,
-    openclawBin,
-    uid,
-  } = options;
+  const { slug, displayName, port, stateDir, configPath, openclawHome, openclawBin, uid } = options;
 
   return `[Unit]
 Description=OpenClaw Gateway - Instance ${slug} (${displayName})
@@ -51,11 +42,11 @@ WantedBy=default.target
 }
 
 export interface DashboardServiceOptions {
-  nodeBin: string;       // absolute path to node binary, e.g. /usr/local/bin/node
-  clawPilotBin: string;  // absolute path to dist/index.mjs, e.g. /opt/claw-pilot/dist/index.mjs
-  port: number;          // dashboard port, default 19000
-  home: string;          // user home dir, e.g. /home/openclaw
-  uid: number;           // user UID, e.g. 1000
+  nodeBin: string; // absolute path to node binary, e.g. /usr/local/bin/node
+  clawPilotBin: string; // absolute path to dist/index.mjs, e.g. /opt/claw-pilot/dist/index.mjs
+  port: number; // dashboard port, default 19000
+  home: string; // user home dir, e.g. /home/openclaw
+  uid: number; // user UID, e.g. 1000
 }
 
 export function generateDashboardService(options: DashboardServiceOptions): string {

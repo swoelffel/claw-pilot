@@ -4,8 +4,14 @@ import type { Registry, InstanceRecord } from "./registry.js";
 import type { AgentSync } from "./agent-sync.js";
 import { constants } from "../lib/constants.js";
 import { logger } from "../lib/logger.js";
-import { getServiceManager, getLaunchdDir, getLaunchdLabel, getLaunchdPlistPath } from "../lib/platform.js";
+import {
+  getServiceManager,
+  getLaunchdDir,
+  getLaunchdLabel,
+  getLaunchdPlistPath,
+} from "../lib/platform.js";
 import { normaliseModel } from "../lib/model-helpers.js";
+import { OpenClawConfigSchema } from "./openclaw-config.schema.js";
 
 export interface DiscoveredAgent {
   id: string;
@@ -93,9 +99,7 @@ export class InstanceDiscovery {
    *   - paths where the parent of .openclaw* is not a home dir
    *     (e.g. openclaw-config/vm01/openclaw.json)
    */
-  private async scanByFind(
-    found: Map<string, DiscoveredInstance>,
-  ): Promise<void> {
+  private async scanByFind(found: Map<string, DiscoveredInstance>): Promise<void> {
     const result = await this.conn.exec(
       `sudo find /opt /home /root /var -maxdepth 8 -name "openclaw.json" 2>/dev/null`,
       { timeout: 15_000 },
@@ -105,7 +109,7 @@ export class InstanceDiscovery {
 
     // Regex: /<home>/.openclaw(-<slug>)?/openclaw.json
     // The stateDir must be a direct child of some home directory.
-    const RE_MULTI  = /^(.+)\/(\.openclaw-([a-z0-9][a-z0-9-]*))\/openclaw\.json$/;
+    const RE_MULTI = /^(.+)\/(\.openclaw-([a-z0-9][a-z0-9-]*))\/openclaw\.json$/;
     const RE_LEGACY = /^(.+)\/(\.openclaw)\/openclaw\.json$/;
 
     for (const configPath of configPaths) {
@@ -141,9 +145,7 @@ export class InstanceDiscovery {
    * Instances whose service is neither active nor inactive (i.e. not found in
    * systemd at all) are removed from `found` — they are considered dead/backup.
    */
-  private async enrichWithSystemdState(
-    found: Map<string, DiscoveredInstance>,
-  ): Promise<void> {
+  private async enrichWithSystemdState(found: Map<string, DiscoveredInstance>): Promise<void> {
     // Resolve the UID of the openclaw user once (needed for XDG_RUNTIME_DIR)
     const uidResult = await this.conn.exec(`id -u openclaw 2>/dev/null || true`);
     const openclawUid = uidResult.stdout.trim();
@@ -157,7 +159,7 @@ export class InstanceDiscovery {
       // Try as openclaw user first, fall back to current user's systemd
       const checkResult = await this.conn.exec(
         `sudo -u openclaw XDG_RUNTIME_DIR=${xdgRuntime} systemctl --user is-active ${unitName} 2>/dev/null || ` +
-        `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user is-active ${unitName} 2>/dev/null || true`,
+          `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user is-active ${unitName} 2>/dev/null || true`,
       );
       const state = checkResult.stdout.trim();
 
@@ -182,9 +184,7 @@ export class InstanceDiscovery {
 
   // --- Strategy 1 (macOS): Directory scan ---
 
-  private async scanDirectories(
-    found: Map<string, DiscoveredInstance>,
-  ): Promise<void> {
+  private async scanDirectories(found: Map<string, DiscoveredInstance>): Promise<void> {
     const prefix = constants.OPENCLAW_STATE_PREFIX;
     let entries: string[];
 
@@ -205,21 +205,14 @@ export class InstanceDiscovery {
 
       if (!(await this.conn.exists(configPath))) continue;
 
-      const instance = await this.parseInstance(
-        slug,
-        stateDir,
-        configPath,
-        "directory",
-      );
+      const instance = await this.parseInstance(slug, stateDir, configPath, "directory");
       if (instance) found.set(slug, instance);
     }
   }
 
   // --- Strategy 2b: launchd agent scan (macOS only) ---
 
-  private async scanLaunchdAgents(
-    found: Map<string, DiscoveredInstance>,
-  ): Promise<void> {
+  private async scanLaunchdAgents(found: Map<string, DiscoveredInstance>): Promise<void> {
     if (getServiceManager() !== "launchd") return;
 
     const launchdDir = getLaunchdDir();
@@ -227,6 +220,7 @@ export class InstanceDiscovery {
     try {
       entries = await this.conn.readdir(launchdDir);
     } catch {
+      // intentionally ignored — launchd dir not accessible, skip launchd scan
       return;
     }
 
@@ -248,7 +242,9 @@ export class InstanceDiscovery {
       let stateDir: string | undefined;
       try {
         const plistContent = await this.conn.readFile(plistPath);
-        const match2 = plistContent.match(/<key>OPENCLAW_STATE_DIR<\/key>\s*<string>([^<]+)<\/string>/);
+        const match2 = plistContent.match(
+          /<key>OPENCLAW_STATE_DIR<\/key>\s*<string>([^<]+)<\/string>/,
+        );
         if (match2) stateDir = match2[1];
       } catch {
         // plist unreadable — skip
@@ -271,22 +267,15 @@ export class InstanceDiscovery {
 
   // --- Strategy 3: Port scan ---
 
-  private async scanPorts(
-    found: Map<string, DiscoveredInstance>,
-  ): Promise<void> {
-    const start = parseInt(
-      this.registry.getConfig("port_range_start") ?? "18789",
-    );
-    const end = parseInt(
-      this.registry.getConfig("port_range_end") ?? "18799",
-    );
+  private async scanPorts(found: Map<string, DiscoveredInstance>): Promise<void> {
+    const start = parseInt(this.registry.getConfig("port_range_start") ?? "18789");
+    const end = parseInt(this.registry.getConfig("port_range_end") ?? "18799");
     const knownPorts = new Set([...found.values()].map((i) => i.port));
 
     // Scan all ports in parallel — worst case drops from 22s to ~2s
-    const portsToScan = Array.from(
-      { length: end - start + 1 },
-      (_, i) => start + i,
-    ).filter((p) => !knownPorts.has(p));
+    const portsToScan = Array.from({ length: end - start + 1 }, (_, i) => start + i).filter(
+      (p) => !knownPorts.has(p),
+    );
 
     const results = await Promise.allSettled(
       portsToScan.map(async (port) => {
@@ -317,28 +306,6 @@ export class InstanceDiscovery {
     }
   }
 
-  // --- Strategy 4: Legacy single-instance directory ---
-
-  private async scanLegacy(
-    found: Map<string, DiscoveredInstance>,
-  ): Promise<void> {
-    const legacyDir = `${this.openclawHome}/${constants.OPENCLAW_LEGACY_DIR}`;
-    const legacyConfig = `${legacyDir}/openclaw.json`;
-
-    if (!(await this.conn.exists(legacyConfig))) return;
-
-    const slug = "default";
-    if (found.has(slug)) return;
-
-    const instance = await this.parseInstance(
-      slug,
-      legacyDir,
-      legacyConfig,
-      "legacy",
-    );
-    if (instance) found.set(slug, instance);
-  }
-
   // --- Shared parsing logic ---
 
   private async parseInstance(
@@ -356,60 +323,70 @@ export class InstanceDiscovery {
       return null;
     }
 
-    let config: Record<string, unknown>;
+    // Parse with Zod schema (safeParse to handle invalid configs gracefully)
+    let rawJson: unknown;
     try {
-      config = JSON.parse(configRaw) as Record<string, unknown>;
+      rawJson = JSON.parse(configRaw);
     } catch (err) {
       logger.dim(`[discovery] Invalid JSON in ${configPath}: ${err}`);
       return null;
     }
 
-    const gateway = config["gateway"] as Record<string, unknown> | undefined;
-    const portFromConfig = gateway?.["port"];
+    const parsed = OpenClawConfigSchema.safeParse(rawJson);
+    if (!parsed.success) {
+      logger.dim(`[discovery] Invalid openclaw.json at ${configPath}: ${parsed.error.message}`);
+      return null;
+    }
+    const config = parsed.data;
+
+    const portFromConfig = config.gateway?.port;
     // Accept port from config JSON or from systemd unit env (portOverride)
     const port = typeof portFromConfig === "number" ? portFromConfig : portOverride;
     if (typeof port !== "number") return null;
 
     // Extract agents
     const agents: DiscoveredAgent[] = [];
-    const agentsConf = config["agents"] as Record<string, unknown> | undefined;
-    const agentsDefaults = agentsConf?.["defaults"] as
-      | Record<string, unknown>
-      | undefined;
-    const agentsList = (agentsConf?.["list"] ?? []) as Array<
-      Record<string, unknown>
-    >;
+    const agentsConf = config.agents;
+    const agentsDefaults = agentsConf?.defaults;
+    const agentsList = agentsConf?.list ?? [];
     // model can be a string or an object like {"primary": "..."}
-    const defaultModel: string | null = normaliseModel(agentsDefaults?.["model"]);
+    const defaultModel: string | null = normaliseModel(agentsDefaults?.model);
 
     // Main agent
     agents.push({
       id: "main",
-      name: (agentsDefaults?.["name"] as string | undefined) ?? "Main",
+      name: agentsDefaults?.name ?? "Main",
       model: defaultModel,
-      workspacePath: resolveAgentWorkspacePath(stateDir, "main", agentsDefaults?.["workspace"] as string | undefined, agentsList),
+      workspacePath: resolveAgentWorkspacePath(
+        stateDir,
+        "main",
+        agentsDefaults?.workspace,
+        agentsList as Array<Record<string, unknown>>,
+      ),
       isDefault: true,
     });
 
     for (const agent of agentsList) {
-      if (!agent["id"]) continue;
+      if (!agent.id) continue;
       agents.push({
-        id: agent["id"] as string,
-        name: (agent["name"] as string | undefined) ?? (agent["id"] as string),
-        model: normaliseModel(agent["model"]) ?? defaultModel,
-        workspacePath: resolveAgentWorkspacePath(stateDir, agent["id"] as string, agent["workspace"] as string | undefined, agentsList),
+        id: agent.id,
+        name: agent.name ?? agent.id,
+        model: normaliseModel(agent.model) ?? defaultModel,
+        workspacePath: resolveAgentWorkspacePath(
+          stateDir,
+          agent.id,
+          agent.workspace,
+          agentsList as Array<Record<string, unknown>>,
+        ),
         isDefault: false,
       });
     }
 
     // Telegram bot
     let telegramBot: string | null = null;
-    const channels = config["channels"] as Record<string, unknown> | undefined;
-    const telegram = channels?.["telegram"] as
-      | Record<string, unknown>
-      | undefined;
-    if (telegram?.["botUsername"]) {
-      telegramBot = `@${telegram["botUsername"]}`;
+    const telegram = config.channels?.telegram;
+    if (telegram && (telegram as Record<string, unknown>)["botUsername"]) {
+      telegramBot = `@${(telegram as Record<string, unknown>)["botUsername"]}`;
     }
 
     // Gateway health
@@ -471,12 +448,8 @@ export class InstanceDiscovery {
 
   // --- Reconciliation ---
 
-  private reconcile(
-    found: Map<string, DiscoveredInstance>,
-  ): DiscoveryResult {
-    const registered = new Map(
-      this.registry.listInstances().map((i) => [i.slug, i]),
-    );
+  private reconcile(found: Map<string, DiscoveredInstance>): DiscoveryResult {
+    const registered = new Map(this.registry.listInstances().map((i) => [i.slug, i]));
 
     const newInstances: DiscoveredInstance[] = [];
     const unchangedSlugs: string[] = [];
@@ -523,8 +496,7 @@ export class InstanceDiscovery {
       port: instance.port,
       configPath: instance.configPath,
       stateDir: instance.stateDir,
-      systemdUnit:
-        instance.systemdUnit ?? `openclaw-${instance.slug}.service`,
+      systemdUnit: instance.systemdUnit ?? `openclaw-${instance.slug}.service`,
       telegramBot: instance.telegramBot ?? undefined,
       defaultModel: instance.defaultModel ?? undefined,
       discovered: true,
@@ -562,9 +534,7 @@ export class InstanceDiscovery {
       try {
         await agentSync.sync(record);
       } catch (err) {
-        logger.dim(
-          `[discovery] Agent sync failed for ${instance.slug} (non-fatal): ${err}`,
-        );
+        logger.dim(`[discovery] Agent sync failed for ${instance.slug} (non-fatal): ${err}`);
       }
     }
   }
@@ -576,6 +546,7 @@ export class InstanceDiscovery {
     try {
       entries = await this.conn.readdir(this.openclawHome);
     } catch {
+      // intentionally ignored — openclaw home not accessible, cannot resolve slug by port
       return null;
     }
 
@@ -585,9 +556,8 @@ export class InstanceDiscovery {
       const configPath = `${this.openclawHome}/${entry}/openclaw.json`;
       try {
         const raw = await this.conn.readFile(configPath);
-        const conf = JSON.parse(raw) as Record<string, unknown>;
-        const gw = conf["gateway"] as Record<string, unknown> | undefined;
-        if (gw?.["port"] === port) {
+        const parsed = OpenClawConfigSchema.safeParse(JSON.parse(raw));
+        if (parsed.success && parsed.data.gateway?.port === port) {
           return entry.slice(prefix.length);
         }
       } catch {
@@ -642,4 +612,3 @@ export function resolveAgentWorkspacePath(
   // Fallback for non-main agents without explicit workspace in a no-list config
   return `${stateDir}/workspaces/${agentId}`;
 }
-

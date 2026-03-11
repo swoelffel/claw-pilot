@@ -49,7 +49,9 @@ describe("generateConfig", () => {
     const answers: WizardAnswers = { ...baseAnswers, provider: "google", apiKey: "AIza-test" };
     const config = JSON.parse(generateConfig(answers));
     expect(config.models.providers.google.apiKey).toBe("${GEMINI_API_KEY}");
-    expect(config.models.providers.google.baseUrl).toBe("https://generativelanguage.googleapis.com/v1beta");
+    expect(config.models.providers.google.baseUrl).toBe(
+      "https://generativelanguage.googleapis.com/v1beta",
+    );
     expect(config.models.providers.gemini).toBeUndefined();
   });
 
@@ -164,7 +166,11 @@ describe("generateEnv", () => {
   });
 
   it("omits telegram token when not provided", () => {
-    const env = generateEnv({ provider: "anthropic", apiKey: "sk-ant-test", gatewayToken: "token" });
+    const env = generateEnv({
+      provider: "anthropic",
+      apiKey: "sk-ant-test",
+      gatewayToken: "token",
+    });
     expect(env).not.toContain("TELEGRAM_BOT_TOKEN");
   });
 

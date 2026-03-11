@@ -1,9 +1,5 @@
 // src/core/__tests__/mock-connection.ts
-import type {
-  ServerConnection,
-  ExecResult,
-  ExecOptions,
-} from "../../server/connection.js";
+import type { ServerConnection, ExecResult, ExecOptions } from "../../server/connection.js";
 
 export class MockConnection implements ServerConnection {
   public commands: string[] = [];

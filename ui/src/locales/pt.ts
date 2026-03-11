@@ -90,7 +90,8 @@ export const templates = {
   "acm-badge-default": "Padrão",
   "acm-badge-sa": "Sub",
   "acm-files": "arquivos",
-  "acm-tooltip-default": "Ponto de entrada principal para conversas. Orquestra a equipe de agentes.",
+  "acm-tooltip-default":
+    "Ponto de entrada principal para conversas. Orquestra a equipe de agentes.",
   "acm-tooltip-sa": "Agente especializado, tarefas delegadas pelo orquestrador.",
 
   // create-agent-dialog.ts
@@ -118,7 +119,8 @@ export const templates = {
   // delete-agent-dialog.ts
   "acm-btn-delete": "Excluir agente",
   "dad-title": "Excluir agente",
-  "dad-warning": "Isso excluirá permanentemente todos os arquivos do workspace e cancelará o registro do agente na instância. Esta ação não pode ser desfeita.",
+  "dad-warning":
+    "Isso excluirá permanentemente todos os arquivos do workspace e cancelará o registro do agente na instância. Esta ação não pode ser desfeita.",
   "dad-confirm-label": "Digite o ID do agente para confirmar",
   "dad-btn-cancel": "Cancelar",
   "dad-btn-confirm": "Excluir",
@@ -128,7 +130,8 @@ export const templates = {
 
   // delete-instance-dialog.ts
   "did-title": "Eliminar instância",
-  "did-warning": "Isto irá parar o serviço, remover todos os ficheiros (diretório de estado, unidade systemd) e eliminar a instância do registo. Esta ação não pode ser desfeita.",
+  "did-warning":
+    "Isto irá parar o serviço, remover todos os ficheiros (diretório de estado, unidade systemd) e eliminar a instância do registo. Esta ação não pode ser desfeita.",
   "did-confirm-label": "Digite o slug da instância para confirmar",
   "did-spinner-deleting": "A destruir instância...",
 
@@ -192,7 +195,7 @@ export const templates = {
   "cbd-btn-creating": "Criando...",
   "bb-back": "← Voltar aos Blueprints",
   "bb-no-agents": "Sem agentes neste blueprint",
-  "bb-no-agents-hint": "Clique em \"+ Novo agente\" para adicionar um.",
+  "bb-no-agents-hint": 'Clique em "+ Novo agente" para adicionar um.',
   "cd-blueprint": "Blueprint de equipe",
   "cd-blueprint-none": "Padrão (somente principal)",
   "cd-blueprint-hint": "Opcionalmente implantar uma equipe de agentes",
@@ -207,7 +210,8 @@ export const templates = {
   "tid-agents": "Agentes",
   "tid-links": "Links",
   "tid-files": "Arquivos",
-  "tid-warning": "Isso substituirá todos os agentes, arquivos e links existentes. Esta ação não pode ser desfeita.",
+  "tid-warning":
+    "Isso substituirá todos os agentes, arquivos e links existentes. Esta ação não pode ser desfeita.",
   "tid-btn-cancel": "Cancelar",
   "tid-btn-import": "Importar",
   "tid-btn-importing": "Importando...",
@@ -217,7 +221,8 @@ export const templates = {
   "err-not-found": "Recurso não encontrado.",
   "err-invalid-json": "Formato de solicitação inválido.",
   "err-invalid-slug": "Deve ter 2-30 letras minúsculas, números ou hífens.",
-  "err-invalid-instance-slug": "O ID da instância deve ter 2-30 letras minúsculas, números ou hífens.",
+  "err-invalid-instance-slug":
+    "O ID da instância deve ter 2-30 letras minúsculas, números ou hífens.",
   "err-invalid-agent-id": "O ID do agente deve ter 2-30 letras minúsculas, números ou hífens.",
   "err-slug-required": "Este nome é obrigatório.",
   "err-blueprint-name-required": "O nome do blueprint é obrigatório.",
@@ -251,6 +256,19 @@ export const templates = {
   "discover-adopt-btn": "Adotar todas ({n})",
   "discover-adopting": "Registrando instâncias...",
   "discover-done": "{n} instância(s) registrada(s) com sucesso.",
+
+  // instance-devices.ts (v0.18.0)
+  "idev-section-title": "Dispositivos",
+  "idev-pending-title": "Pendente",
+  "idev-btn-approve-all": "Aprovar tudo",
+  "idev-btn-approve": "Aprovar",
+  "idev-confirm-revoke": "Revogar?",
+  "idev-btn-confirm": "Confirmar",
+  "idev-btn-cancel": "Cancelar",
+  "idev-paired-title": "Emparelhados",
+  "idev-no-paired": "Nenhum dispositivo emparelhado.",
+  "idev-btn-refresh": "Atualizar",
+  "idev-btn-revoke-title": "Revogar dispositivo",
 
   // login-view.ts + app.ts (auth — v0.15.0)
   "login-title": "claw-pilot",

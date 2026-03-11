@@ -15,6 +15,7 @@ export function getDashboardTokenPath(): string {
   return path.join(getDataDir(), constants.DASHBOARD_TOKEN_FILE);
 }
 
+/** @public */
 export function isLinux(): boolean {
   return os.platform() === "linux";
 }
@@ -35,9 +36,9 @@ export function getOpenClawHome(dbPath?: string): string {
     const Database = require("better-sqlite3") as typeof import("better-sqlite3");
     const db = new Database(resolvedDbPath, { readonly: true });
     try {
-      const row = db
-        .prepare("SELECT openclaw_home FROM servers WHERE id = 1")
-        .get() as { openclaw_home: string } | undefined;
+      const row = db.prepare("SELECT openclaw_home FROM servers WHERE id = 1").get() as
+        | { openclaw_home: string }
+        | undefined;
       if (row?.openclaw_home) return row.openclaw_home;
     } finally {
       db.close();
@@ -50,12 +51,10 @@ export function getOpenClawHome(dbPath?: string): string {
 }
 
 export function getStateDir(slug: string): string {
-  return path.join(
-    getOpenClawHome(),
-    `${constants.OPENCLAW_STATE_PREFIX}${slug}`,
-  );
+  return path.join(getOpenClawHome(), `${constants.OPENCLAW_STATE_PREFIX}${slug}`);
 }
 
+/** @public */
 export function getConfigPath(slug: string): string {
   return path.join(getStateDir(slug), "openclaw.json");
 }

@@ -127,72 +127,124 @@ export interface ConfigPatch {
  * Used by the dashboard API to validate incoming PATCH bodies.
  * `.strict()` rejects unknown fields to prevent arbitrary data injection.
  */
-export const ConfigPatchSchema = z.object({
-  general: z.object({
-    displayName: z.string().max(100).optional(),
-    defaultModel: z.string().optional(),
-    toolsProfile: z.string().optional(),
-    provider: z.string().optional(),
-    apiKey: z.string().optional(),
-  }).strict().optional(),
-  providers: z.object({
-    add: z.array(z.object({ id: z.string(), apiKey: z.string().optional() }).strict()).optional(),
-    update: z.array(z.object({ id: z.string(), apiKey: z.string().optional() }).strict()).optional(),
-    remove: z.array(z.string()).optional(),
-  }).strict().optional(),
-  agentDefaults: z.object({
-    workspace: z.string().optional(),
-    subagents: z.object({
-      maxConcurrent: z.number().int().min(1).optional(),
-      archiveAfterMinutes: z.number().int().min(0).optional(),
-    }).strict().optional(),
-    compaction: z.object({
-      mode: z.string().optional(),
-      reserveTokensFloor: z.number().int().min(0).optional(),
-    }).strict().optional(),
-    contextPruning: z.object({
-      mode: z.string().optional(),
-      ttl: z.string().optional(),
-    }).strict().optional(),
-    heartbeat: z.object({
-      every: z.string().optional(),
-      model: z.string().optional(),
-      target: z.string().optional(),
-    }).strict().optional(),
-  }).strict().optional(),
-  agents: z.array(z.object({
-    id: z.string(),
-    name: z.string().optional(),
-    model: z.string().nullable().optional(),
-    identity: z.object({
-      name: z.string().optional(),
-      emoji: z.string().optional(),
-      avatar: z.string().optional(),
-    }).strict().nullable().optional(),
-  }).strict()).optional(),
-  channels: z.object({
-    telegram: z.object({
-      enabled: z.boolean().optional(),
-      botToken: z.string().optional(),
-      dmPolicy: z.string().optional(),
-      groupPolicy: z.string().optional(),
-      streamMode: z.string().optional(),
-    }).strict().optional(),
-  }).strict().optional(),
-  plugins: z.object({
-    mem0: z.object({
-      enabled: z.boolean().optional(),
-      ollamaUrl: z.string().optional(),
-      qdrantHost: z.string().optional(),
-      qdrantPort: z.number().int().min(1).max(65535).optional(),
-    }).strict().optional(),
-  }).strict().optional(),
-  gateway: z.object({
-    port: z.number().int().min(1024).max(65535).optional(),
-    reloadMode: z.string().optional(),
-    reloadDebounceMs: z.number().int().min(0).optional(),
-  }).strict().optional(),
-}).strict();
+export const ConfigPatchSchema = z
+  .object({
+    general: z
+      .object({
+        displayName: z.string().max(100).optional(),
+        defaultModel: z.string().optional(),
+        toolsProfile: z.string().optional(),
+        provider: z.string().optional(),
+        apiKey: z.string().optional(),
+      })
+      .strict()
+      .optional(),
+    providers: z
+      .object({
+        add: z
+          .array(z.object({ id: z.string(), apiKey: z.string().optional() }).strict())
+          .optional(),
+        update: z
+          .array(z.object({ id: z.string(), apiKey: z.string().optional() }).strict())
+          .optional(),
+        remove: z.array(z.string()).optional(),
+      })
+      .strict()
+      .optional(),
+    agentDefaults: z
+      .object({
+        workspace: z.string().optional(),
+        subagents: z
+          .object({
+            maxConcurrent: z.number().int().min(1).optional(),
+            archiveAfterMinutes: z.number().int().min(0).optional(),
+          })
+          .strict()
+          .optional(),
+        compaction: z
+          .object({
+            mode: z.string().optional(),
+            reserveTokensFloor: z.number().int().min(0).optional(),
+          })
+          .strict()
+          .optional(),
+        contextPruning: z
+          .object({
+            mode: z.string().optional(),
+            ttl: z.string().optional(),
+          })
+          .strict()
+          .optional(),
+        heartbeat: z
+          .object({
+            every: z.string().optional(),
+            model: z.string().optional(),
+            target: z.string().optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    agents: z
+      .array(
+        z
+          .object({
+            id: z.string(),
+            name: z.string().optional(),
+            model: z.string().nullable().optional(),
+            identity: z
+              .object({
+                name: z.string().optional(),
+                emoji: z.string().optional(),
+                avatar: z.string().optional(),
+              })
+              .strict()
+              .nullable()
+              .optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    channels: z
+      .object({
+        telegram: z
+          .object({
+            enabled: z.boolean().optional(),
+            botToken: z.string().optional(),
+            dmPolicy: z.string().optional(),
+            groupPolicy: z.string().optional(),
+            streamMode: z.string().optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    plugins: z
+      .object({
+        mem0: z
+          .object({
+            enabled: z.boolean().optional(),
+            ollamaUrl: z.string().optional(),
+            qdrantHost: z.string().optional(),
+            qdrantPort: z.number().int().min(1).max(65535).optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    gateway: z
+      .object({
+        port: z.number().int().min(1024).max(65535).optional(),
+        reloadMode: z.string().optional(),
+        reloadDebounceMs: z.number().int().min(0).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
 
 /** Result of classifying which fields require restart vs hot-reload */
 export interface ChangeClassification {

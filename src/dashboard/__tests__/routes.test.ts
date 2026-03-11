@@ -184,6 +184,8 @@ function createTestApp(): TestContext {
   const deps: RouteDeps = {
     registry,
     conn,
+    db,
+    startedAt: Date.now(),
     health: new StubHealthChecker(registry) as unknown as RouteDeps["health"],
     lifecycle: lifecycle as unknown as RouteDeps["lifecycle"],
     updateChecker: new StubUpdateChecker() as unknown as RouteDeps["updateChecker"],
@@ -218,7 +220,8 @@ function jsonHeaders(): Record<string, string> {
 
 /** Helper: create a test instance in the registry + mock filesystem */
 function seedInstance(ctx: TestContext, slug: string, port: number) {
-  const server = ctx.registry.getLocalServer() ?? ctx.registry.upsertLocalServer("testhost", "/opt/openclaw");
+  const server =
+    ctx.registry.getLocalServer() ?? ctx.registry.upsertLocalServer("testhost", "/opt/openclaw");
   ctx.registry.createInstance({
     serverId: server.id,
     slug,
@@ -295,7 +298,11 @@ describe("GET /api/health", () => {
     expect(res.status).toBe(200);
     const body = await json(res);
     expect(body.ok).toBe(true);
-    expect(body.instances).toBe(0);
+    expect(body.instances.total).toBe(0);
+    expect(body.instances.running).toBe(0);
+    expect(typeof body.uptime).toBe("number");
+    expect(typeof body.version).toBe("string");
+    expect(typeof body.db.sizeBytes).toBe("number");
   });
 
   it("reflects correct instance count", async () => {
@@ -303,7 +310,7 @@ describe("GET /api/health", () => {
     seedInstance(ctx, "demo2", 18790);
     const res = await ctx.app.request("/api/health", { headers: authHeaders() });
     const body = await json(res);
-    expect(body.instances).toBe(2);
+    expect(body.instances.total).toBe(2);
   });
 });
 
@@ -433,7 +440,9 @@ describe("POST /api/instances/:slug/restart", () => {
 describe("GET /api/instances/:slug/agents", () => {
   it("returns 404 for unknown instance", async () => {
     // Note: this route doesn't check instance existence, it just returns empty
-    const res = await ctx.app.request("/api/instances/nonexistent/agents", { headers: authHeaders() });
+    const res = await ctx.app.request("/api/instances/nonexistent/agents", {
+      headers: authHeaders(),
+    });
     expect(res.status).toBe(200);
     const body = await json(res);
     expect(body).toEqual([]);
@@ -463,7 +472,9 @@ describe("GET /api/instances/:slug/agents", () => {
 
 describe("GET /api/instances/:slug/config", () => {
   it("returns 404 for unknown slug", async () => {
-    const res = await ctx.app.request("/api/instances/nonexistent/config", { headers: authHeaders() });
+    const res = await ctx.app.request("/api/instances/nonexistent/config", {
+      headers: authHeaders(),
+    });
     expect(res.status).toBe(404);
   });
 });
@@ -845,10 +856,7 @@ describe("Device routes", () => {
       `/opt/openclaw/.openclaw-demo1/devices/pending.json`,
       JSON.stringify([{ id: "req-1", name: "My Phone", createdAt: "2026-01-01T00:00:00Z" }]),
     );
-    ctx.conn.files.set(
-      `/opt/openclaw/.openclaw-demo1/devices/paired.json`,
-      JSON.stringify([]),
-    );
+    ctx.conn.files.set(`/opt/openclaw/.openclaw-demo1/devices/paired.json`, JSON.stringify([]));
 
     const res = await ctx.app.request("/api/instances/demo1/devices", {
       headers: authHeaders(),

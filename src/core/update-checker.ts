@@ -52,7 +52,9 @@ export class UpdateChecker {
   _isNewer(candidate: string, current: string): boolean {
     const normalize = (v: string) => v.split("-")[0] ?? v; // strip pre-release suffix
     const parse = (v: string): [number, number, number] => {
-      const parts = normalize(v).split(".").map((n) => parseInt(n, 10));
+      const parts = normalize(v)
+        .split(".")
+        .map((n) => parseInt(n, 10));
       return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0];
     };
 

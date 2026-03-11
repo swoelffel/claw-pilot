@@ -32,7 +32,9 @@ describe("resolveApiKey", () => {
     });
 
     it("reads ANTHROPIC_API_KEY from source .env when apiKey === 'reuse'", async () => {
-      const conn = makeConn({ "/state/source/.env": "ANTHROPIC_API_KEY=sk-ant-real\nOPENCLAW_GW_AUTH_TOKEN=tok\n" });
+      const conn = makeConn({
+        "/state/source/.env": "ANTHROPIC_API_KEY=sk-ant-real\nOPENCLAW_GW_AUTH_TOKEN=tok\n",
+      });
       const registry = makeRegistry([{ slug: "source", state_dir: "/state/source" }]);
       const result = await resolveApiKey(
         { provider: "anthropic", apiKey: "reuse" },
@@ -46,7 +48,7 @@ describe("resolveApiKey", () => {
       const conn = makeConn({});
       const registry = makeRegistry([{ slug: "source", state_dir: "/state/source" }]);
       await expect(
-        resolveApiKey({ provider: "anthropic", apiKey: "reuse" }, registry as any, conn as any)
+        resolveApiKey({ provider: "anthropic", apiKey: "reuse" }, registry as any, conn as any),
       ).rejects.toMatchObject({ code: "ENV_READ_FAILED" });
     });
 
@@ -54,7 +56,7 @@ describe("resolveApiKey", () => {
       const conn = makeConn({ "/state/source/.env": "OPENCLAW_GW_AUTH_TOKEN=tok\n" });
       const registry = makeRegistry([{ slug: "source", state_dir: "/state/source" }]);
       await expect(
-        resolveApiKey({ provider: "anthropic", apiKey: "reuse" }, registry as any, conn as any)
+        resolveApiKey({ provider: "anthropic", apiKey: "reuse" }, registry as any, conn as any),
       ).rejects.toMatchObject({ code: "API_KEY_READ_FAILED" });
     });
 
@@ -62,7 +64,7 @@ describe("resolveApiKey", () => {
       const conn = makeConn({});
       const registry = makeRegistry([]);
       await expect(
-        resolveApiKey({ provider: "anthropic", apiKey: "reuse" }, registry as any, conn as any)
+        resolveApiKey({ provider: "anthropic", apiKey: "reuse" }, registry as any, conn as any),
       ).rejects.toMatchObject({ code: "NO_EXISTING_INSTANCE" });
     });
   });
@@ -81,7 +83,9 @@ describe("resolveApiKey", () => {
     });
 
     it("returns OPENCODE_API_KEY value when apiKey === 'reuse' and key is present in .env", async () => {
-      const conn = makeConn({ "/state/source/.env": "OPENCODE_API_KEY=sk-oc-real\nOPENCLAW_GW_AUTH_TOKEN=tok\n" });
+      const conn = makeConn({
+        "/state/source/.env": "OPENCODE_API_KEY=sk-oc-real\nOPENCLAW_GW_AUTH_TOKEN=tok\n",
+      });
       const registry = makeRegistry([{ slug: "source", state_dir: "/state/source" }]);
       const result = await resolveApiKey(
         { provider: "opencode", apiKey: "reuse" },
@@ -116,7 +120,9 @@ describe("resolveApiKey", () => {
 
   describe("openai provider", () => {
     it("reads OPENAI_API_KEY from source .env when apiKey === 'reuse'", async () => {
-      const conn = makeConn({ "/state/source/.env": "OPENAI_API_KEY=sk-openai-real\nOPENCLAW_GW_AUTH_TOKEN=tok\n" });
+      const conn = makeConn({
+        "/state/source/.env": "OPENAI_API_KEY=sk-openai-real\nOPENCLAW_GW_AUTH_TOKEN=tok\n",
+      });
       const registry = makeRegistry([{ slug: "source", state_dir: "/state/source" }]);
       const result = await resolveApiKey(
         { provider: "openai", apiKey: "reuse" },

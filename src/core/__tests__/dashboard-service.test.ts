@@ -13,7 +13,9 @@ const opts = {
 describe("generateDashboardService", () => {
   it("uses absolute node binary path in ExecStart", () => {
     const service = generateDashboardService(opts);
-    expect(service).toContain("ExecStart=/usr/local/bin/node /opt/claw-pilot/dist/index.mjs dashboard --port 19000");
+    expect(service).toContain(
+      "ExecStart=/usr/local/bin/node /opt/claw-pilot/dist/index.mjs dashboard --port 19000",
+    );
   });
 
   it("sets XDG_RUNTIME_DIR based on uid", () => {

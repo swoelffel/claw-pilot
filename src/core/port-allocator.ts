@@ -24,12 +24,8 @@ export class PortAllocator {
 
   /** Find the first free port block in the configured range */
   async findFreePort(serverId: number): Promise<number> {
-    const start = parseInt(
-      this.registry.getConfig("port_range_start") ?? "18789",
-    );
-    const end = parseInt(
-      this.registry.getConfig("port_range_end") ?? "18838",
-    );
+    const start = parseInt(this.registry.getConfig("port_range_start") ?? "18789");
+    const end = parseInt(this.registry.getConfig("port_range_end") ?? "18838");
     const usedPorts = new Set(this.registry.getUsedPorts(serverId));
 
     for (let port = start; port <= end; port += PORT_STEP) {

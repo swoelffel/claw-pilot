@@ -323,31 +323,25 @@ export function initDatabase(dbPath: string): Database.Database {
 
   // Check if schema exists (fresh DB vs existing DB)
   const hasSchema = db
-    .prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'",
-    )
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'")
     .get();
 
   if (!hasSchema) {
     // --- Fresh database: create base schema + seed config ---
     db.exec(SCHEMA_SQL);
-    db.prepare("INSERT INTO schema_version (version) VALUES (?)").run(
-      BASE_SCHEMA_VERSION,
-    );
+    db.prepare("INSERT INTO schema_version (version) VALUES (?)").run(BASE_SCHEMA_VERSION);
 
     // Insert default config
-    const insert = db.prepare(
-      "INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)",
-    );
+    const insert = db.prepare("INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)");
     for (const [key, value] of Object.entries(DEFAULT_CONFIG)) {
       insert.run(key, value);
     }
   }
 
   // --- Run pending migrations (applies to both fresh and existing DBs) ---
-  const row = db
-    .prepare("SELECT version FROM schema_version")
-    .get() as { version: number } | undefined;
+  const row = db.prepare("SELECT version FROM schema_version").get() as
+    | { version: number }
+    | undefined;
   const currentVersion = row?.version ?? BASE_SCHEMA_VERSION;
 
   for (const migration of MIGRATIONS) {

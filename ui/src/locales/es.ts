@@ -90,7 +90,8 @@ export const templates = {
   "acm-badge-default": "Predeterminado",
   "acm-badge-sa": "Sub",
   "acm-files": "archivos",
-  "acm-tooltip-default": "Punto de entrada principal para conversaciones. Orquesta el equipo de agentes.",
+  "acm-tooltip-default":
+    "Punto de entrada principal para conversaciones. Orquesta el equipo de agentes.",
   "acm-tooltip-sa": "Agente especializado, tareas delegadas por el orquestador.",
 
   // create-agent-dialog.ts
@@ -118,7 +119,8 @@ export const templates = {
   // delete-agent-dialog.ts
   "acm-btn-delete": "Eliminar agente",
   "dad-title": "Eliminar agente",
-  "dad-warning": "Esto eliminará permanentemente todos los archivos del workspace y desregistrará el agente de la instancia. Esta acción no se puede deshacer.",
+  "dad-warning":
+    "Esto eliminará permanentemente todos los archivos del workspace y desregistrará el agente de la instancia. Esta acción no se puede deshacer.",
   "dad-confirm-label": "Escribe el ID del agente para confirmar",
   "dad-btn-cancel": "Cancelar",
   "dad-btn-confirm": "Eliminar",
@@ -128,7 +130,8 @@ export const templates = {
 
   // delete-instance-dialog.ts
   "did-title": "Eliminar instancia",
-  "did-warning": "Esto detendrá el servicio, eliminará todos los archivos (directorio de estado, unidad systemd) y eliminará la instancia del registro. Esta acción no se puede deshacer.",
+  "did-warning":
+    "Esto detendrá el servicio, eliminará todos los archivos (directorio de estado, unidad systemd) y eliminará la instancia del registro. Esta acción no se puede deshacer.",
   "did-confirm-label": "Escriba el slug de la instancia para confirmar",
   "did-spinner-deleting": "Destruyendo instancia...",
 
@@ -192,7 +195,7 @@ export const templates = {
   "cbd-btn-creating": "Creando...",
   "bb-back": "← Volver a Blueprints",
   "bb-no-agents": "Sin agentes en este blueprint",
-  "bb-no-agents-hint": "Haz clic en \"+ Nuevo agente\" para añadir uno.",
+  "bb-no-agents-hint": 'Haz clic en "+ Nuevo agente" para añadir uno.',
   "cd-blueprint": "Blueprint de equipo",
   "cd-blueprint-none": "Predeterminado (solo principal)",
   "cd-blueprint-hint": "Opcionalmente desplegar un equipo de agentes",
@@ -207,7 +210,8 @@ export const templates = {
   "tid-agents": "Agentes",
   "tid-links": "Enlaces",
   "tid-files": "Archivos",
-  "tid-warning": "Esto reemplazará todos los agentes, archivos y enlaces existentes. Esta acción no se puede deshacer.",
+  "tid-warning":
+    "Esto reemplazará todos los agentes, archivos y enlaces existentes. Esta acción no se puede deshacer.",
   "tid-btn-cancel": "Cancelar",
   "tid-btn-import": "Importar",
   "tid-btn-importing": "Importando...",
@@ -217,7 +221,8 @@ export const templates = {
   "err-not-found": "Recurso no encontrado.",
   "err-invalid-json": "Formato de solicitud inválido.",
   "err-invalid-slug": "Debe tener 2-30 letras minúsculas, números o guiones.",
-  "err-invalid-instance-slug": "El ID de instancia debe tener 2-30 letras minúsculas, números o guiones.",
+  "err-invalid-instance-slug":
+    "El ID de instancia debe tener 2-30 letras minúsculas, números o guiones.",
   "err-invalid-agent-id": "El ID de agente debe tener 2-30 letras minúsculas, números o guiones.",
   "err-slug-required": "Este nombre es obligatorio.",
   "err-blueprint-name-required": "El nombre del blueprint es obligatorio.",
@@ -251,6 +256,19 @@ export const templates = {
   "discover-adopt-btn": "Adoptar todas ({n})",
   "discover-adopting": "Registrando instancias...",
   "discover-done": "{n} instancia(s) registrada(s) correctamente.",
+
+  // instance-devices.ts (v0.18.0)
+  "idev-section-title": "Dispositivos",
+  "idev-pending-title": "Pendiente",
+  "idev-btn-approve-all": "Aprobar todo",
+  "idev-btn-approve": "Aprobar",
+  "idev-confirm-revoke": "¿Revocar?",
+  "idev-btn-confirm": "Confirmar",
+  "idev-btn-cancel": "Cancelar",
+  "idev-paired-title": "Vinculados",
+  "idev-no-paired": "No hay dispositivos vinculados.",
+  "idev-btn-refresh": "Actualizar",
+  "idev-btn-revoke-title": "Revocar dispositivo",
 
   // login-view.ts + app.ts (auth — v0.15.0)
   "login-title": "claw-pilot",

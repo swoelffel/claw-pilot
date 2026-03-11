@@ -9,19 +9,23 @@ export class BlueprintRepository {
   // --- Blueprints ---
 
   listBlueprints(): BlueprintRecord[] {
-    return this.db.prepare(`
+    return this.db
+      .prepare(
+        `
       SELECT b.*, COUNT(a.id) as agent_count
       FROM blueprints b
       LEFT JOIN agents a ON a.blueprint_id = b.id
       GROUP BY b.id
       ORDER BY b.name ASC
-    `).all() as BlueprintRecord[];
+    `,
+      )
+      .all() as BlueprintRecord[];
   }
 
   getBlueprint(id: number): BlueprintRecord | undefined {
-    return this.db
-      .prepare("SELECT * FROM blueprints WHERE id = ?")
-      .get(id) as BlueprintRecord | undefined;
+    return this.db.prepare("SELECT * FROM blueprints WHERE id = ?").get(id) as
+      | BlueprintRecord
+      | undefined;
   }
 
   createBlueprint(data: {
@@ -61,20 +65,33 @@ export class BlueprintRepository {
     const sets: string[] = [];
     const values: unknown[] = [];
 
-    if ("name" in fields) { sets.push("name=?"); values.push(fields.name); }
-    if ("description" in fields) { sets.push("description=?"); values.push(fields.description ?? null); }
-    if ("icon" in fields) { sets.push("icon=?"); values.push(fields.icon ?? null); }
-    if ("tags" in fields) { sets.push("tags=?"); values.push(fields.tags ?? null); }
-    if ("color" in fields) { sets.push("color=?"); values.push(fields.color ?? null); }
+    if ("name" in fields) {
+      sets.push("name=?");
+      values.push(fields.name);
+    }
+    if ("description" in fields) {
+      sets.push("description=?");
+      values.push(fields.description ?? null);
+    }
+    if ("icon" in fields) {
+      sets.push("icon=?");
+      values.push(fields.icon ?? null);
+    }
+    if ("tags" in fields) {
+      sets.push("tags=?");
+      values.push(fields.tags ?? null);
+    }
+    if ("color" in fields) {
+      sets.push("color=?");
+      values.push(fields.color ?? null);
+    }
 
     if (sets.length === 0) return this.getBlueprint(id);
     sets.push("updated_at=?");
     values.push(now());
     values.push(id);
 
-    this.db
-      .prepare(`UPDATE blueprints SET ${sets.join(", ")} WHERE id=?`)
-      .run(...values);
+    this.db.prepare(`UPDATE blueprints SET ${sets.join(", ")} WHERE id=?`).run(...values);
     return this.getBlueprint(id);
   }
 
@@ -86,9 +103,7 @@ export class BlueprintRepository {
 
   listBlueprintAgents(blueprintId: number): BlueprintAgentRecord[] {
     return this.db
-      .prepare(
-        `SELECT * FROM agents WHERE blueprint_id = ? ORDER BY is_default DESC, agent_id ASC`,
-      )
+      .prepare(`SELECT * FROM agents WHERE blueprint_id = ? ORDER BY is_default DESC, agent_id ASC`)
       .all(blueprintId) as BlueprintAgentRecord[];
   }
 
@@ -131,9 +146,7 @@ export class BlueprintRepository {
   }
 
   updateBlueprintAgentPosition(agentDbId: number, x: number, y: number): void {
-    this.db
-      .prepare("UPDATE agents SET position_x=?, position_y=? WHERE id=?")
-      .run(x, y, agentDbId);
+    this.db.prepare("UPDATE agents SET position_x=?, position_y=? WHERE id=?").run(x, y, agentDbId);
   }
 
   // --- Blueprint Links ---
@@ -169,11 +182,13 @@ export class BlueprintRepository {
 
   // --- Blueprint Builder Data ---
 
-  getBlueprintBuilderData(blueprintId: number): {
-    blueprint: BlueprintRecord;
-    agents: BlueprintAgentRecord[];
-    links: BlueprintLinkRecord[];
-  } | undefined {
+  getBlueprintBuilderData(blueprintId: number):
+    | {
+        blueprint: BlueprintRecord;
+        agents: BlueprintAgentRecord[];
+        links: BlueprintLinkRecord[];
+      }
+    | undefined {
     const blueprint = this.getBlueprint(blueprintId);
     if (!blueprint) return undefined;
     const agents = this.listBlueprintAgents(blueprintId);

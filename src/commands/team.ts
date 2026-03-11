@@ -6,17 +6,35 @@ import { confirm } from "@inquirer/prompts";
 import chalk from "chalk";
 import { logger } from "../lib/logger.js";
 import { withContext } from "./_context.js";
+import { CliError } from "../lib/errors.js";
 import { exportInstanceTeam, exportBlueprintTeam, serializeTeamYaml } from "../core/team-export.js";
-import { parseAndValidateTeam, importInstanceTeam, importBlueprintTeam } from "../core/team-import.js";
+import {
+  parseAndValidateTeam,
+  importInstanceTeam,
+  importBlueprintTeam,
+} from "../core/team-import.js";
 import type { Registry } from "../core/registry.js";
 import type { ServerConnection } from "../server/connection.js";
 import type Database from "better-sqlite3";
 
-async function handleBlueprintImport(
-  blueprintArg: string,
+// ---------------------------------------------------------------------------
+// Shared import handler
+// ---------------------------------------------------------------------------
+
+type ImportTarget =
+  | { kind: "blueprint"; blueprintArg: string }
+  | { kind: "instance"; slug: string };
+
+async function handleImport(
+  target: ImportTarget,
   filePath: string,
   opts: { dryRun?: boolean; yes?: boolean },
-  deps: { registry: Registry; db: Database.Database },
+  deps: {
+    registry: Registry;
+    conn: ServerConnection;
+    db: Database.Database;
+    xdgRuntimeDir: string;
+  },
 ): Promise<void> {
   // Read and validate file
   logger.step(`Validating ${filePath}...`);
@@ -24,165 +42,132 @@ async function handleBlueprintImport(
   try {
     yamlContent = await fs.readFile(path.resolve(filePath), "utf-8");
   } catch {
-    logger.error(`Could not read file: ${filePath}`);
-    process.exit(1);
+    throw new CliError(`Could not read file: ${filePath}`);
   }
 
   const parsed = parseAndValidateTeam(yamlContent);
   if (!parsed.success) {
-    logger.error("Validation failed:");
-    if (parsed.error.message) {
-      logger.fail(parsed.error.message);
-    }
-    if (parsed.error.details) {
-      for (const d of parsed.error.details) {
-        logger.fail(`  ${d.path ? d.path + ": " : ""}${d.message}`);
-      }
-    }
-    process.exit(1);
+    const details = parsed.error.details
+      ? parsed.error.details.map((d) => `  ${d.path ? d.path + ": " : ""}${d.message}`).join("\n")
+      : "";
+    throw new CliError(
+      `Validation failed:\n${parsed.error.message ?? ""}${details ? "\n" + details : ""}`,
+    );
   }
 
   const team = parsed.data;
-  const fileCount = team.agents.reduce(
-    (sum, a) => sum + Object.keys(a.files ?? {}).length,
-    0,
-  );
+  const fileCount = team.agents.reduce((sum, a) => sum + Object.keys(a.files ?? {}).length, 0);
 
-  const blueprints = deps.registry.listBlueprints();
-  const bp =
-    blueprints.find((b) => b.name === blueprintArg) ??
-    blueprints.find((b) => b.id === Number(blueprintArg));
-  if (!bp) {
-    logger.error(`Blueprint "${blueprintArg}" not found.`);
-    process.exit(1);
-  }
+  // Resolve target entity (blueprint or instance)
+  let targetName: string;
+  let currentAgentCount: number;
 
-  const currentAgents = deps.registry.listBlueprintAgents(bp.id);
+  if (target.kind === "blueprint") {
+    const blueprints = deps.registry.listBlueprints();
+    const bp =
+      blueprints.find((b) => b.name === target.blueprintArg) ??
+      blueprints.find((b) => b.id === Number(target.blueprintArg));
+    if (!bp) {
+      throw new CliError(`Blueprint "${target.blueprintArg}" not found.`);
+    }
+    targetName = `blueprint "${bp.name}"`;
+    currentAgentCount = deps.registry.listBlueprintAgents(bp.id).length;
 
-  console.log(`  Format version: ${team.version}`);
-  if (team.source) console.log(`  Source: ${team.source}`);
-  console.log(`  Agents: ${team.agents.length} (current: ${currentAgents.length} — will be replaced)`);
-  console.log(`  Links: ${team.links.length}`);
-  console.log(`  Files: ${fileCount}`);
-
-  if (opts.dryRun) {
-    console.log(chalk.dim("\nDry run complete. No changes made."));
-    return;
-  }
-
-  if (!opts.yes) {
+    console.log(`  Format version: ${team.version}`);
+    if (team.source) console.log(`  Source: ${team.source}`);
     console.log(
-      chalk.yellow(
-        `\nWARNING: This will replace ALL agents, files, and links for blueprint "${bp.name}".`,
-      ),
+      `  Agents: ${team.agents.length} (current: ${currentAgentCount} — will be replaced)`,
     );
-    console.log(chalk.yellow("This action cannot be undone.\n"));
-    const proceed = await confirm({ message: "Proceed?", default: false });
-    if (!proceed) {
-      console.log("Aborted.");
+    console.log(`  Links: ${team.links.length}`);
+    console.log(`  Files: ${fileCount}`);
+
+    if (opts.dryRun) {
+      console.log(chalk.dim("\nDry run complete. No changes made."));
       return;
     }
-  }
 
-  logger.step("Importing...");
-  const result = await importBlueprintTeam(deps.db, deps.registry, bp.id, team);
-  if ("agents_imported" in result) {
-    logger.success(`Removed ${currentAgents.length} existing agents`);
-    logger.success(`Created ${result.agents_imported} agents`);
-    logger.success(`Written ${result.files_written} workspace files`);
-    logger.success(`Created ${result.links_imported} links`);
-    console.log(chalk.green("\nImport complete."));
-  }
-}
-
-async function handleInstanceImport(
-  slug: string,
-  filePath: string,
-  opts: { dryRun?: boolean; yes?: boolean },
-  deps: { registry: Registry; conn: ServerConnection; db: Database.Database; xdgRuntimeDir: string },
-): Promise<void> {
-  // Read and validate file
-  logger.step(`Validating ${filePath}...`);
-  let yamlContent: string;
-  try {
-    yamlContent = await fs.readFile(path.resolve(filePath), "utf-8");
-  } catch {
-    logger.error(`Could not read file: ${filePath}`);
-    process.exit(1);
-  }
-
-  const parsed = parseAndValidateTeam(yamlContent);
-  if (!parsed.success) {
-    logger.error("Validation failed:");
-    if (parsed.error.message) {
-      logger.fail(parsed.error.message);
-    }
-    if (parsed.error.details) {
-      for (const d of parsed.error.details) {
-        logger.fail(`  ${d.path ? d.path + ": " : ""}${d.message}`);
+    if (!opts.yes) {
+      console.log(
+        chalk.yellow(
+          `\nWARNING: This will replace ALL agents, files, and links for ${targetName}.`,
+        ),
+      );
+      console.log(chalk.yellow("This action cannot be undone.\n"));
+      const proceed = await confirm({ message: "Proceed?", default: false });
+      if (!proceed) {
+        console.log("Aborted.");
+        return;
       }
     }
-    process.exit(1);
-  }
 
-  const team = parsed.data;
-  const fileCount = team.agents.reduce(
-    (sum, a) => sum + Object.keys(a.files ?? {}).length,
-    0,
-  );
+    logger.step("Importing...");
+    const result = await importBlueprintTeam(deps.db, deps.registry, bp.id, team);
+    if ("agents_imported" in result) {
+      logger.success(`Removed ${currentAgentCount} existing agents`);
+      logger.success(`Created ${result.agents_imported} agents`);
+      logger.success(`Written ${result.files_written} workspace files`);
+      logger.success(`Created ${result.links_imported} links`);
+      console.log(chalk.green("\nImport complete."));
+    }
+  } else {
+    const instance = deps.registry.getInstance(target.slug);
+    if (!instance) {
+      throw new CliError(`Instance "${target.slug}" not found.`);
+    }
+    targetName = `instance "${target.slug}"`;
+    currentAgentCount = deps.registry.listAgents(target.slug).length;
 
-  const instance = deps.registry.getInstance(slug);
-  if (!instance) {
-    logger.error(`Instance "${slug}" not found.`);
-    process.exit(1);
-  }
-
-  const currentAgents = deps.registry.listAgents(slug);
-
-  console.log(`  Format version: ${team.version}`);
-  if (team.source) console.log(`  Source: ${team.source}`);
-  console.log(`  Agents: ${team.agents.length} (current: ${currentAgents.length} — will be replaced)`);
-  console.log(`  Links: ${team.links.length}`);
-  console.log(`  Files: ${fileCount}`);
-
-  if (opts.dryRun) {
-    console.log(chalk.dim("\nDry run complete. No changes made."));
-    return;
-  }
-
-  if (!opts.yes) {
+    console.log(`  Format version: ${team.version}`);
+    if (team.source) console.log(`  Source: ${team.source}`);
     console.log(
-      chalk.yellow(
-        `\nWARNING: This will replace ALL agents, files, and links for instance "${slug}".`,
-      ),
+      `  Agents: ${team.agents.length} (current: ${currentAgentCount} — will be replaced)`,
     );
-    console.log(chalk.yellow("This action cannot be undone.\n"));
-    const proceed = await confirm({ message: "Proceed?", default: false });
-    if (!proceed) {
-      console.log("Aborted.");
+    console.log(`  Links: ${team.links.length}`);
+    console.log(`  Files: ${fileCount}`);
+
+    if (opts.dryRun) {
+      console.log(chalk.dim("\nDry run complete. No changes made."));
       return;
     }
-  }
 
-  logger.step("Importing...");
-  const result = await importInstanceTeam(
-    deps.db,
-    deps.registry,
-    deps.conn,
-    instance,
-    team,
-    deps.xdgRuntimeDir,
-  );
-  if ("agents_imported" in result) {
-    logger.success(`Removed ${currentAgents.length} existing agents`);
-    logger.success(`Created ${result.agents_imported} agents`);
-    logger.success(`Written ${result.files_written} workspace files`);
-    logger.success(`Created ${result.links_imported} links`);
-    logger.success("Regenerated openclaw.json");
-    logger.success("Restarted daemon");
-    console.log(chalk.green("\nImport complete."));
+    if (!opts.yes) {
+      console.log(
+        chalk.yellow(
+          `\nWARNING: This will replace ALL agents, files, and links for ${targetName}.`,
+        ),
+      );
+      console.log(chalk.yellow("This action cannot be undone.\n"));
+      const proceed = await confirm({ message: "Proceed?", default: false });
+      if (!proceed) {
+        console.log("Aborted.");
+        return;
+      }
+    }
+
+    logger.step("Importing...");
+    const result = await importInstanceTeam(
+      deps.db,
+      deps.registry,
+      deps.conn,
+      instance,
+      team,
+      deps.xdgRuntimeDir,
+    );
+    if ("agents_imported" in result) {
+      logger.success(`Removed ${currentAgentCount} existing agents`);
+      logger.success(`Created ${result.agents_imported} agents`);
+      logger.success(`Written ${result.files_written} workspace files`);
+      logger.success(`Created ${result.links_imported} links`);
+      logger.success("Regenerated openclaw.json");
+      logger.success("Restarted daemon");
+      console.log(chalk.green("\nImport complete."));
+    }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Command definition
+// ---------------------------------------------------------------------------
 
 export function teamCommand(): Command {
   const team = new Command("team").description("Export/import agent teams as YAML files");
@@ -206,39 +191,40 @@ export function teamCommand(): Command {
             blueprints.find((b) => b.name === opts.blueprint) ??
             blueprints.find((b) => b.id === Number(opts.blueprint));
           if (!bp) {
-            logger.error(`Blueprint "${opts.blueprint}" not found.`);
-            process.exit(1);
+            throw new CliError(`Blueprint "${opts.blueprint}" not found.`);
           }
 
-          const team = exportBlueprintTeam(registry, bp.id);
-          yaml = serializeTeamYaml(team);
+          const exportedTeam = exportBlueprintTeam(registry, bp.id);
+          yaml = serializeTeamYaml(exportedTeam);
           defaultFilename = `${bp.name.toLowerCase().replace(/\s+/g, "-")}-team.yaml`;
 
-          logger.info(`Exported ${team.agents.length} agents, ${team.links.length} links from blueprint "${bp.name}"`);
+          logger.info(
+            `Exported ${exportedTeam.agents.length} agents, ${exportedTeam.links.length} links from blueprint "${bp.name}"`,
+          );
         } else {
           // Export from instance
           if (!slug) {
-            logger.error("Please provide an instance slug or use --blueprint.");
-            process.exit(1);
+            throw new CliError("Please provide an instance slug or use --blueprint.");
           }
 
           const instance = registry.getInstance(slug);
           if (!instance) {
-            logger.error(`Instance "${slug}" not found. Run 'claw-pilot list' to see available instances.`);
-            process.exit(1);
+            throw new CliError(
+              `Instance "${slug}" not found. Run 'claw-pilot list' to see available instances.`,
+            );
           }
 
           logger.step("Syncing agents from disk...");
-          const team = await exportInstanceTeam(conn, registry, instance);
-          yaml = serializeTeamYaml(team);
+          const exportedTeam = await exportInstanceTeam(conn, registry, instance);
+          yaml = serializeTeamYaml(exportedTeam);
           defaultFilename = `${slug}-team.yaml`;
 
-          const fileCount = team.agents.reduce(
+          const fileCount = exportedTeam.agents.reduce(
             (sum, a) => sum + Object.keys(a.files ?? {}).length,
             0,
           );
           logger.info(
-            `Exported ${team.agents.length} agents, ${team.links.length} links, ${fileCount} files`,
+            `Exported ${exportedTeam.agents.length} agents, ${exportedTeam.links.length} links, ${fileCount} files`,
           );
         }
 
@@ -277,26 +263,18 @@ export function teamCommand(): Command {
           }
 
           if (!filePath) {
-            logger.error("Please provide a path to a .team.yaml file.");
-            process.exit(1);
+            throw new CliError("Please provide a path to a .team.yaml file.");
           }
 
-          if (opts.blueprint) {
-            // Dispatch to blueprint handler
-            await handleBlueprintImport(opts.blueprint, filePath, opts, { registry, db });
-          } else {
-            // Dispatch to instance handler
-            if (!slug) {
-              logger.error("Please provide an instance slug or use --blueprint.");
-              process.exit(1);
-            }
-            await handleInstanceImport(slug, filePath, opts, {
-              registry,
-              conn,
-              db,
-              xdgRuntimeDir,
-            });
-          }
+          const target: ImportTarget = opts.blueprint
+            ? { kind: "blueprint", blueprintArg: opts.blueprint }
+            : (() => {
+                if (!slug)
+                  throw new CliError("Please provide an instance slug or use --blueprint.");
+                return { kind: "instance" as const, slug };
+              })();
+
+          await handleImport(target, filePath, opts, { registry, conn, db, xdgRuntimeDir });
         });
       },
     );

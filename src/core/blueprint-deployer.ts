@@ -56,10 +56,7 @@ export class BlueprintDeployer {
       const files = this.registry.listAgentFiles(bpAgent.id);
       for (const file of files) {
         if (file.content) {
-          await this.conn.writeFile(
-            path.join(workspaceDir, file.filename),
-            file.content,
-          );
+          await this.conn.writeFile(path.join(workspaceDir, file.filename), file.content);
         }
       }
 
@@ -68,10 +65,7 @@ export class BlueprintDeployer {
       // startup if files are empty/minimal, so placeholder content is fine.
       if (files.length === 0 && !isDefault) {
         for (const filename of constants.TEMPLATE_FILES) {
-          await this.conn.writeFile(
-            path.join(workspaceDir, filename),
-            `# ${bpAgent.name}\n`,
-          );
+          await this.conn.writeFile(path.join(workspaceDir, filename), `# ${bpAgent.name}\n`);
         }
       }
 
@@ -97,6 +91,7 @@ export class BlueprintDeployer {
           try {
             modelValue = JSON.parse(bpAgent.model);
           } catch {
+            // intentionally ignored — model is a bare string, not JSON; wrap it as { primary: "..." }
             modelValue = { primary: bpAgent.model };
           }
           agentEntry["model"] = modelValue;
@@ -104,8 +99,8 @@ export class BlueprintDeployer {
 
         // Add spawn links for this agent (all agents including main)
         const spawnTargets = blueprintLinks
-          .filter(l => l.source_agent_id === bpAgent.agent_id && l.link_type === "spawn")
-          .map(l => l.target_agent_id);
+          .filter((l) => l.source_agent_id === bpAgent.agent_id && l.link_type === "spawn")
+          .map((l) => l.target_agent_id);
         if (spawnTargets.length > 0) {
           agentEntry["subagents"] = { allowAgents: spawnTargets };
         }
@@ -143,13 +138,10 @@ export class BlueprintDeployer {
     }
 
     // 6. Write updated openclaw.json
-    await this.conn.writeFile(
-      instance.config_path,
-      JSON.stringify(config, null, 2) + "\n",
-    );
+    await this.conn.writeFile(instance.config_path, JSON.stringify(config, null, 2) + "\n");
 
     // 7. Register blueprint links as instance links in DB
-    const instanceLinks = blueprintLinks.map(l => ({
+    const instanceLinks = blueprintLinks.map((l) => ({
       sourceAgentId: l.source_agent_id,
       targetAgentId: l.target_agent_id,
       linkType: l.link_type,

@@ -7,15 +7,13 @@ export class InstanceRepository {
   constructor(private db: Database.Database) {}
 
   listInstances(): InstanceRecord[] {
-    return this.db
-      .prepare("SELECT * FROM instances ORDER BY port ASC")
-      .all() as InstanceRecord[];
+    return this.db.prepare("SELECT * FROM instances ORDER BY port ASC").all() as InstanceRecord[];
   }
 
   getInstance(slug: string): InstanceRecord | undefined {
-    return this.db
-      .prepare("SELECT * FROM instances WHERE slug = ?")
-      .get(slug) as InstanceRecord | undefined;
+    return this.db.prepare("SELECT * FROM instances WHERE slug = ?").get(slug) as
+      | InstanceRecord
+      | undefined;
   }
 
   createInstance(data: {
@@ -93,9 +91,7 @@ export class InstanceRepository {
     values.push(now());
     values.push(slug);
 
-    this.db
-      .prepare(`UPDATE instances SET ${sets.join(", ")} WHERE slug=?`)
-      .run(...values);
+    this.db.prepare(`UPDATE instances SET ${sets.join(", ")} WHERE slug=?`).run(...values);
   }
 
   deleteInstance(slug: string): void {

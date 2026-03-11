@@ -7,6 +7,7 @@ import { timingSafeEqual } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import type Database from "better-sqlite3";
 import type { Registry } from "../core/registry.js";
 import type { ServerConnection } from "../server/connection.js";
 import { HealthChecker } from "../core/health.js";
@@ -18,6 +19,7 @@ import { Updater } from "../core/updater.js";
 import { SelfUpdateChecker } from "../core/self-update-checker.js";
 import { SelfUpdater } from "../core/self-updater.js";
 import { createRateLimiter } from "./rate-limit.js";
+import { requestIdMiddleware } from "./request-id.js";
 import { TokenCache } from "./token-cache.js";
 import { SessionStore } from "./session-store.js";
 import { constants } from "../lib/constants.js";
@@ -33,8 +35,7 @@ import { registerAuthRoutes } from "./routes/auth.js";
 // When bundled: this file is at <install>/dist/server-*.mjs
 // so __dirname = <install>/dist/ and UI_DIST = <install>/dist/ui/
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const UI_DIST =
-  process.env["CLAW_PILOT_UI_DIST"] ?? path.resolve(__dirname, "ui");
+const UI_DIST = process.env["CLAW_PILOT_UI_DIST"] ?? path.resolve(__dirname, "ui");
 
 // Minimal MIME type map for static asset serving
 const MIME: Record<string, string> = {
@@ -57,6 +58,7 @@ export interface DashboardOptions {
   registry: Registry;
   conn: ServerConnection;
   sessionStore: SessionStore;
+  db: Database.Database;
 }
 
 /** Timing-safe string comparison to prevent timing attacks on token validation. */
@@ -66,7 +68,9 @@ function safeTokenCompare(a: string, b: string): boolean {
 }
 
 export async function startDashboard(options: DashboardOptions): Promise<void> {
-  const { port, token, registry, conn, sessionStore } = options;
+  const { port, token, registry, conn, sessionStore, db } = options;
+  // Capture startup timestamp for uptime reporting
+  const startedAt = Date.now();
   const app = new Hono();
 
   // Resolve XDG_RUNTIME_DIR once at startup for the current user
@@ -88,7 +92,17 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   if (cleanupInterval.unref) cleanupInterval.unref();
 
   // Public healthcheck — no auth required (for systemd, load balancers, monitoring)
-  app.get("/health", (c) => c.json({ ok: true, service: "claw-pilot" }));
+  app.get("/health", (c) =>
+    c.json({
+      ok: true,
+      service: "claw-pilot",
+      version: "0.16.3",
+      uptime: Math.floor((Date.now() - startedAt) / 1000),
+    }),
+  );
+
+  // Request ID middleware — generates X-Request-Id for every request
+  app.use("*", requestIdMiddleware());
 
   // Security headers middleware
   app.use("*", async (c, next) => {
@@ -107,10 +121,27 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   // Stricter rate limit on expensive operations
   app.use("/api/instances", createRateLimiter({ maxRequests: 10, windowMs: 60_000 }));
   app.use("/api/openclaw/update", createRateLimiter({ maxRequests: 1, windowMs: 300_000 }));
-  app.use("/api/self/update", createRateLimiter({ maxRequests: 1, windowMs: constants.SELF_UPDATE_RATE_LIMIT_MS }));
+  app.use(
+    "/api/self/update",
+    createRateLimiter({ maxRequests: 1, windowMs: constants.SELF_UPDATE_RATE_LIMIT_MS }),
+  );
 
   // --- API routes (delegated to route modules) ---
-  const deps: RouteDeps = { registry, conn, health, lifecycle, updateChecker, updater, selfUpdateChecker, selfUpdater, tokenCache, xdgRuntimeDir, sessionStore };
+  const deps: RouteDeps = {
+    registry,
+    conn,
+    health,
+    lifecycle,
+    updateChecker,
+    updater,
+    selfUpdateChecker,
+    selfUpdater,
+    tokenCache,
+    xdgRuntimeDir,
+    sessionStore,
+    startedAt,
+    db,
+  };
 
   // Auth routes — registered BEFORE the auth middleware so /api/auth/login is public
   registerAuthRoutes(app, deps, token);
@@ -174,8 +205,8 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   app.get("/assets/*", async (c) => {
     const url = new URL(c.req.url, "http://localhost");
     const filePath = path.join(UI_DIST, url.pathname);
-    // Prevent path traversal
-    if (!filePath.startsWith(UI_DIST)) {
+    // Prevent path traversal — require filePath to be strictly inside UI_DIST
+    if (!filePath.startsWith(UI_DIST + path.sep) && filePath !== UI_DIST) {
       return c.text("Forbidden", 403);
     }
     try {
@@ -216,4 +247,13 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   });
 
   monitor.start();
+
+  // Graceful shutdown — clean up resources on SIGTERM (systemd stop)
+  process.once("SIGTERM", () => {
+    monitor.stop();
+    clearInterval(cleanupInterval);
+    server.close();
+    db.close();
+    process.exit(0);
+  });
 }

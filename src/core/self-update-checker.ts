@@ -24,15 +24,12 @@ export class SelfUpdateChecker {
       this._getLatestRelease(),
     ]);
 
-    const currentVersion =
-      currentResult.status === "fulfilled" ? currentResult.value : "0.0.0";
-    const latest =
-      latestResult.status === "fulfilled" ? latestResult.value : null;
+    const currentVersion = currentResult.status === "fulfilled" ? currentResult.value : "0.0.0";
+    const latest = latestResult.status === "fulfilled" ? latestResult.value : null;
 
     const latestVersion = latest?.version ?? null;
     const latestTag = latest?.tag ?? null;
-    const updateAvailable =
-      latestVersion !== null && this._isNewer(latestVersion, currentVersion);
+    const updateAvailable = latestVersion !== null && this._isNewer(latestVersion, currentVersion);
 
     return { currentVersion, latestVersion, latestTag, updateAvailable };
   }
@@ -47,6 +44,7 @@ export class SelfUpdateChecker {
       this._currentVersion = pkg.version ?? "0.0.0";
       return this._currentVersion;
     } catch {
+      // intentionally ignored — package.json unreadable at runtime, fall back to 0.0.0
       return "0.0.0";
     }
   }

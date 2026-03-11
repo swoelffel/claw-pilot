@@ -1,13 +1,46 @@
 // src/dashboard/routes/system.ts
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import * as path from "node:path";
 import type { Hono } from "hono";
 import type { RouteDeps } from "../route-deps.js";
 import { apiError } from "../route-deps.js";
 
+// Read version from package.json once at module load time
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const pkgPath = path.resolve(__dirname, "../../../package.json");
+let _version = "unknown";
+try {
+  const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version?: string };
+  _version = pkg.version ?? "unknown";
+} catch {
+  /* intentionally ignored — version stays "unknown" */
+}
+
 export function registerSystemRoutes(app: Hono, deps: RouteDeps) {
-  const { registry, updateChecker, updater, selfUpdateChecker, selfUpdater } = deps;
+  const { registry, updateChecker, updater, selfUpdateChecker, selfUpdater, startedAt, db } = deps;
 
   app.get("/api/health", (c) => {
-    return c.json({ ok: true, instances: registry.listInstances().length });
+    const instances = registry.listInstances();
+    const running = instances.filter((i) => i.state === "running").length;
+
+    // Query DB page size to compute total database size in bytes
+    const dbSize =
+      (
+        db
+          .prepare(
+            "SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()",
+          )
+          .get() as { size: number } | undefined
+      )?.size ?? 0;
+
+    return c.json({
+      ok: true,
+      version: _version,
+      uptime: Math.floor((Date.now() - startedAt) / 1000),
+      instances: { total: instances.length, running },
+      db: { sizeBytes: dbSize },
+    });
   });
 
   // GET /api/openclaw/update-status — version courante + version dispo + etat du job en cours
@@ -17,7 +50,12 @@ export function registerSystemRoutes(app: Hono, deps: RouteDeps) {
       const job = updater.getJob();
       return c.json({ ...updateStatus, ...job });
     } catch (err) {
-      return apiError(c, 500, "UPDATE_CHECK_FAILED", err instanceof Error ? err.message : "Check failed");
+      return apiError(
+        c,
+        500,
+        "UPDATE_CHECK_FAILED",
+        err instanceof Error ? err.message : "Check failed",
+      );
     }
   });
 
@@ -44,7 +82,12 @@ export function registerSystemRoutes(app: Hono, deps: RouteDeps) {
       const job = selfUpdater.getJob();
       return c.json({ ...updateStatus, ...job });
     } catch (err) {
-      return apiError(c, 500, "SELF_UPDATE_CHECK_FAILED", err instanceof Error ? err.message : "Check failed");
+      return apiError(
+        c,
+        500,
+        "SELF_UPDATE_CHECK_FAILED",
+        err instanceof Error ? err.message : "Check failed",
+      );
     }
   });
 
@@ -60,7 +103,11 @@ export function registerSystemRoutes(app: Hono, deps: RouteDeps) {
       latestTag: null,
       updateAvailable: false,
     }));
-    selfUpdater.run(status.currentVersion, status.latestVersion ?? undefined, status.latestTag ?? undefined);
+    selfUpdater.run(
+      status.currentVersion,
+      status.latestVersion ?? undefined,
+      status.latestTag ?? undefined,
+    );
     return c.json({ ok: true, jobId: selfUpdater.getJob().jobId });
   });
 }

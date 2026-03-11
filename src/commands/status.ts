@@ -25,9 +25,7 @@ export function statusCommand(): Command {
         console.log(`  Port         : ${status.port}`);
         console.log(
           `  Gateway      : ${
-            status.gateway === "healthy"
-              ? chalk.green("healthy")
-              : chalk.red("unhealthy")
+            status.gateway === "healthy" ? chalk.green("healthy") : chalk.red("unhealthy")
           }`,
         );
         console.log(

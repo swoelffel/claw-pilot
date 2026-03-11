@@ -10,288 +10,293 @@ import { badgeStyles, buttonStyles } from "../styles/shared.js";
 @localized()
 @customElement("cp-instance-card")
 export class InstanceCard extends LitElement {
-  static styles = [tokenStyles, badgeStyles, buttonStyles, css`
-    :host {
-      display: block;
-    }
+  static override styles = [
+    tokenStyles,
+    badgeStyles,
+    buttonStyles,
+    css`
+      :host {
+        display: block;
+      }
 
-    .card {
-      background: var(--bg-surface);
-      border: 1px solid var(--bg-border);
-      border-radius: 10px;
-      padding: 16px 18px 14px;
-      position: relative;
-    }
+      .card {
+        background: var(--bg-surface);
+        border: 1px solid var(--bg-border);
+        border-radius: 10px;
+        padding: 16px 18px 14px;
+        position: relative;
+      }
 
-    /* ── Header ─────────────────────────────────────────── */
+      /* ── Header ─────────────────────────────────────────── */
 
-    .card-header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 10px;
-    }
+      .card-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
 
-    .card-header-left {
-      min-width: 0;
-    }
+      .card-header-left {
+        min-width: 0;
+      }
 
-    .display-name {
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--text-primary);
-      letter-spacing: -0.01em;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
+      .display-name {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text-primary);
+        letter-spacing: -0.01em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
 
-    .slug {
-      font-size: 11px;
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-      margin-top: 2px;
-    }
+      .slug {
+        font-size: 11px;
+        color: var(--text-muted);
+        font-family: var(--font-mono);
+        margin-top: 2px;
+      }
 
-    .card-header-right {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-shrink: 0;
-    }
+      .card-header-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
 
-    /* ── Status bar ──────────────────────────────────────── */
+      /* ── Status bar ──────────────────────────────────────── */
 
-    .status-bar {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-      padding: 7px 0;
-      border-top: 1px solid var(--bg-border);
-      border-bottom: 1px solid var(--bg-border);
-      margin-bottom: 10px;
-      min-height: 32px;
-    }
+      .status-bar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        padding: 7px 0;
+        border-top: 1px solid var(--bg-border);
+        border-bottom: 1px solid var(--bg-border);
+        margin-bottom: 10px;
+        min-height: 32px;
+      }
 
-    .status-item {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 12px;
-      color: var(--text-muted);
-    }
+      .status-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
 
-    .status-item.ok {
-      color: var(--state-running);
-    }
+      .status-item.ok {
+        color: var(--state-running);
+      }
 
-    .status-item.warn {
-      color: var(--state-warning);
-    }
+      .status-item.warn {
+        color: var(--state-warning);
+      }
 
-    .status-item.error {
-      color: var(--state-error);
-    }
+      .status-item.error {
+        color: var(--state-error);
+      }
 
-    .telegram-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      background: #0088cc18;
-      color: #0088cc;
-      border: 1px solid #0088cc35;
-      border-radius: var(--radius-sm);
-      padding: 2px 7px;
-      font-size: 11px;
-    }
+      .telegram-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #0088cc18;
+        color: #0088cc;
+        border: 1px solid #0088cc35;
+        border-radius: var(--radius-sm);
+        padding: 2px 7px;
+        font-size: 11px;
+      }
 
-    .telegram-pill.warn {
-      background: rgba(245, 158, 11, 0.1);
-      color: var(--state-warning);
-      border-color: rgba(245, 158, 11, 0.3);
-    }
+      .telegram-pill.warn {
+        background: rgba(245, 158, 11, 0.1);
+        color: var(--state-warning);
+        border-color: rgba(245, 158, 11, 0.3);
+      }
 
-    .agents-count {
-      font-size: 12px;
-      color: var(--text-muted);
-    }
+      .agents-count {
+        font-size: 12px;
+        color: var(--text-muted);
+      }
 
-    .pairing-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      background: rgba(245, 158, 11, 0.1);
-      color: var(--state-warning);
-      border: 1px solid rgba(245, 158, 11, 0.3);
-      border-radius: var(--radius-sm);
-      padding: 2px 7px;
-      font-size: 11px;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
+      .pairing-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: rgba(245, 158, 11, 0.1);
+        color: var(--state-warning);
+        border: 1px solid rgba(245, 158, 11, 0.3);
+        border-radius: var(--radius-sm);
+        padding: 2px 7px;
+        font-size: 11px;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
 
-    .pairing-pill:hover {
-      background: rgba(245, 158, 11, 0.18);
-    }
+      .pairing-pill:hover {
+        background: rgba(245, 158, 11, 0.18);
+      }
 
-    /* ── Meta (model + tech) ─────────────────────────────── */
+      /* ── Meta (model + tech) ─────────────────────────────── */
 
-    .meta {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
+      .meta {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
 
-    .model-row {
-      font-size: 13px;
-      color: var(--text-secondary);
-      font-family: var(--font-mono);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
+      .model-row {
+        font-size: 13px;
+        color: var(--text-secondary);
+        font-family: var(--font-mono);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
 
-    .tech-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-    }
+      .tech-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
 
-    .port-value {
-      font-size: 11px;
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-    }
+      .port-value {
+        font-size: 11px;
+        color: var(--text-muted);
+        font-family: var(--font-mono);
+      }
 
-    .openclaw-version {
-      font-size: 11px;
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-      flex-shrink: 0;
-    }
+      .openclaw-version {
+        font-size: 11px;
+        color: var(--text-muted);
+        font-family: var(--font-mono);
+        flex-shrink: 0;
+      }
 
-    /* ── Menu popover ────────────────────────────────────── */
+      /* ── Menu popover ────────────────────────────────────── */
 
-    .menu-anchor {
-      position: relative;
-    }
+      .menu-anchor {
+        position: relative;
+      }
 
-    .btn-menu {
-      width: 28px;
-      height: 28px;
-      border-radius: var(--radius-sm);
-      border: 1px solid transparent;
-      background: transparent;
-      color: var(--text-muted);
-      font-size: 16px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.15s;
-      letter-spacing: 0.05em;
-    }
+      .btn-menu {
+        width: 28px;
+        height: 28px;
+        border-radius: var(--radius-sm);
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 16px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s;
+        letter-spacing: 0.05em;
+      }
 
-    .btn-menu:hover,
-    .btn-menu.open {
-      color: var(--text-primary);
-      border-color: var(--bg-border);
-      background: var(--bg-hover);
-    }
+      .btn-menu:hover,
+      .btn-menu.open {
+        color: var(--text-primary);
+        border-color: var(--bg-border);
+        background: var(--bg-hover);
+      }
 
-    .menu-popover {
-      position: absolute;
-      top: calc(100% + 4px);
-      right: 0;
-      background: var(--bg-surface);
-      border: 1px solid var(--bg-border);
-      border-radius: var(--radius-md);
-      min-width: 164px;
-      z-index: 100;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
-      overflow: hidden;
-    }
+      .menu-popover {
+        position: absolute;
+        top: calc(100% + 4px);
+        right: 0;
+        background: var(--bg-surface);
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-md);
+        min-width: 164px;
+        z-index: 100;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+        overflow: hidden;
+      }
 
-    .menu-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      font-size: 13px;
-      color: var(--text-secondary);
-      cursor: pointer;
-      border: none;
-      background: none;
-      width: 100%;
-      text-align: left;
-      text-decoration: none;
-      transition: background 0.1s;
-      font-family: var(--font-ui);
-    }
+      .menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        font-size: 13px;
+        color: var(--text-secondary);
+        cursor: pointer;
+        border: none;
+        background: none;
+        width: 100%;
+        text-align: left;
+        text-decoration: none;
+        transition: background 0.1s;
+        font-family: var(--font-ui);
+      }
 
-    .menu-item:hover {
-      background: var(--bg-hover);
-      color: var(--text-primary);
-    }
+      .menu-item:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+      }
 
-    .menu-item:disabled {
-      opacity: 0.4;
-      cursor: default;
-    }
+      .menu-item:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
 
-    .menu-item:disabled:hover {
-      background: none;
-      color: var(--text-secondary);
-    }
+      .menu-item:disabled:hover {
+        background: none;
+        color: var(--text-secondary);
+      }
 
-    .menu-item.danger {
-      color: var(--state-error);
-    }
+      .menu-item.danger {
+        color: var(--state-error);
+      }
 
-    .menu-item.danger:hover {
-      background: color-mix(in srgb, var(--state-error) 8%, transparent);
-    }
+      .menu-item.danger:hover {
+        background: color-mix(in srgb, var(--state-error) 8%, transparent);
+      }
 
-    .menu-item.stop {
-      color: var(--state-error);
-    }
+      .menu-item.stop {
+        color: var(--state-error);
+      }
 
-    .menu-item.stop:hover {
-      background: color-mix(in srgb, var(--state-error) 8%, transparent);
-    }
+      .menu-item.stop:hover {
+        background: color-mix(in srgb, var(--state-error) 8%, transparent);
+      }
 
-    .menu-item.start {
-      color: var(--state-running);
-    }
+      .menu-item.start {
+        color: var(--state-running);
+      }
 
-    .menu-item.start:hover {
-      background: color-mix(in srgb, var(--state-running) 8%, transparent);
-    }
+      .menu-item.start:hover {
+        background: color-mix(in srgb, var(--state-running) 8%, transparent);
+      }
 
-    .menu-icon {
-      font-size: 14px;
-      width: 16px;
-      text-align: center;
-      flex-shrink: 0;
-    }
+      .menu-icon {
+        font-size: 14px;
+        width: 16px;
+        text-align: center;
+        flex-shrink: 0;
+      }
 
-    .menu-separator {
-      height: 1px;
-      background: var(--bg-border);
-      margin: 3px 0;
-    }
+      .menu-separator {
+        height: 1px;
+        background: var(--bg-border);
+        margin: 3px 0;
+      }
 
-    /* ── Error ───────────────────────────────────────────── */
+      /* ── Error ───────────────────────────────────────────── */
 
-    .error-msg {
-      margin-top: 8px;
-      font-size: 11px;
-      color: var(--state-error);
-    }
-  `];
+      .error-msg {
+        margin-top: 8px;
+        font-size: 11px;
+        color: var(--state-error);
+      }
+    `,
+  ];
 
   @property({ type: Object }) instance!: InstanceInfo;
   @property({ type: String }) openclawVersion: string | null = null;
@@ -316,10 +321,7 @@ export class InstanceCard extends LitElement {
     document.removeEventListener("click", this._onDocClick);
   }
 
-  private async _action(
-    e: Event,
-    fn: (slug: string) => Promise<void>,
-  ): Promise<void> {
+  private async _action(e: Event, fn: (slug: string) => Promise<void>): Promise<void> {
     e.stopPropagation();
     this._menuOpen = false;
     this._loading = true;
@@ -352,11 +354,13 @@ export class InstanceCard extends LitElement {
   }
 
   private _navigate(view: string, extra?: Record<string, unknown>) {
-    this.dispatchEvent(new CustomEvent("navigate", {
-      detail: { view, slug: this.instance.slug, ...extra },
-      bubbles: true,
-      composed: true,
-    }));
+    this.dispatchEvent(
+      new CustomEvent("navigate", {
+        detail: { view, slug: this.instance.slug, ...extra },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   private _renderStatusBar() {
@@ -386,7 +390,8 @@ export class InstanceCard extends LitElement {
     if (inst.agentCount !== undefined && inst.agentCount > 0) {
       items.push(html`
         <span class="agents-count">
-          ⬡ ${inst.agentCount} ${inst.agentCount === 1
+          ⬡ ${inst.agentCount}
+          ${inst.agentCount === 1
             ? msg("agent", { id: "meta-agent" })
             : msg("agents", { id: "meta-agents" })}
         </span>
@@ -402,7 +407,9 @@ export class InstanceCard extends LitElement {
             e.stopPropagation();
             this._navigate("instance-settings", { section: "devices" });
           }}
-        >⚠ ${inst.pendingDevices} device${inst.pendingDevices > 1 ? "s" : ""}</button>
+        >
+          ⚠ ${inst.pendingDevices} device${inst.pendingDevices > 1 ? "s" : ""}
+        </button>
       `);
     }
 
@@ -429,39 +436,43 @@ export class InstanceCard extends LitElement {
           @click=${(e: Event) => this._action(e, isRunning ? stopInstance : startInstance)}
         >
           <span class="menu-icon">${isRunning ? "■" : "▶"}</span>
-          ${isRunning
-            ? msg("Stop", { id: "btn-stop" })
-            : msg("Start", { id: "btn-start" })}
+          ${isRunning ? msg("Stop", { id: "btn-stop" }) : msg("Start", { id: "btn-start" })}
         </button>
 
         <div class="menu-separator"></div>
 
-        ${isRunning ? html`
-          <a
-            class="menu-item"
-            href=${uiUrl}
-            target="_blank"
-            rel="noopener"
-            @click=${(e: Event) => { e.stopPropagation(); this._menuOpen = false; }}
-          >
-            <span class="menu-icon">⎋</span>
-            ${msg("UI", { id: "btn-open-ui" })}
-          </a>
-        ` : nothing}
-
-        ${(isRunning || (inst.agentCount ?? 0) > 0) ? html`
-          <button
-            class="menu-item"
-            @click=${(e: Event) => {
-              e.stopPropagation();
-              this._menuOpen = false;
-              this._navigate("agents-builder");
-            }}
-          >
-            <span class="menu-icon">⬡</span>
-            ${msg("Agents", { id: "meta-agents" })}
-          </button>
-        ` : nothing}
+        ${isRunning
+          ? html`
+              <a
+                class="menu-item"
+                href=${uiUrl}
+                target="_blank"
+                rel="noopener"
+                @click=${(e: Event) => {
+                  e.stopPropagation();
+                  this._menuOpen = false;
+                }}
+              >
+                <span class="menu-icon">⎋</span>
+                ${msg("UI", { id: "btn-open-ui" })}
+              </a>
+            `
+          : nothing}
+        ${isRunning || (inst.agentCount ?? 0) > 0
+          ? html`
+              <button
+                class="menu-item"
+                @click=${(e: Event) => {
+                  e.stopPropagation();
+                  this._menuOpen = false;
+                  this._navigate("agents-builder");
+                }}
+              >
+                <span class="menu-icon">⬡</span>
+                ${msg("Agents", { id: "meta-agents" })}
+              </button>
+            `
+          : nothing}
 
         <button
           class="menu-item"
@@ -475,16 +486,18 @@ export class InstanceCard extends LitElement {
           ${msg("Settings", { id: "btn-settings" })}
         </button>
 
-        ${isRunning ? html`
-          <button
-            class="menu-item"
-            ?disabled=${this._loading}
-            @click=${(e: Event) => this._action(e, restartInstance)}
-          >
-            <span class="menu-icon">↺</span>
-            ${msg("Restart", { id: "btn-restart" })}
-          </button>
-        ` : nothing}
+        ${isRunning
+          ? html`
+              <button
+                class="menu-item"
+                ?disabled=${this._loading}
+                @click=${(e: Event) => this._action(e, restartInstance)}
+              >
+                <span class="menu-icon">↺</span>
+                ${msg("Restart", { id: "btn-restart" })}
+              </button>
+            `
+          : nothing}
 
         <div class="menu-separator"></div>
 
@@ -493,11 +506,13 @@ export class InstanceCard extends LitElement {
           @click=${(e: Event) => {
             e.stopPropagation();
             this._menuOpen = false;
-            this.dispatchEvent(new CustomEvent("request-delete", {
-              detail: { slug: inst.slug },
-              bubbles: true,
-              composed: true,
-            }));
+            this.dispatchEvent(
+              new CustomEvent("request-delete", {
+                detail: { slug: inst.slug },
+                bubbles: true,
+                composed: true,
+              }),
+            );
           }}
         >
           <span class="menu-icon">✕</span>
@@ -516,14 +531,11 @@ export class InstanceCard extends LitElement {
 
     return html`
       <div class="card">
-
         <!-- Header -->
         <div class="card-header">
           <div class="card-header-left">
             <div class="display-name">${label}</div>
-            ${showSlug
-              ? html`<div class="slug">${inst.slug}</div>`
-              : nothing}
+            ${showSlug ? html`<div class="slug">${inst.slug}</div>` : nothing}
           </div>
           <div class="card-header-right">
             <span class="badge ${stateClass}">
@@ -539,7 +551,9 @@ export class InstanceCard extends LitElement {
                   e.stopPropagation();
                   this._menuOpen = !this._menuOpen;
                 }}
-              >···</button>
+              >
+                ···
+              </button>
               ${this._menuOpen ? this._renderMenu() : nothing}
             </div>
           </div>
@@ -550,9 +564,7 @@ export class InstanceCard extends LitElement {
 
         <!-- Meta -->
         <div class="meta">
-          ${model
-            ? html`<div class="model-row">${model}</div>`
-            : nothing}
+          ${model ? html`<div class="model-row">${model}</div>` : nothing}
           <div class="tech-row">
             <span class="port-value">:${inst.port}</span>
             ${this.openclawVersion
@@ -561,9 +573,7 @@ export class InstanceCard extends LitElement {
           </div>
         </div>
 
-        ${this._error
-          ? html`<div class="error-msg">${this._error}</div>`
-          : nothing}
+        ${this._error ? html`<div class="error-msg">${this._error}</div>` : nothing}
       </div>
     `;
   }

@@ -81,9 +81,7 @@ function makeTeam(overrides: Partial<TeamFile> = {}): TeamFile {
         files: {},
       },
     ],
-    links: [
-      { source: "main", target: "helper", type: "spawn" },
-    ],
+    links: [{ source: "main", target: "helper", type: "spawn" }],
     ...overrides,
   };
 }
@@ -302,14 +300,7 @@ describe("importInstanceTeam()", () => {
     conn.files.set(CONFIG_PATH, MINIMAL_OPENCLAW_JSON);
 
     const team = makeTeam();
-    const result = await importInstanceTeam(
-      db,
-      registry,
-      conn,
-      instance,
-      team,
-      "/run/user/1000",
-    );
+    const result = await importInstanceTeam(db, registry, conn, instance, team, "/run/user/1000");
 
     expect(result.ok).toBe(true);
     if (!("dry_run" in result)) {
@@ -332,22 +323,13 @@ describe("importInstanceTeam()", () => {
     const writeFileSpy = vi.spyOn(conn, "writeFile");
 
     const team = makeSingleAgentTeam();
-    await importInstanceTeam(
-      db,
-      registry,
-      conn,
-      instance,
-      team,
-      "/run/user/1000",
-    );
+    await importInstanceTeam(db, registry, conn, instance, team, "/run/user/1000");
 
     // writeFile should have been called at least once (for openclaw.json)
     expect(writeFileSpy).toHaveBeenCalled();
 
     // The config path should have been written
-    const configWriteCall = writeFileSpy.mock.calls.find(
-      ([filePath]) => filePath === CONFIG_PATH,
-    );
+    const configWriteCall = writeFileSpy.mock.calls.find(([filePath]) => filePath === CONFIG_PATH);
     expect(configWriteCall).toBeDefined();
   });
 
@@ -357,14 +339,7 @@ describe("importInstanceTeam()", () => {
 
     const team = makeSingleAgentTeam(); // has SOUL.md for main agent
 
-    await importInstanceTeam(
-      db,
-      registry,
-      conn,
-      instance,
-      team,
-      "/run/user/1000",
-    );
+    await importInstanceTeam(db, registry, conn, instance, team, "/run/user/1000");
 
     // SOUL.md should be written to the main agent's workspace
     const soulPath = path.join(STATE_DIR, "workspaces", "workspace", "SOUL.md");
@@ -378,14 +353,7 @@ describe("importInstanceTeam()", () => {
 
     const team = makeTeam(); // main has SOUL.md (1 file), helper has no files
 
-    const result = await importInstanceTeam(
-      db,
-      registry,
-      conn,
-      instance,
-      team,
-      "/run/user/1000",
-    );
+    const result = await importInstanceTeam(db, registry, conn, instance, team, "/run/user/1000");
 
     if (!("dry_run" in result)) {
       // main: 1 YAML (SOUL.md) + 5 gap-filled (AGENTS, TOOLS, IDENTITY, USER, HEARTBEAT) = 6
@@ -428,7 +396,12 @@ describe("gap-fill — missing workspace files seeded from templates", () => {
 
     // Should have all 6 EXPORTABLE_FILES
     expect(filenames).toEqual([
-      "AGENTS.md", "HEARTBEAT.md", "IDENTITY.md", "SOUL.md", "TOOLS.md", "USER.md",
+      "AGENTS.md",
+      "HEARTBEAT.md",
+      "IDENTITY.md",
+      "SOUL.md",
+      "TOOLS.md",
+      "USER.md",
     ]);
   });
 
@@ -548,7 +521,12 @@ describe("gap-fill — missing workspace files seeded from templates", () => {
     const files = registry.listAgentFiles(agents[0]!.id);
     const filenames = files.map((f) => f.filename).sort();
     expect(filenames).toEqual([
-      "AGENTS.md", "HEARTBEAT.md", "IDENTITY.md", "SOUL.md", "TOOLS.md", "USER.md",
+      "AGENTS.md",
+      "HEARTBEAT.md",
+      "IDENTITY.md",
+      "SOUL.md",
+      "TOOLS.md",
+      "USER.md",
     ]);
   });
 });

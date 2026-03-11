@@ -119,7 +119,8 @@ export const templates = {
   // delete-agent-dialog.ts
   "acm-btn-delete": "Supprimer l'agent",
   "dad-title": "Supprimer l'agent",
-  "dad-warning": "Cela va supprimer définitivement tous les fichiers du workspace et désinscrire l'agent de l'instance. Cette action est irréversible.",
+  "dad-warning":
+    "Cela va supprimer définitivement tous les fichiers du workspace et désinscrire l'agent de l'instance. Cette action est irréversible.",
   "dad-confirm-label": "Saisissez l'identifiant de l'agent pour confirmer",
   "dad-btn-cancel": "Annuler",
   "dad-btn-confirm": "Supprimer",
@@ -129,7 +130,8 @@ export const templates = {
 
   // delete-instance-dialog.ts
   "did-title": "Supprimer l'instance",
-  "did-warning": "Cela arrêtera définitivement le service, supprimera tous les fichiers (répertoire d'état, unité systemd) et retirera l'instance du registre. Cette action est irréversible.",
+  "did-warning":
+    "Cela arrêtera définitivement le service, supprimera tous les fichiers (répertoire d'état, unité systemd) et retirera l'instance du registre. Cette action est irréversible.",
   "did-confirm-label": "Saisissez le slug de l'instance pour confirmer",
   "did-spinner-deleting": "Destruction de l'instance...",
 
@@ -193,7 +195,7 @@ export const templates = {
   "cbd-btn-creating": "Création...",
   "bb-back": "← Retour aux Blueprints",
   "bb-no-agents": "Aucun agent dans ce blueprint",
-  "bb-no-agents-hint": "Cliquez sur \"+ Nouvel agent\" pour en ajouter un.",
+  "bb-no-agents-hint": 'Cliquez sur "+ Nouvel agent" pour en ajouter un.',
   "cd-blueprint": "Blueprint d'équipe",
   "cd-blueprint-none": "Défaut (Principal uniquement)",
   "cd-blueprint-hint": "Déployer optionnellement une équipe d'agents",
@@ -208,7 +210,8 @@ export const templates = {
   "tid-agents": "Agents",
   "tid-links": "Liens",
   "tid-files": "Fichiers",
-  "tid-warning": "Cela remplacera tous les agents, fichiers et liens existants. Cette action est irréversible.",
+  "tid-warning":
+    "Cela remplacera tous les agents, fichiers et liens existants. Cette action est irréversible.",
   "tid-btn-cancel": "Annuler",
   "tid-btn-import": "Importer",
   "tid-btn-importing": "Import en cours...",
@@ -218,8 +221,10 @@ export const templates = {
   "err-not-found": "Ressource introuvable.",
   "err-invalid-json": "Format de requête invalide.",
   "err-invalid-slug": "Doit faire 2-30 caractères minuscules, chiffres ou tirets.",
-  "err-invalid-instance-slug": "L'identifiant de l'instance doit faire 2-30 caractères minuscules, chiffres ou tirets.",
-  "err-invalid-agent-id": "L'identifiant de l'agent doit faire 2-30 caractères minuscules, chiffres ou tirets.",
+  "err-invalid-instance-slug":
+    "L'identifiant de l'instance doit faire 2-30 caractères minuscules, chiffres ou tirets.",
+  "err-invalid-agent-id":
+    "L'identifiant de l'agent doit faire 2-30 caractères minuscules, chiffres ou tirets.",
   "err-slug-required": "Ce nom est requis.",
   "err-blueprint-name-required": "Le nom du blueprint est requis.",
   "err-slug-taken": "Ce nom est déjà utilisé.",
@@ -252,6 +257,19 @@ export const templates = {
   "discover-adopt-btn": "Adopter tout ({n})",
   "discover-adopting": "Enregistrement en cours...",
   "discover-done": "{n} instance(s) enregistrée(s) avec succès.",
+
+  // instance-devices.ts (v0.18.0)
+  "idev-section-title": "Appareils",
+  "idev-pending-title": "En attente",
+  "idev-btn-approve-all": "Tout approuver",
+  "idev-btn-approve": "Approuver",
+  "idev-confirm-revoke": "Révoquer ?",
+  "idev-btn-confirm": "Confirmer",
+  "idev-btn-cancel": "Annuler",
+  "idev-paired-title": "Associés",
+  "idev-no-paired": "Aucun appareil associé.",
+  "idev-btn-refresh": "Actualiser",
+  "idev-btn-revoke-title": "Révoquer l'appareil",
 
   // login-view.ts + app.ts (auth — v0.15.0)
   "login-title": "claw-pilot",

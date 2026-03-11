@@ -1,4 +1,26 @@
-import type { InstanceInfo, AgentInfo, CreateInstanceRequest, CreateAgentRequest, ProvidersResponse, ConversationEntry, SyncResult, BuilderData, AgentFileContent, AgentLink, Blueprint, BlueprintBuilderData, CreateBlueprintRequest, InstanceConfig, ConfigPatchResult, OpenClawUpdateStatus, DeviceList, TelegramPairingList, AgentMetaPatch, DiscoverResult, AdoptResult } from "./types.js";
+import type {
+  InstanceInfo,
+  AgentInfo,
+  CreateInstanceRequest,
+  CreateAgentRequest,
+  ProvidersResponse,
+  ConversationEntry,
+  SyncResult,
+  BuilderData,
+  AgentFileContent,
+  AgentLink,
+  Blueprint,
+  BlueprintBuilderData,
+  CreateBlueprintRequest,
+  InstanceConfig,
+  ConfigPatchResult,
+  OpenClawUpdateStatus,
+  DeviceList,
+  TelegramPairingList,
+  AgentMetaPatch,
+  DiscoverResult,
+  AdoptResult,
+} from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 
 declare global {
@@ -23,7 +45,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       ...authHeaders(),
-      ...(init?.headers ?? {}),
+      ...init?.headers,
     },
   });
   if (!res.ok) {
@@ -34,7 +56,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     let code = "INTERNAL_ERROR";
     let message = res.statusText;
     try {
-      const body = await res.json() as { code?: string; error?: string };
+      const body = (await res.json()) as { code?: string; error?: string };
       code = body.code ?? "INTERNAL_ERROR";
       message = body.error ?? res.statusText;
     } catch {
@@ -93,10 +115,7 @@ export async function deleteInstance(slug: string): Promise<void> {
   await apiFetch(`/instances/${slug}`, { method: "DELETE" });
 }
 
-export async function fetchConversations(
-  slug: string,
-  limit = 10,
-): Promise<ConversationEntry[]> {
+export async function fetchConversations(slug: string, limit = 10): Promise<ConversationEntry[]> {
   const data = await apiFetch<{ entries: ConversationEntry[] }>(
     `/instances/${slug}/conversations?limit=${limit}`,
   );
@@ -111,7 +130,11 @@ export async function fetchBuilderData(slug: string): Promise<BuilderData> {
   return apiFetch<BuilderData>(`/instances/${slug}/agents/builder`);
 }
 
-export async function fetchAgentFile(slug: string, agentId: string, filename: string): Promise<AgentFileContent> {
+export async function fetchAgentFile(
+  slug: string,
+  agentId: string,
+  filename: string,
+): Promise<AgentFileContent> {
   return apiFetch<AgentFileContent>(`/instances/${slug}/agents/${agentId}/files/${filename}`);
 }
 
@@ -164,20 +187,14 @@ export async function updateSpawnLinks(
   );
 }
 
-export async function createAgent(
-  slug: string,
-  data: CreateAgentRequest,
-): Promise<BuilderData> {
+export async function createAgent(slug: string, data: CreateAgentRequest): Promise<BuilderData> {
   return apiFetch<BuilderData>(`/instances/${slug}/agents`, {
     method: "POST",
     body: JSON.stringify(data),
   });
 }
 
-export async function deleteAgent(
-  instanceSlug: string,
-  agentId: string,
-): Promise<BuilderData> {
+export async function deleteAgent(instanceSlug: string, agentId: string): Promise<BuilderData> {
   return apiFetch<BuilderData>(`/instances/${instanceSlug}/agents/${agentId}`, {
     method: "DELETE",
   });
@@ -250,7 +267,9 @@ export async function fetchBlueprintAgentFile(
   agentId: string,
   filename: string,
 ): Promise<AgentFileContent> {
-  return apiFetch<AgentFileContent>(`/blueprints/${blueprintId}/agents/${agentId}/files/${filename}`);
+  return apiFetch<AgentFileContent>(
+    `/blueprints/${blueprintId}/agents/${agentId}/files/${filename}`,
+  );
 }
 
 export async function updateBlueprintAgentFile(
@@ -293,7 +312,11 @@ export async function exportInstanceTeam(slug: string): Promise<Blob> {
   return res.blob();
 }
 
-export async function importInstanceTeam(slug: string, yamlContent: string, dryRun = false): Promise<TeamImportResult> {
+export async function importInstanceTeam(
+  slug: string,
+  yamlContent: string,
+  dryRun = false,
+): Promise<TeamImportResult> {
   const url = `/api/instances/${slug}/team/import${dryRun ? "?dry_run=true" : ""}`;
   const res = await fetch(url, {
     method: "POST",
@@ -304,8 +327,16 @@ export async function importInstanceTeam(slug: string, yamlContent: string, dryR
     body: yamlContent,
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText })) as { error?: string; code?: string; message?: string };
-    throw new ApiError(res.status, body.error ?? body.code ?? "IMPORT_FAILED", body.message ?? body.error ?? "Import failed");
+    const body = (await res.json().catch(() => ({ error: res.statusText }))) as {
+      error?: string;
+      code?: string;
+      message?: string;
+    };
+    throw new ApiError(
+      res.status,
+      body.error ?? body.code ?? "IMPORT_FAILED",
+      body.message ?? body.error ?? "Import failed",
+    );
   }
   return res.json() as Promise<TeamImportResult>;
 }
@@ -318,7 +349,11 @@ export async function exportBlueprintTeam(blueprintId: number): Promise<Blob> {
   return res.blob();
 }
 
-export async function importBlueprintTeam(blueprintId: number, yamlContent: string, dryRun = false): Promise<TeamImportResult> {
+export async function importBlueprintTeam(
+  blueprintId: number,
+  yamlContent: string,
+  dryRun = false,
+): Promise<TeamImportResult> {
   const url = `/api/blueprints/${blueprintId}/team/import${dryRun ? "?dry_run=true" : ""}`;
   const res = await fetch(url, {
     method: "POST",
@@ -329,8 +364,16 @@ export async function importBlueprintTeam(blueprintId: number, yamlContent: stri
     body: yamlContent,
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText })) as { error?: string; code?: string; message?: string };
-    throw new ApiError(res.status, body.error ?? body.code ?? "IMPORT_FAILED", body.message ?? body.error ?? "Import failed");
+    const body = (await res.json().catch(() => ({ error: res.statusText }))) as {
+      error?: string;
+      code?: string;
+      message?: string;
+    };
+    throw new ApiError(
+      res.status,
+      body.error ?? body.code ?? "IMPORT_FAILED",
+      body.message ?? body.error ?? "Import failed",
+    );
   }
   return res.json() as Promise<TeamImportResult>;
 }

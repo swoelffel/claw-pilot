@@ -3,8 +3,13 @@
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
+import { instanceGuard } from "../../../lib/guards.js";
 import { logger } from "../../../lib/logger.js";
-import { readInstanceConfig, applyConfigPatch, ConfigPatchSchema } from "../../../core/config-updater.js";
+import {
+  readInstanceConfig,
+  applyConfigPatch,
+  ConfigPatchSchema,
+} from "../../../core/config-updater.js";
 import type { ConfigPatch } from "../../../core/config-updater.js";
 import { PROVIDER_CATALOG } from "../../../lib/provider-catalog.js";
 import type { ProviderInfo } from "../../../lib/provider-catalog.js";
@@ -16,15 +21,23 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
   app.get("/api/instances/:slug/config", async (c) => {
     const slug = c.req.param("slug");
     const instance = registry.getInstance(slug);
-    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
 
     try {
-      const payload = await readInstanceConfig(conn, instance.config_path, instance.state_dir);
-      payload.general.displayName = instance.display_name ?? "";
+      const payload = await readInstanceConfig(conn, instance!.config_path, instance!.state_dir);
+      payload.general.displayName = instance!.display_name ?? "";
       return c.json(payload);
     } catch (err) {
-      logger.error(`[config] GET /config error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`);
-      return apiError(c, 500, "CONFIG_READ_FAILED", err instanceof Error ? err.message : "Failed to read config");
+      logger.error(
+        `[config] GET /config error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return apiError(
+        c,
+        500,
+        "CONFIG_READ_FAILED",
+        err instanceof Error ? err.message : "Failed to read config",
+      );
     }
   });
 
@@ -32,14 +45,17 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
   app.patch("/api/instances/:slug/config", async (c) => {
     const slug = c.req.param("slug");
     const instance = registry.getInstance(slug);
-    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
 
     let patch: ConfigPatch;
     try {
       const raw = await c.req.json();
       const result = ConfigPatchSchema.safeParse(raw);
       if (!result.success) {
-        const issues = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+        const issues = result.error.issues
+          .map((i) => `${i.path.join(".")}: ${i.message}`)
+          .join("; ");
         return apiError(c, 400, "INVALID_BODY", `Invalid config patch: ${issues}`);
       }
       patch = result.data as ConfigPatch;
@@ -54,24 +70,33 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
         conn,
         registry,
         slug,
-        instance.config_path,
-        instance.state_dir,
+        instance!.config_path,
+        instance!.state_dir,
         patch,
       );
 
-      if (result.requiresRestart && instance.state === "running") {
+      if (result.requiresRestart && instance!.state === "running") {
         try {
           await lifecycle.restart(slug);
         } catch (err) {
-          result.warnings.push(`Restart failed: ${err instanceof Error ? err.message : "unknown error"}`);
+          result.warnings.push(
+            `Restart failed: ${err instanceof Error ? err.message : "unknown error"}`,
+          );
         }
       }
 
       logger.info(`[config] PATCH /config slug=${slug} result=${JSON.stringify(result)}`);
       return c.json(result);
     } catch (err) {
-      logger.error(`[config] PATCH /config error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`);
-      return apiError(c, 500, "CONFIG_PATCH_FAILED", err instanceof Error ? err.message : "Failed to apply config");
+      logger.error(
+        `[config] PATCH /config error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return apiError(
+        c,
+        500,
+        "CONFIG_PATCH_FAILED",
+        err instanceof Error ? err.message : "Failed to apply config",
+      );
     }
   });
 
@@ -81,7 +106,10 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
     let canReuseCredentials = false;
     let sourceInstance: string | null = null;
 
-    const providers: ProviderInfo[] = PROVIDER_CATALOG.map((p) => ({ ...p, models: [...p.models] }));
+    const providers: ProviderInfo[] = PROVIDER_CATALOG.map((p) => ({
+      ...p,
+      models: [...p.models],
+    }));
 
     if (existing.length > 0) {
       const source = existing[0]!;
@@ -106,9 +134,10 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
           for (const p of providers) {
             if (cfgProviderIds.has(p.id)) {
               p.requiresKey = false;
-              p.label = p.id === "opencode"
-                ? `${p.label} (via ${source.slug})`
-                : `${p.label} (reuse from ${source.slug})`;
+              p.label =
+                p.id === "opencode"
+                  ? `${p.label} (via ${source.slug})`
+                  : `${p.label} (reuse from ${source.slug})`;
               p.isDefault = true;
             }
           }

@@ -1,5 +1,20 @@
 // src/lib/errors.ts
 
+/**
+ * Thrown inside withContext() callbacks to signal a CLI error.
+ * Caught by the global handler in index.ts AFTER the DB is closed by withContext's finally block.
+ * Never call process.exit() directly inside withContext — throw CliError instead.
+ */
+export class CliError extends Error {
+  constructor(
+    message: string,
+    public readonly exitCode: number = 1,
+  ) {
+    super(message);
+    this.name = "CliError";
+  }
+}
+
 export class ClawPilotError extends Error {
   constructor(
     message: string,
@@ -29,15 +44,6 @@ export class PortConflictError extends ClawPilotError {
         ? "No free port available in the configured range"
         : `Port ${port} is already in use`,
       "PORT_CONFLICT",
-    );
-  }
-}
-
-export class OpenClawNotFoundError extends ClawPilotError {
-  constructor() {
-    super(
-      "OpenClaw CLI not found. Install it first: https://docs.openclaw.ai",
-      "OPENCLAW_NOT_FOUND",
     );
   }
 }

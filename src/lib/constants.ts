@@ -14,7 +14,7 @@ export const constants = {
 
   // Ports
   PORT_RANGE_START: 18789,
-  PORT_RANGE_END: 18838,  // 50 ports — 10 instances at min step 5 (OpenClaw 2026.3.x reserves P, P+1, P+2, P+4)
+  PORT_RANGE_END: 18838, // 50 ports — 10 instances at min step 5 (OpenClaw 2026.3.x reserves P, P+1, P+2, P+4)
   DASHBOARD_PORT: 19000,
 
   // Timeouts (ms)
@@ -38,26 +38,45 @@ export const constants = {
 
   /** All workspace files recognized by OpenClaw (discoverable + syncable). */
   DISCOVERABLE_FILES: [
-    "AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md",
-    "USER.md", "HEARTBEAT.md", "MEMORY.md", "BOOTSTRAP.md",
+    "AGENTS.md",
+    "SOUL.md",
+    "TOOLS.md",
+    "IDENTITY.md",
+    "USER.md",
+    "HEARTBEAT.md",
+    "MEMORY.md",
+    "BOOTSTRAP.md",
   ] as const,
 
   /** Subset of discoverable files that the dashboard UI is allowed to edit. */
   EDITABLE_FILES: [
-    "AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md",
-    "USER.md", "HEARTBEAT.md",
+    "AGENTS.md",
+    "SOUL.md",
+    "TOOLS.md",
+    "IDENTITY.md",
+    "USER.md",
+    "HEARTBEAT.md",
   ] as const,
 
   /** Files created from templates during provisioning/deployment (on disk). */
   TEMPLATE_FILES: [
-    "AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md",
-    "USER.md", "HEARTBEAT.md", "MEMORY.md",
+    "AGENTS.md",
+    "SOUL.md",
+    "TOOLS.md",
+    "IDENTITY.md",
+    "USER.md",
+    "HEARTBEAT.md",
+    "MEMORY.md",
   ] as const,
 
   /** Files included in .team.yaml exports and expected during import. */
   EXPORTABLE_FILES: [
-    "AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md",
-    "USER.md", "HEARTBEAT.md",
+    "AGENTS.md",
+    "SOUL.md",
+    "TOOLS.md",
+    "IDENTITY.md",
+    "USER.md",
+    "HEARTBEAT.md",
   ] as const,
 
   // Legacy alias — kept for backward compat, prefer the specific lists above.
@@ -75,16 +94,16 @@ export const constants = {
   // Self-update (claw-pilot)
   GITHUB_REPO: "swoelffel/claw-pilot",
   GITHUB_API_BASE: "https://api.github.com",
-  SELF_UPDATE_CHECK_TIMEOUT: 5_000,    // fetch GitHub API (ms)
-  SELF_UPDATE_TIMEOUT: 600_000,        // git + build timeout (ms) — 10 min
-  SELF_UPDATE_RATE_LIMIT_MS: 300_000,  // rate limit POST /api/self/update
-  SELF_UPDATE_POLL_INTERVAL: 60_000,   // polling UI (ms)
+  SELF_UPDATE_CHECK_TIMEOUT: 5_000, // fetch GitHub API (ms)
+  SELF_UPDATE_TIMEOUT: 600_000, // git + build timeout (ms) — 10 min
+  SELF_UPDATE_RATE_LIMIT_MS: 300_000, // rate limit POST /api/self/update
+  SELF_UPDATE_POLL_INTERVAL: 60_000, // polling UI (ms)
 
   // Auth & sessions
   SESSION_COOKIE_NAME: "__cp_sid",
-  SESSION_TTL_MS: 24 * 60 * 60 * 1000,   // 24h
+  SESSION_TTL_MS: 24 * 60 * 60 * 1000, // 24h
   SESSION_CLEANUP_INTERVAL_MS: 60 * 1000, // 1 min
-  AUTH_RATE_LIMIT_MAX: 5,                  // 5 attempts per window
-  AUTH_RATE_LIMIT_WINDOW_MS: 60 * 1000,   // 1 min window
+  AUTH_RATE_LIMIT_MAX: 5, // 5 attempts per window
+  AUTH_RATE_LIMIT_WINDOW_MS: 60 * 1000, // 1 min window
   ADMIN_USERNAME: "admin",
 } as const;

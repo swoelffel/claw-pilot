@@ -1,6 +1,7 @@
 // src/commands/service.ts
 import { Command } from "commander";
 import { getServiceManager } from "../lib/platform.js";
+import { CliError } from "../lib/errors.js";
 
 const DASHBOARD_LOG_PATH = "~/.claw-pilot/dashboard.log";
 import {
@@ -14,8 +15,9 @@ import { parsePositiveInt } from "../lib/validate.js";
 import { withContext } from "./_context.js";
 
 export function serviceCommand(): Command {
-  const cmd = new Command("service")
-    .description("Manage the claw-pilot dashboard service (systemd on Linux, launchd on macOS)");
+  const cmd = new Command("service").description(
+    "Manage the claw-pilot dashboard service (systemd on Linux, launchd on macOS)",
+  );
 
   cmd
     .command("install")
@@ -33,9 +35,10 @@ export function serviceCommand(): Command {
         } else {
           console.log(`    View logs: journalctl --user -u claw-pilot-dashboard.service -f`);
         }
-      } catch (err: any) {
-        console.error(`[x] Failed to install service: ${err.message}`);
-        process.exit(1);
+      } catch (err) {
+        throw new CliError(
+          `Failed to install service: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     });
 
@@ -47,9 +50,10 @@ export function serviceCommand(): Command {
         await withContext(async ({ conn, xdgRuntimeDir }) => {
           await uninstallDashboardService(conn, xdgRuntimeDir);
         });
-      } catch (err: any) {
-        console.error(`[x] Failed to uninstall service: ${err.message}`);
-        process.exit(1);
+      } catch (err) {
+        throw new CliError(
+          `Failed to uninstall service: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     });
 
@@ -61,9 +65,10 @@ export function serviceCommand(): Command {
         await withContext(async ({ conn, xdgRuntimeDir }) => {
           await restartDashboardService(conn, xdgRuntimeDir);
         });
-      } catch (err: any) {
-        console.error(`[x] Failed to restart service: ${err.message}`);
-        process.exit(1);
+      } catch (err) {
+        throw new CliError(
+          `Failed to restart service: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     });
 
@@ -92,9 +97,10 @@ export function serviceCommand(): Command {
             console.log("  To view logs: journalctl --user -u claw-pilot-dashboard.service -n 50");
           }
         }
-      } catch (err: any) {
-        console.error(`[x] Failed to get service status: ${err.message}`);
-        process.exit(1);
+      } catch (err) {
+        throw new CliError(
+          `Failed to get service status: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     });
 

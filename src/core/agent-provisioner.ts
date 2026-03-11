@@ -38,10 +38,7 @@ export class AgentProvisioner {
 
     // 4. Write minimal workspace files
     for (const filename of DISCOVERABLE_FILES) {
-      await this.conn.writeFile(
-        path.join(workspaceDir, filename),
-        `# ${data.name}\n`,
-      );
+      await this.conn.writeFile(path.join(workspaceDir, filename), `# ${data.name}\n`);
     }
 
     // 5. Read openclaw.json
@@ -60,14 +57,11 @@ export class AgentProvisioner {
       id: data.agentSlug,
       name: data.name,
       model: `${data.provider}/${data.model}`,
-      workspace: workspaceDir,  // absolute path — avoids resolveWorkspace() prefix bug
+      workspace: workspaceDir, // absolute path — avoids resolveWorkspace() prefix bug
     });
 
     // 7. Write openclaw.json back
-    await this.conn.writeFile(
-      instance.config_path,
-      JSON.stringify(config, null, 2) + "\n",
-    );
+    await this.conn.writeFile(instance.config_path, JSON.stringify(config, null, 2) + "\n");
 
     // 8. Upsert agent in DB
     this.registry.upsertAgent(instance.id, {
@@ -129,10 +123,7 @@ export class AgentProvisioner {
     }
 
     // 5. Write openclaw.json back
-    await this.conn.writeFile(
-      instance.config_path,
-      JSON.stringify(config, null, 2) + "\n",
-    );
+    await this.conn.writeFile(instance.config_path, JSON.stringify(config, null, 2) + "\n");
 
     // 6. Delete workspace directory on server
     await this.conn.remove(agent.workspace_path, { recursive: true });

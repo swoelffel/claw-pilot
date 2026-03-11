@@ -24,9 +24,7 @@ export function doctorCommand(): Command {
 
         const server = registry.getLocalServer();
         if (server) {
-          logger.success(
-            `Server registered: ${server.hostname} (${server.openclaw_home})`,
-          );
+          logger.success(`Server registered: ${server.hostname} (${server.openclaw_home})`);
         } else {
           logger.fail("No server registered. Run 'claw-pilot init'.");
           return;

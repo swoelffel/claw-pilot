@@ -61,7 +61,8 @@ export const templates = {
   "hint-api-key": "Ihr API-Schlüssel",
   "hint-opencode-no-key": "Verwendet die OpenCode-Laufzeit — kein API-Schlüssel erforderlich",
   "hint-reuse-credentials": "Anmeldedaten werden von der vorhandenen Instanz übernommen",
-  "hint-minimal-agent": "Einzelner Hauptagent — weitere können später über die CLI hinzugefügt werden",
+  "hint-minimal-agent":
+    "Einzelner Hauptagent — weitere können später über die CLI hinzugefügt werden",
   "error-slug-required": "Slug ist erforderlich",
   "error-slug-format": "Nur Kleinbuchstaben, Zahlen und Bindestriche",
   "error-slug-length": "Muss 2–30 Zeichen lang sein",
@@ -118,7 +119,8 @@ export const templates = {
   // delete-agent-dialog.ts
   "acm-btn-delete": "Agent löschen",
   "dad-title": "Agent löschen",
-  "dad-warning": "Dadurch werden alle Workspace-Dateien dauerhaft gelöscht und der Agent aus der Instanz entfernt. Diese Aktion kann nicht rückgängig gemacht werden.",
+  "dad-warning":
+    "Dadurch werden alle Workspace-Dateien dauerhaft gelöscht und der Agent aus der Instanz entfernt. Diese Aktion kann nicht rückgängig gemacht werden.",
   "dad-confirm-label": "Agent-ID zur Bestätigung eingeben",
   "dad-btn-cancel": "Abbrechen",
   "dad-btn-confirm": "Löschen",
@@ -128,7 +130,8 @@ export const templates = {
 
   // delete-instance-dialog.ts
   "did-title": "Instanz löschen",
-  "did-warning": "Dies stoppt den Dienst, entfernt alle Dateien (Statusverzeichnis, systemd-Unit) und löscht die Instanz aus dem Register. Diese Aktion kann nicht rückgängig gemacht werden.",
+  "did-warning":
+    "Dies stoppt den Dienst, entfernt alle Dateien (Statusverzeichnis, systemd-Unit) und löscht die Instanz aus dem Register. Diese Aktion kann nicht rückgängig gemacht werden.",
   "did-confirm-label": "Geben Sie den Instanz-Slug zur Bestätigung ein",
   "did-spinner-deleting": "Instanz wird zerstört...",
 
@@ -192,7 +195,7 @@ export const templates = {
   "cbd-btn-creating": "Erstellen...",
   "bb-back": "← Zurück zu Blueprints",
   "bb-no-agents": "Keine Agenten in diesem Blueprint",
-  "bb-no-agents-hint": "Klicken Sie auf \"+ Neuer Agent\", um einen hinzuzufügen.",
+  "bb-no-agents-hint": 'Klicken Sie auf "+ Neuer Agent", um einen hinzuzufügen.',
   "cd-blueprint": "Team-Blueprint",
   "cd-blueprint-none": "Standard (nur Hauptagent)",
   "cd-blueprint-hint": "Optional ein Agenten-Team bereitstellen",
@@ -207,7 +210,8 @@ export const templates = {
   "tid-agents": "Agenten",
   "tid-links": "Links",
   "tid-files": "Dateien",
-  "tid-warning": "Dies ersetzt alle vorhandenen Agenten, Dateien und Links. Diese Aktion kann nicht rückgängig gemacht werden.",
+  "tid-warning":
+    "Dies ersetzt alle vorhandenen Agenten, Dateien und Links. Diese Aktion kann nicht rückgängig gemacht werden.",
   "tid-btn-cancel": "Abbrechen",
   "tid-btn-import": "Importieren",
   "tid-btn-importing": "Importiere...",
@@ -217,7 +221,8 @@ export const templates = {
   "err-not-found": "Ressource nicht gefunden.",
   "err-invalid-json": "Ungültiges Anforderungsformat.",
   "err-invalid-slug": "Muss 2-30 Kleinbuchstaben, Zahlen oder Bindestriche enthalten.",
-  "err-invalid-instance-slug": "Instanz-ID muss 2-30 Kleinbuchstaben, Zahlen oder Bindestriche enthalten.",
+  "err-invalid-instance-slug":
+    "Instanz-ID muss 2-30 Kleinbuchstaben, Zahlen oder Bindestriche enthalten.",
   "err-invalid-agent-id": "Agent-ID muss 2-30 Kleinbuchstaben, Zahlen oder Bindestriche enthalten.",
   "err-slug-required": "Dieser Name ist erforderlich.",
   "err-blueprint-name-required": "Blueprint-Name ist erforderlich.",
@@ -251,6 +256,19 @@ export const templates = {
   "discover-adopt-btn": "Alle übernehmen ({n})",
   "discover-adopting": "Instanzen werden registriert...",
   "discover-done": "{n} Instanz(en) erfolgreich registriert.",
+
+  // instance-devices.ts (v0.18.0)
+  "idev-section-title": "Geräte",
+  "idev-pending-title": "Ausstehend",
+  "idev-btn-approve-all": "Alle genehmigen",
+  "idev-btn-approve": "Genehmigen",
+  "idev-confirm-revoke": "Widerrufen?",
+  "idev-btn-confirm": "Bestätigen",
+  "idev-btn-cancel": "Abbrechen",
+  "idev-paired-title": "Gekoppelt",
+  "idev-no-paired": "Keine gekoppelten Geräte.",
+  "idev-btn-refresh": "Aktualisieren",
+  "idev-btn-revoke-title": "Gerät widerrufen",
 
   // login-view.ts + app.ts (auth — v0.15.0)
   "login-title": "claw-pilot",

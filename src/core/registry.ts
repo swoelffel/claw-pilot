@@ -153,70 +153,167 @@ export class Registry {
   }
 
   // --- Servers ---
-  getLocalServer() { return this.servers.getLocalServer(); }
-  upsertLocalServer(hostname: string, openclawHome: string, ip?: string) { return this.servers.upsertLocalServer(hostname, openclawHome, ip); }
-  updateServerBin(bin: string, version: string) { return this.servers.updateServerBin(bin, version); }
+  getLocalServer() {
+    return this.servers.getLocalServer();
+  }
+  upsertLocalServer(hostname: string, openclawHome: string, ip?: string) {
+    return this.servers.upsertLocalServer(hostname, openclawHome, ip);
+  }
+  updateServerBin(bin: string, version: string) {
+    return this.servers.updateServerBin(bin, version);
+  }
 
   // --- Instances ---
-  listInstances() { return this.instances.listInstances(); }
-  getInstance(slug: string) { return this.instances.getInstance(slug); }
-  createInstance(data: Parameters<InstanceRepository["createInstance"]>[0]) { return this.instances.createInstance(data); }
-  updateInstanceState(slug: string, state: InstanceRecord["state"]) { return this.instances.updateInstanceState(slug, state); }
-  updateInstance(slug: string, fields: Parameters<InstanceRepository["updateInstance"]>[1]) { return this.instances.updateInstance(slug, fields); }
-  deleteInstance(slug: string) { return this.instances.deleteInstance(slug); }
+  listInstances() {
+    return this.instances.listInstances();
+  }
+  getInstance(slug: string) {
+    return this.instances.getInstance(slug);
+  }
+  createInstance(data: Parameters<InstanceRepository["createInstance"]>[0]) {
+    return this.instances.createInstance(data);
+  }
+  updateInstanceState(slug: string, state: InstanceRecord["state"]) {
+    return this.instances.updateInstanceState(slug, state);
+  }
+  updateInstance(slug: string, fields: Parameters<InstanceRepository["updateInstance"]>[1]) {
+    return this.instances.updateInstance(slug, fields);
+  }
+  deleteInstance(slug: string) {
+    return this.instances.deleteInstance(slug);
+  }
 
   // --- Agents ---
-  listAgents(instanceSlug: string) { return this.agents.listAgents(instanceSlug); }
-  createAgent(instanceId: number, data: Parameters<AgentRepository["createAgent"]>[1]) { return this.agents.createAgent(instanceId, data); }
-  deleteAgents(instanceId: number) { return this.agents.deleteAgents(instanceId); }
-  deleteAgentById(agentDbId: number) { return this.agents.deleteAgentById(agentDbId); }
-  upsertAgent(instanceId: number, data: Parameters<AgentRepository["upsertAgent"]>[1]) { return this.agents.upsertAgent(instanceId, data); }
-  getAgentByAgentId(instanceId: number, agentId: string) { return this.agents.getAgentByAgentId(instanceId, agentId); }
-  updateAgentMeta(agentDbId: number, fields: Parameters<AgentRepository["updateAgentMeta"]>[1]) { return this.agents.updateAgentMeta(agentDbId, fields); }
-  updateAgentPosition(agentDbId: number, x: number, y: number) { return this.agents.updateAgentPosition(agentDbId, x, y); }
-  updateAgentSync(agentDbId: number, fields: Parameters<AgentRepository["updateAgentSync"]>[1]) { return this.agents.updateAgentSync(agentDbId, fields); }
+  listAgents(instanceSlug: string) {
+    return this.agents.listAgents(instanceSlug);
+  }
+  createAgent(instanceId: number, data: Parameters<AgentRepository["createAgent"]>[1]) {
+    return this.agents.createAgent(instanceId, data);
+  }
+  deleteAgents(instanceId: number) {
+    return this.agents.deleteAgents(instanceId);
+  }
+  deleteAgentById(agentDbId: number) {
+    return this.agents.deleteAgentById(agentDbId);
+  }
+  upsertAgent(instanceId: number, data: Parameters<AgentRepository["upsertAgent"]>[1]) {
+    return this.agents.upsertAgent(instanceId, data);
+  }
+  getAgentByAgentId(instanceId: number, agentId: string) {
+    return this.agents.getAgentByAgentId(instanceId, agentId);
+  }
+  updateAgentMeta(agentDbId: number, fields: Parameters<AgentRepository["updateAgentMeta"]>[1]) {
+    return this.agents.updateAgentMeta(agentDbId, fields);
+  }
+  updateAgentPosition(agentDbId: number, x: number, y: number) {
+    return this.agents.updateAgentPosition(agentDbId, x, y);
+  }
+  updateAgentSync(agentDbId: number, fields: Parameters<AgentRepository["updateAgentSync"]>[1]) {
+    return this.agents.updateAgentSync(agentDbId, fields);
+  }
 
   // --- Agent Files ---
-  listAgentFiles(agentDbId: number) { return this.agents.listAgentFiles(agentDbId); }
-  upsertAgentFile(agentDbId: number, data: Parameters<AgentRepository["upsertAgentFile"]>[1]) { return this.agents.upsertAgentFile(agentDbId, data); }
-  deleteAgentFile(agentDbId: number, filename: string) { return this.agents.deleteAgentFile(agentDbId, filename); }
-  getAgentFileContent(agentDbId: number, filename: string) { return this.agents.getAgentFileContent(agentDbId, filename); }
+  listAgentFiles(agentDbId: number) {
+    return this.agents.listAgentFiles(agentDbId);
+  }
+  upsertAgentFile(agentDbId: number, data: Parameters<AgentRepository["upsertAgentFile"]>[1]) {
+    return this.agents.upsertAgentFile(agentDbId, data);
+  }
+  deleteAgentFile(agentDbId: number, filename: string) {
+    return this.agents.deleteAgentFile(agentDbId, filename);
+  }
+  getAgentFileContent(agentDbId: number, filename: string) {
+    return this.agents.getAgentFileContent(agentDbId, filename);
+  }
 
   // --- Agent Links ---
-  listAgentLinks(instanceId: number) { return this.agents.listAgentLinks(instanceId); }
-  replaceAgentLinks(instanceId: number, links: Parameters<AgentRepository["replaceAgentLinks"]>[1]) { return this.agents.replaceAgentLinks(instanceId, links); }
+  listAgentLinks(instanceId: number) {
+    return this.agents.listAgentLinks(instanceId);
+  }
+  replaceAgentLinks(
+    instanceId: number,
+    links: Parameters<AgentRepository["replaceAgentLinks"]>[1],
+  ) {
+    return this.agents.replaceAgentLinks(instanceId, links);
+  }
 
   // --- Ports ---
-  allocatePort(serverId: number, port: number, instanceSlug: string) { return this.ports.allocatePort(serverId, port, instanceSlug); }
-  releasePort(serverId: number, port: number) { return this.ports.releasePort(serverId, port); }
-  getUsedPorts(serverId: number) { return this.ports.getUsedPorts(serverId); }
+  allocatePort(serverId: number, port: number, instanceSlug: string) {
+    return this.ports.allocatePort(serverId, port, instanceSlug);
+  }
+  releasePort(serverId: number, port: number) {
+    return this.ports.releasePort(serverId, port);
+  }
+  getUsedPorts(serverId: number) {
+    return this.ports.getUsedPorts(serverId);
+  }
 
   // --- Config ---
-  getConfig(key: string) { return this.configs.getConfig(key); }
-  setConfig(key: string, value: string) { return this.configs.setConfig(key, value); }
+  getConfig(key: string) {
+    return this.configs.getConfig(key);
+  }
+  setConfig(key: string, value: string) {
+    return this.configs.setConfig(key, value);
+  }
 
   // --- Events ---
-  logEvent(instanceSlug: string | null, eventType: string, detail?: string) { return this.events.logEvent(instanceSlug, eventType, detail); }
-  listEvents(instanceSlug?: string, limit = 50) { return this.events.listEvents(instanceSlug, limit); }
+  logEvent(instanceSlug: string | null, eventType: string, detail?: string) {
+    return this.events.logEvent(instanceSlug, eventType, detail);
+  }
+  listEvents(instanceSlug?: string, limit = 50) {
+    return this.events.listEvents(instanceSlug, limit);
+  }
 
   // --- Blueprints ---
-  listBlueprints() { return this.blueprints.listBlueprints(); }
-  getBlueprint(id: number) { return this.blueprints.getBlueprint(id); }
-  createBlueprint(data: Parameters<BlueprintRepository["createBlueprint"]>[0]) { return this.blueprints.createBlueprint(data); }
-  updateBlueprint(id: number, fields: Parameters<BlueprintRepository["updateBlueprint"]>[1]) { return this.blueprints.updateBlueprint(id, fields); }
-  deleteBlueprint(id: number) { return this.blueprints.deleteBlueprint(id); }
+  listBlueprints() {
+    return this.blueprints.listBlueprints();
+  }
+  getBlueprint(id: number) {
+    return this.blueprints.getBlueprint(id);
+  }
+  createBlueprint(data: Parameters<BlueprintRepository["createBlueprint"]>[0]) {
+    return this.blueprints.createBlueprint(data);
+  }
+  updateBlueprint(id: number, fields: Parameters<BlueprintRepository["updateBlueprint"]>[1]) {
+    return this.blueprints.updateBlueprint(id, fields);
+  }
+  deleteBlueprint(id: number) {
+    return this.blueprints.deleteBlueprint(id);
+  }
 
   // --- Blueprint Agents ---
-  listBlueprintAgents(blueprintId: number) { return this.blueprints.listBlueprintAgents(blueprintId); }
-  getBlueprintAgent(blueprintId: number, agentId: string) { return this.blueprints.getBlueprintAgent(blueprintId, agentId); }
-  createBlueprintAgent(blueprintId: number, data: Parameters<BlueprintRepository["createBlueprintAgent"]>[1]) { return this.blueprints.createBlueprintAgent(blueprintId, data); }
-  deleteBlueprintAgent(blueprintId: number, agentId: string) { return this.blueprints.deleteBlueprintAgent(blueprintId, agentId); }
-  updateBlueprintAgentPosition(agentDbId: number, x: number, y: number) { return this.blueprints.updateBlueprintAgentPosition(agentDbId, x, y); }
+  listBlueprintAgents(blueprintId: number) {
+    return this.blueprints.listBlueprintAgents(blueprintId);
+  }
+  getBlueprintAgent(blueprintId: number, agentId: string) {
+    return this.blueprints.getBlueprintAgent(blueprintId, agentId);
+  }
+  createBlueprintAgent(
+    blueprintId: number,
+    data: Parameters<BlueprintRepository["createBlueprintAgent"]>[1],
+  ) {
+    return this.blueprints.createBlueprintAgent(blueprintId, data);
+  }
+  deleteBlueprintAgent(blueprintId: number, agentId: string) {
+    return this.blueprints.deleteBlueprintAgent(blueprintId, agentId);
+  }
+  updateBlueprintAgentPosition(agentDbId: number, x: number, y: number) {
+    return this.blueprints.updateBlueprintAgentPosition(agentDbId, x, y);
+  }
 
   // --- Blueprint Links ---
-  listBlueprintLinks(blueprintId: number) { return this.blueprints.listBlueprintLinks(blueprintId); }
-  replaceBlueprintLinks(blueprintId: number, links: Parameters<BlueprintRepository["replaceBlueprintLinks"]>[1]) { return this.blueprints.replaceBlueprintLinks(blueprintId, links); }
+  listBlueprintLinks(blueprintId: number) {
+    return this.blueprints.listBlueprintLinks(blueprintId);
+  }
+  replaceBlueprintLinks(
+    blueprintId: number,
+    links: Parameters<BlueprintRepository["replaceBlueprintLinks"]>[1],
+  ) {
+    return this.blueprints.replaceBlueprintLinks(blueprintId, links);
+  }
 
   // --- Blueprint Builder Data ---
-  getBlueprintBuilderData(blueprintId: number) { return this.blueprints.getBlueprintBuilderData(blueprintId); }
+  getBlueprintBuilderData(blueprintId: number) {
+    return this.blueprints.getBlueprintBuilderData(blueprintId);
+  }
 }

@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
+import { CliError } from "./lib/errors.js";
 import { initCommand } from "./commands/init.js";
 import { createCommand } from "./commands/create.js";
 import { destroyCommand } from "./commands/destroy.js";
@@ -48,7 +49,10 @@ program.addCommand(updateCommand());
 
 // Global error handler for unhandled async errors
 process.on("unhandledRejection", (err) => {
-  if (err instanceof Error) {
+  if (err instanceof CliError) {
+    console.error(`Error: ${err.message}`);
+    process.exit(err.exitCode);
+  } else if (err instanceof Error) {
     console.error(`Error: ${err.message}`);
   } else {
     console.error("Unknown error:", err);
@@ -59,7 +63,10 @@ process.on("unhandledRejection", (err) => {
 try {
   await program.parseAsync();
 } catch (err) {
-  if (err instanceof Error && err.message !== "(outputHelp)") {
+  if (err instanceof CliError) {
+    console.error(`Error: ${err.message}`);
+    process.exit(err.exitCode);
+  } else if (err instanceof Error && err.message !== "(outputHelp)") {
     console.error(`Error: ${err.message}`);
     process.exit(1);
   }

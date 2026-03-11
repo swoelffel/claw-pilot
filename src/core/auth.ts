@@ -7,8 +7,7 @@ const SCRYPT_BLOCK_SIZE = 8; // r
 const SCRYPT_PARALLELIZATION = 1; // p
 
 // Alphabet without ambiguous characters: no 0/O/1/l/I
-const PASSWORD_ALPHABET =
-  "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const PASSWORD_LENGTH = 16;
 
 /** Promisified scrypt with options — typed manually to avoid @types/node overload issues */
@@ -44,10 +43,7 @@ export async function hashPassword(password: string): Promise<string> {
  * Verify a password against a stored hash string.
  * Returns false (never throws) if the format is invalid or the password is wrong.
  */
-export async function verifyPassword(
-  password: string,
-  stored: string,
-): Promise<boolean> {
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
   try {
     const parts = stored.split(":");
     if (parts.length !== 3 || parts[0] !== "scrypt") return false;
@@ -68,6 +64,7 @@ export async function verifyPassword(
 
     return timingSafeEqual(expectedHash, computedHash);
   } catch {
+    // intentionally ignored — any crypto error (invalid hash format, buffer mismatch) → deny access
     return false;
   }
 }

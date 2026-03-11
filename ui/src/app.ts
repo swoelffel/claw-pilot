@@ -1,9 +1,21 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import { initLocale, switchLocale, getLocale, allLocales, type SupportedLocale } from "./localization.js";
+import {
+  initLocale,
+  switchLocale,
+  getLocale,
+  allLocales,
+  type SupportedLocale,
+} from "./localization.js";
 import { createRef, ref, type Ref } from "lit/directives/ref.js";
-import type { InstanceInfo, WsMessage, HealthUpdate, SelfUpdateStatus, SidebarSection } from "./types.js";
+import type {
+  InstanceInfo,
+  WsMessage,
+  HealthUpdate,
+  SelfUpdateStatus,
+  SidebarSection,
+} from "./types.js";
 import { fetchBlueprints } from "./api.js";
 import { tokenStyles } from "./styles/tokens.js";
 import "./components/cluster-view.js";
@@ -34,308 +46,318 @@ type Route =
 @localized()
 @customElement("cp-app")
 export class CpApp extends LitElement {
-  static styles = [tokenStyles, css`
-    :host {
-      display: block;
-      min-height: 100vh;
-      background: var(--bg-base);
-      color: var(--text-primary);
-      font-family: var(--font-ui);
-    }
+  static override styles = [
+    tokenStyles,
+    css`
+      :host {
+        display: block;
+        min-height: 100vh;
+        background: var(--bg-base);
+        color: var(--text-primary);
+        font-family: var(--font-ui);
+      }
 
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 24px;
-      height: 56px;
-      background: var(--bg-surface);
-      border-bottom: 1px solid var(--bg-border);
-      position: sticky;
-      top: 0;
-      z-index: 100;
-    }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 24px;
+        height: 56px;
+        background: var(--bg-surface);
+        border-bottom: 1px solid var(--bg-border);
+        position: sticky;
+        top: 0;
+        z-index: 100;
+      }
 
-    .header-left {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
 
-    .logo {
-      font-size: 17px;
-      font-weight: 700;
-      color: var(--text-primary);
-      letter-spacing: -0.02em;
-      cursor: pointer;
-      user-select: none;
-    }
+      .logo {
+        font-size: 17px;
+        font-weight: 700;
+        color: var(--text-primary);
+        letter-spacing: -0.02em;
+        cursor: pointer;
+        user-select: none;
+      }
 
-    .logo span {
-      color: var(--accent);
-    }
+      .logo span {
+        color: var(--accent);
+      }
 
-    .header-right {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
 
-    .ws-indicator {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      color: var(--text-secondary);
-    }
+      .ws-indicator {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
 
-    .ws-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      transition: background 0.3s;
-    }
+      .ws-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        transition: background 0.3s;
+      }
 
-    .ws-dot.connected {
-      background: var(--state-running);
-      box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
-    }
+      .ws-dot.connected {
+        background: var(--state-running);
+        box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+      }
 
-    .ws-dot.disconnected {
-      background: var(--state-error);
-    }
+      .ws-dot.disconnected {
+        background: var(--state-error);
+      }
 
-    main {
-      min-height: calc(100vh - 56px - 48px);
-    }
+      main {
+        min-height: calc(100vh - 56px - 48px);
+      }
 
-    footer {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 8px;
-      padding: 0 24px;
-      height: 48px;
-      background: var(--bg-surface);
-      border-top: 1px solid var(--bg-border);
-      font-size: 12px;
-      color: var(--text-muted);
-    }
+      footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 0 24px;
+        height: 48px;
+        background: var(--bg-surface);
+        border-top: 1px solid var(--bg-border);
+        font-size: 12px;
+        color: var(--text-muted);
+      }
 
-    .footer-left {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
+      .footer-left {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
 
-    .footer-right {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
+      .footer-right {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
 
-    .footer-brand {
-      font-weight: 600;
-      color: var(--state-stopped);
-      letter-spacing: -0.01em;
-    }
+      .footer-brand {
+        font-weight: 600;
+        color: var(--state-stopped);
+        letter-spacing: -0.01em;
+      }
 
-    .footer-brand span {
-      color: var(--accent);
-    }
+      .footer-brand span {
+        color: var(--accent);
+      }
 
-    .footer-version {
-      background: var(--accent-subtle);
-      color: var(--accent);
-      border: 1px solid var(--accent-border);
-      border-radius: var(--radius-sm);
-      padding: 1px 7px;
-      font-size: 11px;
-      font-weight: 600;
-      font-family: var(--font-mono);
-    }
+      .footer-version {
+        background: var(--accent-subtle);
+        color: var(--accent);
+        border: 1px solid var(--accent-border);
+        border-radius: var(--radius-sm);
+        padding: 1px 7px;
+        font-size: 11px;
+        font-weight: 600;
+        font-family: var(--font-mono);
+      }
 
-    .footer-sep {
-      color: var(--bg-border);
-    }
+      .footer-sep {
+        color: var(--bg-border);
+      }
 
-    .footer-link {
-      color: var(--text-muted);
-      text-decoration: none;
-      transition: color 0.15s;
-    }
+      .footer-link {
+        color: var(--text-muted);
+        text-decoration: none;
+        transition: color 0.15s;
+      }
 
-    .footer-link:hover {
-      color: var(--text-secondary);
-    }
+      .footer-link:hover {
+        color: var(--text-secondary);
+      }
 
-    .lang-trigger {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      background: none;
-      border: 1px solid var(--bg-border);
-      border-radius: 5px;
-      color: var(--state-stopped);
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-      padding: 3px 8px;
-      letter-spacing: 0.04em;
-      transition: border-color 0.15s, color 0.15s;
-      font-family: inherit;
-      position: relative;
-    }
+      .lang-trigger {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        background: none;
+        border: 1px solid var(--bg-border);
+        border-radius: 5px;
+        color: var(--state-stopped);
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 3px 8px;
+        letter-spacing: 0.04em;
+        transition:
+          border-color 0.15s,
+          color 0.15s;
+        font-family: inherit;
+        position: relative;
+      }
 
-    .lang-trigger:hover {
-      border-color: var(--accent-border);
-      color: var(--text-secondary);
-    }
+      .lang-trigger:hover {
+        border-color: var(--accent-border);
+        color: var(--text-secondary);
+      }
 
-    .lang-trigger .chevron {
-      font-size: 8px;
-      opacity: 0.6;
-      transition: transform 0.15s;
-    }
+      .lang-trigger .chevron {
+        font-size: 8px;
+        opacity: 0.6;
+        transition: transform 0.15s;
+      }
 
-    .lang-trigger.open .chevron {
-      transform: rotate(180deg);
-    }
+      .lang-trigger.open .chevron {
+        transform: rotate(180deg);
+      }
 
-    .lang-dropdown {
-      position: absolute;
-      bottom: calc(100% + 8px);
-      right: 0;
-      background: var(--bg-surface);
-      border: 1px solid var(--bg-border);
-      border-radius: var(--radius-md);
-      box-shadow: 0 -8px 32px rgba(0,0,0,0.5);
-      min-width: 160px;
-      overflow: hidden;
-      z-index: 200;
-    }
+      .lang-dropdown {
+        position: absolute;
+        bottom: calc(100% + 8px);
+        right: 0;
+        background: var(--bg-surface);
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-md);
+        box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
+        min-width: 160px;
+        overflow: hidden;
+        z-index: 200;
+      }
 
-    .lang-option {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      width: 100%;
-      padding: 9px 14px;
-      background: none;
-      border: none;
-      color: var(--text-secondary);
-      font-size: 13px;
-      cursor: pointer;
-      text-align: left;
-      transition: background 0.1s, color 0.1s;
-      font-family: inherit;
-      white-space: nowrap;
-    }
+      .lang-option {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 9px 14px;
+        background: none;
+        border: none;
+        color: var(--text-secondary);
+        font-size: 13px;
+        cursor: pointer;
+        text-align: left;
+        transition:
+          background 0.1s,
+          color 0.1s;
+        font-family: inherit;
+        white-space: nowrap;
+      }
 
-    .lang-option:hover {
-      background: var(--bg-border);
-      color: var(--text-primary);
-    }
+      .lang-option:hover {
+        background: var(--bg-border);
+        color: var(--text-primary);
+      }
 
-    .lang-option.active {
-      color: var(--accent);
-    }
+      .lang-option.active {
+        color: var(--accent);
+      }
 
-    .lang-option .check {
-      margin-left: auto;
-      font-size: 11px;
-      opacity: 0;
-    }
+      .lang-option .check {
+        margin-left: auto;
+        font-size: 11px;
+        opacity: 0;
+      }
 
-    .lang-option.active .check {
-      opacity: 1;
-    }
+      .lang-option.active .check {
+        opacity: 1;
+      }
 
-    .lang-option .flag {
-      font-size: 15px;
-      line-height: 1;
-    }
+      .lang-option .flag {
+        font-size: 15px;
+        line-height: 1;
+      }
 
-    .lang-wrapper {
-      position: relative;
-    }
+      .lang-wrapper {
+        position: relative;
+      }
 
-    .nav-tabs {
-      display: flex;
-      align-items: center;
-      gap: 2px;
-      margin-left: 8px;
-    }
+      .nav-tabs {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        margin-left: 8px;
+      }
 
-    .nav-tab {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: none;
-      border: none;
-      border-bottom: 2px solid transparent;
-      color: var(--text-secondary);
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      padding: 0 10px;
-      height: 56px;
-      transition: color 0.15s, border-color 0.15s;
-      font-family: inherit;
-      white-space: nowrap;
-    }
+      .nav-tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: var(--text-secondary);
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        padding: 0 10px;
+        height: 56px;
+        transition:
+          color 0.15s,
+          border-color 0.15s;
+        font-family: inherit;
+        white-space: nowrap;
+      }
 
-    .nav-tab:hover {
-      color: var(--text-primary);
-    }
+      .nav-tab:hover {
+        color: var(--text-primary);
+      }
 
-    .nav-tab.active {
-      color: var(--accent);
-      border-bottom-color: var(--accent);
-      font-weight: 600;
-    }
+      .nav-tab.active {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+        font-weight: 600;
+      }
 
-    .nav-badge {
-      display: inline-flex;
-      align-items: center;
-      background: var(--accent-subtle);
-      color: var(--accent);
-      border: 1px solid var(--accent-border);
-      border-radius: 20px;
-      padding: 1px 7px;
-      font-size: 11px;
-      font-weight: 600;
-      line-height: 1.4;
-    }
+      .nav-badge {
+        display: inline-flex;
+        align-items: center;
+        background: var(--accent-subtle);
+        color: var(--accent);
+        border: 1px solid var(--accent-border);
+        border-radius: 20px;
+        padding: 1px 7px;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.4;
+      }
 
-    .btn-logout {
-      display: inline-flex;
-      align-items: center;
-      background: none;
-      border: 1px solid var(--bg-border);
-      border-radius: 5px;
-      color: var(--text-muted);
-      font-size: 12px;
-      font-weight: 500;
-      cursor: pointer;
-      padding: 4px 10px;
-      font-family: inherit;
-      transition: border-color 0.15s, color 0.15s;
-    }
+      .btn-logout {
+        display: inline-flex;
+        align-items: center;
+        background: none;
+        border: 1px solid var(--bg-border);
+        border-radius: 5px;
+        color: var(--text-muted);
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        padding: 4px 10px;
+        font-family: inherit;
+        transition:
+          border-color 0.15s,
+          color 0.15s;
+      }
 
-    .btn-logout:hover {
-      border-color: var(--state-error);
-      color: var(--state-error);
-    }
+      .btn-logout:hover {
+        border-color: var(--state-error);
+        color: var(--state-error);
+      }
 
-    .auth-checking {
-      display: block;
-      min-height: 100vh;
-      background: var(--bg-base);
-    }
-
-  `];
+      .auth-checking {
+        display: block;
+        min-height: 100vh;
+        background: var(--bg-base);
+      }
+    `,
+  ];
 
   @state() private _authenticated = false;
   @state() private _authChecking = true;
@@ -378,11 +400,16 @@ export class CpApp extends LitElement {
   /** Convert a Route to a hash string (without the leading #). */
   private static _routeToHash(route: Route): string {
     switch (route.view) {
-      case "cluster":            return "/";
-      case "agents-builder":     return `/instances/${route.slug}/builder`;
-      case "instance-settings":  return `/instances/${route.slug}/settings`;
-      case "blueprints":         return "/blueprints";
-      case "blueprint-builder":  return `/blueprints/${route.blueprintId}/builder`;
+      case "cluster":
+        return "/";
+      case "agents-builder":
+        return `/instances/${route.slug}/builder`;
+      case "instance-settings":
+        return `/instances/${route.slug}/settings`;
+      case "blueprints":
+        return "/blueprints";
+      case "blueprint-builder":
+        return `/blueprints/${route.blueprintId}/builder`;
     }
   }
 
@@ -402,7 +429,8 @@ export class CpApp extends LitElement {
 
     // /blueprints/:id/builder
     const bpBuilderMatch = path.match(/^blueprints\/(\d+)\/builder$/);
-    if (bpBuilderMatch) return { view: "blueprint-builder", blueprintId: Number(bpBuilderMatch[1]) };
+    if (bpBuilderMatch)
+      return { view: "blueprint-builder", blueprintId: Number(bpBuilderMatch[1]) };
 
     // /blueprints
     if (path === "blueprints") return { view: "blueprints" };
@@ -455,10 +483,16 @@ export class CpApp extends LitElement {
     window.addEventListener("hashchange", this._onHashChange);
     this._connectWs();
     // Pre-fetch blueprint count so the badge is visible from the start
-    void fetchBlueprints().then((bps) => { this._blueprintCount = bps.length; }).catch(() => {});
+    void fetchBlueprints()
+      .then((bps) => {
+        this._blueprintCount = bps.length;
+      })
+      .catch(() => {});
     // Self-update polling — check immediately then every 60s
     void this._pollSelfUpdate();
-    this._selfUpdatePollTimer = setInterval(() => { void this._pollSelfUpdate(); }, CpApp.SELF_UPDATE_POLL_MS);
+    this._selfUpdatePollTimer = setInterval(() => {
+      void this._pollSelfUpdate();
+    }, CpApp.SELF_UPDATE_POLL_MS);
   }
 
   private async _checkAuth(): Promise<void> {
@@ -568,9 +602,7 @@ export class CpApp extends LitElement {
         const msg = JSON.parse(ev.data as string) as WsMessage;
         this._handleWsMessage(msg);
         // Broadcast to child components via window event
-        window.dispatchEvent(
-          new CustomEvent("cp-ws-message", { detail: msg }),
-        );
+        window.dispatchEvent(new CustomEvent("cp-ws-message", { detail: msg }));
       } catch {
         // Ignore malformed messages
       }
@@ -629,9 +661,20 @@ export class CpApp extends LitElement {
   }
 
   private _navigate(e: Event): void {
-    const detail = (e as CustomEvent<{ slug?: string | null; view?: string; blueprintId?: number; section?: SidebarSection }>).detail;
+    const detail = (
+      e as CustomEvent<{
+        slug?: string | null;
+        view?: string;
+        blueprintId?: number;
+        section?: SidebarSection;
+      }>
+    ).detail;
     if (detail.view === "instance-settings" && detail.slug) {
-      this._route = { view: "instance-settings", slug: detail.slug, initialSection: detail.section };
+      this._route = {
+        view: "instance-settings",
+        slug: detail.slug,
+        initialSection: detail.section,
+      };
     } else if (detail.view === "agents-builder" && detail.slug) {
       this._route = { view: "agents-builder", slug: detail.slug };
     } else if (detail.view === "blueprints") {
@@ -673,11 +716,15 @@ export class CpApp extends LitElement {
       this._selfUpdateStatus = data;
       // Si un job est en cours, accelerer le polling pour rafraichir l'etat
       if (data.status === "running") {
-        setTimeout(() => { void this._pollSelfUpdate(); }, 3_000);
+        setTimeout(() => {
+          void this._pollSelfUpdate();
+        }, 3_000);
       }
       // Si le job vient de passer a "done", recharger la page pour charger le nouveau bundle
       if (wasRunning && data.status === "done") {
-        setTimeout(() => { location.reload(); }, 2_000);
+        setTimeout(() => {
+          location.reload();
+        }, 2_000);
       }
     } catch {
       // Silencieux — le serveur peut etre en cours de restart
@@ -770,25 +817,41 @@ export class CpApp extends LitElement {
     return html`
       <header>
         <div class="header-left">
-          <div class="logo" @click=${this._goHome}>
-            Claw<span>Pilot</span>
-          </div>
+          <div class="logo" @click=${this._goHome}>Claw<span>Pilot</span></div>
           <nav class="nav-tabs">
             <button
-              class="nav-tab ${this._route.view === "cluster" || this._route.view === "agents-builder" || this._route.view === "instance-settings" ? "active" : ""}"
-              @click=${() => { this._route = { view: "cluster" }; }}
-            >${msg("Instances", { id: "nav-instances" })}${instanceCount > 0 ? html`<span class="nav-badge">${instanceCount}</span>` : ""}</button>
+              class="nav-tab ${this._route.view === "cluster" ||
+              this._route.view === "agents-builder" ||
+              this._route.view === "instance-settings"
+                ? "active"
+                : ""}"
+              @click=${() => {
+                this._route = { view: "cluster" };
+              }}
+            >
+              ${msg("Instances", { id: "nav-instances" })}${instanceCount > 0
+                ? html`<span class="nav-badge">${instanceCount}</span>`
+                : ""}
+            </button>
             <button
-              class="nav-tab ${this._route.view === "blueprints" || this._route.view === "blueprint-builder" ? "active" : ""}"
-              @click=${() => { this._route = { view: "blueprints" }; }}
-            >${msg("Blueprints", { id: "nav-blueprints" })}${this._blueprintCount !== null && this._blueprintCount > 0 ? html`<span class="nav-badge">${this._blueprintCount}</span>` : ""}</button>
+              class="nav-tab ${this._route.view === "blueprints" ||
+              this._route.view === "blueprint-builder"
+                ? "active"
+                : ""}"
+              @click=${() => {
+                this._route = { view: "blueprints" };
+              }}
+            >
+              ${msg("Blueprints", { id: "nav-blueprints" })}${this._blueprintCount !== null &&
+              this._blueprintCount > 0
+                ? html`<span class="nav-badge">${this._blueprintCount}</span>`
+                : ""}
+            </button>
           </nav>
         </div>
         <div class="header-right">
           <div class="ws-indicator">
-            <span
-              class="ws-dot ${this._wsConnected ? "connected" : "disconnected"}"
-            ></span>
+            <span class="ws-dot ${this._wsConnected ? "connected" : "disconnected"}"></span>
             ${this._wsConnected
               ? msg("Live", { id: "ws-live" })
               : msg("Offline", { id: "ws-offline" })}
@@ -814,42 +877,58 @@ export class CpApp extends LitElement {
             href="https://github.com/swoelffel/claw-pilot"
             target="_blank"
             rel="noopener"
-          >${msg("GitHub", { id: "footer-github" })}</a>
+            >${msg("GitHub", { id: "footer-github" })}</a
+          >
           <span class="footer-sep">·</span>
           <a
             class="footer-link"
             href="https://github.com/swoelffel/claw-pilot/issues"
             target="_blank"
             rel="noopener"
-          >${msg("Issues", { id: "footer-issues" })}</a>
+            >${msg("Issues", { id: "footer-issues" })}</a
+          >
         </div>
         <div class="footer-right">
           <div class="lang-wrapper" ${ref(this._langWrapperRef)}>
             <button
               class="lang-trigger ${this._langOpen ? "open" : ""}"
               aria-label="Change language"
-              @click=${(e: Event) => { e.stopPropagation(); this._langOpen = !this._langOpen; }}
+              @click=${(e: Event) => {
+                e.stopPropagation();
+                this._langOpen = !this._langOpen;
+              }}
             >
-              🌐 ${allLocales.find(l => l.code === this._locale)?.label ?? "EN"}
+              🌐 ${allLocales.find((l) => l.code === this._locale)?.label ?? "EN"}
               <span class="chevron">▾</span>
             </button>
-            ${this._langOpen ? html`
-              <div class="lang-dropdown">
-                ${allLocales.map(l => html`
-                  <button
-                    class="lang-option ${this._locale === l.code ? "active" : ""}"
-                    @click=${(e: Event) => { e.stopPropagation(); this._switchLocale(l.code); this._langOpen = false; }}
-                  >
-                    <span class="flag">${l.flag}</span>
-                    ${l.name}
-                    <span class="check">✓</span>
-                  </button>
-                `)}
-              </div>
-            ` : ""}
+            ${this._langOpen
+              ? html`
+                  <div class="lang-dropdown">
+                    ${allLocales.map(
+                      (l) => html`
+                        <button
+                          class="lang-option ${this._locale === l.code ? "active" : ""}"
+                          @click=${(e: Event) => {
+                            e.stopPropagation();
+                            this._switchLocale(l.code);
+                            this._langOpen = false;
+                          }}
+                        >
+                          <span class="flag">${l.flag}</span>
+                          ${l.name}
+                          <span class="check">✓</span>
+                        </button>
+                      `,
+                    )}
+                  </div>
+                `
+              : ""}
           </div>
           <span class="footer-sep">·</span>
-          <span>© ${new Date().getFullYear()} SWO — ${msg("MIT License", { id: "footer-license" })}</span>
+          <span
+            >© ${new Date().getFullYear()} SWO —
+            ${msg("MIT License", { id: "footer-license" })}</span
+          >
         </div>
       </footer>
     `;

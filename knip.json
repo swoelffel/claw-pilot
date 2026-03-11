@@ -1,0 +1,15 @@
+{
+  "entry": ["src/index.ts"],
+  "project": ["src/**/*.ts"],
+  "ignore": ["src/**/__tests__/**"],
+  "ignoreDependencies": [
+    "@lit/localize",
+    "dompurify",
+    "marked",
+    "ora",
+    "@types/dompurify",
+    "lit"
+  ],
+  "ignoreExportsUsedInFile": true,
+  "tags": ["-public"]
+}

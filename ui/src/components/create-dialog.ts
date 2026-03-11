@@ -1,241 +1,263 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { AgentDefinition, Blueprint, CreateInstanceRequest, ProviderInfo, ProvidersResponse } from "../types.js";
+import type {
+  AgentDefinition,
+  Blueprint,
+  CreateInstanceRequest,
+  ProviderInfo,
+  ProvidersResponse,
+} from "../types.js";
 import { fetchNextPort, createInstance, fetchProviders, fetchBlueprints } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { DialogMixin } from "../lib/dialog-mixin.js";
 import { tokenStyles } from "../styles/tokens.js";
-import { sectionLabelStyles, spinnerStyles, errorBannerStyles, buttonStyles } from "../styles/shared.js";
+import {
+  sectionLabelStyles,
+  spinnerStyles,
+  errorBannerStyles,
+  buttonStyles,
+} from "../styles/shared.js";
 
 @localized()
 @customElement("cp-create-dialog")
 export class CreateDialog extends DialogMixin(LitElement) {
-  static styles = [tokenStyles, sectionLabelStyles, spinnerStyles, errorBannerStyles, buttonStyles, css`
-    :host {
-      display: block;
-    }
+  static override styles = [
+    tokenStyles,
+    sectionLabelStyles,
+    spinnerStyles,
+    errorBannerStyles,
+    buttonStyles,
+    css`
+      :host {
+        display: block;
+      }
 
-    /* Overlay backdrop */
-    .overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.7);
-      backdrop-filter: blur(4px);
-      z-index: 200;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-    }
+      /* Overlay backdrop */
+      .overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(4px);
+        z-index: 200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
 
-    /* Dialog panel */
-    .dialog {
-      background: var(--bg-surface);
-      border: 1px solid var(--bg-border);
-      border-radius: var(--radius-lg);
-      width: 100%;
-      max-width: 560px;
-      max-height: 90vh;
-      overflow-y: auto;
-      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
-    }
+      /* Dialog panel */
+      .dialog {
+        background: var(--bg-surface);
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-lg);
+        width: 100%;
+        max-width: 560px;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+      }
 
-    .dialog-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 20px 24px 16px;
-      border-bottom: 1px solid var(--bg-border);
-    }
+      .dialog-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 20px 24px 16px;
+        border-bottom: 1px solid var(--bg-border);
+      }
 
-    .dialog-title {
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--text-primary);
-      letter-spacing: -0.01em;
-    }
+      .dialog-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text-primary);
+        letter-spacing: -0.01em;
+      }
 
-    .close-btn {
-      background: none;
-      border: none;
-      color: var(--state-stopped);
-      cursor: pointer;
-      font-size: 20px;
-      line-height: 1;
-      padding: 4px;
-      border-radius: var(--radius-sm);
-      transition: color 0.15s;
-    }
-    .close-btn:hover { color: var(--text-primary); }
+      .close-btn {
+        background: none;
+        border: none;
+        color: var(--state-stopped);
+        cursor: pointer;
+        font-size: 20px;
+        line-height: 1;
+        padding: 4px;
+        border-radius: var(--radius-sm);
+        transition: color 0.15s;
+      }
+      .close-btn:hover {
+        color: var(--text-primary);
+      }
 
-    .dialog-body {
-      padding: 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
+      .dialog-body {
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
 
-    /* Section grouping */
-    .section {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
+      /* Section grouping */
+      .section {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
 
-    /* Form fields */
-    .field {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
+      /* Form fields */
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
 
-    .field-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
+      .field-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
 
-    label {
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--text-secondary);
-    }
+      label {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-secondary);
+      }
 
-    input[type="text"],
-    input[type="number"],
-    input[type="password"],
-    select {
-      background: var(--bg-base);
-      border: 1px solid var(--bg-border);
-      border-radius: var(--radius-md);
-      color: var(--text-primary);
-      font-size: 14px;
-      padding: 8px 12px;
-      width: 100%;
-      box-sizing: border-box;
-      outline: none;
-      transition: border-color 0.15s;
-      font-family: inherit;
-    }
-    input[type="text"]:focus,
-    input[type="number"]:focus,
-    input[type="password"]:focus,
-    select:focus {
-      border-color: var(--accent);
-    }
-    input.invalid {
-      border-color: var(--state-error);
-    }
+      input[type="text"],
+      input[type="number"],
+      input[type="password"],
+      select {
+        background: var(--bg-base);
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-md);
+        color: var(--text-primary);
+        font-size: 14px;
+        padding: 8px 12px;
+        width: 100%;
+        box-sizing: border-box;
+        outline: none;
+        transition: border-color 0.15s;
+        font-family: inherit;
+      }
+      input[type="text"]:focus,
+      input[type="number"]:focus,
+      input[type="password"]:focus,
+      select:focus {
+        border-color: var(--accent);
+      }
+      input.invalid {
+        border-color: var(--state-error);
+      }
 
-    .field-hint {
-      font-size: 11px;
-      color: var(--text-muted);
-    }
-    .field-error {
-      font-size: 11px;
-      color: var(--state-error);
-    }
+      .field-hint {
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+      .field-error {
+        font-size: 11px;
+        color: var(--state-error);
+      }
 
-    /* Agents section */
-    .agent-mode-toggle {
-      display: flex;
-      gap: 8px;
-    }
+      /* Agents section */
+      .agent-mode-toggle {
+        display: flex;
+        gap: 8px;
+      }
 
-    .toggle-btn {
-      flex: 1;
-      padding: 8px 12px;
-      border-radius: var(--radius-md);
-      border: 1px solid var(--bg-border);
-      background: var(--bg-base);
-      color: var(--state-stopped);
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s;
-      text-align: center;
-    }
-    .toggle-btn.active {
-      background: var(--accent-subtle);
-      border-color: var(--accent-border);
-      color: var(--accent);
-    }
+      .toggle-btn {
+        flex: 1;
+        padding: 8px 12px;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--bg-border);
+        background: var(--bg-base);
+        color: var(--state-stopped);
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s;
+        text-align: center;
+      }
+      .toggle-btn.active {
+        background: var(--accent-subtle);
+        border-color: var(--accent-border);
+        color: var(--accent);
+      }
 
-    .agents-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
+      .agents-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
 
-    .agent-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr auto;
-      gap: 8px;
-      align-items: center;
-    }
+      .agent-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr auto;
+        gap: 8px;
+        align-items: center;
+      }
 
-    .agent-remove {
-      background: none;
-      border: none;
-      color: rgba(239, 68, 68, 0.5);
-      cursor: pointer;
-      font-size: 16px;
-      padding: 4px 6px;
-      border-radius: var(--radius-sm);
-      transition: color 0.15s;
-    }
-    .agent-remove:hover { color: var(--state-error); }
+      .agent-remove {
+        background: none;
+        border: none;
+        color: rgba(239, 68, 68, 0.5);
+        cursor: pointer;
+        font-size: 16px;
+        padding: 4px 6px;
+        border-radius: var(--radius-sm);
+        transition: color 0.15s;
+      }
+      .agent-remove:hover {
+        color: var(--state-error);
+      }
 
-    .add-agent-btn {
-      background: none;
-      border: 1px dashed var(--bg-border);
-      border-radius: var(--radius-md);
-      color: var(--accent);
-      font-size: 13px;
-      padding: 8px;
-      cursor: pointer;
-      transition: all 0.15s;
-      width: 100%;
-    }
-    .add-agent-btn:hover {
-      border-color: var(--accent-border);
-      background: var(--accent-subtle);
-    }
+      .add-agent-btn {
+        background: none;
+        border: 1px dashed var(--bg-border);
+        border-radius: var(--radius-md);
+        color: var(--accent);
+        font-size: 13px;
+        padding: 8px;
+        cursor: pointer;
+        transition: all 0.15s;
+        width: 100%;
+      }
+      .add-agent-btn:hover {
+        border-color: var(--accent-border);
+        background: var(--accent-subtle);
+      }
 
-    /* Divider */
-    .divider {
-      border: none;
-      border-top: 1px solid var(--bg-border);
-      margin: 0;
-    }
+      /* Divider */
+      .divider {
+        border: none;
+        border-top: 1px solid var(--bg-border);
+        margin: 0;
+      }
 
-    /* Spinner overlay */
-    .spinner-overlay {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 16px;
-      padding: 48px 24px;
-      color: var(--text-secondary);
-      font-size: 14px;
-    }
+      /* Spinner overlay */
+      .spinner-overlay {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 48px 24px;
+        color: var(--text-secondary);
+        font-size: 14px;
+      }
 
-    .spinner-msg {
-      color: var(--state-stopped);
-      font-size: 13px;
-    }
+      .spinner-msg {
+        color: var(--state-stopped);
+        font-size: 13px;
+      }
 
-    /* Footer actions */
-    .dialog-footer {
-      display: flex;
-      justify-content: flex-end;
-      gap: 10px;
-      padding: 16px 24px 20px;
-      border-top: 1px solid var(--bg-border);
-    }
-  `];
+      /* Footer actions */
+      .dialog-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 16px 24px 20px;
+        border-top: 1px solid var(--bg-border);
+      }
+    `,
+  ];
 
   // --- Form state ---
   @state() private _slug = "";
@@ -294,13 +316,15 @@ export class CreateDialog extends DialogMixin(LitElement) {
       this._model = defaultProvider?.defaultModel ?? defaultProvider?.models[0] ?? "";
     } catch (err) {
       this._providersError = userMessage(err);
-      this._providers = [{
-        id: "anthropic",
-        label: "Anthropic",
-        requiresKey: true,
-        defaultModel: "anthropic/claude-sonnet-4-6",
-        models: ["anthropic/claude-sonnet-4-6"],
-      }];
+      this._providers = [
+        {
+          id: "anthropic",
+          label: "Anthropic",
+          requiresKey: true,
+          defaultModel: "anthropic/claude-sonnet-4-6",
+          models: ["anthropic/claude-sonnet-4-6"],
+        },
+      ];
       this._selectedProvider = this._providers[0]!;
       this._model = "anthropic/claude-sonnet-4-6";
     } finally {
@@ -335,8 +359,10 @@ export class CreateDialog extends DialogMixin(LitElement) {
 
   private _validateSlug(value: string): string {
     if (!value) return msg("Slug is required", { id: "error-slug-required" });
-    if (!/^[a-z][a-z0-9-]*$/.test(value)) return msg("Lowercase letters, numbers, hyphens only", { id: "error-slug-format" });
-    if (value.length < 2 || value.length > 30) return msg("Must be 2-30 characters", { id: "error-slug-length" });
+    if (!/^[a-z][a-z0-9-]*$/.test(value))
+      return msg("Lowercase letters, numbers, hyphens only", { id: "error-slug-format" });
+    if (value.length < 2 || value.length > 30)
+      return msg("Must be 2-30 characters", { id: "error-slug-length" });
     return "";
   }
 
@@ -397,12 +423,23 @@ export class CreateDialog extends DialogMixin(LitElement) {
     return html`
       <div class="spinner-overlay">
         <div class="spinner"></div>
-        <div>${msg("Provisioning instance", { id: "spinner-provisioning" })} <strong>${this._slug}</strong>...</div>
-        ${this._selectedBlueprintId ? html`
-          <div class="spinner-msg">${msg("Deploying blueprint agents...", { id: "cd-deploying" })}</div>
-        ` : html`
-          <div class="spinner-msg">${msg("This may take 20-30 seconds (systemd start + health check)", { id: "spinner-wait" })}</div>
-        `}
+        <div>
+          ${msg("Provisioning instance", { id: "spinner-provisioning" })}
+          <strong>${this._slug}</strong>...
+        </div>
+        ${this._selectedBlueprintId
+          ? html`
+              <div class="spinner-msg">
+                ${msg("Deploying blueprint agents...", { id: "cd-deploying" })}
+              </div>
+            `
+          : html`
+              <div class="spinner-msg">
+                ${msg("This may take 20-30 seconds (systemd start + health check)", {
+                  id: "spinner-wait",
+                })}
+              </div>
+            `}
       </div>
     `;
   }
@@ -412,7 +449,9 @@ export class CreateDialog extends DialogMixin(LitElement) {
       return html`
         <div class="section">
           <div class="section-label">${msg("Provider", { id: "section-provider" })}</div>
-          <span class="field-hint">${msg("Loading providers...", { id: "hint-loading-providers" })}</span>
+          <span class="field-hint"
+            >${msg("Loading providers...", { id: "hint-loading-providers" })}</span
+          >
         </div>
       `;
     }
@@ -430,9 +469,11 @@ export class CreateDialog extends DialogMixin(LitElement) {
         <div class="field">
           <label for="provider">${msg("AI Provider *", { id: "label-ai-provider" })}</label>
           <select id="provider" @change=${this._onProviderChange}>
-            ${this._providers.map((p) => html`
-              <option value=${p.id} ?selected=${selected?.id === p.id}>${p.label}</option>
-            `)}
+            ${this._providers.map(
+              (p) => html`
+                <option value=${p.id} ?selected=${selected?.id === p.id}>${p.label}</option>
+              `,
+            )}
           </select>
         </div>
 
@@ -441,11 +482,15 @@ export class CreateDialog extends DialogMixin(LitElement) {
           <select
             id="model"
             .value=${this._model}
-            @change=${(e: Event) => { this._model = (e.target as HTMLSelectElement).value; }}
+            @change=${(e: Event) => {
+              this._model = (e.target as HTMLSelectElement).value;
+            }}
           >
-            ${(selected?.models ?? []).map((m) => html`
-              <option value=${m} ?selected=${this._model === m}>${m.split("/")[1] ?? m}</option>
-            `)}
+            ${(selected?.models ?? []).map(
+              (m) => html`
+                <option value=${m} ?selected=${this._model === m}>${m.split("/")[1] ?? m}</option>
+              `,
+            )}
           </select>
         </div>
 
@@ -458,16 +503,24 @@ export class CreateDialog extends DialogMixin(LitElement) {
                   type="password"
                   placeholder=${this._getApiKeyPlaceholder(selected.id)}
                   .value=${this._apiKey}
-                  @input=${(e: Event) => { this._apiKey = (e.target as HTMLInputElement).value; }}
+                  @input=${(e: Event) => {
+                    this._apiKey = (e.target as HTMLInputElement).value;
+                  }}
                 />
-                <span class="field-hint">${msg("Your API key", { id: "hint-api-key" })} (${selected.label})</span>
+                <span class="field-hint"
+                  >${msg("Your API key", { id: "hint-api-key" })} (${selected.label})</span
+                >
               </div>
             `
           : html`
               <span class="field-hint">
                 ${selected?.id === "opencode"
-                  ? msg("Uses the OpenCode runtime — no API key required", { id: "hint-opencode-no-key" })
-                  : msg("Credentials will be reused from the existing instance", { id: "hint-reuse-credentials" })}
+                  ? msg("Uses the OpenCode runtime — no API key required", {
+                      id: "hint-opencode-no-key",
+                    })
+                  : msg("Credentials will be reused from the existing instance", {
+                      id: "hint-reuse-credentials",
+                    })}
               </span>
             `}
       </div>
@@ -476,11 +529,11 @@ export class CreateDialog extends DialogMixin(LitElement) {
 
   private _getApiKeyPlaceholder(providerId: string): string {
     const placeholders: Record<string, string> = {
-      anthropic:  "sk-ant-...",
-      openai:     "sk-...",
+      anthropic: "sk-ant-...",
+      openai: "sk-...",
       openrouter: "sk-or-...",
-      gemini:     "AIza...",
-      mistral:    "...",
+      gemini: "AIza...",
+      mistral: "...",
     };
     return placeholders[providerId] ?? "API key";
   }
@@ -488,7 +541,6 @@ export class CreateDialog extends DialogMixin(LitElement) {
   private _renderForm() {
     return html`
       <div class="dialog-body">
-
         <!-- Identity -->
         <div class="section">
           <div class="section-label">${msg("Identity", { id: "section-identity" })}</div>
@@ -505,7 +557,9 @@ export class CreateDialog extends DialogMixin(LitElement) {
               />
               ${this._slugError
                 ? html`<span class="field-error">${this._slugError}</span>`
-                : html`<span class="field-hint">${msg("Lowercase, 2-30 chars", { id: "hint-slug" })}</span>`}
+                : html`<span class="field-hint"
+                    >${msg("Lowercase, 2-30 chars", { id: "hint-slug" })}</span
+                  >`}
             </div>
             <div class="field">
               <label for="display-name">${msg("Display name", { id: "label-display-name" })}</label>
@@ -514,7 +568,9 @@ export class CreateDialog extends DialogMixin(LitElement) {
                 type="text"
                 placeholder=${msg("e.g. Dev Team", { id: "placeholder-display-name" })}
                 .value=${this._displayName}
-                @input=${(e: Event) => { this._displayName = (e.target as HTMLInputElement).value; }}
+                @input=${(e: Event) => {
+                  this._displayName = (e.target as HTMLInputElement).value;
+                }}
               />
             </div>
           </div>
@@ -534,12 +590,18 @@ export class CreateDialog extends DialogMixin(LitElement) {
               max="65535"
               .value=${this._portLoading ? "" : String(this._port)}
               ?disabled=${this._portLoading}
-              placeholder=${this._portLoading ? msg("Loading...", { id: "placeholder-loading" }) : ""}
-              @input=${(e: Event) => { this._port = parseInt((e.target as HTMLInputElement).value) || 0; }}
+              placeholder=${this._portLoading
+                ? msg("Loading...", { id: "placeholder-loading" })
+                : ""}
+              @input=${(e: Event) => {
+                this._port = parseInt((e.target as HTMLInputElement).value) || 0;
+              }}
             />
             ${this._portError
               ? html`<span class="field-error">${this._portError}</span>`
-              : html`<span class="field-hint">${msg("Auto-suggested from free range", { id: "hint-port" })}</span>`}
+              : html`<span class="field-hint"
+                  >${msg("Auto-suggested from free range", { id: "hint-port" })}</span
+                >`}
           </div>
         </div>
 
@@ -563,40 +625,55 @@ export class CreateDialog extends DialogMixin(LitElement) {
               }}
             >
               <option value="">${msg("Default (Main only)", { id: "cd-blueprint-none" })}</option>
-              ${this._blueprints.map(bp => html`
-                <option value="${bp.id}">
-                  ${bp.icon ? `${bp.icon} ` : ""}${bp.name}${bp.agent_count ? ` (${bp.agent_count} agents)` : ""}
-                </option>
-              `)}
+              ${this._blueprints.map(
+                (bp) => html`
+                  <option value="${bp.id}">
+                    ${bp.icon ? `${bp.icon} ` : ""}${bp.name}${bp.agent_count
+                      ? ` (${bp.agent_count} agents)`
+                      : ""}
+                  </option>
+                `,
+              )}
             </select>
-            <span class="field-hint">${msg("Optionally deploy a team of agents", { id: "cd-blueprint-hint" })}</span>
+            <span class="field-hint"
+              >${msg("Optionally deploy a team of agents", { id: "cd-blueprint-hint" })}</span
+            >
           </div>
         </div>
 
-        ${this._submitError
-          ? html`<div class="error-banner">${this._submitError}</div>`
-          : ""}
-
+        ${this._submitError ? html`<div class="error-banner">${this._submitError}</div>` : ""}
       </div>
 
       <div class="dialog-footer">
-        <button class="btn btn-ghost" @click=${this._close}>${msg("Cancel", { id: "btn-cancel-dialog" })}</button>
-        <button
-          class="btn btn-primary"
-          ?disabled=${!this._isFormValid()}
-          @click=${this._submit}
-        >${msg("Create Instance", { id: "btn-create-instance" })}</button>
+        <button class="btn btn-ghost" @click=${this._close}>
+          ${msg("Cancel", { id: "btn-cancel-dialog" })}
+        </button>
+        <button class="btn btn-primary" ?disabled=${!this._isFormValid()} @click=${this._submit}>
+          ${msg("Create Instance", { id: "btn-create-instance" })}
+        </button>
       </div>
     `;
   }
 
   override render() {
     return html`
-      <div class="overlay" @click=${(e: Event) => { if (e.target === e.currentTarget) this._close(); }}>
+      <div
+        class="overlay"
+        @click=${(e: Event) => {
+          if (e.target === e.currentTarget) this._close();
+        }}
+      >
         <div class="dialog">
           <div class="dialog-header">
             <span class="dialog-title">${msg("New Instance", { id: "dialog-title" })}</span>
-            <button class="close-btn" aria-label="Fermer" @click=${this._close} ?disabled=${this._submitting}>✕</button>
+            <button
+              class="close-btn"
+              aria-label="Fermer"
+              @click=${this._close}
+              ?disabled=${this._submitting}
+            >
+              ✕
+            </button>
           </div>
           ${this._submitting ? this._renderSpinner() : this._renderForm()}
         </div>

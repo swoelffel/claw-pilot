@@ -75,7 +75,12 @@ export function registerDiscoverRoutes(app: Hono, deps: RouteDeps): void {
       return c.json({ found });
     } catch (err) {
       logger.error(`[discover] scan error: ${err instanceof Error ? err.message : String(err)}`);
-      return apiError(c, 500, "DISCOVER_FAILED", err instanceof Error ? err.message : "Discovery failed");
+      return apiError(
+        c,
+        500,
+        "DISCOVER_FAILED",
+        err instanceof Error ? err.message : "Discovery failed",
+      );
     }
   });
 
@@ -90,7 +95,12 @@ export function registerDiscoverRoutes(app: Hono, deps: RouteDeps): void {
       const raw = await c.req.json();
       const parsed = AdoptBodySchema.safeParse(raw);
       if (!parsed.success) {
-        return apiError(c, 400, "INVALID_BODY", `Invalid body: ${parsed.error.issues.map((i) => i.message).join("; ")}`);
+        return apiError(
+          c,
+          400,
+          "INVALID_BODY",
+          `Invalid body: ${parsed.error.issues.map((i) => i.message).join("; ")}`,
+        );
       }
       body = parsed.data;
     } catch {
@@ -145,8 +155,15 @@ export function registerDiscoverRoutes(app: Hono, deps: RouteDeps): void {
 
       return c.json({ adopted, errors });
     } catch (err) {
-      logger.error(`[discover] adopt scan error: ${err instanceof Error ? err.message : String(err)}`);
-      return apiError(c, 500, "DISCOVER_FAILED", err instanceof Error ? err.message : "Discovery failed");
+      logger.error(
+        `[discover] adopt scan error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return apiError(
+        c,
+        500,
+        "DISCOVER_FAILED",
+        err instanceof Error ? err.message : "Discovery failed",
+      );
     }
   });
 }

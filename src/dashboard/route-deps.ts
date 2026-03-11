@@ -1,5 +1,6 @@
 // src/dashboard/route-deps.ts
 import type { Context } from "hono";
+import type Database from "better-sqlite3";
 import type { Registry } from "../core/registry.js";
 import type { ServerConnection } from "../server/connection.js";
 import type { HealthChecker } from "../core/health.js";
@@ -23,6 +24,10 @@ export interface RouteDeps {
   tokenCache: TokenCache;
   xdgRuntimeDir: string;
   sessionStore: SessionStore;
+  /** Timestamp (ms) when the dashboard server started — used for uptime calculation. */
+  startedAt: number;
+  /** SQLite database handle — used for DB size reporting in /api/health. */
+  db: Database.Database;
 }
 
 // Structured error helper — all API error responses go through this function.

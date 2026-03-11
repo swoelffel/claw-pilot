@@ -1,4 +1,5 @@
 // src/core/config-generator.ts
+import { PROVIDER_BASE_URLS } from "../lib/providers.js";
 
 export interface AgentDefinition {
   id: string;
@@ -14,8 +15,8 @@ export interface WizardAnswers {
   port: number;
   agents: AgentDefinition[];
   defaultModel: string;
-  provider: string;   // e.g. "anthropic" | "openai" | "openrouter" | "google" | "mistral" | "xai" | "opencode"
-  apiKey: string;     // literal key, "reuse", or "" for opencode
+  provider: string; // e.g. "anthropic" | "openai" | "openrouter" | "google" | "mistral" | "xai" | "opencode"
+  apiKey: string; // literal key, "reuse", or "" for opencode
   telegram: {
     enabled: boolean;
     botToken?: string;
@@ -28,16 +29,10 @@ export interface WizardAnswers {
   };
 }
 
-export const PROVIDER_ENV_VARS: Record<string, string> = {
-  anthropic:  "ANTHROPIC_API_KEY",
-  openai:     "OPENAI_API_KEY",
-  openrouter: "OPENROUTER_API_KEY",
-  google:     "GEMINI_API_KEY",
-  mistral:    "MISTRAL_API_KEY",
-  xai:        "XAI_API_KEY",
-  kilocode:   "KILOCODE_API_KEY",
-  opencode:   "OPENCODE_API_KEY",
-};
+// Re-export for backward compatibility with callers that import from config-generator.
+// Also used locally in generateConfig() and generateEnv().
+export { PROVIDER_ENV_VARS } from "../lib/providers.js";
+import { PROVIDER_ENV_VARS } from "../lib/providers.js";
 
 export function generateConfig(answers: WizardAnswers): string {
   const nonMainAgents = answers.agents.filter((a) => !a.isDefault && a.id !== "main");
@@ -73,17 +68,9 @@ export function generateConfig(answers: WizardAnswers): string {
   if (answers.provider === "opencode" || answers.provider === "kilocode") {
     // opencode and kilocode use auth.profiles, no providers block needed
   } else if (envVar) {
-    const providerDefaults: Record<string, { baseUrl: string }> = {
-      anthropic:  { baseUrl: "https://api.anthropic.com" },
-      openai:     { baseUrl: "https://api.openai.com/v1" },
-      openrouter: { baseUrl: "https://openrouter.ai/api/v1" },
-      google:     { baseUrl: "https://generativelanguage.googleapis.com/v1beta" },
-      mistral:    { baseUrl: "https://api.mistral.ai/v1" },
-      xai:        { baseUrl: "https://api.x.ai/v1" },
-    };
     providerBlock[answers.provider] = {
       apiKey: `\${${envVar}}`,
-      baseUrl: providerDefaults[answers.provider]?.baseUrl ?? "",
+      baseUrl: PROVIDER_BASE_URLS[answers.provider] ?? "",
       models: [],
     };
   }
@@ -92,25 +79,26 @@ export function generateConfig(answers: WizardAnswers): string {
   const defaultModelObj = { primary: answers.defaultModel };
 
   // auth block: opencode and kilocode use profiles, others use providers
-  const authBlock: Record<string, unknown> = answers.provider === "opencode"
-    ? {
-        profiles: {
-          "opencode:default": {
-            provider: "opencode",
-            mode: "api_key",
+  const authBlock: Record<string, unknown> =
+    answers.provider === "opencode"
+      ? {
+          profiles: {
+            "opencode:default": {
+              provider: "opencode",
+              mode: "api_key",
+            },
           },
-        },
-      }
-    : answers.provider === "kilocode"
-    ? {
-        profiles: {
-          "kilocode:default": {
-            provider: "kilocode",
-            mode: "api_key",
-          },
-        },
-      }
-    : {};
+        }
+      : answers.provider === "kilocode"
+        ? {
+            profiles: {
+              "kilocode:default": {
+                provider: "kilocode",
+                mode: "api_key",
+              },
+            },
+          }
+        : {};
 
   const config: Record<string, unknown> = {
     meta: {

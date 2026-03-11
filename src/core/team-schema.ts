@@ -11,6 +11,7 @@ import { constants } from "../lib/constants.js";
 /** Workspace files included in team exports. */
 export const EXPORTABLE_FILES = constants.EXPORTABLE_FILES;
 
+/** @public */
 export type ExportableFile = (typeof EXPORTABLE_FILES)[number];
 
 /** Current format version. */
@@ -116,10 +117,9 @@ export const TeamFileSchema = z
     agents: z.array(AgentSchema).min(1),
     links: z.array(LinkSchema).default([]),
   })
-  .refine(
-    (data) => data.agents.some((a) => a.is_default),
-    { message: "At least one agent must have is_default: true" },
-  )
+  .refine((data) => data.agents.some((a) => a.is_default), {
+    message: "At least one agent must have is_default: true",
+  })
   .refine(
     (data) => {
       const ids = data.agents.map((a) => a.id);

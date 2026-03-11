@@ -106,28 +106,30 @@ export class AgentRepository {
     const sets: string[] = [];
     const values: unknown[] = [];
 
-    if ("role" in fields) { sets.push("role=?"); values.push(fields.role ?? null); }
-    if ("tags" in fields) { sets.push("tags=?"); values.push(fields.tags ?? null); }
-    if ("notes" in fields) { sets.push("notes=?"); values.push(fields.notes ?? null); }
+    if ("role" in fields) {
+      sets.push("role=?");
+      values.push(fields.role ?? null);
+    }
+    if ("tags" in fields) {
+      sets.push("tags=?");
+      values.push(fields.tags ?? null);
+    }
+    if ("notes" in fields) {
+      sets.push("notes=?");
+      values.push(fields.notes ?? null);
+    }
 
     if (sets.length === 0) return;
     values.push(agentDbId);
 
-    this.db
-      .prepare(`UPDATE agents SET ${sets.join(", ")} WHERE id=?`)
-      .run(...values);
+    this.db.prepare(`UPDATE agents SET ${sets.join(", ")} WHERE id=?`).run(...values);
   }
 
   updateAgentPosition(agentDbId: number, x: number, y: number): void {
-    this.db
-      .prepare("UPDATE agents SET position_x=?, position_y=? WHERE id=?")
-      .run(x, y, agentDbId);
+    this.db.prepare("UPDATE agents SET position_x=?, position_y=? WHERE id=?").run(x, y, agentDbId);
   }
 
-  updateAgentSync(
-    agentDbId: number,
-    fields: { configHash: string; syncedAt: string },
-  ): void {
+  updateAgentSync(agentDbId: number, fields: { configHash: string; syncedAt: string }): void {
     this.db
       .prepare("UPDATE agents SET config_hash=?, synced_at=? WHERE id=?")
       .run(fields.configHash, fields.syncedAt, agentDbId);

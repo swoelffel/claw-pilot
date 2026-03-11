@@ -39,7 +39,10 @@ vi.mock("../secrets.js", () => ({
 }));
 
 // Mock OpenClawCLI.detect() — we control the return value per test
-let _mockDetectResult: { bin: string; version: string } | null = { bin: "/usr/bin/openclaw", version: "1.0.0" };
+let _mockDetectResult: { bin: string; version: string } | null = {
+  bin: "/usr/bin/openclaw",
+  version: "1.0.0",
+};
 
 vi.mock("../openclaw-cli.js", () => ({
   OpenClawCLI: class {

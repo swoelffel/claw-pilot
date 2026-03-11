@@ -29,9 +29,7 @@ describe("generateSystemdService", () => {
 
   it("logs to stateDir/logs/gateway.log", () => {
     const service = generateSystemdService(opts);
-    expect(service).toContain(
-      `${opts.stateDir}/logs/gateway.log`,
-    );
+    expect(service).toContain(`${opts.stateDir}/logs/gateway.log`);
   });
 
   it("has WantedBy=default.target", () => {

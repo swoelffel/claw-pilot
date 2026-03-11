@@ -3,7 +3,7 @@
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
-import { logger } from "../../../lib/logger.js";
+import { instanceGuard } from "../../../lib/guards.js";
 import type { WizardAnswers } from "../../../core/config-generator.js";
 import { Destroyer } from "../../../core/destroyer.js";
 import { Provisioner } from "../../../core/provisioner.js";
@@ -19,9 +19,7 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
     const enriched = await Promise.all(
       statuses.map(async (s) => {
         const instance = registry.getInstance(s.slug);
-        const gatewayToken = instance
-          ? await tokenCache.get(s.slug, instance.state_dir)
-          : null;
+        const gatewayToken = instance ? await tokenCache.get(s.slug, instance.state_dir) : null;
         return { ...instance, ...s, gatewayToken };
       }),
     );
@@ -31,10 +29,11 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
   app.get("/api/instances/:slug", async (c) => {
     const slug = c.req.param("slug");
     const instance = registry.getInstance(slug);
-    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
     const [status, gatewayToken] = await Promise.all([
       health.check(slug),
-      tokenCache.get(slug, instance.state_dir),
+      tokenCache.get(slug, instance!.state_dir),
     ]);
     return c.json({ instance, status, gatewayToken });
   });
@@ -45,7 +44,12 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
       const status = await health.check(slug);
       return c.json(status);
     } catch (err) {
-      return apiError(c, 500, "INTERNAL_ERROR", err instanceof Error ? err.message : "Unknown error");
+      return apiError(
+        c,
+        500,
+        "INTERNAL_ERROR",
+        err instanceof Error ? err.message : "Unknown error",
+      );
     }
   });
 
@@ -58,7 +62,12 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
       if (err instanceof InstanceNotFoundError) {
         return apiError(c, 404, "NOT_FOUND", err.message);
       }
-      return apiError(c, 500, "LIFECYCLE_FAILED", err instanceof Error ? err.message : "Start failed");
+      return apiError(
+        c,
+        500,
+        "LIFECYCLE_FAILED",
+        err instanceof Error ? err.message : "Start failed",
+      );
     }
   });
 
@@ -71,7 +80,12 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
       if (err instanceof InstanceNotFoundError) {
         return apiError(c, 404, "NOT_FOUND", err.message);
       }
-      return apiError(c, 500, "LIFECYCLE_FAILED", err instanceof Error ? err.message : "Stop failed");
+      return apiError(
+        c,
+        500,
+        "LIFECYCLE_FAILED",
+        err instanceof Error ? err.message : "Stop failed",
+      );
     }
   });
 
@@ -84,7 +98,12 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
       if (err instanceof InstanceNotFoundError) {
         return apiError(c, 404, "NOT_FOUND", err.message);
       }
-      return apiError(c, 500, "LIFECYCLE_FAILED", err instanceof Error ? err.message : "Restart failed");
+      return apiError(
+        c,
+        500,
+        "LIFECYCLE_FAILED",
+        err instanceof Error ? err.message : "Restart failed",
+      );
     }
   });
 
@@ -100,27 +119,49 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
       if (err instanceof InstanceNotFoundError) {
         return apiError(c, 404, "NOT_FOUND", err.message);
       }
-      return apiError(c, 500, "DESTROY_FAILED", err instanceof Error ? err.message : "Destroy failed");
+      return apiError(
+        c,
+        500,
+        "DESTROY_FAILED",
+        err instanceof Error ? err.message : "Destroy failed",
+      );
     }
   });
 
   // GET /api/next-port — suggest next free port in the configured range
   app.get("/api/next-port", async (c) => {
     const server = registry.getLocalServer();
-    if (!server) return apiError(c, 500, "SERVER_NOT_INIT", "Server not initialized. Run claw-pilot init first.");
+    if (!server)
+      return apiError(
+        c,
+        500,
+        "SERVER_NOT_INIT",
+        "Server not initialized. Run claw-pilot init first.",
+      );
     try {
       const portAllocator = new PortAllocator(registry, conn);
       const nextPort = await portAllocator.findFreePort(server.id);
       return c.json({ port: nextPort });
     } catch (err) {
-      return apiError(c, 500, "INTERNAL_ERROR", err instanceof Error ? err.message : "No free port available");
+      return apiError(
+        c,
+        500,
+        "INTERNAL_ERROR",
+        err instanceof Error ? err.message : "No free port available",
+      );
     }
   });
 
   // POST /api/instances — provision a new instance
   app.post("/api/instances", async (c) => {
     const server = registry.getLocalServer();
-    if (!server) return apiError(c, 500, "SERVER_NOT_INIT", "Server not initialized. Run claw-pilot init first.");
+    if (!server)
+      return apiError(
+        c,
+        500,
+        "SERVER_NOT_INIT",
+        "Server not initialized. Run claw-pilot init first.",
+      );
 
     let body: Record<string, unknown>;
     try {
@@ -133,10 +174,20 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
     const port = body["port"];
     const defaultModel = body["defaultModel"];
     const provider = body["provider"];
-    const apiKey   = body["apiKey"];
+    const apiKey = body["apiKey"];
 
-    if (typeof slug !== "string" || !/^[a-z][a-z0-9-]*$/.test(slug) || slug.length < 2 || slug.length > 30) {
-      return apiError(c, 400, "INVALID_INSTANCE_SLUG", "Invalid slug: must be 2-30 lowercase alphanumeric chars with hyphens");
+    if (
+      typeof slug !== "string" ||
+      !/^[a-z][a-z0-9-]*$/.test(slug) ||
+      slug.length < 2 ||
+      slug.length > 30
+    ) {
+      return apiError(
+        c,
+        400,
+        "INVALID_INSTANCE_SLUG",
+        "Invalid slug: must be 2-30 lowercase alphanumeric chars with hyphens",
+      );
     }
     if (typeof port !== "number" || port < 1024 || port > 65535) {
       return apiError(c, 400, "FIELD_INVALID", "Invalid port: must be 1024-65535");
@@ -148,13 +199,19 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 400, "FIELD_REQUIRED", "provider is required");
     }
     if (typeof apiKey !== "string") {
-      return apiError(c, 400, "FIELD_INVALID", "apiKey must be a string (use '' for providers that need no key)");
+      return apiError(
+        c,
+        400,
+        "FIELD_INVALID",
+        "apiKey must be a string (use '' for providers that need no key)",
+      );
     }
 
     const rawAgents = Array.isArray(body["agents"]) ? body["agents"] : [];
-    const agents: WizardAnswers["agents"] = rawAgents.length > 0
-      ? (rawAgents as Array<{ id: string; name: string; model?: string; isDefault?: boolean }>)
-      : [{ id: "main", name: "Main", isDefault: true }];
+    const agents: WizardAnswers["agents"] =
+      rawAgents.length > 0
+        ? (rawAgents as Array<{ id: string; name: string; model?: string; isDefault?: boolean }>)
+        : [{ id: "main", name: "Main", isDefault: true }];
 
     if (!agents.some((a) => a.id === "main" || a.isDefault)) {
       agents.unshift({ id: "main", name: "Main", isDefault: true });
@@ -162,16 +219,17 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
 
     const answers: WizardAnswers = {
       slug,
-      displayName: typeof body["displayName"] === "string" && body["displayName"]
-        ? body["displayName"]
-        : slug.charAt(0).toUpperCase() + slug.slice(1),
+      displayName:
+        typeof body["displayName"] === "string" && body["displayName"]
+          ? body["displayName"]
+          : slug.charAt(0).toUpperCase() + slug.slice(1),
       port,
       agents,
       defaultModel,
       provider,
       apiKey,
       telegram: { enabled: false },
-      mem0:     { enabled: false },
+      mem0: { enabled: false },
     };
 
     try {
@@ -190,11 +248,12 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
       return c.json(result, 201);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Provisioning failed";
-      if (err instanceof ClawPilotError && (
-        err.code === "NO_EXISTING_INSTANCE" ||
-        err.code === "ENV_READ_FAILED" ||
-        err.code === "API_KEY_READ_FAILED"
-      )) {
+      if (
+        err instanceof ClawPilotError &&
+        (err.code === "NO_EXISTING_INSTANCE" ||
+          err.code === "ENV_READ_FAILED" ||
+          err.code === "API_KEY_READ_FAILED")
+      ) {
         return apiError(c, 400, "PROVISION_FAILED", msg);
       }
       return apiError(c, 500, "PROVISION_FAILED", msg);
@@ -205,24 +264,28 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
   app.get("/api/instances/:slug/conversations", async (c) => {
     const slug = c.req.param("slug");
     const instance = registry.getInstance(slug);
-    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
 
     const limit = Math.min(parseInt(c.req.query("limit") ?? "10", 10), 100);
 
     try {
-      const runsPath = `${instance.state_dir}/subagents/runs.json`;
+      const runsPath = `${instance!.state_dir}/subagents/runs.json`;
       const raw = await conn.readFile(runsPath);
       const data = JSON.parse(raw) as {
         version: number;
-        runs: Record<string, {
-          createdAt: number;
-          requesterDisplayKey: string;
-          childSessionKey: string;
-          label?: string;
-          task: string;
-          endedAt?: number;
-          outcome?: string;
-        }>;
+        runs: Record<
+          string,
+          {
+            createdAt: number;
+            requesterDisplayKey: string;
+            childSessionKey: string;
+            label?: string;
+            task: string;
+            endedAt?: number;
+            outcome?: string;
+          }
+        >;
       };
 
       const entries = Object.values(data.runs ?? {})
@@ -232,9 +295,7 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
           to: run.label || run.childSessionKey || "agent",
           message: run.task || "",
           type: "agent-agent" as const,
-          status: run.endedAt
-            ? run.outcome === "completed" ? "done" : "failed"
-            : "running",
+          status: run.endedAt ? (run.outcome === "completed" ? "done" : "failed") : "running",
         }))
         .sort((a, b) => b.timestamp - a.timestamp)
         .slice(0, limit);
@@ -244,5 +305,4 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
       return c.json({ entries: [] });
     }
   });
-
 }

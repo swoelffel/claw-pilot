@@ -1,0 +1,7 @@
+dist/
+coverage/
+ui/dist/
+*.md
+*.json
+*.yaml
+*.yml

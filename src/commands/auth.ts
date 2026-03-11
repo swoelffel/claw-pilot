@@ -21,13 +21,15 @@ async function runSetup(): Promise<void> {
     const hash = await hashPassword(password);
 
     // UPSERT admin user
-    db.prepare(`
+    db.prepare(
+      `
       INSERT INTO users (username, password_hash, role)
       VALUES (?, ?, 'admin')
       ON CONFLICT(username) DO UPDATE SET
         password_hash = excluded.password_hash,
         updated_at = datetime('now')
-    `).run(constants.ADMIN_USERNAME, hash);
+    `,
+    ).run(constants.ADMIN_USERNAME, hash);
 
     // Get user ID for session cleanup
     const user = db
@@ -43,11 +45,9 @@ async function runSetup(): Promise<void> {
 }
 
 function setupCommand(): Command {
-  return new Command("setup")
-    .description("Create or reset the admin account")
-    .action(async () => {
-      await runSetup();
-    });
+  return new Command("setup").description("Create or reset the admin account").action(async () => {
+    await runSetup();
+  });
 }
 
 function resetCommand(): Command {

@@ -114,9 +114,7 @@ export const PROVIDER_CATALOG: ProviderInfo[] = [
     label: "OpenRouter",
     requiresKey: true,
     defaultModel: "openrouter/auto",
-    models: [
-      "openrouter/auto",
-    ],
+    models: ["openrouter/auto"],
   },
   {
     id: "kilocode",

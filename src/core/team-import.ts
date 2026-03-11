@@ -123,8 +123,12 @@ async function _importTeamCore(
     // 1. Delete existing agent_files
     const existingAgents =
       target.type === "blueprint"
-        ? (db.prepare("SELECT id FROM agents WHERE blueprint_id = ?").all(target.blueprintId) as { id: number }[])
-        : (db.prepare("SELECT id FROM agents WHERE instance_id = ?").all(target.instanceId) as { id: number }[]);
+        ? (db.prepare("SELECT id FROM agents WHERE blueprint_id = ?").all(target.blueprintId) as {
+            id: number;
+          }[])
+        : (db.prepare("SELECT id FROM agents WHERE instance_id = ?").all(target.instanceId) as {
+            id: number;
+          }[]);
 
     for (const agent of existingAgents) {
       db.prepare("DELETE FROM agent_files WHERE agent_id = ?").run(agent.id);
@@ -140,8 +144,7 @@ async function _importTeamCore(
     }
 
     // 3. Insert new agents + files
-    const openclawHome =
-      target.type === "instance" ? path.dirname(target.configPath) : null;
+    const openclawHome = target.type === "instance" ? path.dirname(target.configPath) : null;
 
     for (const agent of team.agents) {
       const workspacePath =
@@ -166,9 +169,17 @@ async function _importTeamCore(
            role, tags, notes, position_x, position_y)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).run(
-          target.blueprintId, agent.id, agent.name, modelValue, workspacePath,
-          agent.is_default ? 1 : 0, agent.meta?.role ?? null, tagsJson,
-          agent.meta?.notes ?? null, agent.meta?.position?.x ?? null, agent.meta?.position?.y ?? null,
+          target.blueprintId,
+          agent.id,
+          agent.name,
+          modelValue,
+          workspacePath,
+          agent.is_default ? 1 : 0,
+          agent.meta?.role ?? null,
+          tagsJson,
+          agent.meta?.notes ?? null,
+          agent.meta?.position?.x ?? null,
+          agent.meta?.position?.y ?? null,
         );
       } else {
         db.prepare(
@@ -176,17 +187,29 @@ async function _importTeamCore(
            role, tags, notes, position_x, position_y)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).run(
-          target.instanceId, agent.id, agent.name, modelValue, workspacePath,
-          agent.is_default ? 1 : 0, agent.meta?.role ?? null, tagsJson,
-          agent.meta?.notes ?? null, agent.meta?.position?.x ?? null, agent.meta?.position?.y ?? null,
+          target.instanceId,
+          agent.id,
+          agent.name,
+          modelValue,
+          workspacePath,
+          agent.is_default ? 1 : 0,
+          agent.meta?.role ?? null,
+          tagsJson,
+          agent.meta?.notes ?? null,
+          agent.meta?.position?.x ?? null,
+          agent.meta?.position?.y ?? null,
         );
       }
 
       // Get the inserted agent's DB id
       const inserted =
         target.type === "blueprint"
-          ? (db.prepare("SELECT id FROM agents WHERE blueprint_id = ? AND agent_id = ?").get(target.blueprintId, agent.id) as { id: number })
-          : (db.prepare("SELECT id FROM agents WHERE instance_id = ? AND agent_id = ?").get(target.instanceId, agent.id) as { id: number });
+          ? (db
+              .prepare("SELECT id FROM agents WHERE blueprint_id = ? AND agent_id = ?")
+              .get(target.blueprintId, agent.id) as { id: number })
+          : (db
+              .prepare("SELECT id FROM agents WHERE instance_id = ? AND agent_id = ?")
+              .get(target.instanceId, agent.id) as { id: number });
 
       // Insert files from YAML
       const existingFilenames = new Set<string>();
@@ -236,9 +259,7 @@ async function _importTeamCore(
   );
 
   for (const agent of agentsToGapFill) {
-    const missingFiles = constants.EXPORTABLE_FILES.filter(
-      (f) => !agent.existingFilenames.has(f),
-    );
+    const missingFiles = constants.EXPORTABLE_FILES.filter((f) => !agent.existingFilenames.has(f));
     if (missingFiles.length === 0) continue;
 
     const vars: TemplateVars = {
@@ -381,11 +402,25 @@ function buildDefaultsSection(
   // Then merge the default agent's config into agents.defaults
   const defaultAgent = team.agents.find((a) => a.is_default);
   if (defaultAgent?.config) {
-    const { model, identity, subagents, heartbeat, sandbox, tools, params, skills, humanDelay, groupChat } =
-      defaultAgent.config;
+    const {
+      model,
+      identity,
+      subagents,
+      heartbeat,
+      sandbox,
+      tools,
+      params,
+      skills,
+      humanDelay,
+      groupChat,
+    } = defaultAgent.config;
     if (model !== undefined) merged["model"] = model;
     if (identity !== undefined) merged["identity"] = identity;
-    if (subagents !== undefined) merged["subagents"] = { ...(merged["subagents"] as Record<string, unknown> ?? {}), ...subagents };
+    if (subagents !== undefined)
+      merged["subagents"] = {
+        ...((merged["subagents"] as Record<string, unknown>) ?? {}),
+        ...subagents,
+      };
     if (heartbeat !== undefined) merged["heartbeat"] = heartbeat;
     if (sandbox !== undefined) merged["sandbox"] = sandbox;
     if (tools !== undefined) merged["tools"] = tools;
@@ -414,7 +449,18 @@ function buildAgentsList(team: TeamFile): Array<Record<string, unknown>> {
       };
       // Spread config fields
       if (a.config) {
-        const { model, identity, subagents, heartbeat, sandbox, tools, params, skills, humanDelay, groupChat } = a.config;
+        const {
+          model,
+          identity,
+          subagents,
+          heartbeat,
+          sandbox,
+          tools,
+          params,
+          skills,
+          humanDelay,
+          groupChat,
+        } = a.config;
         if (model !== undefined) entry["model"] = model;
         if (identity !== undefined) entry["identity"] = identity;
         if (subagents !== undefined) entry["subagents"] = subagents;
@@ -478,10 +524,7 @@ function buildAgentToAgentSection(team: TeamFile): unknown | undefined {
  * Only modifies agents.defaults, agents.list[], and tools.agentToAgent.
  * All other sections (providers, telegram, mem0, etc.) are preserved.
  */
-function mergeTeamIntoConfig(
-  config: Record<string, unknown>,
-  team: TeamFile,
-): void {
+function mergeTeamIntoConfig(config: Record<string, unknown>, team: TeamFile): void {
   if (!config["agents"] || typeof config["agents"] !== "object") config["agents"] = {};
   const agentsConf = config["agents"] as Record<string, unknown>;
 
@@ -528,9 +571,7 @@ async function syncWorkspacesToDisk(
     }
 
     // Gap-fill missing EXPORTABLE_FILES with templates
-    const missingFiles = constants.EXPORTABLE_FILES.filter(
-      (f) => !writtenFilenames.has(f),
-    );
+    const missingFiles = constants.EXPORTABLE_FILES.filter((f) => !writtenFilenames.has(f));
     if (missingFiles.length > 0) {
       const vars: TemplateVars = {
         agentId: agent.id,

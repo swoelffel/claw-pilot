@@ -33,13 +33,15 @@ export interface AgentPayloadItem {
   synced_at: string | null;
   position_x: number | null;
   position_y: number | null;
-  files: { filename: string; content_hash: string | null; size: number; updated_at: string | null }[];
+  files: {
+    filename: string;
+    content_hash: string | null;
+    size: number;
+    updated_at: string | null;
+  }[];
 }
 
-export function buildAgentPayload(
-  agent: AgentLike,
-  files: AgentFileRecord[],
-): AgentPayloadItem {
+export function buildAgentPayload(agent: AgentLike, files: AgentFileRecord[]): AgentPayloadItem {
   return {
     id: agent.id,
     agent_id: agent.agent_id,

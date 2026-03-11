@@ -1,610 +1,51 @@
-import { LitElement, html, css, nothing } from "lit";
+import { LitElement, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { InstanceConfig, ConfigPatchResult, ProviderInfo, ProviderEntry, TelegramPairingList, TelegramPairingRequest, AgentBuilderInfo, AgentLink, PanelContext, SidebarSection } from "../types.js";
-import { fetchInstanceConfig, patchInstanceConfig, fetchProviders, fetchTelegramPairing, approveTelegramPairing, fetchBuilderData } from "../api.js";
+import type {
+  InstanceConfig,
+  ConfigPatchResult,
+  ProviderInfo,
+  ProviderEntry,
+  TelegramPairingList,
+  TelegramPairingRequest,
+  AgentBuilderInfo,
+  AgentLink,
+  PanelContext,
+  SidebarSection,
+} from "../types.js";
+import {
+  fetchInstanceConfig,
+  patchInstanceConfig,
+  fetchProviders,
+  fetchTelegramPairing,
+  approveTelegramPairing,
+  fetchBuilderData,
+} from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { badgeStyles, buttonStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
+import { instanceSettingsStyles } from "../styles/instance-settings.styles.js";
 import "./instance-devices.js";
 import "./agent-detail-panel.js";
-
 
 @localized()
 @customElement("cp-instance-settings")
 export class InstanceSettings extends LitElement {
-  static styles = [tokenStyles, badgeStyles, buttonStyles, spinnerStyles, errorBannerStyles, css`
-    :host {
-      display: block;
-      min-height: calc(100vh - 56px - 48px);
-    }
-
-    .settings-layout {
-      display: flex;
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 24px;
-      gap: 32px;
-    }
-
-    /* --- Header bar --- */
-    .settings-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px 24px;
-      background: var(--bg-surface);
-      border-bottom: 1px solid var(--bg-border);
-    }
-
-    .header-left {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .back-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: transparent;
-      border: 1px solid var(--bg-border);
-      color: var(--text-secondary);
-      padding: 7px 14px;
-      border-radius: var(--radius-md);
-      font-size: 13px;
-      cursor: pointer;
-      transition: border-color 0.15s, color 0.15s;
-    }
-
-    .back-btn:hover {
-      border-color: var(--accent);
-      color: var(--text-primary);
-    }
-
-    .header-title {
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--text-primary);
-    }
-
-    .header-title span {
-      color: var(--text-muted);
-      font-weight: 400;
-    }
-
-    .header-right {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    /* --- Sidebar --- */
-    .sidebar {
-      flex: 0 0 180px;
-      position: sticky;
-      top: 80px;
-      align-self: flex-start;
-    }
-
-    .sidebar-nav {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .sidebar-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border-radius: var(--radius-md);
-      font-size: 13px;
-      color: var(--text-secondary);
-      cursor: pointer;
-      border: none;
-      background: none;
-      text-align: left;
-      transition: background 0.1s, color 0.1s;
-      width: 100%;
-    }
-
-    .sidebar-item:hover {
-      background: var(--bg-hover);
-      color: var(--text-primary);
-    }
-
-    .sidebar-item.active {
-      background: var(--accent-subtle);
-      color: var(--accent);
-      font-weight: 600;
-    }
-
-    /* --- Content area --- */
-    .content {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .section {
-      margin-bottom: 32px;
-    }
-
-    .section-header {
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--text-primary);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      padding-bottom: 12px;
-      border-bottom: 1px solid var(--bg-border);
-      margin-bottom: 20px;
-    }
-
-    /* --- Form fields --- */
-    .field-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-    }
-
-    .field-grid.single {
-      grid-template-columns: 1fr;
-    }
-
-    .field {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .field.full-width {
-      grid-column: 1 / -1;
-    }
-
-    .field-label {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .restart-badge {
-      font-size: 9px;
-      padding: 1px 5px;
-      border-radius: 3px;
-      background: rgba(245, 158, 11, 0.1);
-      color: var(--state-warning);
-      border: 1px solid rgba(245, 158, 11, 0.2);
-      font-weight: 700;
-      letter-spacing: 0.04em;
-    }
-
-    .field-input {
-      padding: 8px 12px;
-      border-radius: var(--radius-md);
-      border: 1px solid var(--bg-border);
-      background: var(--bg-base);
-      color: var(--text-primary);
-      font-size: 13px;
-      font-family: var(--font-ui);
-      transition: border-color 0.15s;
-    }
-
-    .field-input:focus {
-      border-color: var(--accent);
-      outline: none;
-    }
-
-    .field-input.changed {
-      border-color: var(--accent);
-    }
-
-    .field-input.mono {
-      font-family: var(--font-mono);
-    }
-
-    .field-input[readonly] {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    select.field-input {
-      cursor: pointer;
-      appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: right 10px center;
-      padding-right: 28px;
-    }
-
-    .field-readonly {
-      padding: 8px 12px;
-      border-radius: var(--radius-md);
-      border: 1px solid var(--bg-border);
-      background: var(--bg-surface);
-      color: var(--text-secondary);
-      font-size: 13px;
-      font-family: var(--font-mono);
-    }
-
-    /* --- Secret field --- */
-    .secret-row {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .secret-row .field-input {
-      flex: 1;
-    }
-
-    .btn-reveal {
-      flex: none;
-      padding: 8px 12px;
-      border-radius: var(--radius-md);
-      border: 1px solid var(--bg-border);
-      background: transparent;
-      color: var(--text-secondary);
-      font-size: 12px;
-      cursor: pointer;
-      transition: border-color 0.15s, color 0.15s;
-    }
-
-    .btn-reveal:hover {
-      border-color: var(--accent);
-      color: var(--text-primary);
-    }
-
-    /* --- Agent list --- */
-    .agent-table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    .agent-table th {
-      text-align: left;
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--bg-border);
-    }
-
-    .agent-table td {
-      padding: 10px 12px;
-      font-size: 13px;
-      color: var(--text-secondary);
-      border-bottom: 1px solid var(--bg-border);
-    }
-
-    .agent-table td.mono {
-      font-family: var(--font-mono);
-    }
-
-    .agent-table td .field-input {
-      width: 100%;
-      padding: 6px 8px;
-      font-size: 12px;
-    }
-
-    /* --- Toast --- */
-    .toast {
-      position: fixed;
-      bottom: 80px;
-      right: 24px;
-      padding: 12px 20px;
-      border-radius: var(--radius-md);
-      font-size: 13px;
-      font-weight: 500;
-      z-index: 1000;
-      animation: toast-in 0.3s ease-out;
-      max-width: 400px;
-    }
-
-    .toast.success {
-      background: rgba(16, 185, 129, 0.12);
-      color: var(--state-running);
-      border: 1px solid rgba(16, 185, 129, 0.3);
-    }
-
-    .toast.warning {
-      background: rgba(245, 158, 11, 0.12);
-      color: var(--state-warning);
-      border: 1px solid rgba(245, 158, 11, 0.3);
-    }
-
-    .toast.error {
-      background: rgba(239, 68, 68, 0.12);
-      color: var(--state-error);
-      border: 1px solid rgba(239, 68, 68, 0.3);
-    }
-
-    @keyframes toast-in {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* --- Loading state --- */
-    .loading-container {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 300px;
-      color: var(--text-muted);
-      font-size: 14px;
-      gap: 12px;
-    }
-
-    /* --- Stopped banner --- */
-    .stopped-banner {
-      background: rgba(100, 116, 139, 0.08);
-      border: 1px solid rgba(100, 116, 139, 0.2);
-      border-radius: var(--radius-md);
-      padding: 10px 16px;
-      color: var(--text-secondary);
-      font-size: 12px;
-      margin-bottom: 24px;
-    }
-
-    /* --- Toggle --- */
-    .toggle-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 0;
-    }
-
-    .toggle-label {
-      font-size: 13px;
-      color: var(--text-secondary);
-    }
-
-    .toggle {
-      position: relative;
-      width: 40px;
-      height: 22px;
-      border-radius: 11px;
-      background: var(--bg-border);
-      cursor: pointer;
-      border: none;
-      transition: background 0.2s;
-    }
-
-    .toggle.on {
-      background: var(--state-running);
-    }
-
-    .toggle::after {
-      content: "";
-      position: absolute;
-      top: 3px;
-      left: 3px;
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background: white;
-      transition: transform 0.2s;
-    }
-
-    .toggle.on::after {
-      transform: translateX(18px);
-    }
-
-    /* --- Number input --- */
-    input[type="number"].field-input {
-      -moz-appearance: textfield;
-    }
-
-    input[type="number"].field-input::-webkit-outer-spin-button,
-    input[type="number"].field-input::-webkit-inner-spin-button {
-      -webkit-appearance: none;
-      margin: 0;
-    }
-
-    /* --- Field validation --- */
-    .field-error {
-      font-size: 11px;
-      color: var(--state-error);
-      margin-top: 4px;
-    }
-
-    .field-input.invalid {
-      border-color: var(--state-error);
-    }
-
-    /* --- Provider cards --- */
-    .providers-section {
-      margin-top: 24px;
-    }
-
-    .providers-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-    }
-
-    .section-subheader {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .provider-card {
-      border: 1px solid var(--bg-border);
-      border-radius: var(--radius-md);
-      padding: 12px 16px;
-      margin-bottom: 8px;
-      background: var(--bg-surface);
-    }
-
-    .provider-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
-    }
-
-    .provider-header-left {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .provider-name {
-      font-weight: 600;
-      font-size: 13px;
-      color: var(--text-primary);
-    }
-
-    .provider-id {
-      font-size: 11px;
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-    }
-
-    .provider-key-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .provider-env-var {
-      font-size: 11px;
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-      min-width: 160px;
-    }
-
-    .btn-remove-provider {
-      font-size: 11px;
-      color: var(--state-error);
-      background: transparent;
-      border: 1px solid rgba(239, 68, 68, 0.25);
-      padding: 3px 8px;
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-
-    .btn-remove-provider:hover {
-      background: rgba(239, 68, 68, 0.08);
-    }
-
-    .btn-remove-provider:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-
-    .badge-new {
-      font-size: 10px;
-      background: rgba(34, 197, 94, 0.15);
-      color: #22c55e;
-      padding: 2px 6px;
-      border-radius: var(--radius-sm);
-      font-weight: 600;
-    }
-
-    .provider-add-row {
-      margin-top: 8px;
-    }
-
-    .provider-add-row select {
-      width: 100%;
-    }
-
-    /* --- Nav badge (pending devices count) --- */
-    .nav-badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 18px;
-      height: 18px;
-      padding: 0 5px;
-      border-radius: 9px;
-      background: var(--state-error);
-      color: white;
-      font-size: 10px;
-      font-weight: 700;
-      margin-left: 6px;
-    }
-
-    /* --- Save warning banner --- */
-    .save-warning {
-      background: rgba(245, 158, 11, 0.08);
-      border: 1px solid rgba(245, 158, 11, 0.2);
-      border-radius: var(--radius-md);
-      padding: 10px 16px;
-      color: var(--state-warning);
-      font-size: 12px;
-      margin-bottom: 16px;
-    }
-
-    /* Bouton édition dans la table agents */
-    .btn-agent-edit {
-      background: none;
-      border: 1px solid var(--bg-border);
-      color: var(--text-muted);
-      padding: 4px 8px;
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      transition: color 0.15s, border-color 0.15s;
-    }
-
-    .btn-agent-edit:hover {
-      color: var(--text-primary);
-      border-color: var(--text-muted);
-    }
-
-    .btn-agent-edit:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    /* Backdrop semi-transparent */
-    .agent-panel-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.35);
-      z-index: 100;
-    }
-
-    /* Drawer latéral fixe */
-    .agent-panel-drawer {
-      position: fixed;
-      top: 0;
-      right: 0;
-      width: 420px;
-      height: 100vh;
-      z-index: 101;
-      box-shadow: -4px 0 24px rgba(0, 0, 0, 0.2);
-      overflow: hidden;
-    }
-
-    .agent-panel-drawer.expanded {
-      width: 100vw;
-    }
-
-    .agent-panel-drawer cp-agent-detail-panel {
-      position: relative;
-      width: 100%;
-      height: 100%;
-    }
-  `];
+  static override styles = [
+    tokenStyles,
+    badgeStyles,
+    buttonStyles,
+    spinnerStyles,
+    errorBannerStyles,
+    instanceSettingsStyles,
+  ];
+
+  // ── Public properties ────────────────────────────────────────────────────
 
   @property({ type: String }) slug = "";
   @property({ type: String }) initialSection: SidebarSection = "general";
+
+  // ── Config state ─────────────────────────────────────────────────────────
 
   @state() private _config: InstanceConfig | null = null;
   @state() private _loading = true;
@@ -613,49 +54,43 @@ export class InstanceSettings extends LitElement {
   @state() private _activeSection: SidebarSection = "general";
   @state() private _toast: { message: string; type: "success" | "warning" | "error" } | null = null;
   @state() private _instanceState: string = "unknown";
-
-  // Providers catalog (from /api/providers) — used for "Add provider" dropdown
-  @state() private _providerCatalog: ProviderInfo[] = [];
-
-  // Pending devices badge count
-  @state() private _pendingDeviceCount = 0;
-
-  // Warning message after save (e.g. pairingWarning)
   @state() private _saveWarning = "";
 
   // Dirty tracking — stores modified values
   @state() private _dirty: Record<string, unknown> = {};
-
-  // Secret editing state
-  @state() private _editingBotToken = false;
-
-  // Telegram init form state (shown when channels.telegram === null)
-  @state() private _addingTelegram = false;
-
-  // Telegram DM pairing state
-  @state() private _telegramPairing: TelegramPairingList | null = null;
-  @state() private _telegramPairingLoading = false;
-  @state() private _telegramPairingError = "";
-  @state() private _approvingCode: string | null = null;
-  private _pairingPollTimer: ReturnType<typeof setInterval> | null = null;
-
-  // Field validation errors
   @state() private _heartbeatEveryError = "";
 
-  // Provider editing state
+  // ── Providers state ───────────────────────────────────────────────────────
+
+  // Catalog from /api/providers — used for "Add provider" dropdown
+  @state() private _providerCatalog: ProviderInfo[] = [];
   @state() private _editingKeyForProvider: string | null = null;
   @state() private _addedProviders: Array<{ id: string; apiKey: string }> = [];
   @state() private _removedProviders: string[] = [];
   @state() private _updatedKeys: Record<string, string> = {};
   @state() private _showAddProvider = false;
 
-  // --- Overlay agent panel ---
+  // ── Telegram state ────────────────────────────────────────────────────────
+
+  @state() private _editingBotToken = false;
+  @state() private _addingTelegram = false;
+  @state() private _telegramPairing: TelegramPairingList | null = null;
+  @state() private _telegramPairingLoading = false;
+  @state() private _telegramPairingError = "";
+  @state() private _approvingCode: string | null = null;
+  private _pairingPollTimer: ReturnType<typeof setInterval> | null = null;
+
+  // ── Agent panel state ─────────────────────────────────────────────────────
+
   @state() private _editingAgent: AgentBuilderInfo | null = null;
   @state() private _editingAgentLinks: AgentLink[] = [];
   @state() private _editingAgentAllAgents: AgentBuilderInfo[] = [];
   @state() private _loadingAgentPanel = false;
   @state() private _agentPanelError = "";
   @state() private _panelExpanded = false;
+  @state() private _pendingDeviceCount = 0;
+
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -668,6 +103,8 @@ export class InstanceSettings extends LitElement {
     super.disconnectedCallback();
     this._stopPairingPoll();
   }
+
+  // ── Config management ────────────────────────────────────────────────────
 
   private async _loadConfig(): Promise<void> {
     this._loading = true;
@@ -712,10 +149,12 @@ export class InstanceSettings extends LitElement {
   }
 
   private get _hasChanges(): boolean {
-    return Object.keys(this._dirty).length > 0
-      || this._addedProviders.length > 0
-      || this._removedProviders.length > 0
-      || Object.keys(this._updatedKeys).length > 0;
+    return (
+      Object.keys(this._dirty).length > 0 ||
+      this._addedProviders.length > 0 ||
+      this._removedProviders.length > 0 ||
+      Object.keys(this._updatedKeys).length > 0
+    );
   }
 
   private _buildPatch(): Record<string, unknown> {
@@ -724,9 +163,12 @@ export class InstanceSettings extends LitElement {
 
     // General section
     const general: Record<string, unknown> = {};
-    if (this._isDirty("general.displayName")) general["displayName"] = this._dirty["general.displayName"];
-    if (this._isDirty("general.defaultModel")) general["defaultModel"] = this._dirty["general.defaultModel"];
-    if (this._isDirty("general.toolsProfile")) general["toolsProfile"] = this._dirty["general.toolsProfile"];
+    if (this._isDirty("general.displayName"))
+      general["displayName"] = this._dirty["general.displayName"];
+    if (this._isDirty("general.defaultModel"))
+      general["defaultModel"] = this._dirty["general.defaultModel"];
+    if (this._isDirty("general.toolsProfile"))
+      general["toolsProfile"] = this._dirty["general.toolsProfile"];
     if (Object.keys(general).length > 0) patch["general"] = general;
 
     // Providers section
@@ -750,49 +192,83 @@ export class InstanceSettings extends LitElement {
 
     // Agent defaults
     const agentDefaults: Record<string, unknown> = {};
-    if (this._isDirty("agentDefaults.workspace")) agentDefaults["workspace"] = this._dirty["agentDefaults.workspace"];
-    if (this._isDirty("agentDefaults.subagents.maxConcurrent") || this._isDirty("agentDefaults.subagents.archiveAfterMinutes")) {
+    if (this._isDirty("agentDefaults.workspace"))
+      agentDefaults["workspace"] = this._dirty["agentDefaults.workspace"];
+    if (
+      this._isDirty("agentDefaults.subagents.maxConcurrent") ||
+      this._isDirty("agentDefaults.subagents.archiveAfterMinutes")
+    ) {
       const sub: Record<string, unknown> = {};
-      if (this._isDirty("agentDefaults.subagents.maxConcurrent")) sub["maxConcurrent"] = this._dirty["agentDefaults.subagents.maxConcurrent"];
-      if (this._isDirty("agentDefaults.subagents.archiveAfterMinutes")) sub["archiveAfterMinutes"] = this._dirty["agentDefaults.subagents.archiveAfterMinutes"];
+      if (this._isDirty("agentDefaults.subagents.maxConcurrent"))
+        sub["maxConcurrent"] = this._dirty["agentDefaults.subagents.maxConcurrent"];
+      if (this._isDirty("agentDefaults.subagents.archiveAfterMinutes"))
+        sub["archiveAfterMinutes"] = this._dirty["agentDefaults.subagents.archiveAfterMinutes"];
       agentDefaults["subagents"] = sub;
     }
-    if (this._isDirty("agentDefaults.compaction.mode") || this._isDirty("agentDefaults.compaction.reserveTokensFloor")) {
+    if (
+      this._isDirty("agentDefaults.compaction.mode") ||
+      this._isDirty("agentDefaults.compaction.reserveTokensFloor")
+    ) {
       const comp: Record<string, unknown> = {};
-      if (this._isDirty("agentDefaults.compaction.mode")) comp["mode"] = this._dirty["agentDefaults.compaction.mode"];
-      if (this._isDirty("agentDefaults.compaction.reserveTokensFloor")) comp["reserveTokensFloor"] = this._dirty["agentDefaults.compaction.reserveTokensFloor"];
+      if (this._isDirty("agentDefaults.compaction.mode"))
+        comp["mode"] = this._dirty["agentDefaults.compaction.mode"];
+      if (this._isDirty("agentDefaults.compaction.reserveTokensFloor"))
+        comp["reserveTokensFloor"] = this._dirty["agentDefaults.compaction.reserveTokensFloor"];
       agentDefaults["compaction"] = comp;
     }
-    if (this._isDirty("agentDefaults.heartbeat.every") || this._isDirty("agentDefaults.heartbeat.model") || this._isDirty("agentDefaults.heartbeat.target")) {
+    if (
+      this._isDirty("agentDefaults.heartbeat.every") ||
+      this._isDirty("agentDefaults.heartbeat.model") ||
+      this._isDirty("agentDefaults.heartbeat.target")
+    ) {
       const hb: Record<string, unknown> = {};
-      if (this._isDirty("agentDefaults.heartbeat.every")) hb["every"] = this._dirty["agentDefaults.heartbeat.every"];
-      if (this._isDirty("agentDefaults.heartbeat.model")) hb["model"] = this._dirty["agentDefaults.heartbeat.model"];
-      if (this._isDirty("agentDefaults.heartbeat.target")) hb["target"] = this._dirty["agentDefaults.heartbeat.target"];
+      if (this._isDirty("agentDefaults.heartbeat.every"))
+        hb["every"] = this._dirty["agentDefaults.heartbeat.every"];
+      if (this._isDirty("agentDefaults.heartbeat.model"))
+        hb["model"] = this._dirty["agentDefaults.heartbeat.model"];
+      if (this._isDirty("agentDefaults.heartbeat.target"))
+        hb["target"] = this._dirty["agentDefaults.heartbeat.target"];
       agentDefaults["heartbeat"] = hb;
     }
     if (Object.keys(agentDefaults).length > 0) patch["agentDefaults"] = agentDefaults;
 
     // Channels
-    if (this._isDirty("channels.telegram.enabled") || this._isDirty("channels.telegram.botToken") ||
-        this._isDirty("channels.telegram.dmPolicy") || this._isDirty("channels.telegram.groupPolicy") ||
-        this._isDirty("channels.telegram.streamMode")) {
+    if (
+      this._isDirty("channels.telegram.enabled") ||
+      this._isDirty("channels.telegram.botToken") ||
+      this._isDirty("channels.telegram.dmPolicy") ||
+      this._isDirty("channels.telegram.groupPolicy") ||
+      this._isDirty("channels.telegram.streamMode")
+    ) {
       const tg: Record<string, unknown> = {};
-      if (this._isDirty("channels.telegram.enabled")) tg["enabled"] = this._dirty["channels.telegram.enabled"];
-      if (this._isDirty("channels.telegram.botToken")) tg["botToken"] = this._dirty["channels.telegram.botToken"];
-      if (this._isDirty("channels.telegram.dmPolicy")) tg["dmPolicy"] = this._dirty["channels.telegram.dmPolicy"];
-      if (this._isDirty("channels.telegram.groupPolicy")) tg["groupPolicy"] = this._dirty["channels.telegram.groupPolicy"];
-      if (this._isDirty("channels.telegram.streamMode")) tg["streamMode"] = this._dirty["channels.telegram.streamMode"];
+      if (this._isDirty("channels.telegram.enabled"))
+        tg["enabled"] = this._dirty["channels.telegram.enabled"];
+      if (this._isDirty("channels.telegram.botToken"))
+        tg["botToken"] = this._dirty["channels.telegram.botToken"];
+      if (this._isDirty("channels.telegram.dmPolicy"))
+        tg["dmPolicy"] = this._dirty["channels.telegram.dmPolicy"];
+      if (this._isDirty("channels.telegram.groupPolicy"))
+        tg["groupPolicy"] = this._dirty["channels.telegram.groupPolicy"];
+      if (this._isDirty("channels.telegram.streamMode"))
+        tg["streamMode"] = this._dirty["channels.telegram.streamMode"];
       patch["channels"] = { telegram: tg };
     }
 
     // Plugins
-    if (this._isDirty("plugins.mem0.enabled") || this._isDirty("plugins.mem0.ollamaUrl") ||
-        this._isDirty("plugins.mem0.qdrantHost") || this._isDirty("plugins.mem0.qdrantPort")) {
+    if (
+      this._isDirty("plugins.mem0.enabled") ||
+      this._isDirty("plugins.mem0.ollamaUrl") ||
+      this._isDirty("plugins.mem0.qdrantHost") ||
+      this._isDirty("plugins.mem0.qdrantPort")
+    ) {
       const m: Record<string, unknown> = {};
       if (this._isDirty("plugins.mem0.enabled")) m["enabled"] = this._dirty["plugins.mem0.enabled"];
-      if (this._isDirty("plugins.mem0.ollamaUrl")) m["ollamaUrl"] = this._dirty["plugins.mem0.ollamaUrl"];
-      if (this._isDirty("plugins.mem0.qdrantHost")) m["qdrantHost"] = this._dirty["plugins.mem0.qdrantHost"];
-      if (this._isDirty("plugins.mem0.qdrantPort")) m["qdrantPort"] = this._dirty["plugins.mem0.qdrantPort"];
+      if (this._isDirty("plugins.mem0.ollamaUrl"))
+        m["ollamaUrl"] = this._dirty["plugins.mem0.ollamaUrl"];
+      if (this._isDirty("plugins.mem0.qdrantHost"))
+        m["qdrantHost"] = this._dirty["plugins.mem0.qdrantHost"];
+      if (this._isDirty("plugins.mem0.qdrantPort"))
+        m["qdrantPort"] = this._dirty["plugins.mem0.qdrantPort"];
       patch["plugins"] = { mem0: m };
     }
 
@@ -800,7 +276,8 @@ export class InstanceSettings extends LitElement {
     if (this._isDirty("gateway.reloadMode") || this._isDirty("gateway.reloadDebounceMs")) {
       const gw: Record<string, unknown> = {};
       if (this._isDirty("gateway.reloadMode")) gw["reloadMode"] = this._dirty["gateway.reloadMode"];
-      if (this._isDirty("gateway.reloadDebounceMs")) gw["reloadDebounceMs"] = this._dirty["gateway.reloadDebounceMs"];
+      if (this._isDirty("gateway.reloadDebounceMs"))
+        gw["reloadDebounceMs"] = this._dirty["gateway.reloadDebounceMs"];
       patch["gateway"] = gw;
     }
 
@@ -831,7 +308,8 @@ export class InstanceSettings extends LitElement {
         }
         // Show pairing warning if port changed
         if (result.pairingWarning) {
-          this._saveWarning = "Port changed — browser pairing will be lost after restart. Go to the Devices tab to approve the new request.";
+          this._saveWarning =
+            "Port changed — browser pairing will be lost after restart. Go to the Devices tab to approve the new request.";
         }
         // Reload config to get fresh state
         await this._loadConfig();
@@ -887,7 +365,12 @@ export class InstanceSettings extends LitElement {
     })();
 
     if (!single && !composite) {
-      return { value: trimmed, error: msg("Invalid format. Use e.g. 30m, 1h, 1h30m", { id: "settings-heartbeat-every-invalid" }) };
+      return {
+        value: trimmed,
+        error: msg("Invalid format. Use e.g. 30m, 1h, 1h30m", {
+          id: "settings-heartbeat-every-invalid",
+        }),
+      };
     }
 
     return { value: trimmed, error: "" };
@@ -895,15 +378,19 @@ export class InstanceSettings extends LitElement {
 
   private _showToast(message: string, type: "success" | "warning" | "error"): void {
     this._toast = { message, type };
-    setTimeout(() => { this._toast = null; }, 4000);
+    setTimeout(() => {
+      this._toast = null;
+    }, 4000);
   }
 
   private _goBack(): void {
-    this.dispatchEvent(new CustomEvent("navigate", {
-      detail: { slug: null },
-      bubbles: true,
-      composed: true,
-    }));
+    this.dispatchEvent(
+      new CustomEvent("navigate", {
+        detail: { slug: null },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   private _scrollToSection(section: SidebarSection): void {
@@ -915,7 +402,7 @@ export class InstanceSettings extends LitElement {
     }
   }
 
-  // --- Telegram DM pairing ---
+  // ── Telegram management ───────────────────────────────────────────────────
 
   private async _loadTelegramPairing(): Promise<void> {
     this._telegramPairingLoading = true;
@@ -936,7 +423,9 @@ export class InstanceSettings extends LitElement {
 
   private _startPairingPoll(): void {
     if (this._pairingPollTimer !== null) return;
-    this._pairingPollTimer = setInterval(() => { void this._loadTelegramPairing(); }, 10_000);
+    this._pairingPollTimer = setInterval(() => {
+      void this._loadTelegramPairing();
+    }, 10_000);
   }
 
   private _stopPairingPoll(): void {
@@ -958,7 +447,7 @@ export class InstanceSettings extends LitElement {
     }
   }
 
-  // --- Provider management ---
+  // ── Provider management ───────────────────────────────────────────────────
 
   private _addProvider(id: string): void {
     if (!id) return;
@@ -994,32 +483,43 @@ export class InstanceSettings extends LitElement {
     return defaultModel.startsWith(`${id}/`);
   }
 
-  // --- Render helpers ---
+  // ── Render helpers ────────────────────────────────────────────────────────
 
   private _renderSidebar() {
     const sections: Array<{ id: SidebarSection; label: string; badge?: number }> = [
       { id: "general", label: msg("General", { id: "settings-general" }) },
       { id: "agents", label: msg("Agents", { id: "settings-agents" }) },
-      { id: "telegram", label: "Telegram", badge: (this._telegramPairing?.pending.length ?? 0) > 0 ? this._telegramPairing!.pending.length : undefined },
+      {
+        id: "telegram",
+        label: "Telegram",
+        badge:
+          (this._telegramPairing?.pending.length ?? 0) > 0
+            ? this._telegramPairing!.pending.length
+            : undefined,
+      },
       { id: "plugins", label: "Plugins" },
       { id: "gateway", label: "Gateway" },
-      { id: "devices", label: "Devices", badge: this._pendingDeviceCount > 0 ? this._pendingDeviceCount : undefined },
+      {
+        id: "devices",
+        label: "Devices",
+        badge: this._pendingDeviceCount > 0 ? this._pendingDeviceCount : undefined,
+      },
     ];
 
     return html`
       <aside class="sidebar">
         <nav class="sidebar-nav">
-          ${sections.map((s) => html`
-            <button
-              class="sidebar-item ${this._activeSection === s.id ? "active" : ""}"
-              @click=${() => this._scrollToSection(s.id)}
-            >
-              ${s.label}
-              ${s.badge !== undefined
-                ? html`<span class="nav-badge">${s.badge}</span>`
-                : nothing}
-            </button>
-          `)}
+          ${sections.map(
+            (s) => html`
+              <button
+                class="sidebar-item ${this._activeSection === s.id ? "active" : ""}"
+                @click=${() => this._scrollToSection(s.id)}
+              >
+                ${s.label}
+                ${s.badge !== undefined ? html`<span class="nav-badge">${s.badge}</span>` : nothing}
+              </button>
+            `,
+          )}
         </nav>
       </aside>
     `;
@@ -1041,44 +541,64 @@ export class InstanceSettings extends LitElement {
             class="btn-remove-provider"
             ?disabled=${isDefaultProvider}
             title=${isDefaultProvider
-              ? msg("Default model uses this provider. Change it first.", { id: "settings-remove-provider-blocked" })
+              ? msg("Default model uses this provider. Change it first.", {
+                  id: "settings-remove-provider-blocked",
+                })
               : msg("Remove provider", { id: "settings-remove-provider" })}
             @click=${() => this._removeProvider(p.id)}
-          >${msg("Remove", { id: "settings-remove" })}</button>
+          >
+            ${msg("Remove", { id: "settings-remove" })}
+          </button>
         </div>
         <div class="provider-key-row">
           <span class="provider-env-var">${p.envVar || "—"}</span>
-          ${isEditing ? html`
-            <input
-              class="field-input mono changed"
-              style="flex:1"
-              type="text"
-              placeholder=${p.requiresKey
-                ? msg("Enter API key", { id: "settings-enter-api-key" })
-                : msg("Optional API key", { id: "settings-optional-api-key" })}
-              @input=${(e: Event) => {
-                this._updatedKeys = { ...this._updatedKeys, [p.id]: (e.target as HTMLInputElement).value };
-                this.requestUpdate();
-              }}
-            />
-            <button class="btn-reveal" @click=${() => {
-              this._editingKeyForProvider = null;
-              const updated = { ...this._updatedKeys };
-              delete updated[p.id];
-              this._updatedKeys = updated;
-              this.requestUpdate();
-            }}>
-              ${msg("Cancel", { id: "settings-cancel" })}
-            </button>
-          ` : html`
-            <span class="field-readonly" style="flex:1">${p.apiKeyMasked
-              ?? (p.requiresKey
-                ? msg("Not set", { id: "settings-not-set" })
-                : msg("Optional", { id: "settings-optional" }))}</span>
-            <button class="btn-reveal" @click=${() => { this._editingKeyForProvider = p.id; this.requestUpdate(); }}>
-              ${msg("Change", { id: "settings-change" })}
-            </button>
-          `}
+          ${isEditing
+            ? html`
+                <input
+                  class="field-input mono changed"
+                  style="flex:1"
+                  type="text"
+                  placeholder=${p.requiresKey
+                    ? msg("Enter API key", { id: "settings-enter-api-key" })
+                    : msg("Optional API key", { id: "settings-optional-api-key" })}
+                  @input=${(e: Event) => {
+                    this._updatedKeys = {
+                      ...this._updatedKeys,
+                      [p.id]: (e.target as HTMLInputElement).value,
+                    };
+                    this.requestUpdate();
+                  }}
+                />
+                <button
+                  class="btn-reveal"
+                  @click=${() => {
+                    this._editingKeyForProvider = null;
+                    const updated = { ...this._updatedKeys };
+                    delete updated[p.id];
+                    this._updatedKeys = updated;
+                    this.requestUpdate();
+                  }}
+                >
+                  ${msg("Cancel", { id: "settings-cancel" })}
+                </button>
+              `
+            : html`
+                <span class="field-readonly" style="flex:1"
+                  >${p.apiKeyMasked ??
+                  (p.requiresKey
+                    ? msg("Not set", { id: "settings-not-set" })
+                    : msg("Optional", { id: "settings-optional" }))}</span
+                >
+                <button
+                  class="btn-reveal"
+                  @click=${() => {
+                    this._editingKeyForProvider = p.id;
+                    this.requestUpdate();
+                  }}
+                >
+                  ${msg("Change", { id: "settings-change" })}
+                </button>
+              `}
         </div>
       </div>
     `;
@@ -1106,10 +626,9 @@ export class InstanceSettings extends LitElement {
             <span class="provider-id">${entry.id}</span>
             <span class="badge-new">new</span>
           </div>
-          <button
-            class="btn-remove-provider"
-            @click=${() => this._removeProvider(p.id)}
-          >${msg("Remove", { id: "settings-remove" })}</button>
+          <button class="btn-remove-provider" @click=${() => this._removeProvider(p.id)}>
+            ${msg("Remove", { id: "settings-remove" })}
+          </button>
         </div>
         <div class="provider-key-row">
           <span class="provider-env-var" style="font-size:11px;color:var(--text-muted)">
@@ -1145,47 +664,55 @@ export class InstanceSettings extends LitElement {
     // Newly added providers
     const added = this._addedProviders;
     // Providers available for addition (not already configured or pending add)
-    const configuredIds = new Set([
-      ...existing.map((p) => p.id),
-      ...added.map((p) => p.id),
-    ]);
+    const configuredIds = new Set([...existing.map((p) => p.id), ...added.map((p) => p.id)]);
     const available = this._providerCatalog.filter((p) => !configuredIds.has(p.id));
 
     return html`
       <div class="providers-section">
         <div class="providers-header">
           <span class="section-subheader">${msg("Providers", { id: "settings-providers" })}</span>
-          ${available.length > 0 ? html`
-            <button
-              class="btn btn-ghost btn-sm"
-              @click=${() => { this._showAddProvider = !this._showAddProvider; this.requestUpdate(); }}
-            >+ ${msg("Add provider", { id: "settings-add-provider" })}</button>
-          ` : nothing}
+          ${available.length > 0
+            ? html`
+                <button
+                  class="btn btn-ghost btn-sm"
+                  @click=${() => {
+                    this._showAddProvider = !this._showAddProvider;
+                    this.requestUpdate();
+                  }}
+                >
+                  + ${msg("Add provider", { id: "settings-add-provider" })}
+                </button>
+              `
+            : nothing}
         </div>
 
         ${existing.map((p) => this._renderProviderCard(p, false))}
         ${added.map((p) => this._renderNewProviderCard(p))}
-
-        ${this._showAddProvider && available.length > 0 ? html`
-          <div class="provider-add-row">
-            <select
-              class="field-input"
-              @change=${(e: Event) => {
-                const val = (e.target as HTMLSelectElement).value;
-                if (val) this._addProvider(val);
-              }}
-            >
-              <option value="">${msg("Select provider...", { id: "settings-select-provider" })}</option>
-              ${available.map((p) => html`<option value=${p.id}>${p.label}</option>`)}
-            </select>
-          </div>
-        ` : nothing}
-
-        ${existing.length === 0 && added.length === 0 ? html`
-          <p style="color:var(--text-muted);font-size:13px;margin:0">
-            ${msg("No providers configured.", { id: "settings-no-providers" })}
-          </p>
-        ` : nothing}
+        ${this._showAddProvider && available.length > 0
+          ? html`
+              <div class="provider-add-row">
+                <select
+                  class="field-input"
+                  @change=${(e: Event) => {
+                    const val = (e.target as HTMLSelectElement).value;
+                    if (val) this._addProvider(val);
+                  }}
+                >
+                  <option value="">
+                    ${msg("Select provider...", { id: "settings-select-provider" })}
+                  </option>
+                  ${available.map((p) => html`<option value=${p.id}>${p.label}</option>`)}
+                </select>
+              </div>
+            `
+          : nothing}
+        ${existing.length === 0 && added.length === 0
+          ? html`
+              <p style="color:var(--text-muted);font-size:13px;margin:0">
+                ${msg("No providers configured.", { id: "settings-no-providers" })}
+              </p>
+            `
+          : nothing}
       </div>
     `;
   }
@@ -1197,10 +724,7 @@ export class InstanceSettings extends LitElement {
     // Build model options grouped by provider (from configured providers + added ones)
     const existingProviders = c.providers.filter((p) => !this._removedProviders.includes(p.id));
     const addedProviderIds = this._addedProviders.map((p) => p.id);
-    const allConfiguredProviderIds = [
-      ...existingProviders.map((p) => p.id),
-      ...addedProviderIds,
-    ];
+    const allConfiguredProviderIds = [...existingProviders.map((p) => p.id), ...addedProviderIds];
 
     // Get models per provider from catalog
     const modelGroups = allConfiguredProviderIds
@@ -1220,47 +744,70 @@ export class InstanceSettings extends LitElement {
         <div class="section-header">${msg("General", { id: "settings-general" })}</div>
         <div class="field-grid">
           <div class="field">
-            <label class="field-label">${msg("Display name", { id: "settings-display-name" })}</label>
+            <label class="field-label"
+              >${msg("Display name", { id: "settings-display-name" })}</label
+            >
             <input
               class="field-input ${this._isDirty("general.displayName") ? "changed" : ""}"
               type="text"
               .value=${this._getDirty("general.displayName", c.general.displayName)}
-              @input=${(e: Event) => this._setDirty("general.displayName", (e.target as HTMLInputElement).value)}
+              @input=${(e: Event) =>
+                this._setDirty("general.displayName", (e.target as HTMLInputElement).value)}
             />
           </div>
           <div class="field">
-            <label class="field-label">
-              ${msg("Port", { id: "settings-port" })}
-            </label>
+            <label class="field-label"> ${msg("Port", { id: "settings-port" })} </label>
             <div class="field-readonly">:${c.general.port}</div>
           </div>
           <div class="field full-width">
-            <label class="field-label">${msg("Default model", { id: "settings-default-model" })}</label>
+            <label class="field-label"
+              >${msg("Default model", { id: "settings-default-model" })}</label
+            >
             <select
               class="field-input ${this._isDirty("general.defaultModel") ? "changed" : ""}"
-              @change=${(e: Event) => this._setDirty("general.defaultModel", (e.target as HTMLSelectElement).value)}
+              @change=${(e: Event) =>
+                this._setDirty("general.defaultModel", (e.target as HTMLSelectElement).value)}
             >
-              ${modelGroups.length > 0 ? modelGroups.map((group) => html`
-                <optgroup label=${group.label}>
-                  ${group.models.map((m) => html`
-                    <option value=${m} ?selected=${m === currentDefaultModel}>${m}</option>
-                  `)}
-                </optgroup>
-              `) : nothing}
-              ${!currentModelInList ? html`
-                <option value=${currentDefaultModel} selected>${currentDefaultModel}</option>
-              ` : nothing}
+              ${modelGroups.length > 0
+                ? modelGroups.map(
+                    (group) => html`
+                      <optgroup label=${group.label}>
+                        ${group.models.map(
+                          (m) => html`
+                            <option value=${m} ?selected=${m === currentDefaultModel}>${m}</option>
+                          `,
+                        )}
+                      </optgroup>
+                    `,
+                  )
+                : nothing}
+              ${!currentModelInList
+                ? html`
+                    <option value=${currentDefaultModel} selected>${currentDefaultModel}</option>
+                  `
+                : nothing}
             </select>
           </div>
           <div class="field">
-            <label class="field-label">${msg("Tools profile", { id: "settings-tools-profile" })}</label>
+            <label class="field-label"
+              >${msg("Tools profile", { id: "settings-tools-profile" })}</label
+            >
             <select
               class="field-input ${this._isDirty("general.toolsProfile") ? "changed" : ""}"
-              @change=${(e: Event) => this._setDirty("general.toolsProfile", (e.target as HTMLSelectElement).value)}
+              @change=${(e: Event) =>
+                this._setDirty("general.toolsProfile", (e.target as HTMLSelectElement).value)}
             >
-              ${["coding", "minimal", "full", "none"].map((p) => html`
-                <option value=${p} ?selected=${p === this._getDirty("general.toolsProfile", c.general.toolsProfile)}>${p}</option>
-              `)}
+              ${["coding", "minimal", "full", "none"].map(
+                (p) => html`
+                  <option
+                    value=${p}
+                    ?selected=${p ===
+                    this._getDirty("general.toolsProfile", c.general.toolsProfile)}
+                  >
+                    ${p}
+                  </option>
+                `,
+              )}
             </select>
           </div>
         </div>
@@ -1276,10 +823,7 @@ export class InstanceSettings extends LitElement {
     // Build model groups from configured providers (same logic as General section)
     const existingProviders = c.providers.filter((p) => !this._removedProviders.includes(p.id));
     const addedProviderIds = this._addedProviders.map((p) => p.id);
-    const allConfiguredProviderIds = [
-      ...existingProviders.map((p) => p.id),
-      ...addedProviderIds,
-    ];
+    const allConfiguredProviderIds = [...existingProviders.map((p) => p.id), ...addedProviderIds];
     const heartbeatModelGroups = allConfiguredProviderIds
       .map((id) => {
         const catalogEntry = this._providerCatalog.find((p) => p.id === id);
@@ -1288,62 +832,120 @@ export class InstanceSettings extends LitElement {
       })
       .filter((g): g is { id: string; label: string; models: string[] } => g !== null);
 
-    const currentHeartbeatModel = this._getDirty("agentDefaults.heartbeat.model", c.agentDefaults.heartbeat.model ?? "");
+    const currentHeartbeatModel = this._getDirty(
+      "agentDefaults.heartbeat.model",
+      c.agentDefaults.heartbeat.model ?? "",
+    );
     const allHeartbeatModels = heartbeatModelGroups.flatMap((g) => g.models);
     const heartbeatModelInList = allHeartbeatModels.includes(currentHeartbeatModel);
 
     return html`
       <div class="section">
-        <div class="section-header">${msg("Agents — Defaults", { id: "settings-agent-defaults" })}</div>
+        <div class="section-header">
+          ${msg("Agents — Defaults", { id: "settings-agent-defaults" })}
+        </div>
         <div class="field-grid">
           <div class="field">
-            <label class="field-label">${msg("Default workspace", { id: "settings-workspace" })}</label>
+            <label class="field-label"
+              >${msg("Default workspace", { id: "settings-workspace" })}</label
+            >
             <input
               class="field-input ${this._isDirty("agentDefaults.workspace") ? "changed" : ""}"
               type="text"
               .value=${this._getDirty("agentDefaults.workspace", c.agentDefaults.workspace)}
-              @input=${(e: Event) => this._setDirty("agentDefaults.workspace", (e.target as HTMLInputElement).value)}
+              @input=${(e: Event) =>
+                this._setDirty("agentDefaults.workspace", (e.target as HTMLInputElement).value)}
             />
           </div>
           <div class="field">
-            <label class="field-label">${msg("Max concurrent subagents", { id: "settings-max-concurrent" })}</label>
+            <label class="field-label"
+              >${msg("Max concurrent subagents", { id: "settings-max-concurrent" })}</label
+            >
             <input
-              class="field-input ${this._isDirty("agentDefaults.subagents.maxConcurrent") ? "changed" : ""}"
+              class="field-input ${this._isDirty("agentDefaults.subagents.maxConcurrent")
+                ? "changed"
+                : ""}"
               type="number"
               min="1"
               max="20"
-              .value=${String(this._getDirty("agentDefaults.subagents.maxConcurrent", c.agentDefaults.subagents.maxConcurrent))}
-              @input=${(e: Event) => this._setDirty("agentDefaults.subagents.maxConcurrent", Number((e.target as HTMLInputElement).value))}
+              .value=${String(
+                this._getDirty(
+                  "agentDefaults.subagents.maxConcurrent",
+                  c.agentDefaults.subagents.maxConcurrent,
+                ),
+              )}
+              @input=${(e: Event) =>
+                this._setDirty(
+                  "agentDefaults.subagents.maxConcurrent",
+                  Number((e.target as HTMLInputElement).value),
+                )}
             />
           </div>
           <div class="field">
-            <label class="field-label">${msg("Archive after (min)", { id: "settings-archive-after" })}</label>
+            <label class="field-label"
+              >${msg("Archive after (min)", { id: "settings-archive-after" })}</label
+            >
             <input
-              class="field-input ${this._isDirty("agentDefaults.subagents.archiveAfterMinutes") ? "changed" : ""}"
+              class="field-input ${this._isDirty("agentDefaults.subagents.archiveAfterMinutes")
+                ? "changed"
+                : ""}"
               type="number"
               min="1"
-              .value=${String(this._getDirty("agentDefaults.subagents.archiveAfterMinutes", c.agentDefaults.subagents.archiveAfterMinutes))}
-              @input=${(e: Event) => this._setDirty("agentDefaults.subagents.archiveAfterMinutes", Number((e.target as HTMLInputElement).value))}
+              .value=${String(
+                this._getDirty(
+                  "agentDefaults.subagents.archiveAfterMinutes",
+                  c.agentDefaults.subagents.archiveAfterMinutes,
+                ),
+              )}
+              @input=${(e: Event) =>
+                this._setDirty(
+                  "agentDefaults.subagents.archiveAfterMinutes",
+                  Number((e.target as HTMLInputElement).value),
+                )}
             />
           </div>
           <div class="field">
-            <label class="field-label">${msg("Compaction mode", { id: "settings-compaction-mode" })}</label>
+            <label class="field-label"
+              >${msg("Compaction mode", { id: "settings-compaction-mode" })}</label
+            >
             <select
               class="field-input ${this._isDirty("agentDefaults.compaction.mode") ? "changed" : ""}"
-              @change=${(e: Event) => this._setDirty("agentDefaults.compaction.mode", (e.target as HTMLSelectElement).value)}
+              @change=${(e: Event) =>
+                this._setDirty(
+                  "agentDefaults.compaction.mode",
+                  (e.target as HTMLSelectElement).value,
+                )}
             >
-              ${["auto", "manual", "off"].map((m) => html`
-                <option value=${m} ?selected=${m === this._getDirty("agentDefaults.compaction.mode", c.agentDefaults.compaction.mode)}>${m}</option>
-              `)}
+              ${["auto", "manual", "off"].map(
+                (m) => html`
+                  <option
+                    value=${m}
+                    ?selected=${m ===
+                    this._getDirty(
+                      "agentDefaults.compaction.mode",
+                      c.agentDefaults.compaction.mode,
+                    )}
+                  >
+                    ${m}
+                  </option>
+                `,
+              )}
             </select>
           </div>
           <div class="field">
-            <label class="field-label">${msg("Heartbeat interval", { id: "settings-heartbeat-every" })}</label>
+            <label class="field-label"
+              >${msg("Heartbeat interval", { id: "settings-heartbeat-every" })}</label
+            >
             <input
-              class="field-input ${this._isDirty("agentDefaults.heartbeat.every") ? "changed" : ""} ${this._heartbeatEveryError ? "invalid" : ""}"
+              class="field-input ${this._isDirty("agentDefaults.heartbeat.every")
+                ? "changed"
+                : ""} ${this._heartbeatEveryError ? "invalid" : ""}"
               type="text"
               placeholder="e.g. 30m, 1h"
-              .value=${this._getDirty("agentDefaults.heartbeat.every", c.agentDefaults.heartbeat.every ?? "")}
+              .value=${this._getDirty(
+                "agentDefaults.heartbeat.every",
+                c.agentDefaults.heartbeat.every ?? "",
+              )}
               @input=${(e: Event) => {
                 const raw = (e.target as HTMLInputElement).value;
                 const { error } = this._normalizeHeartbeatEvery(raw);
@@ -1366,67 +968,105 @@ export class InstanceSettings extends LitElement {
               : nothing}
           </div>
           <div class="field">
-            <label class="field-label">${msg("Heartbeat model", { id: "settings-heartbeat-model" })}</label>
+            <label class="field-label"
+              >${msg("Heartbeat model", { id: "settings-heartbeat-model" })}</label
+            >
             <select
               class="field-input ${this._isDirty("agentDefaults.heartbeat.model") ? "changed" : ""}"
-              @change=${(e: Event) => this._setDirty("agentDefaults.heartbeat.model", (e.target as HTMLSelectElement).value)}
+              @change=${(e: Event) =>
+                this._setDirty(
+                  "agentDefaults.heartbeat.model",
+                  (e.target as HTMLSelectElement).value,
+                )}
             >
-              <option value="" ?selected=${!currentHeartbeatModel}>${msg("— none —", { id: "settings-heartbeat-model-none" })}</option>
-              ${heartbeatModelGroups.length > 0 ? heartbeatModelGroups.map((group) => html`
-                <optgroup label=${group.label}>
-                  ${group.models.map((m) => html`
-                    <option value=${m} ?selected=${m === currentHeartbeatModel}>${m}</option>
-                  `)}
-                </optgroup>
-              `) : nothing}
-              ${currentHeartbeatModel && !heartbeatModelInList ? html`
-                <option value=${currentHeartbeatModel} selected>${currentHeartbeatModel}</option>
-              ` : nothing}
+              <option value="" ?selected=${!currentHeartbeatModel}>
+                ${msg("— none —", { id: "settings-heartbeat-model-none" })}
+              </option>
+              ${heartbeatModelGroups.length > 0
+                ? heartbeatModelGroups.map(
+                    (group) => html`
+                      <optgroup label=${group.label}>
+                        ${group.models.map(
+                          (m) => html`
+                            <option value=${m} ?selected=${m === currentHeartbeatModel}>
+                              ${m}
+                            </option>
+                          `,
+                        )}
+                      </optgroup>
+                    `,
+                  )
+                : nothing}
+              ${currentHeartbeatModel && !heartbeatModelInList
+                ? html`
+                    <option value=${currentHeartbeatModel} selected>
+                      ${currentHeartbeatModel}
+                    </option>
+                  `
+                : nothing}
             </select>
           </div>
         </div>
 
-        ${c.agents.length > 0 ? html`
-          <div style="margin-top:28px">
-            <div class="section-header">${msg("Agents — List", { id: "settings-agent-list" })}</div>
-            <table class="agent-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>${msg("Name", { id: "settings-agent-name" })}</th>
-                  <th>${msg("Model", { id: "settings-agent-model" })}</th>
-                  <th>${msg("Workspace", { id: "settings-agent-workspace" })}</th>
-                  <th>${msg("Actions", { id: "settings-agent-actions" })}</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${c.agents.map((agent) => html`
-                  <tr>
-                    <td class="mono">${agent.id}</td>
-                    <td>${agent.name}</td>
-                    <td class="mono">${agent.model ?? "—"}</td>
-                    <td class="mono">${agent.workspace}</td>
-                    <td>
-                      <button
-                        class="btn-agent-edit"
-                        title=${msg("Edit agent", { id: "settings-agent-edit-btn" })}
-                        ?disabled=${this._loadingAgentPanel}
-                        @click=${() => void this._openAgentPanel(agent.id)}
-                      >
-                        ${this._loadingAgentPanel ? "…" : html`
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
-                          </svg>
-                        `}
-                      </button>
-                    </td>
-                  </tr>
-                `)}
-              </tbody>
-            </table>
-          </div>
-        ` : nothing}
+        ${c.agents.length > 0
+          ? html`
+              <div style="margin-top:28px">
+                <div class="section-header">
+                  ${msg("Agents — List", { id: "settings-agent-list" })}
+                </div>
+                <table class="agent-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>${msg("Name", { id: "settings-agent-name" })}</th>
+                      <th>${msg("Model", { id: "settings-agent-model" })}</th>
+                      <th>${msg("Workspace", { id: "settings-agent-workspace" })}</th>
+                      <th>${msg("Actions", { id: "settings-agent-actions" })}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${c.agents.map(
+                      (agent) => html`
+                        <tr>
+                          <td class="mono">${agent.id}</td>
+                          <td>${agent.name}</td>
+                          <td class="mono">${agent.model ?? "—"}</td>
+                          <td class="mono">${agent.workspace}</td>
+                          <td>
+                            <button
+                              class="btn-agent-edit"
+                              title=${msg("Edit agent", { id: "settings-agent-edit-btn" })}
+                              ?disabled=${this._loadingAgentPanel}
+                              @click=${() => void this._openAgentPanel(agent.id)}
+                            >
+                              ${this._loadingAgentPanel
+                                ? "…"
+                                : html`
+                                    <svg
+                                      width="16"
+                                      height="16"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      stroke-width="2"
+                                      stroke-linecap="round"
+                                      stroke-linejoin="round"
+                                    >
+                                      <path
+                                        d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"
+                                      />
+                                    </svg>
+                                  `}
+                            </button>
+                          </td>
+                        </tr>
+                      `,
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            `
+          : nothing}
       </div>
     `;
   }
@@ -1438,90 +1078,170 @@ export class InstanceSettings extends LitElement {
     return html`
       <div class="section">
         <div class="section-header">Telegram</div>
-        ${tg ? html`
-          <div class="field-grid">
-            <div class="field full-width">
-              <div class="toggle-row">
-                <span class="toggle-label">${msg("Enabled", { id: "settings-enabled" })}</span>
-                <button
-                  class="toggle ${this._getDirty("channels.telegram.enabled", tg.enabled) ? "on" : ""}"
-                  @click=${() => this._setDirty("channels.telegram.enabled", !this._getDirty("channels.telegram.enabled", tg.enabled))}
-                ></button>
+        ${tg
+          ? html`
+              <div class="field-grid">
+                <div class="field full-width">
+                  <div class="toggle-row">
+                    <span class="toggle-label">${msg("Enabled", { id: "settings-enabled" })}</span>
+                    <button
+                      class="toggle ${this._getDirty("channels.telegram.enabled", tg.enabled)
+                        ? "on"
+                        : ""}"
+                      @click=${() =>
+                        this._setDirty(
+                          "channels.telegram.enabled",
+                          !this._getDirty("channels.telegram.enabled", tg.enabled),
+                        )}
+                    ></button>
+                  </div>
+                </div>
+                <div class="field full-width">
+                  <label class="field-label">
+                    Bot Token
+                    <span class="restart-badge">hot-reload</span>
+                  </label>
+                  ${this._editingBotToken
+                    ? html`
+                        <div class="secret-row">
+                          <input
+                            class="field-input mono changed"
+                            type="text"
+                            placeholder=${msg("Enter new bot token", {
+                              id: "settings-enter-bot-token",
+                            })}
+                            @input=${(e: Event) =>
+                              this._setDirty(
+                                "channels.telegram.botToken",
+                                (e.target as HTMLInputElement).value,
+                              )}
+                          />
+                          <button
+                            class="btn-reveal"
+                            @click=${() => {
+                              this._editingBotToken = false;
+                              delete this._dirty["channels.telegram.botToken"];
+                              this.requestUpdate();
+                            }}
+                          >
+                            ${msg("Cancel", { id: "settings-cancel" })}
+                          </button>
+                        </div>
+                      `
+                    : html`
+                        <div class="secret-row">
+                          <div class="field-readonly" style="flex:1">
+                            ${tg.botTokenMasked ?? msg("Not set", { id: "settings-not-set" })}
+                          </div>
+                          <button
+                            class="btn-reveal"
+                            @click=${() => {
+                              this._editingBotToken = true;
+                            }}
+                          >
+                            ${msg("Change", { id: "settings-change" })}
+                          </button>
+                        </div>
+                      `}
+                </div>
+                <div class="field">
+                  <label class="field-label">DM Policy</label>
+                  <select
+                    class="field-input ${this._isDirty("channels.telegram.dmPolicy")
+                      ? "changed"
+                      : ""}"
+                    @change=${(e: Event) =>
+                      this._setDirty(
+                        "channels.telegram.dmPolicy",
+                        (e.target as HTMLSelectElement).value,
+                      )}
+                  >
+                    ${["pairing", "open", "allowlist", "disabled"].map(
+                      (p) => html`
+                        <option
+                          value=${p}
+                          ?selected=${p ===
+                          this._getDirty("channels.telegram.dmPolicy", tg.dmPolicy)}
+                        >
+                          ${p}
+                        </option>
+                      `,
+                    )}
+                  </select>
+                </div>
+                <div class="field">
+                  <label class="field-label">Group Policy</label>
+                  <select
+                    class="field-input ${this._isDirty("channels.telegram.groupPolicy")
+                      ? "changed"
+                      : ""}"
+                    @change=${(e: Event) =>
+                      this._setDirty(
+                        "channels.telegram.groupPolicy",
+                        (e.target as HTMLSelectElement).value,
+                      )}
+                  >
+                    ${["allowlist", "open", "disabled"].map(
+                      (p) => html`
+                        <option
+                          value=${p}
+                          ?selected=${p ===
+                          this._getDirty("channels.telegram.groupPolicy", tg.groupPolicy)}
+                        >
+                          ${p}
+                        </option>
+                      `,
+                    )}
+                  </select>
+                </div>
+                <div class="field">
+                  <label class="field-label">Stream Mode</label>
+                  <select
+                    class="field-input ${this._isDirty("channels.telegram.streamMode")
+                      ? "changed"
+                      : ""}"
+                    @change=${(e: Event) =>
+                      this._setDirty(
+                        "channels.telegram.streamMode",
+                        (e.target as HTMLSelectElement).value,
+                      )}
+                  >
+                    ${["partial", "full", "off"].map(
+                      (p) => html`
+                        <option
+                          value=${p}
+                          ?selected=${p ===
+                          this._getDirty(
+                            "channels.telegram.streamMode",
+                            tg.streamMode ?? "partial",
+                          )}
+                        >
+                          ${p}
+                        </option>
+                      `,
+                    )}
+                  </select>
+                </div>
               </div>
-            </div>
-            <div class="field full-width">
-              <label class="field-label">
-                Bot Token
-                <span class="restart-badge">hot-reload</span>
-              </label>
-              ${this._editingBotToken
-                ? html`
-                  <div class="secret-row">
-                    <input
-                      class="field-input mono changed"
-                      type="text"
-                      placeholder=${msg("Enter new bot token", { id: "settings-enter-bot-token" })}
-                      @input=${(e: Event) => this._setDirty("channels.telegram.botToken", (e.target as HTMLInputElement).value)}
-                    />
-                    <button class="btn-reveal" @click=${() => { this._editingBotToken = false; delete this._dirty["channels.telegram.botToken"]; this.requestUpdate(); }}>
-                      ${msg("Cancel", { id: "settings-cancel" })}
-                    </button>
-                  </div>
-                `
-                : html`
-                  <div class="secret-row">
-                    <div class="field-readonly" style="flex:1">${tg.botTokenMasked ?? msg("Not set", { id: "settings-not-set" })}</div>
-                    <button class="btn-reveal" @click=${() => { this._editingBotToken = true; }}>
-                      ${msg("Change", { id: "settings-change" })}
-                    </button>
-                  </div>
-                `}
-            </div>
-            <div class="field">
-              <label class="field-label">DM Policy</label>
-              <select
-                class="field-input ${this._isDirty("channels.telegram.dmPolicy") ? "changed" : ""}"
-                @change=${(e: Event) => this._setDirty("channels.telegram.dmPolicy", (e.target as HTMLSelectElement).value)}
-              >
-                ${["pairing", "open", "allowlist", "disabled"].map((p) => html`
-                  <option value=${p} ?selected=${p === this._getDirty("channels.telegram.dmPolicy", tg.dmPolicy)}>${p}</option>
-                `)}
-              </select>
-            </div>
-            <div class="field">
-              <label class="field-label">Group Policy</label>
-              <select
-                class="field-input ${this._isDirty("channels.telegram.groupPolicy") ? "changed" : ""}"
-                @change=${(e: Event) => this._setDirty("channels.telegram.groupPolicy", (e.target as HTMLSelectElement).value)}
-              >
-                ${["allowlist", "open", "disabled"].map((p) => html`
-                  <option value=${p} ?selected=${p === this._getDirty("channels.telegram.groupPolicy", tg.groupPolicy)}>${p}</option>
-                `)}
-              </select>
-            </div>
-            <div class="field">
-              <label class="field-label">Stream Mode</label>
-              <select
-                class="field-input ${this._isDirty("channels.telegram.streamMode") ? "changed" : ""}"
-                @change=${(e: Event) => this._setDirty("channels.telegram.streamMode", (e.target as HTMLSelectElement).value)}
-              >
-                ${["partial", "full", "off"].map((p) => html`
-                  <option value=${p} ?selected=${p === this._getDirty("channels.telegram.streamMode", tg.streamMode ?? "partial")}>${p}</option>
-                `)}
-              </select>
-            </div>
-          </div>
-          ${this._renderTelegramPairingSection(tg.dmPolicy)}
-        ` : this._addingTelegram
-          ? this._renderTelegramInitForm()
-          : html`
-            <p style="color:var(--text-muted);font-size:13px;margin:0 0 12px">
-              ${msg("Telegram is not configured for this instance.", { id: "settings-telegram-not-configured" })}
-            </p>
-            <button class="btn btn-ghost" @click=${() => { this._addingTelegram = true; }}>
-              ${msg("Configure Telegram", { id: "settings-configure-telegram" })}
-            </button>
-          `}
+              ${this._renderTelegramPairingSection(tg.dmPolicy)}
+            `
+          : this._addingTelegram
+            ? this._renderTelegramInitForm()
+            : html`
+                <p style="color:var(--text-muted);font-size:13px;margin:0 0 12px">
+                  ${msg("Telegram is not configured for this instance.", {
+                    id: "settings-telegram-not-configured",
+                  })}
+                </p>
+                <button
+                  class="btn btn-ghost"
+                  @click=${() => {
+                    this._addingTelegram = true;
+                  }}
+                >
+                  ${msg("Configure Telegram", { id: "settings-configure-telegram" })}
+                </button>
+              `}
       </div>
     `;
   }
@@ -1540,31 +1260,41 @@ export class InstanceSettings extends LitElement {
 
     return html`
       <div style="margin-top:28px">
-        <div class="section-header" style="display:flex;align-items:center;justify-content:space-between">
+        <div
+          class="section-header"
+          style="display:flex;align-items:center;justify-content:space-between"
+        >
           <span>Pairing Requests</span>
           <button
             class="btn-reveal"
             ?disabled=${this._telegramPairingLoading}
             @click=${() => void this._loadTelegramPairing()}
-          >${this._telegramPairingLoading ? "…" : "↻"}</button>
+          >
+            ${this._telegramPairingLoading ? "…" : "↻"}
+          </button>
         </div>
 
-        ${this._telegramPairingError ? html`
-          <div class="error-banner" style="margin-bottom:12px">${this._telegramPairingError}</div>
-        ` : nothing}
-
-        ${!pairing && !this._telegramPairingLoading ? html`
-          <p style="color:var(--text-muted);font-size:13px">
-            ${msg("Loading pairing requests…", { id: "settings-pairing-loading" })}
-          </p>
-        ` : nothing}
-
-        ${pairing && pending.length === 0 ? html`
-          <p style="color:var(--text-muted);font-size:13px">
-            ${msg("No pending pairing requests.", { id: "settings-pairing-empty" })}
-          </p>
-        ` : nothing}
-
+        ${this._telegramPairingError
+          ? html`
+              <div class="error-banner" style="margin-bottom:12px">
+                ${this._telegramPairingError}
+              </div>
+            `
+          : nothing}
+        ${!pairing && !this._telegramPairingLoading
+          ? html`
+              <p style="color:var(--text-muted);font-size:13px">
+                ${msg("Loading pairing requests…", { id: "settings-pairing-loading" })}
+              </p>
+            `
+          : nothing}
+        ${pairing && pending.length === 0
+          ? html`
+              <p style="color:var(--text-muted);font-size:13px">
+                ${msg("No pending pairing requests.", { id: "settings-pairing-empty" })}
+              </p>
+            `
+          : nothing}
         ${pending.map((req: TelegramPairingRequest) => {
           const isApproving = this._approvingCode === req.code;
           const username = req.meta?.username ? `@${req.meta.username}` : req.id;
@@ -1573,29 +1303,40 @@ export class InstanceSettings extends LitElement {
             <div class="provider-card" style="margin-bottom:8px">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
                 <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
-                  <span style="font-size:13px;font-weight:600;color:var(--text-primary)">${username}</span>
-                  <span style="font-size:11px;font-family:var(--font-mono);color:var(--text-muted)">${req.id}</span>
+                  <span style="font-size:13px;font-weight:600;color:var(--text-primary)"
+                    >${username}</span
+                  >
+                  <span style="font-size:11px;font-family:var(--font-mono);color:var(--text-muted)"
+                    >${req.id}</span
+                  >
                 </div>
                 <div style="display:flex;align-items:center;gap:12px;flex-shrink:0">
-                  <span style="font-size:13px;font-family:var(--font-mono);font-weight:700;color:var(--text-primary);letter-spacing:0.08em">${req.code}</span>
+                  <span
+                    style="font-size:13px;font-family:var(--font-mono);font-weight:700;color:var(--text-primary);letter-spacing:0.08em"
+                    >${req.code}</span
+                  >
                   <span style="font-size:11px;color:var(--text-muted)">${age}</span>
                   <button
                     class="btn btn-primary"
                     style="font-size:12px;padding:5px 12px"
                     ?disabled=${isApproving}
                     @click=${() => void this._approvePairing(req.code)}
-                  >${isApproving ? "…" : msg("Approve", { id: "settings-approve" })}</button>
+                  >
+                    ${isApproving ? "…" : msg("Approve", { id: "settings-approve" })}
+                  </button>
                 </div>
               </div>
             </div>
           `;
         })}
-
-        ${pairing ? html`
-          <p style="font-size:12px;color:var(--text-muted);margin-top:8px">
-            ${msg("Approved senders", { id: "settings-approved-senders" })}: <strong style="color:var(--text-secondary)">${approvedCount}</strong>
-          </p>
-        ` : nothing}
+        ${pairing
+          ? html`
+              <p style="font-size:12px;color:var(--text-muted);margin-top:8px">
+                ${msg("Approved senders", { id: "settings-approved-senders" })}:
+                <strong style="color:var(--text-secondary)">${approvedCount}</strong>
+              </p>
+            `
+          : nothing}
       </div>
     `;
   }
@@ -1613,8 +1354,10 @@ export class InstanceSettings extends LitElement {
   private _renderTelegramInitForm() {
     const token = (this._dirty["channels.telegram.botToken"] as string | undefined) ?? "";
     const dmPolicy = (this._dirty["channels.telegram.dmPolicy"] as string | undefined) ?? "pairing";
-    const groupPolicy = (this._dirty["channels.telegram.groupPolicy"] as string | undefined) ?? "allowlist";
-    const streamMode = (this._dirty["channels.telegram.streamMode"] as string | undefined) ?? "partial";
+    const groupPolicy =
+      (this._dirty["channels.telegram.groupPolicy"] as string | undefined) ?? "allowlist";
+    const streamMode =
+      (this._dirty["channels.telegram.streamMode"] as string | undefined) ?? "partial";
 
     const cancel = () => {
       this._addingTelegram = false;
@@ -1645,7 +1388,8 @@ export class InstanceSettings extends LitElement {
               type="text"
               placeholder=${msg("Paste token from BotFather", { id: "settings-paste-bot-token" })}
               .value=${token}
-              @input=${(e: Event) => this._setDirty("channels.telegram.botToken", (e.target as HTMLInputElement).value)}
+              @input=${(e: Event) =>
+                this._setDirty("channels.telegram.botToken", (e.target as HTMLInputElement).value)}
             />
             <a
               href="https://t.me/BotFather"
@@ -1653,52 +1397,60 @@ export class InstanceSettings extends LitElement {
               rel="noopener noreferrer"
               class="btn-reveal"
               title=${msg("Open BotFather in Telegram", { id: "settings-open-botfather" })}
-            >BotFather ↗</a>
+              >BotFather ↗</a
+            >
           </div>
         </div>
         <div class="field">
           <label class="field-label">DM Policy</label>
           <select
             class="field-input"
-            @change=${(e: Event) => this._setDirty("channels.telegram.dmPolicy", (e.target as HTMLSelectElement).value)}
+            @change=${(e: Event) =>
+              this._setDirty("channels.telegram.dmPolicy", (e.target as HTMLSelectElement).value)}
           >
-            ${["pairing", "open", "allowlist", "disabled"].map((p) => html`
-              <option value=${p} ?selected=${p === dmPolicy}>${p}</option>
-            `)}
+            ${["pairing", "open", "allowlist", "disabled"].map(
+              (p) => html` <option value=${p} ?selected=${p === dmPolicy}>${p}</option> `,
+            )}
           </select>
         </div>
         <div class="field">
           <label class="field-label">Group Policy</label>
           <select
             class="field-input"
-            @change=${(e: Event) => this._setDirty("channels.telegram.groupPolicy", (e.target as HTMLSelectElement).value)}
+            @change=${(e: Event) =>
+              this._setDirty(
+                "channels.telegram.groupPolicy",
+                (e.target as HTMLSelectElement).value,
+              )}
           >
-            ${["allowlist", "open", "disabled"].map((p) => html`
-              <option value=${p} ?selected=${p === groupPolicy}>${p}</option>
-            `)}
+            ${["allowlist", "open", "disabled"].map(
+              (p) => html` <option value=${p} ?selected=${p === groupPolicy}>${p}</option> `,
+            )}
           </select>
         </div>
         <div class="field">
           <label class="field-label">Stream Mode</label>
           <select
             class="field-input"
-            @change=${(e: Event) => this._setDirty("channels.telegram.streamMode", (e.target as HTMLSelectElement).value)}
+            @change=${(e: Event) =>
+              this._setDirty("channels.telegram.streamMode", (e.target as HTMLSelectElement).value)}
           >
-            ${["partial", "full", "off"].map((p) => html`
-              <option value=${p} ?selected=${p === streamMode}>${p}</option>
-            `)}
+            ${["partial", "full", "off"].map(
+              (p) => html` <option value=${p} ?selected=${p === streamMode}>${p}</option> `,
+            )}
           </select>
         </div>
-        <div class="field full-width" style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+        <div
+          class="field full-width"
+          style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px"
+        >
           <button class="btn btn-ghost" @click=${cancel}>
             ${msg("Cancel", { id: "settings-cancel" })}
           </button>
-          <button
-            class="btn btn-primary"
-            ?disabled=${!token.trim() || this._saving}
-            @click=${add}
-          >
-            ${this._saving ? msg("Saving…", { id: "settings-saving" }) : msg("Add", { id: "settings-add" })}
+          <button class="btn btn-primary" ?disabled=${!token.trim() || this._saving} @click=${add}>
+            ${this._saving
+              ? msg("Saving…", { id: "settings-saving" })
+              : msg("Add", { id: "settings-add" })}
           </button>
         </div>
       </div>
@@ -1715,49 +1467,81 @@ export class InstanceSettings extends LitElement {
           Plugins
           <span class="restart-badge" style="margin-left:8px">restart</span>
         </div>
-        ${mem0 ? html`
-          <div style="margin-bottom:8px;font-size:13px;font-weight:600;color:var(--text-secondary)">mem0</div>
-          <div class="field-grid">
-            <div class="field full-width">
-              <div class="toggle-row">
-                <span class="toggle-label">${msg("Enabled", { id: "settings-enabled" })}</span>
-                <button
-                  class="toggle ${this._getDirty("plugins.mem0.enabled", mem0.enabled) ? "on" : ""}"
-                  @click=${() => this._setDirty("plugins.mem0.enabled", !this._getDirty("plugins.mem0.enabled", mem0.enabled))}
-                ></button>
+        ${mem0
+          ? html`
+              <div
+                style="margin-bottom:8px;font-size:13px;font-weight:600;color:var(--text-secondary)"
+              >
+                mem0
               </div>
-            </div>
-            <div class="field">
-              <label class="field-label">Ollama URL</label>
-              <input
-                class="field-input mono ${this._isDirty("plugins.mem0.ollamaUrl") ? "changed" : ""}"
-                type="text"
-                .value=${this._getDirty("plugins.mem0.ollamaUrl", mem0.ollamaUrl)}
-                @input=${(e: Event) => this._setDirty("plugins.mem0.ollamaUrl", (e.target as HTMLInputElement).value)}
-              />
-            </div>
-            <div class="field">
-              <label class="field-label">Qdrant Host</label>
-              <input
-                class="field-input mono ${this._isDirty("plugins.mem0.qdrantHost") ? "changed" : ""}"
-                type="text"
-                .value=${this._getDirty("plugins.mem0.qdrantHost", mem0.qdrantHost)}
-                @input=${(e: Event) => this._setDirty("plugins.mem0.qdrantHost", (e.target as HTMLInputElement).value)}
-              />
-            </div>
-            <div class="field">
-              <label class="field-label">Qdrant Port</label>
-              <input
-                class="field-input mono ${this._isDirty("plugins.mem0.qdrantPort") ? "changed" : ""}"
-                type="number"
-                .value=${String(this._getDirty("plugins.mem0.qdrantPort", mem0.qdrantPort))}
-                @input=${(e: Event) => this._setDirty("plugins.mem0.qdrantPort", Number((e.target as HTMLInputElement).value))}
-              />
-            </div>
-          </div>
-        ` : html`
-          <p style="color:var(--text-muted);font-size:13px">${msg("No plugins configured.", { id: "settings-no-plugins" })}</p>
-        `}
+              <div class="field-grid">
+                <div class="field full-width">
+                  <div class="toggle-row">
+                    <span class="toggle-label">${msg("Enabled", { id: "settings-enabled" })}</span>
+                    <button
+                      class="toggle ${this._getDirty("plugins.mem0.enabled", mem0.enabled)
+                        ? "on"
+                        : ""}"
+                      @click=${() =>
+                        this._setDirty(
+                          "plugins.mem0.enabled",
+                          !this._getDirty("plugins.mem0.enabled", mem0.enabled),
+                        )}
+                    ></button>
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="field-label">Ollama URL</label>
+                  <input
+                    class="field-input mono ${this._isDirty("plugins.mem0.ollamaUrl")
+                      ? "changed"
+                      : ""}"
+                    type="text"
+                    .value=${this._getDirty("plugins.mem0.ollamaUrl", mem0.ollamaUrl)}
+                    @input=${(e: Event) =>
+                      this._setDirty(
+                        "plugins.mem0.ollamaUrl",
+                        (e.target as HTMLInputElement).value,
+                      )}
+                  />
+                </div>
+                <div class="field">
+                  <label class="field-label">Qdrant Host</label>
+                  <input
+                    class="field-input mono ${this._isDirty("plugins.mem0.qdrantHost")
+                      ? "changed"
+                      : ""}"
+                    type="text"
+                    .value=${this._getDirty("plugins.mem0.qdrantHost", mem0.qdrantHost)}
+                    @input=${(e: Event) =>
+                      this._setDirty(
+                        "plugins.mem0.qdrantHost",
+                        (e.target as HTMLInputElement).value,
+                      )}
+                  />
+                </div>
+                <div class="field">
+                  <label class="field-label">Qdrant Port</label>
+                  <input
+                    class="field-input mono ${this._isDirty("plugins.mem0.qdrantPort")
+                      ? "changed"
+                      : ""}"
+                    type="number"
+                    .value=${String(this._getDirty("plugins.mem0.qdrantPort", mem0.qdrantPort))}
+                    @input=${(e: Event) =>
+                      this._setDirty(
+                        "plugins.mem0.qdrantPort",
+                        Number((e.target as HTMLInputElement).value),
+                      )}
+                  />
+                </div>
+              </div>
+            `
+          : html`
+              <p style="color:var(--text-muted);font-size:13px">
+                ${msg("No plugins configured.", { id: "settings-no-plugins" })}
+              </p>
+            `}
       </div>
     `;
   }
@@ -1785,11 +1569,19 @@ export class InstanceSettings extends LitElement {
             <label class="field-label">Reload Mode</label>
             <select
               class="field-input ${this._isDirty("gateway.reloadMode") ? "changed" : ""}"
-              @change=${(e: Event) => this._setDirty("gateway.reloadMode", (e.target as HTMLSelectElement).value)}
+              @change=${(e: Event) =>
+                this._setDirty("gateway.reloadMode", (e.target as HTMLSelectElement).value)}
             >
-              ${["hybrid", "poll", "off"].map((m) => html`
-                <option value=${m} ?selected=${m === this._getDirty("gateway.reloadMode", c.gateway.reloadMode)}>${m}</option>
-              `)}
+              ${["hybrid", "poll", "off"].map(
+                (m) => html`
+                  <option
+                    value=${m}
+                    ?selected=${m === this._getDirty("gateway.reloadMode", c.gateway.reloadMode)}
+                  >
+                    ${m}
+                  </option>
+                `,
+              )}
             </select>
           </div>
           <div class="field">
@@ -1799,8 +1591,14 @@ export class InstanceSettings extends LitElement {
               type="number"
               min="100"
               max="5000"
-              .value=${String(this._getDirty("gateway.reloadDebounceMs", c.gateway.reloadDebounceMs))}
-              @input=${(e: Event) => this._setDirty("gateway.reloadDebounceMs", Number((e.target as HTMLInputElement).value))}
+              .value=${String(
+                this._getDirty("gateway.reloadDebounceMs", c.gateway.reloadDebounceMs),
+              )}
+              @input=${(e: Event) =>
+                this._setDirty(
+                  "gateway.reloadDebounceMs",
+                  Number((e.target as HTMLInputElement).value),
+                )}
             />
           </div>
         </div>
@@ -1808,12 +1606,14 @@ export class InstanceSettings extends LitElement {
     `;
   }
 
+  // ── Agent panel ───────────────────────────────────────────────────────────
+
   private async _openAgentPanel(agentId: string): Promise<void> {
     this._loadingAgentPanel = true;
     this._agentPanelError = "";
     try {
       const data = await fetchBuilderData(this.slug);
-      const agent = data.agents.find(a => a.agent_id === agentId);
+      const agent = data.agents.find((a) => a.agent_id === agentId);
       if (!agent) {
         this._agentPanelError = "Agent not found";
         return;
@@ -1833,7 +1633,9 @@ export class InstanceSettings extends LitElement {
       return html`
         <div class="settings-header">
           <div class="header-left">
-            <button class="back-btn" @click=${this._goBack}>← ${msg("Back", { id: "settings-back" })}</button>
+            <button class="back-btn" @click=${this._goBack}>
+              ← ${msg("Back", { id: "settings-back" })}
+            </button>
           </div>
         </div>
         <div class="loading-container">
@@ -1847,7 +1649,9 @@ export class InstanceSettings extends LitElement {
       return html`
         <div class="settings-header">
           <div class="header-left">
-            <button class="back-btn" @click=${this._goBack}>← ${msg("Back", { id: "settings-back" })}</button>
+            <button class="back-btn" @click=${this._goBack}>
+              ← ${msg("Back", { id: "settings-back" })}
+            </button>
           </div>
         </div>
         <div style="padding:24px;max-width:600px;margin:0 auto">
@@ -1861,27 +1665,31 @@ export class InstanceSettings extends LitElement {
     return html`
       <div class="settings-header">
         <div class="header-left">
-          <button class="back-btn" @click=${this._goBack}>← ${msg("Back", { id: "settings-back" })}</button>
+          <button class="back-btn" @click=${this._goBack}>
+            ← ${msg("Back", { id: "settings-back" })}
+          </button>
           <span class="header-title">
             ${this.slug}
             <span>— ${msg("Settings", { id: "settings-title" })}</span>
           </span>
         </div>
         <div class="header-right">
-          ${this._hasChanges && this._activeSection !== "devices" ? html`
-            <button
-              class="btn btn-ghost"
-              @click=${this._cancel}
-              ?disabled=${this._saving}
-            >${msg("Cancel", { id: "settings-cancel" })}</button>
-            <button
-              class="btn btn-primary"
-              @click=${this._save}
-              ?disabled=${this._saving || !!this._heartbeatEveryError}
-            >${this._saving
-              ? msg("Saving...", { id: "settings-saving" })
-              : msg("Save", { id: "settings-save" })}</button>
-          ` : nothing}
+          ${this._hasChanges && this._activeSection !== "devices"
+            ? html`
+                <button class="btn btn-ghost" @click=${this._cancel} ?disabled=${this._saving}>
+                  ${msg("Cancel", { id: "settings-cancel" })}
+                </button>
+                <button
+                  class="btn btn-primary"
+                  @click=${this._save}
+                  ?disabled=${this._saving || !!this._heartbeatEveryError}
+                >
+                  ${this._saving
+                    ? msg("Saving...", { id: "settings-saving" })
+                    : msg("Save", { id: "settings-save" })}
+                </button>
+              `
+            : nothing}
         </div>
       </div>
 
@@ -1898,39 +1706,55 @@ export class InstanceSettings extends LitElement {
           ${this._activeSection === "gateway" ? this._renderGatewaySection() : nothing}
           ${this._activeSection === "devices"
             ? html`
-              <cp-instance-devices
-                .slug=${this.slug}
-                .active=${true}
-                @pending-count-changed=${(e: CustomEvent<number>) => { this._pendingDeviceCount = e.detail; }}
-              ></cp-instance-devices>
-            `
+                <cp-instance-devices
+                  .slug=${this.slug}
+                  .active=${true}
+                  @pending-count-changed=${(e: CustomEvent<number>) => {
+                    this._pendingDeviceCount = e.detail;
+                  }}
+                ></cp-instance-devices>
+              `
             : nothing}
         </div>
       </div>
 
-      ${this._editingAgent ? html`
-        <div class="agent-panel-backdrop" @click=${() => { this._editingAgent = null; this._panelExpanded = false; }}></div>
-        <div class="agent-panel-drawer ${this._panelExpanded ? "expanded" : ""}">
-          <cp-agent-detail-panel
-            .agent=${this._editingAgent}
-            .links=${this._editingAgentLinks}
-            .allAgents=${this._editingAgentAllAgents}
-            .context=${{ kind: "instance", slug: this.slug } as PanelContext}
-            @panel-close=${() => { this._editingAgent = null; this._panelExpanded = false; }}
-            @panel-expand-changed=${(e: CustomEvent<{ expanded: boolean }>) => { this._panelExpanded = e.detail.expanded; }}
-            @agent-meta-updated=${async () => {
-              await Promise.all([
-                this._openAgentPanel(this._editingAgent!.agent_id),
-                fetchInstanceConfig(this.slug).then(cfg => { this._config = cfg; }),
-              ]);
-            }}
-          ></cp-agent-detail-panel>
-        </div>
-      ` : nothing}
-
-      ${this._toast ? html`
-        <div class="toast ${this._toast.type}">${this._toast.message}</div>
-      ` : nothing}
+      ${this._editingAgent
+        ? html`
+            <div
+              class="agent-panel-backdrop"
+              @click=${() => {
+                this._editingAgent = null;
+                this._panelExpanded = false;
+              }}
+            ></div>
+            <div class="agent-panel-drawer ${this._panelExpanded ? "expanded" : ""}">
+              <cp-agent-detail-panel
+                .agent=${this._editingAgent}
+                .links=${this._editingAgentLinks}
+                .allAgents=${this._editingAgentAllAgents}
+                .context=${{ kind: "instance", slug: this.slug } as PanelContext}
+                @panel-close=${() => {
+                  this._editingAgent = null;
+                  this._panelExpanded = false;
+                }}
+                @panel-expand-changed=${(e: CustomEvent<{ expanded: boolean }>) => {
+                  this._panelExpanded = e.detail.expanded;
+                }}
+                @agent-meta-updated=${async () => {
+                  await Promise.all([
+                    this._openAgentPanel(this._editingAgent!.agent_id),
+                    fetchInstanceConfig(this.slug).then((cfg) => {
+                      this._config = cfg;
+                    }),
+                  ]);
+                }}
+              ></cp-agent-detail-panel>
+            </div>
+          `
+        : nothing}
+      ${this._toast
+        ? html` <div class="toast ${this._toast.type}">${this._toast.message}</div> `
+        : nothing}
     `;
   }
 }

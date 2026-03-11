@@ -197,7 +197,7 @@ export interface Blueprint {
   name: string;
   description?: string | null;
   icon?: string | null;
-  tags?: string | null;  // JSON array string, ex: '["rh","legal"]'
+  tags?: string | null; // JSON array string, ex: '["rh","legal"]'
   color?: string | null;
   agent_count?: number;
   created_at?: string;

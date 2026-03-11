@@ -21,11 +21,7 @@ interface UserRow {
   role: string;
 }
 
-export function registerAuthRoutes(
-  app: Hono,
-  deps: RouteDeps,
-  token: string,
-): void {
+export function registerAuthRoutes(app: Hono, deps: RouteDeps, token: string): void {
   const { registry, sessionStore } = deps;
   const expectedBearer = `Bearer ${token}`;
 
@@ -44,10 +40,8 @@ export function registerAuthRoutes(
       return apiError(c, 400, "INVALID_BODY", "Invalid JSON body");
     }
 
-    const username =
-      typeof body.username === "string" ? body.username.trim() : "";
-    const password =
-      typeof body.password === "string" ? body.password : "";
+    const username = typeof body.username === "string" ? body.username.trim() : "";
+    const password = typeof body.password === "string" ? body.password : "";
 
     if (!username || !password) {
       return apiError(c, 400, "MISSING_FIELDS", "username and password are required");
@@ -55,13 +49,11 @@ export function registerAuthRoutes(
 
     // Lookup user
     const db = registry.getDb();
-    const user = db
-      .prepare("SELECT * FROM users WHERE username = ?")
-      .get(username) as UserRow | undefined;
+    const user = db.prepare("SELECT * FROM users WHERE username = ?").get(username) as
+      | UserRow
+      | undefined;
 
-    const valid = user
-      ? await verifyPassword(password, user.password_hash)
-      : false;
+    const valid = user ? await verifyPassword(password, user.password_hash) : false;
 
     if (!user || !valid) {
       registry.logEvent(null, "auth_login_failed", `username=${username}`);

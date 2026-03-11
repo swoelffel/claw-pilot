@@ -17,9 +17,7 @@ export interface CommandContext {
  * Initialize command context and guarantee database closure via try/finally,
  * even when an error is thrown.
  */
-export async function withContext<T>(
-  fn: (ctx: CommandContext) => Promise<T>,
-): Promise<T> {
+export async function withContext<T>(fn: (ctx: CommandContext) => Promise<T>): Promise<T> {
   const db = initDatabase(getDbPath());
   try {
     const registry = new Registry(db);

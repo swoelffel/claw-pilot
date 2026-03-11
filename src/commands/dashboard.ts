@@ -15,11 +15,7 @@ import * as path from "node:path";
 export function dashboardCommand(): Command {
   return new Command("dashboard")
     .description("Start the web dashboard")
-    .option(
-      "-p, --port <port>",
-      "Dashboard port",
-      String(constants.DASHBOARD_PORT),
-    )
+    .option("-p, --port <port>", "Dashboard port", String(constants.DASHBOARD_PORT))
     .action(async (opts: { port: string }) => {
       // db stays open intentionally: the dashboard runs until SIGTERM.
       // db.close() is not called because the process exits after startDashboard() resolves.
@@ -33,9 +29,7 @@ export function dashboardCommand(): Command {
         .prepare("SELECT 1 FROM users WHERE username = ? LIMIT 1")
         .get(constants.ADMIN_USERNAME);
       if (!adminExists) {
-        logger.error(
-          "No admin account found. Run: claw-pilot auth setup",
-        );
+        logger.error("No admin account found. Run: claw-pilot auth setup");
         process.exit(1);
       }
 
@@ -55,7 +49,7 @@ export function dashboardCommand(): Command {
 
       // Dynamic import to avoid bundling issues
       const { startDashboard } = await import("../dashboard/server.js");
-      await startDashboard({ port, token, registry, conn, sessionStore });
+      await startDashboard({ port, token, registry, conn, sessionStore, db });
 
       logger.success(`Dashboard running at http://localhost:${port}`);
     });

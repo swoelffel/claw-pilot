@@ -8,20 +8,20 @@ import { PROVIDER_ENV_VARS } from "./config-generator.js";
 import { PROVIDER_CATALOG } from "../lib/provider-catalog.js";
 import { parseEnv, maskSecret } from "./config-helpers.js";
 import type { ProviderEntry, InstanceConfigPayload } from "./config-types.js";
+import { OpenClawConfigSchema } from "./openclaw-config.schema.js";
 
 // ---------------------------------------------------------------------------
 // Read all providers from openclaw.json + .env
 // ---------------------------------------------------------------------------
 
 function readProviders(
-  config: Record<string, unknown>,
+  config: ReturnType<typeof OpenClawConfigSchema.parse>,
   envMap: Map<string, string>,
 ): ProviderEntry[] {
   const providerEntries: ProviderEntry[] = [];
 
   // 1. Read models.providers
-  const models = config["models"] as Record<string, unknown> | undefined;
-  const modelsProviders = (models?.["providers"] ?? {}) as Record<string, Record<string, unknown>>;
+  const modelsProviders = config.models?.providers ?? {};
 
   for (const [providerId, providerConf] of Object.entries(modelsProviders)) {
     const envVar = PROVIDER_ENV_VARS[providerId] ?? "";
@@ -34,17 +34,16 @@ function readProviders(
       apiKeyMasked: maskSecret(apiKeyRaw),
       apiKeySet: !!apiKeyRaw,
       requiresKey: catalogEntry?.requiresKey ?? true,
-      baseUrl: (providerConf["baseUrl"] as string) ?? null,
+      baseUrl: (providerConf.baseUrl as string | undefined) ?? null,
       source: "models",
     });
   }
 
   // 2. Read auth.profiles for opencode/kilocode (if not already in models.providers)
-  const auth = config["auth"] as Record<string, unknown> | undefined;
-  const authProfiles = (auth?.["profiles"] ?? {}) as Record<string, Record<string, unknown>>;
+  const authProfiles = config.auth?.profiles ?? {};
 
   for (const [, profile] of Object.entries(authProfiles)) {
-    const provider = profile["provider"] as string | undefined;
+    const provider = profile.provider;
     if (provider && !providerEntries.some((p) => p.id === provider)) {
       const envVar = PROVIDER_ENV_VARS[provider] ?? "";
       const apiKeyRaw = envVar ? envMap.get(envVar) : undefined;
@@ -75,9 +74,9 @@ export async function readInstanceConfig(
   configPath: string,
   stateDir: string,
 ): Promise<InstanceConfigPayload> {
-  // Read openclaw.json
+  // Read openclaw.json and parse with Zod schema
   const configRaw = await conn.readFile(configPath);
-  const config = JSON.parse(configRaw) as Record<string, unknown>;
+  const config = OpenClawConfigSchema.parse(JSON.parse(configRaw));
 
   // Read .env
   const envPath = path.join(stateDir, ".env");
@@ -93,80 +92,90 @@ export async function readInstanceConfig(
   const providers = readProviders(config, envMap);
 
   // Extract agents config
-  const agentsConf = config["agents"] as Record<string, unknown> | undefined;
-  const defaults = agentsConf?.["defaults"] as Record<string, unknown> | undefined;
-  const defaultModel = defaults?.["model"] as Record<string, unknown> | string | undefined;
-  const defaultModelStr = typeof defaultModel === "object" && defaultModel !== null
-    ? (defaultModel["primary"] as string | undefined) ?? ""
-    : typeof defaultModel === "string" ? defaultModel : "";
+  const agentsConf = config.agents;
+  const defaults = agentsConf?.defaults;
+  const defaultModel = defaults?.model;
+  const defaultModelStr =
+    typeof defaultModel === "object" && defaultModel !== null
+      ? ((defaultModel as { primary: string }).primary ?? "")
+      : typeof defaultModel === "string"
+        ? defaultModel
+        : "";
 
-  const defaultSubagents = defaults?.["subagents"] as Record<string, unknown> | undefined;
-  const defaultCompaction = defaults?.["compaction"] as Record<string, unknown> | undefined;
-  const defaultContextPruning = defaults?.["contextPruning"] as Record<string, unknown> | undefined;
-  const defaultHeartbeat = defaults?.["heartbeat"] as Record<string, unknown> | undefined;
+  const defaultSubagents = defaults?.subagents;
+  const defaultCompaction = defaults?.compaction;
+  const defaultContextPruning = defaults?.contextPruning;
+  const defaultHeartbeat = defaults?.heartbeat;
 
   // Extract agents list
-  const agentsList = (agentsConf?.["list"] ?? []) as Array<Record<string, unknown>>;
+  const agentsList = agentsConf?.list ?? [];
 
   // Synthesize main agent from agents.defaults if not present in agents.list[]
   // (legacy configs or pre-v0.12.6 deployments may omit main from the list)
-  const hasMainInList = agentsList.some((a) => a["id"] === "main");
-  const mainEntry = hasMainInList ? [] : [{
-    id: "main",
-    name: (defaults?.["name"] as string | undefined) ?? "Main",
-    model: defaultModelStr || null,
-    workspace: (defaults?.["workspace"] as string | undefined) ?? "workspace",
-    identity: null,
-  }];
+  const hasMainInList = agentsList.some((a) => a.id === "main");
+  const mainEntry = hasMainInList
+    ? []
+    : [
+        {
+          id: "main",
+          name: defaults?.name ?? "Main",
+          model: defaultModelStr || null,
+          workspace: defaults?.workspace ?? "workspace",
+          identity: null,
+        },
+      ];
 
   const agents = [
     ...mainEntry,
     ...agentsList.map((a) => {
-      const model = a["model"] as Record<string, unknown> | string | null | undefined;
-      const modelStr = typeof model === "object" && model !== null
-        ? (model["primary"] as string | undefined) ?? null
-        : typeof model === "string" ? model : null;
-      const identity = a["identity"] as Record<string, string> | null | undefined;
+      const model = a.model;
+      const modelStr =
+        typeof model === "object" && model !== null
+          ? ((model as { primary: string }).primary ?? null)
+          : typeof model === "string"
+            ? model
+            : null;
+      const identity = a.identity;
       return {
-        id: a["id"] as string,
-        name: a["name"] as string ?? a["id"] as string,
+        id: a.id,
+        name: a.name ?? a.id,
         model: modelStr,
-        workspace: (a["workspace"] as string) ?? `workspace-${a["id"]}`,
-        identity: identity ? {
-          name: identity["name"],
-          emoji: identity["emoji"],
-          avatar: identity["avatar"],
-        } : null,
+        workspace: a.workspace ?? `workspace-${a.id}`,
+        identity: identity
+          ? {
+              name: identity.name,
+              emoji: identity.emoji,
+              avatar: identity.avatar,
+            }
+          : null,
       };
     }),
   ];
 
   // Extract tools
-  const tools = config["tools"] as Record<string, unknown> | undefined;
-  const toolsProfile = (tools?.["profile"] as string) ?? "coding";
+  const toolsProfile = config.tools?.profile ?? "coding";
 
   // Extract gateway
-  const gateway = config["gateway"] as Record<string, unknown> | undefined;
-  const gwAuth = gateway?.["auth"] as Record<string, unknown> | undefined;
-  const gwReload = gateway?.["reload"] as Record<string, unknown> | undefined;
+  const gateway = config.gateway;
+  const gwAuth = gateway.auth;
+  const gwReload = gateway.reload;
 
   // Extract channels
-  const channels = config["channels"] as Record<string, unknown> | undefined;
-  const telegram = channels?.["telegram"] as Record<string, unknown> | undefined;
+  const telegram = config.channels?.telegram;
   let telegramPayload: InstanceConfigPayload["channels"]["telegram"] = null;
   if (telegram) {
     const botTokenRaw = envMap.get("TELEGRAM_BOT_TOKEN");
     telegramPayload = {
-      enabled: telegram["enabled"] !== false,
+      enabled: telegram.enabled !== false,
       botTokenMasked: maskSecret(botTokenRaw),
-      dmPolicy: (telegram["dmPolicy"] as string) ?? "pairing",
-      groupPolicy: (telegram["groupPolicy"] as string) ?? "allowlist",
-      streamMode: telegram["streamMode"] as string | undefined,
+      dmPolicy: telegram.dmPolicy ?? "pairing",
+      groupPolicy: telegram.groupPolicy ?? "allowlist",
+      streamMode: telegram.streamMode,
     };
   }
 
   // Extract plugins
-  const plugins = config["plugins"] as Record<string, unknown> | undefined;
+  const plugins = config.plugins;
   const mem0 = plugins?.["@mem0/openclaw-mem0"] as Record<string, unknown> | undefined;
   let mem0Payload: InstanceConfigPayload["plugins"]["mem0"] = null;
   if (mem0) {
@@ -184,39 +193,39 @@ export async function readInstanceConfig(
     general: {
       displayName: "", // Will be enriched from DB by the route handler
       defaultModel: defaultModelStr,
-      port: (gateway?.["port"] as number) ?? 0,
+      port: gateway.port ?? 0,
       toolsProfile,
     },
     providers,
     agentDefaults: {
-      workspace: (defaults?.["workspace"] as string) ?? "workspace",
+      workspace: defaults?.workspace ?? "workspace",
       subagents: {
-        maxConcurrent: (defaultSubagents?.["maxConcurrent"] as number) ?? 4,
-        archiveAfterMinutes: (defaultSubagents?.["archiveAfterMinutes"] as number) ?? 60,
+        maxConcurrent: defaultSubagents?.maxConcurrent ?? 4,
+        archiveAfterMinutes: defaultSubagents?.archiveAfterMinutes ?? 60,
       },
       compaction: {
-        mode: (defaultCompaction?.["mode"] as string) ?? "auto",
-        reserveTokensFloor: defaultCompaction?.["reserveTokensFloor"] as number | undefined,
+        mode: defaultCompaction?.mode ?? "auto",
+        reserveTokensFloor: defaultCompaction?.reserveTokensFloor,
       },
       contextPruning: {
-        mode: (defaultContextPruning?.["mode"] as string) ?? "off",
-        ttl: defaultContextPruning?.["ttl"] as string | undefined,
+        mode: defaultContextPruning?.mode ?? "off",
+        ttl: defaultContextPruning?.ttl,
       },
       heartbeat: {
-        every: defaultHeartbeat?.["every"] as string | undefined,
-        model: defaultHeartbeat?.["model"] as string | undefined,
-        target: defaultHeartbeat?.["target"] as string | undefined,
+        every: defaultHeartbeat?.every,
+        model: defaultHeartbeat?.model,
+        target: defaultHeartbeat?.target,
       },
     },
     agents,
     channels: { telegram: telegramPayload },
     plugins: { mem0: mem0Payload },
     gateway: {
-      port: (gateway?.["port"] as number) ?? 0,
-      bind: (gateway?.["bind"] as string) ?? "loopback",
-      authMode: (gwAuth?.["mode"] as string) ?? "token",
-      reloadMode: (gwReload?.["mode"] as string) ?? "hybrid",
-      reloadDebounceMs: (gwReload?.["debounceMs"] as number) ?? 500,
+      port: gateway.port ?? 0,
+      bind: gateway.bind ?? "loopback",
+      authMode: gwAuth?.mode ?? "token",
+      reloadMode: gwReload?.mode ?? "hybrid",
+      reloadDebounceMs: gwReload?.debounceMs ?? 500,
     },
   };
 }

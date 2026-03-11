@@ -14,10 +14,8 @@ export async function promptSlug(
     validate: (value) => {
       if (!/^[a-z][a-z0-9-]*$/.test(value))
         return "Slug must be lowercase alphanumeric with hyphens";
-      if (value.length < 2 || value.length > 30)
-        return "Slug must be 2-30 characters";
-      if (registry.getInstance(value))
-        return `Instance "${value}" already exists`;
+      if (value.length < 2 || value.length > 30) return "Slug must be 2-30 characters";
+      if (registry.getInstance(value)) return `Instance "${value}" already exists`;
       return true;
     },
   });
@@ -30,10 +28,7 @@ export async function promptSlug(
   return { slug, displayName };
 }
 
-export async function promptPort(
-  portAllocator: PortAllocator,
-  serverId: number,
-): Promise<number> {
+export async function promptPort(portAllocator: PortAllocator, serverId: number): Promise<number> {
   const suggested = await portAllocator.findFreePort(serverId);
 
   const portStr = await input({
@@ -41,8 +36,7 @@ export async function promptPort(
     default: String(suggested),
     validate: async (value) => {
       const port = parseInt(value);
-      if (isNaN(port) || port < 1024 || port > 65535)
-        return "Invalid port number";
+      if (isNaN(port) || port < 1024 || port > 65535) return "Invalid port number";
       const free = await portAllocator.verifyPort(serverId, port);
       if (!free) return `Port ${port} is already in use`;
       return true;
@@ -72,17 +66,14 @@ export async function promptAgents(): Promise<{
   }
 
   // Custom mode: loop to add agents
-  const agents: AgentDefinition[] = [
-    { id: "main", name: "Main", isDefault: true },
-  ];
+  const agents: AgentDefinition[] = [{ id: "main", name: "Main", isDefault: true }];
   let addMore = true;
 
   while (addMore) {
     const agentId = await input({
       message: "Agent ID (e.g., pm, dev-back):",
       validate: (v) => {
-        if (!/^[a-z][a-z0-9-]*$/.test(v))
-          return "Must be lowercase alphanumeric with hyphens";
+        if (!/^[a-z][a-z0-9-]*$/.test(v)) return "Must be lowercase alphanumeric with hyphens";
         if (agents.some((a) => a.id === v)) return "Agent ID already used";
         return true;
       },
@@ -127,12 +118,12 @@ export async function promptProvider(
 ): Promise<{ provider: string; apiKey: string }> {
   // Build provider choices
   const providerChoices = [
-    { value: "anthropic",  name: "Anthropic (Claude)" },
-    { value: "openai",     name: "OpenAI (GPT)" },
+    { value: "anthropic", name: "Anthropic (Claude)" },
+    { value: "openai", name: "OpenAI (GPT)" },
     { value: "openrouter", name: "OpenRouter" },
-    { value: "google",     name: "Google Gemini" },
-    { value: "mistral",    name: "Mistral" },
-    { value: "opencode",   name: "OpenCode (no API key needed)" },
+    { value: "google", name: "Google Gemini" },
+    { value: "mistral", name: "Mistral" },
+    { value: "opencode", name: "OpenCode (no API key needed)" },
   ];
 
   const provider = await select<string>({
@@ -183,9 +174,9 @@ export async function promptTelegram(): Promise<{
   return { enabled: true, botToken };
 }
 
-export async function promptMem0(
-  conn: { exec: (cmd: string) => Promise<{ stdout: string }> },
-): Promise<{ enabled: boolean; ollamaUrl?: string; qdrantHost?: string; qdrantPort?: number }> {
+export async function promptMem0(conn: {
+  exec: (cmd: string) => Promise<{ stdout: string }>;
+}): Promise<{ enabled: boolean; ollamaUrl?: string; qdrantHost?: string; qdrantPort?: number }> {
   // Auto-detect Ollama and Qdrant
   const [ollamaResult, qdrantResult] = await Promise.all([
     conn.exec("curl -s http://127.0.0.1:11434/api/version 2>/dev/null || true"),

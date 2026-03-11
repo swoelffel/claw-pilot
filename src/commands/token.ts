@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { readGatewayToken } from "../lib/env-reader.js";
 import { logger } from "../lib/logger.js";
 import { withContext } from "./_context.js";
+import { CliError } from "../lib/errors.js";
 import chalk from "chalk";
 
 const execFileAsync = promisify(nodeExecFile);
@@ -19,17 +20,17 @@ export function tokenCommand(): Command {
       await withContext(async ({ conn, registry }) => {
         const instance = registry.getInstance(slug);
         if (!instance) {
-          logger.error(`Instance "${slug}" not found. Run 'claw-pilot list' to see available instances.`);
-          process.exit(1);
+          throw new CliError(
+            `Instance "${slug}" not found. Run 'claw-pilot list' to see available instances.`,
+          );
         }
 
         const token = await readGatewayToken(conn, instance.state_dir);
         if (!token) {
-          logger.error(
+          throw new CliError(
             `Gateway token not found in ${instance.state_dir}/.env\n` +
-            `  Make sure OPENCLAW_GW_AUTH_TOKEN is set in that file.`,
+              `  Make sure OPENCLAW_GW_AUTH_TOKEN is set in that file.`,
           );
-          process.exit(1);
         }
 
         // Build the Control UI base URL
@@ -50,11 +51,10 @@ export function tokenCommand(): Command {
             logger.success(`Opened Control UI for "${slug}" in browser.`);
             logger.dim(`  ${tokenUrl}`);
           } catch (err) {
-            logger.error(
+            throw new CliError(
               `Failed to open browser: ${err instanceof Error ? err.message : String(err)}\n` +
-              `  Open manually: ${tokenUrl}`,
+                `  Open manually: ${tokenUrl}`,
             );
-            process.exit(1);
           }
           return;
         }

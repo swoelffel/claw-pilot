@@ -13,155 +13,165 @@ import { spinnerStyles, errorBannerStyles, buttonStyles } from "../styles/shared
 @localized()
 @customElement("cp-import-team-dialog")
 export class ImportTeamDialog extends DialogMixin(LitElement) {
-  static styles = [tokenStyles, spinnerStyles, errorBannerStyles, buttonStyles, css`
-    :host { display: block; }
+  static override styles = [
+    tokenStyles,
+    spinnerStyles,
+    errorBannerStyles,
+    buttonStyles,
+    css`
+      :host {
+        display: block;
+      }
 
-    .overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.7);
-      backdrop-filter: blur(4px);
-      z-index: 200;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-    }
+      .overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(4px);
+        z-index: 200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
 
-    .dialog {
-      background: var(--bg-surface);
-      border: 1px solid var(--bg-border);
-      border-radius: var(--radius-lg);
-      width: 100%;
-      max-width: 500px;
-      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
-    }
+      .dialog {
+        background: var(--bg-surface);
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-lg);
+        width: 100%;
+        max-width: 500px;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+      }
 
-    .dialog-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 20px 24px 16px;
-      border-bottom: 1px solid var(--bg-border);
-    }
+      .dialog-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 20px 24px 16px;
+        border-bottom: 1px solid var(--bg-border);
+      }
 
-    .dialog-title {
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--text-primary);
-    }
+      .dialog-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text-primary);
+      }
 
-    .btn-close {
-      background: none;
-      border: none;
-      color: var(--text-muted);
-      font-size: 18px;
-      cursor: pointer;
-      padding: 4px;
-      line-height: 1;
-    }
+      .btn-close {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        font-size: 18px;
+        cursor: pointer;
+        padding: 4px;
+        line-height: 1;
+      }
 
-    .dialog-body {
-      padding: 20px 24px;
-    }
+      .dialog-body {
+        padding: 20px 24px;
+      }
 
-    .drop-zone {
-      border: 2px dashed var(--bg-border);
-      border-radius: var(--radius-md);
-      padding: 32px 20px;
-      text-align: center;
-      color: var(--text-muted);
-      font-size: 13px;
-      cursor: pointer;
-      transition: border-color 0.15s, background 0.15s;
-    }
+      .drop-zone {
+        border: 2px dashed var(--bg-border);
+        border-radius: var(--radius-md);
+        padding: 32px 20px;
+        text-align: center;
+        color: var(--text-muted);
+        font-size: 13px;
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          background 0.15s;
+      }
 
-    .drop-zone:hover,
-    .drop-zone.dragover {
-      border-color: var(--accent);
-      background: rgba(79, 110, 247, 0.05);
-    }
+      .drop-zone:hover,
+      .drop-zone.dragover {
+        border-color: var(--accent);
+        background: rgba(79, 110, 247, 0.05);
+      }
 
-    .drop-zone input {
-      display: none;
-    }
+      .drop-zone input {
+        display: none;
+      }
 
-    .summary {
-      margin-top: 16px;
-    }
+      .summary {
+        margin-top: 16px;
+      }
 
-    .summary-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 4px 0;
-      font-size: 13px;
-      color: var(--text-secondary);
-    }
+      .summary-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 0;
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
 
-    .summary-row .label {
-      color: var(--text-muted);
-    }
+      .summary-row .label {
+        color: var(--text-muted);
+      }
 
-    .warning {
-      margin-top: 16px;
-      padding: 10px 14px;
-      background: rgba(234, 179, 8, 0.08);
-      border: 1px solid rgba(234, 179, 8, 0.2);
-      border-radius: var(--radius-md);
-      font-size: 12px;
-      color: #eab308;
-      line-height: 1.5;
-    }
+      .warning {
+        margin-top: 16px;
+        padding: 10px 14px;
+        background: rgba(234, 179, 8, 0.08);
+        border: 1px solid rgba(234, 179, 8, 0.2);
+        border-radius: var(--radius-md);
+        font-size: 12px;
+        color: #eab308;
+        line-height: 1.5;
+      }
 
-    .dialog-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-      padding: 16px 24px 20px;
-      border-top: 1px solid var(--bg-border);
-    }
+      .dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 16px 24px 20px;
+        border-top: 1px solid var(--bg-border);
+      }
 
-    .btn-cancel {
-      background: none;
-      border: 1px solid var(--bg-border);
-      color: var(--text-secondary);
-      border-radius: var(--radius-md);
-      padding: 7px 18px;
-      font-size: 12px;
-      cursor: pointer;
-      font-family: inherit;
-    }
+      .btn-cancel {
+        background: none;
+        border: 1px solid var(--bg-border);
+        color: var(--text-secondary);
+        border-radius: var(--radius-md);
+        padding: 7px 18px;
+        font-size: 12px;
+        cursor: pointer;
+        font-family: inherit;
+      }
 
-    .btn-import {
-      background: var(--accent);
-      border: none;
-      color: white;
-      border-radius: var(--radius-md);
-      padding: 7px 18px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      font-family: inherit;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
+      .btn-import {
+        background: var(--accent);
+        border: none;
+        color: white;
+        border-radius: var(--radius-md);
+        padding: 7px 18px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: inherit;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
 
-    .btn-import:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
+      .btn-import:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
 
-    .error-msg {
-      margin-top: 12px;
-      padding: 8px 12px;
-      background: rgba(239, 68, 68, 0.08);
-      border: 1px solid rgba(239, 68, 68, 0.2);
-      border-radius: var(--radius-md);
-      font-size: 12px;
-      color: #ef4444;
-    }
-  `];
+      .error-msg {
+        margin-top: 12px;
+        padding: 8px 12px;
+        background: rgba(239, 68, 68, 0.08);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+        border-radius: var(--radius-md);
+        font-size: 12px;
+        color: #ef4444;
+      }
+    `,
+  ];
 
   @property({ type: Object }) context!: PanelContext;
 
@@ -217,7 +227,11 @@ export class ImportTeamDialog extends DialogMixin(LitElement) {
       if (this.context.kind === "instance") {
         this._dryRunResult = await importInstanceTeam(this.context.slug, this._yamlContent, true);
       } else {
-        this._dryRunResult = await importBlueprintTeam(this.context.blueprintId, this._yamlContent, true);
+        this._dryRunResult = await importBlueprintTeam(
+          this.context.blueprintId,
+          this._yamlContent,
+          true,
+        );
       }
     } catch (err) {
       this._error = userMessage(err);
@@ -247,7 +261,12 @@ export class ImportTeamDialog extends DialogMixin(LitElement) {
     const summary = this._dryRunResult?.summary;
 
     return html`
-      <div class="overlay" @click=${(e: Event) => { if (e.target === e.currentTarget) this._close(); }}>
+      <div
+        class="overlay"
+        @click=${(e: Event) => {
+          if (e.target === e.currentTarget) this._close();
+        }}
+      >
         <div class="dialog">
           <div class="dialog-header">
             <span class="dialog-title">${msg("Import Agent Team", { id: "tid-title" })}</span>
@@ -260,7 +279,8 @@ export class ImportTeamDialog extends DialogMixin(LitElement) {
               @dragover=${this._onDragOver}
               @dragleave=${this._onDragLeave}
               @drop=${(e: DragEvent) => void this._onDrop(e)}
-              @click=${() => this.shadowRoot?.querySelector<HTMLInputElement>("#file-input")?.click()}
+              @click=${() =>
+                this.shadowRoot?.querySelector<HTMLInputElement>("#file-input")?.click()}
             >
               <input
                 id="file-input"
@@ -273,41 +293,46 @@ export class ImportTeamDialog extends DialogMixin(LitElement) {
                 : msg("Drop .team.yaml file here or click to browse", { id: "tid-drop-hint" })}
             </div>
 
-            ${this._loading ? html`
-              <div style="display: flex; align-items: center; gap: 8px; margin-top: 12px;">
-                <div class="spinner" style="width: 14px; height: 14px;"></div>
-                <span style="font-size: 12px; color: var(--text-muted);">Validating...</span>
-              </div>
-            ` : ""}
+            ${this._loading
+              ? html`
+                  <div style="display: flex; align-items: center; gap: 8px; margin-top: 12px;">
+                    <div class="spinner" style="width: 14px; height: 14px;"></div>
+                    <span style="font-size: 12px; color: var(--text-muted);">Validating...</span>
+                  </div>
+                `
+              : ""}
+            ${summary
+              ? html`
+                  <div class="summary">
+                    <div class="summary-row">
+                      <span class="label">${msg("File", { id: "tid-file" })}</span>
+                      <span>${this._file?.name ?? ""}</span>
+                    </div>
+                    <div class="summary-row">
+                      <span class="label">${msg("Agents", { id: "tid-agents" })}</span>
+                      <span
+                        >${summary.agents_to_import} (current: ${summary.current_agent_count})</span
+                      >
+                    </div>
+                    <div class="summary-row">
+                      <span class="label">${msg("Links", { id: "tid-links" })}</span>
+                      <span>${summary.links_to_import}</span>
+                    </div>
+                    <div class="summary-row">
+                      <span class="label">${msg("Files", { id: "tid-files" })}</span>
+                      <span>${summary.files_to_write}</span>
+                    </div>
+                  </div>
 
-            ${summary ? html`
-              <div class="summary">
-                <div class="summary-row">
-                  <span class="label">${msg("File", { id: "tid-file" })}</span>
-                  <span>${this._file?.name ?? ""}</span>
-                </div>
-                <div class="summary-row">
-                  <span class="label">${msg("Agents", { id: "tid-agents" })}</span>
-                  <span>${summary.agents_to_import} (current: ${summary.current_agent_count})</span>
-                </div>
-                <div class="summary-row">
-                  <span class="label">${msg("Links", { id: "tid-links" })}</span>
-                  <span>${summary.links_to_import}</span>
-                </div>
-                <div class="summary-row">
-                  <span class="label">${msg("Files", { id: "tid-files" })}</span>
-                  <span>${summary.files_to_write}</span>
-                </div>
-              </div>
-
-              <div class="warning">
-                ${msg("This will replace all existing agents, files, and links. This action cannot be undone.", { id: "tid-warning" })}
-              </div>
-            ` : ""}
-
-            ${this._error ? html`
-              <div class="error-msg">${this._error}</div>
-            ` : ""}
+                  <div class="warning">
+                    ${msg(
+                      "This will replace all existing agents, files, and links. This action cannot be undone.",
+                      { id: "tid-warning" },
+                    )}
+                  </div>
+                `
+              : ""}
+            ${this._error ? html` <div class="error-msg">${this._error}</div> ` : ""}
           </div>
 
           <div class="dialog-actions">
@@ -319,7 +344,9 @@ export class ImportTeamDialog extends DialogMixin(LitElement) {
               ?disabled=${!this._dryRunResult || this._importing || !!this._error}
               @click=${() => void this._doImport()}
             >
-              ${this._importing ? html`<div class="spinner" style="width: 12px; height: 12px;"></div>` : ""}
+              ${this._importing
+                ? html`<div class="spinner" style="width: 12px; height: 12px;"></div>`
+                : ""}
               ${this._importing
                 ? msg("Importing...", { id: "tid-btn-importing" })
                 : msg("Import", { id: "tid-btn-import" })}

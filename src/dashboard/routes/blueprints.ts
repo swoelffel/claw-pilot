@@ -82,7 +82,7 @@ function buildBlueprintPayload(blueprintId: number, reg: Registry) {
   const data = reg.getBlueprintBuilderData(blueprintId);
   if (!data) return null;
   const agentsWithFiles = data.agents.map((agent) =>
-    buildAgentPayload(agent, reg.listAgentFiles(agent.id))
+    buildAgentPayload(agent, reg.listAgentFiles(agent.id)),
   );
 
   return {
@@ -109,7 +109,7 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
   app.post("/api/blueprints", async (c) => {
     let body: { name: string; description?: string; icon?: string; tags?: string; color?: string };
     try {
-      body = await c.req.json() as typeof body;
+      body = (await c.req.json()) as typeof body;
       if (!body.name || typeof body.name !== "string" || body.name.trim() === "") {
         return apiError(c, 400, "BLUEPRINT_NAME_REQUIRED", "name is required");
       }
@@ -131,7 +131,13 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
       return c.json(blueprint, 201);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("UNIQUE")) return apiError(c, 409, "BLUEPRINT_NAME_TAKEN", "A blueprint with this name already exists");
+      if (msg.includes("UNIQUE"))
+        return apiError(
+          c,
+          409,
+          "BLUEPRINT_NAME_TAKEN",
+          "A blueprint with this name already exists",
+        );
       return apiError(c, 500, "INTERNAL_ERROR", msg);
     }
   });
@@ -152,9 +158,15 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     const blueprint = registry.getBlueprint(id);
     if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
 
-    let body: Partial<{ name: string; description: string | null; icon: string | null; tags: string | null; color: string | null }>;
+    let body: Partial<{
+      name: string;
+      description: string | null;
+      icon: string | null;
+      tags: string | null;
+      color: string | null;
+    }>;
     try {
-      body = await c.req.json() as typeof body;
+      body = (await c.req.json()) as typeof body;
     } catch {
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
@@ -164,7 +176,13 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
       return c.json(updated);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("UNIQUE")) return apiError(c, 409, "BLUEPRINT_NAME_TAKEN", "A blueprint with this name already exists");
+      if (msg.includes("UNIQUE"))
+        return apiError(
+          c,
+          409,
+          "BLUEPRINT_NAME_TAKEN",
+          "A blueprint with this name already exists",
+        );
       return apiError(c, 500, "INTERNAL_ERROR", msg);
     }
   });
@@ -197,12 +215,21 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
 
     let body: { agent_id: string; name: string; model?: string };
     try {
-      body = await c.req.json() as typeof body;
+      body = (await c.req.json()) as typeof body;
       if (!body.agent_id || !body.name) {
         return apiError(c, 400, "FIELD_REQUIRED", "agent_id and name are required");
       }
-      if (!/^[a-z][a-z0-9-]*$/.test(body.agent_id) || body.agent_id.length < 2 || body.agent_id.length > 30) {
-        return apiError(c, 400, "INVALID_AGENT_ID", "Invalid agent_id: must be 2-30 lowercase alphanumeric chars with hyphens");
+      if (
+        !/^[a-z][a-z0-9-]*$/.test(body.agent_id) ||
+        body.agent_id.length < 2 ||
+        body.agent_id.length > 30
+      ) {
+        return apiError(
+          c,
+          400,
+          "INVALID_AGENT_ID",
+          "Invalid agent_id: must be 2-30 lowercase alphanumeric chars with hyphens",
+        );
       }
     } catch {
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
@@ -217,7 +244,13 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
       });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      if (errMsg.includes("UNIQUE")) return apiError(c, 409, "AGENT_ID_TAKEN", "An agent with this id already exists in this blueprint");
+      if (errMsg.includes("UNIQUE"))
+        return apiError(
+          c,
+          409,
+          "AGENT_ID_TAKEN",
+          "An agent with this id already exists in this blueprint",
+        );
       return apiError(c, 500, "INTERNAL_ERROR", errMsg);
     }
 
@@ -250,7 +283,7 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
 
     let body: { x: number; y: number };
     try {
-      body = await c.req.json() as { x: number; y: number };
+      body = (await c.req.json()) as { x: number; y: number };
       if (typeof body.x !== "number" || typeof body.y !== "number") {
         return apiError(c, 400, "FIELD_INVALID", "x and y must be numbers");
       }
@@ -295,8 +328,9 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
 
     let body: { content: string };
     try {
-      body = await c.req.json() as { content: string };
-      if (typeof body.content !== "string") return apiError(c, 400, "FIELD_INVALID", "content must be a string");
+      body = (await c.req.json()) as { content: string };
+      if (typeof body.content !== "string")
+        return apiError(c, 400, "FIELD_INVALID", "content must be a string");
     } catch {
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
@@ -318,7 +352,12 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
         contentHash,
       });
     } catch (err: unknown) {
-      return apiError(c, 500, "FILE_SAVE_FAILED", err instanceof Error ? err.message : "File save failed");
+      return apiError(
+        c,
+        500,
+        "FILE_SAVE_FAILED",
+        err instanceof Error ? err.message : "File save failed",
+      );
     }
 
     // Return AgentFileContent shape (same as instance file route) so the
@@ -341,8 +380,9 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
 
     let body: { targets: string[] };
     try {
-      body = await c.req.json() as { targets: string[] };
-      if (!Array.isArray(body.targets)) return apiError(c, 400, "FIELD_INVALID", "targets must be an array");
+      body = (await c.req.json()) as { targets: string[] };
+      if (!Array.isArray(body.targets))
+        return apiError(c, 400, "FIELD_INVALID", "targets must be an array");
     } catch {
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }

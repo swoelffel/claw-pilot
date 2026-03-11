@@ -1,4 +1,4 @@
-import { configureLocalization } from "@lit/localize";
+import { configureLocalization, type LocaleModule } from "@lit/localize";
 
 // Supported locales
 export const sourceLocale = "en";
@@ -17,12 +17,12 @@ export const allLocales: { code: SupportedLocale; label: string; flag: string; n
 const STORAGE_KEY = "cp-locale";
 
 // Lazy loaders for each target locale
-const localizedTemplates: Record<string, () => Promise<unknown>> = {
-  fr: () => import("./locales/fr.js"),
-  de: () => import("./locales/de.js"),
-  es: () => import("./locales/es.js"),
-  it: () => import("./locales/it.js"),
-  pt: () => import("./locales/pt.js"),
+const localizedTemplates: Record<string, () => Promise<LocaleModule>> = {
+  fr: () => import("./locales/fr.js") as Promise<LocaleModule>,
+  de: () => import("./locales/de.js") as Promise<LocaleModule>,
+  es: () => import("./locales/es.js") as Promise<LocaleModule>,
+  it: () => import("./locales/it.js") as Promise<LocaleModule>,
+  pt: () => import("./locales/pt.js") as Promise<LocaleModule>,
 };
 
 export const { getLocale, setLocale } = configureLocalization({

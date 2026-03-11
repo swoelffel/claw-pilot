@@ -14,9 +14,9 @@ function createTestDb(): Database.Database {
 }
 
 function getTestUserId(db: Database.Database): number {
-  const row = db
-    .prepare("SELECT id FROM users WHERE username = 'testuser'")
-    .get() as { id: number };
+  const row = db.prepare("SELECT id FROM users WHERE username = 'testuser'").get() as {
+    id: number;
+  };
   return row.id;
 }
 
@@ -39,18 +39,20 @@ describe("SessionStore.create()", () => {
 
   it("stores ip and user_agent when provided", () => {
     const id = store.create(userId, "127.0.0.1", "TestAgent/1.0");
-    const row = db
-      .prepare("SELECT * FROM sessions WHERE id = ?")
-      .get(id) as { ip_address: string; user_agent: string };
+    const row = db.prepare("SELECT * FROM sessions WHERE id = ?").get(id) as {
+      ip_address: string;
+      user_agent: string;
+    };
     expect(row.ip_address).toBe("127.0.0.1");
     expect(row.user_agent).toBe("TestAgent/1.0");
   });
 
   it("stores null for ip and user_agent when not provided", () => {
     const id = store.create(userId);
-    const row = db
-      .prepare("SELECT * FROM sessions WHERE id = ?")
-      .get(id) as { ip_address: string | null; user_agent: string | null };
+    const row = db.prepare("SELECT * FROM sessions WHERE id = ?").get(id) as {
+      ip_address: string | null;
+      user_agent: string | null;
+    };
     expect(row.ip_address).toBeNull();
     expect(row.user_agent).toBeNull();
   });
@@ -93,7 +95,9 @@ describe("SessionStore.validate()", () => {
     const store = new SessionStore(db, 60_000);
     const id = store.create(userId);
     // Manually backdate expires_at to the past
-    db.prepare(`UPDATE sessions SET expires_at = datetime('now', '-1 second') WHERE id = ?`).run(id);
+    db.prepare(`UPDATE sessions SET expires_at = datetime('now', '-1 second') WHERE id = ?`).run(
+      id,
+    );
     expect(store.validate(id)).toBeNull();
   });
 
@@ -169,9 +173,7 @@ describe("SessionStore.deleteAllForUser()", () => {
       `INSERT INTO users (username, password_hash, role) VALUES ('other', 'scrypt:x:y', 'admin')`,
     ).run();
     const otherId = (
-      db
-        .prepare("SELECT id FROM users WHERE username = 'other'")
-        .get() as { id: number }
+      db.prepare("SELECT id FROM users WHERE username = 'other'").get() as { id: number }
     ).id;
 
     const mySession = store.create(userId);
@@ -195,8 +197,12 @@ describe("SessionStore.cleanup()", () => {
     const id3 = store.create(userId);
 
     // Manually backdate expires_at for id1 and id2
-    db.prepare(`UPDATE sessions SET expires_at = datetime('now', '-1 second') WHERE id = ?`).run(id1);
-    db.prepare(`UPDATE sessions SET expires_at = datetime('now', '-1 second') WHERE id = ?`).run(id2);
+    db.prepare(`UPDATE sessions SET expires_at = datetime('now', '-1 second') WHERE id = ?`).run(
+      id1,
+    );
+    db.prepare(`UPDATE sessions SET expires_at = datetime('now', '-1 second') WHERE id = ?`).run(
+      id2,
+    );
 
     const deleted = store.cleanup();
     expect(deleted).toBe(2);

@@ -38,9 +38,9 @@ function resolveClawPilotBin(): string {
   // In dev: src/core/ -> go up 2 levels to project root, then dist/index.mjs
   // In prod (bundled): dist/ -> dist/index.mjs
   const candidates = [
-    path.resolve(currentDir, "../../dist/index.mjs"),  // dev
-    path.resolve(currentDir, "../index.mjs"),           // prod (bundled in dist/)
-    path.resolve(currentDir, "index.mjs"),              // prod (same dir)
+    path.resolve(currentDir, "../../dist/index.mjs"), // dev
+    path.resolve(currentDir, "../index.mjs"), // prod (bundled in dist/)
+    path.resolve(currentDir, "index.mjs"), // prod (same dir)
   ];
   for (const c of candidates) {
     try {
@@ -85,7 +85,9 @@ async function ensureLinger(conn: ServerConnection): Promise<void> {
   logger.dim("Retrying with sudo...");
   const sudo = await conn.exec(`sudo loginctl enable-linger ${shellEscape(username)}`);
   if (sudo.exitCode !== 0) {
-    logger.warn(`Could not enable linger for ${username}. The dashboard service may stop on logout.`);
+    logger.warn(
+      `Could not enable linger for ${username}. The dashboard service may stop on logout.`,
+    );
     logger.dim(`Run manually: sudo loginctl enable-linger ${username}`);
   } else {
     logger.success("Linger enabled (via sudo)");
@@ -101,6 +103,7 @@ async function isPortResponding(port: number): Promise<boolean> {
     // Any response (including 401 Unauthorized) means the server is up
     return true;
   } catch {
+    // intentionally ignored — any network error means the port is not responding
     return false;
   }
 }
@@ -117,9 +120,10 @@ export async function installDashboardService(
   let nodeBin = nodeResult.stdout.trim();
   if (!nodeBin) {
     // Fallback: check known paths
-    const nodeCandidates = sm === "launchd"
-      ? ["/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"]
-      : ["/usr/local/bin/node", "/usr/bin/node"];
+    const nodeCandidates =
+      sm === "launchd"
+        ? ["/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"]
+        : ["/usr/local/bin/node", "/usr/bin/node"];
     for (const candidate of nodeCandidates) {
       if (await conn.exists(candidate)) {
         nodeBin = candidate;
@@ -279,7 +283,9 @@ export async function getDashboardServiceStatus(
     const installed = await conn.exists(plistPath);
 
     // launchctl list returns exit 0 if the agent is loaded/running
-    const listResult = await conn.execFile("launchctl", ["list", DASHBOARD_LAUNCHD_LABEL]).catch(() => ({ exitCode: 1, stdout: "", stderr: "" }));
+    const listResult = await conn
+      .execFile("launchctl", ["list", DASHBOARD_LAUNCHD_LABEL])
+      .catch(() => ({ exitCode: 1, stdout: "", stderr: "" }));
     const active = listResult.exitCode === 0;
     // launchd agents with RunAtLoad=true are always "enabled" when the plist exists
     const enabled = installed;
@@ -292,15 +298,25 @@ export async function getDashboardServiceStatus(
   const servicePath = getDashboardServicePath();
   const installed = await conn.exists(servicePath);
 
-  const activeResult = await systemctlUser(conn, xdgRuntimeDir, ["is-active", DASHBOARD_SERVICE_UNIT]);
+  const activeResult = await systemctlUser(conn, xdgRuntimeDir, [
+    "is-active",
+    DASHBOARD_SERVICE_UNIT,
+  ]);
   const active = activeResult.code === 0;
 
-  const enabledResult = await systemctlUser(conn, xdgRuntimeDir, ["is-enabled", DASHBOARD_SERVICE_UNIT]);
+  const enabledResult = await systemctlUser(conn, xdgRuntimeDir, [
+    "is-enabled",
+    DASHBOARD_SERVICE_UNIT,
+  ]);
   const enabled = enabledResult.code === 0;
 
   // Get PID
   let pid: number | undefined;
-  const showResult = await systemctlUser(conn, xdgRuntimeDir, ["show", DASHBOARD_SERVICE_UNIT, "--property=MainPID"]);
+  const showResult = await systemctlUser(conn, xdgRuntimeDir, [
+    "show",
+    DASHBOARD_SERVICE_UNIT,
+    "--property=MainPID",
+  ]);
   const pidMatch = showResult.stdout.match(/MainPID=(\d+)/);
   if (pidMatch && pidMatch[1] != null && pidMatch[1] !== "0") {
     pid = parseInt(pidMatch[1], 10);
@@ -308,7 +324,11 @@ export async function getDashboardServiceStatus(
 
   // Get uptime
   let uptime: string | undefined;
-  const uptimeResult = await systemctlUser(conn, xdgRuntimeDir, ["show", DASHBOARD_SERVICE_UNIT, "--property=ActiveEnterTimestamp"]);
+  const uptimeResult = await systemctlUser(conn, xdgRuntimeDir, [
+    "show",
+    DASHBOARD_SERVICE_UNIT,
+    "--property=ActiveEnterTimestamp",
+  ]);
   const tsMatch = uptimeResult.stdout.match(/ActiveEnterTimestamp=(.+)/);
   if (tsMatch && tsMatch[1] != null) {
     uptime = tsMatch[1].trim();

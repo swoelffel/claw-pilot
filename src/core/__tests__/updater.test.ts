@@ -120,9 +120,7 @@ describe("Updater — successful update", () => {
   });
 
   it("lifecycle.restart throws for one instance → update still completes as 'done'", async () => {
-    listInstancesFn.mockReturnValue([
-      { slug: "inst1", state: "running" },
-    ]);
+    listInstancesFn.mockReturnValue([{ slug: "inst1", state: "running" }]);
     restartFn.mockRejectedValueOnce(new Error("restart failed"));
 
     updater.run();

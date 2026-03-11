@@ -215,7 +215,9 @@ describe("SelfUpdater — sudo fallback on EACCES", () => {
     await flush();
 
     const sudoBuild = conn.commands.find((c) => c.includes("sudo -E env") && c.includes("build"));
-    const sudoInstall = conn.commands.find((c) => c.includes("sudo -E env") && c.includes("install"));
+    const sudoInstall = conn.commands.find(
+      (c) => c.includes("sudo -E env") && c.includes("install"),
+    );
     expect(sudoBuild).toBeDefined();
     expect(sudoInstall).toBeDefined();
     expect(updater.getJob().status).toBe("done");

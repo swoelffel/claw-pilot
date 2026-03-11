@@ -24,9 +24,7 @@ export class EventRepository {
   listEvents(instanceSlug?: string, limit = 50): EventRecord[] {
     if (instanceSlug) {
       return this.db
-        .prepare(
-          "SELECT * FROM events WHERE instance_slug = ? ORDER BY created_at DESC LIMIT ?",
-        )
+        .prepare("SELECT * FROM events WHERE instance_slug = ? ORDER BY created_at DESC LIMIT ?")
         .all(instanceSlug, limit) as EventRecord[];
     }
     return this.db

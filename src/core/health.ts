@@ -55,7 +55,9 @@ export class HealthChecker {
         { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
       );
       const s = systemdResult.stdout.trim();
-      status.systemd = (["active", "inactive", "failed"].includes(s) ? s : "unknown") as typeof status.systemd;
+      status.systemd = (
+        ["active", "inactive", "failed"].includes(s) ? s : "unknown"
+      ) as typeof status.systemd;
     } else {
       // launchd: launchctl list <label> — exit 0 = running
       const result = await this.conn.execFile("launchctl", ["list", getLaunchdLabel(slug)]);
@@ -86,8 +88,7 @@ export class HealthChecker {
           { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
         ),
       ]);
-      status.pid =
-        parseInt(pidResult.stdout.trim()) || undefined;
+      status.pid = parseInt(pidResult.stdout.trim()) || undefined;
       status.uptime = uptimeResult.stdout.trim() || undefined;
     }
 
@@ -139,11 +140,7 @@ export class HealthChecker {
     // "error" only when systemd=active but gateway unreachable (process stuck/zombie).
     // systemd retains "failed" after a crash even when the process is gone — treat as "stopped".
     status.state =
-      status.gateway === "healthy"
-        ? "running"
-        : status.systemd === "active"
-          ? "error"
-          : "stopped";
+      status.gateway === "healthy" ? "running" : status.systemd === "active" ? "error" : "stopped";
 
     this.registry.updateInstanceState(slug, status.state);
 
@@ -157,9 +154,7 @@ export class HealthChecker {
 
     for (let i = 0; i < instances.length; i += BATCH_SIZE) {
       const batch = instances.slice(i, i + BATCH_SIZE);
-      const batchResults = await Promise.all(
-        batch.map((inst) => this.check(inst.slug)),
-      );
+      const batchResults = await Promise.all(batch.map((inst) => this.check(inst.slug)));
       results.push(...batchResults);
     }
 

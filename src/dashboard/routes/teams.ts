@@ -2,8 +2,17 @@
 import type { Hono } from "hono";
 import type { RouteDeps } from "../route-deps.js";
 import { apiError } from "../route-deps.js";
-import { exportInstanceTeam, exportBlueprintTeam, serializeTeamYaml } from "../../core/team-export.js";
-import { parseAndValidateTeam, importInstanceTeam, importBlueprintTeam } from "../../core/team-import.js";
+import { instanceGuard } from "../../lib/guards.js";
+import {
+  exportInstanceTeam,
+  exportBlueprintTeam,
+  serializeTeamYaml,
+} from "../../core/team-export.js";
+import {
+  parseAndValidateTeam,
+  importInstanceTeam,
+  importBlueprintTeam,
+} from "../../core/team-import.js";
 import { logger } from "../../lib/logger.js";
 
 export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
@@ -13,10 +22,11 @@ export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
   app.get("/api/instances/:slug/team/export", async (c) => {
     const slug = c.req.param("slug");
     const instance = registry.getInstance(slug);
-    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
 
     try {
-      const team = await exportInstanceTeam(conn, registry, instance);
+      const team = await exportInstanceTeam(conn, registry, instance!);
       const yaml = serializeTeamYaml(team);
       return new Response(yaml, {
         status: 200,
@@ -26,7 +36,12 @@ export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
         },
       });
     } catch (err) {
-      return apiError(c, 500, "EXPORT_FAILED", err instanceof Error ? err.message : "Export failed");
+      return apiError(
+        c,
+        500,
+        "EXPORT_FAILED",
+        err instanceof Error ? err.message : "Export failed",
+      );
     }
   });
 
@@ -34,7 +49,9 @@ export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
   app.post("/api/instances/:slug/team/import", async (c) => {
     const slug = c.req.param("slug");
     const instance = registry.getInstance(slug);
-    if (!instance) return apiError(c, 404, "NOT_FOUND", "Not found");
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
+    const inst = instance!;
 
     const dryRun = c.req.query("dry_run") === "true";
 
@@ -52,28 +69,36 @@ export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
       const err = parsed.error;
       if (err.error === "yaml_parse_error") {
         logger.error(`[team-import] YAML parse error for instance=${slug}: ${err.message ?? ""}`);
-        return c.json({ ok: false, error: "YAML_PARSE_ERROR", message: err.message ?? "Invalid YAML" }, 400);
+        return c.json(
+          { ok: false, error: "YAML_PARSE_ERROR", message: err.message ?? "Invalid YAML" },
+          400,
+        );
       }
       // validation_failed — log each Zod issue
       const details = err.details ?? [];
-      logger.error(`[team-import] Validation failed for instance=${slug} — ${details.length} issue(s):`);
+      logger.error(
+        `[team-import] Validation failed for instance=${slug} — ${details.length} issue(s):`,
+      );
       for (const d of details) {
         logger.error(`  [team-import]   path="${d.path || "(root)"}" — ${d.message}`);
       }
-      const humanMessage = details.length > 0
-        ? details.map((d) => `${d.path ? `[${d.path}] ` : ""}${d.message}`).join(" | ")
-        : "Invalid team file format";
+      const humanMessage =
+        details.length > 0
+          ? details.map((d) => `${d.path ? `[${d.path}] ` : ""}${d.message}`).join(" | ")
+          : "Invalid team file format";
       return c.json({ ok: false, error: "VALIDATION_FAILED", message: humanMessage, details }, 400);
     }
 
-    logger.info(`[team-import] Validated OK — ${parsed.data.agents.length} agents, ${parsed.data.links.length} links`);
+    logger.info(
+      `[team-import] Validated OK — ${parsed.data.agents.length} agents, ${parsed.data.links.length} links`,
+    );
 
     try {
       const result = await importInstanceTeam(
         registry.getDb(),
         registry,
         conn,
-        instance,
+        inst,
         parsed.data,
         xdgRuntimeDir,
         dryRun,
@@ -97,7 +122,9 @@ export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
       const team = exportBlueprintTeam(registry, id);
       const yaml = serializeTeamYaml(team);
       const blueprint = registry.getBlueprint(id);
-      const filename = blueprint ? `${blueprint.name.toLowerCase().replace(/\s+/g, "-")}-team.yaml` : `blueprint-${id}-team.yaml`;
+      const filename = blueprint
+        ? `${blueprint.name.toLowerCase().replace(/\s+/g, "-")}-team.yaml`
+        : `blueprint-${id}-team.yaml`;
       return new Response(yaml, {
         status: 200,
         headers: {
@@ -106,7 +133,12 @@ export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
         },
       });
     } catch (err) {
-      return apiError(c, 500, "EXPORT_FAILED", err instanceof Error ? err.message : "Export failed");
+      return apiError(
+        c,
+        500,
+        "EXPORT_FAILED",
+        err instanceof Error ? err.message : "Export failed",
+      );
     }
   });
 
@@ -134,29 +166,31 @@ export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
       const err = parsed.error;
       if (err.error === "yaml_parse_error") {
         logger.error(`[team-import] YAML parse error for blueprint=${id}: ${err.message ?? ""}`);
-        return c.json({ ok: false, error: "YAML_PARSE_ERROR", message: err.message ?? "Invalid YAML" }, 400);
+        return c.json(
+          { ok: false, error: "YAML_PARSE_ERROR", message: err.message ?? "Invalid YAML" },
+          400,
+        );
       }
       const details = err.details ?? [];
-      logger.error(`[team-import] Validation failed for blueprint=${id} — ${details.length} issue(s):`);
+      logger.error(
+        `[team-import] Validation failed for blueprint=${id} — ${details.length} issue(s):`,
+      );
       for (const d of details) {
         logger.error(`  [team-import]   path="${d.path || "(root)"}" — ${d.message}`);
       }
-      const humanMessage = details.length > 0
-        ? details.map((d) => `${d.path ? `[${d.path}] ` : ""}${d.message}`).join(" | ")
-        : "Invalid team file format";
+      const humanMessage =
+        details.length > 0
+          ? details.map((d) => `${d.path ? `[${d.path}] ` : ""}${d.message}`).join(" | ")
+          : "Invalid team file format";
       return c.json({ ok: false, error: "VALIDATION_FAILED", message: humanMessage, details }, 400);
     }
 
-    logger.info(`[team-import] Validated OK — ${parsed.data.agents.length} agents, ${parsed.data.links.length} links`);
+    logger.info(
+      `[team-import] Validated OK — ${parsed.data.agents.length} agents, ${parsed.data.links.length} links`,
+    );
 
     try {
-      const result = await importBlueprintTeam(
-        registry.getDb(),
-        registry,
-        id,
-        parsed.data,
-        dryRun,
-      );
+      const result = await importBlueprintTeam(registry.getDb(), registry, id, parsed.data, dryRun);
       logger.info(`[team-import] ${dryRun ? "Dry-run" : "Import"} complete for blueprint=${id}`);
       return c.json(result);
     } catch (err) {

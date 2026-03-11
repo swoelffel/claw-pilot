@@ -9,9 +9,7 @@ import {
   deleteBlueprintAgent,
   updateBlueprintAgentPosition,
   exportBlueprintTeam,
-  importBlueprintTeam,
 } from "../api.js";
-import type { TeamImportResult } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { computePositions, newAgentPosition } from "../lib/builder-utils.js";
 import { tokenStyles } from "../styles/tokens.js";
@@ -24,245 +22,263 @@ import "./import-team-dialog.js";
 @localized()
 @customElement("cp-blueprint-builder")
 export class BlueprintBuilder extends LitElement {
-  static styles = [tokenStyles, badgeStyles, spinnerStyles, errorBannerStyles, css`
-    :host {
-      display: flex;
-      flex-direction: column;
-      height: calc(100vh - 56px - 48px);
-      background: var(--bg-base);
-      overflow: hidden;
-    }
+  static override styles = [
+    tokenStyles,
+    badgeStyles,
+    spinnerStyles,
+    errorBannerStyles,
+    css`
+      :host {
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 56px - 48px);
+        background: var(--bg-base);
+        overflow: hidden;
+      }
 
-    .builder-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 20px;
-      background: var(--bg-surface);
-      border-bottom: 1px solid var(--bg-border);
-      flex-shrink: 0;
-    }
+      .builder-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 20px;
+        background: var(--bg-surface);
+        border-bottom: 1px solid var(--bg-border);
+        flex-shrink: 0;
+      }
 
-    .btn-back {
-      background: none;
-      border: 1px solid var(--bg-border);
-      color: var(--text-secondary);
-      border-radius: var(--radius-md);
-      padding: 5px 12px;
-      font-size: 12px;
-      cursor: pointer;
-      transition: border-color 0.15s, color 0.15s;
-      font-family: inherit;
-    }
+      .btn-back {
+        background: none;
+        border: 1px solid var(--bg-border);
+        color: var(--text-secondary);
+        border-radius: var(--radius-md);
+        padding: 5px 12px;
+        font-size: 12px;
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          color 0.15s;
+        font-family: inherit;
+      }
 
-    .btn-back:hover {
-      border-color: var(--accent);
-      color: var(--text-primary);
-    }
+      .btn-back:hover {
+        border-color: var(--accent);
+        color: var(--text-primary);
+      }
 
-    .header-title {
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--text-primary);
-    }
+      .header-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
 
-    .header-subtitle {
-      font-size: 12px;
-      color: var(--text-muted);
-    }
+      .header-subtitle {
+        font-size: 12px;
+        color: var(--text-muted);
+      }
 
-    .btn-team {
-      background: none;
-      border: 1px solid var(--bg-border);
-      color: var(--text-secondary);
-      border-radius: var(--radius-md);
-      padding: 5px 12px;
-      font-size: 12px;
-      cursor: pointer;
-      transition: border-color 0.15s, color 0.15s;
-      font-family: inherit;
-    }
+      .btn-team {
+        background: none;
+        border: 1px solid var(--bg-border);
+        color: var(--text-secondary);
+        border-radius: var(--radius-md);
+        padding: 5px 12px;
+        font-size: 12px;
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          color 0.15s;
+        font-family: inherit;
+      }
 
-    .btn-team:hover {
-      border-color: var(--accent);
-      color: var(--text-primary);
-    }
+      .btn-team:hover {
+        border-color: var(--accent);
+        color: var(--text-primary);
+      }
 
-    .btn-add-agent {
-      margin-left: auto;
-      background: var(--bg-surface);
-      border: 1px solid var(--bg-border);
-      color: var(--text-secondary);
-      border-radius: var(--radius-md);
-      padding: 5px 14px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.15s, border-color 0.15s, color 0.15s;
-      font-family: inherit;
-    }
+      .btn-add-agent {
+        margin-left: auto;
+        background: var(--bg-surface);
+        border: 1px solid var(--bg-border);
+        color: var(--text-secondary);
+        border-radius: var(--radius-md);
+        padding: 5px 14px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          border-color 0.15s,
+          color 0.15s;
+        font-family: inherit;
+      }
 
-    .btn-add-agent:hover {
-      border-color: var(--state-success, #22c55e);
-      color: var(--state-success, #22c55e);
-      background: color-mix(in srgb, var(--state-success, #22c55e) 8%, transparent);
-    }
+      .btn-add-agent:hover {
+        border-color: var(--state-success, #22c55e);
+        color: var(--state-success, #22c55e);
+        background: color-mix(in srgb, var(--state-success, #22c55e) 8%, transparent);
+      }
 
-    .builder-body {
-      flex: 1;
-      position: relative;
-      overflow: hidden;
-    }
+      .builder-body {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+      }
 
-    .canvas-zone {
-      position: absolute;
-      inset: 0;
-      cursor: default;
-    }
+      .canvas-zone {
+        position: absolute;
+        inset: 0;
+        cursor: default;
+      }
 
-    .canvas-zone.dragging {
-      cursor: grabbing;
-      user-select: none;
-    }
+      .canvas-zone.dragging {
+        cursor: grabbing;
+        user-select: none;
+      }
 
-    .spinner-overlay {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: rgba(15, 17, 23, 0.5);
-      z-index: 20;
-      gap: 12px;
-    }
+      .spinner-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: rgba(15, 17, 23, 0.5);
+        z-index: 20;
+        gap: 12px;
+      }
 
-    .spinner-label {
-      font-size: 13px;
-      color: var(--text-secondary);
-    }
+      .spinner-label {
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
 
-    .error-banner {
-      position: absolute;
-      top: 16px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 15;
-    }
+      .error-banner {
+        position: absolute;
+        top: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 15;
+      }
 
-    .empty-state {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      color: var(--text-muted);
-      gap: 8px;
-    }
+      .empty-state {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-muted);
+        gap: 8px;
+      }
 
-    .empty-state-title {
-      font-size: 16px;
-      font-weight: 600;
-    }
+      .empty-state-title {
+        font-size: 16px;
+        font-weight: 600;
+      }
 
-    .empty-state-sub {
-      font-size: 13px;
-    }
+      .empty-state-sub {
+        font-size: 13px;
+      }
 
-    /* Create agent dialog */
-    .dialog-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.6);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 500;
-    }
+      /* Create agent dialog */
+      .dialog-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 500;
+      }
 
-    .dialog {
-      background: var(--bg-surface);
-      border: 1px solid var(--bg-border);
-      border-radius: 12px;
-      padding: 24px;
-      width: 400px;
-      max-width: calc(100vw - 32px);
-      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
-    }
+      .dialog {
+        background: var(--bg-surface);
+        border: 1px solid var(--bg-border);
+        border-radius: 12px;
+        padding: 24px;
+        width: 400px;
+        max-width: calc(100vw - 32px);
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+      }
 
-    .dialog-title {
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--text-primary);
-      margin: 0 0 16px 0;
-    }
+      .dialog-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin: 0 0 16px 0;
+      }
 
-    .form-group {
-      margin-bottom: 14px;
-    }
+      .form-group {
+        margin-bottom: 14px;
+      }
 
-    .form-group label {
-      display: block;
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-secondary);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 5px;
-    }
+      .form-group label {
+        display: block;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 5px;
+      }
 
-    .form-group input {
-      width: 100%;
-      background: var(--bg-base);
-      border: 1px solid var(--bg-border);
-      border-radius: var(--radius-md);
-      color: var(--text-primary);
-      font-size: 13px;
-      font-family: inherit;
-      padding: 7px 10px;
-      box-sizing: border-box;
-      outline: none;
-      transition: border-color 0.15s;
-    }
+      .form-group input {
+        width: 100%;
+        background: var(--bg-base);
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-md);
+        color: var(--text-primary);
+        font-size: 13px;
+        font-family: inherit;
+        padding: 7px 10px;
+        box-sizing: border-box;
+        outline: none;
+        transition: border-color 0.15s;
+      }
 
-    .form-group input:focus { border-color: var(--accent); }
+      .form-group input:focus {
+        border-color: var(--accent);
+      }
 
-    .dialog-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-      margin-top: 20px;
-    }
+      .dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 20px;
+      }
 
-    .btn-cancel {
-      background: none;
-      border: 1px solid var(--bg-border);
-      color: var(--text-secondary);
-      border-radius: var(--radius-md);
-      padding: 6px 16px;
-      font-size: 12px;
-      cursor: pointer;
-      font-family: inherit;
-    }
+      .btn-cancel {
+        background: none;
+        border: 1px solid var(--bg-border);
+        color: var(--text-secondary);
+        border-radius: var(--radius-md);
+        padding: 6px 16px;
+        font-size: 12px;
+        cursor: pointer;
+        font-family: inherit;
+      }
 
-    .btn-create {
-      background: var(--accent);
-      border: none;
-      color: white;
-      border-radius: var(--radius-md);
-      padding: 6px 16px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      font-family: inherit;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
+      .btn-create {
+        background: var(--accent);
+        border: none;
+        color: white;
+        border-radius: var(--radius-md);
+        padding: 6px 16px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: inherit;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
 
-    .btn-create:disabled { opacity: 0.5; cursor: not-allowed; }
-  `];
+      .btn-create:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    `,
+  ];
 
   @property({ type: Number }) blueprintId = 0;
 
@@ -312,7 +328,7 @@ export class BlueprintBuilder extends LitElement {
   override firstUpdated(): void {
     const canvas = this.shadowRoot?.querySelector(".canvas-zone");
     if (canvas) {
-      this._resizeObserver = new ResizeObserver(entries => {
+      this._resizeObserver = new ResizeObserver((entries) => {
         const entry = entries[0];
         if (entry) {
           this._canvasWidth = entry.contentRect.width;
@@ -349,11 +365,13 @@ export class BlueprintBuilder extends LitElement {
   }
 
   private _goBack(): void {
-    this.dispatchEvent(new CustomEvent("navigate", {
-      detail: { view: "blueprints" },
-      bubbles: true,
-      composed: true,
-    }));
+    this.dispatchEvent(
+      new CustomEvent("navigate", {
+        detail: { view: "blueprints" },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   private _selectAgent(agentId: string): void {
@@ -367,13 +385,13 @@ export class BlueprintBuilder extends LitElement {
   private _onPointerDown(e: PointerEvent): void {
     // Identify the card via composedPath
     const card = (e.composedPath() as Element[]).find(
-      el => el instanceof Element && el.tagName === "CP-AGENT-CARD-MINI",
+      (el) => el instanceof Element && el.tagName === "CP-AGENT-CARD-MINI",
     ) as HTMLElement | undefined;
     if (!card) return;
 
     // If the click originated from the delete button, don't start a drag
     const isDeleteBtn = (e.composedPath() as Element[]).some(
-      el => el instanceof Element && el.classList.contains("btn-delete"),
+      (el) => el instanceof Element && el.classList.contains("btn-delete"),
     );
     if (isDeleteBtn) return;
 
@@ -404,8 +422,8 @@ export class BlueprintBuilder extends LitElement {
 
     const zone = e.currentTarget as HTMLElement;
     const rect = zone.getBoundingClientRect();
-    const dx = (e.clientX - rect.left) - this._drag.startX;
-    const dy = (e.clientY - rect.top) - this._drag.startY;
+    const dx = e.clientX - rect.left - this._drag.startX;
+    const dy = e.clientY - rect.top - this._drag.startY;
 
     if (!this._drag.moved && Math.hypot(dx, dy) >= 5) {
       this._drag.moved = true;
@@ -441,7 +459,7 @@ export class BlueprintBuilder extends LitElement {
     // Drag ended — persist position fire-and-forget
     const pos = this._positions.get(agentId);
     if (pos) {
-      void updateBlueprintAgentPosition(this.blueprintId, agentId, pos.x, pos.y).catch(err => {
+      void updateBlueprintAgentPosition(this.blueprintId, agentId, pos.x, pos.y).catch((err) => {
         console.error("Failed to save agent position:", err);
       });
     }
@@ -453,7 +471,9 @@ export class BlueprintBuilder extends LitElement {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      const name = this._data?.blueprint.name?.toLowerCase().replace(/\s+/g, "-") ?? `blueprint-${this.blueprintId}`;
+      const name =
+        this._data?.blueprint.name?.toLowerCase().replace(/\s+/g, "-") ??
+        `blueprint-${this.blueprintId}`;
       a.download = `${name}-team.yaml`;
       document.body.appendChild(a);
       a.click();
@@ -474,7 +494,7 @@ export class BlueprintBuilder extends LitElement {
   }
 
   private _onDeleteRequested(agentId: string): void {
-    const agent = this._data?.agents.find(a => a.agent_id === agentId);
+    const agent = this._data?.agents.find((a) => a.agent_id === agentId);
     if (!agent || agent.is_default) return;
     void this._deleteAgent(agentId);
   }
@@ -504,8 +524,8 @@ export class BlueprintBuilder extends LitElement {
         model: this._newAgentModel.trim() || undefined,
       });
 
-      const currentIds = new Set(this._data?.agents.map(a => a.agent_id) ?? []);
-      const newAgent = data.agents.find(a => !currentIds.has(a.agent_id)) ?? data.agents.at(-1);
+      const currentIds = new Set(this._data?.agents.map((a) => a.agent_id) ?? []);
+      const newAgent = data.agents.find((a) => !currentIds.has(a.agent_id)) ?? data.agents.at(-1);
 
       const positionsWithNew = new Map(this._positions);
       if (newAgent) {
@@ -523,7 +543,9 @@ export class BlueprintBuilder extends LitElement {
       if (newAgent) {
         this._justCreatedAgentId = newAgent.agent_id;
         this._selectedAgentId = newAgent.agent_id;
-        setTimeout(() => { this._justCreatedAgentId = null; }, 2000);
+        setTimeout(() => {
+          this._justCreatedAgentId = null;
+        }, 2000);
       }
 
       this._showCreateDialog = false;
@@ -539,7 +561,7 @@ export class BlueprintBuilder extends LitElement {
 
   private get _selectedAgent(): AgentBuilderInfo | null {
     if (!this._data || !this._selectedAgentId) return null;
-    return this._data.agents.find(a => a.agent_id === this._selectedAgentId) ?? null;
+    return this._data.agents.find((a) => a.agent_id === this._selectedAgentId) ?? null;
   }
 
   override render() {
@@ -551,159 +573,211 @@ export class BlueprintBuilder extends LitElement {
           ${msg("← Back to Blueprints", { id: "bb-back" })}
         </button>
         <span class="header-title">${data?.blueprint.name ?? "Blueprint"}</span>
-        ${data?.blueprint.icon ? html`<span style="font-size: 18px;">${data.blueprint.icon}</span>` : ""}
+        ${data?.blueprint.icon
+          ? html`<span style="font-size: 18px;">${data.blueprint.icon}</span>`
+          : ""}
         <button
           class="btn-add-agent"
-          @click=${() => { this._showCreateDialog = true; }}
-        >${msg("+ New agent", { id: "ab-btn-add-agent" })}</button>
-        <button
-          class="btn-team"
-          @click=${() => void this._exportTeam()}
-        >${msg("↓ Export", { id: "team-export" })}</button>
-        <button
-          class="btn-team"
-          @click=${this._openImportDialog}
-        >${msg("↑ Import", { id: "team-import" })}</button>
+          @click=${() => {
+            this._showCreateDialog = true;
+          }}
+        >
+          ${msg("+ New agent", { id: "ab-btn-add-agent" })}
+        </button>
+        <button class="btn-team" @click=${() => void this._exportTeam()}>
+          ${msg("↓ Export", { id: "team-export" })}
+        </button>
+        <button class="btn-team" @click=${this._openImportDialog}>
+          ${msg("↑ Import", { id: "team-import" })}
+        </button>
       </div>
 
       <div class="builder-body">
-        <div class="canvas-zone"
+        <div
+          class="canvas-zone"
           @pointerdown=${this._onPointerDown}
           @pointermove=${this._onPointerMove}
           @pointerup=${this._onPointerUp}
           @pointercancel=${this._onPointerUp}
         >
-          ${this._loading ? html`
-            <div class="spinner-overlay">
-              <div class="spinner"></div>
-              <span class="spinner-label">Loading blueprint…</span>
-            </div>
-          ` : ""}
+          ${this._loading
+            ? html`
+                <div class="spinner-overlay">
+                  <div class="spinner"></div>
+                  <span class="spinner-label">Loading blueprint…</span>
+                </div>
+              `
+            : ""}
+          ${this._error ? html` <div class="error-banner">${this._error}</div> ` : ""}
+          ${data && data.agents.length === 0
+            ? html`
+                <div class="empty-state">
+                  <div class="empty-state-title">
+                    ${msg("No agents in this blueprint", { id: "bb-no-agents" })}
+                  </div>
+                  <div class="empty-state-sub">
+                    ${msg('Click "+ New agent" to add one.', { id: "bb-no-agents-hint" })}
+                  </div>
+                </div>
+              `
+            : ""}
+          ${data && data.agents.length > 0
+            ? html`
+                <cp-agent-links-svg
+                  .links=${data.links}
+                  .positions=${this._positions}
+                  .pendingRemovals=${this._pendingRemovals}
+                  .pendingAdditions=${this._pendingAdditions}
+                ></cp-agent-links-svg>
 
-          ${this._error ? html`
-            <div class="error-banner">${this._error}</div>
-          ` : ""}
-
-          ${data && data.agents.length === 0 ? html`
-            <div class="empty-state">
-              <div class="empty-state-title">${msg("No agents in this blueprint", { id: "bb-no-agents" })}</div>
-              <div class="empty-state-sub">${msg("Click \"+ New agent\" to add one.", { id: "bb-no-agents-hint" })}</div>
-            </div>
-          ` : ""}
-
-          ${data && data.agents.length > 0 ? html`
-            <cp-agent-links-svg
-              .links=${data.links}
-              .positions=${this._positions}
-              .pendingRemovals=${this._pendingRemovals}
-              .pendingAdditions=${this._pendingAdditions}
-            ></cp-agent-links-svg>
-
-            ${data.agents.map(agent => {
-              const pos = this._positions.get(agent.agent_id);
-              if (!pos) return "";
-              return html`
-                <cp-agent-card-mini
-                  data-agent-id=${agent.agent_id}
-                  .agent=${agent}
-                  .selected=${this._selectedAgentId === agent.agent_id}
-                  .isNew=${this._justCreatedAgentId === agent.agent_id}
-                  .deletable=${!agent.is_default}
-                  style="left: ${pos.x}px; top: ${pos.y}px;"
-                  @agent-delete-requested=${(e: CustomEvent<{ agentId: string }>) => this._onDeleteRequested(e.detail.agentId)}
-                ></cp-agent-card-mini>
-              `;
-            })}
-          ` : ""}
+                ${data.agents.map((agent) => {
+                  const pos = this._positions.get(agent.agent_id);
+                  if (!pos) return "";
+                  return html`
+                    <cp-agent-card-mini
+                      data-agent-id=${agent.agent_id}
+                      .agent=${agent}
+                      .selected=${this._selectedAgentId === agent.agent_id}
+                      .isNew=${this._justCreatedAgentId === agent.agent_id}
+                      .deletable=${!agent.is_default}
+                      style="left: ${pos.x}px; top: ${pos.y}px;"
+                      @agent-delete-requested=${(e: CustomEvent<{ agentId: string }>) =>
+                        this._onDeleteRequested(e.detail.agentId)}
+                    ></cp-agent-card-mini>
+                  `;
+                })}
+              `
+            : ""}
         </div>
 
-        ${this._selectedAgent ? html`
-          <cp-agent-detail-panel
-            .agent=${this._selectedAgent}
-            .links=${this._data?.links ?? []}
-            .allAgents=${this._data?.agents ?? []}
-            .context=${{ kind: "blueprint", blueprintId: this.blueprintId } as PanelContext}
-            @panel-close=${() => { this._selectedAgentId = null; }}
-            @agent-delete-requested=${(e: CustomEvent<{ agentId: string }>) => this._onDeleteRequested(e.detail.agentId)}
-            @spawn-links-updated=${(e: CustomEvent<{ links: AgentLink[] }>) => {
-              if (this._data) {
-                this._data = { ...this._data, links: e.detail.links };
-              }
-            }}
-            @pending-removals-changed=${(e: Event) => {
-              this._pendingRemovals = (e as CustomEvent<{ pendingRemovals: Set<string> }>).detail.pendingRemovals;
-            }}
-            @pending-additions-changed=${(e: Event) => {
-              const { agentId, pendingAdditions } = (e as CustomEvent<{ agentId: string; pendingAdditions: Set<string> }>).detail;
-              const next = new Map(this._pendingAdditions);
-              if (pendingAdditions.size === 0) {
-                next.delete(agentId);
-              } else {
-                next.set(agentId, pendingAdditions);
-              }
-              this._pendingAdditions = next;
-            }}
-          ></cp-agent-detail-panel>
-        ` : ""}
+        ${this._selectedAgent
+          ? html`
+              <cp-agent-detail-panel
+                .agent=${this._selectedAgent}
+                .links=${this._data?.links ?? []}
+                .allAgents=${this._data?.agents ?? []}
+                .context=${{ kind: "blueprint", blueprintId: this.blueprintId } as PanelContext}
+                @panel-close=${() => {
+                  this._selectedAgentId = null;
+                }}
+                @agent-delete-requested=${(e: CustomEvent<{ agentId: string }>) =>
+                  this._onDeleteRequested(e.detail.agentId)}
+                @spawn-links-updated=${(e: CustomEvent<{ links: AgentLink[] }>) => {
+                  if (this._data) {
+                    this._data = { ...this._data, links: e.detail.links };
+                  }
+                }}
+                @pending-removals-changed=${(e: Event) => {
+                  this._pendingRemovals = (
+                    e as CustomEvent<{ pendingRemovals: Set<string> }>
+                  ).detail.pendingRemovals;
+                }}
+                @pending-additions-changed=${(e: Event) => {
+                  const { agentId, pendingAdditions } = (
+                    e as CustomEvent<{ agentId: string; pendingAdditions: Set<string> }>
+                  ).detail;
+                  const next = new Map(this._pendingAdditions);
+                  if (pendingAdditions.size === 0) {
+                    next.delete(agentId);
+                  } else {
+                    next.set(agentId, pendingAdditions);
+                  }
+                  this._pendingAdditions = next;
+                }}
+              ></cp-agent-detail-panel>
+            `
+          : ""}
       </div>
 
-      ${this._showImportDialog ? html`
-        <cp-import-team-dialog
-          .context=${{ kind: "blueprint", blueprintId: this.blueprintId }}
-          @close-dialog=${() => { this._showImportDialog = false; }}
-          @team-imported=${() => this._onTeamImported()}
-        ></cp-import-team-dialog>
-      ` : ""}
-
-      ${this._showCreateDialog ? html`
-        <div class="dialog-overlay" @click=${(e: Event) => { if (e.target === e.currentTarget) this._showCreateDialog = false; }}>
-          <div class="dialog">
-            <h3 class="dialog-title">${msg("New agent", { id: "ab-btn-add-agent" })}</h3>
-            ${this._submitError ? html`<div class="error-banner" style="margin-bottom: 12px;">${this._submitError}</div>` : ""}
-            <div class="form-group">
-              <label>Agent ID *</label>
-              <input
-                type="text"
-                .value=${this._newAgentId}
-                @input=${(e: Event) => { this._newAgentId = (e.target as HTMLInputElement).value; }}
-                placeholder="e.g. researcher, writer"
-                autofocus
-              />
+      ${this._showImportDialog
+        ? html`
+            <cp-import-team-dialog
+              .context=${{ kind: "blueprint", blueprintId: this.blueprintId }}
+              @close-dialog=${() => {
+                this._showImportDialog = false;
+              }}
+              @team-imported=${() => this._onTeamImported()}
+            ></cp-import-team-dialog>
+          `
+        : ""}
+      ${this._showCreateDialog
+        ? html`
+            <div
+              class="dialog-overlay"
+              @click=${(e: Event) => {
+                if (e.target === e.currentTarget) this._showCreateDialog = false;
+              }}
+            >
+              <div class="dialog">
+                <h3 class="dialog-title">${msg("New agent", { id: "ab-btn-add-agent" })}</h3>
+                ${this._submitError
+                  ? html`<div class="error-banner" style="margin-bottom: 12px;">
+                      ${this._submitError}
+                    </div>`
+                  : ""}
+                <div class="form-group">
+                  <label>Agent ID *</label>
+                  <input
+                    type="text"
+                    .value=${this._newAgentId}
+                    @input=${(e: Event) => {
+                      this._newAgentId = (e.target as HTMLInputElement).value;
+                    }}
+                    placeholder="e.g. researcher, writer"
+                    autofocus
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Name *</label>
+                  <input
+                    type="text"
+                    .value=${this._newAgentName}
+                    @input=${(e: Event) => {
+                      this._newAgentName = (e.target as HTMLInputElement).value;
+                    }}
+                    placeholder="e.g. Research Agent"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Model (optional)</label>
+                  <input
+                    type="text"
+                    .value=${this._newAgentModel}
+                    @input=${(e: Event) => {
+                      this._newAgentModel = (e.target as HTMLInputElement).value;
+                    }}
+                    placeholder="e.g. claude-opus-4-5"
+                  />
+                </div>
+                <div class="dialog-actions">
+                  <button
+                    class="btn-cancel"
+                    @click=${() => {
+                      this._showCreateDialog = false;
+                      this._submitError = "";
+                    }}
+                  >
+                    ${msg("Cancel", { id: "cbd-btn-cancel" })}
+                  </button>
+                  <button
+                    class="btn-create"
+                    ?disabled=${this._creating ||
+                    !this._newAgentId.trim() ||
+                    !this._newAgentName.trim()}
+                    @click=${() => void this._createAgent()}
+                  >
+                    ${this._creating
+                      ? html`<div class="spinner" style="width: 12px; height: 12px;"></div>`
+                      : ""}
+                    ${this._creating
+                      ? msg("Creating...", { id: "cbd-btn-creating" })
+                      : msg("Create", { id: "cbd-btn-create" })}
+                  </button>
+                </div>
+              </div>
             </div>
-            <div class="form-group">
-              <label>Name *</label>
-              <input
-                type="text"
-                .value=${this._newAgentName}
-                @input=${(e: Event) => { this._newAgentName = (e.target as HTMLInputElement).value; }}
-                placeholder="e.g. Research Agent"
-              />
-            </div>
-            <div class="form-group">
-              <label>Model (optional)</label>
-              <input
-                type="text"
-                .value=${this._newAgentModel}
-                @input=${(e: Event) => { this._newAgentModel = (e.target as HTMLInputElement).value; }}
-                placeholder="e.g. claude-opus-4-5"
-              />
-            </div>
-            <div class="dialog-actions">
-              <button class="btn-cancel" @click=${() => { this._showCreateDialog = false; this._submitError = ""; }}>
-                ${msg("Cancel", { id: "cbd-btn-cancel" })}
-              </button>
-              <button
-                class="btn-create"
-                ?disabled=${this._creating || !this._newAgentId.trim() || !this._newAgentName.trim()}
-                @click=${() => void this._createAgent()}
-              >
-                ${this._creating ? html`<div class="spinner" style="width: 12px; height: 12px;"></div>` : ""}
-                ${this._creating ? msg("Creating...", { id: "cbd-btn-creating" }) : msg("Create", { id: "cbd-btn-create" })}
-              </button>
-            </div>
-          </div>
-        </div>
-      ` : ""}
+          `
+        : ""}
     `;
   }
 }

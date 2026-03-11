@@ -42,7 +42,12 @@ export class Lifecycle {
     } else {
       await this.systemctl("start", instance.systemd_unit);
     }
-    await this.waitForHealth(instance.port, slug, instance.state_dir, constants.GATEWAY_READY_TIMEOUT);
+    await this.waitForHealth(
+      instance.port,
+      slug,
+      instance.state_dir,
+      constants.GATEWAY_READY_TIMEOUT,
+    );
     this.registry.updateInstanceState(slug, "running");
     this.registry.logEvent(slug, "started");
   }
@@ -70,7 +75,12 @@ export class Lifecycle {
     } else {
       await this.systemctl("restart", instance.systemd_unit);
     }
-    await this.waitForHealth(instance.port, slug, instance.state_dir, constants.GATEWAY_READY_TIMEOUT);
+    await this.waitForHealth(
+      instance.port,
+      slug,
+      instance.state_dir,
+      constants.GATEWAY_READY_TIMEOUT,
+    );
     this.registry.updateInstanceState(slug, "running");
     this.registry.logEvent(slug, "restarted");
   }
@@ -124,10 +134,7 @@ export class Lifecycle {
    * Returns null if no useful detail found.
    */
   private async readGatewayErrorDetail(stateDir: string): Promise<string | null> {
-    const candidates = [
-      `${stateDir}/logs/gateway.err.log`,
-      `${stateDir}/logs/gateway.log`,
-    ];
+    const candidates = [`${stateDir}/logs/gateway.err.log`, `${stateDir}/logs/gateway.log`];
 
     // Known error patterns from OpenClaw diagnostics
     const errorPatterns = [

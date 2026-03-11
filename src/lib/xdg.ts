@@ -13,9 +13,7 @@ import { isDarwin } from "./platform.js";
  * Call this once at startup and pass the result to classes that need it
  * (Lifecycle, HealthChecker, Destroyer, Discovery).
  */
-export async function resolveXdgRuntimeDir(
-  conn: ServerConnection,
-): Promise<string> {
+export async function resolveXdgRuntimeDir(conn: ServerConnection): Promise<string> {
   if (isDarwin()) {
     return process.env["XDG_RUNTIME_DIR"] ?? "";
   }

@@ -14,10 +14,7 @@ import { fileURLToPath } from "node:url";
  * Works both in dev (src/) and prod (dist/) layouts.
  */
 export function getTemplateDir(): string {
-  return path.join(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "../templates/workspace",
-  );
+  return path.join(path.dirname(fileURLToPath(import.meta.url)), "../templates/workspace");
 }
 
 // ---------------------------------------------------------------------------
@@ -52,11 +49,9 @@ export function applyTemplateVars(content: string, vars: TemplateVars): string {
     result = result.replace(
       /\{\{#each agents\}\}([\s\S]*?)\{\{\/each\}\}/g,
       (_match, capturedBlock: string) =>
-        vars.agents!
-          .map((a) =>
-            capturedBlock
-              .replace(/\{\{this\.id\}\}/g, a.id)
-              .replace(/\{\{this\.name\}\}/g, a.name),
+        vars
+          .agents!.map((a) =>
+            capturedBlock.replace(/\{\{this\.id\}\}/g, a.id).replace(/\{\{this\.name\}\}/g, a.name),
           )
           .join(""),
     );
@@ -86,6 +81,7 @@ export async function loadWorkspaceTemplate(
   try {
     content = await fs.readFile(path.join(dir, filename), "utf-8");
   } catch {
+    // intentionally ignored — template file missing, use minimal fallback content
     content = `# ${filename}\n`;
   }
   return applyTemplateVars(content, vars);

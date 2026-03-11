@@ -119,7 +119,8 @@ export const templates = {
   // delete-agent-dialog.ts
   "acm-btn-delete": "Delete agent",
   "dad-title": "Delete agent",
-  "dad-warning": "This will permanently delete all workspace files and unregister the agent from the instance. This action cannot be undone.",
+  "dad-warning":
+    "This will permanently delete all workspace files and unregister the agent from the instance. This action cannot be undone.",
   "dad-confirm-label": "Type the agent ID to confirm",
   "dad-btn-cancel": "Cancel",
   "dad-btn-confirm": "Delete",
@@ -129,7 +130,8 @@ export const templates = {
 
   // delete-instance-dialog.ts
   "did-title": "Delete instance",
-  "did-warning": "This will permanently stop the service, remove all files (state directory, service unit) and delete the instance from the registry. This action cannot be undone.",
+  "did-warning":
+    "This will permanently stop the service, remove all files (state directory, service unit) and delete the instance from the registry. This action cannot be undone.",
   "did-confirm-label": "Type the instance slug to confirm",
   "did-spinner-deleting": "Destroying instance...",
 
@@ -193,7 +195,7 @@ export const templates = {
   "cbd-btn-creating": "Creating...",
   "bb-back": "← Back to Blueprints",
   "bb-no-agents": "No agents in this blueprint",
-  "bb-no-agents-hint": "Click \"+ New agent\" to add one.",
+  "bb-no-agents-hint": 'Click "+ New agent" to add one.',
   "cd-blueprint": "Team Blueprint",
   "cd-blueprint-none": "Default (Main only)",
   "cd-blueprint-hint": "Optionally deploy a team of agents",
@@ -208,7 +210,8 @@ export const templates = {
   "tid-agents": "Agents",
   "tid-links": "Links",
   "tid-files": "Files",
-  "tid-warning": "This will replace all existing agents, files, and links. This action cannot be undone.",
+  "tid-warning":
+    "This will replace all existing agents, files, and links. This action cannot be undone.",
   "tid-btn-cancel": "Cancel",
   "tid-btn-import": "Import",
   "tid-btn-importing": "Importing...",
@@ -252,6 +255,19 @@ export const templates = {
   "discover-adopt-btn": "Adopt all ({n})",
   "discover-adopting": "Registering instances...",
   "discover-done": "{n} instance(s) registered successfully.",
+
+  // instance-devices.ts (v0.18.0)
+  "idev-section-title": "Devices",
+  "idev-pending-title": "Pending",
+  "idev-btn-approve-all": "Approve all",
+  "idev-btn-approve": "Approve",
+  "idev-confirm-revoke": "Revoke?",
+  "idev-btn-confirm": "Confirm",
+  "idev-btn-cancel": "Cancel",
+  "idev-paired-title": "Paired",
+  "idev-no-paired": "No paired devices.",
+  "idev-btn-refresh": "Refresh",
+  "idev-btn-revoke-title": "Revoke device",
 
   // login-view.ts + app.ts (auth — v0.15.0)
   "login-title": "claw-pilot",

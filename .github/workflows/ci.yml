@@ -8,7 +8,7 @@ on:
 
 jobs:
   ci:
-    name: Typecheck · Test · Build
+    name: Quality · Test · Build
     runs-on: ubuntu-latest
 
     steps:
@@ -26,11 +26,46 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck
-        run: pnpm typecheck
+      # ── Sécurité ──────────────────────────────────────────────────────────
+      - name: Security audit
+        run: pnpm audit --audit-level=high
 
-      - name: Test
-        run: pnpm test:run
+      # ── Formatage ─────────────────────────────────────────────────────────
+      - name: Format check
+        run: pnpm format:check
 
+      # ── Typage ────────────────────────────────────────────────────────────
+      - name: Typecheck (CLI + UI)
+        run: pnpm typecheck:all
+
+      # ── Lint ──────────────────────────────────────────────────────────────
+      - name: Lint (CLI + UI)
+        run: pnpm lint:all
+
+      # ── Orthographe ───────────────────────────────────────────────────────
+      - name: Spell check
+        run: pnpm spellcheck
+
+      # ── Tests ─────────────────────────────────────────────────────────────
+      - name: Test with coverage
+        run: pnpm test:run --coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+      # ── Dead code (bloquant — knip est propre) ────────────────────────────
+      - name: Dead code check
+        run: pnpm knip --reporter compact
+
+      # ── Imports circulaires (warn only — 5 cycles pré-existants) ──────────
+      - name: Circular dependency check
+        run: pnpm check:circular
+        continue-on-error: true
+
+      # ── Build ─────────────────────────────────────────────────────────────
       - name: Build
         run: pnpm build

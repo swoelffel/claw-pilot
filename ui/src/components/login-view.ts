@@ -8,7 +8,7 @@ declare const __APP_VERSION__: string;
 @localized()
 @customElement("cp-login-view")
 export class CpLoginView extends LitElement {
-  static styles = [
+  static override styles = [
     tokenStyles,
     css`
       :host {
@@ -169,7 +169,9 @@ export class CpLoginView extends LitElement {
       } else if (res.status === 401) {
         this._error = msg("Invalid credentials", { id: "login-error-invalid-creds" });
       } else if (res.status === 429) {
-        this._error = msg("Too many attempts. Please wait a moment.", { id: "login-error-rate-limit" });
+        this._error = msg("Too many attempts. Please wait a moment.", {
+          id: "login-error-rate-limit",
+        });
       } else {
         this._error = msg("An error occurred. Please try again.", { id: "login-error-generic" });
       }
@@ -182,7 +184,8 @@ export class CpLoginView extends LitElement {
 
   override firstUpdated() {
     // Autofocus password field (username is pre-filled with "admin")
-    const passwordInput = this.shadowRoot?.querySelector<HTMLInputElement>('input[type="password"]');
+    const passwordInput =
+      this.shadowRoot?.querySelector<HTMLInputElement>('input[type="password"]');
     passwordInput?.focus();
   }
 
@@ -192,7 +195,11 @@ export class CpLoginView extends LitElement {
         <h1 class="title">Claw<span>Pilot</span></h1>
 
         ${this.sessionExpired
-          ? html`<p class="session-expired">${msg("Your session has expired. Please sign in again.", { id: "login-session-expired" })}</p>`
+          ? html`<p class="session-expired">
+              ${msg("Your session has expired. Please sign in again.", {
+                id: "login-session-expired",
+              })}
+            </p>`
           : ""}
 
         <div class="field">
@@ -219,18 +226,11 @@ export class CpLoginView extends LitElement {
           />
         </div>
 
-        <button
-          class="btn-submit"
-          type="submit"
-          ?disabled=${this._loading}
-          @click=${this._submit}
-        >
+        <button class="btn-submit" type="submit" ?disabled=${this._loading} @click=${this._submit}>
           ${this._loading ? "…" : msg("Sign in", { id: "login-btn-submit" })}
         </button>
 
-        ${this._error
-          ? html`<p class="error">${this._error}</p>`
-          : ""}
+        ${this._error ? html`<p class="error">${this._error}</p>` : ""}
 
         <p class="version">v${__APP_VERSION__}</p>
       </div>

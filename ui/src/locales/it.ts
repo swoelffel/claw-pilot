@@ -90,7 +90,8 @@ export const templates = {
   "acm-badge-default": "Predefinito",
   "acm-badge-sa": "Sub",
   "acm-files": "file",
-  "acm-tooltip-default": "Punto di ingresso principale per le conversazioni. Orchestra il team di agenti.",
+  "acm-tooltip-default":
+    "Punto di ingresso principale per le conversazioni. Orchestra il team di agenti.",
   "acm-tooltip-sa": "Agente specializzato, compiti delegati dall'orchestratore.",
 
   // create-agent-dialog.ts
@@ -118,7 +119,8 @@ export const templates = {
   // delete-agent-dialog.ts
   "acm-btn-delete": "Elimina agente",
   "dad-title": "Elimina agente",
-  "dad-warning": "Questo eliminerà definitivamente tutti i file del workspace e de-registrerà l'agente dall'istanza. Questa azione non può essere annullata.",
+  "dad-warning":
+    "Questo eliminerà definitivamente tutti i file del workspace e de-registrerà l'agente dall'istanza. Questa azione non può essere annullata.",
   "dad-confirm-label": "Digita l'ID dell'agente per confermare",
   "dad-btn-cancel": "Annulla",
   "dad-btn-confirm": "Elimina",
@@ -128,7 +130,8 @@ export const templates = {
 
   // delete-instance-dialog.ts
   "did-title": "Elimina istanza",
-  "did-warning": "Questo fermerà il servizio, rimuoverà tutti i file (directory di stato, unità systemd) e cancellerà l'istanza dal registro. Questa azione non può essere annullata.",
+  "did-warning":
+    "Questo fermerà il servizio, rimuoverà tutti i file (directory di stato, unità systemd) e cancellerà l'istanza dal registro. Questa azione non può essere annullata.",
   "did-confirm-label": "Digita lo slug dell'istanza per confermare",
   "did-spinner-deleting": "Distruzione dell'istanza...",
 
@@ -192,7 +195,7 @@ export const templates = {
   "cbd-btn-creating": "Creazione...",
   "bb-back": "← Torna ai Blueprint",
   "bb-no-agents": "Nessun agente in questo blueprint",
-  "bb-no-agents-hint": "Clicca su \"+ Nuovo agente\" per aggiungerne uno.",
+  "bb-no-agents-hint": 'Clicca su "+ Nuovo agente" per aggiungerne uno.',
   "cd-blueprint": "Blueprint del team",
   "cd-blueprint-none": "Predefinito (solo principale)",
   "cd-blueprint-hint": "Distribuire opzionalmente un team di agenti",
@@ -207,7 +210,8 @@ export const templates = {
   "tid-agents": "Agenti",
   "tid-links": "Collegamenti",
   "tid-files": "File",
-  "tid-warning": "Questo sostituirà tutti gli agenti, i file e i collegamenti esistenti. Questa azione è irreversibile.",
+  "tid-warning":
+    "Questo sostituirà tutti gli agenti, i file e i collegamenti esistenti. Questa azione è irreversibile.",
   "tid-btn-cancel": "Annulla",
   "tid-btn-import": "Importa",
   "tid-btn-importing": "Importazione...",
@@ -217,7 +221,8 @@ export const templates = {
   "err-not-found": "Risorsa non trovata.",
   "err-invalid-json": "Formato richiesta non valido.",
   "err-invalid-slug": "Deve contenere 2-30 lettere minuscole, numeri o trattini.",
-  "err-invalid-instance-slug": "L'ID istanza deve contenere 2-30 lettere minuscole, numeri o trattini.",
+  "err-invalid-instance-slug":
+    "L'ID istanza deve contenere 2-30 lettere minuscole, numeri o trattini.",
   "err-invalid-agent-id": "L'ID agente deve contenere 2-30 lettere minuscole, numeri o trattini.",
   "err-slug-required": "Questo nome è obbligatorio.",
   "err-blueprint-name-required": "Il nome del blueprint è obbligatorio.",
@@ -251,6 +256,19 @@ export const templates = {
   "discover-adopt-btn": "Adotta tutte ({n})",
   "discover-adopting": "Registrazione istanze...",
   "discover-done": "{n} istanza/e registrata/e con successo.",
+
+  // instance-devices.ts (v0.18.0)
+  "idev-section-title": "Dispositivi",
+  "idev-pending-title": "In attesa",
+  "idev-btn-approve-all": "Approva tutto",
+  "idev-btn-approve": "Approva",
+  "idev-confirm-revoke": "Revocare?",
+  "idev-btn-confirm": "Conferma",
+  "idev-btn-cancel": "Annulla",
+  "idev-paired-title": "Abbinati",
+  "idev-no-paired": "Nessun dispositivo abbinato.",
+  "idev-btn-refresh": "Aggiorna",
+  "idev-btn-revoke-title": "Revoca dispositivo",
 
   // login-view.ts + app.ts (auth — v0.15.0)
   "login-title": "claw-pilot",

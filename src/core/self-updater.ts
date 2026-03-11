@@ -46,14 +46,17 @@ export class SelfUpdater {
   }
 
   // PATH etendu pour les sessions non-interactives (nvm, pnpm, node)
-  private static readonly _PATH =
-    "~/.nvm/versions/node/v24.14.0/bin:~/.npm-global/bin:/usr/local/bin:/usr/bin:/bin";
+  // Use the current Node.js bin dir so the update works regardless of nvm version or volta.
+  private static readonly _PATH = [
+    path.dirname(process.execPath), // current Node.js bin dir (works with nvm, volta, etc.)
+    "~/.npm-global/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+  ].join(":");
 
   private _exec(cmd: string, opts?: { timeout?: number }) {
-    return this.conn.exec(
-      `export PATH="${SelfUpdater._PATH}:$PATH" && ${cmd}`,
-      opts,
-    );
+    return this.conn.exec(`export PATH="${SelfUpdater._PATH}:$PATH" && ${cmd}`, opts);
   }
 
   private async _execute(jobId: string, tag?: string): Promise<void> {
@@ -64,19 +67,17 @@ export class SelfUpdater {
 
     try {
       // 1. git fetch
-      const fetch = await this._exec(
-        `git -C "${installDir}" fetch --tags --prune`,
-        { timeout: 60_000 },
-      );
+      const fetch = await this._exec(`git -C "${installDir}" fetch --tags --prune`, {
+        timeout: 60_000,
+      });
       if (fetch.exitCode !== 0) {
         throw new Error(fetch.stderr.trim() || fetch.stdout.trim() || "git fetch failed");
       }
 
       // 2. git checkout tag
-      const checkout = await this._exec(
-        `git -C "${installDir}" checkout "${targetRef}"`,
-        { timeout: 30_000 },
-      );
+      const checkout = await this._exec(`git -C "${installDir}" checkout "${targetRef}"`, {
+        timeout: 30_000,
+      });
       if (checkout.exitCode !== 0) {
         throw new Error(checkout.stderr.trim() || checkout.stdout.trim() || "git checkout failed");
       }
@@ -124,10 +125,9 @@ export class SelfUpdater {
 
       // 5. systemctl restart — tue le process en cours, donc en dernier
       // On ne verifie pas le code de retour : le process sera tue avant
-      this._exec(
-        "systemctl --user restart claw-pilot-dashboard.service",
-        { timeout: 10_000 },
-      ).catch(() => {
+      this._exec("systemctl --user restart claw-pilot-dashboard.service", {
+        timeout: 10_000,
+      }).catch(() => {
         // Attendu : le process est tue par le restart
       });
     } catch (err) {

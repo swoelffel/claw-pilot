@@ -21,11 +21,7 @@ export function destroyCommand(): Command {
         }
 
         if (!opts.yes) {
-          console.log(
-            chalk.red(
-              `\nWARNING: This will permanently destroy instance "${slug}".`,
-            ),
-          );
+          console.log(chalk.red(`\nWARNING: This will permanently destroy instance "${slug}".`));
           console.log(`  State dir:    ${instance.state_dir}`);
           console.log(`  Port:         ${instance.port}`);
           console.log(`  Agents:       ${registry.listAgents(slug).length}`);

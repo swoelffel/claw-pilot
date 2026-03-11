@@ -19,8 +19,16 @@ import {
 
 /** Fields we extract per-agent from openclaw.json. */
 const AGENT_CONFIG_KEYS = [
-  "model", "identity", "subagents", "heartbeat", "sandbox",
-  "tools", "params", "skills", "humanDelay", "groupChat",
+  "model",
+  "identity",
+  "subagents",
+  "heartbeat",
+  "sandbox",
+  "tools",
+  "params",
+  "skills",
+  "humanDelay",
+  "groupChat",
 ] as const;
 
 function pick(
@@ -78,6 +86,7 @@ function buildTeamAgent(
     try {
       tags = JSON.parse(agent.tags) as string[];
     } catch {
+      // intentionally ignored — tags stored as invalid JSON, treat as empty
       tags = null;
     }
   }
@@ -101,10 +110,7 @@ function buildTeamAgent(
   // Only include files that are exportable and have content
   const exportableFiles: Record<string, string> = {};
   for (const file of files) {
-    if (
-      (EXPORTABLE_FILES as readonly string[]).includes(file.filename) &&
-      file.content
-    ) {
+    if ((EXPORTABLE_FILES as readonly string[]).includes(file.filename) && file.content) {
       exportableFiles[file.filename] = file.content;
     }
   }
@@ -139,11 +145,7 @@ export async function exportInstanceTeam(
   const teamAgents: TeamAgent[] = [];
   for (const agent of agents) {
     const files = registry.listAgentFiles(agent.id);
-    const config = extractAgentConfig(
-      openclawConfig,
-      agent.agent_id,
-      agent.is_default === 1,
-    );
+    const config = extractAgentConfig(openclawConfig, agent.agent_id, agent.is_default === 1);
     teamAgents.push(buildTeamAgent(agent, files, config));
   }
 
@@ -156,9 +158,7 @@ export async function exportInstanceTeam(
   }));
 
   // 6. Extract defaults and agent_to_agent from openclaw.json
-  const agentsConf = openclawConfig["agents"] as
-    | { defaults?: Record<string, unknown> }
-    | undefined;
+  const agentsConf = openclawConfig["agents"] as { defaults?: Record<string, unknown> } | undefined;
   const toolsConf = openclawConfig["tools"] as
     | { agentToAgent?: { enabled: boolean; allow: string[] } }
     | undefined;
@@ -192,10 +192,7 @@ export async function exportInstanceTeam(
 // Export from blueprint
 // ---------------------------------------------------------------------------
 
-export function exportBlueprintTeam(
-  registry: Registry,
-  blueprintId: number,
-): TeamFile {
+export function exportBlueprintTeam(registry: Registry, blueprintId: number): TeamFile {
   const blueprint = registry.getBlueprint(blueprintId);
   if (!blueprint) throw new Error(`Blueprint ${blueprintId} not found`);
 
@@ -213,12 +210,11 @@ export function exportBlueprintTeam(
         const parsed = JSON.parse(agent.model);
         config = { model: parsed };
       } catch {
+        // intentionally ignored — model is a bare string, not JSON; use it as-is
         config = { model: agent.model };
       }
     }
-    teamAgents.push(
-      buildTeamAgent(agent as unknown as AgentRecord, files, config),
-    );
+    teamAgents.push(buildTeamAgent(agent as unknown as AgentRecord, files, config));
   }
 
   // 3. Load links

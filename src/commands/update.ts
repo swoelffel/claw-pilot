@@ -21,7 +21,9 @@ export function updateCommand(): Command {
       try {
         status = await checker.check();
       } catch (err) {
-        logger.fail(`Failed to check for updates: ${err instanceof Error ? err.message : String(err)}`);
+        logger.fail(
+          `Failed to check for updates: ${err instanceof Error ? err.message : String(err)}`,
+        );
         process.exitCode = 1;
         return;
       }
