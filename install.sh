@@ -159,9 +159,82 @@ fix_npm_permissions() {
 # Validate that an openclaw binary is actually functional (not a broken symlink)
 openclaw_is_valid() {
   _bin="$1"
+  [ -z "$_bin" ] && return 1
   [ -f "$_bin" ] || return 1
   "$_bin" --version >/dev/null 2>&1 || return 1
   return 0
+}
+
+# Derive the openclaw wrapper bin path from a dist/index.js path found in ps/service.
+# /opt/openclaw/.npm-global/lib/node_modules/openclaw/dist/index.js
+# → /opt/openclaw/.npm-global/bin/openclaw
+_openclaw_bin_from_dist() {
+  printf '%s' "$1" | sed 's|/lib/node_modules/openclaw/dist/index\.js$|/bin/openclaw|'
+}
+
+# Pass 1 — detect from a running openclaw-gateway process.
+# openclaw-gateway renames argv[0] so ps aux shows no path — instead we read
+# HOME from /proc/<pid>/environ (requires sudo, which is a pre-req of this installer).
+# HOME points to the openclaw user's home (e.g. /opt/openclaw), from which we
+# derive the conventional npm-global bin path.
+_find_openclaw_from_process() {
+  # Find PIDs of openclaw-gateway processes
+  _pids=$(ps -eo pid,args 2>/dev/null \
+    | grep 'openclaw-gateway' \
+    | grep -v grep \
+    | awk '{print $1}')
+  [ -z "$_pids" ] && return 1
+  for _pid in $_pids; do
+    # Read HOME from the process environment
+    _home=$(sudo cat "/proc/${_pid}/environ" 2>/dev/null \
+      | tr '\0' '\n' \
+      | grep '^HOME=' \
+      | sed 's/^HOME=//' \
+      | head -1)
+    [ -z "$_home" ] && continue
+    _bin="${_home}/.npm-global/bin/openclaw"
+    openclaw_is_valid "$_bin" && OPENCLAW_BIN="$_bin" && return 0
+  done
+  return 1
+}
+
+# Pass 2 — detect from systemd user service files (openclaw-*.service).
+# Uses sudo (required by the installer) to read files in other users' homes.
+# ExecStart format: /usr/bin/node /path/.npm-global/lib/node_modules/openclaw/dist/index.js ...
+# The sed anchors on a space before the path to avoid capturing a partial prefix.
+_find_openclaw_from_service() {
+  for _svc in $(find /home /opt /root -maxdepth 6 -name "openclaw-*.service" 2>/dev/null | head -20); do
+    _dist=$(sudo cat "$_svc" 2>/dev/null \
+      | grep 'ExecStart' \
+      | sed 's|.* \(/[^ ]*/node_modules/openclaw/dist/index\.js\).*|\1|' \
+      | head -1)
+    [ -z "$_dist" ] && continue
+    _bin=$(_openclaw_bin_from_dist "$_dist")
+    openclaw_is_valid "$_bin" && OPENCLAW_BIN="$_bin" && return 0
+  done
+  return 1
+}
+
+# Pass 3 — hardcoded candidate paths (no pipe, no subshell — POSIX safe).
+# Covers fresh installs where openclaw is installed but not yet running.
+_find_openclaw_from_paths() {
+  for _p in \
+    "$(command -v openclaw 2>/dev/null)" \
+    "$HOME/.npm-global/bin/openclaw" \
+    "/opt/openclaw/.npm-global/bin/openclaw" \
+    "/opt/homebrew/bin/openclaw" \
+    "/usr/local/bin/openclaw"; do
+    openclaw_is_valid "$_p" && OPENCLAW_BIN="$_p" && return 0
+  done
+  # nvm / volta / fnm — dynamic node version managers
+  for _nvm_bin in "$HOME/.nvm/versions/node/"*/bin; do
+    [ -d "$_nvm_bin" ] || continue
+    openclaw_is_valid "$_nvm_bin/openclaw" && OPENCLAW_BIN="$_nvm_bin/openclaw" && return 0
+  done
+  if openclaw_is_valid "$HOME/.volta/bin/openclaw"; then
+    OPENCLAW_BIN="$HOME/.volta/bin/openclaw" && return 0
+  fi
+  return 1
 }
 
 # ── Node.js binary resolver ───────────────────────────────────────────────────
@@ -362,41 +435,17 @@ fi
 # ── 8. OpenClaw check & install ───────────────────────────────────────────────
 # Install before building claw-pilot so 'claw-pilot init' works immediately.
 OPENCLAW_BIN=""
+# Orchestrate the 3 detection passes in order.
 _find_openclaw() {
-  # Build candidate list (one path per line) — include nvm/volta/fnm node bin dirs.
-  # Using a newline-delimited string + "while IFS= read" is POSIX-safe and handles
-  # paths with spaces correctly (unlike "for p in $var" which splits on spaces too).
-  _oc_candidates="$(command -v openclaw 2>/dev/null)
-$HOME/.npm-global/bin/openclaw
-/opt/openclaw/.npm-global/bin/openclaw
-/opt/homebrew/bin/openclaw
-/usr/local/bin/openclaw"
-
-  for _nvm_bin in "$HOME/.nvm/versions/node/"*/bin; do
-    [ -d "$_nvm_bin" ] && _oc_candidates="$_oc_candidates
-$_nvm_bin/openclaw"
-  done
-  [ -d "$HOME/.volta/bin" ] && _oc_candidates="$_oc_candidates
-$HOME/.volta/bin/openclaw"
-
-  printf '%s\n' "$_oc_candidates" | while IFS= read -r _p; do
-    [ -z "$_p" ] && continue
-    if openclaw_is_valid "$_p"; then
-      OPENCLAW_BIN="$_p"
-      return 0
-    fi
-  done
-  # Note: the while runs in a subshell — re-check after the pipe
-  # by re-scanning with command -v as a fast path.
-  if command -v openclaw >/dev/null 2>&1; then
-    OPENCLAW_BIN=$(command -v openclaw)
-    return 0
-  fi
+  _find_openclaw_from_process && return 0
+  _find_openclaw_from_service && return 0
+  _find_openclaw_from_paths   && return 0
   return 1
 }
 
 if _find_openclaw; then
-  log "OpenClaw $($OPENCLAW_BIN --version 2>/dev/null) found at $OPENCLAW_BIN"
+  _oc_ver=$("$OPENCLAW_BIN" --version 2>/dev/null || true)
+  log "OpenClaw ${_oc_ver} found at $OPENCLAW_BIN"
 else
   warn "OpenClaw not found — installing now..."
 
@@ -433,7 +482,8 @@ else
   fi
 
   if [ "$OPENCLAW_INSTALLED" -eq 1 ] && _find_openclaw; then
-    log "OpenClaw $($OPENCLAW_BIN --version 2>/dev/null) installed successfully."
+    _oc_ver=$("$OPENCLAW_BIN" --version 2>/dev/null || true)
+    log "OpenClaw ${_oc_ver} installed successfully."
   else
     warn "OpenClaw installation failed or binary not functional after install."
     warn "You can install it manually and re-run this script:"

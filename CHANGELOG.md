@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.15.8] — 2026-03-11
+
+### Fixed
+- **`install.sh` — OpenClaw non détecté si installé sous un autre user** : `_find_openclaw` utilisait un pipe `while IFS= read` qui tourne dans un subshell — `OPENCLAW_BIN` assigné dans le subshell ne remontait pas au shell parent. Réécriture complète en 3 passes sans subshell :
+  1. **Process actif** : lit `HOME` depuis `/proc/<pid>/environ` des process `openclaw-gateway` → déduit `$HOME/.npm-global/bin/openclaw`
+  2. **Fichiers `.service` systemd** : `find /home /opt /root -name "openclaw-*.service"` + parse `ExecStart` (sed ancré sur espace pour éviter la capture partielle du path)
+  3. **Chemins hardcodés** : boucle `for` POSIX sans pipe, inclut nvm/volta
+
+---
+
 ## [0.15.7] — 2026-03-11
 
 ### Fixed
