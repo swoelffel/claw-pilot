@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.15.6] — 2026-03-11
+
+### Fixed
+- **`install.sh` — PATH corrompu par `npm bin -g`** : sur npm v10+, `npm bin -g` est supprimé et affiche un message d'erreur multi-ligne sur **stdout** (pas stderr) avec exit 0. Ce texte était capturé dans `_npm_global_bin` et passé à `prepend_path_dir()`, corrompant `PATH` avec du texte arbitraire. Fix : suppression complète de `npm bin -g` — utilisation exclusive de `npm prefix -g` (stable, toutes versions npm).
+- **`install.sh` — `pnpm bin --global` sans `COREPACK_ENABLE_STRICT=0`** : appel manquant à la ligne du wrapper fallback (ligne ~559).
+
+---
+
 ## [0.15.5] — 2026-03-11
 
 ### Fixed

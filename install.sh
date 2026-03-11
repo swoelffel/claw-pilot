@@ -241,10 +241,10 @@ _reload_pnpm_path() {
   # npm user-local prefix (set by fix_npm_permissions on Linux)
   prepend_path_dir "$HOME/.npm-global/bin"
   # Also pick up whatever npm reports as its current global bin dir.
-  # "npm bin -g" is deprecated — fall back to "npm prefix -g".
-  # Strip trailing newline from prefix before appending /bin to avoid a
-  # multi-line path that would break the sed in prepend_path_dir.
-  _npm_global_bin=$(npm bin -g 2>/dev/null || { _pfx=$(npm prefix -g 2>/dev/null | tr -d '\n'); [ -n "$_pfx" ] && printf '%s/bin' "$_pfx"; } || true)
+  # "npm bin -g" is removed in npm v10+ and prints an error message on stdout
+  # (not stderr) with exit 0 on some versions — never use it.
+  # Use "npm prefix -g" only, strip trailing newline before appending /bin.
+  _npm_global_bin=$({ _pfx=$(npm prefix -g 2>/dev/null | tr -d '\n'); [ -n "$_pfx" ] && printf '%s/bin' "$_pfx"; } || true)
   [ -n "$_npm_global_bin" ] && prepend_path_dir "$_npm_global_bin"
   # Also pick up whatever pnpm reports as its global bin (if pnpm is now in PATH).
   # COREPACK_ENABLE_STRICT=0 is already exported globally — belt-and-suspenders here
@@ -556,7 +556,7 @@ elif command -v sudo >/dev/null 2>&1; then
   LINK_PATH="$WRAPPER_TARGET"
 else
   # Fallback: pnpm global bin dir (already in PATH from step 6)
-  PNPM_GLOBAL_BIN=$(pnpm bin --global 2>/dev/null || echo "")
+  PNPM_GLOBAL_BIN=$(COREPACK_ENABLE_STRICT=0 pnpm bin --global 2>/dev/null || echo "")
   if [ -n "$PNPM_GLOBAL_BIN" ]; then
     WRAPPER_TARGET="$PNPM_GLOBAL_BIN/claw-pilot"
     printf '%s\n' "$WRAPPER_CONTENT" > "$WRAPPER_TARGET"
