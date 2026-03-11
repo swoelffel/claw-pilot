@@ -81,20 +81,32 @@ export class SelfUpdater {
         throw new Error(checkout.stderr.trim() || checkout.stdout.trim() || "git checkout failed");
       }
 
-      // 3. pnpm install
-      const install = await this._exec(
-        `pnpm --dir "${installDir}" install --frozen-lockfile`,
-        { timeout: 180_000 },
-      );
+      // 3. pnpm install — use sudo if node_modules/ is not writable by current user
+      const nmDir = `${installDir}/node_modules`;
+      const nmWriteCheck = await this._exec(`test -w "${nmDir}" || test ! -e "${nmDir}"`);
+      const nmNeedsSudo = nmWriteCheck.exitCode !== 0;
+      const installCmd = nmNeedsSudo
+        ? `sudo -E env PATH="$PATH" pnpm --dir "${installDir}" install --frozen-lockfile`
+        : `pnpm --dir "${installDir}" install --frozen-lockfile`;
+      if (nmNeedsSudo) {
+        logger.info(`[self-updater] node_modules/ not writable, retrying install with sudo`);
+      }
+      const install = await this._exec(installCmd, { timeout: 180_000 });
       if (install.exitCode !== 0) {
         throw new Error(install.stderr.trim() || install.stdout.trim() || "pnpm install failed");
       }
 
-      // 4. pnpm build
-      const build = await this._exec(
-        `pnpm --dir "${installDir}" build`,
-        { timeout: constants.SELF_UPDATE_TIMEOUT },
-      );
+      // 4. pnpm build — use sudo if dist/ is not writable by current user
+      const distDir = `${installDir}/dist`;
+      const writeCheck = await this._exec(`test -w "${distDir}" || test ! -e "${distDir}"`);
+      const needsSudo = writeCheck.exitCode !== 0;
+      const buildCmd = needsSudo
+        ? `sudo -E env PATH="$PATH" pnpm --dir "${installDir}" build`
+        : `pnpm --dir "${installDir}" build`;
+      if (needsSudo) {
+        logger.info(`[self-updater] dist/ not writable, retrying build with sudo`);
+      }
+      const build = await this._exec(buildCmd, { timeout: constants.SELF_UPDATE_TIMEOUT });
       if (build.exitCode !== 0) {
         throw new Error(build.stderr.trim() || build.stdout.trim() || "pnpm build failed");
       }

@@ -12,6 +12,8 @@ let updater: SelfUpdater;
 function mockSuccessSequence(conn: MockConnection) {
   conn.mockExec("git fetch", { stdout: "", stderr: "", exitCode: 0 });
   conn.mockExec(`git -C`, { stdout: "", stderr: "", exitCode: 0 });
+  // test -w checks return 0 (writable) → no sudo needed
+  conn.mockExec("test -w", { stdout: "", stderr: "", exitCode: 0 });
   conn.mockExec("pnpm --dir", { stdout: "", stderr: "", exitCode: 0 });
   conn.mockExec("systemctl --user restart", { stdout: "", stderr: "", exitCode: 0 });
 }
@@ -189,5 +191,43 @@ describe("SelfUpdater._resolveInstallDir()", () => {
     const dir = updater._resolveInstallDir();
     expect(typeof dir).toBe("string");
     expect(dir.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sudo fallback when dist/ or node_modules/ is not writable
+// ---------------------------------------------------------------------------
+
+describe("SelfUpdater — sudo fallback on EACCES", () => {
+  it("uses sudo for build and install when dirs are not writable", async () => {
+    conn = new MockConnection();
+    updater = new SelfUpdater(conn);
+    // git steps succeed
+    conn.mockExec("git fetch", { stdout: "", stderr: "", exitCode: 0 });
+    conn.mockExec("git -C", { stdout: "", stderr: "", exitCode: 0 });
+    // All test -w checks return 1 (not writable) → sudo needed for both install and build
+    conn.mockExec("test -w", { stdout: "", stderr: "", exitCode: 1 });
+    // sudo commands succeed
+    conn.mockExec("sudo -E env", { stdout: "", stderr: "", exitCode: 0 });
+    conn.mockExec("systemctl --user restart", { stdout: "", stderr: "", exitCode: 0 });
+
+    updater.run();
+    await flush();
+
+    const sudoBuild = conn.commands.find((c) => c.includes("sudo -E env") && c.includes("build"));
+    const sudoInstall = conn.commands.find((c) => c.includes("sudo -E env") && c.includes("install"));
+    expect(sudoBuild).toBeDefined();
+    expect(sudoInstall).toBeDefined();
+    expect(updater.getJob().status).toBe("done");
+  });
+
+  it("does NOT use sudo when dirs are writable (normal path)", async () => {
+    // Default MockConnection returns exitCode: 0 for all commands (writable)
+    updater.run();
+    await flush();
+
+    const sudoCmd = conn.commands.find((c) => c.includes("sudo -E env"));
+    expect(sudoCmd).toBeUndefined();
+    expect(updater.getJob().status).toBe("done");
   });
 });

@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.16.2] — 2026-03-11
+
+### Fixed
+- **Self-updater — fallback sudo sur EACCES** : le self-updater (`claw-pilot update`) détecte maintenant si `dist/` ou `node_modules/` ne sont pas accessibles en écriture par le process courant (cas typique : déploiement initial fait avec `sudo pnpm build`). Si c'est le cas, il retente automatiquement avec `sudo -E env PATH=$PATH pnpm build` / `pnpm install` au lieu d'échouer avec `EACCES: permission denied, rmdir dist/ui/assets`.
+
+---
+
 ## [0.16.1] — 2026-03-11
 
 ### Changed
