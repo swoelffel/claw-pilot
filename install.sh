@@ -251,8 +251,9 @@ _reload_pnpm_path() {
   # to ensure corepack shims don't block on download prompts in non-interactive sessions.
   if command -v pnpm >/dev/null 2>&1; then
     _pnpm_global_bin=$(COREPACK_ENABLE_STRICT=0 pnpm bin --global 2>/dev/null || true)
-    [ -n "$_pnpm_global_bin" ] && prepend_path_dir "$_pnpm_global_bin"
+    [ -n "$_pnpm_global_bin" ] && prepend_path_dir "$_pnpm_global_bin" || true
   fi
+  return 0
 }
 
 if ! command -v pnpm >/dev/null 2>&1; then

@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.15.7] — 2026-03-11
+
+### Fixed
+- **`install.sh` — `set -e` tue le script silencieusement dans `_reload_pnpm_path`** : la dernière instruction de la fonction était `[ -n "$_pnpm_global_bin" ] && prepend_path_dir ...` — quand `_pnpm_global_bin` est vide (cas normal avec le shim corepack), `[ -n "" ]` retourne exit 1, la fonction retourne exit 1, et `set -e` tue le script sans message d'erreur. Fix : `|| true` sur cette ligne + `return 0` explicite en fin de fonction.
+
+---
+
 ## [0.15.6] — 2026-03-11
 
 ### Fixed
