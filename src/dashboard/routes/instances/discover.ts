@@ -98,17 +98,18 @@ export function registerDiscoverRoutes(app: Hono, deps: RouteDeps): void {
     }
 
     try {
-      const openclawHome = getOpenClawHome();
-
-      const hostname = await conn.hostname();
-      const server = registry.upsertLocalServer(hostname, openclawHome);
-
       const cli = new OpenClawCLI(conn);
       const openclaw = await cli.detect();
       if (openclaw) {
         registry.updateServerBin(openclaw.bin, openclaw.version);
         logger.info(`[discover] openclaw detected: ${openclaw.version}`);
       }
+
+      // Use home derived from detection (e.g. /opt/openclaw) so stateDirs resolve correctly
+      const openclawHome = openclaw?.home ?? getOpenClawHome();
+
+      const hostname = await conn.hostname();
+      const server = registry.upsertLocalServer(hostname, openclawHome);
 
       const discovery = new InstanceDiscovery(conn, registry, openclawHome, xdgRuntimeDir);
       const result = await discovery.scan();

@@ -73,8 +73,11 @@ export function initCommand(): Command {
       }
 
       // 4. Register local server
+      // Use the home derived from openclaw detection (e.g. /opt/openclaw for a
+      // dedicated openclaw user) so that instance stateDirs are resolved correctly.
+      // Fall back to getOpenClawHome() (env var or os.homedir()) if not detected.
       const hostname = await conn.hostname();
-      const openclawHome = getOpenClawHome();
+      const openclawHome = openclaw?.home ?? getOpenClawHome();
       const server = registry.upsertLocalServer(hostname, openclawHome);
       if (openclaw) {
         registry.updateServerBin(openclaw.bin, openclaw.version);

@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.15.9] — 2026-03-11
+
+### Fixed
+- **OpenClaw non détecté / mauvaise instance détectée** : `OpenClawCLI.detect()` cherchait `$HOME/.npm-global/bin/openclaw` en premier — sur un serveur avec un user dédié `openclaw`, il trouvait la copie parasite du user courant. Réécriture complète avec 3 passes :
+  1. **Process actif** : lit `HOME` depuis `/proc/<pid>/environ` des process `openclaw-gateway`
+  2. **Fichiers `.service` systemd** : parse `ExecStart` dans `openclaw-*.service`
+  3. **Chemins hardcodés** : `/opt/openclaw/.npm-global/bin/openclaw` en priorité sur Linux
+- **`detect()` retourne maintenant `{ bin, version, home }`** : `home` = répertoire home du user openclaw (ex: `/opt/openclaw`), utilisé pour localiser les stateDirs des instances
+- **`claw-pilot init` et `discover`** : utilisent `openclaw.home` pour `upsertLocalServer` et `InstanceDiscovery` — les instances existantes sous `/opt/openclaw/.openclaw-*/` sont maintenant correctement découvertes
+- **`getOpenClawHome()`** : lit `openclaw_home` depuis la DB en priorité (setté à l'init), fallback sur `OPENCLAW_HOME` env ou `os.homedir()`
+
+---
+
 ## [0.15.8] — 2026-03-11
 
 ### Fixed

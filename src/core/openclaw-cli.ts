@@ -32,49 +32,142 @@ export class OpenClawCLI {
   }
 
   /** Detect openclaw binary path and version */
-  async detect(): Promise<{ bin: string; version: string } | null> {
-    const home = process.env["HOME"] ?? "";
+  /**
+   * Detect openclaw binary path, version, and home directory.
+   *
+   * Uses 3 passes in order — stops at the first successful detection:
+   *   1. Running process  — reads HOME from /proc/<pid>/environ (Linux only)
+   *   2. Systemd services — parses ExecStart in openclaw-*.service files
+   *   3. Hardcoded paths  — conventional npm-global locations
+   *
+   * Returns { bin, version, home } where home is the openclaw user's home
+   * directory (e.g. /opt/openclaw), used to locate stateDirs for instances.
+   */
+  async detect(): Promise<{ bin: string; version: string; home: string } | null> {
+    return (
+      (await this._detectFromProcess()) ??
+      (await this._detectFromService()) ??
+      (await this._detectFromPaths())
+    );
+  }
 
-    // Absolute candidate paths — checked via conn.exists() to avoid spawning
-    // openclaw --version which blocks when there is no TTY (openclaw writes
-    // version info directly to the terminal, not to stdout/stderr).
-    const absoluteCandidates = isDarwin()
+  /** Derive npm-global root and home from a bin path. */
+  private _binInfo(bin: string): { npmGlobalRoot: string; home: string } {
+    // bin:          /opt/openclaw/.npm-global/bin/openclaw
+    // npmGlobalRoot: /opt/openclaw/.npm-global
+    // home:          /opt/openclaw
+    const npmGlobalRoot = bin.replace(/\/bin\/openclaw$/, "");
+    const home = npmGlobalRoot.replace(/\/\.npm-global$/, "");
+    return { npmGlobalRoot, home };
+  }
+
+  /** Read openclaw version from package.json (no TTY needed). */
+  private async _readVersion(npmGlobalRoot: string): Promise<string> {
+    const pkgPath = `${npmGlobalRoot}/lib/node_modules/openclaw/package.json`;
+    try {
+      const raw = await this.conn.readFile(pkgPath);
+      const pkg = JSON.parse(raw) as { version?: string };
+      return pkg.version ?? "unknown";
+    } catch {
+      return "unknown";
+    }
+  }
+
+  /** Build a detection result from a bin path if the file exists. */
+  private async _resultFromBin(
+    bin: string,
+  ): Promise<{ bin: string; version: string; home: string } | null> {
+    if (!(await this.conn.exists(bin))) return null;
+    const { npmGlobalRoot, home } = this._binInfo(bin);
+    const version = await this._readVersion(npmGlobalRoot);
+    return { bin, version, home };
+  }
+
+  /**
+   * Pass 1 — detect from a running openclaw-gateway process.
+   * openclaw-gateway renames argv[0] so ps shows no path. Instead we read
+   * HOME from /proc/<pid>/environ (Linux only, requires sudo which is a
+   * pre-req of the installer).
+   */
+  private async _detectFromProcess(): Promise<{ bin: string; version: string; home: string } | null> {
+    if (isDarwin()) return null; // /proc not available on macOS
+
+    const psResult = await this.conn.exec(
+      `ps -eo pid,args 2>/dev/null | grep 'openclaw-gateway' | grep -v grep | awk '{print $1}'`,
+    );
+    const pids = psResult.stdout.trim().split("\n").filter(Boolean);
+    for (const pid of pids) {
+      const envResult = await this.conn.exec(
+        `sudo cat /proc/${pid}/environ 2>/dev/null | tr '\\0' '\\n' | grep '^HOME=' | sed 's/^HOME=//' | head -1`,
+      );
+      const ocHome = envResult.stdout.trim();
+      if (!ocHome) continue;
+      const bin = `${ocHome}/.npm-global/bin/openclaw`;
+      const result = await this._resultFromBin(bin);
+      if (result) return result;
+    }
+    return null;
+  }
+
+  /**
+   * Pass 2 — detect from systemd user service files (openclaw-*.service).
+   * Parses ExecStart to extract the dist/index.js path, derives bin from it.
+   * Uses sudo to read files in other users' homes.
+   */
+  private async _detectFromService(): Promise<{ bin: string; version: string; home: string } | null> {
+    const findResult = await this.conn.exec(
+      `find /home /opt /root -maxdepth 6 -name "openclaw-*.service" 2>/dev/null | head -20`,
+    );
+    const svcFiles = findResult.stdout.trim().split("\n").filter(Boolean);
+    for (const svc of svcFiles) {
+      const catResult = await this.conn.exec(
+        `sudo cat ${JSON.stringify(svc)} 2>/dev/null | grep 'ExecStart' | sed 's|.* \\(/[^ ]*/node_modules/openclaw/dist/index\\.js\\).*|\\1|' | head -1`,
+      );
+      const distPath = catResult.stdout.trim();
+      if (!distPath || !distPath.includes("node_modules/openclaw")) continue;
+      const bin = distPath.replace(
+        /\/lib\/node_modules\/openclaw\/dist\/index\.js$/,
+        "/bin/openclaw",
+      );
+      const result = await this._resultFromBin(bin);
+      if (result) return result;
+    }
+    return null;
+  }
+
+  /**
+   * Pass 3 — hardcoded candidate paths.
+   * On Linux, /opt/openclaw/.npm-global/bin/openclaw is checked BEFORE
+   * $HOME/.npm-global/bin/openclaw to prefer the dedicated openclaw user.
+   */
+  private async _detectFromPaths(): Promise<{ bin: string; version: string; home: string } | null> {
+    const userHome = process.env["HOME"] ?? "";
+    const candidates = isDarwin()
       ? [
-          `${home}/.npm-global/bin/openclaw`,
+          `${userHome}/.npm-global/bin/openclaw`,
           "/opt/homebrew/bin/openclaw",
           "/usr/local/bin/openclaw",
         ]
       : [
-          `${home}/.npm-global/bin/openclaw`,
           "/opt/openclaw/.npm-global/bin/openclaw",
+          `${userHome}/.npm-global/bin/openclaw`,
+          "/usr/local/bin/openclaw",
         ];
 
-    for (const bin of absoluteCandidates) {
-      if (await this.conn.exists(bin)) {
-        // Read version from package.json (reliable, no TTY needed).
-        // bin is e.g. /home/user/.npm-global/bin/openclaw
-        // package.json is at   /home/user/.npm-global/lib/node_modules/openclaw/package.json
-        const npmGlobalRoot = bin.replace(/\/bin\/openclaw$/, "");
-        const pkgPath = `${npmGlobalRoot}/lib/node_modules/openclaw/package.json`;
-        let version = "unknown";
-        try {
-          const raw = await this.conn.readFile(pkgPath);
-          const pkg = JSON.parse(raw) as { version?: string };
-          if (pkg.version) version = pkg.version;
-        } catch {
-          // package.json not readable — version stays "unknown", bin is still valid
-        }
-        return { bin, version };
-      }
+    for (const bin of candidates) {
+      const result = await this._resultFromBin(bin);
+      if (result) return result;
     }
 
-    // Fallback: resolve via which (works in interactive sessions, may fail in systemd)
+    // Last resort: which/command -v
     const whichResult = await this.conn.exec(
       `which openclaw 2>/dev/null || command -v openclaw 2>/dev/null || true`,
     );
     const bin = whichResult.stdout.trim();
     if (bin) {
-      return { bin, version: "unknown" };
+      const { npmGlobalRoot, home } = this._binInfo(bin);
+      const version = await this._readVersion(npmGlobalRoot);
+      return { bin, version, home };
     }
 
     return null;

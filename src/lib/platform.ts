@@ -23,10 +23,30 @@ export function isDarwin(): boolean {
   return os.platform() === "darwin";
 }
 
-export function getOpenClawHome(): string {
-  // Use OPENCLAW_HOME env var if set, otherwise default to current user's home.
-  // ~/.openclaw-<slug>/ and ~/.openclaw/ (legacy) live under the home directory.
-  return process.env["OPENCLAW_HOME"] ?? os.homedir();
+export function getOpenClawHome(dbPath?: string): string {
+  // Priority: OPENCLAW_HOME env var > openclaw_home stored in DB > os.homedir()
+  if (process.env["OPENCLAW_HOME"]) return process.env["OPENCLAW_HOME"];
+
+  // Read from DB if available (set during `claw-pilot init` from detected openclaw binary)
+  const resolvedDbPath = dbPath ?? getDbPath();
+  try {
+    // Lazy require to avoid circular dependency — only used at runtime
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Database = require("better-sqlite3") as typeof import("better-sqlite3");
+    const db = new Database(resolvedDbPath, { readonly: true });
+    try {
+      const row = db
+        .prepare("SELECT openclaw_home FROM servers WHERE id = 1")
+        .get() as { openclaw_home: string } | undefined;
+      if (row?.openclaw_home) return row.openclaw_home;
+    } finally {
+      db.close();
+    }
+  } catch {
+    // DB not yet initialized or not accessible — fall through to default
+  }
+
+  return os.homedir();
 }
 
 export function getStateDir(slug: string): string {
