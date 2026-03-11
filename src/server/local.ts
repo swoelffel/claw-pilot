@@ -6,6 +6,8 @@ import * as path from "node:path";
 import * as os from "node:os";
 import type { ServerConnection, ExecResult, ExecOptions } from "./connection.js";
 
+const isLinux = os.platform() === "linux";
+
 const execAsync = promisify(execCb);
 
 export class LocalConnection implements ServerConnection {
@@ -53,7 +55,21 @@ export class LocalConnection implements ServerConnection {
   }
 
   async readFile(filePath: string): Promise<string> {
-    return fs.readFile(filePath, "utf-8");
+    try {
+      return await fs.readFile(filePath, "utf-8");
+    } catch (err) {
+      // On Linux, fall back to `sudo cat` for files owned by another user
+      // (e.g. openclaw instance configs in /opt/openclaw/.openclaw-*/openclaw.json).
+      // Only retry on permission errors — propagate all other failures as-is.
+      if (isLinux) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === "EACCES" || code === "EPERM") {
+          const result = await this.exec(`sudo cat ${JSON.stringify(filePath)} 2>/dev/null`);
+          if (result.exitCode === 0) return result.stdout;
+        }
+      }
+      throw err;
+    }
   }
 
   async writeFile(

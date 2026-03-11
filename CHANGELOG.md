@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.16.0] — 2026-03-11
+
+### Changed
+- **Découverte d'instances — nouvelle stratégie `find`-based (Linux)** : remplace le scan de répertoire + `systemctl --user` (qui ne fonctionnaient pas cross-user) par :
+  1. `sudo find /opt /home /root /var -maxdepth 8 -name "openclaw.json"` — trouve tous les configs quelle que soit la propriété des fichiers
+  2. Filtre les chemins valides (`/.openclaw(-slug)?/openclaw.json`) — exclut backups et repos git
+  3. Enrichit chaque instance avec l'état systemd live via `sudo -u openclaw systemctl --user is-active` — les instances sans service actif/inactif/failed sont exclues (dead/backup)
+- **`LocalConnection.readFile()` — fallback `sudo cat`** : sur Linux, si `fs.readFile` échoue avec `EACCES`/`EPERM`, retente automatiquement avec `sudo cat <path>` — transparent pour tous les appelants
+
+### Fixed
+- **Instances `chronos` et `demo1` non découvertes sur WCASLDSPV54L** : `claw-pilot` tournant sous `stephane` ne pouvait ni lire les fichiers de `/opt/openclaw/.openclaw-*/` (chmod 700, owner `openclaw`) ni interroger le bus systemd du user `openclaw`
+
+---
+
 ## [0.15.9] — 2026-03-11
 
 ### Fixed

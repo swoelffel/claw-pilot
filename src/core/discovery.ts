@@ -48,27 +48,139 @@ export class InstanceDiscovery {
    * Scan the local system for existing OpenClaw instances.
    * Returns all discovered instances along with their reconciliation status
    * against the current registry.
+   *
+   * Strategy (Linux):
+   *   1. `sudo find` for all openclaw.json files — works across user boundaries
+   *   2. Enrich each found instance with live systemd state (sudo -u openclaw)
+   *   3. Port scan as last-resort fallback for instances not found by find
+   *
+   * Strategy (macOS):
+   *   1. Directory scan under openclawHome
+   *   2. launchd agent scan
+   *   3. Port scan fallback
    */
   async scan(): Promise<DiscoveryResult> {
     const found = new Map<string, DiscoveredInstance>();
 
-    // Strategy 1: Directory scan
-    await this.scanDirectories(found);
+    if (getServiceManager() === "systemd") {
+      // Linux: find-based discovery (crosses user boundaries via sudo)
+      await this.scanByFind(found);
+      await this.enrichWithSystemdState(found);
+    } else {
+      // macOS: directory scan + launchd
+      await this.scanDirectories(found);
+      await this.scanLaunchdAgents(found);
+    }
 
-    // Strategy 2: Systemd scan (Linux only) or launchd scan (macOS)
-    await this.scanSystemdUnits(found);
-    await this.scanLaunchdAgents(found);
-
-    // Strategy 3: Port scan
+    // Port scan: catch anything missed by the above strategies
     await this.scanPorts(found);
-
-    // Strategy 4: Legacy directory
-    await this.scanLegacy(found);
 
     return this.reconcile(found);
   }
 
-  // --- Strategy 1: Directory scan ---
+  // --- Strategy 1 (Linux): find-based scan across all users ---
+
+  /**
+   * Use `sudo find` to locate all openclaw.json files on the system.
+   * This works regardless of file ownership (e.g. openclaw user on /opt/openclaw).
+   *
+   * Valid stateDir paths must match one of:
+   *   <home>/.openclaw-<slug>/openclaw.json   (multi-instance)
+   *   <home>/.openclaw/openclaw.json           (legacy single-instance → slug "default")
+   *
+   * Excluded patterns (not real instance stateDirs):
+   *   - paths containing "-backup-" (backup directories)
+   *   - paths where the parent of .openclaw* is not a home dir
+   *     (e.g. openclaw-config/vm01/openclaw.json)
+   */
+  private async scanByFind(
+    found: Map<string, DiscoveredInstance>,
+  ): Promise<void> {
+    const result = await this.conn.exec(
+      `sudo find /opt /home /root /var -maxdepth 8 -name "openclaw.json" 2>/dev/null`,
+      { timeout: 15_000 },
+    );
+
+    const configPaths = result.stdout.trim().split("\n").filter(Boolean);
+
+    // Regex: /<home>/.openclaw(-<slug>)?/openclaw.json
+    // The stateDir must be a direct child of some home directory.
+    const RE_MULTI  = /^(.+)\/(\.openclaw-([a-z0-9][a-z0-9-]*))\/openclaw\.json$/;
+    const RE_LEGACY = /^(.+)\/(\.openclaw)\/openclaw\.json$/;
+
+    for (const configPath of configPaths) {
+      // Exclude backup directories
+      if (configPath.includes("-backup-")) continue;
+
+      let slug: string;
+      let stateDir: string;
+
+      const multiMatch = RE_MULTI.exec(configPath);
+      if (multiMatch) {
+        stateDir = `${multiMatch[1]}/${multiMatch[2]}`;
+        slug = multiMatch[3]!;
+      } else {
+        const legacyMatch = RE_LEGACY.exec(configPath);
+        if (!legacyMatch) continue; // not a recognised stateDir layout
+        stateDir = `${legacyMatch[1]}/${legacyMatch[2]}`;
+        slug = "default";
+      }
+
+      if (found.has(slug)) continue;
+
+      const instance = await this.parseInstance(slug, stateDir, configPath, "directory");
+      if (instance) found.set(slug, instance);
+    }
+  }
+
+  /**
+   * Enrich already-discovered instances with live systemd state.
+   * Runs `sudo -u openclaw systemctl --user is-active openclaw-<slug>.service`
+   * so it works even when claw-pilot runs as a different user (e.g. stephane).
+   *
+   * Instances whose service is neither active nor inactive (i.e. not found in
+   * systemd at all) are removed from `found` — they are considered dead/backup.
+   */
+  private async enrichWithSystemdState(
+    found: Map<string, DiscoveredInstance>,
+  ): Promise<void> {
+    // Resolve the UID of the openclaw user once (needed for XDG_RUNTIME_DIR)
+    const uidResult = await this.conn.exec(`id -u openclaw 2>/dev/null || true`);
+    const openclawUid = uidResult.stdout.trim();
+    const xdgRuntime = openclawUid ? `/run/user/${openclawUid}` : this.xdgRuntimeDir;
+
+    const toRemove: string[] = [];
+
+    for (const [slug, instance] of found) {
+      const unitName = `openclaw-${slug}.service`;
+
+      // Try as openclaw user first, fall back to current user's systemd
+      const checkResult = await this.conn.exec(
+        `sudo -u openclaw XDG_RUNTIME_DIR=${xdgRuntime} systemctl --user is-active ${unitName} 2>/dev/null || ` +
+        `XDG_RUNTIME_DIR=${this.xdgRuntimeDir} systemctl --user is-active ${unitName} 2>/dev/null || true`,
+      );
+      const state = checkResult.stdout.trim();
+
+      if (state === "active") {
+        instance.systemdUnit = unitName;
+        instance.systemdState = "active";
+      } else if (state === "inactive") {
+        instance.systemdUnit = unitName;
+        instance.systemdState = "inactive";
+      } else if (state === "failed") {
+        instance.systemdUnit = unitName;
+        instance.systemdState = "failed";
+      } else {
+        // Service not known to systemd at all — treat as dead/backup, exclude
+        logger.dim(`[discovery] ${slug}: no systemd unit found — skipping`);
+        toRemove.push(slug);
+      }
+    }
+
+    for (const slug of toRemove) found.delete(slug);
+  }
+
+  // --- Strategy 1 (macOS): Directory scan ---
 
   private async scanDirectories(
     found: Map<string, DiscoveredInstance>,
@@ -100,73 +212,6 @@ export class InstanceDiscovery {
         "directory",
       );
       if (instance) found.set(slug, instance);
-    }
-  }
-
-  // --- Strategy 2: Systemd unit scan (Linux only) ---
-
-  private async scanSystemdUnits(
-    found: Map<string, DiscoveredInstance>,
-  ): Promise<void> {
-    if (getServiceManager() !== "systemd") return;
-
-    const result = await this.conn.execFile(
-      "systemctl",
-      ["--user", "list-units", "openclaw-*", "--no-pager", "--plain", "--no-legend"],
-      { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
-    );
-
-    for (const line of result.stdout.split("\n")) {
-      const match = line.match(/^openclaw-([a-z0-9-]+)\.service/);
-      if (!match) continue;
-      const slug = match[1]!;
-      const systemdState: "active" | "inactive" | "failed" = line.includes(
-        "active",
-      )
-        ? "active"
-        : line.includes("failed")
-          ? "failed"
-          : "inactive";
-
-      if (found.has(slug)) {
-        // Enrich with systemd info
-        const existing = found.get(slug)!;
-        existing.systemdUnit = `openclaw-${slug}.service`;
-        existing.systemdState = systemdState;
-        continue;
-      }
-
-      // Instance found via systemd only — try to find state dir from Environment
-      const showResult = await this.conn.execFile(
-        "systemctl",
-        ["--user", "show", `openclaw-${slug}.service`, "--property=Environment", "--value"],
-        { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
-      );
-      const stateDirMatch = showResult.stdout.match(
-        /OPENCLAW_STATE_DIR=(\S+)/,
-      );
-
-      // Extract port override from unit env (used when port is not in openclaw.json)
-      const portEnvMatch = showResult.stdout.match(/OPENCLAW_GATEWAY_PORT=(\d+)/);
-      const portOverride = portEnvMatch ? parseInt(portEnvMatch[1]!, 10) : undefined;
-
-      // Fallback stateDir: use openclawHome (legacy single-instance layout)
-      const stateDir = stateDirMatch ? stateDirMatch[1]! : `${this.openclawHome}/${constants.OPENCLAW_LEGACY_DIR}`;
-      const configPath = `${stateDir}/openclaw.json`;
-      if (!(await this.conn.exists(configPath))) continue;
-
-      const instance = await this.parseInstance(
-        slug,
-        stateDir,
-        configPath,
-        "systemd",
-        portOverride,
-      );
-      if (instance) {
-        instance.systemdUnit = `openclaw-${slug}.service`;
-        instance.systemdState = systemdState;
-        found.set(slug, instance);
-      }
     }
   }
 
