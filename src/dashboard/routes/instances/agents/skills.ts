@@ -1,6 +1,7 @@
 // src/dashboard/routes/instances/agents/skills.ts
 // GET /api/instances/:slug/skills — liste les skills disponibles via le gateway OpenClaw
 import type { Hono } from "hono";
+import WebSocket from "ws";
 import type { RouteDeps } from "../../../route-deps.js";
 import { instanceGuard } from "../../../../lib/guards.js";
 import { readGatewayToken } from "../../../../lib/env-reader.js";
@@ -17,6 +18,72 @@ export interface SkillInfo {
 export interface SkillsListResponse {
   available: boolean;
   skills: SkillInfo[];
+}
+
+type SkillStatusResult = Array<{
+  name: string;
+  description: string;
+  emoji?: string;
+  source: string;
+  eligible: boolean;
+  disabled: boolean;
+}>;
+
+/** Appel JSON-RPC skills.status via WebSocket (le gateway n'expose pas de HTTP JSON-RPC). */
+function querySkillsViaWs(
+  port: number,
+  token: string,
+  timeoutMs: number,
+): Promise<SkillStatusResult> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    let settled = false;
+    const settle = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      ws.terminate();
+      fn();
+    };
+
+    const timer = setTimeout(() => {
+      settle(() => reject(new Error("timeout")));
+    }, timeoutMs);
+
+    ws.once("open", () => {
+      ws.send(JSON.stringify({ jsonrpc: "2.0", method: "skills.status", params: {}, id: 1 }));
+    });
+
+    ws.on("message", (raw) => {
+      try {
+        const msg = JSON.parse(String(raw)) as {
+          id?: number;
+          result?: SkillStatusResult;
+          error?: unknown;
+        };
+        // Ignorer les push notifications (pas d'id ou id != 1)
+        if (msg.id !== 1) return;
+        if (Array.isArray(msg.result)) {
+          settle(() => resolve(msg.result as SkillStatusResult));
+        } else {
+          settle(() => reject(new Error("unexpected response")));
+        }
+      } catch {
+        settle(() => reject(new Error("parse error")));
+      }
+    });
+
+    ws.once("error", (err) => {
+      settle(() => reject(err));
+    });
+
+    ws.once("close", (code) => {
+      settle(() => reject(new Error(`ws closed with code ${code}`)));
+    });
+  });
 }
 
 export function registerAgentSkillsRoutes(app: Hono, deps: RouteDeps): void {
@@ -44,43 +111,11 @@ export function registerAgentSkillsRoutes(app: Hono, deps: RouteDeps): void {
       return c.json(fallback);
     }
 
-    // Appel JSON-RPC skills.status vers le gateway OpenClaw
+    // Appel JSON-RPC skills.status via WebSocket (le gateway n'expose pas de HTTP JSON-RPC)
     try {
-      const res = await fetch(`http://127.0.0.1:${inst.port}/api`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${gatewayToken}`,
-        },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          method: "skills.status",
-          id: 1,
-        }),
-        signal: AbortSignal.timeout(5000),
-      });
+      const result = await querySkillsViaWs(inst.port, gatewayToken, 5000);
 
-      if (!res.ok) {
-        return c.json(fallback);
-      }
-
-      const data = (await res.json()) as {
-        result?: Array<{
-          name: string;
-          description: string;
-          emoji?: string;
-          source: string;
-          eligible: boolean;
-          disabled: boolean;
-        }>;
-        error?: unknown;
-      };
-
-      if (!data.result || !Array.isArray(data.result)) {
-        return c.json(fallback);
-      }
-
-      const skills: SkillInfo[] = data.result.map((s) => ({
+      const skills: SkillInfo[] = result.map((s) => ({
         name: s.name,
         description: s.description ?? "",
         ...(s.emoji !== undefined && { emoji: s.emoji }),
@@ -91,7 +126,7 @@ export function registerAgentSkillsRoutes(app: Hono, deps: RouteDeps): void {
 
       return c.json({ available: true, skills } satisfies SkillsListResponse);
     } catch {
-      // Gateway non joignable (instance stopped, timeout, etc.)
+      // Gateway non joignable (instance stopped, timeout, auth refusée, etc.)
       return c.json(fallback);
     }
   });
