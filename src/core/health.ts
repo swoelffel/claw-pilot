@@ -5,7 +5,7 @@ import type { Registry } from "./registry.js";
 import { InstanceNotFoundError } from "../lib/errors.js";
 import { constants } from "../lib/constants.js";
 import { shellEscape } from "../lib/shell.js";
-import { getServiceManager, getLaunchdLabel, isDocker } from "../lib/platform.js";
+import { getServiceManager, getLaunchdLabel, isDocker, getRuntimePid } from "../lib/platform.js";
 
 export type InstanceState = "running" | "stopped" | "error" | "unknown";
 
@@ -36,6 +36,29 @@ export class HealthChecker {
   async check(slug: string): Promise<HealthStatus> {
     const instance = this.registry.getInstance(slug);
     if (!instance) throw new InstanceNotFoundError(slug);
+
+    // --- claw-runtime: PID-based health check (no systemd, no gateway HTTP) ---
+    if (instance.instance_type === "claw-runtime") {
+      const pid = getRuntimePid(instance.state_dir);
+      const state: InstanceState = pid !== null ? "running" : "stopped";
+
+      const status: HealthStatus = {
+        slug,
+        port: instance.port,
+        state,
+        gateway: "unknown",
+        systemd: "unknown",
+        agentCount: this.registry.listAgents(slug).length,
+        pendingDevices: 0,
+        telegram: "not_configured",
+        ...(pid !== null ? { pid } : {}),
+      };
+
+      this.registry.updateInstanceState(slug, state);
+      return status;
+    }
+
+    // --- openclaw: original logic ---
 
     const status: HealthStatus = {
       slug,

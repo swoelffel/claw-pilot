@@ -1,9 +1,17 @@
 // src/commands/runtime.ts
+import * as fs from "node:fs";
 import * as readline from "node:readline";
+import { spawn } from "node:child_process";
 import { Command } from "commander";
 import chalk from "chalk";
 import { logger } from "../lib/logger.js";
-import { getStateDir, getDbPath } from "../lib/platform.js";
+import {
+  getStateDir,
+  getDbPath,
+  getRuntimePidPath,
+  getRuntimePid,
+  isRuntimeRunning,
+} from "../lib/platform.js";
 import { initDatabase } from "../db/schema.js";
 import {
   ClawRuntime,
@@ -138,11 +146,60 @@ function runtimeStatusCommand(): Command {
 
 function runtimeStartCommand(): Command {
   return new Command("start")
-    .description("Start the claw-runtime engine for an instance (foreground, SIGTERM to stop)")
+    .description("Start the claw-runtime engine for an instance")
     .argument("<slug>", "Instance slug")
     .option("--ensure-config", "Create runtime.json with defaults if it does not exist")
-    .action(async (slug: string, opts: { ensureConfig?: boolean }) => {
+    .option(
+      "-d, --daemon",
+      "Run as a detached background daemon (writes PID to <stateDir>/runtime.pid)",
+    )
+    .action(async (slug: string, opts: { ensureConfig?: boolean; daemon?: boolean }) => {
       const stateDir = getStateDir(slug);
+
+      // --daemon: spawn a detached child and exit immediately
+      if (opts.daemon) {
+        if (isRuntimeRunning(stateDir)) {
+          const pid = getRuntimePid(stateDir);
+          logger.warn(`claw-runtime for "${slug}" is already running (PID ${pid}).`);
+          process.exit(0);
+        }
+
+        // Re-invoke the same binary without --daemon so the child runs in foreground
+        const args = [
+          ...process.argv.slice(1), // keep the script path
+          "runtime",
+          "start",
+          slug,
+          ...(opts.ensureConfig ? ["--ensure-config"] : []),
+        ];
+
+        const child = spawn(process.execPath, args, {
+          detached: true,
+          stdio: "ignore",
+        });
+
+        child.unref();
+
+        // Poll for PID file to appear (up to 5 s)
+        const pidPath = getRuntimePidPath(stateDir);
+        const deadline = Date.now() + 5_000;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 200));
+          if (isRuntimeRunning(stateDir)) {
+            const pid = getRuntimePid(stateDir);
+            logger.success(`claw-runtime started (slug: ${slug}, PID: ${pid})`);
+            process.exit(0);
+          }
+        }
+
+        // Fallback: PID file not yet written but child may still be starting
+        logger.warn(
+          `claw-runtime started (slug: ${slug}) — PID file not yet available at ${pidPath}`,
+        );
+        process.exit(0);
+      }
+
+      // --- Foreground mode (default) ---
 
       // Load or create config
       let config;
@@ -168,6 +225,11 @@ function runtimeStartCommand(): Command {
 
       const runtime = new ClawRuntime(config, db, slug);
 
+      // Write PID file so lifecycle/health can detect us
+      const pidPath = getRuntimePidPath(stateDir);
+      fs.mkdirSync(stateDir, { recursive: true });
+      fs.writeFileSync(pidPath, String(process.pid), "utf8");
+
       // Graceful shutdown on SIGTERM / SIGINT
       let stopping = false;
       const shutdown = async () => {
@@ -180,6 +242,12 @@ function runtimeStartCommand(): Command {
         } catch (err) {
           logger.error(`Error during stop: ${err instanceof Error ? err.message : String(err)}`);
         } finally {
+          // Remove PID file on clean exit
+          try {
+            fs.unlinkSync(pidPath);
+          } catch {
+            /* already gone */
+          }
           db.close();
           process.exit(0);
         }
@@ -200,11 +268,16 @@ function runtimeStartCommand(): Command {
         logger.error(
           `Failed to start runtime: ${err instanceof Error ? err.message : String(err)}`,
         );
+        try {
+          fs.unlinkSync(pidPath);
+        } catch {
+          /* already gone */
+        }
         db.close();
         process.exit(1);
       }
 
-      logger.success(`Runtime running (slug: ${slug})`);
+      logger.success(`Runtime running (slug: ${slug}, PID: ${process.pid})`);
 
       if (config.webChat.enabled) {
         logger.step("Web chat channel: active");
@@ -216,10 +289,126 @@ function runtimeStartCommand(): Command {
       logger.dim("Press Ctrl+C or send SIGTERM to stop.");
 
       // Keep process alive — channels hold their own event loops (WS server, polling)
-      // We just wait for the shutdown signal.
       await new Promise<void>((resolve) => {
         process.once("beforeExit", resolve);
       });
+    });
+}
+
+// ---------------------------------------------------------------------------
+// runtime stop <slug>
+// ---------------------------------------------------------------------------
+
+function runtimeStopCommand(): Command {
+  return new Command("stop")
+    .description("Stop a running claw-runtime daemon")
+    .argument("<slug>", "Instance slug")
+    .option("--timeout <ms>", "Max wait time in ms for the process to exit", "5000")
+    .action(async (slug: string, opts: { timeout: string }) => {
+      const stateDir = getStateDir(slug);
+      const pid = getRuntimePid(stateDir);
+
+      if (!pid) {
+        logger.warn(`claw-runtime for "${slug}" is not running (no PID file or process gone).`);
+        process.exit(0);
+      }
+
+      logger.info(`Stopping claw-runtime for "${slug}" (PID ${pid})...`);
+
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch (err) {
+        logger.error(
+          `Failed to send SIGTERM to PID ${pid}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        process.exit(1);
+      }
+
+      // Poll until the process is gone
+      const timeoutMs = parseInt(opts.timeout, 10) || 5_000;
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 200));
+        if (!isRuntimeRunning(stateDir)) {
+          logger.success(`claw-runtime stopped (slug: ${slug}).`);
+          process.exit(0);
+        }
+      }
+
+      logger.error(
+        `claw-runtime (PID ${pid}) did not stop within ${timeoutMs}ms. Try SIGKILL manually.`,
+      );
+      process.exit(1);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// runtime restart <slug>
+// ---------------------------------------------------------------------------
+
+function runtimeRestartCommand(): Command {
+  return new Command("restart")
+    .description("Restart a claw-runtime daemon (stop + start --daemon)")
+    .argument("<slug>", "Instance slug")
+    .option("--ensure-config", "Create runtime.json with defaults if it does not exist")
+    .option("--timeout <ms>", "Max wait time in ms for stop", "5000")
+    .action(async (slug: string, opts: { ensureConfig?: boolean; timeout: string }) => {
+      const stateDir = getStateDir(slug);
+      const pid = getRuntimePid(stateDir);
+
+      if (pid) {
+        logger.info(`Stopping claw-runtime for "${slug}" (PID ${pid})...`);
+        try {
+          process.kill(pid, "SIGTERM");
+        } catch {
+          // Process may have already exited
+        }
+
+        const timeoutMs = parseInt(opts.timeout, 10) || 5_000;
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 200));
+          if (!isRuntimeRunning(stateDir)) break;
+        }
+
+        if (isRuntimeRunning(stateDir)) {
+          logger.error(`claw-runtime (PID ${pid}) did not stop within ${timeoutMs}ms.`);
+          process.exit(1);
+        }
+        logger.success(`claw-runtime stopped.`);
+      } else {
+        logger.dim(`claw-runtime for "${slug}" was not running — starting fresh.`);
+      }
+
+      // Start as daemon
+      const args = [
+        ...process.argv.slice(1),
+        "runtime",
+        "start",
+        "--daemon",
+        slug,
+        ...(opts.ensureConfig ? ["--ensure-config"] : []),
+      ];
+
+      const child = spawn(process.execPath, args, {
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+
+      // Poll for PID file
+      const deadline2 = Date.now() + 5_000;
+      while (Date.now() < deadline2) {
+        await new Promise((r) => setTimeout(r, 200));
+        if (isRuntimeRunning(stateDir)) {
+          const newPid = getRuntimePid(stateDir);
+          logger.success(`claw-runtime restarted (slug: ${slug}, PID: ${newPid})`);
+          process.exit(0);
+        }
+      }
+
+      logger.warn(`claw-runtime restarted (slug: ${slug}) — PID file not yet available.`);
+      process.exit(0);
     });
 }
 
@@ -489,6 +678,8 @@ export function runtimeCommand(): Command {
   );
 
   cmd.addCommand(runtimeStartCommand());
+  cmd.addCommand(runtimeStopCommand());
+  cmd.addCommand(runtimeRestartCommand());
   cmd.addCommand(runtimeStatusCommand());
   cmd.addCommand(runtimeChatCommand());
   cmd.addCommand(runtimeConfigCommand());

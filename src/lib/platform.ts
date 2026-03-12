@@ -110,3 +110,33 @@ export const DASHBOARD_LAUNCHD_LABEL = "io.claw-pilot.dashboard";
 export function getDashboardLaunchdPlistPath(): string {
   return path.join(getLaunchdDir(), `${DASHBOARD_LAUNCHD_LABEL}.plist`);
 }
+
+// --- claw-runtime PID helpers ---
+
+export function getRuntimePidPath(stateDir: string): string {
+  return path.join(stateDir, "runtime.pid");
+}
+
+/**
+ * Returns the PID of the running claw-runtime daemon for the given stateDir,
+ * or null if the PID file is absent or the process is no longer alive.
+ */
+export function getRuntimePid(stateDir: string): number | null {
+  const pidPath = getRuntimePidPath(stateDir);
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("node:fs") as typeof import("node:fs");
+    const raw = fs.readFileSync(pidPath, "utf8").trim();
+    const pid = parseInt(raw, 10);
+    if (!pid || isNaN(pid)) return null;
+    // Probe the process — kill(pid, 0) throws if it does not exist
+    process.kill(pid, 0);
+    return pid;
+  } catch {
+    return null;
+  }
+}
+
+export function isRuntimeRunning(stateDir: string): boolean {
+  return getRuntimePid(stateDir) !== null;
+}

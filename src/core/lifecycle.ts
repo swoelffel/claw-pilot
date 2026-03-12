@@ -1,11 +1,20 @@
 // src/core/lifecycle.ts
+import * as fs from "node:fs";
+import { spawn } from "node:child_process";
 import type { ServerConnection, ExecResult } from "../server/connection.js";
 // ExecResult is used as the return type of the private systemctl() method
 import type { Registry } from "./registry.js";
 import { InstanceNotFoundError, GatewayUnhealthyError } from "../lib/errors.js";
 import { constants } from "../lib/constants.js";
 import { pollUntilReady } from "../lib/poll.js";
-import { getServiceManager, getLaunchdPlistPath, isDocker } from "../lib/platform.js";
+import {
+  getServiceManager,
+  getLaunchdPlistPath,
+  isDocker,
+  getRuntimePidPath,
+  getRuntimePid,
+  isRuntimeRunning,
+} from "../lib/platform.js";
 import { logger } from "../lib/logger.js";
 
 export class Lifecycle {
@@ -37,6 +46,13 @@ export class Lifecycle {
     const instance = this.registry.getInstance(slug);
     if (!instance) throw new InstanceNotFoundError(slug);
 
+    if (instance.instance_type === "claw-runtime") {
+      await this.startRuntime(slug, instance.state_dir);
+      this.registry.updateInstanceState(slug, "running");
+      this.registry.logEvent(slug, "started");
+      return;
+    }
+
     if (isDocker()) {
       // In Docker mode, process management is handled externally (supervisord / manual)
       logger.dim(`[lifecycle] Docker mode — skipping service manager for ${slug}`);
@@ -59,6 +75,13 @@ export class Lifecycle {
     const instance = this.registry.getInstance(slug);
     if (!instance) throw new InstanceNotFoundError(slug);
 
+    if (instance.instance_type === "claw-runtime") {
+      await this.stopRuntime(slug, instance.state_dir);
+      this.registry.updateInstanceState(slug, "stopped");
+      this.registry.logEvent(slug, "stopped");
+      return;
+    }
+
     if (isDocker()) {
       // In Docker mode, process management is handled externally (supervisord / manual)
       logger.dim(`[lifecycle] Docker mode — skipping service manager for ${slug}`);
@@ -74,6 +97,14 @@ export class Lifecycle {
   async restart(slug: string): Promise<void> {
     const instance = this.registry.getInstance(slug);
     if (!instance) throw new InstanceNotFoundError(slug);
+
+    if (instance.instance_type === "claw-runtime") {
+      await this.stopRuntime(slug, instance.state_dir);
+      await this.startRuntime(slug, instance.state_dir);
+      this.registry.updateInstanceState(slug, "running");
+      this.registry.logEvent(slug, "restarted");
+      return;
+    }
 
     if (isDocker()) {
       // In Docker mode, process management is handled externally (supervisord / manual)
@@ -95,6 +126,13 @@ export class Lifecycle {
   }
 
   async enable(slug: string): Promise<void> {
+    const instance = this.registry.getInstance(slug);
+    if (!instance) throw new InstanceNotFoundError(slug);
+
+    if (instance.instance_type === "claw-runtime") {
+      // No-op: claw-runtime has no service file
+      return;
+    }
     if (isDocker()) {
       // No-op: Docker mode uses supervisord, no service manager needed
       return;
@@ -103,8 +141,6 @@ export class Lifecycle {
       // No-op: RunAtLoad=true in the plist handles auto-start
       return;
     }
-    const instance = this.registry.getInstance(slug);
-    if (!instance) throw new InstanceNotFoundError(slug);
     await this.systemctl("enable", instance.systemd_unit);
   }
 
@@ -120,6 +156,86 @@ export class Lifecycle {
     await this.conn.execFile("systemctl", ["--user", "daemon-reload"], {
       env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir },
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // claw-runtime daemon helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Start a claw-runtime daemon for the given slug.
+   * Spawns `claw-pilot runtime start --daemon <slug>` as a detached child,
+   * then polls the PID file until the process is alive (up to 10 s).
+   */
+  private async startRuntime(slug: string, stateDir: string): Promise<void> {
+    if (isRuntimeRunning(stateDir)) {
+      const pid = getRuntimePid(stateDir);
+      logger.dim(`[lifecycle] claw-runtime for "${slug}" already running (PID ${pid})`);
+      return;
+    }
+
+    logger.dim(`[lifecycle] Starting claw-runtime daemon for "${slug}"...`);
+
+    const child = spawn(
+      process.execPath,
+      [process.argv[1]!, "runtime", "start", "--daemon", slug],
+      {
+        detached: true,
+        stdio: "ignore",
+      },
+    );
+    child.unref();
+
+    // Poll for PID file (up to 10 s)
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 300));
+      if (isRuntimeRunning(stateDir)) {
+        logger.dim(`[lifecycle] claw-runtime started (PID ${getRuntimePid(stateDir)})`);
+        return;
+      }
+    }
+
+    throw new Error(
+      `claw-runtime for "${slug}" did not start within 10 s (PID file not found at ${getRuntimePidPath(stateDir)})`,
+    );
+  }
+
+  /**
+   * Stop a running claw-runtime daemon for the given slug.
+   * Sends SIGTERM and polls until the process exits (up to 8 s).
+   */
+  private async stopRuntime(slug: string, stateDir: string): Promise<void> {
+    const pid = getRuntimePid(stateDir);
+    if (!pid) {
+      logger.dim(`[lifecycle] claw-runtime for "${slug}" is not running — nothing to stop`);
+      return;
+    }
+
+    logger.dim(`[lifecycle] Stopping claw-runtime for "${slug}" (PID ${pid})...`);
+
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      // Process may have already exited
+    }
+
+    const deadline = Date.now() + 8_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 200));
+      if (!isRuntimeRunning(stateDir)) {
+        // Clean up stale PID file if still present
+        try {
+          fs.unlinkSync(getRuntimePidPath(stateDir));
+        } catch {
+          /* already gone */
+        }
+        logger.dim(`[lifecycle] claw-runtime stopped (slug: ${slug})`);
+        return;
+      }
+    }
+
+    throw new Error(`claw-runtime for "${slug}" (PID ${pid}) did not stop within 8 s`);
   }
 
   private async waitForHealth(
