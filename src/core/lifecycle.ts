@@ -5,7 +5,7 @@ import type { Registry } from "./registry.js";
 import { InstanceNotFoundError, GatewayUnhealthyError } from "../lib/errors.js";
 import { constants } from "../lib/constants.js";
 import { pollUntilReady } from "../lib/poll.js";
-import { getServiceManager, getLaunchdPlistPath } from "../lib/platform.js";
+import { getServiceManager, getLaunchdPlistPath, isDocker } from "../lib/platform.js";
 import { logger } from "../lib/logger.js";
 
 export class Lifecycle {
@@ -37,7 +37,10 @@ export class Lifecycle {
     const instance = this.registry.getInstance(slug);
     if (!instance) throw new InstanceNotFoundError(slug);
 
-    if (this.sm === "launchd") {
+    if (isDocker()) {
+      // In Docker mode, process management is handled externally (supervisord / manual)
+      logger.dim(`[lifecycle] Docker mode — skipping service manager for ${slug}`);
+    } else if (this.sm === "launchd") {
       await this.launchdLoad(slug);
     } else {
       await this.systemctl("start", instance.systemd_unit);
@@ -56,7 +59,10 @@ export class Lifecycle {
     const instance = this.registry.getInstance(slug);
     if (!instance) throw new InstanceNotFoundError(slug);
 
-    if (this.sm === "launchd") {
+    if (isDocker()) {
+      // In Docker mode, process management is handled externally (supervisord / manual)
+      logger.dim(`[lifecycle] Docker mode — skipping service manager for ${slug}`);
+    } else if (this.sm === "launchd") {
       await this.launchdUnload(slug);
     } else {
       await this.systemctl("stop", instance.systemd_unit);
@@ -69,7 +75,10 @@ export class Lifecycle {
     const instance = this.registry.getInstance(slug);
     if (!instance) throw new InstanceNotFoundError(slug);
 
-    if (this.sm === "launchd") {
+    if (isDocker()) {
+      // In Docker mode, process management is handled externally (supervisord / manual)
+      logger.dim(`[lifecycle] Docker mode — skipping service manager for ${slug}`);
+    } else if (this.sm === "launchd") {
       await this.launchdUnload(slug);
       await this.launchdLoad(slug);
     } else {
@@ -86,6 +95,10 @@ export class Lifecycle {
   }
 
   async enable(slug: string): Promise<void> {
+    if (isDocker()) {
+      // No-op: Docker mode uses supervisord, no service manager needed
+      return;
+    }
     if (this.sm === "launchd") {
       // No-op: RunAtLoad=true in the plist handles auto-start
       return;
@@ -96,6 +109,10 @@ export class Lifecycle {
   }
 
   async daemonReload(): Promise<void> {
+    if (isDocker()) {
+      // No-op: Docker mode uses supervisord, no daemon-reload needed
+      return;
+    }
     if (this.sm === "launchd") {
       // No-op: launchd does not need daemon-reload
       return;

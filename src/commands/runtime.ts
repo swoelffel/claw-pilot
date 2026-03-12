@@ -235,10 +235,17 @@ function runtimeChatCommand(): Command {
     .option("--model <model>", "Override model (provider/model format)")
     .option("--session <id>", "Resume an existing session by ID")
     .option("--ensure-config", "Create runtime.json with defaults if it does not exist")
+    .option("--once <message>", "Send a single message and exit (non-interactive, no TTY required)")
     .action(
       async (
         slug: string,
-        opts: { agent?: string; model?: string; session?: string; ensureConfig?: boolean },
+        opts: {
+          agent?: string;
+          model?: string;
+          session?: string;
+          ensureConfig?: boolean;
+          once?: string;
+        },
       ) => {
         const stateDir = getStateDir(slug);
 
@@ -323,6 +330,35 @@ function runtimeChatCommand(): Command {
         } else {
           session = createSession(db, { instanceSlug: slug, agentId, channel: "cli" });
           logger.info(`New session: ${session.id}`);
+        }
+
+        // --once: non-interactive single-shot mode (no TTY required)
+        if (opts.once) {
+          logger.info(`Session: ${session.id}`);
+          process.stdout.write(chalk.green("Agent: "));
+          try {
+            const result = await runPromptLoop({
+              db,
+              instanceSlug: slug,
+              sessionId: session.id,
+              userText: opts.once,
+              agentConfig: agentCfg,
+              resolvedModel: resolvedModelObj,
+              workDir: stateDir,
+            });
+            console.log(result.text);
+            console.log(
+              chalk.dim(
+                `  [${result.tokens.input}→${result.tokens.output} tokens, ${result.steps} step(s), $${result.costUsd.toFixed(6)}]`,
+              ),
+            );
+          } catch (err) {
+            console.log(chalk.red(`\n[Error] ${err instanceof Error ? err.message : String(err)}`));
+            db.close();
+            process.exit(1);
+          }
+          db.close();
+          process.exit(0);
         }
 
         // Print header

@@ -24,6 +24,10 @@ export function isDarwin(): boolean {
   return os.platform() === "darwin";
 }
 
+export function isDocker(): boolean {
+  return process.env["CLAW_PILOT_ENV"] === "docker";
+}
+
 export function getOpenClawHome(dbPath?: string): string {
   // Priority: OPENCLAW_HOME env var > openclaw_home stored in DB > os.homedir()
   if (process.env["OPENCLAW_HOME"]) return process.env["OPENCLAW_HOME"];

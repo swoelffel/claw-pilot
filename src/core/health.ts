@@ -5,7 +5,7 @@ import type { Registry } from "./registry.js";
 import { InstanceNotFoundError } from "../lib/errors.js";
 import { constants } from "../lib/constants.js";
 import { shellEscape } from "../lib/shell.js";
-import { getServiceManager, getLaunchdLabel } from "../lib/platform.js";
+import { getServiceManager, getLaunchdLabel, isDocker } from "../lib/platform.js";
 
 export type InstanceState = "running" | "stopped" | "error" | "unknown";
 
@@ -48,7 +48,10 @@ export class HealthChecker {
     };
 
     // 1. Service status (systemd or launchd)
-    if (this._sm === "systemd") {
+    if (isDocker()) {
+      // In Docker mode, derive service status from gateway health only
+      status.systemd = "unknown";
+    } else if (this._sm === "systemd") {
       const systemdResult = await this.conn.execFile(
         "systemctl",
         ["--user", "is-active", instance.systemd_unit],
