@@ -150,49 +150,61 @@ describe("Tool.define()", () => {
 // ---------------------------------------------------------------------------
 
 describe("getBuiltinTools()", () => {
-  it("returns exactly 5 built-in tools", () => {
+  it("returns 11 built-in tools (phase 2)", () => {
     const tools = getBuiltinTools();
-    expect(tools).toHaveLength(5);
+    expect(tools).toHaveLength(11);
   });
 
-  it("includes read, write, bash, glob, grep", () => {
+  it("includes core tools: read, write, edit, bash, glob, grep", () => {
     const tools = getBuiltinTools();
     const ids = tools.map((t) => t.id);
     expect(ids).toContain("read");
     expect(ids).toContain("write");
+    expect(ids).toContain("edit");
     expect(ids).toContain("bash");
     expect(ids).toContain("glob");
     expect(ids).toContain("grep");
   });
+
+  it("includes extended tools: webfetch, question, todowrite, todoread, skill", () => {
+    const tools = getBuiltinTools();
+    const ids = tools.map((t) => t.id);
+    expect(ids).toContain("webfetch");
+    expect(ids).toContain("question");
+    expect(ids).toContain("todowrite");
+    expect(ids).toContain("todoread");
+    expect(ids).toContain("skill");
+  });
 });
 
 describe("getTools()", () => {
-  it("returns the 5 built-in tools without customToolsDir", async () => {
+  it("returns 11 built-in tools without customToolsDir", async () => {
     const tools = await getTools();
-    expect(tools).toHaveLength(5);
+    expect(tools).toHaveLength(11);
   });
 
   it("returns built-ins when customToolsDir does not exist", async () => {
     const tools = await getTools({ customToolsDir: "/nonexistent/path/to/tools" });
-    expect(tools).toHaveLength(5);
+    expect(tools).toHaveLength(11);
   });
 
-  it("built-in stubs return placeholder output", async () => {
+  it("excludes tools by ID when exclude option is provided", async () => {
+    const tools = await getTools({ exclude: ["bash", "write", "edit"] });
+    const ids = tools.map((t) => t.id);
+    expect(ids).not.toContain("bash");
+    expect(ids).not.toContain("write");
+    expect(ids).not.toContain("edit");
+    expect(ids).toContain("read");
+    expect(tools).toHaveLength(8);
+  });
+
+  it("read tool has a real description (not a stub)", async () => {
     const tools = await getTools();
     const readTool = tools.find((t) => t.id === "read");
     expect(readTool).toBeDefined();
 
     const def = await readTool!.init();
-    const ctx: Tool.Context = {
-      sessionId: "s1",
-      messageId: "m1",
-      agentId: "main",
-      abort: new AbortController().signal,
-      metadata: vi.fn(),
-    };
-
-    const result = await def.execute({ path: "/tmp/test.txt" }, ctx);
-    expect(result.output).toContain("[stub]");
-    expect(result.truncated).toBe(false);
+    expect(def.description).not.toContain("[stub]");
+    expect(def.description.length).toBeGreaterThan(20);
   });
 });

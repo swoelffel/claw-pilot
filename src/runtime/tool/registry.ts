@@ -3,55 +3,40 @@
  *
  * Tool registry — built-in tools + optional custom tools loaded from a directory.
  *
- * Phase 1: built-in tools are functional stubs (validate args, return placeholder).
- * Full implementations are in Phase 2.
+ * Phase 2: built-in tools are fully implemented in ./built-in/.
  */
 
-import { z } from "zod";
 import { Tool } from "./tool.js";
+import {
+  ReadTool,
+  WriteTool,
+  EditTool,
+  BashTool,
+  GlobTool,
+  GrepTool,
+  WebFetchTool,
+  QuestionTool,
+  TodoWriteTool,
+  TodoReadTool,
+  SkillTool,
+} from "./built-in/index.js";
 
 // ---------------------------------------------------------------------------
-// Built-in tool stubs
+// Built-in tools
 // ---------------------------------------------------------------------------
-
-function makeStub(toolId: string, parameters: z.ZodType): Tool.Info {
-  return Tool.define(toolId, {
-    description: `[stub] ${toolId} — not yet implemented`,
-    parameters,
-    async execute(args) {
-      return {
-        title: `${toolId}: ${JSON.stringify(args)}`,
-        output: `[stub] Tool "${toolId}" not yet implemented`,
-        truncated: false,
-      };
-    },
-  });
-}
 
 const BUILTIN_TOOLS: Tool.Info[] = [
-  makeStub("read", z.object({ path: z.string() })),
-  makeStub("write", z.object({ path: z.string(), content: z.string() })),
-  makeStub(
-    "bash",
-    z.object({
-      command: z.string(),
-      timeout: z.number().optional(),
-    }),
-  ),
-  makeStub(
-    "glob",
-    z.object({
-      pattern: z.string(),
-      cwd: z.string().optional(),
-    }),
-  ),
-  makeStub(
-    "grep",
-    z.object({
-      pattern: z.string(),
-      path: z.string().optional(),
-    }),
-  ),
+  ReadTool,
+  WriteTool,
+  EditTool,
+  BashTool,
+  GlobTool,
+  GrepTool,
+  WebFetchTool,
+  QuestionTool,
+  TodoWriteTool,
+  TodoReadTool,
+  SkillTool,
 ];
 
 // ---------------------------------------------------------------------------
@@ -61,6 +46,8 @@ const BUILTIN_TOOLS: Tool.Info[] = [
 export interface ToolRegistryOptions {
   /** Directory to scan for custom tools (*.js / *.ts files) */
   customToolsDir?: string;
+  /** Tool IDs to exclude (e.g. based on agent permissions) */
+  exclude?: string[];
 }
 
 /**
@@ -75,6 +62,11 @@ export async function getTools(options?: ToolRegistryOptions): Promise<Tool.Info
     tools.push(...custom);
   }
 
+  if (options?.exclude && options.exclude.length > 0) {
+    const excluded = new Set(options.exclude);
+    return tools.filter((t) => !excluded.has(t.id));
+  }
+
   return tools;
 }
 
@@ -83,6 +75,13 @@ export async function getTools(options?: ToolRegistryOptions): Promise<Tool.Info
  */
 export function getBuiltinTools(): Tool.Info[] {
   return [...BUILTIN_TOOLS];
+}
+
+/**
+ * Get a single built-in tool by ID.
+ */
+export function getBuiltinTool(id: string): Tool.Info | undefined {
+  return BUILTIN_TOOLS.find((t) => t.id === id);
 }
 
 // ---------------------------------------------------------------------------
@@ -117,7 +116,6 @@ async function loadCustomTools(dir: string): Promise<Tool.Info[]> {
         }
       }
     } catch (err) {
-      // Log warning but don't crash — custom tool loading is best-effort
       console.warn(`[claw-runtime] Failed to load custom tool from ${filePath}:`, err);
     }
   }
