@@ -80,7 +80,7 @@ function querySkillsViaWs(
           params: {
             minProtocol: 3,
             maxProtocol: 3,
-            client: { id: "claw-pilot", version: "1.0.0", platform: "linux", mode: "operator" },
+            client: { id: "gateway-client", version: "1.0.0", platform: "linux", mode: "ui" },
             role: "operator",
             scopes: ["operator.read"],
             caps: [],
