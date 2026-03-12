@@ -21,6 +21,8 @@ vi.mock("../../lib/platform.js", async (importOriginal) => {
     ...actual,
     getServiceManager: () => _mockServiceManager,
     getLaunchdLabel: (slug: string) => `ai.openclaw.${slug}`,
+    // Always return false so tests are not affected by CLAW_PILOT_ENV=docker in the container
+    isDocker: () => false,
   };
 });
 

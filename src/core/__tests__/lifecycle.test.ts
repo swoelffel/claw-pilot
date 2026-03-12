@@ -24,6 +24,8 @@ vi.mock("../../lib/platform.js", async (importOriginal) => {
     ...actual,
     getServiceManager: () => _mockServiceManager,
     getLaunchdPlistPath: (slug: string) => `/tmp/launchd/ai.openclaw.${slug}.plist`,
+    // Always return false so tests are not affected by CLAW_PILOT_ENV=docker in the container
+    isDocker: () => false,
   };
 });
 
