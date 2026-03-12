@@ -44,8 +44,13 @@
     ]
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.58",
+    "@ai-sdk/google": "^3.0.43",
+    "@ai-sdk/openai": "^3.0.41",
     "@inquirer/prompts": "^7",
     "@lit/localize": "^0.12.2",
+    "@openrouter/ai-sdk-provider": "^2.3.0",
+    "ai": "^6.0.116",
     "better-sqlite3": "^11",
     "chalk": "^5",
     "cli-table3": "^0.6",

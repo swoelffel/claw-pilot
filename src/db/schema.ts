@@ -313,6 +313,110 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v8: claw-runtime foundation tables (prefixed rt_).
+    // These tables support the native agent runtime engine being developed
+    // in src/runtime/ as a replacement for OpenClaw instances.
+    //
+    // All tables are additive (CREATE TABLE IF NOT EXISTS) — safe to apply
+    // on existing DBs without data loss.
+    version: 8,
+    up(db) {
+      db.exec(`
+        -- Add instance_type column to instances table.
+        -- 'openclaw' = legacy OpenClaw instance (default)
+        -- 'claw-runtime' = native claw-runtime instance
+        ALTER TABLE instances ADD COLUMN instance_type TEXT NOT NULL DEFAULT 'openclaw'
+          CHECK(instance_type IN ('openclaw', 'claw-runtime'));
+
+        -- Runtime sessions (one per conversation / channel peer)
+        CREATE TABLE IF NOT EXISTS rt_sessions (
+          id            TEXT PRIMARY KEY,
+          instance_slug TEXT NOT NULL REFERENCES instances(slug) ON DELETE CASCADE,
+          parent_id     TEXT REFERENCES rt_sessions(id),
+          agent_id      TEXT NOT NULL,
+          channel       TEXT NOT NULL DEFAULT 'web',
+          peer_id       TEXT,
+          title         TEXT,
+          state         TEXT NOT NULL DEFAULT 'active'
+            CHECK(state IN ('active', 'archived')),
+          permissions   TEXT,
+          created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_sessions_instance
+          ON rt_sessions(instance_slug);
+        CREATE INDEX IF NOT EXISTS idx_rt_sessions_parent
+          ON rt_sessions(parent_id);
+
+        -- Runtime messages (user + assistant turns)
+        CREATE TABLE IF NOT EXISTS rt_messages (
+          id            TEXT PRIMARY KEY,
+          session_id    TEXT NOT NULL REFERENCES rt_sessions(id) ON DELETE CASCADE,
+          role          TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+          agent_id      TEXT,
+          model         TEXT,
+          tokens_in     INTEGER,
+          tokens_out    INTEGER,
+          cost_usd      REAL,
+          finish_reason TEXT,
+          is_compaction INTEGER NOT NULL DEFAULT 0,
+          created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_messages_session
+          ON rt_messages(session_id);
+
+        -- Runtime message parts (atomic content units within a message)
+        CREATE TABLE IF NOT EXISTS rt_parts (
+          id            TEXT PRIMARY KEY,
+          message_id    TEXT NOT NULL REFERENCES rt_messages(id) ON DELETE CASCADE,
+          type          TEXT NOT NULL,
+          state         TEXT CHECK(state IN ('pending', 'running', 'completed', 'error')),
+          content       TEXT,
+          metadata      TEXT,
+          sort_order    INTEGER NOT NULL DEFAULT 0,
+          created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_parts_message
+          ON rt_parts(message_id);
+
+        -- Runtime permission rules (persisted approvals)
+        CREATE TABLE IF NOT EXISTS rt_permissions (
+          id            TEXT PRIMARY KEY,
+          instance_slug TEXT NOT NULL REFERENCES instances(slug) ON DELETE CASCADE,
+          scope         TEXT NOT NULL,
+          permission    TEXT NOT NULL,
+          pattern       TEXT NOT NULL,
+          action        TEXT NOT NULL CHECK(action IN ('allow', 'deny', 'ask')),
+          created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_permissions_scope
+          ON rt_permissions(instance_slug, scope);
+
+        -- Runtime auth profiles (API key rotation per provider)
+        CREATE TABLE IF NOT EXISTS rt_auth_profiles (
+          id              TEXT PRIMARY KEY,
+          instance_slug   TEXT NOT NULL REFERENCES instances(slug) ON DELETE CASCADE,
+          provider_id     TEXT NOT NULL,
+          api_key_env_var TEXT NOT NULL,
+          priority        INTEGER NOT NULL DEFAULT 0,
+          cooldown_until  TEXT,
+          failure_count   INTEGER NOT NULL DEFAULT 0,
+          last_error      TEXT,
+          created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_auth_profiles_provider
+          ON rt_auth_profiles(instance_slug, provider_id);
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
