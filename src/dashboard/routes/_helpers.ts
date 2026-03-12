@@ -15,6 +15,7 @@ export interface AgentLike {
   role: string | null;
   tags: string | null;
   notes: string | null;
+  skills: string | null; // valeur brute DB — JSON string ou NULL
   synced_at: string | null;
   position_x: number | null;
   position_y: number | null;
@@ -30,6 +31,7 @@ export interface AgentPayloadItem {
   role: string | null;
   tags: string | null;
   notes: string | null;
+  skills: string[] | null; // array parsé depuis JSON string DB, ou NULL
   synced_at: string | null;
   position_x: number | null;
   position_y: number | null;
@@ -42,6 +44,16 @@ export interface AgentPayloadItem {
 }
 
 export function buildAgentPayload(agent: AgentLike, files: AgentFileRecord[]): AgentPayloadItem {
+  // Parser skills depuis la JSON string stockée en DB
+  let skills: string[] | null = null;
+  if (agent.skills) {
+    try {
+      skills = JSON.parse(agent.skills) as string[];
+    } catch {
+      skills = null;
+    }
+  }
+
   return {
     id: agent.id,
     agent_id: agent.agent_id,
@@ -52,6 +64,7 @@ export function buildAgentPayload(agent: AgentLike, files: AgentFileRecord[]): A
     role: agent.role ?? null,
     tags: agent.tags ?? null,
     notes: agent.notes ?? null,
+    skills,
     synced_at: agent.synced_at ?? null,
     position_x: agent.position_x ?? null,
     position_y: agent.position_y ?? null,

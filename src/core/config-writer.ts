@@ -245,6 +245,31 @@ function applyAgentsSection(config: Record<string, unknown>, patch: ConfigPatch)
   const currentList = (agentsConf["list"] ?? []) as Array<Record<string, unknown>>;
 
   for (const agentPatch of patch.agents!) {
+    // Cas spécial : agent default (id="main" absent de agents.list[])
+    // → écrire dans agents.defaults.skills
+    const isInList = currentList.some((a) => a["id"] === agentPatch.id);
+    if (!isInList && agentPatch.id === "main") {
+      // Patch sur l'agent default → écrire dans agents.defaults
+      const defaults = (agentsConf["defaults"] ?? {}) as Record<string, unknown>;
+      if (agentPatch.name !== undefined) defaults["name"] = agentPatch.name;
+      if (agentPatch.model !== undefined) {
+        defaults["model"] = agentPatch.model !== null ? { primary: agentPatch.model } : undefined;
+      }
+      if (agentPatch.identity !== undefined) {
+        defaults["identity"] = agentPatch.identity;
+      }
+      if (agentPatch.skills !== undefined) {
+        if (agentPatch.skills === null) {
+          delete defaults["skills"];
+        } else {
+          defaults["skills"] = agentPatch.skills;
+        }
+      }
+      agentsConf["defaults"] = defaults;
+      continue;
+    }
+
+    // Cas normal : agent dans agents.list[]
     const existing = currentList.find((a) => a["id"] === agentPatch.id);
     if (existing) {
       if (agentPatch.name !== undefined) existing["name"] = agentPatch.name;
@@ -253,6 +278,13 @@ function applyAgentsSection(config: Record<string, unknown>, patch: ConfigPatch)
       }
       if (agentPatch.identity !== undefined) {
         existing["identity"] = agentPatch.identity;
+      }
+      if (agentPatch.skills !== undefined) {
+        if (agentPatch.skills === null) {
+          delete existing["skills"];
+        } else {
+          existing["skills"] = agentPatch.skills;
+        }
       }
     }
   }

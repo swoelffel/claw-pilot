@@ -20,6 +20,7 @@ import type {
   AgentMetaPatch,
   DiscoverResult,
   AdoptResult,
+  SkillsListResponse,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 
@@ -200,6 +201,12 @@ export async function deleteAgent(instanceSlug: string, agentId: string): Promis
   });
 }
 
+// --- Skills API ---
+
+export async function fetchInstanceSkills(slug: string): Promise<SkillsListResponse> {
+  return apiFetch<SkillsListResponse>(`/instances/${slug}/skills`);
+}
+
 // --- Blueprint API ---
 
 export async function fetchBlueprints(): Promise<Blueprint[]> {
@@ -247,6 +254,17 @@ export async function deleteBlueprintAgent(
 ): Promise<BlueprintBuilderData> {
   return apiFetch<BlueprintBuilderData>(`/blueprints/${blueprintId}/agents/${agentId}`, {
     method: "DELETE",
+  });
+}
+
+export async function updateBlueprintAgentMeta(
+  blueprintId: number,
+  agentId: string,
+  patch: AgentMetaPatch,
+): Promise<BlueprintBuilderData> {
+  return apiFetch<BlueprintBuilderData>(`/blueprints/${blueprintId}/agents/${agentId}/meta`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
   });
 }
 

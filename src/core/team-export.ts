@@ -214,6 +214,18 @@ export function exportBlueprintTeam(registry: Registry, blueprintId: number): Te
         config = { model: agent.model };
       }
     }
+
+    // Inject skills from DB column if present (blueprints store skills as JSON string)
+    const agentSkills = (agent as unknown as { skills?: string | null }).skills;
+    if (agentSkills) {
+      try {
+        const skills = JSON.parse(agentSkills) as string[];
+        config = { ...(config ?? {}), skills };
+      } catch {
+        // intentionally ignored — invalid JSON in skills column, skip
+      }
+    }
+
     teamAgents.push(buildTeamAgent(agent as unknown as AgentRecord, files, config));
   }
 

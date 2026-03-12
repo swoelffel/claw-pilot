@@ -12,6 +12,7 @@ const AgentMetaPatchSchema = z
     role: z.string().max(200).nullable().optional(),
     tags: z.string().max(500).nullable().optional(),
     notes: z.string().max(500).nullable().optional(),
+    skills: z.array(z.string()).nullable().optional(), // NULL = accès à toutes les skills
   })
   .strict();
 

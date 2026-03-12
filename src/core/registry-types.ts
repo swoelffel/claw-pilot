@@ -44,6 +44,7 @@ export interface AgentRecord {
   role: string | null;
   tags: string | null;
   notes: string | null;
+  skills: string | null; // JSON array string ou NULL (NULL = accès à toutes les skills)
   position_x: number | null;
   position_y: number | null;
   config_hash: string | null;
@@ -91,6 +92,7 @@ export interface BlueprintAgentRecord {
   role: string | null;
   tags: string | null;
   notes: string | null;
+  skills: string | null; // JSON array string ou NULL (NULL = accès à toutes les skills)
   position_x: number | null;
   position_y: number | null;
   config_hash: string | null;

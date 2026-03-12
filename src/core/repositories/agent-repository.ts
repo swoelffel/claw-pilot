@@ -101,6 +101,7 @@ export class AgentRepository {
       role: string | null | undefined;
       tags: string | null | undefined;
       notes: string | null | undefined;
+      skills: string[] | null | undefined; // array JS, sérialisé en JSON string en DB
     }>,
   ): void {
     const sets: string[] = [];
@@ -117,6 +118,14 @@ export class AgentRepository {
     if ("notes" in fields) {
       sets.push("notes=?");
       values.push(fields.notes ?? null);
+    }
+    if ("skills" in fields) {
+      sets.push("skills=?");
+      values.push(
+        fields.skills === null || fields.skills === undefined
+          ? null
+          : JSON.stringify(fields.skills),
+      );
     }
 
     if (sets.length === 0) return;

@@ -122,6 +122,7 @@ export async function readInstanceConfig(
           model: defaultModelStr || null,
           workspace: defaults?.workspace ?? "workspace",
           identity: null,
+          skills: (defaults as unknown as { skills?: string[] })?.skills ?? null,
         },
       ];
 
@@ -148,6 +149,7 @@ export async function readInstanceConfig(
               ...(identity.avatar !== undefined && { avatar: identity.avatar }),
             }
           : null,
+        skills: (a as unknown as { skills?: string[] }).skills ?? null,
       };
     }),
   ];

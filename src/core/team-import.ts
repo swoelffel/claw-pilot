@@ -164,10 +164,17 @@ async function _importTeamCore(
       }
 
       if (target.type === "blueprint") {
+        // Serialize skills from config.skills (array) → JSON string for DB column.
+        // Array.isArray check handles both populated arrays and empty arrays [].
+        const skillsJson =
+          Array.isArray(agent.config?.skills) && (agent.config.skills as string[]).length >= 0
+            ? JSON.stringify(agent.config.skills)
+            : null;
+
         db.prepare(
           `INSERT INTO agents (blueprint_id, agent_id, name, model, workspace_path, is_default,
-           role, tags, notes, position_x, position_y)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           role, tags, notes, skills, position_x, position_y)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).run(
           target.blueprintId,
           agent.id,
@@ -178,6 +185,7 @@ async function _importTeamCore(
           agent.meta?.role ?? null,
           tagsJson,
           agent.meta?.notes ?? null,
+          skillsJson,
           agent.meta?.position?.x ?? null,
           agent.meta?.position?.y ?? null,
         );

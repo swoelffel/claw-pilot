@@ -261,6 +261,42 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     return c.json(payload, 201);
   });
 
+  // PATCH /api/blueprints/:id/agents/:agentId/meta — mettre à jour les métadonnées
+  app.patch("/api/blueprints/:id/agents/:agentId/meta", async (c) => {
+    const id = Number(c.req.param("id"));
+    const agentId = c.req.param("agentId");
+    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
+
+    const blueprint = registry.getBlueprint(id);
+    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
+
+    const agent = registry.getBlueprintAgent(id, agentId);
+    if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
+
+    let body: Partial<{
+      role: string | null;
+      tags: string | null;
+      notes: string | null;
+      skills: string[] | null;
+    }>;
+    try {
+      body = (await c.req.json()) as typeof body;
+    } catch {
+      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+    }
+
+    const metaFields: Parameters<typeof registry.updateAgentMeta>[1] = {};
+    if ("role" in body) metaFields.role = body.role;
+    if ("tags" in body) metaFields.tags = body.tags;
+    if ("notes" in body) metaFields.notes = body.notes;
+    if ("skills" in body) metaFields.skills = body.skills;
+
+    registry.updateAgentMeta(agent.id, metaFields);
+
+    const payload = buildBlueprintPayload(id, registry);
+    return c.json(payload);
+  });
+
   // DELETE /api/blueprints/:id/agents/:agentId — supprimer un agent
   app.delete("/api/blueprints/:id/agents/:agentId", (c) => {
     const id = Number(c.req.param("id"));

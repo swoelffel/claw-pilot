@@ -302,6 +302,17 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v7: add skills column to agents table.
+    // TEXT nullable — JSON array string (e.g. '["weather","gemini"]') or NULL
+    // (NULL = access to all skills, same convention as tags).
+    version: 7,
+    up(db) {
+      db.exec(`
+        ALTER TABLE agents ADD COLUMN skills TEXT;
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

@@ -43,6 +43,7 @@ export interface InstanceConfigPayload {
     model: string | null;
     workspace: string;
     identity: { name?: string; emoji?: string; avatar?: string } | null;
+    skills: string[] | null; // null = all skills (champ absent dans JSON)
   }>;
   channels: {
     telegram: {
@@ -97,6 +98,7 @@ export interface ConfigPatch {
     name?: string;
     model?: string | null;
     identity?: { name?: string; emoji?: string; avatar?: string } | null;
+    skills?: string[] | null; // null = supprimer le champ (= all skills)
   }>;
   channels?: {
     telegram?: {
@@ -202,6 +204,7 @@ export const ConfigPatchSchema = z
               .strict()
               .nullable()
               .optional(),
+            skills: z.array(z.string()).nullable().optional(),
           })
           .strict(),
       )

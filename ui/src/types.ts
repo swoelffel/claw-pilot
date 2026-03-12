@@ -125,6 +125,7 @@ export interface AgentBuilderInfo {
   role: string | null;
   tags: string | null;
   notes: string | null;
+  skills: string[] | null; // null = toutes les skills (champ absent en DB)
   synced_at: string | null;
   position_x: number | null;
   position_y: number | null;
@@ -135,6 +136,23 @@ export interface AgentMetaPatch {
   role?: string | null;
   tags?: string | null;
   notes?: string | null;
+  skills?: string[] | null; // null = supprimer le filtre (= toutes les skills)
+}
+
+// Skills types
+
+export interface SkillInfo {
+  name: string;
+  description: string;
+  emoji?: string;
+  source: string;
+  eligible: boolean;
+  disabled: boolean;
+}
+
+export interface SkillsListResponse {
+  available: boolean;
+  skills: SkillInfo[];
 }
 
 export interface AgentLink {

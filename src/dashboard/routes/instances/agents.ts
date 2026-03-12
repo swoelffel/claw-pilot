@@ -9,9 +9,11 @@ import { registerAgentDeleteRoutes } from "./agents/delete.js";
 import { registerAgentUpdateRoutes } from "./agents/update.js";
 import { registerAgentFileRoutes } from "./agents/files.js";
 import { registerAgentSpawnLinkRoutes } from "./agents/spawn-links.js";
+import { registerAgentSkillsRoutes } from "./agents/skills.js";
 
 export function registerAgentRoutes(app: Hono, deps: RouteDeps): void {
   // Registration order matters for Hono — specific paths before parameterized ones
+  registerAgentSkillsRoutes(app, deps); // GET  .../skills
   registerAgentSyncRoutes(app, deps); // POST .../agents/sync
   registerAgentListRoutes(app, deps); // GET  .../agents, GET .../agents/builder
   registerAgentUpdateRoutes(app, deps); // PATCH .../agents/:id/position, .../agents/:id/meta

@@ -155,6 +155,15 @@ export const templates = {
   "adp-btn-cancel-spawn": "Cancel",
   "adp-btn-add-spawn": "Add delegate",
 
+  // agent-detail-panel.ts — skills
+  "adp-label-skills": "Skills",
+  "adp-skills-all": "All",
+  "adp-skills-none": "None",
+  "adp-skills-custom": "Custom",
+  "adp-edit-skills-hint": "Comma-separated skill names",
+  "adp-skills-loading": "Loading skills…",
+  "adp-skills-unavailable": "Instance offline — enter skill names manually",
+
   // agent-detail-panel.ts — file editor
   "adf-btn-edit": "Edit",
   "adf-badge-editing": "Editing",

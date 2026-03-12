@@ -770,4 +770,94 @@ export const agentDetailPanelStyles = css`
     font-weight: 400;
     margin-left: 6px;
   }
+
+  /* ── Skills badges (lecture) ──────────────────────────────────────────── */
+
+  .skills-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 3px;
+  }
+
+  .skill-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    background: var(--bg-border);
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+  }
+
+  .skill-badge.muted {
+    opacity: 0.55;
+    font-style: italic;
+  }
+
+  /* ── Skills toggle (édition) ──────────────────────────────────────────── */
+
+  .skills-toggle {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+
+  .skills-toggle-btn {
+    padding: 3px 10px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-family: inherit;
+    border: 1px solid var(--bg-border);
+    background: var(--bg-surface);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition:
+      background 0.12s,
+      color 0.12s,
+      border-color 0.12s;
+  }
+
+  .skills-toggle-btn:hover {
+    border-color: var(--accent-border);
+    color: var(--text-secondary);
+  }
+
+  .skills-toggle-btn.active {
+    background: var(--accent-subtle);
+    color: var(--accent);
+    border-color: var(--accent-border);
+  }
+
+  /* ── Skills grid (checkboxes) ─────────────────────────────────────────── */
+
+  .skills-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 4px;
+    margin-top: 4px;
+  }
+
+  .skills-grid-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 5px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.12s;
+    color: var(--text-secondary);
+  }
+
+  .skills-grid-label:hover {
+    background: var(--bg-border);
+  }
+
+  .skills-grid-label.ineligible {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
 `;

@@ -6,6 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.19.0] — 2026-03-12
+
+### Added
+- **Skills par agent** — filtrage allowlist des skills OpenClaw par agent, visible et éditable dans le dashboard
+  - Section Skills en lecture dans le panel Info (badges All / None / liste)
+  - Section Skills en édition : toggle All / None / Custom + grille de checkboxes si l'instance est running (via gateway RPC `skills.status`), fallback saisie CSV si offline
+  - Endpoint `GET /api/instances/:slug/skills` — interroge le gateway OpenClaw en JSON-RPC avec timeout 5s et fallback gracieux
+  - `PATCH /api/instances/:slug/agents/:agentId/meta` accepte désormais `skills`
+  - `PATCH /api/blueprints/:id/agents/:agentId/meta` — nouvelle route (skills + role/tags/notes)
+  - Migration DB v7 : colonne `agents.skills TEXT` (nullable, même convention que `tags`)
+  - Skills persistées en DB pour les blueprints (import/export `.team.yaml` inclus)
+  - i18n : 7 nouvelles clés × 6 langues (EN/FR/DE/ES/IT/PT)
+
+---
+
 ## [0.18.1] — 2026-03-12
 
 ### Fixed
