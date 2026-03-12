@@ -177,6 +177,22 @@ export class InstanceCard extends LitElement {
         flex-shrink: 0;
       }
 
+      .runtime-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        background: rgba(99, 102, 241, 0.12);
+        color: #818cf8;
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        border-radius: var(--radius-sm);
+        padding: 1px 6px;
+        font-size: 10px;
+        font-family: var(--font-mono);
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        flex-shrink: 0;
+      }
+
       /* ── Menu popover ────────────────────────────────────── */
 
       .menu-anchor {
@@ -424,6 +440,7 @@ export class InstanceCard extends LitElement {
   private _renderMenu() {
     const inst = this.instance;
     const isRunning = inst.state === "running";
+    const isRuntime = inst.instance_type === "claw-runtime";
     const uiUrl = inst.gatewayToken
       ? `http://localhost:${inst.port}/#token=${inst.gatewayToken}`
       : `http://localhost:${inst.port}`;
@@ -441,7 +458,7 @@ export class InstanceCard extends LitElement {
 
         <div class="menu-separator"></div>
 
-        ${isRunning
+        ${isRunning && !isRuntime
           ? html`
               <a
                 class="menu-item"
@@ -538,6 +555,9 @@ export class InstanceCard extends LitElement {
             ${showSlug ? html`<div class="slug">${inst.slug}</div>` : nothing}
           </div>
           <div class="card-header-right">
+            ${inst.instance_type === "claw-runtime"
+              ? html`<span class="runtime-badge">⚡ runtime</span>`
+              : nothing}
             <span class="badge ${stateClass}">
               <span class="state-dot"></span>
               ${stateClass}
@@ -567,9 +587,11 @@ export class InstanceCard extends LitElement {
           ${model ? html`<div class="model-row">${model}</div>` : nothing}
           <div class="tech-row">
             <span class="port-value">:${inst.port}</span>
-            ${this.openclawVersion
-              ? html`<span class="openclaw-version">openclaw v${this.openclawVersion}</span>`
-              : nothing}
+            ${inst.instance_type === "claw-runtime"
+              ? nothing
+              : this.openclawVersion
+                ? html`<span class="openclaw-version">openclaw v${this.openclawVersion}</span>`
+                : nothing}
           </div>
         </div>
 

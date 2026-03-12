@@ -20,12 +20,14 @@ import {
   getServiceManager,
   getLaunchdDir,
   getLaunchdPlistPath,
+  isDocker,
 } from "../lib/platform.js";
 import { InstanceAlreadyExistsError, ClawPilotError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
 import { shellEscape } from "../lib/shell.js";
 import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 import { BlueprintDeployer } from "./blueprint-deployer.js";
+import { ensureRuntimeConfig } from "../runtime/engine/config-loader.js";
 import * as os from "node:os";
 
 export interface ProvisionResult {
@@ -34,6 +36,7 @@ export interface ProvisionResult {
   stateDir: string;
   gatewayToken: string;
   agentCount: number;
+  instanceType: "openclaw" | "claw-runtime";
   telegramBot?: string;
 }
 
@@ -101,6 +104,7 @@ export class Provisioner {
     answers: WizardAnswers,
     serverId: number,
     blueprintId?: number,
+    instanceType: "openclaw" | "claw-runtime" = "openclaw",
   ): Promise<ProvisionResult> {
     const { slug } = answers;
 
@@ -120,11 +124,14 @@ export class Provisioner {
     const logsDir = path.join(stateDir, "logs");
     const sm = getServiceManager();
 
-    // Detect openclaw binary
-    const cli = new OpenClawCLI(this.conn);
-    const openclaw = await cli.detect();
-    if (!openclaw) {
-      throw new ClawPilotError("OpenClaw CLI not found", "OPENCLAW_NOT_FOUND");
+    // For openclaw instances, detect the openclaw binary
+    let openclaw: Awaited<ReturnType<OpenClawCLI["detect"]>> = null;
+    if (instanceType === "openclaw") {
+      const cli = new OpenClawCLI(this.conn);
+      openclaw = await cli.detect();
+      if (!openclaw) {
+        throw new ClawPilotError("OpenClaw CLI not found", "OPENCLAW_NOT_FOUND");
+      }
     }
 
     // Resolve current user UID for XDG_RUNTIME_DIR in systemd service
@@ -165,10 +172,19 @@ export class Provisioner {
       });
       await this.conn.writeFile(envPath, envContent, constants.ENV_FILE_MODE);
 
-      // Step 4: Generate openclaw.json
+      // Step 4: Generate configuration file
       logger.step("Generating configuration...");
-      const configContent = generateConfig(answers);
-      await this.conn.writeFile(configPath, configContent, constants.CONFIG_FILE_MODE);
+      if (instanceType === "claw-runtime") {
+        // claw-runtime uses runtime.json instead of openclaw.json
+        const defaultModel = answers.defaultModel || undefined;
+        ensureRuntimeConfig(stateDir, {
+          ...(defaultModel !== undefined ? { defaultModel } : {}),
+          telegramEnabled: answers.telegram.enabled,
+        });
+      } else {
+        const configContent = generateConfig(answers);
+        await this.conn.writeFile(configPath, configContent, constants.CONFIG_FILE_MODE);
+      }
 
       // Step 5: Create workspaces
       logger.step("Creating workspaces...");
@@ -187,39 +203,46 @@ export class Provisioner {
       }
 
       // Step 6: Generate and install service (systemd on Linux, launchd on macOS)
-      if (sm === "launchd") {
-        logger.step("Installing launchd service...");
-        const plistContent = generateLaunchdPlist({
-          slug,
-          displayName: answers.displayName,
-          port: answers.port,
-          stateDir,
-          configPath,
-          openclawBin: openclaw.bin,
-          home: os.homedir(),
-        });
-        const launchdDir = getLaunchdDir();
-        await this.conn.mkdir(launchdDir);
-        await this.conn.writeFile(getLaunchdPlistPath(slug), plistContent);
+      // claw-runtime instances do not use a service file yet (managed via CLI)
+      if (instanceType === "openclaw" && !isDocker()) {
+        if (sm === "launchd") {
+          logger.step("Installing launchd service...");
+          const plistContent = generateLaunchdPlist({
+            slug,
+            displayName: answers.displayName,
+            port: answers.port,
+            stateDir,
+            configPath,
+            openclawBin: openclaw!.bin,
+            home: os.homedir(),
+          });
+          const launchdDir = getLaunchdDir();
+          await this.conn.mkdir(launchdDir);
+          await this.conn.writeFile(getLaunchdPlistPath(slug), plistContent);
+        } else {
+          logger.step("Installing systemd service...");
+          const systemdDir = getSystemdDir();
+          const systemdUnit = getSystemdUnit(slug);
+          const serviceFile = path.join(systemdDir, systemdUnit);
+          const serviceContent = generateSystemdService({
+            slug,
+            displayName: answers.displayName,
+            port: answers.port,
+            stateDir,
+            configPath,
+            openclawHome,
+            openclawBin: openclaw!.bin,
+            uid,
+          });
+          await this.conn.mkdir(systemdDir);
+          await this.conn.writeFile(serviceFile, serviceContent);
+        }
+        serviceFileCreated = true;
+      } else if (instanceType === "openclaw" && isDocker()) {
+        logger.step("Docker mode — skipping service file installation...");
       } else {
-        logger.step("Installing systemd service...");
-        const systemdDir = getSystemdDir();
-        const systemdUnit = getSystemdUnit(slug);
-        const serviceFile = path.join(systemdDir, systemdUnit);
-        const serviceContent = generateSystemdService({
-          slug,
-          displayName: answers.displayName,
-          port: answers.port,
-          stateDir,
-          configPath,
-          openclawHome,
-          openclawBin: openclaw.bin,
-          uid,
-        });
-        await this.conn.mkdir(systemdDir);
-        await this.conn.writeFile(serviceFile, serviceContent);
+        logger.step("claw-runtime — skipping service file (use 'claw-pilot runtime start')...");
       }
-      serviceFileCreated = true;
 
       const lifecycle = new Lifecycle(this.conn, this.registry, xdgRuntimeDir);
 
@@ -229,12 +252,14 @@ export class Provisioner {
         slug,
         displayName: answers.displayName,
         port: answers.port,
-        configPath,
+        configPath:
+          instanceType === "claw-runtime" ? path.join(stateDir, "runtime.json") : configPath,
         stateDir,
         systemdUnit: sm === "launchd" ? `ai.openclaw.${slug}` : `openclaw-${slug}.service`,
         // telegramBot will be set after pairing — omit for now
         defaultModel: answers.defaultModel,
         discovered: false,
+        instanceType,
       });
       instanceRegistered = true;
 
@@ -256,23 +281,28 @@ export class Provisioner {
         });
       }
 
-      await lifecycle.daemonReload();
+      if (instanceType === "openclaw") {
+        await lifecycle.daemonReload();
 
-      // Step 7: Enable and start instance
-      logger.step("Starting instance...");
-      await lifecycle.enable(slug);
-      serviceEnabled = true;
-      await lifecycle.start(slug);
-      serviceStarted = true;
+        // Step 7: Enable and start instance
+        logger.step("Starting instance...");
+        await lifecycle.enable(slug);
+        serviceEnabled = true;
+        await lifecycle.start(slug);
+        serviceStarted = true;
 
-      // Step 8: Install mem0 plugin (if enabled)
-      if (answers.mem0.enabled) {
-        logger.step("Installing mem0 plugin...");
-        await cli.installPlugin(slug, stateDir, configPath, "@mem0/openclaw-mem0@0.1.2");
-        // Re-inject OSS config (trap 4: plugin install overwrites config)
-        const updatedConfig = generateConfig(answers);
-        await this.conn.writeFile(configPath, updatedConfig, constants.CONFIG_FILE_MODE);
-        await lifecycle.restart(slug);
+        // Step 8: Install mem0 plugin (if enabled)
+        if (answers.mem0.enabled) {
+          const cli = new OpenClawCLI(this.conn);
+          logger.step("Installing mem0 plugin...");
+          await cli.installPlugin(slug, stateDir, configPath, "@mem0/openclaw-mem0@0.1.2");
+          // Re-inject OSS config (trap 4: plugin install overwrites config)
+          const updatedConfig = generateConfig(answers);
+          await this.conn.writeFile(configPath, updatedConfig, constants.CONFIG_FILE_MODE);
+          await lifecycle.restart(slug);
+        }
+      } else {
+        logger.step("claw-runtime instance created — start with 'claw-pilot runtime start'.");
       }
 
       // Log creation event
@@ -282,8 +312,8 @@ export class Provisioner {
         `Instance created with ${answers.agents.length} agent(s) on port ${answers.port}`,
       );
 
-      // Step 10: Deploy blueprint (if specified)
-      if (blueprintId !== undefined) {
+      // Step 10: Deploy blueprint (if specified — openclaw only for now)
+      if (blueprintId !== undefined && instanceType === "openclaw") {
         logger.step("Deploying blueprint agents...");
         const deployer = new BlueprintDeployer(this.conn, this.registry);
         await deployer.deploy(blueprintId, instance);
@@ -297,6 +327,7 @@ export class Provisioner {
         stateDir,
         gatewayToken,
         agentCount: answers.agents.length,
+        instanceType,
         ...(answers.telegram.enabled && { telegramBot: "pending" as const }),
       };
     } catch (err) {
@@ -350,7 +381,7 @@ export class Provisioner {
     } = ctx;
 
     // 1. Stop service (best-effort)
-    if (serviceStarted) {
+    if (serviceStarted && !isDocker()) {
       try {
         if (sm === "launchd") {
           await this.conn.execFile("launchctl", ["unload", getLaunchdPlistPath(slug)]);
@@ -365,7 +396,7 @@ export class Provisioner {
     }
 
     // 2. Disable service (best-effort)
-    if (serviceEnabled) {
+    if (serviceEnabled && !isDocker()) {
       try {
         if (sm === "launchd") {
           // launchctl unload already disables; nothing extra needed
@@ -380,7 +411,7 @@ export class Provisioner {
     }
 
     // 3. Remove service file (best-effort)
-    if (serviceFileCreated) {
+    if (serviceFileCreated && !isDocker()) {
       try {
         const serviceFilePath =
           sm === "launchd"

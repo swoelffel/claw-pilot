@@ -1,4 +1,11 @@
-export type SidebarSection = "general" | "agents" | "telegram" | "plugins" | "gateway" | "devices";
+export type SidebarSection =
+  | "general"
+  | "agents"
+  | "telegram"
+  | "plugins"
+  | "gateway"
+  | "devices"
+  | "runtime";
 
 export interface InstanceInfo {
   id: number;
@@ -12,6 +19,7 @@ export interface InstanceInfo {
   telegram_bot: string | null;
   default_model: string | null;
   discovered: number;
+  instance_type: "openclaw" | "claw-runtime";
   created_at: string;
   updated_at: string;
   // health (from WS updates or /api/instances)

@@ -28,6 +28,7 @@ export interface InstanceRecord {
   telegram_bot: string | null;
   default_model: string | null;
   discovered: number;
+  instance_type: "openclaw" | "claw-runtime";
   created_at: string;
   updated_at: string;
 }

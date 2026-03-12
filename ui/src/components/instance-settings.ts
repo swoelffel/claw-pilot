@@ -14,6 +14,7 @@ import type {
   SidebarSection,
 } from "../types.js";
 import {
+  fetchInstance,
   fetchInstanceConfig,
   patchInstanceConfig,
   fetchProviders,
@@ -48,6 +49,7 @@ export class InstanceSettings extends LitElement {
   // ── Config state ─────────────────────────────────────────────────────────
 
   @state() private _config: InstanceConfig | null = null;
+  @state() private _instanceType: "openclaw" | "claw-runtime" = "openclaw";
   @state() private _loading = true;
   @state() private _saving = false;
   @state() private _error = "";
@@ -110,7 +112,14 @@ export class InstanceSettings extends LitElement {
     this._loading = true;
     this._error = "";
     try {
-      this._config = await fetchInstanceConfig(this.slug);
+      const [config, instanceData] = await Promise.all([
+        fetchInstanceConfig(this.slug),
+        fetchInstance(this.slug).catch(() => null),
+      ]);
+      this._config = config;
+      if (instanceData) {
+        this._instanceType = instanceData.instance.instance_type ?? "openclaw";
+      }
       this._dirty = {};
       this._heartbeatEveryError = "";
       this._addedProviders = [];
@@ -489,20 +498,24 @@ export class InstanceSettings extends LitElement {
     const sections: Array<{ id: SidebarSection; label: string; badge?: number }> = [
       { id: "general", label: msg("General", { id: "settings-general" }) },
       { id: "agents", label: msg("Agents", { id: "settings-agents" }) },
-      {
-        id: "telegram" as const,
-        label: "Telegram",
-        ...((this._telegramPairing?.pending.length ?? 0) > 0 && {
-          badge: this._telegramPairing!.pending.length,
-        }),
-      },
-      { id: "plugins" as const, label: "Plugins" },
-      { id: "gateway" as const, label: "Gateway" },
-      {
-        id: "devices" as const,
-        label: "Devices",
-        ...(this._pendingDeviceCount > 0 && { badge: this._pendingDeviceCount }),
-      },
+      ...(this._instanceType === "claw-runtime"
+        ? [{ id: "runtime" as const, label: "Runtime" }]
+        : [
+            {
+              id: "telegram" as const,
+              label: "Telegram",
+              ...((this._telegramPairing?.pending.length ?? 0) > 0 && {
+                badge: this._telegramPairing!.pending.length,
+              }),
+            },
+            { id: "plugins" as const, label: "Plugins" },
+            { id: "gateway" as const, label: "Gateway" },
+            {
+              id: "devices" as const,
+              label: "Devices",
+              ...(this._pendingDeviceCount > 0 && { badge: this._pendingDeviceCount }),
+            },
+          ]),
     ];
 
     return html`
@@ -712,6 +725,47 @@ export class InstanceSettings extends LitElement {
               </p>
             `
           : nothing}
+      </div>
+    `;
+  }
+
+  private _renderRuntimeSection() {
+    return html`
+      <div class="section">
+        <div class="section-title">Runtime</div>
+        <div class="section-desc">
+          This instance runs on <strong>claw-runtime</strong> — the native claw-pilot agent engine.
+        </div>
+
+        <div class="field-group" style="margin-top: 20px;">
+          <div class="field-row">
+            <span class="field-label">Engine</span>
+            <span class="field-value" style="font-family: var(--font-mono); font-size: 13px;">
+              claw-runtime
+            </span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">Config file</span>
+            <span
+              class="field-value"
+              style="font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);"
+            >
+              runtime.json
+            </span>
+          </div>
+        </div>
+
+        <div
+          class="section-desc"
+          style="margin-top: 20px; padding: 12px 14px; background: var(--bg-hover); border-radius: var(--radius-md); border: 1px solid var(--bg-border);"
+        >
+          <strong>CLI commands</strong><br />
+          <code style="font-size: 12px; color: var(--text-secondary);">
+            claw-pilot runtime start ${this.slug}<br />
+            claw-pilot runtime status ${this.slug}<br />
+            claw-pilot runtime chat ${this.slug}
+          </code>
+        </div>
       </div>
     `;
   }
@@ -1700,6 +1754,7 @@ export class InstanceSettings extends LitElement {
             : nothing}
           ${this._activeSection === "general" ? this._renderGeneralSection() : nothing}
           ${this._activeSection === "agents" ? this._renderAgentsSection() : nothing}
+          ${this._activeSection === "runtime" ? this._renderRuntimeSection() : nothing}
           ${this._activeSection === "telegram" ? this._renderTelegramSection() : nothing}
           ${this._activeSection === "plugins" ? this._renderPluginsSection() : nothing}
           ${this._activeSection === "gateway" ? this._renderGatewaySection() : nothing}
