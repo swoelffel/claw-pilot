@@ -10,6 +10,12 @@ export * from "./bus/index.js";
 export * from "./permission/index.js";
 export * from "./config/index.js";
 
+// Session engine
+export * from "./session/index.js";
+
+// Tool system
+export * from "./tool/index.js";
+
 // Provider exports — explicit to avoid name conflicts with config types
 export { MODEL_CATALOG, findModel, getProviderModels } from "./provider/models.js";
 export {
