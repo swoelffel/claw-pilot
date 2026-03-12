@@ -8,6 +8,14 @@
  * Tests are skipped automatically when the key is absent (e.g. in CI without secrets).
  *
  * Prerequisites: `pnpm build:cli` must have been run before these tests.
+ *
+ * Setup strategy:
+ * - A temporary HOME directory is created for each test run
+ * - The CLI is invoked with HOME=<tmpHome> so it uses an isolated DB
+ * - initDatabase() is used to create the full schema, then the instance row
+ *   is inserted so that `createSession` FK constraint is satisfied
+ * - openclaw_home in the servers table is set to tmpHome so getStateDir()
+ *   resolves correctly
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -16,6 +24,7 @@ import { promisify } from "node:util";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { initDatabase } from "../../db/schema.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -37,11 +46,11 @@ interface RunResult {
   exitCode: number;
 }
 
-async function runCli(args: string[], env?: Record<string, string>): Promise<RunResult> {
+async function runCli(args: string[], baseEnv: Record<string, string> = {}): Promise<RunResult> {
   try {
     const { stdout, stderr } = await execFileAsync("node", [CLI, ...args], {
       timeout: 60_000,
-      env: { ...process.env, ...env },
+      env: { ...process.env, ...baseEnv },
     });
     return { stdout, stderr, exitCode: 0 };
   } catch (err: unknown) {
@@ -55,14 +64,15 @@ async function runCli(args: string[], env?: Record<string, string>): Promise<Run
 }
 
 // ---------------------------------------------------------------------------
-// Temp directory + runtime.json setup
+// Temp HOME + DB setup
 // ---------------------------------------------------------------------------
 
-let tmpDir: string;
+let tmpHome: string;
 const SLUG = "test-integration-once";
 
 /** Minimal runtime.json for the test instance */
-function writeRuntimeJson(dir: string) {
+function writeRuntimeJson(stateDir: string) {
+  mkdirSync(stateDir, { recursive: true });
   const config = {
     defaultModel: "anthropic/claude-haiku-4-5",
     agents: [
@@ -83,18 +93,54 @@ function writeRuntimeJson(dir: string) {
     telegram: { enabled: false },
     providers: [],
   };
-  writeFileSync(join(dir, "runtime.json"), JSON.stringify(config, null, 2));
+  writeFileSync(join(stateDir, "runtime.json"), JSON.stringify(config, null, 2));
+}
+
+/** Shared env for all CLI invocations — points HOME to the isolated tmpHome */
+function cliEnv(extra: Record<string, string> = {}): Record<string, string> {
+  return {
+    HOME: tmpHome,
+    ANTHROPIC_API_KEY: process.env["ANTHROPIC_API_KEY"] ?? "",
+    ...extra,
+  };
 }
 
 beforeAll(() => {
-  // Create a temp state dir that mimics ~/.openclaw-<slug>/
-  tmpDir = mkdtempSync(join(tmpdir(), `claw-pilot-test-${SLUG}-`));
-  writeRuntimeJson(tmpDir);
+  // Create isolated HOME for this test run
+  tmpHome = mkdtempSync(join(tmpdir(), "claw-pilot-integration-"));
+
+  // Create ~/.claw-pilot/ directory
+  const dataDir = join(tmpHome, ".claw-pilot");
+  mkdirSync(dataDir, { recursive: true });
+
+  // Use initDatabase() to create the full schema (all migrations applied)
+  const dbPath = join(dataDir, "registry.db");
+  const db = initDatabase(dbPath);
+
+  // Insert server with openclaw_home = tmpHome so getStateDir() resolves correctly
+  db.prepare(`INSERT OR IGNORE INTO servers (hostname, openclaw_home) VALUES ('localhost', ?)`).run(
+    tmpHome,
+  );
+  const server = db.prepare("SELECT id FROM servers LIMIT 1").get() as { id: number };
+
+  // Insert the test instance
+  db.prepare(
+    `INSERT OR IGNORE INTO instances
+     (server_id, slug, port, config_path, state_dir, systemd_unit)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(server.id, SLUG, 19099, "/tmp/config.json", "/tmp/state", `openclaw-${SLUG}.service`);
+
+  db.close();
+
+  // Create the state dir + runtime.json for the test slug
+  // getStateDir(slug) = openclaw_home + "/.openclaw-" + slug = tmpHome + "/.openclaw-" + slug
+  const stateDir = join(tmpHome, `.openclaw-${SLUG}`);
+  writeRuntimeJson(stateDir);
 });
 
 afterAll(() => {
   try {
-    rmSync(tmpDir, { recursive: true, force: true });
+    rmSync(tmpHome, { recursive: true, force: true });
   } catch {
     // ignore cleanup errors
   }
@@ -109,27 +155,12 @@ describe("runtime chat --once", () => {
     "returns a response and exits 0 for a simple question",
     async () => {
       const result = await runCli(
-        [
-          "runtime",
-          "chat",
-          SLUG,
-          "--agent",
-          "main",
-          "--once",
-          "Reply with exactly: PONG",
-          "--ensure-config",
-        ],
-        {
-          // Override state dir resolution by pointing HOME to tmpDir parent
-          // claw-pilot uses getStateDir(slug) = ~/.openclaw-<slug>/
-          // We inject CLAW_PILOT_STATE_DIR_OVERRIDE if supported, otherwise
-          // we rely on --ensure-config creating a default config
-          ANTHROPIC_API_KEY: process.env["ANTHROPIC_API_KEY"] ?? "",
-        },
+        ["runtime", "chat", SLUG, "--agent", "main", "--once", "Reply with exactly: PONG"],
+        cliEnv(),
       );
 
       expect(result.exitCode).toBe(0);
-      // stdout should contain the agent response
+      // stdout should contain the agent response prefix
       expect(result.stdout).toMatch(/Agent:/);
       // Should contain token info line
       expect(result.stdout).toMatch(/\[.*tokens.*\]/);
@@ -149,9 +180,8 @@ describe("runtime chat --once", () => {
           "main",
           "--once",
           "What is 1+1? Reply with just the number.",
-          "--ensure-config",
         ],
-        { ANTHROPIC_API_KEY: process.env["ANTHROPIC_API_KEY"] ?? "" },
+        cliEnv(),
       );
 
       expect(result.exitCode).toBe(0);
@@ -165,26 +195,20 @@ describe("runtime chat --once", () => {
 describe("runtime chat --once — error cases", () => {
   it("exits 1 when runtime.json is missing and --ensure-config is not passed", async () => {
     // Use a slug that has no state dir
-    const result = await runCli(["runtime", "chat", "nonexistent-slug-xyz-abc", "--once", "hello"]);
+    const result = await runCli(
+      ["runtime", "chat", "nonexistent-slug-xyz-abc-999", "--once", "hello"],
+      cliEnv(),
+    );
 
     expect(result.exitCode).toBe(1);
   });
 
   it.skipIf(!HAS_API_KEY)(
-    "exits 1 when an invalid model is specified",
+    "exits 1 when an invalid model format is specified",
     async () => {
       const result = await runCli(
-        [
-          "runtime",
-          "chat",
-          SLUG,
-          "--model",
-          "invalid-format",
-          "--once",
-          "hello",
-          "--ensure-config",
-        ],
-        { ANTHROPIC_API_KEY: process.env["ANTHROPIC_API_KEY"] ?? "" },
+        ["runtime", "chat", SLUG, "--model", "invalid-format", "--once", "hello"],
+        cliEnv(),
       );
 
       expect(result.exitCode).toBe(1);
@@ -197,15 +221,33 @@ describe("runtime chat --once — --ensure-config", () => {
   it.skipIf(!HAS_API_KEY)(
     "creates runtime.json on the fly when --ensure-config is passed",
     async () => {
-      // Use a fresh slug with no pre-existing config
-      const freshSlug = `test-ensure-config-${Date.now()}`;
+      // Use a fresh slug with no pre-existing runtime.json but with an instance in DB
+      const freshSlug = `test-ensure-${Date.now()}`;
+
+      // Seed the DB with this fresh slug
+      const dbPath = join(tmpHome, ".claw-pilot", "registry.db");
+      const db = initDatabase(dbPath);
+      const server = db.prepare("SELECT id FROM servers LIMIT 1").get() as { id: number };
+      db.prepare(
+        `INSERT OR IGNORE INTO instances
+         (server_id, slug, port, config_path, state_dir, systemd_unit)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      ).run(
+        server.id,
+        freshSlug,
+        19098,
+        "/tmp/config.json",
+        "/tmp/state",
+        `openclaw-${freshSlug}.service`,
+      );
+      db.close();
 
       const result = await runCli(
         ["runtime", "chat", freshSlug, "--agent", "main", "--once", "Say OK", "--ensure-config"],
-        { ANTHROPIC_API_KEY: process.env["ANTHROPIC_API_KEY"] ?? "" },
+        cliEnv(),
       );
 
-      // Should succeed — config was created automatically
+      // Should succeed — config was created automatically by --ensure-config
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toMatch(/Agent:/);
     },

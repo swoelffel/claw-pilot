@@ -28,7 +28,6 @@ import {
   MessagePartDelta,
 } from "../../bus/events.js";
 import { runPromptLoop } from "../prompt-loop.js";
-import type { PromptLoopInput } from "../prompt-loop.js";
 import type { ResolvedModel } from "../../provider/provider.js";
 import type { RuntimeAgentConfig } from "../../config/index.js";
 
