@@ -165,7 +165,7 @@ function runtimeStartCommand(): Command {
         }
 
         // Re-invoke the same binary without --daemon so the child runs in foreground
-        const args = [
+        const nodeArgs = [
           ...process.argv.slice(1), // keep the script path
           "runtime",
           "start",
@@ -173,9 +173,22 @@ function runtimeStartCommand(): Command {
           ...(opts.ensureConfig ? ["--ensure-config"] : []),
         ];
 
-        const child = spawn(process.execPath, args, {
+        // On Linux (including Docker), use nohup to fully detach the child from
+        // the controlling terminal. Without this, Docker kills the child when the
+        // docker exec session ends (even with detached:true + setsid).
+        // Stdout/stderr are redirected to <stateDir>/logs/runtime.log.
+        const logDir = `${stateDir}/logs`;
+        fs.mkdirSync(logDir, { recursive: true });
+        const logFile = `${logDir}/runtime.log`;
+        const isDarwinPlatform = process.platform === "darwin";
+        const [cmd, args] = isDarwinPlatform
+          ? [process.execPath, nodeArgs]
+          : ["nohup", [process.execPath, ...nodeArgs]];
+        const logFd = isDarwinPlatform ? "ignore" : fs.openSync(logFile, "a");
+
+        const child = spawn(cmd, args, {
           detached: true,
-          stdio: "ignore",
+          stdio: ["ignore", logFd, logFd],
         });
 
         child.unref();

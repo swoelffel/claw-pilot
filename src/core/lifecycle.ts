@@ -176,14 +176,28 @@ export class Lifecycle {
 
     logger.dim(`[lifecycle] Starting claw-runtime daemon for "${slug}"...`);
 
-    const child = spawn(
-      process.execPath,
-      [process.argv[1]!, "runtime", "start", "--daemon", slug],
-      {
-        detached: true,
-        stdio: "ignore",
-      },
-    );
+    // Spawn `runtime start <slug>` (foreground mode — writes PID file then runs).
+    // On Linux (including Docker), wrap with nohup so the child survives when the
+    // docker exec session ends. Without nohup, Docker kills the child process
+    // even with detached:true + setsid.
+    // Stdout/stderr are redirected to <stateDir>/logs/runtime.log.
+    const nodeArgs = [process.argv[1]!, "runtime", "start", slug];
+    const isDarwinPlatform = process.platform === "darwin";
+    const [spawnCmd, spawnArgs] = isDarwinPlatform
+      ? [process.execPath, nodeArgs]
+      : ["nohup", [process.execPath, ...nodeArgs]];
+
+    const logDir = `${stateDir}/logs`;
+    fs.mkdirSync(logDir, { recursive: true });
+    const logFile = `${logDir}/runtime.log`;
+    const stdio: Parameters<typeof spawn>[2]["stdio"] = isDarwinPlatform
+      ? "ignore"
+      : ["ignore", fs.openSync(logFile, "a"), fs.openSync(logFile, "a")];
+
+    const child = spawn(spawnCmd, spawnArgs, {
+      detached: true,
+      stdio,
+    });
     child.unref();
 
     // Poll for PID file (up to 10 s)
