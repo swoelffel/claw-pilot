@@ -16,6 +16,12 @@ export * from "./session/index.js";
 // Tool system
 export * from "./tool/index.js";
 
+// Agent registry
+export * from "./agent/index.js";
+
+// Plugin system
+export * from "./plugin/index.js";
+
 // Provider exports — explicit to avoid name conflicts with config types
 export { MODEL_CATALOG, findModel, getProviderModels } from "./provider/models.js";
 export {
