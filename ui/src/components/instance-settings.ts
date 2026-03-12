@@ -28,6 +28,7 @@ import { badgeStyles, buttonStyles, spinnerStyles, errorBannerStyles } from "../
 import { instanceSettingsStyles } from "../styles/instance-settings.styles.js";
 import "./instance-devices.js";
 import "./agent-detail-panel.js";
+import "./runtime-chat.js";
 
 @localized()
 @customElement("cp-instance-settings")
@@ -755,16 +756,13 @@ export class InstanceSettings extends LitElement {
           </div>
         </div>
 
-        <div
-          class="section-desc"
-          style="margin-top: 20px; padding: 12px 14px; background: var(--bg-hover); border-radius: var(--radius-md); border: 1px solid var(--bg-border);"
-        >
-          <strong>CLI commands</strong><br />
-          <code style="font-size: 12px; color: var(--text-secondary);">
-            claw-pilot runtime start ${this.slug}<br />
-            claw-pilot runtime status ${this.slug}<br />
-            claw-pilot runtime chat ${this.slug}
-          </code>
+        <div style="margin-top: 28px;">
+          <div class="section-header">Chat</div>
+          <div
+            style="height: 480px; border: 1px solid var(--bg-border); border-radius: var(--radius-md); overflow: hidden;"
+          >
+            <cp-runtime-chat .slug=${this.slug}></cp-runtime-chat>
+          </div>
         </div>
       </div>
     `;

@@ -424,3 +424,25 @@ export interface OpenClawUpdateStatus {
   fromVersion?: string;
   toVersion?: string;
 }
+
+// Runtime chat types
+
+export interface RuntimeSession {
+  id: string;
+  instanceSlug: string;
+  agentId: string;
+  channel: string;
+  state: "active" | "archived";
+  title: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RuntimeChatResponse {
+  sessionId: string;
+  messageId: string;
+  text: string;
+  tokens: { input: number; output: number };
+  costUsd: number | null;
+  steps: number;
+}

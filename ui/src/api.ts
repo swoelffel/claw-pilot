@@ -21,6 +21,8 @@ import type {
   DiscoverResult,
   AdoptResult,
   SkillsListResponse,
+  RuntimeSession,
+  RuntimeChatResponse,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 
@@ -476,4 +478,27 @@ export async function adoptInstances(slugs: string[]): Promise<AdoptResult> {
     method: "POST",
     body: JSON.stringify({ slugs }),
   });
+}
+
+// --- Runtime chat API ---
+
+export async function fetchRuntimeSessions(slug: string): Promise<RuntimeSession[]> {
+  const data = await apiFetch<{ sessions: RuntimeSession[] }>(
+    `/instances/${slug}/runtime/sessions`,
+  );
+  return data.sessions;
+}
+
+export async function postRuntimeChat(
+  slug: string,
+  body: { message: string; sessionId?: string; agentId?: string; model?: string },
+): Promise<RuntimeChatResponse> {
+  return apiFetch<RuntimeChatResponse>(`/instances/${slug}/runtime/chat`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function getRuntimeChatStreamUrl(slug: string, sessionId: string): string {
+  return `/api/instances/${slug}/runtime/chat/stream?sessionId=${encodeURIComponent(sessionId)}`;
 }

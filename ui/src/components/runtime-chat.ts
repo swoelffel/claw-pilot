@@ -356,12 +356,10 @@ export class RuntimeChat extends LitElement {
     this._error = "";
 
     try {
-      const body: { message: string; sessionId?: string } = { message: text };
-      if (this._sessionId) {
-        body.sessionId = this._sessionId;
-      }
-
-      const result = await postRuntimeChat(this.slug, body);
+      const result = await postRuntimeChat(this.slug, {
+        message: text,
+        ...(this._sessionId !== null ? { sessionId: this._sessionId } : {}),
+      });
 
       // If this was a new session, store the sessionId and open the stream
       if (!this._sessionId) {
@@ -406,7 +404,9 @@ export class RuntimeChat extends LitElement {
               }
             }}
           >
-            <option value="" ?selected=${!this._sessionId}>New session</option>
+            <option value="" ?selected=${!this._sessionId}>
+              ${this._sessionsLoading ? "Loading…" : "New session"}
+            </option>
             ${this._sessions.map(
               (s) => html`
                 <option value=${s.id} ?selected=${s.id === this._sessionId}>

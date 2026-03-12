@@ -1,6 +1,7 @@
 // src/dashboard/routes/instances/runtime.ts
-// Routes: GET runtime/status, GET runtime/sessions, POST runtime/chat
+// Routes: GET runtime/status, GET runtime/sessions, POST runtime/chat, GET runtime/chat/stream
 import type { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
 import { instanceGuard } from "../../../lib/guards.js";
@@ -17,6 +18,8 @@ import {
   initAgentRegistry,
   defaultAgentName,
   getAgent,
+  getBus,
+  hasBus,
   type RuntimeAgentConfig,
 } from "../../../runtime/index.js";
 
@@ -227,5 +230,67 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
         err instanceof Error ? err.message : "Agent execution failed",
       );
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /api/instances/:slug/runtime/chat/stream?sessionId=<id>
+  // SSE stream of bus events for a runtime session
+  // ---------------------------------------------------------------------------
+  app.get("/api/instances/:slug/runtime/chat/stream", (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
+
+    // Check that the runtime bus is active for this instance
+    if (!hasBus(slug)) {
+      return c.json(
+        { code: "RUNTIME_NOT_RUNNING", error: "Runtime not running for this instance" },
+        404,
+      );
+    }
+
+    const sessionId = c.req.query("sessionId");
+    const bus = getBus(slug);
+
+    return streamSSE(c, async (stream) => {
+      // Subscribe to all bus events and forward relevant ones to the SSE stream
+      const unsub = bus.subscribeAll((event) => {
+        // Filter by event type — only forward chat-relevant events
+        const relevantTypes = new Set([
+          "message.part.delta",
+          "message.created",
+          "message.updated",
+          "session.status",
+          "session.ended",
+        ]);
+
+        if (!relevantTypes.has(event.type)) return;
+
+        // If sessionId filter is provided, only forward events for that session
+        if (sessionId) {
+          const payload = event.payload as Record<string, unknown>;
+          if (payload.sessionId !== sessionId) return;
+        }
+
+        void stream.writeSSE({ data: JSON.stringify(event) });
+      });
+
+      // Ping every 15s to keep the connection alive
+      const pingInterval = setInterval(() => {
+        void stream.writeSSE({ event: "ping", data: "" });
+      }, 15_000);
+
+      // Cleanup on client disconnect
+      stream.onAbort(() => {
+        clearInterval(pingInterval);
+        unsub();
+      });
+
+      // Keep the stream open until the client disconnects
+      await new Promise<void>((resolve) => {
+        stream.onAbort(resolve);
+      });
+    });
   });
 }
