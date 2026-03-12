@@ -178,9 +178,9 @@ describe("initDatabase — fresh database", () => {
     db.close();
   });
 
-  it("reaches the latest schema version (8)", () => {
+  it("reaches the latest schema version (9)", () => {
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(8);
+    expect(schemaVersion(db)).toBe(9);
     db.close();
   });
 
@@ -225,12 +225,12 @@ describe("initDatabase — fresh database", () => {
 // ---------------------------------------------------------------------------
 
 describe("migration v1 → v4", () => {
-  it("applies all migrations and reaches version 8", () => {
+  it("applies all migrations and reaches version 9", () => {
     const v1 = buildV1Db(dbPath);
     v1.close();
 
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(8);
+    expect(schemaVersion(db)).toBe(9);
     db.close();
   });
 
@@ -357,7 +357,7 @@ describe("migration v2 → v4", () => {
     v1.close();
 
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(8);
+    expect(schemaVersion(db)).toBe(9);
     expect(tableNames(db)).toContain("blueprints");
     expect(tableNames(db)).toContain("users");
     expect(tableNames(db)).toContain("sessions");

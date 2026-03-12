@@ -417,6 +417,30 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v9: device pairing codes for web-chat channel.
+    // Short-lived 8-char codes that pair a browser session to a runtime instance.
+    version: 9,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS rt_pairing_codes (
+          code          TEXT PRIMARY KEY,
+          instance_slug TEXT NOT NULL REFERENCES instances(slug) ON DELETE CASCADE,
+          channel       TEXT NOT NULL DEFAULT 'web',
+          peer_id       TEXT,
+          used          INTEGER NOT NULL DEFAULT 0,
+          expires_at    TEXT NOT NULL,
+          created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_pairing_codes_instance
+          ON rt_pairing_codes(instance_slug);
+
+        CREATE INDEX IF NOT EXISTS idx_rt_pairing_codes_expires
+          ON rt_pairing_codes(expires_at);
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

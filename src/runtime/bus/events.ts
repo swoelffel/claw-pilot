@@ -133,6 +133,20 @@ export const ProviderFailover = defineEvent<
 >("provider.failover");
 
 // ---------------------------------------------------------------------------
+// Channel events
+// ---------------------------------------------------------------------------
+
+export const ChannelMessageReceived = defineEvent<
+  "channel.message.received",
+  { channelType: string; peerId: string; text: string }
+>("channel.message.received");
+
+export const ChannelMessageSent = defineEvent<
+  "channel.message.sent",
+  { channelType: string; peerId: string; text: string; sessionId: string }
+>("channel.message.sent");
+
+// ---------------------------------------------------------------------------
 // Union type of all events (for wildcard subscriptions)
 // ---------------------------------------------------------------------------
 
@@ -151,7 +165,9 @@ export type AnyEventDef =
   | typeof PermissionAsked
   | typeof PermissionReplied
   | typeof ProviderAuthFailed
-  | typeof ProviderFailover;
+  | typeof ProviderFailover
+  | typeof ChannelMessageReceived
+  | typeof ChannelMessageSent;
 
 export type AnyEvent = {
   [K in AnyEventDef["type"]]: {
