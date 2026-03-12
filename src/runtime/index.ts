@@ -22,6 +22,9 @@ export * from "./agent/index.js";
 // Plugin system
 export * from "./plugin/index.js";
 
+// MCP integration
+export * from "./mcp/index.js";
+
 // Provider exports — explicit to avoid name conflicts with config types
 export { MODEL_CATALOG, findModel, getProviderModels } from "./provider/models.js";
 export {

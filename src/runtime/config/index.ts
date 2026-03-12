@@ -142,15 +142,33 @@ export const RuntimeConfigSchema = z.object({
   /** Whether to enable MCP tool integration */
   mcpEnabled: z.boolean().default(false),
 
-  /** MCP server configs (stdio only in V1) */
+  /** MCP server configs — stdio (local) or HTTP (remote) */
   mcpServers: z
     .array(
-      z.object({
-        id: z.string().min(1),
-        command: z.string().min(1),
-        args: z.array(z.string()).default([]),
-        env: z.record(z.string(), z.string()).optional(),
-      }),
+      z.discriminatedUnion("type", [
+        z.object({
+          type: z.literal("local"),
+          id: z.string().min(1),
+          /** Command to run, e.g. "npx" */
+          command: z.string().min(1),
+          args: z.array(z.string()).default([]),
+          env: z.record(z.string(), z.string()).optional(),
+          /** Connection timeout in ms (default 30s) */
+          timeout: z.number().int().min(1000).default(30_000),
+          enabled: z.boolean().default(true),
+        }),
+        z.object({
+          type: z.literal("remote"),
+          id: z.string().min(1),
+          /** HTTP(S) URL of the MCP server */
+          url: z.string().url(),
+          /** Extra request headers */
+          headers: z.record(z.string(), z.string()).optional(),
+          /** Connection timeout in ms (default 30s) */
+          timeout: z.number().int().min(1000).default(30_000),
+          enabled: z.boolean().default(true),
+        }),
+      ]),
     )
     .default([]),
 });
@@ -160,6 +178,7 @@ export type RuntimeAgentConfig = z.infer<typeof AgentConfigSchema>;
 export type RuntimeProviderConfig = z.infer<typeof ProviderConfigSchema>;
 export type RuntimeAuthProfileConfig = z.infer<typeof AuthProfileConfigSchema>;
 export type RuntimeTelegramConfig = z.infer<typeof TelegramConfigSchema>;
+export type RuntimeMcpServerConfig = RuntimeConfig["mcpServers"][number];
 
 // ---------------------------------------------------------------------------
 // Default config factory

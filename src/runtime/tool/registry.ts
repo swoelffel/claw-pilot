@@ -20,6 +20,7 @@ import {
   TodoReadTool,
   SkillTool,
 } from "./built-in/index.js";
+import type { McpRegistry } from "../mcp/index.js";
 
 // ---------------------------------------------------------------------------
 // Built-in tools
@@ -48,6 +49,8 @@ export interface ToolRegistryOptions {
   customToolsDir?: string;
   /** Tool IDs to exclude (e.g. based on agent permissions) */
   exclude?: string[];
+  /** MCP registry — if provided, MCP tools are appended to the list */
+  mcpRegistry?: McpRegistry;
 }
 
 /**
@@ -60,6 +63,11 @@ export async function getTools(options?: ToolRegistryOptions): Promise<Tool.Info
   if (options?.customToolsDir) {
     const custom = await loadCustomTools(options.customToolsDir);
     tools.push(...custom);
+  }
+
+  if (options?.mcpRegistry) {
+    const mcpTools = await options.mcpRegistry.getTools();
+    tools.push(...mcpTools);
   }
 
   if (options?.exclude && options.exclude.length > 0) {

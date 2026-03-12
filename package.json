@@ -49,6 +49,7 @@
     "@ai-sdk/openai": "^3.0.41",
     "@inquirer/prompts": "^7",
     "@lit/localize": "^0.12.2",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@openrouter/ai-sdk-provider": "^2.3.0",
     "ai": "^6.0.116",
     "better-sqlite3": "^11",
