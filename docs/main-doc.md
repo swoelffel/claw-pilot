@@ -92,6 +92,7 @@ doctor.ts         diagnostic environnement
 init.ts           initialisation premier démarrage
 list.ts           liste instances
 logs.ts           logs systemd
+migrate.ts        migration openclaw → claw-runtime (clone ou in-place)
 restart.ts        redémarrage instance
 runtime.ts        commandes claw-runtime (start/stop/restart/status/chat/config)
 service.ts        service systemd du dashboard
@@ -109,7 +110,8 @@ update.ts         mise à jour OpenClaw
 lifecycle.ts          start/stop/restart — branche openclaw (systemd) vs claw-runtime (PID)
 health.ts             check santé — branche openclaw (gateway HTTP) vs claw-runtime (PID file)
 provisioner.ts        création instance — branche openclaw vs claw-runtime
-registry.ts           façade sur 7 repositories
+migrator.ts           buildRuntimeConfig() — convertit openclaw.json → RuntimeConfig + MigrationReport
+registry.ts           façade sur 7 repositories (+ updateInstanceType())
 registry-types.ts     types InstanceRecord, AgentRecord, etc.
 repositories/         7 repositories SQLite
 config-reader.ts      lecture openclaw.json + .env
@@ -250,11 +252,28 @@ claw-pilot team export default --output team.yaml
 claw-pilot team import default --file team.yaml
 ```
 
-### 8. Diagnostic (`doctor`)
+### 8. Migration OpenClaw → claw-runtime (`migrate`)
+
+Convertit une instance `openclaw` existante en instance `claw-runtime` :
+
+```bash
+claw-pilot migrate <slug>                        # clone → <slug>-rt (défaut)
+claw-pilot migrate <slug> --new-slug <new>       # clone avec slug personnalisé
+claw-pilot migrate <slug> --mode in-place        # conversion sur place
+claw-pilot migrate <slug> --yes                  # sans confirmation interactive
+```
+
+**Mode clone** (défaut) : crée une nouvelle instance `claw-runtime` avec le slug `<slug>-rt`, convertit `openclaw.json` → `runtime.json`, laisse l'instance originale intacte.
+
+**Mode in-place** : arrête et désactive le service systemd, écrit `runtime.json` dans le répertoire d'état existant, met à jour `instance_type` en DB. L'`openclaw.json` original est conservé mais n'est plus utilisé.
+
+Le rapport de migration liste les champs non mappables (avertissements) et les entrées `.env` à écrire (clés API, token Telegram).
+
+### 9. Diagnostic (`doctor`)
 
 Vérifie Node.js, OpenClaw installé, systemd, DB, instances en état cohérent.
 
-### 9. Service systemd du dashboard (`service`)
+### 10. Service systemd du dashboard (`service`)
 
 ```bash
 claw-pilot service install
@@ -409,4 +428,4 @@ runtime start (foreground)
 
 ---
 
-*Mis à jour : 2026-03-12 - v0.19.0 : claw-runtime phases 0–8 (moteur natif, lifecycle daemon, cohabitation openclaw/claw-runtime)*
+*Mis à jour : 2026-03-12 - v0.19.0 : claw-runtime phases 0–10 complètes (moteur natif, lifecycle daemon, cohabitation, chat web, migration openclaw → claw-runtime)*
