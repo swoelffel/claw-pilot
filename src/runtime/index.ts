@@ -28,6 +28,11 @@ export * from "./mcp/index.js";
 // Channel system
 export * from "./channel/index.js";
 
+// Runtime engine
+export { ClawRuntime } from "./engine/index.js";
+export { createChannels } from "./engine/index.js";
+export { wirePluginsToBus } from "./engine/index.js";
+
 // Provider exports — explicit to avoid name conflicts with config types
 export { MODEL_CATALOG, findModel, getProviderModels } from "./provider/models.js";
 export {
