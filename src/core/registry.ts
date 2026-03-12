@@ -93,6 +93,9 @@ export class Registry {
   updateInstance(slug: string, fields: Parameters<InstanceRepository["updateInstance"]>[1]) {
     return this.instances.updateInstance(slug, fields);
   }
+  updateInstanceType(slug: string, instanceType: "openclaw" | "claw-runtime") {
+    return this.instances.updateInstanceType(slug, instanceType);
+  }
   deleteInstance(slug: string) {
     return this.instances.deleteInstance(slug);
   }

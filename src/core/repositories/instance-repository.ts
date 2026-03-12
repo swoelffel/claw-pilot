@@ -96,6 +96,12 @@ export class InstanceRepository {
     this.db.prepare(`UPDATE instances SET ${sets.join(", ")} WHERE slug=?`).run(...values);
   }
 
+  updateInstanceType(slug: string, instanceType: "openclaw" | "claw-runtime"): void {
+    this.db
+      .prepare(`UPDATE instances SET instance_type=?, updated_at=? WHERE slug=?`)
+      .run(instanceType, now(), slug);
+  }
+
   deleteInstance(slug: string): void {
     this.db.prepare("DELETE FROM instances WHERE slug = ?").run(slug);
   }
