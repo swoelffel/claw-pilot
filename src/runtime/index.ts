@@ -32,6 +32,12 @@ export * from "./channel/index.js";
 export { ClawRuntime } from "./engine/index.js";
 export { createChannels } from "./engine/index.js";
 export { wirePluginsToBus } from "./engine/index.js";
+export {
+  loadRuntimeConfig,
+  saveRuntimeConfig,
+  ensureRuntimeConfig,
+  runtimeConfigExists,
+} from "./engine/index.js";
 
 // Provider exports — explicit to avoid name conflicts with config types
 export { MODEL_CATALOG, findModel, getProviderModels } from "./provider/models.js";
