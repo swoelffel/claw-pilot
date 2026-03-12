@@ -124,11 +124,19 @@ function querySkillsViaWs(
         }
 
         if (res.id === skillsId) {
-          const payload = res.payload;
-          if (res.ok && Array.isArray(payload)) {
-            settle(() => resolve(payload as SkillStatusResult));
+          if (!res.ok) {
+            settle(() => reject(new Error("skills.status rejected by gateway")));
+            return;
+          }
+          // Le payload est { workspaceDir, managedSkillsDir, skills: [...] }
+          const payload = res.payload as { skills?: SkillStatusResult } | SkillStatusResult | null;
+          const skills = Array.isArray(payload)
+            ? payload
+            : (payload as { skills?: SkillStatusResult } | null)?.skills;
+          if (Array.isArray(skills)) {
+            settle(() => resolve(skills));
           } else {
-            settle(() => reject(new Error("unexpected skills.status response")));
+            settle(() => reject(new Error("unexpected skills.status response shape")));
           }
           return;
         }
