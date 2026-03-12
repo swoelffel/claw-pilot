@@ -6,6 +6,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.18.0] — 2026-03-12
+
+### Added
+- `exactOptionalPropertyTypes: true` activé dans `tsconfig.json` et `ui/tsconfig.json` — typage strict des propriétés optionnelles (34 erreurs corrigées dans 16 fichiers)
+- `src/core/registry-types.ts` — types purs extraits de `registry.ts` (élimine 4 cycles circulaires)
+- `src/core/agent-workspace.ts` — `resolveAgentWorkspacePath` extrait de `discovery.ts` (élimine le 5e cycle)
+- Snapshot tests pour `systemd-generator.ts`, `launchd-generator.ts`, `config-generator.ts`
+- Nouveaux tests unitaires : `poll.test.ts`, `validate.test.ts`, `launchd-generator.test.ts`
+- `.github/workflows/deps-check.yml` — cron hebdomadaire `pnpm outdated` (warn-only)
+- Middleware `onError` centralisé dans `server.ts` — `ClawPilotError` → réponse HTTP structurée
+
+### Changed
+- **0 cycles circulaires** (était 5) — `check:circular` désormais bloquant en CI
+- **500 tests** (était 414) — 86 nouveaux tests, 33 fichiers, 0 échec
+- Coverage lignes **60.36%** (était 52.48%) — seuils CI relevés : `lines/statements 60`, `functions 80`
+- Coverage fonctions **86.14%** (était 79.77%)
+- Version lue depuis `package.json` dans `server.ts` (était hardcodée `"0.16.3"`)
+- 4 repositories (`agent-repository`, `blueprint-repository`, `instance-repository`, `server-repository`) importent depuis `registry-types.ts` au lieu de `registry.ts`
+
+### Fixed
+- Pattern `prop: value ?? undefined` remplacé par spread conditionnel `...(value != null && { prop: value })` dans tout le codebase pour conformité `exactOptionalPropertyTypes`
+
+---
+
 ## [0.17.0] — 2026-03-11
 
 ### Added
