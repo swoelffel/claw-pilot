@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.18.1] — 2026-03-12
+
+### Fixed
+- Fix spellcheck CI failure: rename test fixture hash `oldhash` → `abc123def456` in `routes.test.ts`
+
+---
+
 ## [0.18.0] — 2026-03-12
 
 ### Added

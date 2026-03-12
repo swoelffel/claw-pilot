@@ -1404,7 +1404,7 @@ describe("PUT /api/instances/:slug/agents/:agentId/files/:filename", () => {
     ctx.registry.upsertAgentFile(agentRecord.id, {
       filename: "SOUL.md",
       content: "# Old content",
-      contentHash: "oldhash",
+      contentHash: "abc123def456",
     });
 
     const res = await ctx.app.request("/api/instances/demo1/agents/main/files/SOUL.md", {
