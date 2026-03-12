@@ -10,9 +10,41 @@ import {
   applyConfigPatch,
   ConfigPatchSchema,
 } from "../../../core/config-updater.js";
-import type { ConfigPatch } from "../../../core/config-updater.js";
+import type { ConfigPatch, InstanceConfigPayload } from "../../../core/config-updater.js";
 import { PROVIDER_CATALOG } from "../../../lib/provider-catalog.js";
 import type { ProviderInfo } from "../../../lib/provider-catalog.js";
+
+// ---------------------------------------------------------------------------
+// claw-runtime stub — minimal InstanceConfigPayload for runtime instances
+// ---------------------------------------------------------------------------
+
+function buildRuntimeStub(
+  displayName: string,
+  defaultModel: string,
+  port: number,
+): InstanceConfigPayload {
+  return {
+    general: { displayName, defaultModel, port, toolsProfile: "coding" },
+    providers: [],
+    agentDefaults: {
+      workspace: "workspace",
+      subagents: { maxConcurrent: 4, archiveAfterMinutes: 60 },
+      compaction: { mode: "auto" },
+      contextPruning: { mode: "off" },
+      heartbeat: {},
+    },
+    agents: [],
+    channels: { telegram: null },
+    plugins: { mem0: null },
+    gateway: {
+      port,
+      bind: "loopback",
+      authMode: "token",
+      reloadMode: "hybrid",
+      reloadDebounceMs: 500,
+    },
+  };
+}
 
 export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, conn, lifecycle } = deps;
@@ -23,6 +55,16 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
     const instance = registry.getInstance(slug);
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
+
+    // claw-runtime instances don't have an openclaw.json — return a minimal stub
+    if (instance!.instance_type === "claw-runtime") {
+      const stub = buildRuntimeStub(
+        instance!.display_name ?? "",
+        instance!.default_model ?? "",
+        instance!.port,
+      );
+      return c.json(stub);
+    }
 
     try {
       const payload = await readInstanceConfig(conn, instance!.config_path, instance!.state_dir);
@@ -47,6 +89,25 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
     const instance = registry.getInstance(slug);
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
+
+    // claw-runtime: only displayName is patchable via this route
+    if (instance!.instance_type === "claw-runtime") {
+      let patch: ConfigPatch;
+      try {
+        const raw = await c.req.json();
+        const result = ConfigPatchSchema.safeParse(raw);
+        if (!result.success) {
+          return apiError(c, 400, "INVALID_BODY", "Invalid config patch");
+        }
+        patch = result.data as ConfigPatch;
+      } catch {
+        return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+      }
+      if (patch.general?.displayName !== undefined) {
+        registry.updateInstance(slug, { displayName: patch.general.displayName });
+      }
+      return c.json({ ok: true, requiresRestart: false, hotReloaded: false, warnings: [] });
+    }
 
     let patch: ConfigPatch;
     try {
