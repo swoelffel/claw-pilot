@@ -31,6 +31,7 @@ GitHub: https://github.com/swoelffel/claw-pilot
 pnpm build:cli     # Build CLI only (dist/)
 pnpm build         # Build CLI + UI
 pnpm test:run      # Run tests once
+pnpm test:e2e      # Run e2e tests (real HTTP server, in-memory DB)
 pnpm typecheck     # tsc --noEmit
 pnpm lint          # oxlint src/
 ```
