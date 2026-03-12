@@ -1,6 +1,6 @@
 // src/core/repositories/instance-repository.ts
 import type Database from "better-sqlite3";
-import type { InstanceRecord } from "../registry.js";
+import type { InstanceRecord } from "../registry-types.js";
 import { now } from "../../lib/date.js";
 
 export class InstanceRepository {

@@ -143,9 +143,9 @@ export async function readInstanceConfig(
         workspace: a.workspace ?? `workspace-${a.id}`,
         identity: identity
           ? {
-              name: identity.name,
-              emoji: identity.emoji,
-              avatar: identity.avatar,
+              ...(identity.name !== undefined && { name: identity.name }),
+              ...(identity.emoji !== undefined && { emoji: identity.emoji }),
+              ...(identity.avatar !== undefined && { avatar: identity.avatar }),
             }
           : null,
       };
@@ -170,7 +170,7 @@ export async function readInstanceConfig(
       botTokenMasked: maskSecret(botTokenRaw),
       dmPolicy: telegram.dmPolicy ?? "pairing",
       groupPolicy: telegram.groupPolicy ?? "allowlist",
-      streamMode: telegram.streamMode,
+      ...(telegram.streamMode !== undefined && { streamMode: telegram.streamMode }),
     };
   }
 
@@ -205,16 +205,18 @@ export async function readInstanceConfig(
       },
       compaction: {
         mode: defaultCompaction?.mode ?? "auto",
-        reserveTokensFloor: defaultCompaction?.reserveTokensFloor,
+        ...(defaultCompaction?.reserveTokensFloor !== undefined && {
+          reserveTokensFloor: defaultCompaction.reserveTokensFloor,
+        }),
       },
       contextPruning: {
         mode: defaultContextPruning?.mode ?? "off",
-        ttl: defaultContextPruning?.ttl,
+        ...(defaultContextPruning?.ttl !== undefined && { ttl: defaultContextPruning.ttl }),
       },
       heartbeat: {
-        every: defaultHeartbeat?.every,
-        model: defaultHeartbeat?.model,
-        target: defaultHeartbeat?.target,
+        ...(defaultHeartbeat?.every !== undefined && { every: defaultHeartbeat.every }),
+        ...(defaultHeartbeat?.model !== undefined && { model: defaultHeartbeat.model }),
+        ...(defaultHeartbeat?.target !== undefined && { target: defaultHeartbeat.target }),
       },
     },
     agents,

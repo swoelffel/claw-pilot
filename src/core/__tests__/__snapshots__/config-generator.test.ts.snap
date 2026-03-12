@@ -1,0 +1,119 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`generateConfig > matches full config snapshot for anthropic provider 1`] = `
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "anthropic/claude-sonnet-4-6",
+      },
+      "subagents": {
+        "archiveAfterMinutes": 60,
+        "maxConcurrent": 4,
+      },
+      "workspace": "workspace",
+    },
+  },
+  "gateway": {
+    "auth": {
+      "mode": "token",
+      "token": "\${OPENCLAW_GW_AUTH_TOKEN}",
+    },
+    "bind": "loopback",
+    "controlUi": {
+      "allowedOrigins": [
+        "*",
+      ],
+    },
+    "mode": "local",
+    "port": 18789,
+    "trustedProxies": [
+      "127.0.0.1",
+    ],
+  },
+  "meta": {
+    "lastTouchedAt": "2026-01-01T00:00:00.000Z",
+    "lastTouchedVersion": "2026.3.8",
+  },
+  "models": {
+    "providers": {
+      "anthropic": {
+        "apiKey": "\${ANTHROPIC_API_KEY}",
+        "baseUrl": "https://api.anthropic.com",
+        "models": [],
+      },
+    },
+  },
+  "tools": {
+    "agentToAgent": {
+      "allow": [
+        "main",
+      ],
+      "enabled": true,
+    },
+    "profile": "coding",
+  },
+}
+`;
+
+exports[`generateConfig > matches full config snapshot for openai provider 1`] = `
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "anthropic/claude-sonnet-4-6",
+      },
+      "subagents": {
+        "archiveAfterMinutes": 60,
+        "maxConcurrent": 4,
+      },
+      "workspace": "workspace",
+    },
+  },
+  "gateway": {
+    "auth": {
+      "mode": "token",
+      "token": "\${OPENCLAW_GW_AUTH_TOKEN}",
+    },
+    "bind": "loopback",
+    "controlUi": {
+      "allowedOrigins": [
+        "*",
+      ],
+    },
+    "mode": "local",
+    "port": 18789,
+    "trustedProxies": [
+      "127.0.0.1",
+    ],
+  },
+  "meta": {
+    "lastTouchedAt": "2026-01-01T00:00:00.000Z",
+    "lastTouchedVersion": "2026.3.8",
+  },
+  "models": {
+    "providers": {
+      "openai": {
+        "apiKey": "\${OPENAI_API_KEY}",
+        "baseUrl": "https://api.openai.com/v1",
+        "models": [],
+      },
+    },
+  },
+  "tools": {
+    "agentToAgent": {
+      "allow": [
+        "main",
+      ],
+      "enabled": true,
+    },
+    "profile": "coding",
+  },
+}
+`;
+
+exports[`generateEnv > matches full .env snapshot for anthropic 1`] = `
+"ANTHROPIC_API_KEY=sk-ant-test123
+OPENCLAW_GW_AUTH_TOKEN=abcdef123456
+"
+`;

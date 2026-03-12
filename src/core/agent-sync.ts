@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
-import { resolveAgentWorkspacePath } from "./discovery.js";
+import { resolveAgentWorkspacePath } from "./agent-workspace.js";
 import { normaliseModel } from "../lib/model-helpers.js";
 import { constants } from "../lib/constants.js";
 
@@ -167,7 +167,7 @@ export class AgentSync {
         const created = this.registry.upsertAgent(instance.id, {
           agentId: ca.agentId,
           name: ca.name,
-          model: ca.model ?? undefined,
+          ...(ca.model != null && { model: ca.model }),
           workspacePath: ca.workspacePath,
           isDefault: ca.isDefault,
         });
@@ -181,7 +181,7 @@ export class AgentSync {
           this.registry.upsertAgent(instance.id, {
             agentId: ca.agentId,
             name: ca.name,
-            model: ca.model ?? undefined,
+            ...(ca.model != null && { model: ca.model }),
             workspacePath: ca.workspacePath,
             isDefault: ca.isDefault,
             position_x: existing.position_x,

@@ -199,10 +199,10 @@ export class CreateBlueprintDialog extends LitElement {
     try {
       const blueprint = await createBlueprint({
         name: this._name.trim(),
-        description: this._description.trim() || undefined,
-        icon: this._icon.trim() || undefined,
-        tags: this._tags.trim() || undefined,
-        color: this._color || undefined,
+        ...(this._description.trim() && { description: this._description.trim() }),
+        ...(this._icon.trim() && { icon: this._icon.trim() }),
+        ...(this._tags.trim() && { tags: this._tags.trim() }),
+        ...(this._color && { color: this._color }),
       });
       this.dispatchEvent(
         new CustomEvent<Blueprint>("blueprint-created", {

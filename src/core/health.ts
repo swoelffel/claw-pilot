@@ -88,8 +88,10 @@ export class HealthChecker {
           { env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir } },
         ),
       ]);
-      status.pid = parseInt(pidResult.stdout.trim()) || undefined;
-      status.uptime = uptimeResult.stdout.trim() || undefined;
+      const pid = parseInt(pidResult.stdout.trim()) || 0;
+      if (pid) status.pid = pid;
+      const uptime = uptimeResult.stdout.trim();
+      if (uptime) status.uptime = uptime;
     }
 
     // 4. Agent count

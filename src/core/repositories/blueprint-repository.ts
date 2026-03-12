@@ -1,6 +1,10 @@
 // src/core/repositories/blueprint-repository.ts
 import type Database from "better-sqlite3";
-import type { BlueprintRecord, BlueprintAgentRecord, BlueprintLinkRecord } from "../registry.js";
+import type {
+  BlueprintRecord,
+  BlueprintAgentRecord,
+  BlueprintLinkRecord,
+} from "../registry-types.js";
 import { now } from "../../lib/date.js";
 
 export class BlueprintRepository {

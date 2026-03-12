@@ -20,109 +20,23 @@ import { PortRepository } from "./repositories/port-repository.js";
 import { ConfigRepository } from "./repositories/config-repository.js";
 import { EventRepository } from "./repositories/event-repository.js";
 import { BlueprintRepository } from "./repositories/blueprint-repository.js";
+import type { InstanceRecord } from "./registry-types.js";
 
 // ---------------------------------------------------------------------------
-// Re-exported types (unchanged — callers import from "registry.js")
+// Re-exported types — callers import from "registry.js", source of truth is
+// registry-types.ts (avoids circular deps with sub-repositories)
 // ---------------------------------------------------------------------------
 
-export interface ServerRecord {
-  id: number;
-  hostname: string;
-  ip: string | null;
-  openclaw_home: string;
-  openclaw_bin: string | null;
-  openclaw_version: string | null;
-}
-
-export interface InstanceRecord {
-  id: number;
-  server_id: number;
-  slug: string;
-  display_name: string | null;
-  port: number;
-  state: "running" | "stopped" | "error" | "unknown";
-  config_path: string;
-  state_dir: string;
-  systemd_unit: string;
-  telegram_bot: string | null;
-  default_model: string | null;
-  discovered: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface AgentRecord {
-  id: number;
-  instance_id: number | null;
-  blueprint_id: number | null;
-  agent_id: string;
-  name: string;
-  model: string | null;
-  workspace_path: string;
-  is_default: number;
-  role: string | null;
-  tags: string | null;
-  notes: string | null;
-  position_x: number | null;
-  position_y: number | null;
-  config_hash: string | null;
-  synced_at: string | null;
-}
-
-export interface AgentFileRecord {
-  id: number;
-  agent_id: number;
-  filename: string;
-  content: string | null;
-  content_hash: string | null;
-  updated_at: string | null;
-}
-
-export interface AgentLinkRecord {
-  id: number;
-  instance_id: number | null;
-  blueprint_id: number | null;
-  source_agent_id: string;
-  target_agent_id: string;
-  link_type: "a2a" | "spawn";
-}
-
-export interface BlueprintRecord {
-  id: number;
-  name: string;
-  description: string | null;
-  icon: string | null;
-  tags: string | null;
-  color: string | null;
-  created_at: string;
-  updated_at: string;
-  agent_count?: number;
-}
-
-export interface BlueprintAgentRecord {
-  id: number;
-  blueprint_id: number;
-  agent_id: string;
-  name: string;
-  model: string | null;
-  workspace_path: string;
-  is_default: number;
-  role: string | null;
-  tags: string | null;
-  notes: string | null;
-  position_x: number | null;
-  position_y: number | null;
-  config_hash: string | null;
-  synced_at: string | null;
-}
-
-export interface BlueprintLinkRecord {
-  id: number;
-  blueprint_id: number;
-  source_agent_id: string;
-  target_agent_id: string;
-  link_type: "a2a" | "spawn";
-}
+export type {
+  ServerRecord,
+  InstanceRecord,
+  AgentRecord,
+  AgentFileRecord,
+  AgentLinkRecord,
+  BlueprintRecord,
+  BlueprintAgentRecord,
+  BlueprintLinkRecord,
+} from "./registry-types.js";
 
 // ---------------------------------------------------------------------------
 // Registry facade

@@ -119,10 +119,10 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     try {
       const blueprint = registry.createBlueprint({
         name: body.name.trim(),
-        description: body.description,
-        icon: body.icon,
-        tags: body.tags,
-        color: body.color,
+        ...(body.description !== undefined && { description: body.description }),
+        ...(body.icon !== undefined && { icon: body.icon }),
+        ...(body.tags !== undefined && { tags: body.tags }),
+        ...(body.color !== undefined && { color: body.color }),
       });
 
       // Seed default "main" agent — every blueprint starts with one
@@ -240,7 +240,7 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
       newAgent = registry.createBlueprintAgent(id, {
         agentId: body.agent_id,
         name: body.name,
-        model: body.model,
+        ...(body.model !== undefined && { model: body.model }),
       });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);

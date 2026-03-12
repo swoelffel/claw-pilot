@@ -1,0 +1,88 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`generateDashboardLaunchdPlist > matches full dashboard plist snapshot 1`] = `
+"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.claw-pilot.dashboard</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/node</string>
+    <string>/opt/claw-pilot/dist/index.mjs</string>
+    <string>dashboard</string>
+    <string>--port</string>
+    <string>19000</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/openclaw</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/Users/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>NODE_ENV</key>
+    <string>production</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/openclaw/.claw-pilot/dashboard.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/openclaw/.claw-pilot/dashboard.log</string>
+</dict>
+</plist>
+"
+`;
+
+exports[`generateLaunchdPlist > matches full plist snapshot 1`] = `
+"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.openclaw.demo1</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/openclaw/.npm-global/bin/openclaw</string>
+    <string>gateway</string>
+    <string>--port</string>
+    <string>18789</string>
+    <string>--profile</string>
+    <string>demo1</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/openclaw</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/Users/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>OPENCLAW_PROFILE</key>
+    <string>demo1</string>
+    <key>OPENCLAW_STATE_DIR</key>
+    <string>/Users/openclaw/.openclaw-demo1</string>
+    <key>OPENCLAW_CONFIG_PATH</key>
+    <string>/Users/openclaw/.openclaw-demo1/openclaw.json</string>
+    <key>OPENCLAW_GATEWAY_PORT</key>
+    <string>18789</string>
+    <key>OPENCLAW_SERVICE_MARKER</key>
+    <string>openclaw</string>
+    <key>OPENCLAW_SERVICE_KIND</key>
+    <string>gateway</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/openclaw/.openclaw-demo1/logs/gateway.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/openclaw/.openclaw-demo1/logs/gateway.log</string>
+</dict>
+</plist>
+"
+`;

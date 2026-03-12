@@ -5,6 +5,7 @@ import { serve } from "@hono/node-server";
 import { WebSocketServer } from "ws";
 import { timingSafeEqual } from "node:crypto";
 import * as fs from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
@@ -25,6 +26,8 @@ import { SessionStore } from "./session-store.js";
 import { constants } from "../lib/constants.js";
 import { apiError } from "./route-deps.js";
 import type { RouteDeps } from "./route-deps.js";
+import { ClawPilotError } from "../lib/errors.js";
+import { logger } from "../lib/logger.js";
 import { registerInstanceRoutes } from "./routes/instances.js";
 import { registerBlueprintRoutes } from "./routes/blueprints.js";
 import { registerTeamRoutes } from "./routes/teams.js";
@@ -36,6 +39,16 @@ import { registerAuthRoutes } from "./routes/auth.js";
 // so __dirname = <install>/dist/ and UI_DIST = <install>/dist/ui/
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_DIST = process.env["CLAW_PILOT_UI_DIST"] ?? path.resolve(__dirname, "ui");
+
+// Read version from package.json once at module load time
+let _serverVersion = "unknown";
+try {
+  const pkgPath = path.resolve(__dirname, "../../package.json");
+  const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version?: string };
+  _serverVersion = pkg.version ?? "unknown";
+} catch {
+  /* intentionally ignored — version stays "unknown" */
+}
 
 // Minimal MIME type map for static asset serving
 const MIME: Record<string, string> = {
@@ -96,7 +109,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     c.json({
       ok: true,
       service: "claw-pilot",
-      version: "0.16.3",
+      version: _serverVersion,
       uptime: Math.floor((Date.now() - startedAt) / 1000),
     }),
   );
@@ -178,6 +191,18 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   registerBlueprintRoutes(app, deps);
   registerTeamRoutes(app, deps);
   registerSystemRoutes(app, deps);
+
+  // Global error handler — catches unhandled errors that bubble up through route handlers.
+  // ClawPilotError subclasses are mapped to structured API responses; unknown errors → 500.
+  app.onError((err, c) => {
+    if (err instanceof ClawPilotError) {
+      const status =
+        err.code === "INSTANCE_NOT_FOUND" || err.code === "AGENT_NOT_FOUND" ? 404 : 400;
+      return c.json({ error: err.message, code: err.code }, status);
+    }
+    logger.error(`Unhandled dashboard error: ${err.message}`);
+    return c.json({ error: "Internal server error", code: "INTERNAL_ERROR" }, 500);
+  });
 
   // --- Static file serving ---
   // Serve index.html as-is — token is no longer injected into HTML.

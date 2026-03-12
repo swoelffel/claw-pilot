@@ -405,7 +405,7 @@ export class CreateDialog extends DialogMixin(LitElement) {
       provider: this._selectedProvider?.id ?? "anthropic",
       apiKey: this._selectedProvider?.requiresKey ? this._apiKey.trim() : "",
       agents: this._buildAgents(),
-      blueprintId: this._selectedBlueprintId ?? undefined,
+      ...(this._selectedBlueprintId != null && { blueprintId: this._selectedBlueprintId }),
     };
 
     try {

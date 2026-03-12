@@ -415,7 +415,7 @@ export async function applyConfigPatch(
     requiresRestart: classification.requiresRestart,
     hotReloaded: classification.hotReloadOnly,
     warnings,
-    restartReason: classification.restartReason ?? undefined,
-    pairingWarning: classification.pairingWarning || undefined,
+    ...(classification.restartReason != null && { restartReason: classification.restartReason }),
+    ...(classification.pairingWarning && { pairingWarning: true as const }),
   };
 }

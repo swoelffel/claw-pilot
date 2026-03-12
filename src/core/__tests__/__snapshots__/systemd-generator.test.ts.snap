@@ -1,0 +1,53 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`generateDashboardService > matches full dashboard service snapshot 1`] = `
+"[Unit]
+Description=Claw Pilot Dashboard (port 19000)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/node /opt/claw-pilot/dist/index.mjs dashboard --port 19000
+Restart=always
+RestartSec=5
+KillMode=process
+StandardOutput=journal
+StandardError=journal
+Environment=HOME=/home/openclaw
+Environment=PATH=/home/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=default.target
+"
+`;
+
+exports[`generateSystemdService > matches full service unit snapshot 1`] = `
+"[Unit]
+Description=OpenClaw Gateway - Instance demo1 (Demo One)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/opt/openclaw/.npm-global/bin/openclaw gateway --port 18789 --profile demo1
+Restart=always
+RestartSec=5
+KillMode=process
+StandardOutput=append:/opt/openclaw/.openclaw-demo1/logs/gateway.log
+StandardError=append:/opt/openclaw/.openclaw-demo1/logs/gateway.log
+Environment=HOME=/opt/openclaw
+Environment=PATH=/opt/openclaw/.local/bin:/opt/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+Environment=OPENCLAW_PROFILE=demo1
+Environment=OPENCLAW_STATE_DIR=/opt/openclaw/.openclaw-demo1
+Environment=OPENCLAW_CONFIG_PATH=/opt/openclaw/.openclaw-demo1/openclaw.json
+Environment=OPENCLAW_GATEWAY_PORT=18789
+Environment=OPENCLAW_SYSTEMD_UNIT=openclaw-demo1.service
+Environment=OPENCLAW_SERVICE_MARKER=openclaw
+Environment=OPENCLAW_SERVICE_KIND=gateway
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+
+[Install]
+WantedBy=default.target
+"
+`;

@@ -1,6 +1,6 @@
 // src/core/repositories/server-repository.ts
 import type Database from "better-sqlite3";
-import type { ServerRecord } from "../registry.js";
+import type { ServerRecord } from "../registry-types.js";
 import { now } from "../../lib/date.js";
 
 export class ServerRepository {

@@ -61,10 +61,9 @@ jobs:
       - name: Dead code check
         run: pnpm knip --reporter compact
 
-      # ── Imports circulaires (warn only — 5 cycles pré-existants) ──────────
+      # ── Imports circulaires (bloquant — 0 cycles depuis Sprint 2) ───────────
       - name: Circular dependency check
         run: pnpm check:circular
-        continue-on-error: true
 
       # ── Build ─────────────────────────────────────────────────────────────
       - name: Build

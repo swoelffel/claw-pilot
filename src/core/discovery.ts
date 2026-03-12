@@ -12,6 +12,7 @@ import {
 } from "../lib/platform.js";
 import { normaliseModel } from "../lib/model-helpers.js";
 import { OpenClawConfigSchema } from "./openclaw-config.schema.js";
+import { resolveAgentWorkspacePath } from "./agent-workspace.js";
 
 export interface DiscoveredAgent {
   id: string;
@@ -497,8 +498,8 @@ export class InstanceDiscovery {
       configPath: instance.configPath,
       stateDir: instance.stateDir,
       systemdUnit: instance.systemdUnit ?? `openclaw-${instance.slug}.service`,
-      telegramBot: instance.telegramBot ?? undefined,
-      defaultModel: instance.defaultModel ?? undefined,
+      ...(instance.telegramBot != null && { telegramBot: instance.telegramBot }),
+      ...(instance.defaultModel != null && { defaultModel: instance.defaultModel }),
       discovered: true,
     });
 
@@ -506,7 +507,7 @@ export class InstanceDiscovery {
       this.registry.createAgent(record.id, {
         agentId: agent.id,
         name: agent.name,
-        model: agent.model ?? undefined,
+        ...(agent.model != null && { model: agent.model }),
         workspacePath: agent.workspacePath,
         isDefault: agent.isDefault,
       });
@@ -569,46 +570,6 @@ export class InstanceDiscovery {
   }
 }
 
-/**
- * Resolve the workspace directory for an agent.
- *
- * Two layouts exist:
- *
- * 1. **claw-pilot layout** (multi-instance, provisioned by claw-pilot):
- *    `<stateDir>/workspaces/<agentId>/`
- *    Indicated by: `agents.list` is non-empty, OR `agents.defaults.workspace` is set.
- *
- * 2. **Native OpenClaw layout** (single-instance, manually installed):
- *    `<stateDir>/workspace/`  (singular, no agent subdirectory)
- *    Indicated by: no `agents.list`, no `agents.defaults.workspace`.
- *
- * If an explicit `workspace` field is provided for the agent (absolute or relative),
- * it always takes precedence over both heuristics.
- */
-export function resolveAgentWorkspacePath(
-  stateDir: string,
-  agentId: string,
-  explicitWorkspace: string | undefined,
-  agentsList: Array<Record<string, unknown>>,
-): string {
-  // Explicit workspace field — absolute path used as-is, relative resolved under workspaces/
-  if (explicitWorkspace) {
-    if (explicitWorkspace.startsWith("/")) return explicitWorkspace;
-    return `${stateDir}/workspaces/${explicitWorkspace}`;
-  }
-
-  // If agents.list is non-empty → claw-pilot multi-instance layout
-  if (agentsList.length > 0) {
-    return `${stateDir}/workspaces/${agentId}`;
-  }
-
-  // Native OpenClaw single-instance layout: workspace is at <stateDir>/workspace (singular)
-  // Only applies to the implicit main agent (no list entry).
-  // Any explicitly listed agent still gets workspaces/<id>.
-  if (agentId === "main") {
-    return `${stateDir}/workspace`;
-  }
-
-  // Fallback for non-main agents without explicit workspace in a no-list config
-  return `${stateDir}/workspaces/${agentId}`;
-}
+// resolveAgentWorkspacePath is defined in agent-workspace.ts (re-exported for
+// backward compatibility with any external callers that import from discovery.ts)
+export { resolveAgentWorkspacePath } from "./agent-workspace.js";

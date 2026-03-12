@@ -950,3 +950,860 @@ describe("Telegram pairing routes", () => {
     expect(body.approved[0]).toBe("987654321");
   });
 });
+
+// ===========================================================================
+// A1.1 — Instance agent routes
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// POST /api/instances/:slug/agents — create agent
+// ---------------------------------------------------------------------------
+
+describe("POST /api/instances/:slug/agents", () => {
+  it("returns 404 for unknown instance slug", async () => {
+    const res = await ctx.app.request("/api/instances/nonexistent/agents", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        agentSlug: "researcher",
+        name: "Researcher",
+        provider: "anthropic",
+        model: "claude-haiku-4-5",
+      }),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 400 when required fields are missing", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/agents", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ agentSlug: "researcher" }), // missing name, provider, model
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("FIELD_REQUIRED");
+  });
+
+  it("returns 400 for invalid agentSlug format (uppercase)", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/agents", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        agentSlug: "INVALID",
+        name: "Bad",
+        provider: "anthropic",
+        model: "claude-haiku-4-5",
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("INVALID_AGENT_ID");
+  });
+
+  it("returns 400 for agentSlug that is too short (1 char)", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/agents", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        agentSlug: "x",
+        name: "X",
+        provider: "anthropic",
+        model: "claude-haiku-4-5",
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("INVALID_AGENT_ID");
+  });
+
+  it("returns 201 and creates agent with valid body", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/agents", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        agentSlug: "researcher",
+        name: "Researcher",
+        provider: "anthropic",
+        model: "claude-haiku-4-5",
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = await json(res);
+    expect(body.instance.slug).toBe("demo1");
+    // The new agent should appear in the agents list
+    const agentIds = body.agents.map((a: { agent_id: string }) => a.agent_id);
+    expect(agentIds).toContain("researcher");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /api/instances/:slug/agents/:agentId — delete agent
+// ---------------------------------------------------------------------------
+
+describe("DELETE /api/instances/:slug/agents/:agentId", () => {
+  it("returns 404 for unknown instance slug", async () => {
+    const res = await ctx.app.request("/api/instances/nonexistent/agents/researcher", {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 500 when agent does not exist (provisioner throws plain Error)", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/agents/nonexistent-agent", {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+    // AgentProvisioner.deleteAgent throws a plain Error (not InstanceNotFoundError)
+    // when agent is not found → route returns 500 AGENT_DELETE_FAILED
+    expect(res.status).toBe(500);
+    const body = await json(res);
+    expect(body.code).toBe("AGENT_DELETE_FAILED");
+  });
+
+  it("returns 200 and removes agent from list", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const instance = ctx.registry.getInstance("demo1")!;
+    // Create a non-default agent to delete
+    ctx.registry.upsertAgent(instance.id, {
+      agentId: "helper",
+      name: "Helper",
+      workspacePath: "/opt/openclaw/.openclaw-demo1/workspace-helper",
+      isDefault: false,
+    });
+    // Seed workspace dir so remove() doesn't fail
+    ctx.conn.dirs.add("/opt/openclaw/.openclaw-demo1/workspace-helper");
+
+    const res = await ctx.app.request("/api/instances/demo1/agents/helper", {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.instance.slug).toBe("demo1");
+    const agentIds = body.agents.map((a: { agent_id: string }) => a.agent_id);
+    expect(agentIds).not.toContain("helper");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/instances/:slug/agents/builder — builder payload
+// ---------------------------------------------------------------------------
+
+describe("GET /api/instances/:slug/agents/builder", () => {
+  it("returns 404 for unknown instance slug", async () => {
+    const res = await ctx.app.request("/api/instances/nonexistent/agents/builder", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("returns builder payload with instance and agents", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const instance = ctx.registry.getInstance("demo1")!;
+    ctx.registry.createAgent(instance.id, {
+      agentId: "main",
+      name: "Main",
+      model: "claude-sonnet-4-20250514",
+      workspacePath: "/opt/openclaw/.openclaw-demo1/agents/main",
+      isDefault: true,
+    });
+
+    const res = await ctx.app.request("/api/instances/demo1/agents/builder", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.instance.slug).toBe("demo1");
+    expect(body.agents).toHaveLength(1);
+    expect(body.agents[0].agent_id).toBe("main");
+    expect(Array.isArray(body.links)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /api/instances/:slug/agents/:agentId/position — update canvas position
+// ---------------------------------------------------------------------------
+
+describe("PATCH /api/instances/:slug/agents/:agentId/position", () => {
+  it("returns 404 for unknown instance slug", async () => {
+    const res = await ctx.app.request("/api/instances/nonexistent/agents/main/position", {
+      method: "PATCH",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ x: 100, y: 200 }),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 400 when x/y are not numbers", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/agents/main/position", {
+      method: "PATCH",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ x: "not-a-number", y: 200 }),
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("FIELD_INVALID");
+  });
+
+  it("returns 404 when agent does not exist", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/agents/ghost/position", {
+      method: "PATCH",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ x: 100, y: 200 }),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("AGENT_NOT_FOUND");
+  });
+
+  it("returns 200 and updates position for existing agent", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const instance = ctx.registry.getInstance("demo1")!;
+    ctx.registry.createAgent(instance.id, {
+      agentId: "main",
+      name: "Main",
+      model: "claude-sonnet-4-20250514",
+      workspacePath: "/opt/openclaw/.openclaw-demo1/agents/main",
+      isDefault: true,
+    });
+
+    const res = await ctx.app.request("/api/instances/demo1/agents/main/position", {
+      method: "PATCH",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ x: 150, y: 250 }),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.ok).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /api/instances/:slug/agents/:agentId/meta — update agent meta
+// ---------------------------------------------------------------------------
+
+describe("PATCH /api/instances/:slug/agents/:agentId/meta", () => {
+  it("returns 404 for unknown instance slug", async () => {
+    const res = await ctx.app.request("/api/instances/nonexistent/agents/main/meta", {
+      method: "PATCH",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ role: "Researcher" }),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 400 for invalid meta fields (unknown field)", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/agents/main/meta", {
+      method: "PATCH",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ unknownField: "value" }),
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("FIELD_INVALID");
+  });
+
+  it("returns 200 and updates meta for existing agent", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const instance = ctx.registry.getInstance("demo1")!;
+    ctx.registry.createAgent(instance.id, {
+      agentId: "main",
+      name: "Main",
+      model: "claude-sonnet-4-20250514",
+      workspacePath: "/opt/openclaw/.openclaw-demo1/agents/main",
+      isDefault: true,
+    });
+
+    const res = await ctx.app.request("/api/instances/demo1/agents/main/meta", {
+      method: "PATCH",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ role: "Primary orchestrator", tags: "core,default" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.ok).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/instances/:slug/agents/:agentId/files/:filename — get agent file
+// ---------------------------------------------------------------------------
+
+describe("GET /api/instances/:slug/agents/:agentId/files/:filename", () => {
+  it("returns 404 for unknown instance slug", async () => {
+    const res = await ctx.app.request("/api/instances/nonexistent/agents/main/files/SOUL.md", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 404 when agent does not exist", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/agents/ghost/files/SOUL.md", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("AGENT_NOT_FOUND");
+  });
+
+  it("returns 404 when file does not exist in registry", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const instance = ctx.registry.getInstance("demo1")!;
+    ctx.registry.createAgent(instance.id, {
+      agentId: "main",
+      name: "Main",
+      model: "claude-sonnet-4-20250514",
+      workspacePath: "/opt/openclaw/.openclaw-demo1/agents/main",
+      isDefault: true,
+    });
+
+    const res = await ctx.app.request("/api/instances/demo1/agents/main/files/SOUL.md", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("FILE_NOT_FOUND");
+  });
+
+  it("returns 200 with file content when file exists in registry", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const instance = ctx.registry.getInstance("demo1")!;
+    ctx.registry.createAgent(instance.id, {
+      agentId: "main",
+      name: "Main",
+      model: "claude-sonnet-4-20250514",
+      workspacePath: "/opt/openclaw/.openclaw-demo1/agents/main",
+      isDefault: true,
+    });
+    // Retrieve the agent record to get its DB id
+    const agentRecord = ctx.registry.getAgentByAgentId(instance.id, "main")!;
+    // Seed a file in the registry
+    ctx.registry.upsertAgentFile(agentRecord.id, {
+      filename: "SOUL.md",
+      content: "# My Soul",
+      contentHash: "abc123",
+    });
+
+    const res = await ctx.app.request("/api/instances/demo1/agents/main/files/SOUL.md", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.filename).toBe("SOUL.md");
+    expect(body.content).toBe("# My Soul");
+    expect(body.editable).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PUT /api/instances/:slug/agents/:agentId/files/:filename — update agent file
+// ---------------------------------------------------------------------------
+
+describe("PUT /api/instances/:slug/agents/:agentId/files/:filename", () => {
+  it("returns 403 for non-editable filename (MEMORY.md)", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/agents/main/files/MEMORY.md", {
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ content: "some content" }),
+    });
+    expect(res.status).toBe(403);
+    const body = await json(res);
+    expect(body.code).toBe("FILE_NOT_EDITABLE");
+  });
+
+  it("returns 404 for unknown instance slug", async () => {
+    const res = await ctx.app.request("/api/instances/nonexistent/agents/main/files/SOUL.md", {
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ content: "hello" }),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 400 when content field is missing", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const instance = ctx.registry.getInstance("demo1")!;
+    ctx.registry.createAgent(instance.id, {
+      agentId: "main",
+      name: "Main",
+      model: "claude-sonnet-4-20250514",
+      workspacePath: "/opt/openclaw/.openclaw-demo1/agents/main",
+      isDefault: true,
+    });
+
+    const res = await ctx.app.request("/api/instances/demo1/agents/main/files/SOUL.md", {
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify({}), // no content field
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("FIELD_REQUIRED");
+  });
+
+  it("returns 413 when content exceeds 1MB", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const instance = ctx.registry.getInstance("demo1")!;
+    ctx.registry.createAgent(instance.id, {
+      agentId: "main",
+      name: "Main",
+      model: "claude-sonnet-4-20250514",
+      workspacePath: "/opt/openclaw/.openclaw-demo1/agents/main",
+      isDefault: true,
+    });
+
+    const res = await ctx.app.request("/api/instances/demo1/agents/main/files/SOUL.md", {
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ content: "x".repeat(1_048_577) }),
+    });
+    expect(res.status).toBe(413);
+    const body = await json(res);
+    expect(body.code).toBe("CONTENT_TOO_LARGE");
+  });
+
+  it("returns 200 and updates file content", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const instance = ctx.registry.getInstance("demo1")!;
+    ctx.registry.createAgent(instance.id, {
+      agentId: "main",
+      name: "Main",
+      model: "claude-sonnet-4-20250514",
+      workspacePath: "/opt/openclaw/.openclaw-demo1/agents/main",
+      isDefault: true,
+    });
+    // Retrieve the agent record to get its DB id
+    const agentRecord = ctx.registry.getAgentByAgentId(instance.id, "main")!;
+    // Pre-seed the file so the registry has it
+    ctx.registry.upsertAgentFile(agentRecord.id, {
+      filename: "SOUL.md",
+      content: "# Old content",
+      contentHash: "oldhash",
+    });
+
+    const res = await ctx.app.request("/api/instances/demo1/agents/main/files/SOUL.md", {
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ content: "# New soul content" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.filename).toBe("SOUL.md");
+    expect(body.content).toBe("# New soul content");
+    expect(body.editable).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /api/instances/:slug/agents/:agentId/spawn-links — update spawn links
+// ---------------------------------------------------------------------------
+
+describe("PATCH /api/instances/:slug/agents/:agentId/spawn-links", () => {
+  it("returns 404 for unknown instance slug", async () => {
+    const res = await ctx.app.request("/api/instances/nonexistent/agents/main/spawn-links", {
+      method: "PATCH",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ targets: ["helper"] }),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 400 when targets is not an array", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/agents/main/spawn-links", {
+      method: "PATCH",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ targets: "not-an-array" }),
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("FIELD_INVALID");
+  });
+
+  it("returns 200 and updates spawn links for main agent", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    // The seedInstance already seeds openclaw.json with agents.defaults
+    // The route handles "main" agentId via agents.defaults path
+
+    const res = await ctx.app.request("/api/instances/demo1/agents/main/spawn-links", {
+      method: "PATCH",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ targets: ["helper"] }),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.ok).toBe(true);
+    expect(Array.isArray(body.links)).toBe(true);
+  });
+
+  it("returns 404 when agentId is not main and not in config list", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/agents/ghost-agent/spawn-links", {
+      method: "PATCH",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ targets: [] }),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("AGENT_NOT_FOUND");
+  });
+});
+
+// ===========================================================================
+// A1.2 — Team routes
+// ===========================================================================
+
+describe("GET /api/instances/:slug/team/export", () => {
+  it("returns 404 for unknown instance slug", async () => {
+    const res = await ctx.app.request("/api/instances/nonexistent/team/export", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("returns YAML content for a known instance", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const instance = ctx.registry.getInstance("demo1")!;
+    ctx.registry.createAgent(instance.id, {
+      agentId: "main",
+      name: "Main",
+      model: "claude-sonnet-4-20250514",
+      workspacePath: "/opt/openclaw/.openclaw-demo1/agents/main",
+      isDefault: true,
+    });
+
+    const res = await ctx.app.request("/api/instances/demo1/team/export", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("text/yaml");
+  });
+});
+
+describe("POST /api/instances/:slug/team/import", () => {
+  it("returns 404 for unknown instance slug", async () => {
+    const res = await ctx.app.request("/api/instances/nonexistent/team/import", {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "text/yaml" },
+      body: "version: 1\nagents: []\nlinks: []\n",
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 400 for invalid YAML body", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/team/import", {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "text/yaml" },
+      body: ": invalid: yaml: [[[",
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.ok).toBe(false);
+  });
+});
+
+// ===========================================================================
+// A1.3 — Lifecycle, config, discover routes (extended coverage)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Lifecycle error cases
+// ---------------------------------------------------------------------------
+
+describe("POST /api/instances/:slug/start — error case", () => {
+  it("returns 500 when lifecycle throws a generic error", async () => {
+    // Override lifecycle with one that throws a generic error
+    const originalStart = ctx.lifecycle.start.bind(ctx.lifecycle);
+    ctx.lifecycle.start = async (_slug: string) => {
+      throw new Error("systemd unavailable");
+    };
+
+    const res = await ctx.app.request("/api/instances/demo1/start", {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(500);
+    const body = await json(res);
+    expect(body.code).toBe("LIFECYCLE_FAILED");
+
+    // Restore
+    ctx.lifecycle.start = originalStart;
+  });
+});
+
+describe("POST /api/instances/:slug/stop — error case", () => {
+  it("returns 500 when lifecycle throws a generic error", async () => {
+    ctx.lifecycle.stop = async (_slug: string) => {
+      throw new Error("systemd unavailable");
+    };
+
+    const res = await ctx.app.request("/api/instances/demo1/stop", {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(500);
+    const body = await json(res);
+    expect(body.code).toBe("LIFECYCLE_FAILED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Config GET — success case
+// ---------------------------------------------------------------------------
+
+describe("GET /api/instances/:slug/config — success case", () => {
+  it("returns structured config for a seeded instance", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    // seedInstance already seeds openclaw.json with gateway + models + agents
+    // Also seed the .env file (already done by seedInstance for token cache)
+
+    const res = await ctx.app.request("/api/instances/demo1/config", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    // Should have the structured config shape
+    expect(body.general).toBeDefined();
+    expect(body.gateway).toBeDefined();
+    expect(body.gateway.port).toBe(18789);
+    expect(Array.isArray(body.providers)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Config PATCH — success case
+// ---------------------------------------------------------------------------
+
+describe("PATCH /api/instances/:slug/config — success case", () => {
+  it("applies a valid displayName patch", async () => {
+    seedInstance(ctx, "demo1", 18789);
+
+    const res = await ctx.app.request("/api/instances/demo1/config", {
+      method: "PATCH",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ general: { displayName: "New Name" } }),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    // applyConfigPatch returns a ConfigPatchResult with requiresRestart + warnings
+    expect(typeof body.requiresRestart).toBe("boolean");
+    expect(Array.isArray(body.warnings)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Discover routes
+// ---------------------------------------------------------------------------
+
+describe("POST /api/instances/discover", () => {
+  it("returns found array (empty when no instances on disk)", async () => {
+    // MockConnection returns empty readdir results → discovery finds nothing
+    const res = await ctx.app.request("/api/instances/discover", {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    // May succeed with empty found, or fail with DISCOVER_FAILED if scan errors
+    // Either way, it should not be 404 or 401
+    expect([200, 500]).toContain(res.status);
+    if (res.status === 200) {
+      const body = await json(res);
+      expect(Array.isArray(body.found)).toBe(true);
+    }
+  });
+});
+
+describe("POST /api/instances/discover/adopt", () => {
+  it("returns 400 for invalid body (missing slugs)", async () => {
+    const res = await ctx.app.request("/api/instances/discover/adopt", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("INVALID_BODY");
+  });
+
+  it("returns 400 for empty slugs array", async () => {
+    const res = await ctx.app.request("/api/instances/discover/adopt", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ slugs: [] }),
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("INVALID_BODY");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/instances/:slug/agents/sync — agent sync route
+// ---------------------------------------------------------------------------
+
+describe("POST /api/instances/:slug/agents/sync", () => {
+  it("returns 404 for unknown instance slug", async () => {
+    const res = await ctx.app.request("/api/instances/nonexistent/agents/sync", {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 200 and syncs agents for a seeded instance", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    // Seed workspace files for the main agent so AgentSync can read them
+    const stateDir = "/opt/openclaw/.openclaw-demo1";
+    ctx.conn.files.set(`${stateDir}/SOUL.md`, "# Soul");
+    ctx.conn.files.set(`${stateDir}/AGENTS.md`, "# Agents");
+
+    const res = await ctx.app.request("/api/instances/demo1/agents/sync", {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.synced).toBe(true);
+    expect(Array.isArray(body.agents)).toBe(true);
+  });
+});
+
+// ===========================================================================
+// A1.4 — System routes (extended coverage)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// GET /api/self/update-status — claw-pilot version info
+// ---------------------------------------------------------------------------
+
+describe("GET /api/self/update-status", () => {
+  it("returns claw-pilot version info", async () => {
+    const res = await ctx.app.request("/api/self/update-status", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.currentVersion).toBe("0.11.0");
+    expect(body.updateAvailable).toBe(false);
+    expect(body.latestTag).toBe("v0.11.0");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/self/update — triggers self-update job
+// ---------------------------------------------------------------------------
+
+describe("POST /api/self/update", () => {
+  it("triggers self-update job and returns jobId", async () => {
+    const res = await ctx.app.request("/api/self/update", {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.ok).toBe(true);
+    expect(body.jobId).toBe("test-self-job-id");
+  });
+
+  it("returns 409 when self-update is already running", async () => {
+    // Trigger once to set status to running
+    await ctx.app.request("/api/self/update", {
+      method: "POST",
+      headers: authHeaders(),
+    });
+
+    // Second call should get 409
+    const res = await ctx.app.request("/api/self/update", {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(409);
+    const body = await json(res);
+    expect(body.code).toBe("SELF_UPDATE_RUNNING");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/providers — provider catalog
+// ---------------------------------------------------------------------------
+
+describe("GET /api/providers", () => {
+  it("returns provider catalog with canReuseCredentials=false when no instances", async () => {
+    const res = await ctx.app.request("/api/providers", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.canReuseCredentials).toBe(false);
+    expect(body.sourceInstance).toBeNull();
+    expect(Array.isArray(body.providers)).toBe(true);
+    expect(body.providers.length).toBeGreaterThan(0);
+    // At least one provider should be marked as default
+    expect(body.providers.some((p: { isDefault?: boolean }) => p.isDefault)).toBe(true);
+  });
+
+  it("returns canReuseCredentials=true when an instance with providers exists", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    // seedInstance already seeds openclaw.json with models.providers.anthropic
+
+    const res = await ctx.app.request("/api/providers", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.canReuseCredentials).toBe(true);
+    expect(body.sourceInstance).toBe("demo1");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/port/suggest — suggested port
+// ---------------------------------------------------------------------------
+
+describe("GET /api/next-port — extended", () => {
+  it("returns incrementing port when instances already use some ports", async () => {
+    ctx.registry.upsertLocalServer("testhost", "/opt/openclaw");
+    seedInstance(ctx, "demo1", 18789);
+
+    const res = await ctx.app.request("/api/next-port", { headers: authHeaders() });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    // Should suggest a port different from 18789
+    expect(body.port).toBeGreaterThanOrEqual(18789);
+    expect(body.port).toBeLessThanOrEqual(18838);
+  });
+});

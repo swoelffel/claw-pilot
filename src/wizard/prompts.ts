@@ -89,7 +89,7 @@ export async function promptAgents(): Promise<{
     agents.push({
       id: agentId,
       name,
-      model: modelOverride || undefined,
+      ...(modelOverride && { model: modelOverride }),
     });
 
     addMore = await confirm({ message: "Add another agent?", default: true });

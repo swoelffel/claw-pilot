@@ -97,7 +97,7 @@ function seedBlueprint(opts: {
       agentId: agent.agentId,
       name: agent.name,
       isDefault: agent.isDefault ?? false,
-      model: agent.model,
+      ...(agent.model !== undefined && { model: agent.model }),
     });
 
     // Set canvas positions if provided

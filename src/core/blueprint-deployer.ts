@@ -114,7 +114,7 @@ export class BlueprintDeployer {
       this.registry.upsertAgent(instance.id, {
         agentId: bpAgent.agent_id,
         name: bpAgent.name,
-        model: bpAgent.model ?? undefined,
+        ...(bpAgent.model != null && { model: bpAgent.model }),
         workspacePath: workspaceDir,
         isDefault,
         position_x: bpAgent.position_x ?? null,

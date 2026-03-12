@@ -465,7 +465,7 @@ export class CpApp extends LitElement {
   private _onSessionExpired = (): void => {
     this._authenticated = false;
     this._sessionExpired = true;
-    window.__CP_TOKEN__ = undefined;
+    delete window.__CP_TOKEN__;
     this._closeWs();
   };
 
@@ -528,7 +528,7 @@ export class CpApp extends LitElement {
     }
     this._authenticated = false;
     this._sessionExpired = false;
-    window.__CP_TOKEN__ = undefined;
+    delete window.__CP_TOKEN__;
     this._closeWs();
     // Clean up app state
     window.removeEventListener("hashchange", this._onHashChange);
@@ -647,9 +647,9 @@ export class CpApp extends LitElement {
             gateway: update.gateway,
             systemd: update.systemd,
             state: newState,
-            agentCount: newAgentCount,
-            pendingDevices: newPendingDevices,
-            telegram: newTelegram,
+            ...(newAgentCount !== undefined && { agentCount: newAgentCount }),
+            ...(newPendingDevices !== undefined && { pendingDevices: newPendingDevices }),
+            ...(newTelegram !== undefined && { telegram: newTelegram }),
           };
         });
         // Only reassign (triggering Lit re-render) when at least one instance changed
@@ -673,7 +673,7 @@ export class CpApp extends LitElement {
       this._route = {
         view: "instance-settings",
         slug: detail.slug,
-        initialSection: detail.section,
+        ...(detail.section !== undefined && { initialSection: detail.section }),
       };
     } else if (detail.view === "agents-builder" && detail.slug) {
       this._route = { view: "agents-builder", slug: detail.slug };

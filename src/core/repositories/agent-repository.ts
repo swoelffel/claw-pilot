@@ -1,6 +1,6 @@
 // src/core/repositories/agent-repository.ts
 import type Database from "better-sqlite3";
-import type { AgentRecord, AgentFileRecord, AgentLinkRecord } from "../registry.js";
+import type { AgentRecord, AgentFileRecord, AgentLinkRecord } from "../registry-types.js";
 import { now } from "../../lib/date.js";
 
 export class AgentRepository {
@@ -98,9 +98,9 @@ export class AgentRepository {
   updateAgentMeta(
     agentDbId: number,
     fields: Partial<{
-      role: string | null;
-      tags: string | null;
-      notes: string | null;
+      role: string | null | undefined;
+      tags: string | null | undefined;
+      notes: string | null | undefined;
     }>,
   ): void {
     const sets: string[] = [];

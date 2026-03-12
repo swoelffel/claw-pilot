@@ -159,7 +159,9 @@ export class Provisioner {
         provider: answers.provider,
         apiKey: resolvedApiKey,
         gatewayToken,
-        telegramBotToken: answers.telegram.botToken,
+        ...(answers.telegram.botToken !== undefined && {
+          telegramBotToken: answers.telegram.botToken,
+        }),
       });
       await this.conn.writeFile(envPath, envContent, constants.ENV_FILE_MODE);
 
@@ -230,9 +232,7 @@ export class Provisioner {
         configPath,
         stateDir,
         systemdUnit: sm === "launchd" ? `ai.openclaw.${slug}` : `openclaw-${slug}.service`,
-        telegramBot: answers.telegram.enabled
-          ? undefined // will be set after pairing
-          : undefined,
+        // telegramBot will be set after pairing — omit for now
         defaultModel: answers.defaultModel,
         discovered: false,
       });
@@ -250,9 +250,9 @@ export class Provisioner {
         this.registry.createAgent(instance.id, {
           agentId: agent.id,
           name: agent.name,
-          model: agent.model,
+          ...(agent.model !== undefined && { model: agent.model }),
           workspacePath: path.join(stateDir, "workspaces", workspaceId),
-          isDefault: agent.isDefault,
+          ...(agent.isDefault !== undefined && { isDefault: agent.isDefault }),
         });
       }
 
@@ -297,7 +297,7 @@ export class Provisioner {
         stateDir,
         gatewayToken,
         agentCount: answers.agents.length,
-        telegramBot: answers.telegram.enabled ? "pending" : undefined,
+        ...(answers.telegram.enabled && { telegramBot: "pending" as const }),
       };
     } catch (err) {
       // Provisioning failed — roll back all created artefacts (best-effort)

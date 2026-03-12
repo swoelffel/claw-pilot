@@ -36,8 +36,8 @@ export class SelfUpdater {
       status: "running",
       jobId,
       startedAt: new Date().toISOString(),
-      fromVersion,
-      toVersion,
+      ...(fromVersion !== undefined && { fromVersion }),
+      ...(toVersion !== undefined && { toVersion }),
     };
 
     this._execute(jobId, tag).catch(() => {

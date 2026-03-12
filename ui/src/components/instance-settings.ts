@@ -490,19 +490,18 @@ export class InstanceSettings extends LitElement {
       { id: "general", label: msg("General", { id: "settings-general" }) },
       { id: "agents", label: msg("Agents", { id: "settings-agents" }) },
       {
-        id: "telegram",
+        id: "telegram" as const,
         label: "Telegram",
-        badge:
-          (this._telegramPairing?.pending.length ?? 0) > 0
-            ? this._telegramPairing!.pending.length
-            : undefined,
+        ...((this._telegramPairing?.pending.length ?? 0) > 0 && {
+          badge: this._telegramPairing!.pending.length,
+        }),
       },
-      { id: "plugins", label: "Plugins" },
-      { id: "gateway", label: "Gateway" },
+      { id: "plugins" as const, label: "Plugins" },
+      { id: "gateway" as const, label: "Gateway" },
       {
-        id: "devices",
+        id: "devices" as const,
         label: "Devices",
-        badge: this._pendingDeviceCount > 0 ? this._pendingDeviceCount : undefined,
+        ...(this._pendingDeviceCount > 0 && { badge: this._pendingDeviceCount }),
       },
     ];
 

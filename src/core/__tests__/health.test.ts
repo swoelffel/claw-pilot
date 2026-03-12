@@ -76,7 +76,7 @@ function seedInstance(
     configPath: `${stateDir}/openclaw.json`,
     stateDir,
     systemdUnit: `openclaw-${slug}.service`,
-    telegramBot: opts.telegramBot,
+    ...(opts.telegramBot !== undefined && { telegramBot: opts.telegramBot }),
   });
   registry.allocatePort(server.id, port, slug);
 

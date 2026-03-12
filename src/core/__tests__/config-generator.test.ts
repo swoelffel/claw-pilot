@@ -150,6 +150,20 @@ describe("generateConfig", () => {
     expect(config.meta.slug).toBeUndefined();
     expect(config.meta.lastTouchedVersion).toBe("2026.3.8");
   });
+
+  it("matches full config snapshot for anthropic provider", () => {
+    const config = JSON.parse(generateConfig(baseAnswers));
+    // Normalize dynamic timestamp before snapshot comparison
+    if (config.meta?.lastTouchedAt) config.meta.lastTouchedAt = "2026-01-01T00:00:00.000Z";
+    expect(config).toMatchSnapshot();
+  });
+
+  it("matches full config snapshot for openai provider", () => {
+    const answers: WizardAnswers = { ...baseAnswers, provider: "openai", apiKey: "sk-openai-test" };
+    const config = JSON.parse(generateConfig(answers));
+    if (config.meta?.lastTouchedAt) config.meta.lastTouchedAt = "2026-01-01T00:00:00.000Z";
+    expect(config).toMatchSnapshot();
+  });
 });
 
 describe("generateEnv", () => {
@@ -196,5 +210,14 @@ describe("generateEnv", () => {
     expect(env).not.toContain("ANTHROPIC_API_KEY");
     expect(env).not.toContain("OPENAI_API_KEY");
     expect(env).toContain("OPENCLAW_GW_AUTH_TOKEN=token");
+  });
+
+  it("matches full .env snapshot for anthropic", () => {
+    const env = generateEnv({
+      provider: "anthropic",
+      apiKey: "sk-ant-test123",
+      gatewayToken: "abcdef123456",
+    });
+    expect(env).toMatchSnapshot();
   });
 });

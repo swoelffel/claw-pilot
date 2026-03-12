@@ -521,7 +521,7 @@ export class BlueprintBuilder extends LitElement {
       const data = await createBlueprintAgent(this.blueprintId, {
         agent_id: this._newAgentId.trim(),
         name: this._newAgentName.trim(),
-        model: this._newAgentModel.trim() || undefined,
+        ...(this._newAgentModel.trim() && { model: this._newAgentModel.trim() }),
       });
 
       const currentIds = new Set(this._data?.agents.map((a) => a.agent_id) ?? []);

@@ -336,5 +336,12 @@ export async function getDashboardServiceStatus(
 
   const portResponding = await isPortResponding(port);
 
-  return { installed, active, enabled, pid, uptime, portResponding };
+  return {
+    installed,
+    active,
+    enabled,
+    portResponding,
+    ...(pid !== undefined && { pid }),
+    ...(uptime !== undefined && { uptime }),
+  };
 }
