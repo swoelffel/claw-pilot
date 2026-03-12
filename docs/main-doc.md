@@ -1,89 +1,52 @@
 # claw-pilot — Architecture fonctionnelle
 
-> **Version** : 0.7.2  
-> **Stack** : TypeScript / Node.js ESM, Lit web components, SQLite, Hono, systemd  
-> **Repo** : https://github.com/swoelffel/claw-pilot  
+> **Version** : 0.19.0
+> **Stack** : TypeScript / Node.js ESM, Lit web components, SQLite, Hono, systemd
+> **Repo** : https://github.com/swoelffel/claw-pilot
 > **Références détaillées** : [ux-design.md](./ux-design.md) · [i18n.md](./i18n.md) · [design-rules.md](./design-rules.md) · `CLAUDE.md`
 
 ---
 
 ## Vue d'ensemble
 
-claw-pilot est un **orchestrateur local** pour clusters d'instances OpenClaw. Il expose deux interfaces complémentaires :
+claw-pilot est un **orchestrateur local** pour clusters d'instances multi-agents. Il expose deux interfaces complémentaires :
 
 - **CLI** (`claw-pilot <commande>`) — opérations scriptables, administration système
 - **Dashboard web** (`http://localhost:19000`) — interface graphique complète, temps réel
 
 Les deux interfaces partagent la même couche métier (`src/core/`) et la même base de données SQLite (`~/.claw-pilot/registry.db`).
 
+Depuis v0.19.0, claw-pilot gère **deux types d'instances en cohabitation** :
+
+| Type | Moteur | Config | Lifecycle |
+|---|---|---|---|
+| `openclaw` | OpenClaw (tiers) | `openclaw.json` | systemd / launchd |
+| `claw-runtime` | Moteur natif Node.js | `runtime.json` | PID file (daemon) |
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        claw-pilot                               │
 │                                                                 │
 │   CLI (Commander.js)          Dashboard (Hono + Lit UI)         │
-│   15 commandes                HTTP/WS port 19000                │
+│   16 commandes                HTTP/WS port 19000                │
 │         │                              │                        │
 │         └──────────────┬───────────────┘                        │
 │                        │                                        │
 │              Core (src/core/)                                   │
-│   Provisioner · Lifecycle · Discovery · AgentSync · ...         │
+│   Provisioner · Lifecycle · Health · Discovery · AgentSync      │
 │                        │                                        │
 │              Registry (façade) → 7 Repositories                 │
-│   AgentRepo · BlueprintRepo · ConfigRepo · EventRepo            │
-│   InstanceRepo · PortRepo · ServerRepo                          │
 │                        │                                        │
 │              ServerConnection (abstraction)                     │
 │              LocalConnection (shell/fs local)                   │
 │                        │                                        │
 │              SQLite Registry (~/.claw-pilot/registry.db)        │
 └─────────────────────────────────────────────────────────────────┘
-                         │
-                         ▼
-              Instances OpenClaw (systemd --user)
-              ~/.openclaw-<slug>/  ×N
-```
-
-### Structure du dashboard (src/dashboard/)
-
-Le serveur HTTP/WS est organisé en modules depuis v0.7.1 :
-
-```
-src/dashboard/
-  server.ts          # Point d'entrée Hono — middleware auth, rate limiting, headers sécurité
-  monitor.ts         # WebSocket monitor (health_update toutes les 10s)
-  rate-limit.ts      # Rate limiter par IP
-  route-deps.ts      # Interface RouteDeps + helper apiError
-  token-cache.ts     # Cache des gateway tokens (évite N lectures disque par appel API)
-  routes/
-    instances.ts     # Routes /api/instances/*
-    blueprints.ts    # Routes /api/blueprints/*
-    teams.ts         # Routes /api/*/team
-    system.ts        # Routes /api/openclaw/*, /api/providers, /api/port
-```
-
-### Structure du core (src/core/)
-
-`registry.ts` est une **façade mince** sur 7 repositories depuis v0.7.2 :
-
-```
-src/core/repositories/
-  agent-repository.ts
-  blueprint-repository.ts
-  config-repository.ts
-  event-repository.ts
-  instance-repository.ts
-  port-repository.ts
-  server-repository.ts
-```
-
-`config-updater.ts` est un barrel re-export depuis v0.7.1 — la logique est répartie en :
-
-```
-src/core/
-  config-types.ts    # Types et interfaces
-  config-helpers.ts  # Helpers partagés
-  config-reader.ts   # Lecture openclaw.json + .env
-  config-writer.ts   # Écriture + classification hot-reload / restart
+          │                              │
+          ▼                              ▼
+  Instances OpenClaw             Instances claw-runtime
+  (systemd --user)               (daemon PID file)
+  ~/.openclaw-<slug>/            ~/.openclaw-<slug>/runtime.json
 ```
 
 ---
@@ -93,18 +56,122 @@ src/core/
 | Table | Migration | Rôle |
 |---|---|---|
 | `servers` | base | Serveur physique (V1 : toujours 1 ligne locale) |
-| `instances` | base | Instances OpenClaw — slug, port, state, config_path, state_dir |
+| `instances` | base + v8 | Instances — slug, port, state, config_path, **instance_type** |
 | `agents` | base → v3 | Agents par instance ou par blueprint (FK polymorphe depuis v3) |
 | `ports` | base | Registre de réservation de ports (anti-conflit) |
 | `config` | base | Config globale clé-valeur |
 | `events` | base | Journal d'audit par instance |
-| `agent_files` | v2 | Fichiers workspace par agent (AGENTS.md, SOUL.md, etc.) — contenu + hash |
-| `agent_links` | v2 → v3 | Liens entre agents (`a2a` ou `spawn`) — FK polymorphe depuis v3 |
+| `agent_files` | v2 | Fichiers workspace par agent — contenu + hash |
+| `agent_links` | v2 → v3 | Liens entre agents (`a2a` ou `spawn`) |
 | `blueprints` | v3 | Templates d'équipes réutilisables |
+| `rt_sessions` | v8 | Sessions claw-runtime |
+| `rt_messages` | v8 | Messages par session |
+| `rt_parts` | v8 | Parties de message (text, tool-call, tool-result) |
+| `rt_pairing_codes` | v9 | Codes de pairing device 8-char |
+
+**Version courante des migrations : 9**
 
 **Plage de ports par défaut** : 18789–18799 (11 instances max). Dashboard : 19000.
 
-**Migrations** : 4 migrations appliquées automatiquement à l'ouverture de la DB. Les migrations additives (ADD COLUMN nullable, CREATE TABLE IF NOT EXISTS) sont irréversibles sur VM01 — ne jamais utiliser DROP COLUMN ou DROP TABLE sans `disableFk: true` et recréation de table.
+**Règle migrations** : toujours additif (ADD COLUMN nullable, CREATE TABLE IF NOT EXISTS). Ne jamais utiliser DROP COLUMN / DROP TABLE sans recréation de table — les migrations sont irréversibles sur VM01.
+
+---
+
+## Structure du code
+
+### CLI (`src/commands/`)
+
+```
+_context.ts       withContext() — ouvre DB + registry, garantit close
+auth.ts           gestion des auth-profiles providers
+create.ts         wizard création instance (openclaw ou claw-runtime)
+dashboard.ts      démarrage/arrêt dashboard
+destroy.ts        suppression instance
+devices.ts        gestion device pairing
+doctor.ts         diagnostic environnement
+init.ts           initialisation premier démarrage
+list.ts           liste instances
+logs.ts           logs systemd
+restart.ts        redémarrage instance
+runtime.ts        commandes claw-runtime (start/stop/restart/status/chat/config)
+service.ts        service systemd du dashboard
+start.ts          démarrage instance
+status.ts         état détaillé instance
+stop.ts           arrêt instance
+team.ts           export/import équipe
+token.ts          gateway token
+update.ts         mise à jour OpenClaw
+```
+
+### Core (`src/core/`)
+
+```
+lifecycle.ts          start/stop/restart — branche openclaw (systemd) vs claw-runtime (PID)
+health.ts             check santé — branche openclaw (gateway HTTP) vs claw-runtime (PID file)
+provisioner.ts        création instance — branche openclaw vs claw-runtime
+registry.ts           façade sur 7 repositories
+registry-types.ts     types InstanceRecord, AgentRecord, etc.
+repositories/         7 repositories SQLite
+config-reader.ts      lecture openclaw.json + .env
+config-writer.ts      écriture + classification hot-reload / restart
+agent-sync.ts         synchronisation agents depuis disque
+blueprint-deployer.ts déploiement blueprint lors de la création
+```
+
+### Runtime (`src/runtime/`) — moteur claw-runtime
+
+```
+bus/          getBus(slug), disposeBus(), events Zod types
+provider/     resolveModel(providerId, modelId), 5 providers, auth-profiles rotation
+permission/   ruleset last-match-wins, allow/deny/ask
+config/       RuntimeConfig schema Zod, parseRuntimeConfig(), createDefaultRuntimeConfig()
+session/      createSession(), runPromptLoop() → {text,tokens,costUsd,steps,messageId}
+              compaction auto, system-prompt builder
+tool/         Tool.define() factory, registry (11 built-ins + MCP)
+              built-in: read,write,edit,bash,glob,grep,web-fetch,question,todo,skill,task
+agent/        7 built-ins (build,plan,explore,general,compaction,title,summary)
+              initAgentRegistry(config.agents), getAgent(), defaultAgentName()
+plugin/       8 hooks V1 (agent.before/end, tool.before/after, message.recv/send, session.start/end)
+mcp/          stdio + HTTP remote, sanitize tool IDs
+channel/      Channel interface, router, web-chat WS, pairing codes 8-char
+              telegram: polling + MarkdownV2 formatter
+engine/       ClawRuntime state machine, channel-factory, plugin-wiring
+              config-loader: loadRuntimeConfig(), saveRuntimeConfig(), ensureRuntimeConfig()
+```
+
+### Dashboard (`src/dashboard/`)
+
+```
+server.ts          Point d'entrée Hono — middleware auth, rate limiting, headers sécurité
+monitor.ts         WebSocket monitor (health_update toutes les 10s)
+rate-limit.ts      Rate limiter par IP
+route-deps.ts      Interface RouteDeps + helper apiError
+token-cache.ts     Cache des gateway tokens
+routes/
+  instances/
+    index.ts       Orchestrateur routes instances
+    lifecycle.ts   POST start/stop/restart → Lifecycle
+    runtime.ts     GET/POST runtime status/sessions/chat
+    config.ts      GET/PATCH config OpenClaw
+    devices.ts     Gestion devices
+    agents/        CRUD agents + fichiers + liens
+  blueprints.ts
+  teams.ts
+  system.ts
+```
+
+### Lib (`src/lib/`)
+
+```
+platform.ts    getStateDir(), getRuntimePidPath(), getRuntimePid(), isRuntimeRunning()
+               getServiceManager(), isDocker(), getLaunchdPlistPath()
+constants.ts   ports, timeouts, chemins
+errors.ts      InstanceNotFoundError, GatewayUnhealthyError, etc.
+logger.ts      logger.info/warn/error/success/step/dim
+poll.ts        pollUntilReady()
+shell.ts       shellEscape()
+xdg.ts         résolution XDG_RUNTIME_DIR
+```
 
 ---
 
@@ -112,54 +179,32 @@ src/core/
 
 ### 1. Initialisation (`init`)
 
-Commande de premier démarrage. Vérifie les prérequis (Node, OpenClaw installé), crée la structure `~/.claw-pilot/`, initialise la DB, génère le dashboard token, enregistre le serveur local.
-
-```bash
-claw-pilot init
-```
+Vérifie les prérequis, crée `~/.claw-pilot/`, initialise la DB, génère le dashboard token, enregistre le serveur local.
 
 ### 2. Création d'instance (`create`)
 
-Provisionne une nouvelle instance OpenClaw de A à Z :
+Wizard interactif — choisit d'abord le type (`openclaw` ou `claw-runtime`), puis :
 
-1. **Wizard interactif** — slug, display name, port (auto-suggéré), provider AI, API key, agents initiaux, blueprint optionnel
-2. **Génération de config** — `openclaw.json` + `.env` (API key) dans `~/.openclaw-<slug>/`
-3. **Génération du service systemd** — `~/.config/systemd/user/openclaw-<slug>.service`
-4. **Démarrage** — `systemctl --user start`, poll santé gateway (timeout 30s)
-5. **Device pairing** — connexion automatique au gateway + auto-approbation
-6. **Déploiement blueprint** — si blueprint sélectionné, déploie les agents du template
-7. **Enregistrement DB** — instance, agents, port réservé, événement `created`
+**Pour openclaw :**
+1. Slug, display name, port, provider AI, API key, agents initiaux, blueprint optionnel
+2. Génération `openclaw.json` + `.env` dans `~/.openclaw-<slug>/`
+3. Génération service systemd `~/.config/systemd/user/openclaw-<slug>.service`
+4. Démarrage + poll santé gateway (timeout 30s)
+5. Device pairing + déploiement blueprint
 
-```bash
-claw-pilot create          # wizard interactif
-```
+**Pour claw-runtime :**
+1. Slug, display name, port, provider AI, API key
+2. Génération `runtime.json` dans `~/.openclaw-<slug>/`
+3. Pas de service systemd — lifecycle par PID file
 
-**Rollback** : en cas d'échec partiel, les artefacts créés (fichiers, service, entrée DB) sont supprimés.
+### 3. Cycle de vie (`start`, `stop`, `restart`, `destroy`)
 
-### 3. Découverte (`status`, `list`)
+Le `Lifecycle` branche automatiquement selon `instance_type` :
 
-Scan du système pour détecter les instances existantes non encore enregistrées :
-
-- Scan des répertoires `~/.openclaw-<slug>/` (présence de `openclaw.json`)
-- Scan des unités systemd actives (`openclaw-*.service`)
-- Réconciliation avec le registre : nouvelles / supprimées / inchangées
-- Mise à jour de l'état (`running` / `stopped` / `error` / `unknown`)
-
-```bash
-claw-pilot list            # liste toutes les instances
-claw-pilot status [slug]   # état détaillé
-```
-
-### 4. Cycle de vie (`start`, `stop`, `restart`, `destroy`)
-
-Opérations sur les services systemd (ou launchd sur macOS) :
-
-| Commande | Action |
-|---|---|
-| `start <slug>` | `systemctl start` + poll santé + mise à jour DB |
-| `stop <slug>` | `systemctl stop` + mise à jour DB |
-| `restart <slug>` | stop + start |
-| `destroy <slug>` | stop + disable + suppression fichiers + libération port + suppression DB |
+| instance_type | start | stop | restart |
+|---|---|---|---|
+| `openclaw` | systemctl start + poll gateway | systemctl stop | systemctl restart + poll |
+| `claw-runtime` | spawn daemon + poll PID file | SIGTERM + poll | stop + start |
 
 ```bash
 claw-pilot start default
@@ -168,203 +213,200 @@ claw-pilot restart default
 claw-pilot destroy default
 ```
 
-### 5. Logs (`logs`)
+### 4. Santé (`status`, `list`)
 
-Affiche les logs systemd de l'instance via `journalctl --user -u openclaw-<slug>.service`.
+Le `HealthChecker` branche selon `instance_type` :
+
+| instance_type | systemd | gateway | state |
+|---|---|---|---|
+| `openclaw` | is-active | HTTP /health | running si gateway healthy |
+| `claw-runtime` | unknown | unknown | running si PID vivant |
+
+### 5. Commandes claw-runtime (`runtime`)
 
 ```bash
-claw-pilot logs default
-claw-pilot logs default --follow
+claw-pilot runtime start <slug>              # foreground (SIGTERM pour arrêter)
+claw-pilot runtime start <slug> --daemon     # daemon détaché (écrit PID file)
+claw-pilot runtime stop <slug>               # SIGTERM + poll arrêt
+claw-pilot runtime restart <slug>            # stop + start --daemon
+claw-pilot runtime status <slug>             # état + config
+claw-pilot runtime chat <slug>               # REPL interactif
+claw-pilot runtime chat <slug> --once "msg"  # mode non-interactif (CI/scripts)
+claw-pilot runtime config init <slug>        # crée runtime.json avec defaults
 ```
 
 ### 6. Token gateway (`token`)
 
-Lit le gateway token depuis `<stateDir>/.env` et l'expose pour un login zero-friction dans le Control UI OpenClaw.
-
 ```bash
 claw-pilot token default          # token brut
-claw-pilot token default --url    # URL avec #token= (hash fragment)
+claw-pilot token default --url    # URL avec #token=
 claw-pilot token default --open   # ouvre le navigateur
 ```
 
 ### 7. Export / Import d'équipe (`team`)
-
-Sérialise la configuration d'une équipe d'agents (identités, fichiers workspace, liens spawn/A2A) dans un fichier `.team.yaml` portable.
 
 ```bash
 claw-pilot team export default --output team.yaml
 claw-pilot team import default --file team.yaml
 ```
 
-**Format** : YAML versionné (`version: "1"`). Inclut pour chaque agent : `agent_id`, `name`, `model`, `role`, fichiers workspace (AGENTS.md, SOUL.md, TOOLS.md, IDENTITY.md, USER.md, HEARTBEAT.md), liens spawn.
-
 ### 8. Diagnostic (`doctor`)
 
-Vérifie l'environnement : Node.js, OpenClaw installé, systemd disponible, DB accessible, instances en état cohérent.
-
-```bash
-claw-pilot doctor
-```
+Vérifie Node.js, OpenClaw installé, systemd, DB, instances en état cohérent.
 
 ### 9. Service systemd du dashboard (`service`)
 
-Gère le service systemd du dashboard claw-pilot lui-même.
-
 ```bash
-claw-pilot service install    # installe et active le service
-claw-pilot service uninstall  # désinstalle
-claw-pilot service status     # état du service
+claw-pilot service install
+claw-pilot service uninstall
+claw-pilot service status
 ```
 
 ---
 
 ## Dashboard web
 
-Serveur HTTP/WS Hono sur le port 19000. Authentification par token Bearer (`__CP_TOKEN__`, 64 chars hex, stocké dans `~/.claw-pilot/dashboard-token`).
+Serveur HTTP/WS Hono sur le port 19000. Auth par token Bearer (`__CP_TOKEN__`, 64 chars hex).
 
 ### Sécurité
 
 | Mécanisme | Détail |
 |---|---|
-| **Auth HTTP** | `Authorization: Bearer <token>` — comparaison timing-safe (`crypto.timingSafeEqual`) |
-| **Auth WebSocket** | `?token=<token>` en query param — même comparaison timing-safe |
-| **Rate limiting** | 60 req/min par IP sur `/api/*` · 10 req/min sur `POST /api/instances` · 1 req/5min sur `POST /api/openclaw/update` |
-| **Headers sécurité** | CSP, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` |
-| **Validation** | `ConfigPatch` validé avec Zod `.strict()` · taille upload blueprint limitée à 1 MB |
-| **TokenCache** | Cache des gateway tokens en mémoire — évite N lectures disque par appel API |
-| **Healthcheck public** | `GET /health` sans auth — pour systemd, load balancers, monitoring |
+| **Auth HTTP** | `Authorization: Bearer <token>` — comparaison timing-safe |
+| **Auth WebSocket** | `?token=<token>` en query param |
+| **Rate limiting** | 60 req/min par IP sur `/api/*` · 10 req/min sur `POST /api/instances` |
+| **Headers sécurité** | CSP, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` |
+| **Validation** | Zod `.strict()` sur les patches config |
+| **TokenCache** | Cache gateway tokens en mémoire |
+| **Healthcheck public** | `GET /health` sans auth |
 
-### Routing côté client
-
-Navigation hash-based depuis v0.7.1 — le browser back/forward et le refresh fonctionnent :
+### Routing côté client (hash-based)
 
 | Hash URL | Vue |
 |---|---|
-| `#/` ou `#/instances` | Vue Instances (accueil) |
+| `#/` ou `#/instances` | Vue Instances |
 | `#/instances/:slug/builder` | Constructeur d'agents |
 | `#/instances/:slug/settings` | Settings instance |
 | `#/blueprints` | Vue Blueprints |
 | `#/blueprints/:id/builder` | Blueprint Builder |
 
-### Vues
-
-| Vue | Composant | Description |
-|---|---|---|
-| **Instances** | `cp-cluster-view` | Grille de cards. Bannière update OpenClaw. Création d'instance. |
-| **Détail instance** | `cp-instance-detail` | Infos complètes, actions (start/stop/restart/delete), agents, conversations récentes. |
-| **Settings instance** | `cp-instance-settings` | Édition de la config OpenClaw (General, Providers, Agents, Telegram, Plugins, Gateway). |
-| **Agents Builder** | `cp-agents-builder` | Canvas drag & drop des agents, liens spawn/A2A, panneau détail + édition fichiers. |
-| **Blueprints** | `cp-blueprints-view` | Grille de templates d'équipes. |
-| **Blueprint Builder** | `cp-blueprint-builder` | Même canvas que Agents Builder, contexte blueprint. |
-
-Voir [ux-design.md](./ux-design.md) pour le détail visuel et comportemental de chaque vue.
-
 ### API REST (principales routes)
 
 | Méthode | Route | Rôle |
 |---|---|---|
-| `GET` | `/api/instances` | Liste des instances avec état santé |
-| `POST` | `/api/instances` | Créer une instance (provisioning complet) |
+| `GET` | `/api/instances` | Liste instances avec état santé |
+| `POST` | `/api/instances` | Créer une instance |
 | `POST` | `/api/instances/:slug/start` | Démarrer |
 | `POST` | `/api/instances/:slug/stop` | Arrêter |
 | `POST` | `/api/instances/:slug/restart` | Redémarrer |
 | `DELETE` | `/api/instances/:slug` | Détruire |
-| `GET` | `/api/instances/:slug/config` | Lire la config OpenClaw structurée |
-| `PATCH` | `/api/instances/:slug/config` | Modifier la config (hot-reload ou restart) |
-| `GET` | `/api/instances/:slug/agents` | Agents de l'instance (builder) |
+| `GET` | `/api/instances/:slug/config` | Lire config OpenClaw |
+| `PATCH` | `/api/instances/:slug/config` | Modifier config |
+| `GET` | `/api/instances/:slug/agents` | Agents de l'instance |
 | `POST` | `/api/instances/:slug/agents` | Créer un agent |
-| `DELETE` | `/api/instances/:slug/agents/:id` | Supprimer un agent |
-| `POST` | `/api/instances/:slug/sync` | Resynchroniser agents depuis le disque |
-| `GET/PUT` | `/api/instances/:slug/agents/:id/files/:filename` | Lire/écrire un fichier workspace |
-| `GET/PUT` | `/api/instances/:slug/agents/:id/spawn-links` | Liens spawn |
+| `GET/PUT` | `/api/instances/:slug/agents/:id/files/:filename` | Fichiers workspace |
 | `GET/POST` | `/api/instances/:slug/team` | Export/import équipe |
-| `GET` | `/api/blueprints` | Liste des blueprints |
-| `POST` | `/api/blueprints` | Créer un blueprint |
-| `DELETE` | `/api/blueprints/:id` | Supprimer un blueprint |
-| `GET` | `/api/openclaw/update-status` | État update OpenClaw (version courante + registry) |
-| `POST` | `/api/openclaw/update` | Déclencher la mise à jour OpenClaw |
-| `GET` | `/api/providers` | Catalogue des providers AI disponibles |
+| `GET` | `/api/instances/:slug/runtime/status` | État runtime claw-runtime |
+| `GET` | `/api/instances/:slug/runtime/sessions` | Sessions actives |
+| `GET` | `/api/instances/:slug/runtime/sessions/:id/messages` | Messages d'une session |
+| `POST` | `/api/instances/:slug/runtime/chat` | Envoyer un message |
+| `GET` | `/api/blueprints` | Liste blueprints |
+| `POST` | `/api/blueprints` | Créer blueprint |
+| `GET` | `/api/providers` | Catalogue providers AI |
 | `GET` | `/api/port/suggest` | Suggérer un port libre |
-| `GET` | `/health` | Healthcheck public (sans auth) — `{ ok: true, service: "claw-pilot" }` |
+| `GET` | `/health` | Healthcheck public |
 
 ### WebSocket Monitor
 
-Connexion WS sur `/ws`. Diffuse des `health_update` toutes les 10s avec l'état de chaque instance (systemd + gateway + agentCount + telegram).
+Connexion WS sur `/ws`. Diffuse des `health_update` toutes les 10s avec l'état de chaque instance.
+
+Pour les instances `claw-runtime`, le `state` est dérivé du PID file (pas de gateway HTTP).
 
 ---
 
-## Gestion de la configuration OpenClaw
+## Moteur claw-runtime
 
-La vue Settings (`cp-instance-settings`) permet d'éditer `openclaw.json` et `.env` sans SSH. Le backend (`config-updater.ts`) :
+### Config (`runtime.json`)
 
-1. Lit `openclaw.json` + `.env` de l'instance
-2. Applique le patch (PATCH partiel, seuls les champs modifiés)
-3. Classifie les changements : **hot-reload** (Telegram bot token, certains paramètres) vs **restart requis** (plugins, gateway, providers)
-4. Redémarre l'instance si nécessaire, sinon envoie un signal de reload
+Stockée dans `<stateDir>/runtime.json`. Schéma Zod `RuntimeConfig` :
 
-**Champs éditables** : display name, default model, tools profile, providers (add/remove/update key), agent defaults (workspace, subagents, compaction, heartbeat), Telegram (enabled, bot token, policies, stream mode), mem0 (enabled, URLs), gateway (reload mode, debounce).
+```typescript
+{
+  defaultModel: "anthropic/claude-sonnet-4-5",  // "provider/model"
+  agents: RuntimeAgentConfig[],
+  mcpEnabled: boolean,
+  mcpServers: RuntimeMcpServerConfig[],
+  webChat: { enabled: boolean, port: number },
+  telegram: { enabled: boolean, botToken?: string, ... },
+  permissions: PermissionRule[],
+}
+```
 
----
+### Providers supportés
 
-## Gestion des agents
+| Provider | ID | Modèles |
+|---|---|---|
+| Anthropic | `anthropic` | claude-* |
+| OpenAI | `openai` | gpt-*, o1-*, o3-* |
+| Google | `google` | gemini-* |
+| Ollama | `ollama` | llama3, mistral, etc. |
+| OpenRouter | `openrouter` | tout modèle OpenRouter |
 
-### Agents Builder (canvas)
+### Lifecycle daemon
 
-- Cards d'agents positionnées librement (drag & drop, position persistée en DB)
-- Liens SVG entre agents (spawn normal / pending-add / pending-remove)
-- Panneau détail latéral : infos, liens A2A/spawn éditables, fichiers workspace (lecture + édition Markdown)
-- Sync depuis disque : relit `openclaw.json` + fichiers workspace, met à jour la DB
+```
+runtime start --daemon <slug>
+  → spawn(process.execPath, ["runtime", "start", slug], { detached: true })
+  → child écrit PID dans <stateDir>/runtime.pid
+  → parent poll PID file (5s timeout)
 
-### Fichiers workspace éditables
+runtime stop <slug>
+  → lit PID file → process.kill(pid, "SIGTERM")
+  → poll jusqu'à disparition du process (5s timeout)
+  → supprime PID file si encore présent
 
-AGENTS.md, SOUL.md, TOOLS.md, IDENTITY.md, USER.md, HEARTBEAT.md. Écriture directe dans `<stateDir>/workspaces/<workspace>/`.
+runtime start (foreground)
+  → écrit PID file au démarrage
+  → supprime PID file à l'arrêt (SIGTERM/SIGINT)
+```
 
-### Blueprints
+### Channels
 
-Templates d'équipes réutilisables (sans instance live). Même canvas que Agents Builder. Déployables lors de la création d'une instance.
+| Channel | Protocole | Config |
+|---|---|---|
+| Web Chat | WebSocket | `webChat.enabled`, `webChat.port` |
+| Telegram | Polling HTTPS | `telegram.enabled`, `telegram.botToken` |
+| Device pairing | Codes 8-char | `rt_pairing_codes` en DB |
 
----
+### Outils built-in (11)
 
-## Mise à jour OpenClaw
-
-Détection automatique de version disponible (npm registry) + mise à jour en un clic depuis le dashboard.
-
-1. **Détection** : `openclaw --version` (version courante) + `GET https://registry.npmjs.org/openclaw/latest` (dernière version)
-2. **Bannière** : affichée dans la vue Instances si `latestVersion > currentVersion`
-3. **Mise à jour** : `npm install -g openclaw@latest --omit=optional` (timeout 300s, shell exec pour résolution PATH)
-4. **Restart** : toutes les instances `running` sont redémarrées après l'install
-5. **Polling** : pendant l'update, le dashboard poll toutes les 2s pour mettre à jour la bannière
+`read`, `write`, `edit`, `bash`, `glob`, `grep`, `web-fetch`, `question`, `todo`, `skill`, `task` (sub-agent spawning)
 
 ---
 
 ## Architecture tokens
 
-Deux tokens distincts, rôles différents :
-
 | Token | Nom | Taille | Stockage | Rôle |
 |---|---|---|---|---|
-| **Gateway token** | `OPENCLAW_GW_AUTH_TOKEN` | 48 chars hex | `<stateDir>/.env` | Authentifie les connexions Control UI WebSocket (par instance) |
-| **Dashboard token** | `__CP_TOKEN__` | 64 chars hex | `~/.claw-pilot/dashboard-token` | Authentifie l'API REST du dashboard claw-pilot (global) |
-
-Le dashboard injecte automatiquement le gateway token dans les liens Control UI (`#token=<token>` en hash fragment).
-
----
-
-## Internationalisation
-
-6 langues supportées : anglais, français, allemand, espagnol, italien, portugais. Implémentation via `@lit/localize` (runtime, chargement dynamique par chunk). Voir [i18n.md](./i18n.md).
+| **Gateway token** (openclaw) | `OPENCLAW_GW_AUTH_TOKEN` | 48 chars hex | `<stateDir>/.env` | Authentifie Control UI WebSocket |
+| **Dashboard token** | `__CP_TOKEN__` | 64 chars hex | `~/.claw-pilot/dashboard-token` | Authentifie API REST dashboard |
 
 ---
 
 ## Compatibilité plateforme
 
-| Gestionnaire de services | Plateforme | Implémentation |
-|---|---|---|
-| **systemd --user** | Linux (VM01) | `systemctl --user start/stop/...` |
-| **launchd** | macOS (dev local) | `launchctl load/unload` + plists |
-
-L'abstraction `ServerConnection` isole toutes les opérations shell/fs. Prévu pour une future implémentation SSH (multi-serveur).
+| Gestionnaire | Plateforme | Instances openclaw | Instances claw-runtime |
+|---|---|---|---|
+| **systemd --user** | Linux (VM01) | `systemctl --user start/stop/...` | PID file |
+| **launchd** | macOS (dev local) | `launchctl load/unload` | PID file |
+| **Docker** | Container | no-op (supervisord externe) | PID file |
 
 ---
 
-*Mis à jour : 2026-03-03 - v0.7.2 : architecture repositories, route modules, sécurité dashboard, routing hash-based, modèle de données complet*
+## Internationalisation
+
+6 langues : anglais, français, allemand, espagnol, italien, portugais. Via `@lit/localize` (runtime, chargement dynamique). Voir [i18n.md](./i18n.md).
+
+---
+
+*Mis à jour : 2026-03-12 - v0.19.0 : claw-runtime phases 0–8 (moteur natif, lifecycle daemon, cohabitation openclaw/claw-runtime)*
