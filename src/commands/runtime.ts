@@ -1,4 +1,5 @@
 // src/commands/runtime.ts
+import * as readline from "node:readline";
 import { Command } from "commander";
 import chalk from "chalk";
 import { logger } from "../lib/logger.js";
@@ -11,6 +12,12 @@ import {
   ensureRuntimeConfig,
   runtimeConfigExists,
   createDefaultRuntimeConfig,
+  createSession,
+  listSessions,
+  resolveModel,
+  defaultAgentName,
+  getAgent,
+  runPromptLoop,
   type RuntimeAgentConfig,
   type RuntimeMcpServerConfig,
 } from "../runtime/index.js";
@@ -217,6 +224,226 @@ function runtimeStartCommand(): Command {
 }
 
 // ---------------------------------------------------------------------------
+// runtime chat <slug>
+// ---------------------------------------------------------------------------
+
+function runtimeChatCommand(): Command {
+  return new Command("chat")
+    .description("Start an interactive chat session with a claw-runtime agent")
+    .argument("<slug>", "Instance slug")
+    .option("--agent <id>", "Agent ID to use (default: auto-detected from config)")
+    .option("--model <model>", "Override model (provider/model format)")
+    .option("--session <id>", "Resume an existing session by ID")
+    .option("--ensure-config", "Create runtime.json with defaults if it does not exist")
+    .action(
+      async (
+        slug: string,
+        opts: { agent?: string; model?: string; session?: string; ensureConfig?: boolean },
+      ) => {
+        const stateDir = getStateDir(slug);
+
+        // Load config
+        let config;
+        if (opts.ensureConfig) {
+          config = ensureRuntimeConfig(stateDir);
+        } else {
+          if (!runtimeConfigExists(stateDir)) {
+            logger.error(`No runtime.json found for instance "${slug}".`);
+            logger.error(`Run: claw-pilot runtime config init ${slug}`);
+            process.exit(1);
+          }
+          try {
+            config = loadRuntimeConfig(stateDir);
+          } catch (err) {
+            logger.error(
+              `Invalid runtime.json: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            process.exit(1);
+          }
+        }
+
+        // Init agent registry
+        const { initAgentRegistry } = await import("../runtime/agent/registry.js");
+        initAgentRegistry(config.agents);
+
+        // Resolve agent
+        const agentId = opts.agent ?? defaultAgentName();
+        const agentInfo = getAgent(agentId);
+        if (!agentInfo) {
+          logger.error(`Agent "${agentId}" not found.`);
+          process.exit(1);
+        }
+
+        // Build RuntimeAgentConfig from agent info + config override
+        const agentCfg: RuntimeAgentConfig = config.agents.find((a) => a.id === agentId) ?? {
+          id: agentInfo.name,
+          name: agentInfo.name,
+          model: opts.model ?? agentInfo.model ?? config.defaultModel,
+          permissions: agentInfo.permission ?? [],
+          maxSteps: agentInfo.steps ?? 20,
+          allowSubAgents: true,
+          toolProfile: "coding",
+          isDefault: false,
+        };
+
+        // Model override
+        const modelStr = opts.model ?? agentCfg.model;
+        const slashIdx = modelStr.indexOf("/");
+        if (slashIdx === -1) {
+          logger.error(`Invalid model format "${modelStr}" — expected "provider/model".`);
+          process.exit(1);
+        }
+        const providerId = modelStr.slice(0, slashIdx);
+        const modelId = modelStr.slice(slashIdx + 1);
+
+        let resolvedModelObj;
+        try {
+          resolvedModelObj = resolveModel(providerId, modelId);
+        } catch (err) {
+          logger.error(
+            `Cannot resolve model "${modelStr}": ${err instanceof Error ? err.message : String(err)}`,
+          );
+          process.exit(1);
+        }
+
+        // Open DB
+        const db = initDatabase(getDbPath());
+
+        // Create or resume session
+        let session;
+        if (opts.session) {
+          const { getSession } = await import("../runtime/session/session.js");
+          session = getSession(db, opts.session);
+          if (!session) {
+            logger.error(`Session "${opts.session}" not found.`);
+            db.close();
+            process.exit(1);
+          }
+          logger.info(`Resuming session ${session.id}`);
+        } else {
+          session = createSession(db, { instanceSlug: slug, agentId, channel: "cli" });
+          logger.info(`New session: ${session.id}`);
+        }
+
+        // Print header
+        console.log(chalk.bold(`\nclaw-runtime chat — ${slug}`));
+        console.log(
+          `  Agent : ${chalk.cyan(agentId)}   Model : ${chalk.cyan(modelStr)}   Session : ${chalk.dim(session.id)}`,
+        );
+        console.log(chalk.dim("  Type your message and press Enter. Ctrl+C or /exit to quit.\n"));
+
+        // List previous messages if resuming
+        if (opts.session) {
+          const { listMessages } = await import("../runtime/session/message.js");
+          const { listParts } = await import("../runtime/session/part.js");
+          const msgs = listMessages(db, session.id);
+          for (const msg of msgs) {
+            const parts = listParts(db, msg.id);
+            const text = parts
+              .filter((p) => p.type === "text")
+              .map((p) => p.content ?? "")
+              .join("");
+            if (!text) continue;
+            if (msg.role === "user") {
+              console.log(chalk.bold("You: ") + text);
+            } else {
+              console.log(chalk.green("Agent: ") + text);
+            }
+          }
+          if (msgs.length > 0) console.log("");
+        }
+
+        // REPL loop
+        const rl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout,
+          terminal: true,
+          prompt: chalk.bold("You: "),
+        });
+
+        rl.prompt();
+
+        rl.on("line", async (line: string) => {
+          const input = line.trim();
+          if (!input) {
+            rl.prompt();
+            return;
+          }
+
+          // Built-in commands
+          if (input === "/exit" || input === "/quit") {
+            console.log(chalk.dim("\nSession saved. Goodbye!"));
+            rl.close();
+            db.close();
+            process.exit(0);
+          }
+
+          if (input === "/sessions") {
+            const sessions = listSessions(db, slug, { state: "active", limit: 10 });
+            console.log(chalk.bold("\nActive sessions:"));
+            for (const s of sessions) {
+              const marker = s.id === session.id ? chalk.green(" ← current") : "";
+              console.log(
+                `  ${chalk.dim(s.id)}  agent=${s.agentId}  ${chalk.dim(s.createdAt.toISOString())}${marker}`,
+              );
+            }
+            console.log("");
+            rl.prompt();
+            return;
+          }
+
+          if (input === "/help") {
+            console.log(chalk.bold("\nCommands:"));
+            console.log("  /exit, /quit  — end the session");
+            console.log("  /sessions     — list active sessions");
+            console.log("  /help         — show this help");
+            console.log("");
+            rl.prompt();
+            return;
+          }
+
+          // Pause readline while the agent is thinking
+          rl.pause();
+          process.stdout.write(chalk.green("Agent: "));
+
+          try {
+            const result = await runPromptLoop({
+              db,
+              instanceSlug: slug,
+              sessionId: session.id,
+              userText: input,
+              agentConfig: agentCfg,
+              resolvedModel: resolvedModelObj,
+              workDir: stateDir,
+            });
+
+            // runPromptLoop streams internally but we print the final text here
+            // (streaming to stdout is handled via bus events in a future step)
+            console.log(result.text);
+            console.log(
+              chalk.dim(
+                `  [${result.tokens.input}→${result.tokens.output} tokens, ${result.steps} step(s), $${result.costUsd.toFixed(6)}]`,
+              ),
+            );
+            console.log("");
+          } catch (err) {
+            console.log(chalk.red(`\n[Error] ${err instanceof Error ? err.message : String(err)}`));
+          }
+
+          rl.resume();
+          rl.prompt();
+        });
+
+        rl.on("close", () => {
+          console.log(chalk.dim("\nSession saved. Goodbye!"));
+          db.close();
+          process.exit(0);
+        });
+      },
+    );
+}
+
+// ---------------------------------------------------------------------------
 // runtime (root command)
 // ---------------------------------------------------------------------------
 
@@ -227,6 +454,7 @@ export function runtimeCommand(): Command {
 
   cmd.addCommand(runtimeStartCommand());
   cmd.addCommand(runtimeStatusCommand());
+  cmd.addCommand(runtimeChatCommand());
   cmd.addCommand(runtimeConfigCommand());
 
   return cmd;

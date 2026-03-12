@@ -1,0 +1,231 @@
+// src/dashboard/routes/instances/runtime.ts
+// Routes: GET runtime/status, GET runtime/sessions, POST runtime/chat
+import type { Hono } from "hono";
+import type { RouteDeps } from "../../route-deps.js";
+import { apiError } from "../../route-deps.js";
+import { instanceGuard } from "../../../lib/guards.js";
+import { getStateDir } from "../../../lib/platform.js";
+import {
+  runtimeConfigExists,
+  loadRuntimeConfig,
+  listSessions,
+  listMessages,
+  listParts,
+  resolveModel,
+  runPromptLoop,
+  createSession,
+  initAgentRegistry,
+  defaultAgentName,
+  getAgent,
+  type RuntimeAgentConfig,
+} from "../../../runtime/index.js";
+
+export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
+  const { registry, db } = deps;
+
+  // ---------------------------------------------------------------------------
+  // GET /api/instances/:slug/runtime/status
+  // Returns runtime config + whether runtime.json exists
+  // ---------------------------------------------------------------------------
+  app.get("/api/instances/:slug/runtime/status", (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
+
+    const stateDir = getStateDir(slug);
+    const hasConfig = runtimeConfigExists(stateDir);
+
+    if (!hasConfig) {
+      return c.json({ slug, hasConfig: false, config: null });
+    }
+
+    let config;
+    try {
+      config = loadRuntimeConfig(stateDir);
+    } catch (err) {
+      return apiError(
+        c,
+        500,
+        "RUNTIME_CONFIG_INVALID",
+        err instanceof Error ? err.message : "Failed to load runtime.json",
+      );
+    }
+
+    return c.json({ slug, hasConfig: true, config });
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /api/instances/:slug/runtime/sessions
+  // List active runtime sessions for an instance
+  // ---------------------------------------------------------------------------
+  app.get("/api/instances/:slug/runtime/sessions", (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
+
+    const stateParam = c.req.query("state") as "active" | "archived" | undefined;
+    const limitParam = c.req.query("limit");
+    const limit = limitParam ? parseInt(limitParam, 10) : 50;
+
+    const sessions = listSessions(db, slug, {
+      state: stateParam ?? "active",
+      limit: isNaN(limit) ? 50 : limit,
+    });
+
+    return c.json({ sessions });
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /api/instances/:slug/runtime/sessions/:sessionId/messages
+  // List messages for a session (with parts)
+  // ---------------------------------------------------------------------------
+  app.get("/api/instances/:slug/runtime/sessions/:sessionId/messages", (c) => {
+    const slug = c.req.param("slug");
+    const sessionId = c.req.param("sessionId");
+    const instance = registry.getInstance(slug);
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
+
+    const messages = listMessages(db, sessionId);
+    const enriched = messages.map((msg) => ({
+      ...msg,
+      parts: listParts(db, msg.id),
+    }));
+
+    return c.json({ messages: enriched });
+  });
+
+  // ---------------------------------------------------------------------------
+  // POST /api/instances/:slug/runtime/chat
+  // Send a message to a runtime agent and get a response
+  // Body: { message: string, agentId?: string, sessionId?: string, model?: string }
+  // ---------------------------------------------------------------------------
+  app.post("/api/instances/:slug/runtime/chat", async (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
+
+    let body: { message?: string; agentId?: string; sessionId?: string; model?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return apiError(c, 400, "INVALID_JSON", "Request body must be valid JSON");
+    }
+
+    if (!body.message || typeof body.message !== "string" || !body.message.trim()) {
+      return apiError(c, 400, "MISSING_MESSAGE", "Field 'message' is required");
+    }
+
+    const stateDir = getStateDir(slug);
+    if (!runtimeConfigExists(stateDir)) {
+      return apiError(
+        c,
+        404,
+        "RUNTIME_CONFIG_NOT_FOUND",
+        `No runtime.json found for instance "${slug}". Run: claw-pilot runtime config init ${slug}`,
+      );
+    }
+
+    let config;
+    try {
+      config = loadRuntimeConfig(stateDir);
+    } catch (err) {
+      return apiError(
+        c,
+        500,
+        "RUNTIME_CONFIG_INVALID",
+        err instanceof Error ? err.message : "Failed to load runtime.json",
+      );
+    }
+
+    // Init agent registry
+    initAgentRegistry(config.agents);
+
+    // Resolve agent
+    const agentId = body.agentId ?? defaultAgentName();
+    const agentInfo = getAgent(agentId);
+    if (!agentInfo) {
+      return apiError(c, 404, "AGENT_NOT_FOUND", `Agent "${agentId}" not found`);
+    }
+
+    // Build RuntimeAgentConfig
+    const agentCfg: RuntimeAgentConfig = config.agents.find((a) => a.id === agentId) ?? {
+      id: agentInfo.name,
+      name: agentInfo.name,
+      model: body.model ?? agentInfo.model ?? config.defaultModel,
+      permissions: agentInfo.permission ?? [],
+      maxSteps: agentInfo.steps ?? 20,
+      allowSubAgents: true,
+      toolProfile: "coding",
+      isDefault: false,
+    };
+
+    // Resolve model
+    const modelStr = body.model ?? agentCfg.model;
+    const slashIdx = modelStr.indexOf("/");
+    if (slashIdx === -1) {
+      return apiError(
+        c,
+        400,
+        "INVALID_MODEL",
+        `Invalid model format "${modelStr}" — expected "provider/model"`,
+      );
+    }
+
+    let resolvedModelObj;
+    try {
+      resolvedModelObj = resolveModel(modelStr.slice(0, slashIdx), modelStr.slice(slashIdx + 1));
+    } catch (err) {
+      return apiError(
+        c,
+        400,
+        "MODEL_RESOLUTION_FAILED",
+        err instanceof Error ? err.message : `Cannot resolve model "${modelStr}"`,
+      );
+    }
+
+    // Create or resume session
+    let session;
+    if (body.sessionId) {
+      const { getSession } = await import("../../../runtime/session/session.js");
+      session = getSession(db, body.sessionId);
+      if (!session || session.instanceSlug !== slug) {
+        return apiError(c, 404, "SESSION_NOT_FOUND", `Session "${body.sessionId}" not found`);
+      }
+    } else {
+      session = createSession(db, { instanceSlug: slug, agentId, channel: "api" });
+    }
+
+    // Run prompt loop
+    try {
+      const result = await runPromptLoop({
+        db,
+        instanceSlug: slug,
+        sessionId: session.id,
+        userText: body.message.trim(),
+        agentConfig: agentCfg,
+        resolvedModel: resolvedModelObj,
+        workDir: stateDir,
+      });
+
+      return c.json({
+        sessionId: session.id,
+        messageId: result.messageId,
+        text: result.text,
+        tokens: result.tokens,
+        costUsd: result.costUsd,
+        steps: result.steps,
+      });
+    } catch (err) {
+      return apiError(
+        c,
+        500,
+        "PROMPT_LOOP_FAILED",
+        err instanceof Error ? err.message : "Agent execution failed",
+      );
+    }
+  });
+}
