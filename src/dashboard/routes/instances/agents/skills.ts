@@ -1,5 +1,6 @@
 // src/dashboard/routes/instances/agents/skills.ts
 // GET /api/instances/:slug/skills — liste les skills disponibles via le gateway OpenClaw
+import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import WebSocket from "ws";
 import type { RouteDeps } from "../../../route-deps.js";
@@ -29,16 +30,28 @@ type SkillStatusResult = Array<{
   disabled: boolean;
 }>;
 
-/** Appel JSON-RPC skills.status via WebSocket (le gateway n'expose pas de HTTP JSON-RPC). */
+type GwFrame =
+  | { type: "res"; id: string; ok: boolean; payload?: unknown; error?: unknown }
+  | { type: "event"; event: string; payload?: unknown }
+  | { type: string; [k: string]: unknown };
+
+/**
+ * Appel JSON-RPC skills.status via WebSocket avec handshake complet du protocole OpenClaw.
+ *
+ * Protocole :
+ *   1. Gateway envoie connect.challenge (event ignoré)
+ *   2. Client envoie connect (auth token, role operator)
+ *   3. Gateway répond hello-ok
+ *   4. Client envoie skills.status
+ *   5. Gateway répond avec la liste des skills
+ */
 function querySkillsViaWs(
   port: number,
   token: string,
   timeoutMs: number,
 ): Promise<SkillStatusResult> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const ws = new WebSocket(`ws://127.0.0.1:${port}`);
 
     let settled = false;
     const settle = (fn: () => void) => {
@@ -53,26 +66,72 @@ function querySkillsViaWs(
       settle(() => reject(new Error("timeout")));
     }, timeoutMs);
 
+    // IDs des deux requêtes séquentielles
+    const connectId = randomUUID();
+    const skillsId = randomUUID();
+
     ws.once("open", () => {
-      ws.send(JSON.stringify({ jsonrpc: "2.0", method: "skills.status", params: {}, id: 1 }));
+      // Étape 1 : envoyer connect après l'ouverture (le challenge arrive en event)
+      ws.send(
+        JSON.stringify({
+          type: "req",
+          id: connectId,
+          method: "connect",
+          params: {
+            minProtocol: 3,
+            maxProtocol: 3,
+            client: { id: "claw-pilot", version: "1.0.0", platform: "linux", mode: "operator" },
+            role: "operator",
+            scopes: ["operator.read"],
+            caps: [],
+            auth: { token },
+            locale: "en-US",
+            userAgent: "claw-pilot",
+          },
+        }),
+      );
     });
 
     ws.on("message", (raw) => {
+      let frame: GwFrame;
       try {
-        const msg = JSON.parse(String(raw)) as {
-          id?: number;
-          result?: SkillStatusResult;
-          error?: unknown;
-        };
-        // Ignorer les push notifications (pas d'id ou id != 1)
-        if (msg.id !== 1) return;
-        if (Array.isArray(msg.result)) {
-          settle(() => resolve(msg.result as SkillStatusResult));
-        } else {
-          settle(() => reject(new Error("unexpected response")));
-        }
+        frame = JSON.parse(String(raw)) as GwFrame;
       } catch {
-        settle(() => reject(new Error("parse error")));
+        return;
+      }
+
+      // Ignorer les events (connect.challenge, etc.)
+      if (frame.type === "event") return;
+
+      if (frame.type === "res") {
+        const res = frame as { type: "res"; id: string; ok: boolean; payload?: unknown };
+
+        if (res.id === connectId) {
+          if (!res.ok) {
+            settle(() => reject(new Error("connect rejected by gateway")));
+            return;
+          }
+          // Étape 2 : handshake OK → envoyer skills.status
+          ws.send(
+            JSON.stringify({
+              type: "req",
+              id: skillsId,
+              method: "skills.status",
+              params: {},
+            }),
+          );
+          return;
+        }
+
+        if (res.id === skillsId) {
+          const payload = res.payload;
+          if (res.ok && Array.isArray(payload)) {
+            settle(() => resolve(payload as SkillStatusResult));
+          } else {
+            settle(() => reject(new Error("unexpected skills.status response")));
+          }
+          return;
+        }
       }
     });
 
