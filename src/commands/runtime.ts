@@ -6,7 +6,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { logger } from "../lib/logger.js";
 import {
-  getStateDir,
+  getRuntimeStateDir,
   getDbPath,
   getRuntimePidPath,
   getRuntimePid,
@@ -46,7 +46,7 @@ function runtimeConfigInitCommand(): Command {
     .option("--telegram", "Enable Telegram channel in the generated config")
     .option("--force", "Overwrite existing runtime.json")
     .action(async (slug: string, opts: { model: string; telegram?: boolean; force?: boolean }) => {
-      const stateDir = getStateDir(slug);
+      const stateDir = getRuntimeStateDir(slug);
 
       if (runtimeConfigExists(stateDir) && !opts.force) {
         logger.warn(`runtime.json already exists in ${stateDir}`);
@@ -88,7 +88,7 @@ function runtimeStatusCommand(): Command {
     .argument("<slug>", "Instance slug")
     .option("--json", "Output as JSON")
     .action(async (slug: string, opts: { json?: boolean }) => {
-      const stateDir = getStateDir(slug);
+      const stateDir = getRuntimeStateDir(slug);
 
       if (!runtimeConfigExists(stateDir)) {
         logger.error(`No runtime.json found for instance "${slug}".`);
@@ -154,7 +154,7 @@ function runtimeStartCommand(): Command {
       "Run as a detached background daemon (writes PID to <stateDir>/runtime.pid)",
     )
     .action(async (slug: string, opts: { ensureConfig?: boolean; daemon?: boolean }) => {
-      const stateDir = getStateDir(slug);
+      const stateDir = getRuntimeStateDir(slug);
 
       // --daemon: spawn a detached child and exit immediately
       if (opts.daemon) {
@@ -318,7 +318,7 @@ function runtimeStopCommand(): Command {
     .argument("<slug>", "Instance slug")
     .option("--timeout <ms>", "Max wait time in ms for the process to exit", "5000")
     .action(async (slug: string, opts: { timeout: string }) => {
-      const stateDir = getStateDir(slug);
+      const stateDir = getRuntimeStateDir(slug);
       const pid = getRuntimePid(stateDir);
 
       if (!pid) {
@@ -366,7 +366,7 @@ function runtimeRestartCommand(): Command {
     .option("--ensure-config", "Create runtime.json with defaults if it does not exist")
     .option("--timeout <ms>", "Max wait time in ms for stop", "5000")
     .action(async (slug: string, opts: { ensureConfig?: boolean; timeout: string }) => {
-      const stateDir = getStateDir(slug);
+      const stateDir = getRuntimeStateDir(slug);
       const pid = getRuntimePid(stateDir);
 
       if (pid) {
@@ -449,7 +449,7 @@ function runtimeChatCommand(): Command {
           once?: string;
         },
       ) => {
-        const stateDir = getStateDir(slug);
+        const stateDir = getRuntimeStateDir(slug);
 
         // Load config
         let config;

@@ -7,12 +7,15 @@
  * Synchronous — no async I/O to keep integration with the prompt loop simple.
  */
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, existsSync } from "node:fs";
+import { resolve, join } from "node:path";
 import type { RuntimeAgentConfig } from "../config/index.js";
 import type { InstanceSlug } from "../types.js";
 
 const DEFAULT_INSTRUCTIONS = "You are a helpful AI assistant. Be concise and accurate.";
+
+/** Workspace files read during auto-discovery, in priority order. */
+const DISCOVERY_FILES = ["SOUL.md", "AGENTS.md", "TOOLS.md", "IDENTITY.md"] as const;
 
 const BEHAVIOR_BLOCK = `<behavior>
   - Respond in the same language as the user's message
@@ -25,8 +28,10 @@ export interface SystemPromptContext {
   instanceSlug: InstanceSlug;
   agentConfig: RuntimeAgentConfig;
   channel: string;
-  /** Working directory of the instance (for the env block) */
+  /** Working directory of the instance (for the env block + workspace discovery) */
   workDir: string | undefined;
+  /** Agents configured in this runtime instance (for teammates block) */
+  runtimeAgents?: Array<{ id: string; name: string }>;
 }
 
 /**
@@ -36,9 +41,14 @@ export interface SystemPromptContext {
 export function buildSystemPrompt(ctx: SystemPromptContext): string {
   const sections: string[] = [];
 
-  // 1. Agent instructions
+  // 1. Agent instructions (inline > file > auto-discovery > default)
   const instructions = resolveInstructions(ctx);
   if (instructions) sections.push(instructions.trim());
+
+  // 1.5. Teammates block (injected after instructions, before env)
+  if (ctx.runtimeAgents && ctx.runtimeAgents.length > 1) {
+    sections.push(buildTeammatesBlock(ctx.runtimeAgents, ctx.agentConfig.id));
+  }
 
   // 2. Environment block
   sections.push(buildEnvBlock(ctx));
@@ -56,12 +66,12 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
 function resolveInstructions(ctx: SystemPromptContext): string | undefined {
   const { agentConfig, workDir } = ctx;
 
-  // Inline system prompt takes priority
+  // 1. Inline system prompt takes priority
   if (agentConfig.systemPrompt) {
     return agentConfig.systemPrompt;
   }
 
-  // File-based system prompt
+  // 2. File-based system prompt
   if (agentConfig.systemPromptFile) {
     if (!workDir) {
       console.warn(
@@ -71,10 +81,51 @@ function resolveInstructions(ctx: SystemPromptContext): string | undefined {
     }
     const content = readSystemPromptFile(agentConfig.systemPromptFile, workDir);
     if (content) return content;
-    // Fall through to default if file read failed
+    // Fall through to auto-discovery if file read failed
   }
 
+  // 3. Auto-discovery: look for workspace files in <workDir>/workspace-<agentId>/ or <workDir>/workspace/
+  if (workDir) {
+    const discovered = discoverWorkspaceInstructions(workDir, agentConfig.id);
+    if (discovered) return discovered;
+  }
+
+  // 4. Fallback
   return DEFAULT_INSTRUCTIONS;
+}
+
+/**
+ * Try to read workspace files from the agent's workspace directory.
+ * Checks workspace-<agentId>/ first, then workspace/ (OpenClaw-compatible layout).
+ * Returns concatenated non-empty file contents, or undefined if nothing found.
+ */
+function discoverWorkspaceInstructions(workDir: string, agentId: string): string | undefined {
+  // Candidate workspace directories in priority order
+  const candidates = [join(workDir, `workspace-${agentId}`), join(workDir, "workspace")];
+
+  for (const wsDir of candidates) {
+    if (!existsSync(wsDir)) continue;
+
+    const parts: string[] = [];
+    for (const filename of DISCOVERY_FILES) {
+      const filePath = join(wsDir, filename);
+      try {
+        const raw = readFileSync(filePath, "utf-8").trim();
+        // Skip stub-only content (e.g. "# AgentName" with nothing else)
+        if (raw && raw !== `# ${agentId}` && raw.split("\n").length > 1) {
+          parts.push(raw);
+        }
+      } catch {
+        // File absent — skip silently
+      }
+    }
+
+    if (parts.length > 0) {
+      return parts.join("\n\n");
+    }
+  }
+
+  return undefined;
 }
 
 function readSystemPromptFile(filePath: string, workDir: string): string | undefined {
@@ -85,6 +136,26 @@ function readSystemPromptFile(filePath: string, workDir: string): string | undef
     console.warn(`[claw-runtime] Could not read systemPromptFile: ${filePath}`);
     return undefined;
   }
+}
+
+/**
+ * Build the <teammates> block listing all agents in the instance.
+ * The current agent is marked with [you].
+ */
+function buildTeammatesBlock(
+  agents: Array<{ id: string; name: string }>,
+  currentAgentId: string,
+): string {
+  const lines = agents.map((a) => {
+    const marker = a.id === currentAgentId ? " [you]" : "";
+    return `- ${a.id} (${a.name})${marker}`;
+  });
+  return [
+    "<teammates>",
+    "Available agents in this instance — use the agentToAgent tool to delegate:",
+    ...lines,
+    "</teammates>",
+  ].join("\n");
 }
 
 function buildEnvBlock(ctx: SystemPromptContext): string {

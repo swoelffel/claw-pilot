@@ -5,7 +5,7 @@ import { streamSSE } from "hono/streaming";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
 import { instanceGuard } from "../../../lib/guards.js";
-import { getStateDir } from "../../../lib/platform.js";
+import { getRuntimeStateDir } from "../../../lib/platform.js";
 import {
   runtimeConfigExists,
   loadRuntimeConfig,
@@ -36,7 +36,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
 
-    const stateDir = getStateDir(slug);
+    const stateDir = getRuntimeStateDir(slug);
     const hasConfig = runtimeConfigExists(stateDir);
 
     if (!hasConfig) {
@@ -122,7 +122,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 400, "MISSING_MESSAGE", "Field 'message' is required");
     }
 
-    const stateDir = getStateDir(slug);
+    const stateDir = getRuntimeStateDir(slug);
     if (!runtimeConfigExists(stateDir)) {
       return apiError(
         c,
@@ -212,6 +212,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
         agentConfig: agentCfg,
         resolvedModel: resolvedModelObj,
         workDir: stateDir,
+        runtimeAgents: config.agents.map((a) => ({ id: a.id, name: a.name })),
       });
 
       return c.json({

@@ -58,6 +58,11 @@ export function getStateDir(slug: string): string {
   return path.join(getOpenClawHome(), `${constants.OPENCLAW_STATE_PREFIX}${slug}`);
 }
 
+/** State directory for claw-runtime instances (distinct from OpenClaw). */
+export function getRuntimeStateDir(slug: string): string {
+  return path.join(getOpenClawHome(), `${constants.RUNTIME_STATE_PREFIX}${slug}`);
+}
+
 /** @public */
 export function getConfigPath(slug: string): string {
   return path.join(getStateDir(slug), "openclaw.json");

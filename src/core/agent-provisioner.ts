@@ -5,6 +5,7 @@ import type { Registry, InstanceRecord } from "./registry.js";
 import { EDITABLE_FILES } from "./agent-sync.js";
 import { createHash } from "node:crypto";
 import { constants } from "../lib/constants.js";
+import { loadWorkspaceTemplate, type TemplateVars } from "../lib/workspace-templates.js";
 
 export interface CreateAgentData {
   agentSlug: string;
@@ -13,8 +14,6 @@ export interface CreateAgentData {
   provider: string;
   model: string;
 }
-
-const DISCOVERABLE_FILES = constants.DISCOVERABLE_FILES;
 
 export class AgentProvisioner {
   constructor(
@@ -31,11 +30,29 @@ export class AgentProvisioner {
     const configHome = path.dirname(instance.config_path);
     const workspaceDir = path.join(configHome, `workspace-${data.agentSlug}`);
 
-    // 3. Create workspace directory + minimal files
+    // 3. Create workspace directory + rich template files
     await this.conn.mkdir(workspaceDir);
-    for (const filename of DISCOVERABLE_FILES) {
-      await this.conn.writeFile(path.join(workspaceDir, filename), `# ${data.name}\n`);
+
+    // Build template vars — include existing agents + the new one for AGENTS.md completeness
+    const existingAgents = this.registry
+      .listAgents(instance.slug)
+      .map((a) => ({ id: a.agent_id, name: a.name }));
+    const vars: TemplateVars = {
+      agentId: data.agentSlug,
+      agentName: data.name,
+      instanceSlug: instance.slug,
+      instanceName: instance.display_name ?? instance.slug,
+      agents: [...existingAgents, { id: data.agentSlug, name: data.name }],
+    };
+
+    // TEMPLATE_FILES: rich content from templates (SOUL, AGENTS, TOOLS, IDENTITY, USER, HEARTBEAT, MEMORY)
+    for (const filename of constants.TEMPLATE_FILES) {
+      const content = await loadWorkspaceTemplate(filename, vars);
+      await this.conn.writeFile(path.join(workspaceDir, filename), content);
     }
+
+    // BOOTSTRAP.md: minimal stub (not in TEMPLATE_FILES)
+    await this.conn.writeFile(path.join(workspaceDir, "BOOTSTRAP.md"), `# ${data.name}\n`);
 
     if (instance.instance_type === "claw-runtime") {
       // ── claw-runtime: append to agents[] array in runtime.json ──────────────

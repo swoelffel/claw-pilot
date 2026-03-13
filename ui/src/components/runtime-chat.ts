@@ -288,18 +288,9 @@ export class RuntimeChat extends LitElement {
           break;
         }
         case "message.updated": {
-          // Message finalized — flush streaming text into messages list
-          if (this._streamingText) {
-            this._messages = [
-              ...this._messages,
-              {
-                role: "assistant",
-                text: this._streamingText,
-                ...(payload.messageId !== undefined ? { id: payload.messageId as string } : {}),
-              },
-            ];
-            this._streamingText = "";
-          }
+          // Message finalized — clear streaming text (the HTTP response will
+          // add the final message to _messages via result.text)
+          this._streamingText = "";
           this._status = "idle";
           break;
         }
@@ -362,6 +353,7 @@ export class RuntimeChat extends LitElement {
       });
 
       // If this was a new session, store the sessionId and open the stream
+      // (for subsequent messages — this first response comes via HTTP result)
       if (!this._sessionId) {
         this._sessionId = result.sessionId;
         this._openStream(result.sessionId);
@@ -369,8 +361,16 @@ export class RuntimeChat extends LitElement {
         void this._loadSessions();
       }
 
-      // Status will be updated by SSE events; set to streaming while waiting
-      this._status = "streaming";
+      // Display the response directly from the HTTP result — the SSE stream
+      // is opened after runPromptLoop completes, so events for this first
+      // response are already gone. Subsequent messages will use SSE deltas.
+      if (result.text) {
+        this._messages = [
+          ...this._messages,
+          { role: "assistant", text: result.text, id: result.messageId },
+        ];
+      }
+      this._status = "idle";
     } catch (err) {
       this._status = "error";
       this._error = err instanceof Error ? err.message : "Failed to send message";

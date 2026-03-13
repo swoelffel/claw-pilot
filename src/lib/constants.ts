@@ -12,6 +12,9 @@ export const constants = {
   OPENCLAW_LEGACY_DIR: ".openclaw", // legacy single-instance directory
   OPENCLAW_USER: "openclaw",
 
+  // claw-runtime state directory prefix (distinct from OpenClaw)
+  RUNTIME_STATE_PREFIX: ".runtime-", // ~/.runtime-<slug>/
+
   // Ports
   PORT_RANGE_START: 18789,
   PORT_RANGE_END: 18838, // 50 ports — 10 instances at min step 5 (OpenClaw 2026.3.x reserves P, P+1, P+2, P+4)

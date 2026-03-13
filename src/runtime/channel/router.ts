@@ -92,6 +92,7 @@ export class ChannelRouter {
       agentConfig,
       resolvedModel,
       workDir,
+      runtimeAgents: config.agents.map((a) => ({ id: a.id, name: a.name })),
       ...(input.abort !== undefined ? { abort: input.abort } : {}),
     });
 
