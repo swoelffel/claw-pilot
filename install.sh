@@ -765,10 +765,34 @@ if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
     warn "  claw-pilot dashboard"
     warn "  or: claw-pilot service install"
   fi
+elif [ "$OS" = "Darwin" ]; then
+  echo ""
+  # Ask to install as launchd service (only if stdin is a TTY)
+  if [ -t 0 ]; then
+    printf '[?] Install claw-pilot dashboard as a launchd service (auto-start on login)? [Y/n] '
+    read -r _install_service_answer </dev/tty
+    case "$_install_service_answer" in
+      [nN]*)
+        log "Skipping service installation."
+        log "You can install it later with: claw-pilot service install"
+        ;;
+      *)
+        log "Installing dashboard as launchd service..."
+        if $CP_NODE $CP_ENTRY service install; then
+          log "Dashboard service installed and started."
+          log "View logs: tail -f ~/.claw-pilot/dashboard.log"
+        else
+          warn "Service installation failed. Start manually: claw-pilot dashboard start"
+        fi
+        ;;
+    esac
+  else
+    log "Skipping service setup (non-interactive). Run later: claw-pilot service install"
+  fi
 else
   echo ""
-  log "Skipping systemd service setup (not Linux or systemd not available)."
-  log "Start the dashboard manually: claw-pilot dashboard"
+  log "Skipping service setup (not Linux/macOS or systemd not available)."
+  log "Start the dashboard manually: claw-pilot dashboard start"
 fi
 
 echo ""
