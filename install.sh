@@ -535,7 +535,12 @@ fi
 log "Installing claw-pilot from ${REPO_URL}..."
 if [ -d "$INSTALL_DIR/.git" ]; then
   log "Updating existing installation at $INSTALL_DIR..."
-  git -C "$INSTALL_DIR" pull --ff-only
+  # Fetch and switch to the requested branch (respects CLAW_PILOT_REPO_BRANCH).
+  # A plain `git pull --ff-only` would stay on whatever branch was checked out
+  # previously (typically main), ignoring the requested branch entirely.
+  git -C "$INSTALL_DIR" fetch origin
+  git -C "$INSTALL_DIR" checkout "$CLAW_PILOT_REPO_BRANCH"
+  git -C "$INSTALL_DIR" pull --ff-only origin "$CLAW_PILOT_REPO_BRANCH"
 
   run_quiet_step "Installing dependencies" sh -c "cd '$INSTALL_DIR' && pnpm install --frozen-lockfile"
   run_quiet_step "Building CLI" sh -c "cd '$INSTALL_DIR' && pnpm run build:cli"
@@ -543,15 +548,18 @@ if [ -d "$INSTALL_DIR/.git" ]; then
 
   log "claw-pilot $(node "$INSTALL_DIR/dist/index.mjs" --version 2>/dev/null) updated successfully!"
 
+  # Resolve the claw-pilot command — used for auth check and service install below.
+  # Must be initialised here (before the Linux-only systemd block) so it is also
+  # available on macOS where the systemd block is skipped entirely.
+  CP_NODE="node"
+  CP_ENTRY="$INSTALL_DIR/dist/index.mjs"
+  if command -v claw-pilot >/dev/null 2>&1; then
+    CP_NODE="claw-pilot"
+    CP_ENTRY=""
+  fi
+
   # Manage dashboard service (Linux only)
   if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
-    # Use two separate variables to avoid word-splitting issues with "node path/to/file"
-    CP_NODE="node"
-    CP_ENTRY="$INSTALL_DIR/dist/index.mjs"
-    if command -v claw-pilot >/dev/null 2>&1; then
-      CP_NODE="claw-pilot"
-      CP_ENTRY=""
-    fi
     if XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user is-active claw-pilot-dashboard.service >/dev/null 2>&1; then
       log "Restarting dashboard service to load updated code..."
       XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user restart claw-pilot-dashboard.service
