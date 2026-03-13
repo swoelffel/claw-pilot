@@ -13,6 +13,7 @@ import {
 import type { ConfigPatch, InstanceConfigPayload } from "../../../core/config-updater.js";
 import { PROVIDER_CATALOG } from "../../../lib/provider-catalog.js";
 import type { ProviderInfo } from "../../../lib/provider-catalog.js";
+import { OpenClawCLI } from "../../../core/openclaw-cli.js";
 
 // ---------------------------------------------------------------------------
 // claw-runtime stub — minimal InstanceConfigPayload for runtime instances
@@ -212,6 +213,15 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
       providers[0]!.isDefault = true;
     }
 
-    return c.json({ canReuseCredentials, sourceInstance, providers });
+    let openclawAvailable = false;
+    try {
+      const cli = new OpenClawCLI(conn);
+      const detected = await cli.detect();
+      openclawAvailable = detected !== null;
+    } catch {
+      // Non-fatal: detection failed → openclaw not available
+    }
+
+    return c.json({ canReuseCredentials, sourceInstance, providers, openclawAvailable });
   });
 }

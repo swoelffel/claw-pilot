@@ -86,6 +86,7 @@ export interface ProvidersResponse {
   canReuseCredentials: boolean;
   sourceInstance: string | null;
   providers: ProviderInfo[];
+  openclawAvailable: boolean;
 }
 
 export interface CreateInstanceRequest {
@@ -95,6 +96,7 @@ export interface CreateInstanceRequest {
   defaultModel: string;
   provider: string;
   apiKey: string;
+  instanceType: "openclaw" | "claw-runtime";
   agents: AgentDefinition[];
   blueprintId?: number;
 }
