@@ -649,7 +649,8 @@ _write_wrapper() {
 
 if _write_wrapper 2>/dev/null; then
   LINK_PATH="$WRAPPER_TARGET"
-elif command -v sudo >/dev/null 2>&1; then
+elif [ -t 0 ] && command -v sudo >/dev/null 2>&1; then
+  # TTY is available — sudo can prompt for password interactively.
   # Write via tmpfile to avoid quoting/newline issues when passing WRAPPER_CONTENT
   # through a sudo subshell. Also ensures the target directory exists (e.g. on a
   # fresh macOS where /usr/local/bin/ is not created until Homebrew is installed).
@@ -660,7 +661,8 @@ elif command -v sudo >/dev/null 2>&1; then
   sudo chmod +x "$WRAPPER_TARGET"
   LINK_PATH="$WRAPPER_TARGET"
 else
-  # Fallback: pnpm global bin dir (already in PATH from step 6)
+  # No TTY (e.g. curl | sh) or no sudo — sudo cannot prompt for password.
+  # Try pnpm global bin dir first, then fall back to ~/bin/ (always writable).
   PNPM_GLOBAL_BIN=$(COREPACK_ENABLE_STRICT=0 pnpm bin --global 2>/dev/null || echo "")
   if [ -n "$PNPM_GLOBAL_BIN" ]; then
     WRAPPER_TARGET="$PNPM_GLOBAL_BIN/claw-pilot"
@@ -668,7 +670,12 @@ else
     chmod +x "$WRAPPER_TARGET"
     LINK_PATH="$WRAPPER_TARGET"
   else
-    error "Cannot install claw-pilot wrapper. Add $INSTALL_DIR/dist/ to PATH manually."
+    # Final fallback: ~/bin/ — no sudo required, works in curl | sh on any OS.
+    WRAPPER_TARGET="$HOME/bin/claw-pilot"
+    mkdir -p "$HOME/bin"
+    printf '%s\n' "$WRAPPER_CONTENT" > "$WRAPPER_TARGET"
+    chmod +x "$WRAPPER_TARGET"
+    LINK_PATH="$WRAPPER_TARGET"
   fi
 fi
 
@@ -677,6 +684,10 @@ fi
 # This ensures `claw-pilot` is found in new shells without manual PATH editing.
 _wrapper_dir=$(dirname "$LINK_PATH")
 for _rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+  # On macOS, ~/.zshrc is not created by default (unlike Linux) — create it if missing.
+  if [ "$OS" = "Darwin" ] && [ "$_rc" = "$HOME/.zshrc" ] && [ ! -f "$_rc" ]; then
+    touch "$_rc" 2>/dev/null || true
+  fi
   [ -f "$_rc" ] || continue
   grep -q "claw-pilot" "$_rc" 2>/dev/null && continue
   grep -q "$_wrapper_dir" "$_rc" 2>/dev/null && continue
