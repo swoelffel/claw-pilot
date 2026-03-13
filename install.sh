@@ -282,9 +282,14 @@ case "$OS" in
 esac
 
 # ── 4. Node.js check ──────────────────────────────────────────────────────────
-if ! command -v node >/dev/null 2>&1; then
+# resolve_node_bin() handles nvm/volta/fnm — PATH may not include node in
+# non-interactive shells (e.g. /bin/bash -c "$(curl ...)").
+_node_bin_early=$(resolve_node_bin)
+if [ -z "$_node_bin_early" ]; then
   error "Node.js not found. Install Node.js >= $MIN_NODE_VERSION first: https://nodejs.org"
 fi
+# Prepend the resolved node's bin dir to PATH so subsequent `node` calls work.
+prepend_path_dir "$(dirname "$_node_bin_early")"
 NODE_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
 if [ "$NODE_VERSION" -lt "$MIN_NODE_VERSION" ]; then
   error "Node.js >= $MIN_NODE_VERSION required (found $(node -v))"
