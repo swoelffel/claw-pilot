@@ -53,6 +53,14 @@ export class TestClient {
     });
   }
 
+  async put(path: string, body?: unknown): Promise<Response> {
+    return fetch(`${this.baseUrl}${path}`, {
+      method: "PUT",
+      headers: this.buildHeaders(undefined, body !== undefined),
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+  }
+
   async delete(path: string): Promise<Response> {
     return fetch(`${this.baseUrl}${path}`, {
       method: "DELETE",
