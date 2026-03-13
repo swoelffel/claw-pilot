@@ -66,7 +66,6 @@ describe("Flow: create instance → create agent → delete agent → delete ins
       defaultModel: "anthropic/claude-3-5-haiku-20241022",
       provider: "anthropic",
       apiKey: "sk-test-fake-key",
-      instanceType: "claw-runtime",
     });
     expect(res.status).toBe(201);
     const body = (await res.json()) as any;
@@ -119,7 +118,7 @@ describe("Flow: create instance → create agent → delete agent → delete ins
     expect(
       (saved["agents"] as Record<string, unknown>[]).find((a) => a["id"] === "flow-agent"),
     ).toBeDefined();
-    // Must NOT have agents.list (openclaw format corruption check)
+    // Must NOT have agents.list (format corruption check)
     expect((saved["agents"] as Record<string, unknown>)["list"]).toBeUndefined();
   });
 

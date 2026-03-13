@@ -5,7 +5,6 @@ import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { apiError } from "../../../route-deps.js";
 import { instanceGuard } from "../../../../lib/guards.js";
-import { AgentSync } from "../../../../core/agent-sync.js";
 import { constants } from "../../../../lib/constants.js";
 
 export function registerAgentSyncRoutes(app: Hono, deps: RouteDeps): void {
@@ -17,11 +16,9 @@ export function registerAgentSyncRoutes(app: Hono, deps: RouteDeps): void {
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
 
-    // claw-runtime: agents are DB-only, no config file to sync from.
-    // AgentSync reads openclaw.json format (agents.list[]) — calling it on a
-    // claw-runtime instance would wipe all agents from the DB.
-    // However, we still sync workspace files from disk → DB.
-    if (instance!.instance_type === "claw-runtime") {
+    try {
+      // claw-runtime: agents are DB-only, no config file to sync from.
+      // We sync workspace files from disk -> DB.
       const agents = registry.listAgents(slug);
       const links = registry.listAgentLinks(instance!.id);
       let filesChanged = 0;
@@ -75,12 +72,6 @@ export function registerAgentSyncRoutes(app: Hono, deps: RouteDeps): void {
           linksChanged: 0,
         },
       });
-    }
-
-    try {
-      const agentSync = new AgentSync(conn, registry);
-      const result = await agentSync.sync(instance!);
-      return c.json({ synced: true, ...result });
     } catch (err) {
       return apiError(c, 500, "SYNC_FAILED", err instanceof Error ? err.message : "Sync failed");
     }

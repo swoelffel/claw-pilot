@@ -69,7 +69,7 @@ export const templates = {
   "toggle-custom": "Agenti personalizzati",
   "btn-add-agent": "+ Aggiungi agente",
   "spinner-provisioning": "Provisioning istanza",
-  "spinner-wait": "Potrebbero volerci 20–30 secondi (avvio systemd + controllo integrità)",
+  "spinner-wait": "Potrebbero volerci 20–30 secondi (avvio + controllo integrità)",
   "error-fetch-port": "Impossibile recuperare la porta successiva",
   "error-load-providers": "Impossibile caricare i provider",
   "error-provisioning": "Provisioning fallito",
@@ -131,7 +131,7 @@ export const templates = {
   // delete-instance-dialog.ts
   "did-title": "Elimina istanza",
   "did-warning":
-    "Questo fermerà il servizio, rimuoverà tutti i file (directory di stato, unità systemd) e cancellerà l'istanza dal registro. Questa azione non può essere annullata.",
+    "Questo fermerà il servizio, rimuoverà tutti i file (directory di stato, unità di servizio) e cancellerà l'istanza dal registro. Questa azione non può essere annullata.",
   "did-confirm-label": "Digita lo slug dell'istanza per confermare",
   "did-spinner-deleting": "Distruzione dell'istanza...",
 
@@ -259,8 +259,8 @@ export const templates = {
   "discover-btn": "Scopri istanze",
   "discover-dialog-title": "Scopri istanze",
   "discover-scanning": "Scansione del sistema...",
-  "discover-scanning-hint": "Ricerca di istanze OpenClaw",
-  "discover-none-found": "Nessuna istanza OpenClaw trovata su questo sistema.",
+  "discover-scanning-hint": "Ricerca di istanze esistenti",
+  "discover-none-found": "Nessuna istanza trovata su questo sistema.",
   "discover-found-n": "Trovata/e {n} istanza/e su questo sistema:",
   "discover-adopt-btn": "Adotta tutte ({n})",
   "discover-adopting": "Registrazione istanze...",

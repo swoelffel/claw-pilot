@@ -1,11 +1,4 @@
-export type SidebarSection =
-  | "general"
-  | "agents"
-  | "telegram"
-  | "plugins"
-  | "gateway"
-  | "devices"
-  | "runtime";
+export type SidebarSection = "general" | "agents" | "runtime";
 
 export interface InstanceInfo {
   id: number;
@@ -19,12 +12,11 @@ export interface InstanceInfo {
   telegram_bot: string | null;
   default_model: string | null;
   discovered: number;
-  instance_type: "openclaw" | "claw-runtime";
+  instance_type: "claw-runtime";
   created_at: string;
   updated_at: string;
   // health (from WS updates or /api/instances)
   gateway?: "healthy" | "unhealthy" | "unknown";
-  systemd?: "active" | "inactive" | "failed" | "unknown";
   agentCount?: number;
   pendingDevices?: number;
   telegram?: "connected" | "disconnected" | "not_configured";
@@ -51,7 +43,6 @@ export interface HealthUpdate {
       /** Pre-computed state from backend — use directly, do not re-derive */
       state: "running" | "stopped" | "error" | "unknown";
       gateway: "healthy" | "unhealthy" | "unknown";
-      systemd: "active" | "inactive" | "failed" | "unknown";
       pid?: number;
       uptime?: string;
       agentCount?: number;
@@ -86,7 +77,6 @@ export interface ProvidersResponse {
   canReuseCredentials: boolean;
   sourceInstance: string | null;
   providers: ProviderInfo[];
-  openclawAvailable: boolean;
 }
 
 export interface CreateInstanceRequest {
@@ -96,7 +86,6 @@ export interface CreateInstanceRequest {
   defaultModel: string;
   provider: string;
   apiKey: string;
-  instanceType: "openclaw" | "claw-runtime";
   agents: AgentDefinition[];
   blueprintId?: number;
 }
@@ -379,7 +368,6 @@ export interface DiscoveredInstanceInfo {
   port: number;
   agentCount: number;
   gatewayHealthy: boolean;
-  systemdState: string | null;
   telegramBot: string | null;
   defaultModel: string | null;
   source: string;
@@ -400,22 +388,6 @@ export interface SelfUpdateStatus {
   currentVersion: string;
   latestVersion: string | null;
   latestTag: string | null;
-  updateAvailable: boolean;
-  // Job en cours (polling)
-  status: "idle" | "running" | "done" | "error";
-  jobId?: string;
-  startedAt?: string;
-  finishedAt?: string;
-  message?: string;
-  fromVersion?: string;
-  toVersion?: string;
-}
-
-/** Etat de la mise a jour OpenClaw — GET /api/openclaw/update-status */
-export interface OpenClawUpdateStatus {
-  // Versions
-  currentVersion: string | null;
-  latestVersion: string | null;
   updateAvailable: boolean;
   // Job en cours (polling)
   status: "idle" | "running" | "done" | "error";

@@ -70,7 +70,7 @@ export const templates = {
   "toggle-custom": "Agents personnalisés",
   "btn-add-agent": "+ Ajouter un agent",
   "spinner-provisioning": "Provisionnement de l'instance",
-  "spinner-wait": "Cela peut prendre 20-30 secondes (démarrage systemd + vérification de santé)",
+  "spinner-wait": "Cela peut prendre 20-30 secondes (démarrage + vérification de santé)",
   "error-fetch-port": "Impossible de récupérer le prochain port",
   "error-load-providers": "Impossible de charger les fournisseurs",
   "error-provisioning": "Échec du provisionnement",
@@ -131,7 +131,7 @@ export const templates = {
   // delete-instance-dialog.ts
   "did-title": "Supprimer l'instance",
   "did-warning":
-    "Cela arrêtera définitivement le service, supprimera tous les fichiers (répertoire d'état, unité systemd) et retirera l'instance du registre. Cette action est irréversible.",
+    "Cela arrêtera définitivement le service, supprimera tous les fichiers (répertoire d'état, unité de service) et retirera l'instance du registre. Cette action est irréversible.",
   "did-confirm-label": "Saisissez le slug de l'instance pour confirmer",
   "did-spinner-deleting": "Destruction de l'instance...",
 
@@ -260,8 +260,8 @@ export const templates = {
   "discover-btn": "Découvrir les instances",
   "discover-dialog-title": "Découvrir les instances",
   "discover-scanning": "Scan en cours...",
-  "discover-scanning-hint": "Recherche d'instances OpenClaw",
-  "discover-none-found": "Aucune instance OpenClaw trouvée sur ce système.",
+  "discover-scanning-hint": "Recherche d'instances existantes",
+  "discover-none-found": "Aucune instance trouvée sur ce système.",
   "discover-found-n": "Trouvé {n} instance(s) sur ce système :",
   "discover-adopt-btn": "Adopter tout ({n})",
   "discover-adopting": "Enregistrement en cours...",

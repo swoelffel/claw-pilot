@@ -14,7 +14,6 @@ import type {
   CreateBlueprintRequest,
   InstanceConfig,
   ConfigPatchResult,
-  OpenClawUpdateStatus,
   DeviceList,
   TelegramPairingList,
   AgentMetaPatch,
@@ -423,16 +422,6 @@ export async function updateBlueprintSpawnLinks(
     `/blueprints/${blueprintId}/agents/${agentId}/spawn-links`,
     { method: "PATCH", body: JSON.stringify({ targets }) },
   );
-}
-
-// --- OpenClaw update API ---
-
-export async function fetchUpdateStatus(): Promise<OpenClawUpdateStatus> {
-  return apiFetch<OpenClawUpdateStatus>("/openclaw/update-status");
-}
-
-export async function triggerUpdate(): Promise<{ ok: boolean; jobId: string }> {
-  return apiFetch<{ ok: boolean; jobId: string }>("/openclaw/update", { method: "POST" });
 }
 
 // --- Devices API ---

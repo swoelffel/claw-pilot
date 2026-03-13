@@ -7,17 +7,12 @@ export const constants = {
   CONFIG_FILE: "config.json",
   DASHBOARD_TOKEN_FILE: "dashboard-token",
 
-  // OpenClaw defaults
-  OPENCLAW_STATE_PREFIX: ".openclaw-", // ~/.openclaw-<slug>/
-  OPENCLAW_LEGACY_DIR: ".openclaw", // legacy single-instance directory
-  OPENCLAW_USER: "openclaw",
-
-  // claw-runtime state directory prefix (distinct from OpenClaw)
+  // claw-runtime state directory prefix
   RUNTIME_STATE_PREFIX: ".runtime-", // ~/.runtime-<slug>/
 
   // Ports
   PORT_RANGE_START: 18789,
-  PORT_RANGE_END: 18838, // 50 ports — 10 instances at min step 5 (OpenClaw 2026.3.x reserves P, P+1, P+2, P+4)
+  PORT_RANGE_END: 18838, // 50 ports — 10 instances at min step 5
   DASHBOARD_PORT: 19000,
 
   // Timeouts (ms)
@@ -36,10 +31,10 @@ export const constants = {
 
   // ---------------------------------------------------------------------------
   // Workspace file lists — single source of truth for all code paths.
-  // See docs/_work/claw-pilot/workspace-files-analysis.md for rationale.
+  // See docs/_work/ClawPilot/workspace-files-analysis.md for rationale.
   // ---------------------------------------------------------------------------
 
-  /** All workspace files recognized by OpenClaw (discoverable + syncable). */
+  /** All workspace files recognized by claw-runtime (discoverable + syncable). */
   DISCOVERABLE_FILES: [
     "AGENTS.md",
     "SOUL.md",
@@ -87,14 +82,8 @@ export const constants = {
   // Legacy alias — kept for backward compat, prefer the specific lists above.
   WORKSPACE_FILES: ["AGENTS.md", "SOUL.md", "TOOLS.md", "USER.md", "MEMORY.md"],
 
-  // OpenClaw install script URL (overridable via OPENCLAW_INSTALL_URL env var)
-  OPENCLAW_INSTALL_URL: "https://openclaw.ai/install.sh",
-
   // PATH prefix for non-interactive SSH sessions on Linux servers
-  OPENCLAW_PATH_PREFIX: "export PATH=~/.npm-global/bin:/usr/local/bin:/usr/bin:/bin",
-
-  // OpenClaw log directory (JSONL logs written by the daemon)
-  OPENCLAW_LOG_DIR: "/tmp/openclaw",
+  SSH_PATH_PREFIX: "export PATH=~/.npm-global/bin:/usr/local/bin:/usr/bin:/bin",
 
   // Self-update (claw-pilot)
   GITHUB_REPO: "swoelffel/claw-pilot",

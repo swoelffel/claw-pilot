@@ -15,8 +15,6 @@ import { HealthChecker } from "../core/health.js";
 import { Lifecycle } from "../core/lifecycle.js";
 import { Monitor } from "./monitor.js";
 import { resolveXdgRuntimeDir } from "../lib/xdg.js";
-import { UpdateChecker } from "../core/update-checker.js";
-import { Updater } from "../core/updater.js";
 import { SelfUpdateChecker } from "../core/self-update-checker.js";
 import { SelfUpdater } from "../core/self-updater.js";
 import { createRateLimiter } from "./rate-limit.js";
@@ -115,8 +113,6 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   const health = new HealthChecker(conn, registry, xdgRuntimeDir);
   const lifecycle = new Lifecycle(conn, registry, xdgRuntimeDir);
   const monitor = new Monitor(health);
-  const updateChecker = new UpdateChecker(conn);
-  const updater = new Updater(conn, registry, lifecycle);
   const selfUpdateChecker = new SelfUpdateChecker();
   const selfUpdater = new SelfUpdater(conn);
   const tokenCache = new TokenCache(conn);
@@ -156,7 +152,6 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   app.use("/api/*", createRateLimiter({ maxRequests: 60, windowMs: 60_000 }));
   // Stricter rate limit on expensive operations
   app.use("/api/instances", createRateLimiter({ maxRequests: 10, windowMs: 60_000 }));
-  app.use("/api/openclaw/update", createRateLimiter({ maxRequests: 1, windowMs: 300_000 }));
   app.use(
     "/api/self/update",
     createRateLimiter({ maxRequests: 1, windowMs: constants.SELF_UPDATE_RATE_LIMIT_MS }),
@@ -168,8 +163,6 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
     conn,
     health,
     lifecycle,
-    updateChecker,
-    updater,
     selfUpdateChecker,
     selfUpdater,
     tokenCache,

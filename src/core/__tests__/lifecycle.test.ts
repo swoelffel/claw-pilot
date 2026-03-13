@@ -7,46 +7,32 @@ import { initDatabase } from "../../db/schema.js";
 import { Registry } from "../registry.js";
 import { Lifecycle } from "../lifecycle.js";
 import { MockConnection } from "./mock-connection.js";
-import { InstanceNotFoundError, GatewayUnhealthyError } from "../../lib/errors.js";
+import { InstanceNotFoundError } from "../../lib/errors.js";
 
 // ---------------------------------------------------------------------------
 // Module mocks
 // ---------------------------------------------------------------------------
 
-// These variables are declared before vi.mock() so they are accessible in the
-// factory closures after vitest hoisting.
 let _mockServiceManager: "systemd" | "launchd" = "systemd";
-let _pollShouldSucceed = true;
+let _mockPidMap: Map<string, number | null> = new Map();
+let _mockRunningMap: Map<string, boolean> = new Map();
 
 vi.mock("../../lib/platform.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/platform.js")>();
   return {
     ...actual,
     getServiceManager: () => _mockServiceManager,
-    getLaunchdPlistPath: (slug: string) => `/tmp/launchd/ai.openclaw.${slug}.plist`,
-    // Always return false so tests are not affected by CLAW_PILOT_ENV=docker in the container
+    getRuntimeStateDir: (slug: string) => `/home/test/.runtime-${slug}`,
+    getRuntimePidPath: (stateDir: string) => `${stateDir}/runtime.pid`,
+    getRuntimePid: (stateDir: string) => _mockPidMap.get(stateDir) ?? null,
+    isRuntimeRunning: (stateDir: string) => _mockRunningMap.get(stateDir) ?? false,
     isDocker: () => false,
   };
 });
 
-// Mock pollUntilReady to avoid the 30-second GATEWAY_READY_TIMEOUT in tests.
-// When _pollShouldSucceed is true, runs check() once and resolves if it passes.
-// When false, throws immediately (simulates timeout).
-vi.mock("../../lib/poll.js", () => ({
-  pollUntilReady: async (opts: {
-    check: () => Promise<boolean>;
-    timeoutMs: number;
-    label?: string;
-  }) => {
-    if (_pollShouldSucceed) {
-      // Run check once — if it passes, resolve immediately
-      const ok = await opts.check().catch(() => false);
-      if (ok) return;
-    }
-    throw new Error(
-      `Timeout after ${opts.timeoutMs}ms${opts.label ? ` waiting for ${opts.label}` : ""}`,
-    );
-  },
+// Mock ensureRuntimeConfig to avoid real filesystem operations
+vi.mock("../../runtime/engine/config-loader.js", () => ({
+  ensureRuntimeConfig: () => {},
 }));
 
 // ---------------------------------------------------------------------------
@@ -66,10 +52,8 @@ beforeEach(() => {
   registry = new Registry(db);
   conn = new MockConnection();
   _mockServiceManager = "systemd";
-  _pollShouldSucceed = true;
-
-  // Default: fetch resolves OK (gateway healthy)
-  global.fetch = vi.fn().mockResolvedValue({ ok: true } as Response);
+  _mockPidMap = new Map();
+  _mockRunningMap = new Map();
 });
 
 afterEach(() => {
@@ -85,16 +69,16 @@ afterEach(() => {
 function seedInstance(opts: { slug?: string; port?: number } = {}) {
   const slug = opts.slug ?? "demo1";
   const port = opts.port ?? 18790;
-  const server = registry.upsertLocalServer("testhost", "/opt/openclaw");
-  const stateDir = `/home/openclaw/.openclaw-${slug}`;
+  const server = registry.upsertLocalServer("testhost", "/home/test");
+  const stateDir = `/home/test/.runtime-${slug}`;
 
   const instance = registry.createInstance({
     serverId: server.id,
     slug,
     port,
-    configPath: `${stateDir}/openclaw.json`,
+    configPath: `${stateDir}/runtime.json`,
     stateDir,
-    systemdUnit: `openclaw-${slug}.service`,
+    systemdUnit: `claw-runtime-${slug}`,
   });
   registry.allocatePort(server.id, port, slug);
 
@@ -111,39 +95,29 @@ describe("Lifecycle.start()", () => {
     await expect(lifecycle.start("nonexistent")).rejects.toThrow(InstanceNotFoundError);
   });
 
-  it("calls systemctl start and updates state to 'running'", async () => {
-    const { slug } = seedInstance();
-    const lifecycle = new Lifecycle(conn, registry, XDG);
+  it("updates state to 'running' and logs event on success", async () => {
+    const { slug, stateDir } = seedInstance();
+    // Simulate that the runtime starts successfully (PID file appears)
+    _mockRunningMap.set(stateDir, true);
+    _mockPidMap.set(stateDir, 12345);
 
+    const lifecycle = new Lifecycle(conn, registry, XDG);
     await lifecycle.start(slug);
 
-    const cmds = conn.commands.join("\n");
-    expect(cmds).toContain(`systemctl --user start openclaw-${slug}.service`);
     expect(registry.getInstance(slug)?.state).toBe("running");
-  });
-
-  it("logs a 'started' event", async () => {
-    const { slug } = seedInstance();
-    const lifecycle = new Lifecycle(conn, registry, XDG);
-
-    await lifecycle.start(slug);
-
     const events = registry.listEvents(slug, 10);
     expect(events.some((e) => e.event_type === "started")).toBe(true);
   });
 
-  it("throws GatewayUnhealthyError when waitForHealth times out", async () => {
-    // Gateway never responds — poll will fail immediately (mocked)
-    global.fetch = vi.fn().mockRejectedValue(new Error("Connection refused"));
-    _pollShouldSucceed = false;
-
+  it("is a no-op when runtime is already running", async () => {
     const { slug, stateDir } = seedInstance();
-    // Seed a log file so readGatewayErrorDetail has something to read
-    conn.files.set(`${stateDir}/logs/gateway.err.log`, "");
+    _mockRunningMap.set(stateDir, true);
+    _mockPidMap.set(stateDir, 12345);
 
     const lifecycle = new Lifecycle(conn, registry, XDG);
-
-    await expect(lifecycle.start(slug)).rejects.toThrow(GatewayUnhealthyError);
+    // Should not throw — just logs and returns
+    await lifecycle.start(slug);
+    expect(registry.getInstance(slug)?.state).toBe("running");
   });
 });
 
@@ -157,23 +131,13 @@ describe("Lifecycle.stop()", () => {
     await expect(lifecycle.stop("nonexistent")).rejects.toThrow(InstanceNotFoundError);
   });
 
-  it("calls systemctl stop and updates state to 'stopped'", async () => {
+  it("updates state to 'stopped' and logs event", async () => {
     const { slug } = seedInstance();
+    // No PID running — stop is a no-op but still updates state
     const lifecycle = new Lifecycle(conn, registry, XDG);
-
     await lifecycle.stop(slug);
 
-    const cmds = conn.commands.join("\n");
-    expect(cmds).toContain(`systemctl --user stop openclaw-${slug}.service`);
     expect(registry.getInstance(slug)?.state).toBe("stopped");
-  });
-
-  it("logs a 'stopped' event", async () => {
-    const { slug } = seedInstance();
-    const lifecycle = new Lifecycle(conn, registry, XDG);
-
-    await lifecycle.stop(slug);
-
     const events = registry.listEvents(slug, 10);
     expect(events.some((e) => e.event_type === "stopped")).toBe(true);
   });
@@ -189,23 +153,18 @@ describe("Lifecycle.restart()", () => {
     await expect(lifecycle.restart("nonexistent")).rejects.toThrow(InstanceNotFoundError);
   });
 
-  it("calls systemctl restart and updates state to 'running'", async () => {
-    const { slug } = seedInstance();
-    const lifecycle = new Lifecycle(conn, registry, XDG);
+  it("updates state to 'running' and logs event", async () => {
+    const { slug, stateDir } = seedInstance();
+    // Simulate restart:
+    // - stopRuntime: getRuntimePid returns null → nothing to stop, returns immediately
+    // - startRuntime: isRuntimeRunning returns true → already running, returns immediately
+    // Don't set _mockPidMap (so stop is a no-op), but set running=true (so start sees it running)
+    _mockRunningMap.set(stateDir, true);
 
+    const lifecycle = new Lifecycle(conn, registry, XDG);
     await lifecycle.restart(slug);
 
-    const cmds = conn.commands.join("\n");
-    expect(cmds).toContain(`systemctl --user restart openclaw-${slug}.service`);
     expect(registry.getInstance(slug)?.state).toBe("running");
-  });
-
-  it("logs a 'restarted' event", async () => {
-    const { slug } = seedInstance();
-    const lifecycle = new Lifecycle(conn, registry, XDG);
-
-    await lifecycle.restart(slug);
-
     const events = registry.listEvents(slug, 10);
     expect(events.some((e) => e.event_type === "restarted")).toBe(true);
   });
@@ -216,14 +175,14 @@ describe("Lifecycle.restart()", () => {
 // ---------------------------------------------------------------------------
 
 describe("Lifecycle.enable()", () => {
-  it("calls systemctl enable for the instance unit", async () => {
+  it("is a no-op for claw-runtime instances", async () => {
     const { slug } = seedInstance();
     const lifecycle = new Lifecycle(conn, registry, XDG);
 
     await lifecycle.enable(slug);
 
-    const cmds = conn.commands.join("\n");
-    expect(cmds).toContain(`systemctl --user enable openclaw-${slug}.service`);
+    // No commands should have been issued
+    expect(conn.commands).toHaveLength(0);
   });
 });
 
@@ -232,87 +191,23 @@ describe("Lifecycle.enable()", () => {
 // ---------------------------------------------------------------------------
 
 describe("Lifecycle.daemonReload()", () => {
-  it("calls systemctl daemon-reload", async () => {
+  it("calls systemctl daemon-reload on Linux", async () => {
+    _mockServiceManager = "systemd";
     const lifecycle = new Lifecycle(conn, registry, XDG);
 
     await lifecycle.daemonReload();
 
     const cmds = conn.commands.join("\n");
-    expect(cmds).toContain("systemctl --user daemon-reload");
+    expect(cmds).toContain("systemctl");
+    expect(cmds).toContain("daemon-reload");
   });
-});
 
-// ---------------------------------------------------------------------------
-// Lifecycle — launchd (macOS)
-// ---------------------------------------------------------------------------
-
-describe("Lifecycle — launchd (macOS)", () => {
-  beforeEach(() => {
+  it("is a no-op on launchd (macOS)", async () => {
     _mockServiceManager = "launchd";
-  });
-
-  it("start() calls launchctl load", async () => {
-    const { slug } = seedInstance();
-    const lifecycle = new Lifecycle(conn, registry, XDG);
-
-    await lifecycle.start(slug);
-
-    const cmds = conn.commands.join("\n");
-    expect(cmds).toContain(`launchctl load -w /tmp/launchd/ai.openclaw.${slug}.plist`);
-    expect(cmds).not.toContain("systemctl");
-  });
-
-  it("stop() calls launchctl unload", async () => {
-    const { slug } = seedInstance();
-    const lifecycle = new Lifecycle(conn, registry, XDG);
-
-    await lifecycle.stop(slug);
-
-    const cmds = conn.commands.join("\n");
-    expect(cmds).toContain(`launchctl unload /tmp/launchd/ai.openclaw.${slug}.plist`);
-    expect(cmds).not.toContain("systemctl");
-  });
-
-  it("enable() is a no-op on launchd", async () => {
-    const { slug } = seedInstance();
-    const lifecycle = new Lifecycle(conn, registry, XDG);
-
-    await lifecycle.enable(slug);
-
-    const cmds = conn.commands.join("\n");
-    expect(cmds).not.toContain("systemctl");
-    expect(cmds).not.toContain("launchctl");
-  });
-
-  it("daemonReload() is a no-op on launchd", async () => {
     const lifecycle = new Lifecycle(conn, registry, XDG);
 
     await lifecycle.daemonReload();
 
     expect(conn.commands).toHaveLength(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Lifecycle.readGatewayErrorDetail() — via start() failure
-// ---------------------------------------------------------------------------
-
-describe("Lifecycle — readGatewayErrorDetail via start() failure", () => {
-  it("includes error detail from gateway.err.log in GatewayUnhealthyError", async () => {
-    global.fetch = vi.fn().mockRejectedValue(new Error("Connection refused"));
-    _pollShouldSucceed = false;
-
-    const { slug, stateDir } = seedInstance();
-    // Seed a log file with a known error pattern
-    conn.files.set(
-      `${stateDir}/logs/gateway.err.log`,
-      "2024-01-01T00:00:00Z gateway start blocked by existing process\n",
-    );
-
-    const lifecycle = new Lifecycle(conn, registry, XDG);
-
-    const err = await lifecycle.start(slug).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(GatewayUnhealthyError);
-    expect((err as GatewayUnhealthyError).message).toContain("gateway start blocked");
   });
 });

@@ -70,7 +70,7 @@ export const templates = {
   "toggle-custom": "Benutzerdefinierte Agenten",
   "btn-add-agent": "+ Agent hinzufügen",
   "spinner-provisioning": "Instanz wird bereitgestellt",
-  "spinner-wait": "Dies kann 20–30 Sekunden dauern (systemd-Start + Integritätsprüfung)",
+  "spinner-wait": "Dies kann 20–30 Sekunden dauern (Start + Integritätsprüfung)",
   "error-fetch-port": "Nächster Port konnte nicht abgerufen werden",
   "error-load-providers": "Anbieter konnten nicht geladen werden",
   "error-provisioning": "Bereitstellung fehlgeschlagen",
@@ -131,7 +131,7 @@ export const templates = {
   // delete-instance-dialog.ts
   "did-title": "Instanz löschen",
   "did-warning":
-    "Dies stoppt den Dienst, entfernt alle Dateien (Statusverzeichnis, systemd-Unit) und löscht die Instanz aus dem Register. Diese Aktion kann nicht rückgängig gemacht werden.",
+    "Dies stoppt den Dienst, entfernt alle Dateien (Statusverzeichnis, Service-Unit) und löscht die Instanz aus dem Register. Diese Aktion kann nicht rückgängig gemacht werden.",
   "did-confirm-label": "Geben Sie den Instanz-Slug zur Bestätigung ein",
   "did-spinner-deleting": "Instanz wird zerstört...",
 
@@ -259,8 +259,8 @@ export const templates = {
   "discover-btn": "Instanzen entdecken",
   "discover-dialog-title": "Instanzen entdecken",
   "discover-scanning": "System wird gescannt...",
-  "discover-scanning-hint": "Suche nach OpenClaw-Instanzen",
-  "discover-none-found": "Keine OpenClaw-Instanzen auf diesem System gefunden.",
+  "discover-scanning-hint": "Suche nach vorhandenen Instanzen",
+  "discover-none-found": "Keine Instanzen auf diesem System gefunden.",
   "discover-found-n": "{n} Instanz(en) auf diesem System gefunden:",
   "discover-adopt-btn": "Alle übernehmen ({n})",
   "discover-adopting": "Instanzen werden registriert...",

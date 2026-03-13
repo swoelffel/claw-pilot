@@ -170,13 +170,6 @@ export class InstanceCard extends LitElement {
         font-family: var(--font-mono);
       }
 
-      .openclaw-version {
-        font-size: 11px;
-        color: var(--text-muted);
-        font-family: var(--font-mono);
-        flex-shrink: 0;
-      }
-
       .runtime-badge {
         display: inline-flex;
         align-items: center;
@@ -315,7 +308,6 @@ export class InstanceCard extends LitElement {
   ];
 
   @property({ type: Object }) instance!: InstanceInfo;
-  @property({ type: String }) openclawVersion: string | null = null;
 
   @state() private _loading = false;
   @state() private _error = "";
@@ -440,10 +432,6 @@ export class InstanceCard extends LitElement {
   private _renderMenu() {
     const inst = this.instance;
     const isRunning = inst.state === "running";
-    const isRuntime = inst.instance_type === "claw-runtime";
-    const uiUrl = inst.gatewayToken
-      ? `http://localhost:${inst.port}/#token=${inst.gatewayToken}`
-      : `http://localhost:${inst.port}`;
 
     return html`
       <div class="menu-popover" @click=${(e: Event) => e.stopPropagation()}>
@@ -458,23 +446,6 @@ export class InstanceCard extends LitElement {
 
         <div class="menu-separator"></div>
 
-        ${isRunning && !isRuntime
-          ? html`
-              <a
-                class="menu-item"
-                href=${uiUrl}
-                target="_blank"
-                rel="noopener"
-                @click=${(e: Event) => {
-                  e.stopPropagation();
-                  this._menuOpen = false;
-                }}
-              >
-                <span class="menu-icon">⎋</span>
-                ${msg("UI", { id: "btn-open-ui" })}
-              </a>
-            `
-          : nothing}
         ${isRunning || (inst.agentCount ?? 0) > 0
           ? html`
               <button
@@ -555,9 +526,7 @@ export class InstanceCard extends LitElement {
             ${showSlug ? html`<div class="slug">${inst.slug}</div>` : nothing}
           </div>
           <div class="card-header-right">
-            ${inst.instance_type === "claw-runtime"
-              ? html`<span class="runtime-badge">⚡ runtime</span>`
-              : nothing}
+            <span class="runtime-badge">⚡ runtime</span>
             <span class="badge ${stateClass}">
               <span class="state-dot"></span>
               ${stateClass}
@@ -587,11 +556,6 @@ export class InstanceCard extends LitElement {
           ${model ? html`<div class="model-row">${model}</div>` : nothing}
           <div class="tech-row">
             <span class="port-value">:${inst.port}</span>
-            ${inst.instance_type === "claw-runtime"
-              ? nothing
-              : this.openclawVersion
-                ? html`<span class="openclaw-version">openclaw v${this.openclawVersion}</span>`
-                : nothing}
           </div>
         </div>
 

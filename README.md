@@ -2,13 +2,11 @@
 
 **CLI + web dashboard to orchestrate multi-agent clusters on a Linux server**
 
-`claw-pilot` v0.19.0 manages the full lifecycle of agent instances: provisioning, systemd
-integration, Nginx config generation, device pairing, and a visual Agent Builder to design
+`claw-pilot` v0.20.0 manages the full lifecycle of claw-runtime agent instances: provisioning,
+service integration, Nginx config generation, device pairing, and a visual Agent Builder to design
 and edit multi-agent teams.
 
-Two instance types coexist:
-- **`openclaw`** — OpenClaw (third-party), managed via systemd / launchd
-- **`claw-runtime`** — Native Node.js engine (`src/runtime/`), managed via PID file daemon
+All instances use the **claw-runtime** engine — a native Node.js runtime managed via PID file daemon.
 
 > Not published on npm — installed from source only.
 
@@ -18,15 +16,15 @@ Two instance types coexist:
 
 ## Features
 
-- **Instance management** — provision, start, stop, restart, destroy instances (openclaw via systemd, claw-runtime via PID daemon)
-- **Discovery** — auto-detect existing OpenClaw instances on the server
+- **Instance management** — provision, start, stop, restart, destroy claw-runtime instances (PID daemon lifecycle)
+- **Discovery** — auto-detect existing claw-runtime instances on the server
 - **Interactive wizard** — guided creation with Nginx + SSL config generation
 - **Web dashboard** — real-time status via WebSocket, port 19000, login/session auth
 - **Agent Builder** — visual canvas to design multi-agent teams (drag & drop, A2A/spawn links)
 - **Blueprints** — save and reuse agent team templates, deploy to any instance
 - **Inline file editor** — edit agent workspace files (SOUL.md, AGENTS.md, TOOLS.md, …) directly from the UI
 - **Skills per agent** — configure skill allowlists per agent from the detail panel
-- **Token management** — `claw-pilot token <slug>` to retrieve gateway tokens and open the Control UI
+- **Token management** — `claw-pilot token <slug>` to retrieve tokens
 - **Self-update** — dashboard banner + `claw-pilot update` command
 - **i18n** — UI available in 6 languages (EN, FR, DE, ES, IT, PT)
 
@@ -37,7 +35,6 @@ Two instance types coexist:
 - Node.js >= 22.12.0
 - pnpm >= 9
 - Linux (Ubuntu/Debian recommended) with systemd user services enabled
-- OpenClaw CLI for `openclaw` instances (`claw-pilot init` will offer to install it if missing)
 
 ---
 
@@ -66,18 +63,16 @@ Instance lifecycle:
   stop <slug>       Stop an instance
   restart <slug>    Restart an instance
   status <slug>     Show detailed status of an instance
-  logs <slug>       View gateway logs (-f for live tail)
+  logs <slug>       View runtime logs (-f for live tail)
 
 claw-runtime:
   runtime start <slug>   Start a claw-runtime instance (--daemon for background)
   runtime stop <slug>    Stop a claw-runtime instance
   runtime logs <slug>    View runtime logs
-  migrate <slug>         Convert an openclaw instance to claw-runtime
-                         (--mode clone [default] | --mode in-place)
 
 Tooling:
   dashboard         Start the web dashboard (default port 19000)
-  token <slug>      Show gateway token (--url for full URL, --open to launch browser)
+  token <slug>      Show instance token (--url for full URL, --open to launch browser)
   doctor [slug]     Diagnose instance health
   update            Update claw-pilot to the latest release
   team              Manage agent team files (export / import)
@@ -92,11 +87,11 @@ claw-pilot dashboard
 # → http://localhost:19000  (login required)
 ```
 
-- **Instances view** — live status cards with start/stop/restart actions and direct Control UI links
+- **Instances view** — live status cards with start/stop/restart actions
 - **Agent Builder** — drag-and-drop canvas per instance to visualize and edit the agent graph
 - **Blueprints** — create reusable agent team templates and deploy them to instances
 - **Inline editor** — edit agent workspace files with Markdown preview, directly from the detail panel
-- **Settings** — per-instance configuration (Telegram, plugins, gateway, devices, skills)
+- **Settings** — per-instance configuration (Telegram, plugins, devices, skills)
 
 ---
 
@@ -104,10 +99,10 @@ claw-pilot dashboard
 
 ```
 src/
-  commands/         16 CLI commands — thin wrappers over core/
+  commands/         CLI commands — thin wrappers over core/
   core/             Business logic (registry, discovery, provisioner, agent-sync, blueprints, …)
   dashboard/        Hono HTTP server + WebSocket monitor + auth (sessions/cookies)
-  db/               SQLite schema and migrations (schema.ts) — current version: 9
+  db/               SQLite schema and migrations (schema.ts) — current version: 10
   lib/              Utilities (logger, errors, constants, platform, xdg, shell, …)
   runtime/          claw-runtime engine (bus, provider, session, tool, agent, plugin, mcp, channel)
   server/           ServerConnection abstraction (LocalConnection; SSH planned)
@@ -120,12 +115,12 @@ templates/          Workspace bootstrap files (SOUL.md, AGENTS.md, TOOLS.md, …
 
 ### Data model
 
-SQLite `~/.claw-pilot/registry.db` — schema v9. See [`docs/registry-db.md`](docs/registry-db.md).
+SQLite `~/.claw-pilot/registry.db` — schema v10. See [`docs/registry-db.md`](docs/registry-db.md).
 
 | Table | Role |
 |-------|------|
 | `servers` | Physical servers (V1: always 1 local row) |
-| `instances` | Instances — slug, port, state, **instance_type** (openclaw\|claw-runtime) |
+| `instances` | Instances — slug, port, state, config_path |
 | `agents` | Agents per instance or blueprint — canvas position, sync hash, skills |
 | `agent_files` | Workspace file cache (SOUL.md, AGENTS.md, …) |
 | `agent_links` | A2A and spawn links between agents |
@@ -149,7 +144,7 @@ pnpm install
 
 pnpm build         # Build CLI + UI
 pnpm build:cli     # Build CLI only
-pnpm test:run      # Run tests (719 unit)
+pnpm test:run      # Run tests (591 unit)
 pnpm test:e2e      # Run e2e tests (89, real HTTP server)
 pnpm typecheck     # tsc --noEmit
 pnpm lint          # oxlint src/
@@ -167,7 +162,7 @@ pnpm lint          # oxlint src/
 | Database | better-sqlite3 (SQLite, WAL) |
 | UI | Lit web components + Vite |
 | Build | tsdown (CLI) + Vite (UI) |
-| LLM SDK | Vercel AI SDK v6 (claw-runtime) |
+| LLM SDK | Vercel AI SDK v6 |
 | Tests | Vitest |
 | Lint | oxlint + Prettier + lefthook |
 

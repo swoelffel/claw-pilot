@@ -1,7 +1,7 @@
 {
   "name": "claw-pilot",
   "version": "0.20.9",
-  "description": "Orchestrator for OpenClaw multi-instance clusters",
+  "description": "Orchestrator for claw-runtime multi-agent instances",
   "type": "module",
   "license": "MIT",
   "bin": {

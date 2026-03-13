@@ -1,10 +1,11 @@
 // src/e2e/devices.e2e.test.ts
-// Phase D2 — Device management tests over real HTTP
+// Device management tests over real HTTP
 //
 // Design notes:
-// - DeviceManager reads from instance.state_dir via conn.readFile().
-// - MockConnection returns errors for missing files → dm.list() returns { pending: [], paired: [] }.
-// - MockConnection returns success for all exec calls → dm.revoke() succeeds (200).
+// - DeviceManager uses rt_pairing_codes DB table for claw-runtime instances.
+// - GET /devices returns { codes: PairingCode[] } from the DB.
+// - DELETE /devices/:code revokes a pairing code (404 if not found).
+// - POST /devices/approve no longer exists (removed with openclaw support).
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { startTestServer, type TestContext } from "./helpers/test-server.js";
 import { seedAdmin, seedLocalServer, seedInstance } from "./helpers/seed.js";
@@ -19,11 +20,10 @@ describe("Devices API", () => {
     await seedAdmin(ctx.db);
     const serverId = seedLocalServer(ctx.registry);
 
-    // Seed an openclaw instance (DeviceManager is only used with openclaw instances)
+    // Seed a claw-runtime instance
     seedInstance(ctx.registry, serverId, {
       slug: INSTANCE_SLUG,
       port: INSTANCE_PORT,
-      instanceType: "openclaw",
       state: "stopped",
     });
   });
@@ -32,34 +32,23 @@ describe("Devices API", () => {
     await ctx.cleanup();
   });
 
-  // 1. GET /api/instances/:slug/devices → 200, has pending and paired arrays
-  it("GET /api/instances/:slug/devices → 200, has pending and paired arrays", async () => {
+  // 1. GET /api/instances/:slug/devices → 200, has codes array
+  it("GET /api/instances/:slug/devices → 200, has codes array", async () => {
     const res = await ctx.client.withBearer().get(`/api/instances/${INSTANCE_SLUG}/devices`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as any;
-    // MockConnection has no state_dir files → DeviceManager returns empty lists
-    expect(Array.isArray(body.pending)).toBe(true);
-    expect(Array.isArray(body.paired)).toBe(true);
+    // No pairing codes seeded → empty array
+    expect(Array.isArray(body.codes)).toBe(true);
+    expect(body.codes.length).toBe(0);
   });
 
-  // 2. POST /api/instances/:slug/devices/approve without requestId → 400, code: "FIELD_REQUIRED"
-  it("POST .../devices/approve without requestId → 400, FIELD_REQUIRED", async () => {
+  // 2. DELETE /api/instances/:slug/devices/:code → 404 for non-existent code
+  it("DELETE .../devices/nonexistent-code → 404, CODE_NOT_FOUND", async () => {
     const res = await ctx.client
       .withBearer()
-      .post(`/api/instances/${INSTANCE_SLUG}/devices/approve`, {});
-    expect(res.status).toBe(400);
+      .delete(`/api/instances/${INSTANCE_SLUG}/devices/nonexistent-code`);
+    expect(res.status).toBe(404);
     const body = (await res.json()) as any;
-    expect(body.code).toBe("FIELD_REQUIRED");
-  });
-
-  // 3. DELETE /api/instances/:slug/devices/:deviceId → 200 or 500
-  // MockConnection returns success for all exec calls, so revoke may succeed (200).
-  // If the DeviceManager throws for a non-existent device, it returns 500.
-  it("DELETE .../devices/nonexistent-id → 200 or 500 (MockConnection)", async () => {
-    const res = await ctx.client
-      .withBearer()
-      .delete(`/api/instances/${INSTANCE_SLUG}/devices/nonexistent-id`);
-    // MockConnection exec always succeeds → 200; or DeviceManager throws → 500
-    expect([200, 500]).toContain(res.status);
+    expect(body.code).toBe("CODE_NOT_FOUND");
   });
 });

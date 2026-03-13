@@ -60,7 +60,7 @@ async function seedBlueprintAgentFiles(
 
 /**
  * Seed the default "main" agent into a newly created blueprint.
- * Mirrors the implicit "main" agent that OpenClaw creates on every fresh instance.
+ * Mirrors the implicit "main" agent that claw-runtime creates on every fresh instance.
  */
 async function seedBlueprintMainAgent(reg: Registry, blueprintId: number): Promise<void> {
   // Create the main agent row

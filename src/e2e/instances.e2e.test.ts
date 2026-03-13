@@ -41,7 +41,7 @@ describe("Instances API", () => {
     seedInstance(ctx.registry, serverId, {
       slug: "test-inst-list",
       port: 18800,
-      instanceType: "claw-runtime",
+
       state: "stopped",
     });
 
@@ -59,7 +59,7 @@ describe("Instances API", () => {
     seedInstance(ctx.registry, serverId, {
       slug: "test-inst-detail",
       port: 18801,
-      instanceType: "claw-runtime",
+
       state: "stopped",
       displayName: "Detail Test",
     });
@@ -77,7 +77,7 @@ describe("Instances API", () => {
     seedInstance(ctx.registry, serverId, {
       slug: "test-inst-config",
       port: 18802,
-      instanceType: "claw-runtime",
+
       state: "stopped",
     });
 
@@ -94,7 +94,7 @@ describe("Instances API", () => {
     seedInstance(ctx.registry, serverId, {
       slug: "test-inst-patch",
       port: 18803,
-      instanceType: "claw-runtime",
+
       state: "stopped",
       displayName: "Patch Test",
     });
@@ -112,7 +112,7 @@ describe("Instances API", () => {
     seedInstance(ctx.registry, serverId, {
       slug: "test-inst-delete",
       port: 18804,
-      instanceType: "claw-runtime",
+
       state: "stopped",
     });
 
@@ -128,7 +128,7 @@ describe("Instances API", () => {
     seedInstance(ctx.registry, serverId, {
       slug: "test-inst-gone",
       port: 18805,
-      instanceType: "claw-runtime",
+
       state: "stopped",
     });
 

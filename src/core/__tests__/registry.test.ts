@@ -25,7 +25,7 @@ describe("Registry — servers", () => {
   it("upserts local server", () => {
     const server = registry.upsertLocalServer("myhost", "/opt/openclaw");
     expect(server.hostname).toBe("myhost");
-    expect(server.openclaw_home).toBe("/opt/openclaw");
+    expect(server.home_dir).toBe("/opt/openclaw");
   });
 
   it("updates existing server", () => {

@@ -27,7 +27,6 @@ export class InstanceRepository {
     telegramBot?: string;
     defaultModel?: string;
     discovered?: boolean;
-    instanceType?: "openclaw" | "claw-runtime";
   }): InstanceRecord {
     this.db
       .prepare(
@@ -46,7 +45,7 @@ export class InstanceRepository {
         data.telegramBot ?? null,
         data.defaultModel ?? null,
         data.discovered ? 1 : 0,
-        data.instanceType ?? "openclaw",
+        "claw-runtime",
         now(),
         now(),
       );
@@ -94,12 +93,6 @@ export class InstanceRepository {
     values.push(slug);
 
     this.db.prepare(`UPDATE instances SET ${sets.join(", ")} WHERE slug=?`).run(...values);
-  }
-
-  updateInstanceType(slug: string, instanceType: "openclaw" | "claw-runtime"): void {
-    this.db
-      .prepare(`UPDATE instances SET instance_type=?, updated_at=? WHERE slug=?`)
-      .run(instanceType, now(), slug);
   }
 
   deleteInstance(slug: string): void {

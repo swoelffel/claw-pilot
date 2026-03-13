@@ -1,56 +1,48 @@
 // src/core/__tests__/device-manager.test.ts
-import { describe, it, expect, beforeEach } from "vitest";
+//
+// Tests for DeviceManager which manages device pairing codes via the
+// rt_pairing_codes DB table. Uses an in-memory SQLite database.
+
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { DeviceManager } from "../device-manager.js";
-import { MockConnection } from "./mock-connection.js";
+import { Registry } from "../registry.js";
+import { initDatabase } from "../../db/schema.js";
 
 // ---------------------------------------------------------------------------
-// Fixtures
+// Test setup
 // ---------------------------------------------------------------------------
 
-const STATE_DIR = "/home/openclaw/.openclaw-test";
-const PENDING_PATH = `${STATE_DIR}/devices/pending.json`;
-const PAIRED_PATH = `${STATE_DIR}/devices/paired.json`;
-
-const PENDING_FIXTURE = JSON.stringify([
-  {
-    requestId: "869d51b4-5bed-4481-b7aa-6911ea59a58e",
-    deviceId: "abc123",
-    publicKey: "pk1",
-    platform: "MacIntel",
-    clientId: "openclaw-control-ui",
-    clientMode: "browser",
-    role: "operator",
-    ts: 1700000000000,
-  },
-]);
-
-const PAIRED_FIXTURE = JSON.stringify([
-  {
-    deviceId: "46858a15",
-    publicKey: "pk2",
-    platform: "MacIntel",
-    clientId: "openclaw-control-ui",
-    clientMode: "browser",
-    role: "operator",
-    scopes: ["*"],
-    tokens: {
-      t1: { token: "tok", createdAtMs: 1700000000000, lastUsedAtMs: 1700003600000 },
-    },
-    createdAtMs: 1700000000000,
-    approvedAtMs: 1700000100000,
-  },
-]);
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-let conn: MockConnection;
+let db: ReturnType<typeof initDatabase>;
 let dm: DeviceManager;
 
+let _nextPort = 18790;
+/** Seed a server + instance so FK constraints on rt_pairing_codes are satisfied. */
+function seedInstance(slug: string): void {
+  const registry = new Registry(db);
+  const server =
+    registry.getLocalServer() ?? registry.upsertLocalServer("testhost", "/opt/claw-pilot");
+  registry.createInstance({
+    serverId: server.id,
+    slug,
+    port: _nextPort++,
+    configPath: `/opt/claw-pilot/.${slug}/runtime.json`,
+    stateDir: `/opt/claw-pilot/.${slug}`,
+    systemdUnit: `claw-runtime-${slug}`,
+  });
+}
+
 beforeEach(() => {
-  conn = new MockConnection();
-  dm = new DeviceManager(conn);
+  _nextPort = 18790;
+  db = initDatabase(":memory:");
+  dm = new DeviceManager(db);
+  // Seed instances used by tests
+  seedInstance("test-instance");
+  seedInstance("instance-a");
+  seedInstance("instance-b");
+});
+
+afterEach(() => {
+  db.close();
 });
 
 // ---------------------------------------------------------------------------
@@ -58,67 +50,57 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("DeviceManager.list()", () => {
-  it("returns empty lists when files don't exist", async () => {
-    // No files seeded in conn — both reads will throw
-    const result = await dm.list(STATE_DIR);
-    expect(result.pending).toEqual([]);
-    expect(result.paired).toEqual([]);
+  it("returns empty array when no codes exist", () => {
+    const result = dm.list("test-instance");
+    expect(result).toEqual([]);
   });
 
-  it("returns parsed pending devices", async () => {
-    conn.files.set(PENDING_PATH, PENDING_FIXTURE);
+  it("returns created codes", () => {
+    dm.create("test-instance", { channel: "web" });
+    dm.create("test-instance", { channel: "web" });
 
-    const result = await dm.list(STATE_DIR);
-    expect(result.pending).toHaveLength(1);
-    expect(result.pending[0]?.requestId).toBe("869d51b4-5bed-4481-b7aa-6911ea59a58e");
-    expect(result.pending[0]?.platform).toBe("MacIntel");
-    expect(result.paired).toEqual([]);
+    const result = dm.list("test-instance");
+    expect(result).toHaveLength(2);
+    expect(result[0]!.channel).toBe("web");
+    expect(result[0]!.used).toBe(false);
   });
 
-  it("returns parsed paired devices", async () => {
-    conn.files.set(PAIRED_PATH, PAIRED_FIXTURE);
+  it("does not return codes for other instances", () => {
+    dm.create("instance-a");
+    dm.create("instance-b");
 
-    const result = await dm.list(STATE_DIR);
-    expect(result.pending).toEqual([]);
-    expect(result.paired).toHaveLength(1);
-    expect(result.paired[0]?.deviceId).toBe("46858a15");
-    expect(result.paired[0]?.role).toBe("operator");
-  });
-
-  it("returns both pending and paired", async () => {
-    conn.files.set(PENDING_PATH, PENDING_FIXTURE);
-    conn.files.set(PAIRED_PATH, PAIRED_FIXTURE);
-
-    const result = await dm.list(STATE_DIR);
-    expect(result.pending).toHaveLength(1);
-    expect(result.paired).toHaveLength(1);
+    const result = dm.list("instance-a");
+    expect(result).toHaveLength(1);
   });
 });
 
 // ---------------------------------------------------------------------------
-// DeviceManager.approve()
+// DeviceManager.create()
 // ---------------------------------------------------------------------------
 
-describe("DeviceManager.approve()", () => {
-  it("calls openclaw devices approve with correct stateDir and requestId", async () => {
-    const requestId = "869d51b4-5bed-4481-b7aa-6911ea59a58e";
-    await dm.approve(STATE_DIR, requestId);
-
-    expect(conn.commands).toHaveLength(1);
-    expect(conn.commands[0]).toContain(`OPENCLAW_STATE_DIR=${STATE_DIR}`);
-    expect(conn.commands[0]).toContain("openclaw devices approve");
-    expect(conn.commands[0]).toContain(requestId);
+describe("DeviceManager.create()", () => {
+  it("creates a pairing code with default channel", () => {
+    const code = dm.create("test-instance");
+    expect(code.code).toBeTruthy();
+    expect(code.code.length).toBe(8);
+    expect(code.channel).toBe("web");
+    expect(code.used).toBe(false);
+    expect(code.expires_at).toBeTruthy();
+    expect(code.created_at).toBeTruthy();
   });
 
-  it("throws on non-zero exit code", async () => {
-    const requestId = "bad-request-id";
-    conn.mockExec("openclaw devices approve", {
-      stdout: "",
-      stderr: "device not found",
-      exitCode: 1,
-    });
+  it("creates a pairing code with custom channel", () => {
+    const code = dm.create("test-instance", { channel: "telegram" });
+    expect(code.channel).toBe("telegram");
+  });
 
-    await expect(dm.approve(STATE_DIR, requestId)).rejects.toThrow("device not found");
+  it("creates a pairing code with custom TTL", () => {
+    const code = dm.create("test-instance", { ttlMinutes: 60 });
+    const expiresAt = new Date(code.expires_at).getTime();
+    const now = Date.now();
+    // Should expire roughly 60 minutes from now (allow 5s tolerance)
+    expect(expiresAt - now).toBeGreaterThan(59 * 60 * 1000 - 5000);
+    expect(expiresAt - now).toBeLessThan(61 * 60 * 1000);
   });
 });
 
@@ -127,24 +109,18 @@ describe("DeviceManager.approve()", () => {
 // ---------------------------------------------------------------------------
 
 describe("DeviceManager.revoke()", () => {
-  it("calls openclaw devices revoke with correct stateDir and deviceId", async () => {
-    const deviceId = "46858a15";
-    await dm.revoke(STATE_DIR, deviceId);
+  it("revokes an existing code and returns true", () => {
+    const created = dm.create("test-instance");
+    const result = dm.revoke("test-instance", created.code);
+    expect(result).toBe(true);
 
-    expect(conn.commands).toHaveLength(1);
-    expect(conn.commands[0]).toContain(`OPENCLAW_STATE_DIR=${STATE_DIR}`);
-    expect(conn.commands[0]).toContain("openclaw devices revoke");
-    expect(conn.commands[0]).toContain(deviceId);
+    // Code should no longer appear in list
+    const list = dm.list("test-instance");
+    expect(list).toHaveLength(0);
   });
 
-  it("throws on non-zero exit code", async () => {
-    const deviceId = "bad-device-id";
-    conn.mockExec("openclaw devices revoke", {
-      stdout: "",
-      stderr: "device not found",
-      exitCode: 1,
-    });
-
-    await expect(dm.revoke(STATE_DIR, deviceId)).rejects.toThrow("device not found");
+  it("returns false for non-existent code", () => {
+    const result = dm.revoke("test-instance", "NONEXIST");
+    expect(result).toBe(false);
   });
 });

@@ -1,15 +1,13 @@
 // src/commands/init.ts
 import { Command } from "commander";
 import { confirm } from "@inquirer/prompts";
-import { getDataDir, getDbPath, getOpenClawHome } from "../lib/platform.js";
+import { getDataDir, getDbPath, getHomeDir } from "../lib/platform.js";
 import { initDatabase } from "../db/schema.js";
 import { Registry } from "../core/registry.js";
 import { InstanceDiscovery } from "../core/discovery.js";
-import { OpenClawCLI } from "../core/openclaw-cli.js";
 import { LocalConnection } from "../server/local.js";
 import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 import { logger } from "../lib/logger.js";
-import { constants } from "../lib/constants.js";
 
 export function initCommand(): Command {
   return new Command("init")
@@ -25,82 +23,33 @@ export function initCommand(): Command {
       const db = initDatabase(getDbPath());
       const registry = new Registry(db);
       try {
-        // 3. Detect OpenClaw (offer to install if missing)
-        const cli = new OpenClawCLI(conn);
-        let openclaw = await cli.detect();
-        if (!openclaw) {
-          const installUrl = process.env["OPENCLAW_INSTALL_URL"] ?? constants.OPENCLAW_INSTALL_URL;
-          logger.warn("OpenClaw CLI not found.");
-
-          const shouldInstall =
-            opts.yes ??
-            (await confirm({
-              message: `Install OpenClaw automatically? (from ${installUrl})`,
-              default: true,
-            }));
-
-          if (shouldInstall) {
-            logger.info("Installing OpenClaw...");
-            const installed = await cli.install();
-            if (!installed) {
-              logger.error("OpenClaw installation failed.");
-              logger.warn(
-                "OpenClaw is required to create and manage instances. Install it manually:",
-              );
-              logger.warn(`  curl -fsSL ${installUrl} | sh`);
-              logger.warn("Then re-run: claw-pilot init");
-            } else {
-              openclaw = await cli.detect();
-              if (openclaw) {
-                logger.success(`OpenClaw installed: ${openclaw.version}`);
-              }
-            }
-          } else {
-            logger.warn(
-              "Skipping OpenClaw install — create/start commands will not work until it is installed.",
-            );
-          }
-        } else {
-          logger.info(`OpenClaw detected: ${openclaw.version}`);
-        }
-
-        // 4. Register local server
-        // Use the home derived from openclaw detection (e.g. /opt/openclaw for a
-        // dedicated openclaw user) so that instance stateDirs are resolved correctly.
-        // Fall back to getOpenClawHome() (env var or os.homedir()) if not detected.
+        // 3. Register local server
         const hostname = await conn.hostname();
-        const openclawHome = openclaw?.home ?? getOpenClawHome();
-        const server = registry.upsertLocalServer(hostname, openclawHome);
-        if (openclaw) {
-          registry.updateServerBin(openclaw.bin, openclaw.version);
-        }
+        const homeDir = getHomeDir();
+        const server = registry.upsertLocalServer(hostname, homeDir);
 
-        // 5. Discover existing instances
-        logger.info("\nScanning for existing OpenClaw instances...");
+        // 4. Discover existing claw-runtime instances
+        logger.info("\nScanning for existing claw-runtime instances...");
         const xdgRuntimeDir = await resolveXdgRuntimeDir(conn);
-        const discovery = new InstanceDiscovery(conn, registry, openclawHome, xdgRuntimeDir);
+        const discovery = new InstanceDiscovery(conn, registry, homeDir, xdgRuntimeDir);
         const result = await discovery.scan();
 
-        // 5a. Display results
+        // 4a. Display results
         if (result.instances.length === 0) {
           logger.dim("No existing instances found.");
         } else {
           for (const inst of result.instances) {
-            const stateLabel = inst.gatewayHealthy
-              ? "healthy"
-              : inst.systemdState === "active"
-                ? "active"
-                : "stopped";
+            const stateLabel = inst.runtimeRunning ? "running" : "stopped";
             const registeredLabel = result.newInstances.includes(inst) ? "NEW" : "registered";
             logger.step(
               `[${registeredLabel}] ${inst.slug}  port:${inst.port}  ` +
-                `systemd:${inst.systemdState ?? "none"}  gateway:${stateLabel}  ` +
+                `status:${stateLabel}  ` +
                 `agents:${inst.agents.length}  (source: ${inst.source})`,
             );
           }
         }
 
-        // 5b. Adopt new instances
+        // 4b. Adopt new instances
         if (result.newInstances.length > 0) {
           const adoptAll =
             opts.yes ??
@@ -119,7 +68,7 @@ export function initCommand(): Command {
           }
         }
 
-        // 5c. Handle removed instances
+        // 4c. Handle removed instances
         if (result.removedSlugs.length > 0) {
           logger.warn("\nInstances in registry but no longer found on disk:");
           for (const slug of result.removedSlugs) {
@@ -146,7 +95,7 @@ export function initCommand(): Command {
           }
         }
 
-        // 6. Detect shared resources
+        // 5. Detect shared resources
         logger.info("\nShared resources:");
         const [ollamaResult, qdrantResult, dockerResult] = await Promise.all([
           conn.exec("curl -s http://127.0.0.1:11434/api/version 2>/dev/null || true"),
@@ -157,7 +106,7 @@ export function initCommand(): Command {
         logger.step(`Qdrant:  ${qdrantResult.stdout.includes("ok") ? "running" : "not detected"}`);
         logger.step(`Docker:  ${dockerResult.stdout.trim() || "not detected"}`);
 
-        // 7. Summary
+        // 6. Summary
         const totalInstances = registry.listInstances().length;
         logger.info(`\n${totalInstances} instance(s) in registry.`);
         logger.info("Ready. Run 'claw-pilot create' to provision a new instance.");

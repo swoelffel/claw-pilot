@@ -27,7 +27,6 @@ export function seedLocalServer(registry: Registry): number {
 export interface SeedInstanceOptions {
   slug: string;
   port: number;
-  instanceType?: "openclaw" | "claw-runtime";
   state?: "running" | "stopped" | "error";
   displayName?: string;
 }
@@ -38,18 +37,15 @@ export function seedInstance(
   serverId: number,
   opts: SeedInstanceOptions,
 ): void {
-  const { slug, port, instanceType = "openclaw", state = "stopped", displayName } = opts;
-  // claw-runtime uses runtime.json, openclaw uses openclaw.json
-  const configFile = instanceType === "claw-runtime" ? "runtime.json" : "openclaw.json";
+  const { slug, port, state = "stopped", displayName } = opts;
   registry.allocatePort(serverId, port, slug);
   registry.createInstance({
     serverId,
     slug,
     port,
-    configPath: `/home/test/.openclaw-${slug}/${configFile}`,
+    configPath: `/home/test/.openclaw-${slug}/runtime.json`,
     stateDir: `/home/test/.openclaw-${slug}`,
-    systemdUnit: `openclaw-${slug}.service`,
-    instanceType,
+    systemdUnit: `claw-runtime-${slug}.service`,
     ...(displayName !== undefined ? { displayName } : {}),
   });
   // Set the desired state (createInstance defaults to 'unknown')

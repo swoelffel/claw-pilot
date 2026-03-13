@@ -70,11 +70,8 @@ export class Registry {
   getLocalServer() {
     return this.servers.getLocalServer();
   }
-  upsertLocalServer(hostname: string, openclawHome: string, ip?: string) {
-    return this.servers.upsertLocalServer(hostname, openclawHome, ip);
-  }
-  updateServerBin(bin: string, version: string) {
-    return this.servers.updateServerBin(bin, version);
+  upsertLocalServer(hostname: string, homeDir: string, ip?: string) {
+    return this.servers.upsertLocalServer(hostname, homeDir, ip);
   }
 
   // --- Instances ---
@@ -92,9 +89,6 @@ export class Registry {
   }
   updateInstance(slug: string, fields: Parameters<InstanceRepository["updateInstance"]>[1]) {
     return this.instances.updateInstance(slug, fields);
-  }
-  updateInstanceType(slug: string, instanceType: "openclaw" | "claw-runtime") {
-    return this.instances.updateInstanceType(slug, instanceType);
   }
   deleteInstance(slug: string) {
     return this.instances.deleteInstance(slug);

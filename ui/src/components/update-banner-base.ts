@@ -1,8 +1,7 @@
 // ui/src/components/update-banner-base.ts
 //
-// Composant de base partagé entre cp-update-banner (OpenClaw) et
-// cp-self-update-banner (claw-pilot). Factorise le CSS et la structure HTML
-// des 4 états (idle/running/done/error).
+// Composant de base pour cp-self-update-banner (claw-pilot self-update).
+// Factorise le CSS et la structure HTML des 4 états (idle/running/done/error).
 //
 // Événements émis :
 //   cp-update-action  — clic Update ou Retry (bubbles + composed)
@@ -11,10 +10,10 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { OpenClawUpdateStatus, SelfUpdateStatus } from "../types.js";
+import type { SelfUpdateStatus } from "../types.js";
 import { tokenStyles } from "../styles/tokens.js";
 
-type UpdateStatus = OpenClawUpdateStatus | SelfUpdateStatus;
+type UpdateStatus = SelfUpdateStatus;
 
 @localized()
 @customElement("cp-update-banner-base")

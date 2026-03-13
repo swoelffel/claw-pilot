@@ -20,7 +20,7 @@ describe("Runtime API", () => {
     seedInstance(ctx.registry, serverId, {
       slug: INSTANCE_SLUG,
       port: INSTANCE_PORT,
-      instanceType: "claw-runtime",
+
       state: "stopped",
     });
   });

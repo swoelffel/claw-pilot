@@ -45,15 +45,7 @@ describe("System API", () => {
     expect(typeof body.db.sizeBytes).toBe("number");
   });
 
-  // 4. GET /api/openclaw/update-status → not 401 or 404 (route exists, auth works)
-  // The update checker may fail to reach GitHub in test env → may return 500, but not 401/404.
-  it("GET /api/openclaw/update-status → route exists and auth works (not 401/404)", async () => {
-    const res = await ctx.client.withBearer().get("/api/openclaw/update-status");
-    expect(res.status).not.toBe(401);
-    expect(res.status).not.toBe(404);
-  });
-
-  // 5. GET /api/self/update-status → not 401 or 404 (route exists, auth works)
+  // 4. GET /api/self/update-status → not 401 or 404 (route exists, auth works)
   // The self-update checker may fail to reach GitHub in test env → may return 500, but not 401/404.
   it("GET /api/self/update-status → route exists and auth works (not 401/404)", async () => {
     const res = await ctx.client.withBearer().get("/api/self/update-status");

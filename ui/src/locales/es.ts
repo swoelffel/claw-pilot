@@ -69,7 +69,7 @@ export const templates = {
   "toggle-custom": "Agentes personalizados",
   "btn-add-agent": "+ Agregar agente",
   "spinner-provisioning": "Aprovisionando instancia",
-  "spinner-wait": "Esto puede tardar 20–30 segundos (inicio de systemd + verificación de salud)",
+  "spinner-wait": "Esto puede tardar 20–30 segundos (inicio + verificación de salud)",
   "error-fetch-port": "No se pudo obtener el siguiente puerto",
   "error-load-providers": "No se pudieron cargar los proveedores",
   "error-provisioning": "Error de aprovisionamiento",
@@ -131,7 +131,7 @@ export const templates = {
   // delete-instance-dialog.ts
   "did-title": "Eliminar instancia",
   "did-warning":
-    "Esto detendrá el servicio, eliminará todos los archivos (directorio de estado, unidad systemd) y eliminará la instancia del registro. Esta acción no se puede deshacer.",
+    "Esto detendrá el servicio, eliminará todos los archivos (directorio de estado, unidad de servicio) y eliminará la instancia del registro. Esta acción no se puede deshacer.",
   "did-confirm-label": "Escriba el slug de la instancia para confirmar",
   "did-spinner-deleting": "Destruyendo instancia...",
 
@@ -259,8 +259,8 @@ export const templates = {
   "discover-btn": "Descubrir instancias",
   "discover-dialog-title": "Descubrir instancias",
   "discover-scanning": "Escaneando el sistema...",
-  "discover-scanning-hint": "Buscando instancias de OpenClaw",
-  "discover-none-found": "No se encontraron instancias de OpenClaw en este sistema.",
+  "discover-scanning-hint": "Buscando instancias existentes",
+  "discover-none-found": "No se encontraron instancias en este sistema.",
   "discover-found-n": "Se encontraron {n} instancia(s) en este sistema:",
   "discover-adopt-btn": "Adoptar todas ({n})",
   "discover-adopting": "Registrando instancias...",

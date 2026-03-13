@@ -171,7 +171,6 @@
     "getsystemdunit",
     "getdashboardservicepath",
     "getdashboardlaunchdplistpath",
-    "getopenclawhome",
     "wal",
     "pragma",
     "rowid",

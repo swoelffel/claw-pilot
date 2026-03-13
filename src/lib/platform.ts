@@ -28,11 +28,14 @@ export function isDocker(): boolean {
   return process.env["CLAW_PILOT_ENV"] === "docker";
 }
 
-export function getOpenClawHome(dbPath?: string): string {
-  // Priority: OPENCLAW_HOME env var > openclaw_home stored in DB > os.homedir()
-  if (process.env["OPENCLAW_HOME"]) return process.env["OPENCLAW_HOME"];
+/**
+ * Resolve the home directory used for instance state dirs.
+ * Priority: CLAW_PILOT_HOME env var > openclaw_home stored in DB > os.homedir()
+ */
+export function getHomeDir(dbPath?: string): string {
+  if (process.env["CLAW_PILOT_HOME"]) return process.env["CLAW_PILOT_HOME"];
 
-  // Read from DB if available (set during `claw-pilot init` from detected openclaw binary)
+  // Read from DB if available (set during `claw-pilot init`)
   const resolvedDbPath = dbPath ?? getDbPath();
   try {
     // Lazy require to avoid circular dependency — only used at runtime
@@ -54,34 +57,23 @@ export function getOpenClawHome(dbPath?: string): string {
   return os.homedir();
 }
 
-export function getStateDir(slug: string): string {
-  return path.join(getOpenClawHome(), `${constants.OPENCLAW_STATE_PREFIX}${slug}`);
-}
-
-/** State directory for claw-runtime instances (distinct from OpenClaw). */
+/** State directory for a claw-runtime instance. */
 export function getRuntimeStateDir(slug: string): string {
-  return path.join(getOpenClawHome(), `${constants.RUNTIME_STATE_PREFIX}${slug}`);
+  return path.join(getHomeDir(), `${constants.RUNTIME_STATE_PREFIX}${slug}`);
 }
 
-/** @public */
-export function getConfigPath(slug: string): string {
-  return path.join(getStateDir(slug), "openclaw.json");
+/** Path to runtime.json config for a claw-runtime instance. */
+export function getRuntimeConfigPath(slug: string): string {
+  return path.join(getRuntimeStateDir(slug), "runtime.json");
 }
 
 export function getSystemdDir(): string {
-  // Systemd --user units always live in $HOME/.config/systemd/user/,
-  // regardless of OPENCLAW_HOME.
   return path.join(os.homedir(), ".config/systemd/user");
-}
-
-export function getSystemdUnit(slug: string): string {
-  return `openclaw-${slug}.service`;
 }
 
 export const DASHBOARD_SERVICE_UNIT = "claw-pilot-dashboard.service";
 
 export function getDashboardServicePath(): string {
-  // Uses getSystemdDir() which follows the same home as other systemd units
   return path.join(getSystemdDir(), DASHBOARD_SERVICE_UNIT);
 }
 
@@ -96,18 +88,10 @@ export function getServiceManager(): ServiceManager {
   return SERVICE_MANAGER;
 }
 
-// --- launchd helpers (macOS) ---
+// --- launchd helpers (macOS) — dashboard only ---
 
 export function getLaunchdDir(): string {
   return path.join(os.homedir(), "Library/LaunchAgents");
-}
-
-export function getLaunchdLabel(slug: string): string {
-  return `ai.openclaw.${slug}`;
-}
-
-export function getLaunchdPlistPath(slug: string): string {
-  return path.join(getLaunchdDir(), `${getLaunchdLabel(slug)}.plist`);
 }
 
 export const DASHBOARD_LAUNCHD_LABEL = "io.claw-pilot.dashboard";

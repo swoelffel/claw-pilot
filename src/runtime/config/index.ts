@@ -3,8 +3,7 @@
  *
  * Runtime configuration schema for claw-runtime.
  *
- * Deliberately simpler than openclaw.json — the dashboard is the primary
- * editing interface, not a hand-edited JSON file.
+ * The dashboard is the primary editing interface, not a hand-edited JSON file.
  *
  * Stored as JSON in the instance state directory: <stateDir>/runtime.json
  */

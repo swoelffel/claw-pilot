@@ -4,7 +4,7 @@
 # Options:
 #   --dry-run    Show what would be removed, do nothing
 #   --yes        Remove everything without confirmation
-#   --keep-data  Remove claw-pilot binary/repo but keep ~/.claw-pilot/ and ~/.openclaw-*/
+#   --keep-data  Remove claw-pilot binary/repo but keep ~/.claw-pilot/ and instance state dirs
 set -e
 
 # Ensure we have a valid working directory
@@ -12,7 +12,8 @@ cd "${HOME:-/tmp}" 2>/dev/null || true
 
 # --- Constants ---
 DATA_DIR="$HOME/.claw-pilot"
-STATE_PREFIX="$HOME/.openclaw-"
+STATE_PREFIX_LEGACY="$HOME/.openclaw-"
+STATE_PREFIX_RUNTIME="$HOME/.runtime-"
 DEFAULT_INSTALL_DIR="/opt/claw-pilot"
 
 # --- Parse args ---
@@ -30,7 +31,7 @@ for arg in "$@"; do
       echo ""
       echo "  --dry-run    Show what would be removed, do nothing"
       echo "  --yes        Remove everything without confirmation"
-      echo "  --keep-data  Keep ~/.claw-pilot/ and ~/.openclaw-*/ (instance data)"
+      echo "  --keep-data  Keep ~/.claw-pilot/ and instance state dirs (instance data)"
       exit 0
       ;;
     *)
@@ -138,12 +139,22 @@ resolve_install_dir() {
   echo "${CLAW_PILOT_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
 }
 
-# List instance slugs by scanning ~/.openclaw-*/openclaw.json
+# List instance slugs by scanning ~/.runtime-*/runtime.json and legacy ~/.openclaw-*/
 list_instances() {
-  for dir in "${STATE_PREFIX}"*/; do
+  _seen=""
+  # Scan new state dirs (~/.runtime-<slug>/runtime.json)
+  for dir in "${STATE_PREFIX_RUNTIME}"*/; do
+    [ -d "$dir" ] || continue
+    slug=$(basename "$dir" | sed "s/^\.runtime-//")
+    [ -n "$slug" ] && echo "$slug" && _seen="$_seen $slug"
+  done
+  # Scan legacy state dirs (~/.openclaw-<slug>/) — skip if already found above
+  for dir in "${STATE_PREFIX_LEGACY}"*/; do
     [ -d "$dir" ] || continue
     slug=$(basename "$dir" | sed "s/^\.openclaw-//")
-    [ -n "$slug" ] && echo "$slug"
+    [ -z "$slug" ] && continue
+    case " $_seen " in *" $slug "*) continue ;; esac
+    echo "$slug"
   done
 }
 
@@ -173,7 +184,11 @@ info "Instances found        : ${INSTANCE_COUNT}"
 
 if [ "$INSTANCE_COUNT" -gt 0 ]; then
   for slug in $INSTANCES; do
-    info "  - $slug  (~/.openclaw-${slug}/)"
+    if [ -d "${STATE_PREFIX_RUNTIME}${slug}" ]; then
+      info "  - $slug  (~/.runtime-${slug}/)"
+    else
+      info "  - $slug  (~/.openclaw-${slug}/)  [legacy]"
+    fi
   done
 fi
 
@@ -200,15 +215,15 @@ echo ""
 
 OS=$(uname -s)
 
-# Stop OpenClaw instance services
+# Stop instance services
 if [ "$INSTANCE_COUNT" -gt 0 ]; then
-  log "Stopping OpenClaw instance services..."
+  log "Stopping instance services..."
   for slug in $INSTANCES; do
     if [ "$OS" = "Linux" ]; then
-      stop_systemd_service "openclaw-${slug}.service"
+      stop_systemd_service "claw-runtime-${slug}.service"
     elif [ "$OS" = "Darwin" ]; then
-      plist="$HOME/Library/LaunchAgents/ai.openclaw.${slug}.plist"
-      stop_launchd_agent "ai.openclaw.${slug}" "$plist"
+      plist="$HOME/Library/LaunchAgents/ai.claw-runtime.${slug}.plist"
+      stop_launchd_agent "ai.claw-runtime.${slug}" "$plist"
     fi
   done
 fi
@@ -237,7 +252,7 @@ if [ "$OS" = "Linux" ]; then
   SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
   # Remove instance service files
   for slug in $INSTANCES; do
-    safe_remove "${SYSTEMD_USER_DIR}/openclaw-${slug}.service"
+    safe_remove "${SYSTEMD_USER_DIR}/claw-runtime-${slug}.service"
   done
   # Remove dashboard service file
   safe_remove "${SYSTEMD_USER_DIR}/claw-pilot-dashboard.service"
@@ -250,7 +265,7 @@ if [ "$OS" = "Linux" ]; then
 elif [ "$OS" = "Darwin" ]; then
   LAUNCHD_DIR="$HOME/Library/LaunchAgents"
   for slug in $INSTANCES; do
-    safe_remove "${LAUNCHD_DIR}/ai.openclaw.${slug}.plist"
+    safe_remove "${LAUNCHD_DIR}/ai.claw-runtime.${slug}.plist"
   done
   safe_remove "${LAUNCHD_DIR}/io.claw-pilot.dashboard.plist"
 fi
@@ -259,11 +274,12 @@ fi
 
 if [ "$KEEP_DATA" -eq 0 ] && [ "$INSTANCE_COUNT" -gt 0 ]; then
   echo ""
-  if confirm "Remove all instance data (~/.openclaw-*/)? This includes API keys and workspaces."; then
+  if confirm "Remove all instance data (~/.runtime-*/ and legacy ~/.openclaw-*/)? This includes API keys and workspaces."; then
     log "Removing instance data..."
     warn "Note: API keys stored in .env files will be permanently deleted."
     for slug in $INSTANCES; do
-      safe_remove "${STATE_PREFIX}${slug}"
+      safe_remove "${STATE_PREFIX_RUNTIME}${slug}"
+      safe_remove "${STATE_PREFIX_LEGACY}${slug}"
     done
   else
     info "Instance data kept."
@@ -337,11 +353,8 @@ if [ "$DRY_RUN" -eq 1 ]; then
 else
   log "claw-pilot has been uninstalled."
   if [ "$KEEP_DATA" -eq 1 ]; then
-    info "Instance data kept in ~/.openclaw-*/"
+    info "Instance data kept in ~/.runtime-*/ (and legacy ~/.openclaw-*/)"
     info "claw-pilot data kept in ~/.claw-pilot/"
   fi
-  echo ""
-  warn "OpenClaw was not removed."
-  warn "To uninstall OpenClaw: npm uninstall -g openclaw"
 fi
 echo ""

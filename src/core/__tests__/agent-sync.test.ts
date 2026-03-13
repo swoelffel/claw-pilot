@@ -35,22 +35,21 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 const STATE_DIR = "/opt/openclaw/.openclaw-test";
-const CONFIG_PATH = `${STATE_DIR}/openclaw.json`;
+const CONFIG_PATH = `${STATE_DIR}/runtime.json`;
 
-/** Minimal openclaw.json with no extra agents */
+/** Minimal runtime.json with no agents (empty array → synthetic "main" agent) */
 const MINIMAL_CONFIG = JSON.stringify({
-  agents: {
-    defaults: { model: "claude-3-5-sonnet-20241022" },
-    list: [],
-  },
+  defaultModel: "claude-3-5-sonnet-20241022",
+  agents: [],
 });
 
-/** Config with one extra agent "helper" */
+/** Config with two agents: main + helper */
 const MULTI_AGENT_CONFIG = JSON.stringify({
-  agents: {
-    defaults: { model: "claude-3-5-sonnet-20241022" },
-    list: [{ id: "helper", name: "Helper", workspace: "workspace-helper" }],
-  },
+  defaultModel: "claude-3-5-sonnet-20241022",
+  agents: [
+    { id: "main", name: "Main", isDefault: true, workspace: "workspace" },
+    { id: "helper", name: "Helper", workspace: "workspace-helper" },
+  ],
 });
 
 /** Create a minimal instance in the registry */
@@ -62,7 +61,7 @@ function seedInstance(slug = "test-inst"): InstanceRecord {
     port: 18790,
     configPath: CONFIG_PATH,
     stateDir: STATE_DIR,
-    systemdUnit: `openclaw-${slug}.service`,
+    systemdUnit: `claw-runtime-${slug}`,
   });
   return instance;
 }
@@ -98,12 +97,10 @@ describe("AgentSync.sync()", () => {
     const agentSync = new AgentSync(conn, registry);
     await agentSync.sync(instance);
 
-    // Second sync: change the model in defaults
+    // Second sync: change the default model
     const updatedConfig = JSON.stringify({
-      agents: {
-        defaults: { model: "claude-3-opus-20240229" }, // different model
-        list: [],
-      },
+      defaultModel: "claude-3-opus-20240229", // different model
+      agents: [],
     });
     conn.files.set(CONFIG_PATH, updatedConfig);
 
@@ -157,8 +154,8 @@ describe("AgentSync.sync()", () => {
     const instance = seedInstance();
     conn.files.set(CONFIG_PATH, MINIMAL_CONFIG);
 
-    // With MINIMAL_CONFIG (empty list), main agent workspace is stateDir/workspace (no "workspaces/" prefix)
-    const workspacePath = `${STATE_DIR}/workspace`;
+    // With MINIMAL_CONFIG (empty agents array), synthetic main agent workspace is stateDir/workspaces/workspace
+    const workspacePath = `${STATE_DIR}/workspaces/workspace`;
     conn.files.set(`${workspacePath}/SOUL.md`, "# Soul\nThis is the soul file.");
 
     const agentSync = new AgentSync(conn, registry);
@@ -179,8 +176,8 @@ describe("AgentSync.sync()", () => {
     const instance = seedInstance();
     conn.files.set(CONFIG_PATH, MINIMAL_CONFIG);
 
-    // With MINIMAL_CONFIG (empty list), main agent workspace is stateDir/workspace (no "workspaces/" prefix)
-    const workspacePath = `${STATE_DIR}/workspace`;
+    // With MINIMAL_CONFIG (empty agents array), synthetic main agent workspace is stateDir/workspaces/workspace
+    const workspacePath = `${STATE_DIR}/workspaces/workspace`;
     conn.files.set(`${workspacePath}/AGENTS.md`, "# Agents");
     conn.files.set(`${workspacePath}/SOUL.md`, "# Soul");
     conn.files.set(`${workspacePath}/TOOLS.md`, "# Tools");
@@ -237,10 +234,8 @@ describe("AgentSync.sync()", () => {
 
     // Second sync: config changes (model changed) → triggers upsert
     const updatedConfig = JSON.stringify({
-      agents: {
-        defaults: { model: "claude-3-opus-20240229" },
-        list: [],
-      },
+      defaultModel: "claude-3-opus-20240229",
+      agents: [],
     });
     conn.files.set(CONFIG_PATH, updatedConfig);
     const result = await agentSync.sync(instance);

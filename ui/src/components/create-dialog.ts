@@ -275,8 +275,6 @@ export class CreateDialog extends DialogMixin(LitElement) {
   @state() private _providersError = "";
   @state() private _selectedProvider: ProviderInfo | null = null;
   @state() private _apiKey = "";
-  @state() private _instanceType: "openclaw" | "claw-runtime" = "claw-runtime";
-  @state() private _openclawAvailable = false;
 
   @state() private _blueprints: Blueprint[] = [];
   @state() private _blueprintsLoading = false;
@@ -313,8 +311,8 @@ export class CreateDialog extends DialogMixin(LitElement) {
       const data: ProvidersResponse = await fetchProviders();
       this._providers = data.providers;
       this._canReuseCredentials = data.canReuseCredentials;
-      this._openclawAvailable = data.openclawAvailable;
-      const defaultProvider = data.providers.find((p) => p.isDefault) ?? data.providers[0] ?? null;
+      const defaultProvider =
+        data.providers.find((p: ProviderInfo) => p.isDefault) ?? data.providers[0] ?? null;
       this._selectedProvider = defaultProvider;
       this._model = defaultProvider?.defaultModel ?? defaultProvider?.models[0] ?? "";
     } catch (err) {
@@ -407,7 +405,6 @@ export class CreateDialog extends DialogMixin(LitElement) {
       defaultModel: this._model,
       provider: this._selectedProvider?.id ?? "anthropic",
       apiKey: this._selectedProvider?.requiresKey ? this._apiKey.trim() : "",
-      instanceType: this._instanceType,
       agents: this._buildAgents(),
       ...(this._selectedBlueprintId != null && { blueprintId: this._selectedBlueprintId }),
     };
@@ -439,7 +436,7 @@ export class CreateDialog extends DialogMixin(LitElement) {
             `
           : html`
               <div class="spinner-msg">
-                ${msg("This may take 20-30 seconds (systemd start + health check)", {
+                ${msg("This may take 20-30 seconds (startup + health check)", {
                   id: "spinner-wait",
                 })}
               </div>
@@ -585,36 +582,6 @@ export class CreateDialog extends DialogMixin(LitElement) {
         <!-- Configuration -->
         <div class="section">
           <div class="section-label">${msg("Configuration", { id: "section-configuration" })}</div>
-          <div class="field">
-            <label for="instance-type"
-              >${msg("Instance type *", { id: "label-instance-type" })}</label
-            >
-            <select
-              id="instance-type"
-              .value=${this._instanceType}
-              @change=${(e: Event) => {
-                this._instanceType = (e.target as HTMLSelectElement).value as
-                  | "openclaw"
-                  | "claw-runtime";
-              }}
-            >
-              <option value="claw-runtime" ?selected=${this._instanceType === "claw-runtime"}>
-                claw-runtime (native)
-              </option>
-              <option
-                value="openclaw"
-                ?selected=${this._instanceType === "openclaw"}
-                ?disabled=${!this._openclawAvailable}
-              >
-                openclaw${this._openclawAvailable
-                  ? ""
-                  : ` (${msg("not installed", { id: "cd-oc-not-installed" })})`}
-              </option>
-            </select>
-            <span class="field-hint"
-              >${msg("Engine used to run agents", { id: "hint-instance-type" })}</span
-            >
-          </div>
           <div class="field">
             <label for="port">${msg("Gateway port *", { id: "label-gateway-port" })}</label>
             <input

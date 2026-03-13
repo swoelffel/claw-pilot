@@ -633,7 +633,6 @@ export class CpApp extends LitElement {
           // Only create a new object if something actually changed
           if (
             inst.gateway === update.gateway &&
-            inst.systemd === update.systemd &&
             inst.state === newState &&
             inst.agentCount === newAgentCount &&
             inst.pendingDevices === newPendingDevices &&
@@ -645,7 +644,6 @@ export class CpApp extends LitElement {
           return {
             ...inst,
             gateway: update.gateway,
-            systemd: update.systemd,
             state: newState,
             ...(newAgentCount !== undefined && { agentCount: newAgentCount }),
             ...(newPendingDevices !== undefined && { pendingDevices: newPendingDevices }),

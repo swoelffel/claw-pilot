@@ -21,8 +21,6 @@ CLAW_PILOT_REPO_BRANCH="${CLAW_PILOT_REPO_BRANCH:-main}"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/${CLAW_PILOT_REPO_BRANCH}"
 MIN_NODE_VERSION=22
 INSTALL_DIR="${CLAW_PILOT_INSTALL_DIR:-/opt/claw-pilot}"
-OPENCLAW_INSTALL_URL="${OPENCLAW_INSTALL_URL:-https://openclaw.ai/install.sh}"
-OPENCLAW_INSTALL_TIMEOUT=600
 
 # Resolve version from package.json on GitHub
 CLAW_PILOT_VERSION=$(curl -fsSL "${RAW_BASE}/package.json" 2>/dev/null \
@@ -58,7 +56,6 @@ mktempfile() {
 # ── PATH helpers ──────────────────────────────────────────────────────────────
 
 # Prepend a directory to PATH, deduplicating any existing occurrence.
-# Inspired by OpenClaw installer — avoids PATH bloat on re-runs.
 # Uses sed for pattern substitution (POSIX sh compatible — works on dash/macOS sh).
 prepend_path_dir() {
   # Strip newlines from input — a path with a newline would break the sed below.
@@ -153,92 +150,6 @@ fix_npm_permissions() {
     printf '\n# npm user-local global bin (added by claw-pilot installer)\nexport PATH="$HOME/.npm-global/bin:$PATH"\n' >> "$_rc"
   done
   log "npm prefix reconfigured to ~/.npm-global"
-}
-
-# ── OpenClaw binary helpers ───────────────────────────────────────────────────
-
-# Validate that an openclaw binary is actually functional (not a broken symlink)
-openclaw_is_valid() {
-  _bin="$1"
-  [ -z "$_bin" ] && return 1
-  [ -f "$_bin" ] || return 1
-  "$_bin" --version >/dev/null 2>&1 || return 1
-  return 0
-}
-
-# Derive the openclaw wrapper bin path from a dist/index.js path found in ps/service.
-# /opt/openclaw/.npm-global/lib/node_modules/openclaw/dist/index.js
-# → /opt/openclaw/.npm-global/bin/openclaw
-_openclaw_bin_from_dist() {
-  printf '%s' "$1" | sed 's|/lib/node_modules/openclaw/dist/index\.js$|/bin/openclaw|'
-}
-
-# Pass 1 — detect from a running openclaw-gateway process (Linux only).
-# openclaw-gateway renames argv[0] so ps aux shows no path — instead we read
-# HOME from /proc/<pid>/environ (requires sudo, which is a pre-req of this installer).
-# HOME points to the openclaw user's home (e.g. /opt/openclaw), from which we
-# derive the conventional npm-global bin path.
-_find_openclaw_from_process() {
-  [ "$OS" = "Darwin" ] && return 1
-  # Find PIDs of openclaw-gateway processes
-  _pids=$(ps -eo pid,args 2>/dev/null \
-    | grep 'openclaw-gateway' \
-    | grep -v grep \
-    | awk '{print $1}')
-  [ -z "$_pids" ] && return 1
-  for _pid in $_pids; do
-    # Read HOME from the process environment
-    _home=$(sudo cat "/proc/${_pid}/environ" 2>/dev/null \
-      | tr '\0' '\n' \
-      | grep '^HOME=' \
-      | sed 's/^HOME=//' \
-      | head -1)
-    [ -z "$_home" ] && continue
-    _bin="${_home}/.npm-global/bin/openclaw"
-    openclaw_is_valid "$_bin" && OPENCLAW_BIN="$_bin" && return 0
-  done
-  return 1
-}
-
-# Pass 2 — detect from systemd user service files (openclaw-*.service) (Linux only).
-# Uses sudo (required by the installer) to read files in other users' homes.
-# ExecStart format: /usr/bin/node /path/.npm-global/lib/node_modules/openclaw/dist/index.js ...
-# The sed anchors on a space before the path to avoid capturing a partial prefix.
-_find_openclaw_from_service() {
-  [ "$OS" = "Darwin" ] && return 1
-  for _svc in $(find /home /opt /root -maxdepth 6 -name "openclaw-*.service" 2>/dev/null | head -20); do
-    _dist=$(sudo cat "$_svc" 2>/dev/null \
-      | grep 'ExecStart' \
-      | sed 's|.* \(/[^ ]*/node_modules/openclaw/dist/index\.js\).*|\1|' \
-      | head -1)
-    [ -z "$_dist" ] && continue
-    _bin=$(_openclaw_bin_from_dist "$_dist")
-    openclaw_is_valid "$_bin" && OPENCLAW_BIN="$_bin" && return 0
-  done
-  return 1
-}
-
-# Pass 3 — hardcoded candidate paths (no pipe, no subshell — POSIX safe).
-# Covers fresh installs where openclaw is installed but not yet running.
-# On macOS, this is the only detection pass used.
-_find_openclaw_from_paths() {
-  for _p in \
-    "$(command -v openclaw 2>/dev/null)" \
-    "$HOME/.npm-global/bin/openclaw" \
-    "/opt/openclaw/.npm-global/bin/openclaw" \
-    "/opt/homebrew/bin/openclaw" \
-    "/usr/local/bin/openclaw"; do
-    openclaw_is_valid "$_p" && OPENCLAW_BIN="$_p" && return 0
-  done
-  # nvm / volta / fnm — dynamic node version managers
-  for _nvm_bin in "$HOME/.nvm/versions/node/"*/bin; do
-    [ -d "$_nvm_bin" ] || continue
-    openclaw_is_valid "$_nvm_bin/openclaw" && OPENCLAW_BIN="$_nvm_bin/openclaw" && return 0
-  done
-  if openclaw_is_valid "$HOME/.volta/bin/openclaw"; then
-    OPENCLAW_BIN="$HOME/.volta/bin/openclaw" && return 0
-  fi
-  return 1
 }
 
 # ── Node.js binary resolver ───────────────────────────────────────────────────
@@ -441,102 +352,7 @@ if [ "$BUILD_TOOLS_OK" -eq 0 ]; then
   fi
 fi
 
-# ── 8. OpenClaw check & install ───────────────────────────────────────────────
-# OpenClaw is optional — claw-pilot also supports claw-runtime instances.
-# If not found, the user is prompted (N/y). Default is to skip.
-# Set INSTALL_OPENCLAW=1 to force install without prompt (CI / automation).
-OPENCLAW_BIN=""
-# Orchestrate the 3 detection passes in order.
-# On macOS, Pass 1 (/proc) and Pass 2 (systemd) are skipped automatically.
-_find_openclaw() {
-  _find_openclaw_from_process && return 0
-  _find_openclaw_from_service && return 0
-  _find_openclaw_from_paths   && return 0
-  return 1
-}
-
-# Run the OpenClaw installer (shared logic for prompt and forced install paths).
-_install_openclaw() {
-  if [ "$OS" = "Linux" ]; then
-    TOTAL_MEM_KiB=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0)
-    SWAP_KiB=$(grep SwapTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0)
-    TOTAL_MEM_MiB=$((TOTAL_MEM_KiB / 1024))
-    if [ "$TOTAL_MEM_MiB" -lt 1536 ] && [ "$SWAP_KiB" -eq 0 ]; then
-      warn "Low memory detected (${TOTAL_MEM_MiB} MiB RAM, no swap)."
-      warn "OpenClaw installation compiles native modules (libopus) from source."
-      warn "This may fail due to OOM. Consider adding a swapfile first:"
-      warn "  sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile"
-      warn "  sudo mkswap /swapfile && sudo swapon /swapfile"
-      warn "Continuing anyway..."
-    fi
-
-    ARCH=$(uname -m)
-    if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-      log "ARM64 detected — OpenClaw will compile native modules from source."
-      log "This may take several minutes (libopus, ~5 min on 1 vCPU). Please wait..."
-    fi
-  fi
-
-  OPENCLAW_INSTALLED=0
-  if command -v timeout >/dev/null 2>&1; then
-    if timeout "$OPENCLAW_INSTALL_TIMEOUT" sh -c \
-        "curl -fsSL --proto '=https' --tlsv1.2 '$OPENCLAW_INSTALL_URL' | bash"; then
-      OPENCLAW_INSTALLED=1
-    fi
-  else
-    if sh -c "curl -fsSL --proto '=https' --tlsv1.2 '$OPENCLAW_INSTALL_URL' | bash"; then
-      OPENCLAW_INSTALLED=1
-    fi
-  fi
-
-  if [ "$OPENCLAW_INSTALLED" -eq 1 ] && _find_openclaw; then
-    _oc_ver=$("$OPENCLAW_BIN" --version 2>/dev/null || true)
-    log "OpenClaw ${_oc_ver} installed successfully."
-  else
-    warn "OpenClaw installation failed or binary not functional after install."
-    warn "You can install it manually later:"
-    warn "  curl -fsSL $OPENCLAW_INSTALL_URL | bash"
-  fi
-}
-
-if _find_openclaw; then
-  _oc_ver=$("$OPENCLAW_BIN" --version 2>/dev/null || true)
-  log "OpenClaw ${_oc_ver} found at $OPENCLAW_BIN"
-else
-  warn "OpenClaw not found."
-  warn "Note: claw-pilot supports two instance types — openclaw and claw-runtime."
-  warn "OpenClaw is optional. You can skip it and use claw-runtime instances instead."
-  echo ""
-
-  _do_install_openclaw=0
-
-  if [ "${INSTALL_OPENCLAW:-0}" = "1" ]; then
-    # Forced via env var (CI / automation)
-    log "INSTALL_OPENCLAW=1 — installing OpenClaw..."
-    _do_install_openclaw=1
-  elif [ -t 0 ]; then
-    # Interactive session — prompt the user (default: N)
-    printf "  Install OpenClaw now? [N/y]: "
-    read -r _oc_answer </dev/tty || _oc_answer=""
-    case "$_oc_answer" in
-      [yY]|[yY][eE][sS]) _do_install_openclaw=1 ;;
-      *) _do_install_openclaw=0 ;;
-    esac
-  else
-    # Non-interactive (curl | sh) — skip silently
-    warn "Non-interactive session detected — skipping OpenClaw installation."
-    warn "To install OpenClaw later: curl -fsSL $OPENCLAW_INSTALL_URL | bash"
-    warn "To force install in automation: INSTALL_OPENCLAW=1 curl -fsSL <installer> | sh"
-  fi
-
-  if [ "$_do_install_openclaw" -eq 1 ]; then
-    _install_openclaw
-  else
-    warn "OpenClaw skipped. You can install it later or create claw-runtime instances."
-  fi
-fi
-
-# ── 9. Clone or update the repository ────────────────────────────────────────
+# ── 8. Clone or update the repository ─────────────────────────────────────────
 log "Installing claw-pilot from ${REPO_URL}..."
 if [ -d "$INSTALL_DIR/.git" ]; then
   log "Updating existing installation at $INSTALL_DIR..."
@@ -622,7 +438,7 @@ else
   fi
 fi
 
-# ── 10. Install dependencies and build ───────────────────────────────────────
+# ── 9. Install dependencies and build ────────────────────────────────────────
 ARCH=$(uname -m)
 if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
   log "ARM64 detected — native compilation may take several minutes. Please wait..."
@@ -634,7 +450,7 @@ run_quiet_step "Installing dependencies (compiling better-sqlite3 native binding
 run_quiet_step "Building CLI" sh -c "cd '$INSTALL_DIR' && pnpm run build:cli"
 run_quiet_step "Building UI"  sh -c "cd '$INSTALL_DIR' && pnpm run build:ui"
 
-# ── 11. Install claw-pilot wrapper binary ─────────────────────────────────────
+# ── 10. Install claw-pilot wrapper binary ─────────────────────────────────────
 # A wrapper script is used instead of a symlink so that the correct node
 # binary is always invoked, even when node is installed via nvm/volta/fnm
 # and not present in the system PATH.
@@ -684,7 +500,7 @@ else
   fi
 fi
 
-# ── 12. Verify & persist PATH ─────────────────────────────────────────────────
+# ── 11. Verify & persist PATH ─────────────────────────────────────────────────
 # Persist the wrapper's bin dir in shell profiles if not already there (idempotent).
 # This ensures `claw-pilot` is found in new shells without manual PATH editing.
 _wrapper_dir=$(dirname "$LINK_PATH")
@@ -710,7 +526,7 @@ else
   warn "Or run directly: node $INSTALL_DIR/dist/index.mjs"
 fi
 
-# ── 13. Initialize ────────────────────────────────────────────────────────────
+# ── 12. Initialize ────────────────────────────────────────────────────────────
 # Sets CP_NODE and CP_ENTRY so callers can run: $CP_NODE $CP_ENTRY <args>
 # Avoids storing "node /path/to/index.mjs" in a single variable (word-splitting
 # issue in POSIX sh when the string contains spaces).
@@ -736,7 +552,7 @@ log "Running 'claw-pilot init' to set up the registry..."
 _resolve_claw_pilot_cmd
 $CP_NODE $CP_ENTRY init --yes
 
-# ── 14. Create admin account ──────────────────────────────────────────────────
+# ── 13. Create admin account ──────────────────────────────────────────────────
 echo ""
 log "Creating admin account..."
 $CP_NODE $CP_ENTRY auth setup 2>&1
@@ -744,7 +560,7 @@ echo ""
 warn "Save the admin password above — you will need it to access the dashboard."
 warn "Reset anytime with: $LINK_PATH auth reset"
 
-# ── 15. Install dashboard as systemd/launchd service ─────────────────────────
+# ── 14. Install dashboard as systemd/launchd service ─────────────────────────
 _service_installed=false
 
 if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then

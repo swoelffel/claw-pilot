@@ -5,50 +5,33 @@ import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
 import { instanceGuard } from "../../../lib/guards.js";
 import { logger } from "../../../lib/logger.js";
-import {
-  readInstanceConfig,
-  applyConfigPatch,
-  ConfigPatchSchema,
-} from "../../../core/config-updater.js";
-import type { ConfigPatch, InstanceConfigPayload } from "../../../core/config-updater.js";
 import { PROVIDER_CATALOG } from "../../../lib/provider-catalog.js";
 import type { ProviderInfo } from "../../../lib/provider-catalog.js";
-import { OpenClawCLI } from "../../../core/openclaw-cli.js";
+import { getRuntimeStateDir } from "../../../lib/platform.js";
+import {
+  runtimeConfigExists,
+  loadRuntimeConfig,
+  saveRuntimeConfig,
+} from "../../../runtime/index.js";
+import { z } from "zod/v4";
 
 // ---------------------------------------------------------------------------
-// claw-runtime stub — minimal InstanceConfigPayload for runtime instances
+// Config patch schema for runtime instances
 // ---------------------------------------------------------------------------
 
-function buildRuntimeStub(
-  displayName: string,
-  defaultModel: string,
-  port: number,
-): InstanceConfigPayload {
-  return {
-    general: { displayName, defaultModel, port, toolsProfile: "coding" },
-    providers: [],
-    agentDefaults: {
-      workspace: "workspace",
-      subagents: { maxConcurrent: 4, archiveAfterMinutes: 60 },
-      compaction: { mode: "auto" },
-      contextPruning: { mode: "off" },
-      heartbeat: {},
-    },
-    agents: [],
-    channels: { telegram: null },
-    plugins: { mem0: null },
-    gateway: {
-      port,
-      bind: "loopback",
-      authMode: "token",
-      reloadMode: "hybrid",
-      reloadDebounceMs: 500,
-    },
-  };
-}
+const RuntimeConfigPatchSchema = z.object({
+  general: z
+    .object({
+      displayName: z.string().optional(),
+      defaultModel: z.string().optional(),
+    })
+    .optional(),
+});
+
+type RuntimeConfigPatch = z.infer<typeof RuntimeConfigPatchSchema>;
 
 export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
-  const { registry, conn, lifecycle } = deps;
+  const { registry, lifecycle } = deps;
 
   // GET /api/instances/:slug/config — structured config for the settings UI
   app.get("/api/instances/:slug/config", async (c) => {
@@ -57,20 +40,37 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
 
-    // claw-runtime instances don't have an openclaw.json — return a minimal stub
-    if (instance!.instance_type === "claw-runtime") {
-      const stub = buildRuntimeStub(
-        instance!.display_name ?? "",
-        instance!.default_model ?? "",
-        instance!.port,
-      );
-      return c.json(stub);
+    const stateDir = getRuntimeStateDir(slug);
+
+    if (!runtimeConfigExists(stateDir)) {
+      // Return a minimal stub when runtime.json does not exist yet
+      return c.json({
+        general: {
+          displayName: instance!.display_name ?? "",
+          defaultModel: instance!.default_model ?? "",
+          port: instance!.port,
+        },
+        agents: [],
+        channels: { telegram: null },
+      });
     }
 
     try {
-      const payload = await readInstanceConfig(conn, instance!.config_path, instance!.state_dir);
-      payload.general.displayName = instance!.display_name ?? "";
-      return c.json(payload);
+      const config = loadRuntimeConfig(stateDir);
+      return c.json({
+        general: {
+          displayName: instance!.display_name ?? "",
+          defaultModel: config.defaultModel,
+          port: instance!.port,
+        },
+        agents: config.agents,
+        channels: {
+          telegram: config.telegram.enabled ? { enabled: true } : null,
+        },
+        mcpEnabled: config.mcpEnabled,
+        mcpServers: config.mcpServers,
+        webChat: config.webChat,
+      });
     } catch (err) {
       logger.error(
         `[config] GET /config error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
@@ -91,137 +91,74 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
 
-    // claw-runtime: only displayName is patchable via this route
-    if (instance!.instance_type === "claw-runtime") {
-      let patch: ConfigPatch;
-      try {
-        const raw = await c.req.json();
-        const result = ConfigPatchSchema.safeParse(raw);
-        if (!result.success) {
-          return apiError(c, 400, "INVALID_BODY", "Invalid config patch");
-        }
-        patch = result.data as ConfigPatch;
-      } catch {
-        return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
-      }
-      if (patch.general?.displayName !== undefined) {
-        registry.updateInstance(slug, { displayName: patch.general.displayName });
-      }
-      return c.json({ ok: true, requiresRestart: false, hotReloaded: false, warnings: [] });
-    }
-
-    let patch: ConfigPatch;
+    let patch: RuntimeConfigPatch;
     try {
       const raw = await c.req.json();
-      const result = ConfigPatchSchema.safeParse(raw);
+      const result = RuntimeConfigPatchSchema.safeParse(raw);
       if (!result.success) {
-        const issues = result.error.issues
-          .map((i) => `${i.path.join(".")}: ${i.message}`)
-          .join("; ");
-        return apiError(c, 400, "INVALID_BODY", `Invalid config patch: ${issues}`);
+        return apiError(c, 400, "INVALID_BODY", "Invalid config patch");
       }
-      patch = result.data as ConfigPatch;
+      patch = result.data;
     } catch {
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
-    logger.info(`[config] PATCH /config slug=${slug} patch=${JSON.stringify(patch)}`);
+    let requiresRestart = false;
 
-    try {
-      const result = await applyConfigPatch(
-        conn,
-        registry,
-        slug,
-        instance!.config_path,
-        instance!.state_dir,
-        patch,
-      );
+    // Update display name in DB
+    if (patch.general?.displayName !== undefined) {
+      registry.updateInstance(slug, { displayName: patch.general.displayName });
+    }
 
-      if (result.requiresRestart && instance!.state === "running") {
+    // Update default model in runtime.json
+    if (patch.general?.defaultModel !== undefined) {
+      const stateDir = getRuntimeStateDir(slug);
+      if (runtimeConfigExists(stateDir)) {
         try {
-          await lifecycle.restart(slug);
+          const config = loadRuntimeConfig(stateDir);
+          config.defaultModel = patch.general.defaultModel;
+          saveRuntimeConfig(stateDir, config);
+          requiresRestart = true;
         } catch (err) {
-          result.warnings.push(
-            `Restart failed: ${err instanceof Error ? err.message : "unknown error"}`,
+          logger.error(
+            `[config] PATCH /config error updating runtime.json for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          return apiError(
+            c,
+            500,
+            "CONFIG_PATCH_FAILED",
+            err instanceof Error ? err.message : "Failed to update runtime.json",
           );
         }
       }
-
-      logger.info(`[config] PATCH /config slug=${slug} result=${JSON.stringify(result)}`);
-      return c.json(result);
-    } catch (err) {
-      logger.error(
-        `[config] PATCH /config error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return apiError(
-        c,
-        500,
-        "CONFIG_PATCH_FAILED",
-        err instanceof Error ? err.message : "Failed to apply config",
-      );
     }
+
+    // Restart if needed and instance is running
+    if (requiresRestart && instance!.state === "running") {
+      try {
+        await lifecycle.restart(slug);
+      } catch (err) {
+        logger.warn(
+          `[config] restart after config patch failed for ${slug}: ${err instanceof Error ? err.message : "unknown"}`,
+        );
+      }
+    }
+
+    logger.info(`[config] PATCH /config slug=${slug} patch=${JSON.stringify(patch)}`);
+    return c.json({ ok: true, requiresRestart, hotReloaded: false, warnings: [] });
   });
 
   // GET /api/providers — list available providers with their model catalogs
   app.get("/api/providers", async (c) => {
-    const existing = registry.listInstances();
-    let canReuseCredentials = false;
-    let sourceInstance: string | null = null;
-
     const providers: ProviderInfo[] = PROVIDER_CATALOG.map((p) => ({
       ...p,
       models: [...p.models],
     }));
 
-    if (existing.length > 0) {
-      const source = existing[0]!;
-      sourceInstance = source.slug;
-
-      try {
-        const raw = await conn.readFile(source.config_path);
-        const cfg = JSON.parse(raw) as {
-          models?: { providers?: Record<string, unknown> };
-          auth?: { profiles?: Record<string, { provider?: string }> };
-        };
-
-        const cfgProviderIds = new Set(Object.keys(cfg.models?.providers ?? {}));
-
-        const profiles = cfg.auth?.profiles ?? {};
-        for (const profile of Object.values(profiles)) {
-          if (profile.provider === "opencode") cfgProviderIds.add("opencode");
-        }
-
-        if (cfgProviderIds.size > 0) {
-          canReuseCredentials = true;
-          for (const p of providers) {
-            if (cfgProviderIds.has(p.id)) {
-              p.requiresKey = false;
-              p.label =
-                p.id === "opencode"
-                  ? `${p.label} (via ${source.slug})`
-                  : `${p.label} (reuse from ${source.slug})`;
-              p.isDefault = true;
-            }
-          }
-        }
-      } catch {
-        // Non-fatal: source config unreadable → fall through to defaults
-      }
-    }
-
     if (!providers.some((p) => p.isDefault)) {
       providers[0]!.isDefault = true;
     }
 
-    let openclawAvailable = false;
-    try {
-      const cli = new OpenClawCLI(conn);
-      const detected = await cli.detect();
-      openclawAvailable = detected !== null;
-    } catch {
-      // Non-fatal: detection failed → openclaw not available
-    }
-
-    return c.json({ canReuseCredentials, sourceInstance, providers, openclawAvailable });
+    return c.json({ canReuseCredentials: false, sourceInstance: null, providers });
   });
 }

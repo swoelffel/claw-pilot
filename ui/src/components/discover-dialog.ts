@@ -321,7 +321,7 @@ export class DiscoverDialog extends DialogMixin(LitElement) {
             <div class="spinner"></div>
             <div>${msg("Scanning system...", { id: "discover-scanning" })}</div>
             <div class="spinner-hint">
-              ${msg("Looking for OpenClaw instances", { id: "discover-scanning-hint" })}
+              ${msg("Looking for existing instances", { id: "discover-scanning-hint" })}
             </div>
           </div>
         `;
@@ -332,11 +332,11 @@ export class DiscoverDialog extends DialogMixin(LitElement) {
             <div class="dialog-body">
               <div class="empty-results">
                 <p>
-                  ${msg("No OpenClaw instances found on this system.", {
+                  ${msg("No instances found on this system.", {
                     id: "discover-none-found",
                   })}
                 </p>
-                <p>Make sure OpenClaw is installed and at least one instance directory exists.</p>
+                <p>Make sure at least one instance directory exists.</p>
               </div>
             </div>
             <div class="dialog-footer">

@@ -7,57 +7,17 @@ import { apiError } from "../../route-deps.js";
 import { logger } from "../../../lib/logger.js";
 import { AgentSync } from "../../../core/agent-sync.js";
 import { InstanceDiscovery } from "../../../core/discovery.js";
-import { getOpenClawHome } from "../../../lib/platform.js";
-import { OpenClawCLI } from "../../../core/openclaw-cli.js";
+import { getHomeDir } from "../../../lib/platform.js";
 import { z } from "zod/v4";
-import type { ServerConnection } from "../../../server/connection.js";
-
-async function ensureGatewayModeLocal(
-  conn: ServerConnection,
-  configPath: string,
-  slug: string,
-): Promise<void> {
-  let raw: string;
-  try {
-    raw = await conn.readFile(configPath);
-  } catch {
-    logger.dim(`[discover] cannot read config for ${slug} — skipping gateway.mode patch`);
-    return;
-  }
-
-  let config: Record<string, unknown>;
-  try {
-    config = JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    logger.dim(`[discover] invalid JSON in config for ${slug} — skipping gateway.mode patch`);
-    return;
-  }
-
-  const gateway = config["gateway"] as Record<string, unknown> | undefined;
-  if (gateway?.["mode"] === "local") return;
-
-  if (!gateway) {
-    config["gateway"] = { mode: "local" };
-  } else {
-    gateway["mode"] = "local";
-  }
-
-  try {
-    await conn.writeFile(configPath, JSON.stringify(config, null, 2));
-    logger.info(`[discover] patched gateway.mode=local in ${configPath}`);
-  } catch (err) {
-    logger.warn(`[discover] failed to patch gateway.mode for ${slug}: ${err}`);
-  }
-}
 
 export function registerDiscoverRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, conn, lifecycle, xdgRuntimeDir } = deps;
 
-  // POST /api/instances/discover — scan system for new OpenClaw instances (no DB write)
+  // POST /api/instances/discover — scan system for new claw-runtime instances (no DB write)
   app.post("/api/instances/discover", async (c) => {
     try {
-      const openclawHome = getOpenClawHome();
-      const discovery = new InstanceDiscovery(conn, registry, openclawHome, xdgRuntimeDir);
+      const homeDir = getHomeDir();
+      const discovery = new InstanceDiscovery(conn, registry, homeDir, xdgRuntimeDir);
       const result = await discovery.scan();
 
       const found = result.newInstances.map((inst) => ({
@@ -65,9 +25,7 @@ export function registerDiscoverRoutes(app: Hono, deps: RouteDeps): void {
         stateDir: inst.stateDir,
         port: inst.port,
         agentCount: inst.agents.length,
-        gatewayHealthy: inst.gatewayHealthy,
-        systemdState: inst.systemdState,
-        telegramBot: inst.telegramBot,
+        runtimeRunning: inst.runtimeRunning,
         defaultModel: inst.defaultModel,
         source: inst.source,
       }));
@@ -108,20 +66,11 @@ export function registerDiscoverRoutes(app: Hono, deps: RouteDeps): void {
     }
 
     try {
-      const cli = new OpenClawCLI(conn);
-      const openclaw = await cli.detect();
-      if (openclaw) {
-        registry.updateServerBin(openclaw.bin, openclaw.version);
-        logger.info(`[discover] openclaw detected: ${openclaw.version}`);
-      }
-
-      // Use home derived from detection (e.g. /opt/openclaw) so stateDirs resolve correctly
-      const openclawHome = openclaw?.home ?? getOpenClawHome();
-
+      const homeDir = getHomeDir();
       const hostname = await conn.hostname();
-      const server = registry.upsertLocalServer(hostname, openclawHome);
+      const server = registry.upsertLocalServer(hostname, homeDir);
 
-      const discovery = new InstanceDiscovery(conn, registry, openclawHome, xdgRuntimeDir);
+      const discovery = new InstanceDiscovery(conn, registry, homeDir, xdgRuntimeDir);
       const result = await discovery.scan();
 
       const adopted: string[] = [];
@@ -138,9 +87,7 @@ export function registerDiscoverRoutes(app: Hono, deps: RouteDeps): void {
           await discovery.adopt(instance, server.id, agentSync);
           logger.info(`[discover] adopted instance: ${slug}`);
 
-          await ensureGatewayModeLocal(conn, instance.configPath, slug);
-
-          // Restart the service so the patched config takes effect
+          // Restart the runtime so it picks up any changes
           lifecycle.restart(slug).catch((err: unknown) => {
             logger.dim(`[discover] restart after adopt failed for ${slug} (non-fatal): ${err}`);
           });

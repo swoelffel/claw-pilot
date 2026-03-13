@@ -1,10 +1,16 @@
 // src/core/destroyer.ts
-import * as path from "node:path";
+import * as fs from "node:fs";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry } from "./registry.js";
 import type { PortAllocator } from "./port-allocator.js";
 import { InstanceNotFoundError } from "../lib/errors.js";
-import { getSystemdDir, getServiceManager, getLaunchdPlistPath } from "../lib/platform.js";
+import {
+  getRuntimeStateDir,
+  getRuntimePid,
+  getRuntimePidPath,
+  isRuntimeRunning,
+} from "../lib/platform.js";
+import { logger } from "../lib/logger.js";
 
 export class Destroyer {
   constructor(
@@ -18,50 +24,46 @@ export class Destroyer {
     const instance = this.registry.getInstance(slug);
     if (!instance) throw new InstanceNotFoundError(slug);
 
-    const sm = getServiceManager();
+    // 1. Stop the claw-runtime daemon via SIGTERM (PID file)
+    const stateDir = getRuntimeStateDir(slug);
+    const pid = getRuntimePid(stateDir);
+    if (pid) {
+      logger.dim(`[destroyer] Stopping claw-runtime for "${slug}" (PID ${pid})...`);
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // Process may have already exited
+      }
 
-    if (sm === "launchd") {
-      // 1. Stop service (launchd)
-      const plistPath = getLaunchdPlistPath(slug);
-      await this.conn.execFile("launchctl", ["unload", plistPath]);
+      // Poll until stopped (up to 8 s)
+      const deadline = Date.now() + 8_000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 200));
+        if (!isRuntimeRunning(stateDir)) break;
+      }
 
-      // 2. Remove plist file
-      await this.conn.remove(plistPath);
-    } else {
-      // 1. Stop service (systemd)
-      await this.conn.execFile("systemctl", ["--user", "stop", instance.systemd_unit], {
-        env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir },
-      });
-
-      // 2. Disable service
-      await this.conn.execFile("systemctl", ["--user", "disable", instance.systemd_unit], {
-        env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir },
-      });
-
-      // 3. Remove service file
-      const serviceFile = path.join(getSystemdDir(), instance.systemd_unit);
-      await this.conn.remove(serviceFile);
-
-      // 4. Reload systemd
-      await this.conn.execFile("systemctl", ["--user", "daemon-reload"], {
-        env: { XDG_RUNTIME_DIR: this.xdgRuntimeDir },
-      });
+      // Clean up stale PID file
+      try {
+        fs.unlinkSync(getRuntimePidPath(stateDir));
+      } catch {
+        /* already gone */
+      }
     }
 
-    // 5. Remove state directory (same on both platforms)
+    // 2. Remove state directory
     await this.conn.remove(instance.state_dir, { recursive: true });
 
-    // 6. Release port in registry (gateway + sidecar ports P+1, P+2, P+4)
+    // 3. Release port in registry (gateway + sidecar ports P+1, P+2, P+4)
     this.registry.releasePort(instance.server_id, instance.port);
     this.portAllocator?.releaseSidecarPorts(instance.server_id, instance.port);
 
-    // 7. Delete agents from registry
+    // 4. Delete agents from registry
     this.registry.deleteAgents(instance.id);
 
-    // 8. Delete instance from registry
+    // 5. Delete instance from registry
     this.registry.deleteInstance(slug);
 
-    // 9. Log event
+    // 6. Log event
     this.registry.logEvent(slug, "destroyed");
   }
 }

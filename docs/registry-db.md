@@ -1,7 +1,7 @@
 # claw-pilot — Registry Database (`registry.db`)
 
 SQLite database at `~/.claw-pilot/registry.db`. WAL mode, foreign keys enforced.  
-Current schema version: **9**. Source of truth: `src/db/schema.ts`.
+Current schema version: **10**. Source of truth: `src/db/schema.ts`.
 
 ---
 
@@ -41,7 +41,7 @@ schema_version  (single row)
 |-------|------|
 | `schema_version` | Single-row version tracker |
 | `servers` | Physical servers — V1 always has exactly one local row |
-| `instances` | One row per instance — slug, port, state, config_path, **instance_type** (`openclaw`\|`claw-runtime`) |
+| `instances` | One row per instance — slug, port, state, config_path (all instances are `claw-runtime`) |
 | `agents` | Agents per instance or blueprint — canvas position, sync hash, skills |
 | `ports` | Port reservation registry — prevents conflicts across instances |
 | `config` | Global key-value store (port range, dashboard port, health interval) |
@@ -78,6 +78,7 @@ schema_version  (single row)
 | 7 | Added `skills` column to `agents` (JSON array string or NULL = all skills) |
 | 8 | Added `instance_type` to `instances`; added `rt_sessions`, `rt_messages`, `rt_parts`, `rt_permissions`, `rt_auth_profiles` |
 | 9 | Added `rt_pairing_codes` for web-chat device pairing |
+| 10 | Removed openclaw support — `instance_type` column retained (additive-only) but all instances are now `claw-runtime` |
 
 ---
 
@@ -98,4 +99,4 @@ All DB access goes through `src/core/registry.ts` methods — never raw SQL in c
 
 ---
 
-*Mis à jour : 2026-03-13 — schema v9 (rt_pairing_codes, rt_permissions, rt_auth_profiles, users/sessions)*
+*Mis à jour : 2026-03-13 — schema v10 (removed openclaw support, claw-runtime only)*

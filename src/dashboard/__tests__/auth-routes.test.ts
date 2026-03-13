@@ -69,8 +69,6 @@ async function createTestApp(): Promise<TestCtx> {
     tokenCache: null as unknown as RouteDeps["tokenCache"],
     lifecycle: null as unknown as RouteDeps["lifecycle"],
     health: null as unknown as RouteDeps["health"],
-    updateChecker: null as unknown as RouteDeps["updateChecker"],
-    updater: null as unknown as RouteDeps["updater"],
     selfUpdateChecker: null as unknown as RouteDeps["selfUpdateChecker"],
     selfUpdater: null as unknown as RouteDeps["selfUpdater"],
     xdgRuntimeDir: "",

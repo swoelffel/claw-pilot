@@ -21,8 +21,6 @@ import { registerBlueprintRoutes } from "../routes/blueprints.js";
 import { registerTeamRoutes } from "../routes/teams.js";
 import { registerSystemRoutes } from "../routes/system.js";
 import type { HealthStatus } from "../../core/health.js";
-import type { UpdateStatus } from "../../core/update-checker.js";
-import type { UpdateJob } from "../../core/updater.js";
 import type { SelfUpdateStatus } from "../../core/self-update-checker.js";
 import type { SelfUpdateJob } from "../../core/self-updater.js";
 
@@ -57,8 +55,6 @@ class StubHealthChecker {
       slug,
       port: instance.port,
       state: "running",
-      gateway: "healthy",
-      systemd: "active",
       agentCount: 0,
       telegram: "not_configured",
     };
@@ -70,8 +66,6 @@ class StubHealthChecker {
       slug: inst.slug,
       port: inst.port,
       state: "running" as const,
-      gateway: "healthy" as const,
-      systemd: "active" as const,
       agentCount: 0,
       telegram: "not_configured" as const,
     }));
@@ -89,32 +83,6 @@ class StubLifecycle {
   }
   async restart(slug: string): Promise<void> {
     this.lastAction = { action: "restart", slug };
-  }
-}
-
-class StubUpdateChecker {
-  async check(): Promise<UpdateStatus> {
-    return {
-      currentVersion: "2026.3.1",
-      latestVersion: "2026.3.1",
-      updateAvailable: false,
-    };
-  }
-}
-
-class StubUpdater {
-  private _job: UpdateJob = { status: "idle", jobId: "" };
-
-  getJob(): UpdateJob {
-    return { ...this._job };
-  }
-
-  run(_fromVersion?: string, _toVersion?: string): void {
-    this._job = {
-      status: "running",
-      jobId: "test-job-id",
-      startedAt: new Date().toISOString(),
-    };
   }
 }
 
@@ -156,7 +124,6 @@ interface TestContext {
   db: ReturnType<typeof initDatabase>;
   tmpDir: string;
   lifecycle: StubLifecycle;
-  updater: StubUpdater;
 }
 
 function createTestApp(): TestContext {
@@ -166,7 +133,6 @@ function createTestApp(): TestContext {
   const conn = new MockConnection();
   const tokenCache = new TokenCache(conn);
   const lifecycle = new StubLifecycle();
-  const updater = new StubUpdater();
 
   const app = new Hono();
 
@@ -188,8 +154,6 @@ function createTestApp(): TestContext {
     startedAt: Date.now(),
     health: new StubHealthChecker(registry) as unknown as RouteDeps["health"],
     lifecycle: lifecycle as unknown as RouteDeps["lifecycle"],
-    updateChecker: new StubUpdateChecker() as unknown as RouteDeps["updateChecker"],
-    updater: updater as unknown as RouteDeps["updater"],
     selfUpdateChecker: new StubSelfUpdateChecker() as unknown as RouteDeps["selfUpdateChecker"],
     selfUpdater: new StubSelfUpdater() as unknown as RouteDeps["selfUpdater"],
     tokenCache,
@@ -202,7 +166,7 @@ function createTestApp(): TestContext {
   registerTeamRoutes(app, deps);
   registerSystemRoutes(app, deps);
 
-  return { app, registry, conn, db, tmpDir, lifecycle, updater };
+  return { app, registry, conn, db, tmpDir, lifecycle };
 }
 
 /** Helper: make an authenticated request */
@@ -226,22 +190,22 @@ function seedInstance(ctx: TestContext, slug: string, port: number) {
     serverId: server.id,
     slug,
     port,
-    configPath: `/opt/openclaw/.openclaw-${slug}/openclaw.json`,
+    configPath: `/opt/openclaw/.openclaw-${slug}/runtime.json`,
     stateDir: `/opt/openclaw/.openclaw-${slug}`,
-    systemdUnit: `openclaw-${slug}.service`,
+    systemdUnit: `claw-runtime-${slug}`,
   });
   // Seed .env for token cache
   ctx.conn.files.set(
     `/opt/openclaw/.openclaw-${slug}/.env`,
     `OPENCLAW_GW_AUTH_TOKEN=gw-token-${slug}\n`,
   );
-  // Seed openclaw.json for config reads
+  // Seed runtime.json for config reads (flat agents[] array format)
   ctx.conn.files.set(
-    `/opt/openclaw/.openclaw-${slug}/openclaw.json`,
+    `/opt/openclaw/.openclaw-${slug}/runtime.json`,
     JSON.stringify({
-      gateway: { port, bind: "0.0.0.0" },
-      models: { default: "claude-sonnet-4-20250514", providers: { anthropic: {} } },
-      agents: { defaults: { workspace: "." }, list: [] },
+      defaultModel: "claude-sonnet-4-20250514",
+      agents: [],
+      port,
     }),
   );
 }
@@ -314,29 +278,6 @@ describe("GET /api/health", () => {
   });
 });
 
-describe("GET /api/openclaw/update-status", () => {
-  it("returns version info", async () => {
-    const res = await ctx.app.request("/api/openclaw/update-status", { headers: authHeaders() });
-    expect(res.status).toBe(200);
-    const body = await json(res);
-    expect(body.currentVersion).toBe("2026.3.1");
-    expect(body.updateAvailable).toBe(false);
-  });
-});
-
-describe("POST /api/openclaw/update", () => {
-  it("triggers update job", async () => {
-    const res = await ctx.app.request("/api/openclaw/update", {
-      method: "POST",
-      headers: authHeaders(),
-    });
-    expect(res.status).toBe(200);
-    const body = await json(res);
-    expect(body.ok).toBe(true);
-    expect(body.jobId).toBe("test-job-id");
-  });
-});
-
 // ---------------------------------------------------------------------------
 // Instance routes — listing
 // ---------------------------------------------------------------------------
@@ -357,7 +298,6 @@ describe("GET /api/instances", () => {
     expect(body).toHaveLength(1);
     expect(body[0].slug).toBe("demo1");
     expect(body[0].gatewayToken).toBe("gw-token-demo1");
-    expect(body[0].gateway).toBe("healthy");
   });
 });
 
@@ -375,7 +315,6 @@ describe("GET /api/instances/:slug", () => {
     expect(res.status).toBe(200);
     const body = await json(res);
     expect(body.instance.slug).toBe("demo1");
-    expect(body.status.gateway).toBe("healthy");
     expect(body.gatewayToken).toBe("gw-token-demo1");
   });
 });
@@ -499,16 +438,15 @@ describe("PATCH /api/instances/:slug/config", () => {
     expect(res.status).toBe(400);
   });
 
-  it("rejects unknown fields (strict Zod validation)", async () => {
+  it("accepts and ignores unknown fields (Zod strips extra keys)", async () => {
     seedInstance(ctx, "demo1", 18789);
     const res = await ctx.app.request("/api/instances/demo1/config", {
       method: "PATCH",
       headers: jsonHeaders(),
       body: JSON.stringify({ unknownField: "value" }),
     });
-    expect(res.status).toBe(400);
-    const body = await json(res);
-    expect(body.code).toBe("INVALID_BODY");
+    // Zod v4 strips unknown keys by default — patch is valid but empty
+    expect(res.status).toBe(200);
   });
 });
 
@@ -796,15 +734,14 @@ describe("PATCH /api/blueprints/:id/agents/:agentId/spawn-links", () => {
 // ---------------------------------------------------------------------------
 
 describe("Device routes", () => {
-  it("GET /api/instances/:slug/devices — returns empty device list when no files", async () => {
+  it("GET /api/instances/:slug/devices — returns empty codes list when no codes exist", async () => {
     seedInstance(ctx, "demo1", 18789);
     const res = await ctx.app.request("/api/instances/demo1/devices", {
       headers: authHeaders(),
     });
     expect(res.status).toBe(200);
     const body = await json(res);
-    expect(body.pending).toEqual([]);
-    expect(body.paired).toEqual([]);
+    expect(body.codes).toEqual([]);
   });
 
   it("GET /api/instances/:slug/devices — returns 404 for unknown slug", async () => {
@@ -816,31 +753,8 @@ describe("Device routes", () => {
     expect(body.code).toBe("NOT_FOUND");
   });
 
-  it("POST /api/instances/:slug/devices/approve — returns 400 when requestId missing", async () => {
-    seedInstance(ctx, "demo1", 18789);
-    const res = await ctx.app.request("/api/instances/demo1/devices/approve", {
-      method: "POST",
-      headers: jsonHeaders(),
-      body: JSON.stringify({}),
-    });
-    expect(res.status).toBe(400);
-    const body = await json(res);
-    expect(body.code).toBe("FIELD_REQUIRED");
-  });
-
-  it("POST /api/instances/:slug/devices/approve — returns 404 for unknown slug", async () => {
-    const res = await ctx.app.request("/api/instances/nonexistent/devices/approve", {
-      method: "POST",
-      headers: jsonHeaders(),
-      body: JSON.stringify({ requestId: "req-123" }),
-    });
-    expect(res.status).toBe(404);
-    const body = await json(res);
-    expect(body.code).toBe("NOT_FOUND");
-  });
-
-  it("DELETE /api/instances/:slug/devices/:deviceId — returns 404 for unknown slug", async () => {
-    const res = await ctx.app.request("/api/instances/nonexistent/devices/device-abc", {
+  it("DELETE /api/instances/:slug/devices/:code — returns 404 for unknown slug", async () => {
+    const res = await ctx.app.request("/api/instances/nonexistent/devices/ABCD1234", {
       method: "DELETE",
       headers: authHeaders(),
     });
@@ -849,107 +763,19 @@ describe("Device routes", () => {
     expect(body.code).toBe("NOT_FOUND");
   });
 
-  it("GET /api/instances/:slug/devices — returns device list when files exist", async () => {
+  it("DELETE /api/instances/:slug/devices/:code — returns 404 for non-existent code", async () => {
     seedInstance(ctx, "demo1", 18789);
-    // Seed device files
-    ctx.conn.files.set(
-      `/opt/openclaw/.openclaw-demo1/devices/pending.json`,
-      JSON.stringify([{ id: "req-1", name: "My Phone", createdAt: "2026-01-01T00:00:00Z" }]),
-    );
-    ctx.conn.files.set(`/opt/openclaw/.openclaw-demo1/devices/paired.json`, JSON.stringify([]));
-
-    const res = await ctx.app.request("/api/instances/demo1/devices", {
-      headers: authHeaders(),
-    });
-    expect(res.status).toBe(200);
-    const body = await json(res);
-    expect(body.pending).toHaveLength(1);
-    expect(body.paired).toHaveLength(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Telegram pairing routes
-// ---------------------------------------------------------------------------
-
-describe("Telegram pairing routes", () => {
-  it("GET /api/instances/:slug/telegram/pairing — returns empty pairing list", async () => {
-    seedInstance(ctx, "demo1", 18789);
-    const res = await ctx.app.request("/api/instances/demo1/telegram/pairing", {
-      headers: authHeaders(),
-    });
-    expect(res.status).toBe(200);
-    const body = await json(res);
-    expect(body.pending).toEqual([]);
-    expect(body.approved).toEqual([]);
-  });
-
-  it("GET /api/instances/:slug/telegram/pairing — returns 404 for unknown slug", async () => {
-    const res = await ctx.app.request("/api/instances/nonexistent/telegram/pairing", {
+    const res = await ctx.app.request("/api/instances/demo1/devices/NONEXIST", {
+      method: "DELETE",
       headers: authHeaders(),
     });
     expect(res.status).toBe(404);
     const body = await json(res);
-    expect(body.code).toBe("NOT_FOUND");
-  });
-
-  it("POST /api/instances/:slug/telegram/pairing/approve — returns 400 when code missing", async () => {
-    seedInstance(ctx, "demo1", 18789);
-    const res = await ctx.app.request("/api/instances/demo1/telegram/pairing/approve", {
-      method: "POST",
-      headers: jsonHeaders(),
-      body: JSON.stringify({}),
-    });
-    expect(res.status).toBe(400);
-    const body = await json(res);
-    expect(body.code).toBe("FIELD_REQUIRED");
-  });
-
-  it("POST /api/instances/:slug/telegram/pairing/approve — returns 404 for unknown slug", async () => {
-    const res = await ctx.app.request("/api/instances/nonexistent/telegram/pairing/approve", {
-      method: "POST",
-      headers: jsonHeaders(),
-      body: JSON.stringify({ code: "ABCD1234" }),
-    });
-    expect(res.status).toBe(404);
-    const body = await json(res);
-    expect(body.code).toBe("NOT_FOUND");
-  });
-
-  it("GET /api/instances/:slug/telegram/pairing — returns pairing data when files exist", async () => {
-    seedInstance(ctx, "demo1", 18789);
-    // Seed telegram pairing files
-    ctx.conn.files.set(
-      `/opt/openclaw/.openclaw-demo1/credentials/telegram-pairing.json`,
-      JSON.stringify({
-        version: 1,
-        requests: [
-          {
-            id: "123456789",
-            code: "ABCD1234",
-            createdAt: "2026-01-01T00:00:00Z",
-            lastSeenAt: "2026-01-01T00:00:00Z",
-            meta: { username: "testuser" },
-          },
-        ],
-      }),
-    );
-    ctx.conn.files.set(
-      `/opt/openclaw/.openclaw-demo1/credentials/telegram-allowFrom.json`,
-      JSON.stringify({ version: 1, allowFrom: ["987654321"] }),
-    );
-
-    const res = await ctx.app.request("/api/instances/demo1/telegram/pairing", {
-      headers: authHeaders(),
-    });
-    expect(res.status).toBe(200);
-    const body = await json(res);
-    expect(body.pending).toHaveLength(1);
-    expect(body.pending[0].code).toBe("ABCD1234");
-    expect(body.approved).toHaveLength(1);
-    expect(body.approved[0]).toBe("987654321");
+    expect(body.code).toBe("CODE_NOT_FOUND");
   });
 });
+
+// Telegram pairing routes — removed (routes no longer exist)
 
 // ===========================================================================
 // A1.1 — Instance agent routes
@@ -1450,8 +1276,20 @@ describe("PATCH /api/instances/:slug/agents/:agentId/spawn-links", () => {
 
   it("returns 200 and updates spawn links for main agent", async () => {
     seedInstance(ctx, "demo1", 18789);
-    // The seedInstance already seeds openclaw.json with agents.defaults
-    // The route handles "main" agentId via agents.defaults path
+    const instance = ctx.registry.getInstance("demo1")!;
+    // Seed agents in DB (spawn-links route validates agents exist in DB)
+    ctx.registry.upsertAgent(instance.id, {
+      agentId: "main",
+      name: "Main",
+      workspacePath: "/opt/openclaw/.openclaw-demo1/workspaces/workspace",
+      isDefault: true,
+    });
+    ctx.registry.upsertAgent(instance.id, {
+      agentId: "helper",
+      name: "Helper",
+      workspacePath: "/opt/openclaw/.openclaw-demo1/workspaces/workspace-helper",
+      isDefault: false,
+    });
 
     const res = await ctx.app.request("/api/instances/demo1/agents/main/spawn-links", {
       method: "PATCH",
@@ -1462,36 +1300,29 @@ describe("PATCH /api/instances/:slug/agents/:agentId/spawn-links", () => {
     const body = await json(res);
     expect(body.ok).toBe(true);
     expect(Array.isArray(body.links)).toBe(true);
+    expect(body.links).toHaveLength(1);
+    expect(body.links[0].source_agent_id).toBe("main");
+    expect(body.links[0].target_agent_id).toBe("helper");
   });
 
-  it("returns 200 and creates agents.defaults when absent (regression: link disappears after save)", async () => {
-    // Reproduce the bug: openclaw.json has no agents.defaults section at all
-    const server =
-      ctx.registry.getLocalServer() ?? ctx.registry.upsertLocalServer("testhost", "/opt/openclaw");
-    ctx.registry.createInstance({
-      serverId: server.id,
-      slug: "no-defaults",
-      port: 18791,
-      configPath: "/opt/openclaw/.openclaw-no-defaults/openclaw.json",
-      stateDir: "/opt/openclaw/.openclaw-no-defaults",
-      systemdUnit: "openclaw-no-defaults.service",
+  it("returns 200 and persists links in DB (DB-only, no config file writes)", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const instance = ctx.registry.getInstance("demo1")!;
+    // Seed agents in DB
+    ctx.registry.upsertAgent(instance.id, {
+      agentId: "main",
+      name: "Main",
+      workspacePath: "/opt/openclaw/.openclaw-demo1/workspaces/workspace",
+      isDefault: true,
     });
-    ctx.conn.files.set(
-      "/opt/openclaw/.openclaw-no-defaults/.env",
-      "OPENCLAW_GW_AUTH_TOKEN=gw-token-no-defaults\n",
-    );
-    // Config with NO agents.defaults — only agents.list
-    ctx.conn.files.set(
-      "/opt/openclaw/.openclaw-no-defaults/openclaw.json",
-      JSON.stringify({
-        gateway: { port: 18791, bind: "0.0.0.0" },
-        agents: {
-          list: [{ id: "helper", name: "Helper", model: "anthropic/claude-haiku-4-20250514" }],
-        },
-      }),
-    );
+    ctx.registry.upsertAgent(instance.id, {
+      agentId: "helper",
+      name: "Helper",
+      workspacePath: "/opt/openclaw/.openclaw-demo1/workspaces/workspace-helper",
+      isDefault: false,
+    });
 
-    const res = await ctx.app.request("/api/instances/no-defaults/agents/main/spawn-links", {
+    const res = await ctx.app.request("/api/instances/demo1/agents/main/spawn-links", {
       method: "PATCH",
       headers: jsonHeaders(),
       body: JSON.stringify({ targets: ["helper"] }),
@@ -1500,15 +1331,12 @@ describe("PATCH /api/instances/:slug/agents/:agentId/spawn-links", () => {
     const body = await json(res);
     expect(body.ok).toBe(true);
 
-    // Verify the link was actually persisted in openclaw.json
-    const savedConfig = JSON.parse(
-      ctx.conn.files.get("/opt/openclaw/.openclaw-no-defaults/openclaw.json") ?? "{}",
-    ) as Record<string, unknown>;
-    const agentsConf = savedConfig["agents"] as Record<string, unknown>;
-    const defaults = agentsConf?.["defaults"] as Record<string, unknown>;
-    const subagents = defaults?.["subagents"] as Record<string, unknown>;
-    expect(Array.isArray(subagents?.["allowAgents"])).toBe(true);
-    expect(subagents?.["allowAgents"]).toContain("helper");
+    // Verify the link was persisted in DB
+    const links = ctx.registry.listAgentLinks(instance.id);
+    expect(links).toHaveLength(1);
+    expect(links[0]!.source_agent_id).toBe("main");
+    expect(links[0]!.target_agent_id).toBe("helper");
+    expect(links[0]!.link_type).toBe("spawn");
   });
 
   it("returns 404 when agentId is not main and not in config list", async () => {
@@ -1634,19 +1462,18 @@ describe("POST /api/instances/:slug/stop — error case", () => {
 describe("GET /api/instances/:slug/config — success case", () => {
   it("returns structured config for a seeded instance", async () => {
     seedInstance(ctx, "demo1", 18789);
-    // seedInstance already seeds openclaw.json with gateway + models + agents
-    // Also seed the .env file (already done by seedInstance for token cache)
+    // Config route reads runtime.json from real filesystem via getRuntimeStateDir.
+    // Since no real runtime.json exists, the route returns a minimal stub.
 
     const res = await ctx.app.request("/api/instances/demo1/config", {
       headers: authHeaders(),
     });
     expect(res.status).toBe(200);
     const body = await json(res);
-    // Should have the structured config shape
+    // Should have the minimal stub shape (no runtime.json on disk)
     expect(body.general).toBeDefined();
-    expect(body.gateway).toBeDefined();
-    expect(body.gateway.port).toBe(18789);
-    expect(Array.isArray(body.providers)).toBe(true);
+    expect(body.general.port).toBe(18789);
+    expect(Array.isArray(body.agents)).toBe(true);
   });
 });
 
@@ -1733,10 +1560,10 @@ describe("POST /api/instances/:slug/agents/sync", () => {
 
   it("returns 200 and syncs agents for a seeded instance", async () => {
     seedInstance(ctx, "demo1", 18789);
-    // Seed workspace files for the main agent so AgentSync can read them
+    // Seed workspace files for the synthetic main agent so AgentSync can read them
     const stateDir = "/opt/openclaw/.openclaw-demo1";
-    ctx.conn.files.set(`${stateDir}/SOUL.md`, "# Soul");
-    ctx.conn.files.set(`${stateDir}/AGENTS.md`, "# Agents");
+    ctx.conn.files.set(`${stateDir}/workspaces/workspace/SOUL.md`, "# Soul");
+    ctx.conn.files.set(`${stateDir}/workspaces/workspace/AGENTS.md`, "# Agents");
 
     const res = await ctx.app.request("/api/instances/demo1/agents/sync", {
       method: "POST",
@@ -1809,7 +1636,7 @@ describe("POST /api/self/update", () => {
 // ---------------------------------------------------------------------------
 
 describe("GET /api/providers", () => {
-  it("returns provider catalog with canReuseCredentials=false when no instances", async () => {
+  it("returns provider catalog with canReuseCredentials=false", async () => {
     const res = await ctx.app.request("/api/providers", {
       headers: authHeaders(),
     });
@@ -1823,17 +1650,17 @@ describe("GET /api/providers", () => {
     expect(body.providers.some((p: { isDefault?: boolean }) => p.isDefault)).toBe(true);
   });
 
-  it("returns canReuseCredentials=true when an instance with providers exists", async () => {
+  it("returns canReuseCredentials=false even when instances exist (runtime has no provider reuse)", async () => {
     seedInstance(ctx, "demo1", 18789);
-    // seedInstance already seeds openclaw.json with models.providers.anthropic
 
     const res = await ctx.app.request("/api/providers", {
       headers: authHeaders(),
     });
     expect(res.status).toBe(200);
     const body = await json(res);
-    expect(body.canReuseCredentials).toBe(true);
-    expect(body.sourceInstance).toBe("demo1");
+    // claw-runtime: canReuseCredentials is always false (no provider config in runtime.json)
+    expect(body.canReuseCredentials).toBe(false);
+    expect(body.sourceInstance).toBeNull();
   });
 });
 

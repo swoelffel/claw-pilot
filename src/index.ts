@@ -22,13 +22,11 @@ import { teamCommand } from "./commands/team.js";
 import { devicesCommand } from "./commands/devices.js";
 import { updateCommand } from "./commands/update.js";
 import { runtimeCommand } from "./commands/runtime.js";
-import { migrateCommand } from "./commands/migrate.js";
-
 const program = new Command();
 
 program
   .name("claw-pilot")
-  .description("Orchestrator for OpenClaw multi-instance clusters")
+  .description("Orchestrator for claw-runtime agent instances")
   .version(version);
 
 program.addCommand(initCommand());
@@ -49,7 +47,6 @@ program.addCommand(teamCommand());
 program.addCommand(devicesCommand());
 program.addCommand(updateCommand());
 program.addCommand(runtimeCommand());
-program.addCommand(migrateCommand());
 
 // Global error handler for unhandled async errors
 process.on("unhandledRejection", (err) => {

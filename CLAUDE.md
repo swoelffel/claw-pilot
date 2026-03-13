@@ -4,11 +4,9 @@ Guidance for Claude Code when working in this repository.
 
 ## What this project is
 
-`claw-pilot` v0.19.0 — **CLI + web dashboard** that orchestrates multiple agent instances on a Linux server. It handles discovery, provisioning, lifecycle management, Nginx config generation, and device pairing.
+`claw-pilot` v0.20.0 — **CLI + web dashboard** that orchestrates multiple agent instances on a Linux server. It handles discovery, provisioning, lifecycle management, Nginx config generation, and device pairing.
 
-Two instance types coexist:
-- **`openclaw`** — OpenClaw (third-party), managed via systemd / launchd
-- **`claw-runtime`** — Native Node.js engine (`src/runtime/`), managed via PID file daemon
+All instances use the **claw-runtime** engine — a native Node.js engine (`src/runtime/`), managed via PID file daemon.
 
 Not published on npm — installed from source only (`/opt/claw-pilot`).
 GitHub: https://github.com/swoelffel/claw-pilot
@@ -23,7 +21,7 @@ GitHub: https://github.com/swoelffel/claw-pilot
 - **Build**: tsdown (CLI) + vite (UI)
 - **Tests**: Vitest
 - **Lint**: oxlint
-- **LLM SDK** (claw-runtime): Vercel AI SDK `ai` v6.x
+- **LLM SDK**: Vercel AI SDK `ai` v6.x
 
 ## Key commands
 
@@ -41,10 +39,10 @@ pnpm lint          # oxlint src/
 ```
 src/
   index.ts          # CLI entry point (Commander root)
-  commands/         # 16 commands — thin wrappers over core/
+  commands/         # CLI commands — thin wrappers over core/
   core/             # All business logic
   dashboard/        # HTTP server (Hono) + WebSocket monitor
-  db/               # SQLite schema + migrations (schema.ts) — current version: 9
+  db/               # SQLite schema + migrations (schema.ts) — current version: 10
   lib/              # Shared utilities (logger, constants, errors, platform, poll, xdg, shell...)
   runtime/          # claw-runtime engine (bus, provider, session, tool, agent, plugin, mcp, channel, engine)
   server/           # ServerConnection interface + LocalConnection impl
@@ -64,7 +62,7 @@ docs/main-doc.md    # Functional architecture — read this before major changes
 | Table | Role |
 |---|---|
 | `servers` | Physical servers (V1: always 1 local row) |
-| `instances` | Instances — slug, port, state, config_path, **instance_type** ('openclaw'\|'claw-runtime') |
+| `instances` | Instances — slug, port, state, config_path |
 | `agents` | Agents per instance or blueprint |
 | `ports` | Port reservation registry (anti-conflict) |
 | `config` | Global key-value config |
@@ -92,12 +90,7 @@ Never open the DB manually in a command — always use this pattern.
 **Exception**: `runtime.ts` commands open the DB directly (no `withContext`) because they manage their own lifecycle.
 
 ### ServerConnection abstraction
-All shell/filesystem ops for openclaw instances go through `ServerConnection` (`src/server/connection.ts`). Current impl: `LocalConnection`. SSH impl is planned — keep this interface intact.
-
-### instance_type branching
-`Lifecycle` and `HealthChecker` branch on `instance.instance_type`:
-- `openclaw` → systemd/launchd + gateway HTTP health check
-- `claw-runtime` → PID file daemon + `getRuntimePid()` health check
+All shell/filesystem ops go through `ServerConnection` (`src/server/connection.ts`). Current impl: `LocalConnection`. SSH impl is planned — keep this interface intact.
 
 ### claw-runtime PID helpers (src/lib/platform.ts)
 ```typescript
@@ -106,16 +99,13 @@ getRuntimePid(stateDir)       // PID number or null (checks process.kill(pid, 0)
 isRuntimeRunning(stateDir)    // boolean
 ```
 
-### Systemd user services (openclaw only)
-All openclaw instances run as `systemd --user` services. `XDG_RUNTIME_DIR` is required. Use `src/lib/xdg.ts` — never hardcode it.
-
 ### Port allocation
 Default range: **18789–18799** (11 instances max). Dashboard: **19000**. Always allocate via `src/core/port-allocator.ts`.
 
 ### Secrets
-Gateway tokens and dashboard tokens are auto-generated (`src/core/secrets.ts`). API keys go in `.env` per instance (never in `openclaw.json` or `runtime.json`). Never commit secrets.
+Dashboard tokens are auto-generated (`src/core/secrets.ts`). API keys go in `.env` per instance (never in `runtime.json`). Never commit secrets.
 
-### Vercel AI SDK v6 (claw-runtime)
+### Vercel AI SDK v6
 Breaking changes vs v5:
 - `CoreMessage` → `ModelMessage`
 - `maxSteps` → `stopWhen: stepCountIs(n)`
@@ -129,7 +119,7 @@ Use conditional spread for optional fields: `...(val !== undefined ? { key: val 
 
 ## Test coverage
 
-719 tests passing (+ 102 e2e). Tests are under `src/core/__tests__/`, `src/db/__tests__/`, `src/runtime/__tests__/`, `src/runtime/session/__tests__/`, `src/dashboard/__tests__/`. Run with `pnpm test:run` before submitting changes.
+591 tests passing (+ 102 e2e). Tests are under `src/core/__tests__/`, `src/db/__tests__/`, `src/runtime/__tests__/`, `src/runtime/session/__tests__/`, `src/dashboard/__tests__/`. Run with `pnpm test:run` before submitting changes.
 
 ## UI development
 
@@ -148,7 +138,6 @@ Reference docs:
 ## What NOT to do
 
 - Do not modify `src/server/connection.ts` interface without updating `LocalConnection` and all callers
-- Do not add raw `exec`/`fs` calls in `src/commands/` — go through `conn` from context (openclaw commands)
 - Do not hardcode paths — use `src/lib/platform.ts` and `src/lib/constants.ts`
 - Do not add new DB tables without a corresponding migration in `src/db/schema.ts`
 - Do not use `"provider/model"` string format with `resolveModel()` — pass 2 separate args
