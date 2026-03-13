@@ -175,6 +175,8 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
     const defaultModel = body["defaultModel"];
     const provider = body["provider"];
     const apiKey = body["apiKey"];
+    const instanceType =
+      body["instanceType"] === "claw-runtime" ? "claw-runtime" : ("openclaw" as const);
 
     if (
       typeof slug !== "string" ||
@@ -236,7 +238,7 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
       const portAllocator = new PortAllocator(registry, conn);
       const provisioner = new Provisioner(conn, registry, portAllocator);
       const blueprintId = typeof body.blueprintId === "number" ? body.blueprintId : undefined;
-      const result = await provisioner.provision(answers, server.id, blueprintId);
+      const result = await provisioner.provision(answers, server.id, blueprintId, instanceType);
 
       try {
         const pairing = new PairingManager(conn, registry);
