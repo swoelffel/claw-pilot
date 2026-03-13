@@ -706,34 +706,35 @@ else
 fi
 
 # ── 13. Initialize ────────────────────────────────────────────────────────────
-# Resolve the claw-pilot command with retries — the wrapper may have just been
-# written and the shell cache may not have caught up yet (inspired by OpenClaw's
-# resolve_openclaw_bin pattern).
+# Sets CP_NODE and CP_ENTRY so callers can run: $CP_NODE $CP_ENTRY <args>
+# Avoids storing "node /path/to/index.mjs" in a single variable (word-splitting
+# issue in POSIX sh when the string contains spaces).
 _resolve_claw_pilot_cmd() {
   # Attempt 1: direct lookup after cache invalidation
   hash -r 2>/dev/null || true
   if command -v claw-pilot >/dev/null 2>&1; then
-    printf '%s' "claw-pilot"; return 0
+    CP_NODE="claw-pilot"; CP_ENTRY=""; return 0
   fi
   # Attempt 2: prepend wrapper dir and retry
   [ -n "${_wrapper_dir:-}" ] && prepend_path_dir "$_wrapper_dir"
   hash -r 2>/dev/null || true
   if command -v claw-pilot >/dev/null 2>&1; then
-    printf '%s' "claw-pilot"; return 0
+    CP_NODE="claw-pilot"; CP_ENTRY=""; return 0
   fi
-  # Attempt 3: fall back to direct node invocation (use absolute NODE_BIN — node may not be in PATH)
-  printf '%s' "$NODE_BIN $INSTALL_DIR/dist/index.mjs"
+  # Attempt 3: fall back to absolute node + entry point (two separate vars — no word-splitting)
+  CP_NODE="$NODE_BIN"
+  CP_ENTRY="$INSTALL_DIR/dist/index.mjs"
 }
 
 echo ""
 log "Running 'claw-pilot init' to set up the registry..."
-CLAW_PILOT_CMD=$(_resolve_claw_pilot_cmd)
-$CLAW_PILOT_CMD init --yes
+_resolve_claw_pilot_cmd
+$CP_NODE $CP_ENTRY init --yes
 
 # ── 14. Create admin account ──────────────────────────────────────────────────
 echo ""
 log "Creating admin account..."
-$CLAW_PILOT_CMD auth setup 2>&1
+$CP_NODE $CP_ENTRY auth setup 2>&1
 echo ""
 warn "Save the admin password above — you will need it to access the dashboard."
 warn "Reset anytime with: $LINK_PATH auth reset"
@@ -750,8 +751,8 @@ if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
     sleep 2
   fi
 
-  # CLAW_PILOT_CMD already resolved in step 13
-  if $CLAW_PILOT_CMD service install; then
+  # CP_NODE / CP_ENTRY already resolved in step 13
+  if $CP_NODE $CP_ENTRY service install; then
     log "Dashboard service installed and started."
     log "View logs: journalctl --user -u claw-pilot-dashboard.service -f"
   else
