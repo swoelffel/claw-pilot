@@ -247,9 +247,9 @@ resolve_node_bin() {
   NODE_BIN=$(command -v node 2>/dev/null)
   if [ -z "$NODE_BIN" ]; then
     for _candidate in \
-      "$HOME/.nvm/versions/node/"*/bin/node \
-      "$HOME/.volta/bin/node" \
-      "$HOME/.fnm/node-versions/"*/installation/bin/node \
+      $HOME/.nvm/versions/node/*/bin/node \
+      $HOME/.volta/bin/node \
+      $HOME/.fnm/node-versions/*/installation/bin/node \
       /usr/local/bin/node \
       /usr/bin/node; do
       [ -f "$_candidate" ] && NODE_BIN="$_candidate" && break
