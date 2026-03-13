@@ -15,6 +15,26 @@ export function registerAgentSyncRoutes(app: Hono, deps: RouteDeps): void {
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
 
+    // claw-runtime: agents are DB-only, no config file to sync from.
+    // AgentSync reads openclaw.json format (agents.list[]) — calling it on a
+    // claw-runtime instance would wipe all agents from the DB.
+    if (instance!.instance_type === "claw-runtime") {
+      const agents = registry.listAgents(slug);
+      const links = registry.listAgentLinks(instance!.id);
+      return c.json({
+        synced: true,
+        agents: agents.map((a) => ({ agent_id: a.agent_id, name: a.name })),
+        links,
+        changes: {
+          agentsAdded: [],
+          agentsRemoved: [],
+          agentsUpdated: [],
+          filesChanged: 0,
+          linksChanged: 0,
+        },
+      });
+    }
+
     try {
       const agentSync = new AgentSync(conn, registry);
       const result = await agentSync.sync(instance!);
