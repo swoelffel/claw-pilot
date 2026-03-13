@@ -744,7 +744,9 @@ echo ""
 warn "Save the admin password above — you will need it to access the dashboard."
 warn "Reset anytime with: $LINK_PATH auth reset"
 
-# ── 15. Install dashboard as systemd service (Linux only) ────────────────────
+# ── 15. Install dashboard as systemd/launchd service ─────────────────────────
+_service_installed=false
+
 if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
   echo ""
   log "Setting up dashboard as a systemd service..."
@@ -760,6 +762,7 @@ if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
   if $CP_NODE $CP_ENTRY service install; then
     log "Dashboard service installed and started."
     log "View logs: journalctl --user -u claw-pilot-dashboard.service -f"
+    _service_installed=true
   else
     warn "Dashboard service installation failed. You can start it manually:"
     warn "  claw-pilot dashboard"
@@ -781,6 +784,7 @@ elif [ "$OS" = "Darwin" ]; then
         if $CP_NODE $CP_ENTRY service install; then
           log "Dashboard service installed and started."
           log "View logs: tail -f ~/.claw-pilot/dashboard.log"
+          _service_installed=true
         else
           warn "Service installation failed. Start manually: claw-pilot dashboard start"
         fi
@@ -792,16 +796,33 @@ elif [ "$OS" = "Darwin" ]; then
 else
   echo ""
   log "Skipping service setup (not Linux/macOS or systemd not available)."
-  log "Start the dashboard manually: claw-pilot dashboard start"
 fi
 
 echo ""
 log "Done! Run 'claw-pilot --help' to see available commands."
 log "Run 'claw-pilot create' to provision a new instance."
 echo ""
-log "To start the dashboard:"
-log "  claw-pilot dashboard start"
-log "Then open: http://localhost:19000"
+if [ "$_service_installed" = "true" ]; then
+  log "Dashboard is running at: http://localhost:19000"
+else
+  log "To start the dashboard:"
+  log "  claw-pilot dashboard start"
+  log "Then open: http://localhost:19000"
+fi
+if [ -t 0 ]; then
+  printf '[?] Open the dashboard in your browser now? [Y/n] '
+  read -r _open_browser </dev/tty
+  case "$_open_browser" in
+    [nN]*) ;;
+    *)
+      if [ "$OS" = "Darwin" ]; then
+        open "http://localhost:19000" 2>/dev/null || true
+      elif command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "http://localhost:19000" 2>/dev/null || true
+      fi
+      ;;
+  esac
+fi
 echo ""
 if ! command -v claw-pilot >/dev/null 2>&1; then
   warn "claw-pilot is not in your current PATH."
