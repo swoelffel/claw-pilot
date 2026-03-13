@@ -37,6 +37,7 @@ const EDITABLE_FILES = new Set([
   "SOUL.md",
   "TOOLS.md",
   "IDENTITY.md",
+  "BOOTSTRAP.md",
   "USER.md",
   "HEARTBEAT.md",
 ]);

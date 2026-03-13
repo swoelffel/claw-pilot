@@ -1,6 +1,7 @@
 // src/core/provisioner.ts
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry } from "./registry.js";
 import type { PortAllocator } from "./port-allocator.js";
@@ -192,18 +193,20 @@ export class Provisioner {
 
       // Step 5: Create workspaces
       logger.step("Creating workspaces...");
+      const renderedFilesPerAgent = new Map<string, Array<{ filename: string; content: string }>>();
       for (const agent of answers.agents) {
         const workspaceId =
           agent.workspace ?? (agent.isDefault ? "workspace" : `workspace-${agent.id}`);
         const workspacePath = path.join(stateDir, "workspaces", workspaceId);
         await this.conn.mkdir(workspacePath);
-        await this.provisionWorkspaceFiles(workspacePath, {
+        const rendered = await this.provisionWorkspaceFiles(workspacePath, {
           agentId: agent.id,
           agentName: agent.name,
           instanceSlug: slug,
           instanceName: answers.displayName,
           agents: answers.agents,
         });
+        renderedFilesPerAgent.set(agent.id, rendered);
       }
 
       // Step 6: Generate and install service (systemd on Linux, launchd on macOS)
@@ -272,7 +275,7 @@ export class Provisioner {
       this.portAllocator.reserveSidecarPorts(serverId, answers.port, slug);
       portAllocated = true;
 
-      // Register agents
+      // Register agents + persist workspace files in DB
       for (const agent of answers.agents) {
         const workspaceId =
           agent.workspace ?? (agent.isDefault ? "workspace" : `workspace-${agent.id}`);
@@ -283,6 +286,16 @@ export class Provisioner {
           workspacePath: path.join(stateDir, "workspaces", workspaceId),
           ...(agent.isDefault !== undefined && { isDefault: agent.isDefault }),
         });
+
+        // Persist workspace files in agent_files table
+        const agentRecord = this.registry.getAgentByAgentId(instance.id, agent.id);
+        const renderedFiles = renderedFilesPerAgent.get(agent.id) ?? [];
+        if (agentRecord) {
+          for (const { filename, content } of renderedFiles) {
+            const contentHash = createHash("sha256").update(content, "utf8").digest("hex");
+            this.registry.upsertAgentFile(agentRecord.id, { filename, content, contentHash });
+          }
+        }
       }
 
       if (instanceType === "openclaw") {
@@ -475,7 +488,7 @@ export class Provisioner {
       instanceName: string;
       agents: WizardAnswers["agents"];
     },
-  ): Promise<void> {
+  ): Promise<Array<{ filename: string; content: string }>> {
     // Load templates from the package's templates/workspace directory.
     // In dev: src/core/ → ../../templates/workspace = templates/workspace ✓
     // In prod: dist/ → ../templates/workspace = templates/workspace ✓
@@ -486,6 +499,7 @@ export class Provisioner {
 
     const files = constants.TEMPLATE_FILES;
     const date = new Date().toISOString().split("T")[0]!;
+    const rendered: Array<{ filename: string; content: string }> = [];
 
     for (const file of files) {
       const templatePath = path.join(templateDir, file);
@@ -515,6 +529,8 @@ export class Provisioner {
         );
 
       await this.conn.writeFile(path.join(workspacePath, file), content);
+      rendered.push({ filename: file, content });
     }
+    return rendered;
   }
 }
