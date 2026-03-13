@@ -11,6 +11,7 @@ import {
   getServiceManager,
   getLaunchdPlistPath,
   isDocker,
+  getRuntimeStateDir,
   getRuntimePidPath,
   getRuntimePid,
   isRuntimeRunning,
@@ -168,7 +169,9 @@ export class Lifecycle {
    * Spawns `claw-pilot runtime start --daemon <slug>` as a detached child,
    * then polls the PID file until the process is alive (up to 10 s).
    */
-  private async startRuntime(slug: string, stateDir: string): Promise<void> {
+  private async startRuntime(slug: string, _stateDir: string): Promise<void> {
+    // Always derive stateDir from slug — DB value may be stale after migration.
+    const stateDir = getRuntimeStateDir(slug);
     if (isRuntimeRunning(stateDir)) {
       const pid = getRuntimePid(stateDir);
       logger.dim(`[lifecycle] claw-runtime for "${slug}" already running (PID ${pid})`);
@@ -224,7 +227,9 @@ export class Lifecycle {
    * Stop a running claw-runtime daemon for the given slug.
    * Sends SIGTERM and polls until the process exits (up to 8 s).
    */
-  private async stopRuntime(slug: string, stateDir: string): Promise<void> {
+  private async stopRuntime(slug: string, _stateDir: string): Promise<void> {
+    // Always derive stateDir from slug — DB value may be stale after migration.
+    const stateDir = getRuntimeStateDir(slug);
     const pid = getRuntimePid(stateDir);
     if (!pid) {
       logger.dim(`[lifecycle] claw-runtime for "${slug}" is not running — nothing to stop`);

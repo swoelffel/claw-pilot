@@ -5,7 +5,13 @@ import type { Registry } from "./registry.js";
 import { InstanceNotFoundError } from "../lib/errors.js";
 import { constants } from "../lib/constants.js";
 import { shellEscape } from "../lib/shell.js";
-import { getServiceManager, getLaunchdLabel, isDocker, getRuntimePid } from "../lib/platform.js";
+import {
+  getServiceManager,
+  getLaunchdLabel,
+  isDocker,
+  getRuntimeStateDir,
+  getRuntimePid,
+} from "../lib/platform.js";
 
 export type InstanceState = "running" | "stopped" | "error" | "unknown";
 
@@ -39,7 +45,9 @@ export class HealthChecker {
 
     // --- claw-runtime: PID-based health check (no systemd, no gateway HTTP) ---
     if (instance.instance_type === "claw-runtime") {
-      const pid = getRuntimePid(instance.state_dir);
+      // Always derive stateDir from slug — DB value may be stale after migration.
+      const runtimeStateDir = getRuntimeStateDir(slug);
+      const pid = getRuntimePid(runtimeStateDir);
       const state: InstanceState = pid !== null ? "running" : "stopped";
 
       const status: HealthStatus = {
