@@ -51,9 +51,6 @@ export class AgentProvisioner {
       await this.conn.writeFile(path.join(workspaceDir, filename), content);
     }
 
-    // BOOTSTRAP.md: minimal stub (not in TEMPLATE_FILES)
-    await this.conn.writeFile(path.join(workspaceDir, "BOOTSTRAP.md"), `# ${data.name}\n`);
-
     if (instance.instance_type === "claw-runtime") {
       // ── claw-runtime: append to agents[] array in runtime.json ──────────────
       const configRaw = await this.conn.readFile(instance.config_path);

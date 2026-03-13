@@ -15,7 +15,15 @@ import type { InstanceSlug } from "../types.js";
 const DEFAULT_INSTRUCTIONS = "You are a helpful AI assistant. Be concise and accurate.";
 
 /** Workspace files read during auto-discovery, in priority order. */
-const DISCOVERY_FILES = ["SOUL.md", "AGENTS.md", "TOOLS.md", "IDENTITY.md"] as const;
+const DISCOVERY_FILES = [
+  "SOUL.md",
+  "BOOTSTRAP.md",
+  "AGENTS.md",
+  "TOOLS.md",
+  "IDENTITY.md",
+  "USER.md",
+  "HEARTBEAT.md",
+] as const;
 
 const BEHAVIOR_BLOCK = `<behavior>
   - Respond in the same language as the user's message

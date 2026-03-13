@@ -67,6 +67,7 @@ export const constants = {
     "SOUL.md",
     "TOOLS.md",
     "IDENTITY.md",
+    "BOOTSTRAP.md",
     "USER.md",
     "HEARTBEAT.md",
     "MEMORY.md",
