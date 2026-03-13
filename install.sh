@@ -721,8 +721,8 @@ _resolve_claw_pilot_cmd() {
   if command -v claw-pilot >/dev/null 2>&1; then
     printf '%s' "claw-pilot"; return 0
   fi
-  # Attempt 3: fall back to direct node invocation
-  printf '%s' "node $INSTALL_DIR/dist/index.mjs"
+  # Attempt 3: fall back to direct node invocation (use absolute NODE_BIN — node may not be in PATH)
+  printf '%s' "$NODE_BIN $INSTALL_DIR/dist/index.mjs"
 }
 
 echo ""
