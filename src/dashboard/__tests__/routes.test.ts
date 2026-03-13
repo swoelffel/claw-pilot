@@ -1464,6 +1464,53 @@ describe("PATCH /api/instances/:slug/agents/:agentId/spawn-links", () => {
     expect(Array.isArray(body.links)).toBe(true);
   });
 
+  it("returns 200 and creates agents.defaults when absent (regression: link disappears after save)", async () => {
+    // Reproduce the bug: openclaw.json has no agents.defaults section at all
+    const server =
+      ctx.registry.getLocalServer() ?? ctx.registry.upsertLocalServer("testhost", "/opt/openclaw");
+    ctx.registry.createInstance({
+      serverId: server.id,
+      slug: "no-defaults",
+      port: 18791,
+      configPath: "/opt/openclaw/.openclaw-no-defaults/openclaw.json",
+      stateDir: "/opt/openclaw/.openclaw-no-defaults",
+      systemdUnit: "openclaw-no-defaults.service",
+    });
+    ctx.conn.files.set(
+      "/opt/openclaw/.openclaw-no-defaults/.env",
+      "OPENCLAW_GW_AUTH_TOKEN=gw-token-no-defaults\n",
+    );
+    // Config with NO agents.defaults — only agents.list
+    ctx.conn.files.set(
+      "/opt/openclaw/.openclaw-no-defaults/openclaw.json",
+      JSON.stringify({
+        gateway: { port: 18791, bind: "0.0.0.0" },
+        agents: {
+          list: [{ id: "helper", name: "Helper", model: "anthropic/claude-haiku-4-20250514" }],
+        },
+      }),
+    );
+
+    const res = await ctx.app.request("/api/instances/no-defaults/agents/main/spawn-links", {
+      method: "PATCH",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ targets: ["helper"] }),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.ok).toBe(true);
+
+    // Verify the link was actually persisted in openclaw.json
+    const savedConfig = JSON.parse(
+      ctx.conn.files.get("/opt/openclaw/.openclaw-no-defaults/openclaw.json") ?? "{}",
+    ) as Record<string, unknown>;
+    const agentsConf = savedConfig["agents"] as Record<string, unknown>;
+    const defaults = agentsConf?.["defaults"] as Record<string, unknown>;
+    const subagents = defaults?.["subagents"] as Record<string, unknown>;
+    expect(Array.isArray(subagents?.["allowAgents"])).toBe(true);
+    expect(subagents?.["allowAgents"]).toContain("helper");
+  });
+
   it("returns 404 when agentId is not main and not in config list", async () => {
     seedInstance(ctx, "demo1", 18789);
     const res = await ctx.app.request("/api/instances/demo1/agents/ghost-agent/spawn-links", {

@@ -39,12 +39,14 @@ export function seedInstance(
   opts: SeedInstanceOptions,
 ): void {
   const { slug, port, instanceType = "openclaw", state = "stopped", displayName } = opts;
+  // claw-runtime uses runtime.json, openclaw uses openclaw.json
+  const configFile = instanceType === "claw-runtime" ? "runtime.json" : "openclaw.json";
   registry.allocatePort(serverId, port, slug);
   registry.createInstance({
     serverId,
     slug,
     port,
-    configPath: `/home/test/.openclaw-${slug}/openclaw.json`,
+    configPath: `/home/test/.openclaw-${slug}/${configFile}`,
     stateDir: `/home/test/.openclaw-${slug}`,
     systemdUnit: `openclaw-${slug}.service`,
     instanceType,

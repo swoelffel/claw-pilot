@@ -129,7 +129,7 @@ Use conditional spread for optional fields: `...(val !== undefined ? { key: val 
 
 ## Test coverage
 
-702 tests passing. Tests are under `src/core/__tests__/`, `src/db/__tests__/`, `src/runtime/__tests__/`, `src/runtime/session/__tests__/`, `src/dashboard/__tests__/`. Run with `pnpm test:run` before submitting changes.
+719 tests passing (+ 102 e2e). Tests are under `src/core/__tests__/`, `src/db/__tests__/`, `src/runtime/__tests__/`, `src/runtime/session/__tests__/`, `src/dashboard/__tests__/`. Run with `pnpm test:run` before submitting changes.
 
 ## UI development
 

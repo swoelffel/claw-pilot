@@ -1,5 +1,5 @@
 // src/e2e/agents.e2e.test.ts
-// Phase C2 — Agent CRUD tests over real HTTP
+// Agent CRUD tests over real HTTP — covers both openclaw and claw-runtime instance types
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { startTestServer, type TestContext } from "./helpers/test-server.js";
 import { seedAdmin, seedLocalServer, seedInstance } from "./helpers/seed.js";
@@ -142,5 +142,137 @@ describe("Agents API", () => {
     expect(Array.isArray(body)).toBe(true);
     const deleted = body.find((a: any) => a.agent_id === "agent-to-delete");
     expect(deleted).toBeUndefined();
+  });
+});
+
+// ── claw-runtime agent CRUD ───────────────────────────────────────────────────
+// Verifies that AgentProvisioner uses the native runtime.json format (agents[])
+// and does NOT corrupt it with the openclaw format (agents.list[]).
+
+const MINIMAL_RUNTIME_JSON = JSON.stringify(
+  {
+    version: 1,
+    defaultModel: "anthropic/claude-sonnet-4-5",
+    providers: [],
+    agents: [
+      {
+        id: "main",
+        name: "Main",
+        model: "anthropic/claude-sonnet-4-5",
+        permissions: [],
+        maxSteps: 20,
+        allowSubAgents: true,
+        toolProfile: "coding",
+        isDefault: true,
+      },
+    ],
+    globalPermissions: [],
+  },
+  null,
+  2,
+);
+
+describe("Agents API — claw-runtime instance", () => {
+  let ctx: TestContext;
+  let serverId: number;
+  const SLUG = "agents-rt-inst";
+  const PORT = 18821;
+  // seedInstance now uses runtime.json for claw-runtime
+  const CONFIG_PATH = `/home/test/.openclaw-${SLUG}/runtime.json`;
+
+  beforeAll(async () => {
+    ctx = await startTestServer();
+    await seedAdmin(ctx.db);
+    serverId = seedLocalServer(ctx.registry);
+
+    seedInstance(ctx.registry, serverId, {
+      slug: SLUG,
+      port: PORT,
+      instanceType: "claw-runtime",
+      state: "stopped",
+    });
+
+    // Pre-populate MockConnection with a valid runtime.json
+    ctx.conn.files.set(CONFIG_PATH, MINIMAL_RUNTIME_JSON);
+    ctx.conn.files.set(`/home/test/.openclaw-${SLUG}/.env`, "OPENCLAW_GW_AUTH_TOKEN=gw-token-rt\n");
+
+    // Seed the main agent in DB (normally done by runtime config init)
+    const inst = ctx.registry.getInstance(SLUG)!;
+    ctx.registry.upsertAgent(inst.id, {
+      agentId: "main",
+      name: "Main",
+      model: "anthropic/claude-sonnet-4-5",
+      workspacePath: `/home/test/.openclaw-${SLUG}`,
+      isDefault: true,
+    });
+  });
+
+  afterAll(async () => {
+    await ctx.cleanup();
+  });
+
+  it("[rt] POST agent → 201, agent in response", async () => {
+    const res = await ctx.client.withBearer().post(`/api/instances/${SLUG}/agents`, {
+      agentSlug: "rt-agent",
+      name: "RT Agent",
+      role: "assistant",
+      provider: "anthropic",
+      model: "claude-3-5-haiku-20241022",
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as any;
+    const created = body.agents.find((a: any) => a.agent_id === "rt-agent");
+    expect(created).toBeDefined();
+    expect(created.name).toBe("RT Agent");
+  });
+
+  it("[rt] After create, runtime.json has agents[] array (not agents.list[])", async () => {
+    const raw = ctx.conn.files.get(CONFIG_PATH);
+    expect(raw).toBeDefined();
+    const config = JSON.parse(raw!) as Record<string, unknown>;
+
+    // Must be a top-level array
+    expect(Array.isArray(config["agents"])).toBe(true);
+    // Must contain the new agent
+    const agents = config["agents"] as Array<Record<string, unknown>>;
+    expect(agents.find((a) => a["id"] === "rt-agent")).toBeDefined();
+    // Must NOT have been corrupted with openclaw format
+    expect((config["agents"] as Record<string, unknown>)["list"]).toBeUndefined();
+    // Original main agent must still be present
+    expect(agents.find((a) => a["id"] === "main")).toBeDefined();
+  });
+
+  it("[rt] After create, GET agents → rt-agent present", async () => {
+    const res = await ctx.client.withBearer().get(`/api/instances/${SLUG}/agents`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.find((a: any) => a.agent_id === "rt-agent")).toBeDefined();
+  });
+
+  it("[rt] DELETE agent → 200, agent removed from response", async () => {
+    const res = await ctx.client.withBearer().delete(`/api/instances/${SLUG}/agents/rt-agent`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.agents.find((a: any) => a.agent_id === "rt-agent")).toBeUndefined();
+  });
+
+  it("[rt] After delete, runtime.json no longer contains rt-agent", async () => {
+    const raw = ctx.conn.files.get(CONFIG_PATH);
+    expect(raw).toBeDefined();
+    const config = JSON.parse(raw!) as Record<string, unknown>;
+
+    expect(Array.isArray(config["agents"])).toBe(true);
+    const agents = config["agents"] as Array<Record<string, unknown>>;
+    // rt-agent must be gone
+    expect(agents.find((a) => a["id"] === "rt-agent")).toBeUndefined();
+    // main must still be there
+    expect(agents.find((a) => a["id"] === "main")).toBeDefined();
+  });
+
+  it("[rt] After delete, GET agents → rt-agent gone", async () => {
+    const res = await ctx.client.withBearer().get(`/api/instances/${SLUG}/agents`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.find((a: any) => a.agent_id === "rt-agent")).toBeUndefined();
   });
 });

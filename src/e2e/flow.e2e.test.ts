@@ -108,6 +108,19 @@ describe("Flow: create instance → create agent → delete agent → delete ins
     const created = body.agents.find((a: any) => a.agent_id === "flow-agent");
     expect(created).toBeDefined();
     expect(created.name).toBe("Flow Agent");
+
+    // Verify runtime.json was updated in native format (agents[] array, NOT agents.list[])
+    const instance2 = ctx.registry.getInstance(FLOW_SLUG)!;
+    const savedRaw = ctx.conn.files.get(instance2.config_path);
+    expect(savedRaw).toBeDefined();
+    const saved = JSON.parse(savedRaw!) as Record<string, unknown>;
+    // Must be a top-level array, not an object with .list
+    expect(Array.isArray(saved["agents"])).toBe(true);
+    expect(
+      (saved["agents"] as Record<string, unknown>[]).find((a) => a["id"] === "flow-agent"),
+    ).toBeDefined();
+    // Must NOT have agents.list (openclaw format corruption check)
+    expect((saved["agents"] as Record<string, unknown>)["list"]).toBeUndefined();
   });
 
   // Step 4 — GET /api/instances/:slug/agents → agent present
@@ -131,6 +144,16 @@ describe("Flow: create instance → create agent → delete agent → delete ins
     expect(Array.isArray(body.agents)).toBe(true);
     const stillPresent = body.agents.find((a: any) => a.agent_id === "flow-agent");
     expect(stillPresent).toBeUndefined();
+
+    // Verify runtime.json no longer contains flow-agent (native format preserved)
+    const instance = ctx.registry.getInstance(FLOW_SLUG)!;
+    const savedRaw = ctx.conn.files.get(instance.config_path);
+    expect(savedRaw).toBeDefined();
+    const saved = JSON.parse(savedRaw!) as Record<string, unknown>;
+    expect(Array.isArray(saved["agents"])).toBe(true);
+    expect(
+      (saved["agents"] as Record<string, unknown>[]).find((a) => a["id"] === "flow-agent"),
+    ).toBeUndefined();
   });
 
   // Step 6 — GET /api/instances/:slug/agents → agent gone
