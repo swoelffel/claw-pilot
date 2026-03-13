@@ -17,7 +17,8 @@ export COREPACK_ENABLE_STRICT=0
 
 REPO="swoelffel/claw-pilot"
 REPO_URL="https://github.com/${REPO}.git"
-RAW_BASE="https://raw.githubusercontent.com/${REPO}/main"
+CLAW_PILOT_REPO_BRANCH="${CLAW_PILOT_REPO_BRANCH:-main}"
+RAW_BASE="https://raw.githubusercontent.com/${REPO}/${CLAW_PILOT_REPO_BRANCH}"
 MIN_NODE_VERSION=22
 INSTALL_DIR="${CLAW_PILOT_INSTALL_DIR:-/opt/claw-pilot}"
 OPENCLAW_INSTALL_URL="${OPENCLAW_INSTALL_URL:-https://openclaw.ai/install.sh}"
@@ -172,12 +173,13 @@ _openclaw_bin_from_dist() {
   printf '%s' "$1" | sed 's|/lib/node_modules/openclaw/dist/index\.js$|/bin/openclaw|'
 }
 
-# Pass 1 — detect from a running openclaw-gateway process.
+# Pass 1 — detect from a running openclaw-gateway process (Linux only).
 # openclaw-gateway renames argv[0] so ps aux shows no path — instead we read
 # HOME from /proc/<pid>/environ (requires sudo, which is a pre-req of this installer).
 # HOME points to the openclaw user's home (e.g. /opt/openclaw), from which we
 # derive the conventional npm-global bin path.
 _find_openclaw_from_process() {
+  [ "$OS" = "Darwin" ] && return 1
   # Find PIDs of openclaw-gateway processes
   _pids=$(ps -eo pid,args 2>/dev/null \
     | grep 'openclaw-gateway' \
@@ -198,11 +200,12 @@ _find_openclaw_from_process() {
   return 1
 }
 
-# Pass 2 — detect from systemd user service files (openclaw-*.service).
+# Pass 2 — detect from systemd user service files (openclaw-*.service) (Linux only).
 # Uses sudo (required by the installer) to read files in other users' homes.
 # ExecStart format: /usr/bin/node /path/.npm-global/lib/node_modules/openclaw/dist/index.js ...
 # The sed anchors on a space before the path to avoid capturing a partial prefix.
 _find_openclaw_from_service() {
+  [ "$OS" = "Darwin" ] && return 1
   for _svc in $(find /home /opt /root -maxdepth 6 -name "openclaw-*.service" 2>/dev/null | head -20); do
     _dist=$(sudo cat "$_svc" 2>/dev/null \
       | grep 'ExecStart' \
@@ -217,6 +220,7 @@ _find_openclaw_from_service() {
 
 # Pass 3 — hardcoded candidate paths (no pipe, no subshell — POSIX safe).
 # Covers fresh installs where openclaw is installed but not yet running.
+# On macOS, this is the only detection pass used.
 _find_openclaw_from_paths() {
   for _p in \
     "$(command -v openclaw 2>/dev/null)" \
@@ -433,9 +437,12 @@ if [ "$BUILD_TOOLS_OK" -eq 0 ]; then
 fi
 
 # ── 8. OpenClaw check & install ───────────────────────────────────────────────
-# Install before building claw-pilot so 'claw-pilot init' works immediately.
+# OpenClaw is optional — claw-pilot also supports claw-runtime instances.
+# If not found, the user is prompted (N/y). Default is to skip.
+# Set INSTALL_OPENCLAW=1 to force install without prompt (CI / automation).
 OPENCLAW_BIN=""
 # Orchestrate the 3 detection passes in order.
+# On macOS, Pass 1 (/proc) and Pass 2 (systemd) are skipped automatically.
 _find_openclaw() {
   _find_openclaw_from_process && return 0
   _find_openclaw_from_service && return 0
@@ -443,12 +450,8 @@ _find_openclaw() {
   return 1
 }
 
-if _find_openclaw; then
-  _oc_ver=$("$OPENCLAW_BIN" --version 2>/dev/null || true)
-  log "OpenClaw ${_oc_ver} found at $OPENCLAW_BIN"
-else
-  warn "OpenClaw not found — installing now..."
-
+# Run the OpenClaw installer (shared logic for prompt and forced install paths).
+_install_openclaw() {
   if [ "$OS" = "Linux" ]; then
     TOTAL_MEM_KiB=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0)
     SWAP_KiB=$(grep SwapTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0)
@@ -486,9 +489,45 @@ else
     log "OpenClaw ${_oc_ver} installed successfully."
   else
     warn "OpenClaw installation failed or binary not functional after install."
-    warn "You can install it manually and re-run this script:"
+    warn "You can install it manually later:"
     warn "  curl -fsSL $OPENCLAW_INSTALL_URL | bash"
-    warn "Continuing claw-pilot installation — you will need OpenClaw to create instances."
+  fi
+}
+
+if _find_openclaw; then
+  _oc_ver=$("$OPENCLAW_BIN" --version 2>/dev/null || true)
+  log "OpenClaw ${_oc_ver} found at $OPENCLAW_BIN"
+else
+  warn "OpenClaw not found."
+  warn "Note: claw-pilot supports two instance types — openclaw and claw-runtime."
+  warn "OpenClaw is optional. You can skip it and use claw-runtime instances instead."
+  echo ""
+
+  _do_install_openclaw=0
+
+  if [ "${INSTALL_OPENCLAW:-0}" = "1" ]; then
+    # Forced via env var (CI / automation)
+    log "INSTALL_OPENCLAW=1 — installing OpenClaw..."
+    _do_install_openclaw=1
+  elif [ -t 0 ]; then
+    # Interactive session — prompt the user (default: N)
+    printf "  Install OpenClaw now? [N/y]: "
+    read -r _oc_answer </dev/tty || _oc_answer=""
+    case "$_oc_answer" in
+      [yY]|[yY][eE][sS]) _do_install_openclaw=1 ;;
+      *) _do_install_openclaw=0 ;;
+    esac
+  else
+    # Non-interactive (curl | sh) — skip silently
+    warn "Non-interactive session detected — skipping OpenClaw installation."
+    warn "To install OpenClaw later: curl -fsSL $OPENCLAW_INSTALL_URL | bash"
+    warn "To force install in automation: INSTALL_OPENCLAW=1 curl -fsSL <installer> | sh"
+  fi
+
+  if [ "$_do_install_openclaw" -eq 1 ]; then
+    _install_openclaw
+  else
+    warn "OpenClaw skipped. You can install it later or create claw-runtime instances."
   fi
 fi
 
@@ -559,11 +598,11 @@ else
     log "Removed $INSTALL_DIR."
   fi
   # Try to clone as current user; use sudo only if needed
-  if git clone "$REPO_URL" "$INSTALL_DIR" 2>/dev/null; then
+  if git clone --branch "$CLAW_PILOT_REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR" 2>/dev/null; then
     : # success
   elif command -v sudo >/dev/null 2>&1; then
     warn "Cloning to $INSTALL_DIR requires elevated privileges..."
-    sudo git clone "$REPO_URL" "$INSTALL_DIR"
+    sudo git clone --branch "$CLAW_PILOT_REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR"
     sudo chown -R "$(id -u):$(id -g)" "$INSTALL_DIR"
   else
     error "Cannot clone to $INSTALL_DIR. Set CLAW_PILOT_INSTALL_DIR to a writable path."
@@ -603,7 +642,14 @@ _write_wrapper() {
 if _write_wrapper 2>/dev/null; then
   LINK_PATH="$WRAPPER_TARGET"
 elif command -v sudo >/dev/null 2>&1; then
-  sudo sh -c "printf '%s\n' '$WRAPPER_CONTENT' > '$WRAPPER_TARGET' && chmod +x '$WRAPPER_TARGET'"
+  # Write via tmpfile to avoid quoting/newline issues when passing WRAPPER_CONTENT
+  # through a sudo subshell. Also ensures the target directory exists (e.g. on a
+  # fresh macOS where /usr/local/bin/ is not created until Homebrew is installed).
+  _wrapper_tmp=$(mktempfile)
+  printf '%s\n' "$WRAPPER_CONTENT" > "$_wrapper_tmp"
+  sudo mkdir -p "$(dirname "$WRAPPER_TARGET")"
+  sudo cp "$_wrapper_tmp" "$WRAPPER_TARGET"
+  sudo chmod +x "$WRAPPER_TARGET"
   LINK_PATH="$WRAPPER_TARGET"
 else
   # Fallback: pnpm global bin dir (already in PATH from step 6)
