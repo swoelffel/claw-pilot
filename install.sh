@@ -657,8 +657,7 @@ elif [ -t 0 ] && command -v sudo >/dev/null 2>&1; then
   _wrapper_tmp=$(mktempfile)
   printf '%s\n' "$WRAPPER_CONTENT" > "$_wrapper_tmp"
   sudo mkdir -p "$(dirname "$WRAPPER_TARGET")"
-  sudo cp "$_wrapper_tmp" "$WRAPPER_TARGET"
-  sudo chmod +x "$WRAPPER_TARGET"
+  sudo install -m 0755 "$_wrapper_tmp" "$WRAPPER_TARGET"
   LINK_PATH="$WRAPPER_TARGET"
 else
   # No TTY (e.g. curl | sh) or no sudo — sudo cannot prompt for password.
