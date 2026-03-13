@@ -115,11 +115,13 @@ export async function installDashboardService(
 ): Promise<void> {
   const sm = getServiceManager();
 
+  const home = os.homedir();
+
   // Resolve node binary via conn
   const nodeResult = await conn.execFile("which", ["node"]);
   let nodeBin = nodeResult.stdout.trim();
   if (!nodeBin) {
-    // Fallback: check known paths
+    // Fallback: check known paths including nvm/volta/fnm
     const nodeCandidates =
       sm === "launchd"
         ? ["/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"]
@@ -130,13 +132,24 @@ export async function installDashboardService(
         break;
       }
     }
+    // nvm glob fallback (macOS + Linux)
+    if (!nodeBin) {
+      const nvmResult = await conn.exec(
+        `ls ${home}/.nvm/versions/node/*/bin/node 2>/dev/null | sort -V | tail -1`,
+      );
+      const nvmBin = nvmResult.stdout.trim();
+      if (nvmBin) nodeBin = nvmBin;
+    }
+    // volta fallback
+    if (!nodeBin && (await conn.exists(`${home}/.volta/bin/node`))) {
+      nodeBin = `${home}/.volta/bin/node`;
+    }
   }
   if (!nodeBin) {
     throw new Error("Cannot find node binary. Ensure Node.js is in PATH.");
   }
 
   const clawPilotBin = resolveClawPilotBin();
-  const home = os.homedir();
 
   if (sm === "launchd") {
     // macOS: install as launchd agent
