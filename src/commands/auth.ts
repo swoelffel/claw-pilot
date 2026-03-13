@@ -83,7 +83,7 @@ function displayPasswordBox(password: string): void {
   console.log(`│  Username : admin                                 │`);
   console.log(`│  Password : ${password.padEnd(38)}│`);
   console.log(`│                                                   │`);
-  console.log(`│  Save this password — it won't be shown again.   │`);
+  console.log(`│  Save this password — it won't be shown again.    │`);
   console.log(`│  Reset anytime: claw-pilot auth reset             │`);
   console.log(`└${border}┘`);
 }

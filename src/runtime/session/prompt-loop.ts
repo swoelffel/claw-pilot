@@ -59,6 +59,8 @@ export interface PromptLoopInput {
   resolvedModel: ResolvedModel;
   /** Working directory of the instance (for system-prompt + tools) */
   workDir: string | undefined;
+  /** All agents configured in this runtime instance (for teammates block in system prompt) */
+  runtimeAgents?: Array<{ id: string; name: string }>;
   /** AbortSignal to cancel the loop */
   abort?: AbortSignal;
 }
@@ -84,7 +86,16 @@ export interface PromptLoopResult {
  * Execute the agent loop for a user message.
  */
 export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopResult> {
-  const { db, instanceSlug, sessionId, userText, agentConfig, resolvedModel, workDir } = input;
+  const {
+    db,
+    instanceSlug,
+    sessionId,
+    userText,
+    agentConfig,
+    resolvedModel,
+    workDir,
+    runtimeAgents,
+  } = input;
 
   // Abort check before starting
   if (input.abort?.aborted) {
@@ -115,6 +126,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       agentConfig,
       channel: session.channel,
       workDir,
+      ...(runtimeAgents !== undefined ? { runtimeAgents } : {}),
     });
 
     // 3. Load message history
