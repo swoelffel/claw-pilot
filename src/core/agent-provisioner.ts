@@ -26,9 +26,9 @@ export class AgentProvisioner {
     const existing = this.registry.getAgentByAgentId(instance.id, data.agentSlug);
     if (existing) throw new Error(`Agent "${data.agentSlug}" already exists`);
 
-    // 2. Determine workspace dir from instance config_path
-    const configHome = path.dirname(instance.config_path);
-    const workspaceDir = path.join(configHome, `workspace-${data.agentSlug}`);
+    // 2. Determine workspace dir inside <stateDir>/workspaces/ (consistent with provisioner)
+    const stateDir = path.dirname(instance.config_path);
+    const workspaceDir = path.join(stateDir, "workspaces", `workspace-${data.agentSlug}`);
 
     // 3. Create workspace directory + rich template files
     await this.conn.mkdir(workspaceDir);
