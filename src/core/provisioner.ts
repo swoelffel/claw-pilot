@@ -15,6 +15,7 @@ import { Lifecycle } from "./lifecycle.js";
 import { constants } from "../lib/constants.js";
 import {
   getOpenClawHome,
+  getRuntimeStateDir,
   getSystemdDir,
   getSystemdUnit,
   getServiceManager,
@@ -118,7 +119,10 @@ export class Provisioner {
     }
 
     const openclawHome = getOpenClawHome();
-    const stateDir = path.join(openclawHome, `${constants.OPENCLAW_STATE_PREFIX}${slug}`);
+    const stateDir =
+      instanceType === "claw-runtime"
+        ? getRuntimeStateDir(slug)
+        : path.join(openclawHome, `${constants.OPENCLAW_STATE_PREFIX}${slug}`);
     const configPath = path.join(stateDir, "openclaw.json");
     const envPath = path.join(stateDir, ".env");
     const logsDir = path.join(stateDir, "logs");
