@@ -16,6 +16,7 @@ import {
   isRuntimeRunning,
 } from "../lib/platform.js";
 import { logger } from "../lib/logger.js";
+import { ensureRuntimeConfig } from "../runtime/engine/config-loader.js";
 
 export class Lifecycle {
   private sm = getServiceManager();
@@ -173,6 +174,10 @@ export class Lifecycle {
       logger.dim(`[lifecycle] claw-runtime for "${slug}" already running (PID ${pid})`);
       return;
     }
+
+    // Ensure runtime.json exists before spawning — creates it with defaults if absent.
+    // Without this, the daemon exits immediately (silently) and the PID file never appears.
+    ensureRuntimeConfig(stateDir);
 
     logger.dim(`[lifecycle] Starting claw-runtime daemon for "${slug}"...`);
 
