@@ -725,7 +725,7 @@ log "Creating admin account..."
 $CLAW_PILOT_CMD auth setup 2>&1
 echo ""
 warn "Save the admin password above — you will need it to access the dashboard."
-warn "Reset anytime with: claw-pilot auth reset"
+warn "Reset anytime with: $LINK_PATH auth reset"
 
 # ── 15. Install dashboard as systemd service (Linux only) ────────────────────
 if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
@@ -757,3 +757,11 @@ fi
 echo ""
 log "Done! Run 'claw-pilot --help' to see available commands."
 log "Run 'claw-pilot create' to provision a new instance."
+echo ""
+if ! command -v claw-pilot >/dev/null 2>&1; then
+  warn "claw-pilot is not in your current PATH."
+  warn "Either open a new terminal, or run:"
+  warn "  source ~/.zshrc   (zsh)"
+  warn "  source ~/.bashrc  (bash)"
+  warn "Or use the full path directly: $LINK_PATH"
+fi
