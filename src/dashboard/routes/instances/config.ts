@@ -12,8 +12,58 @@ import {
   runtimeConfigExists,
   loadRuntimeConfig,
   saveRuntimeConfig,
+  type RuntimeConfig,
 } from "../../../runtime/index.js";
 import { z } from "zod/v4";
+
+// InstanceConfig type — matches ui/src/types.ts
+interface InstanceConfig {
+  general: {
+    displayName: string;
+    defaultModel: string;
+    port: number;
+    toolsProfile: string;
+  };
+  providers: Array<{ id: string; label: string; apiKey: string }>;
+  agentDefaults: {
+    workspace: string;
+    subagents: { maxConcurrent: number; archiveAfterMinutes: number };
+    compaction: { mode: string; reserveTokensFloor?: number };
+    contextPruning: { mode: string; ttl?: string };
+    heartbeat: { every?: string; model?: string; target?: string };
+  };
+  agents: Array<{
+    id: string;
+    name: string;
+    model: string | null;
+    workspace: string;
+    identity: { name?: string; emoji?: string; avatar?: string } | null;
+  }>;
+  channels: {
+    telegram: {
+      enabled: boolean;
+      botTokenMasked: string | null;
+      dmPolicy: string;
+      groupPolicy: string;
+      streamMode?: string;
+    } | null;
+  };
+  plugins: {
+    mem0: {
+      enabled: boolean;
+      ollamaUrl: string;
+      qdrantHost: string;
+      qdrantPort: number;
+    } | null;
+  };
+  gateway: {
+    port: number;
+    bind: string;
+    authMode: string;
+    reloadMode: string;
+    reloadDebounceMs: number;
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Config patch schema for runtime instances
@@ -30,6 +80,109 @@ const RuntimeConfigPatchSchema = z.object({
 
 type RuntimeConfigPatch = z.infer<typeof RuntimeConfigPatchSchema>;
 
+// ---------------------------------------------------------------------------
+// Helper: Build complete InstanceConfig from RuntimeConfig
+// ---------------------------------------------------------------------------
+
+function buildInstanceConfig(
+  instance: { display_name?: string | null; default_model?: string | null; port: number },
+  config: RuntimeConfig,
+): InstanceConfig {
+  // Extract toolsProfile from first agent or default to "coding"
+  const toolsProfile = config.agents[0]?.toolProfile ?? "coding";
+
+  // Map runtime agents to UI format
+  const agents = config.agents.map((a) => ({
+    id: a.id,
+    name: a.name,
+    model: a.model ?? null,
+    workspace: "workspace", // claw-runtime doesn't track per-agent workspaces in config
+    identity: null,
+  }));
+
+  // Map providers to UI format
+  const providers = config.providers.map((p) => ({
+    id: p.id,
+    label: p.id,
+    apiKey: "", // Never expose API keys in config response
+  }));
+
+  return {
+    general: {
+      displayName: instance.display_name ?? "",
+      defaultModel: config.defaultModel,
+      port: instance.port,
+      toolsProfile,
+    },
+    providers,
+    agentDefaults: {
+      workspace: "workspace",
+      subagents: { maxConcurrent: 4, archiveAfterMinutes: 60 },
+      compaction: { mode: config.compaction.auto ? "auto" : "manual" },
+      contextPruning: { mode: "off" },
+      heartbeat: {},
+    },
+    agents,
+    channels: {
+      telegram: config.telegram.enabled
+        ? {
+            enabled: true,
+            botTokenMasked: null,
+            dmPolicy: "allow",
+            groupPolicy: "deny",
+          }
+        : null,
+    },
+    plugins: {
+      mem0: null,
+    },
+    gateway: {
+      port: instance.port,
+      bind: "loopback",
+      authMode: "token",
+      reloadMode: "hybrid",
+      reloadDebounceMs: 500,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Helper: Build stub InstanceConfig when runtime.json doesn't exist
+// ---------------------------------------------------------------------------
+
+function buildInstanceConfigStub(instance: {
+  display_name?: string | null;
+  default_model?: string | null;
+  port: number;
+}): InstanceConfig {
+  return {
+    general: {
+      displayName: instance.display_name ?? "",
+      defaultModel: instance.default_model ?? "anthropic/claude-sonnet-4-5",
+      port: instance.port,
+      toolsProfile: "coding",
+    },
+    providers: [],
+    agentDefaults: {
+      workspace: "workspace",
+      subagents: { maxConcurrent: 4, archiveAfterMinutes: 60 },
+      compaction: { mode: "auto" },
+      contextPruning: { mode: "off" },
+      heartbeat: {},
+    },
+    agents: [],
+    channels: { telegram: null },
+    plugins: { mem0: null },
+    gateway: {
+      port: instance.port,
+      bind: "loopback",
+      authMode: "token",
+      reloadMode: "hybrid",
+      reloadDebounceMs: 500,
+    },
+  };
+}
+
 export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, lifecycle } = deps;
 
@@ -43,34 +196,26 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
     const stateDir = getRuntimeStateDir(slug);
 
     if (!runtimeConfigExists(stateDir)) {
-      // Return a minimal stub when runtime.json does not exist yet
-      return c.json({
-        general: {
-          displayName: instance!.display_name ?? "",
-          defaultModel: instance!.default_model ?? "",
-          port: instance!.port,
-        },
-        agents: [],
-        channels: { telegram: null },
+      // Return a complete stub when runtime.json does not exist yet
+      const stub = buildInstanceConfigStub({
+        display_name: instance!.display_name,
+        default_model: instance!.default_model,
+        port: instance!.port,
       });
+      return c.json(stub);
     }
 
     try {
       const config = loadRuntimeConfig(stateDir);
-      return c.json({
-        general: {
-          displayName: instance!.display_name ?? "",
-          defaultModel: config.defaultModel,
+      const payload = buildInstanceConfig(
+        {
+          display_name: instance!.display_name,
+          default_model: instance!.default_model,
           port: instance!.port,
         },
-        agents: config.agents,
-        channels: {
-          telegram: config.telegram.enabled ? { enabled: true } : null,
-        },
-        mcpEnabled: config.mcpEnabled,
-        mcpServers: config.mcpServers,
-        webChat: config.webChat,
-      });
+        config,
+      );
+      return c.json(payload);
     } catch (err) {
       logger.error(
         `[config] GET /config error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
