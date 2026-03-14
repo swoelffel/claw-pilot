@@ -75,11 +75,13 @@ export class BlueprintDeployer {
         if (isDefault) {
           agentEntry["isDefault"] = true;
         }
+
+        // Resolve model: use blueprint model if available, otherwise use instance default
+        let modelStr: string;
         if (bpAgent.model) {
           // bpAgent.model may be either:
           //   - a JSON-serialized object: '{"primary":"opencode/claude-haiku-4-5"}' → use primary
           //   - a bare "provider/model" string: "anthropic/claude-haiku-4-5" → use as-is
-          let modelStr: string;
           try {
             const parsed = JSON.parse(bpAgent.model) as Record<string, unknown>;
             modelStr = typeof parsed["primary"] === "string" ? parsed["primary"] : bpAgent.model;
@@ -87,8 +89,11 @@ export class BlueprintDeployer {
             // intentionally ignored — model is a bare string, not JSON
             modelStr = bpAgent.model;
           }
-          agentEntry["model"] = modelStr;
+        } else {
+          // No model in blueprint: use instance's defaultModel
+          modelStr = (config["defaultModel"] as string) ?? "anthropic/claude-sonnet-4-5";
         }
+        agentEntry["model"] = modelStr;
 
         // Add spawn links for this agent (all agents including main)
         const spawnTargets = blueprintLinks
