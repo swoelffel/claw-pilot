@@ -6,6 +6,7 @@ import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
 import { instanceGuard } from "../../../lib/guards.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
+import { readEnvFileSync } from "../../../lib/env-reader.js";
 import {
   runtimeConfigExists,
   loadRuntimeConfig,
@@ -178,9 +179,14 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       );
     }
 
+    // Load instance env vars for API key resolution
+    const instanceEnv = readEnvFileSync(stateDir);
+
     let resolvedModelObj;
     try {
-      resolvedModelObj = resolveModel(modelStr.slice(0, slashIdx), modelStr.slice(slashIdx + 1));
+      resolvedModelObj = resolveModel(modelStr.slice(0, slashIdx), modelStr.slice(slashIdx + 1), {
+        env: instanceEnv,
+      });
     } catch (err) {
       return apiError(
         c,

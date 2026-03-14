@@ -1,6 +1,35 @@
 // src/lib/env-reader.ts
 import * as path from "node:path";
+import * as fs from "node:fs";
 import type { ServerConnection } from "../server/connection.js";
+
+/**
+ * Read all environment variables from an instance's .env file (synchronously).
+ *
+ * Reads <stateDir>/.env and returns a map of all key=value pairs.
+ * Returns empty object if file doesn't exist or is unreadable.
+ */
+export function readEnvFileSync(stateDir: string): Record<string, string> {
+  const envPath = path.join(stateDir, ".env");
+  const result: Record<string, string> = {};
+  try {
+    const content = fs.readFileSync(envPath, "utf-8");
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx === -1) continue;
+      const key = trimmed.slice(0, eqIdx).trim();
+      const value = trimmed.slice(eqIdx + 1).trim();
+      if (key && value) {
+        result[key] = value;
+      }
+    }
+  } catch {
+    // .env missing or unreadable — return empty object
+  }
+  return result;
+}
 
 /**
  * Read an environment variable value from an instance's .env file.
