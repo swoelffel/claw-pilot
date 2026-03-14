@@ -441,6 +441,30 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v10: normalize blueprint tags to JSON array format.
+    // Converts plain string tags (e.g., "tag1") to JSON array format (e.g., '["tag1"]').
+    version: 10,
+    up(db) {
+      // Get all blueprints with tags
+      const blueprints = db
+        .prepare("SELECT id, tags FROM blueprints WHERE tags IS NOT NULL")
+        .all() as Array<{ id: number; tags: string }>;
+
+      // Normalize each blueprint's tags
+      const updateStmt = db.prepare("UPDATE blueprints SET tags = ? WHERE id = ?");
+      for (const bp of blueprints) {
+        try {
+          // Try to parse as JSON — if it works, it's already in the right format
+          JSON.parse(bp.tags);
+        } catch {
+          // If JSON parse fails, it's a plain string — convert to JSON array
+          const normalizedTags = JSON.stringify([bp.tags]);
+          updateStmt.run(normalizedTags, bp.id);
+        }
+      }
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
