@@ -1,5 +1,6 @@
 // src/commands/runtime.ts
 import * as fs from "node:fs";
+import * as path from "node:path";
 import * as readline from "node:readline";
 import { spawn } from "node:child_process";
 import { Command } from "commander";
@@ -141,6 +142,30 @@ function runtimeStatusCommand(): Command {
 }
 
 // ---------------------------------------------------------------------------
+// Helper: Load .env file into process.env
+// ---------------------------------------------------------------------------
+
+function loadEnvFile(stateDir: string): void {
+  const envPath = path.join(stateDir, ".env");
+  try {
+    const content = fs.readFileSync(envPath, "utf-8");
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx === -1) continue;
+      const key = trimmed.slice(0, eqIdx).trim();
+      const value = trimmed.slice(eqIdx + 1).trim();
+      if (key && value) {
+        process.env[key] = value;
+      }
+    }
+  } catch {
+    // .env missing or unreadable — not fatal
+  }
+}
+
+// ---------------------------------------------------------------------------
 // runtime start <slug>
 // ---------------------------------------------------------------------------
 
@@ -213,6 +238,9 @@ function runtimeStartCommand(): Command {
       }
 
       // --- Foreground mode (default) ---
+
+      // Load environment variables from .env file
+      loadEnvFile(stateDir);
 
       // Load or create config
       let config;
