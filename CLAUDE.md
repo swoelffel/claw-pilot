@@ -16,7 +16,7 @@ GitHub: https://github.com/swoelffel/claw-pilot
 - **Runtime**: Node.js >= 22.12.0, ESM, pnpm
 - **CLI**: Commander.js + @inquirer/prompts
 - **HTTP/WS**: Hono + ws
-- **DB**: better-sqlite3 (SQLite, WAL mode, schema v11)
+- **DB**: better-sqlite3 (SQLite, WAL mode, schema v12)
 - **UI**: Lit web components + Vite
 - **Build**: tsdown (CLI) + vite (UI)
 - **Tests**: Vitest
@@ -73,7 +73,7 @@ docs/main-doc.md    # Functional architecture — read this before major changes
 | `rt_sessions` | claw-runtime sessions |
 | `rt_messages` | Messages per session |
 | `rt_parts` | Message parts (text, tool-call, tool-result) |
-| `rt_pairing_codes` | Device pairing codes (8-char) |
+| `rt_pairing_codes` | Device pairing codes (8-char) + `meta` (username JSON) |
 
 Schema lives in `src/db/schema.ts`. Migrations run on DB open. **Always additive** — never DROP COLUMN/TABLE.
 
