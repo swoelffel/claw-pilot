@@ -15,6 +15,17 @@ import {
 import { logger } from "../lib/logger.js";
 import { ensureRuntimeConfig } from "../runtime/engine/config-loader.js";
 
+/** Read the last N lines of a file. Returns empty string if file is missing or unreadable. */
+function readLastLines(filePath: string, n: number): string {
+  try {
+    const content = fs.readFileSync(filePath, "utf8");
+    const lines = content.trimEnd().split("\n");
+    return lines.slice(-n).join("\n");
+  } catch {
+    return "";
+  }
+}
+
 export class Lifecycle {
   constructor(
     private conn: ServerConnection,
@@ -69,8 +80,9 @@ export class Lifecycle {
 
   /**
    * Start a claw-runtime daemon for the given slug.
-   * Spawns `claw-pilot runtime start --daemon <slug>` as a detached child,
+   * Spawns `claw-pilot runtime start <slug>` as a detached child,
    * then polls the PID file until the process is alive (up to 10 s).
+   * If the child exits prematurely, throws immediately with the last log lines.
    */
   private async startRuntime(slug: string, _stateDir: string): Promise<void> {
     // Always derive stateDir from slug — DB value may be stale after migration.
@@ -87,42 +99,58 @@ export class Lifecycle {
 
     logger.dim(`[lifecycle] Starting claw-runtime daemon for "${slug}"...`);
 
+    // Always redirect stdout+stderr to the log file so we can read it on failure.
+    const logDir = `${stateDir}/logs`;
+    fs.mkdirSync(logDir, { recursive: true });
+    const logFile = `${logDir}/runtime.log`;
+    const logFd = fs.openSync(logFile, "a");
+
     // Spawn `runtime start <slug>` (foreground mode — writes PID file then runs).
     // On Linux (including Docker), wrap with nohup so the child survives when the
     // docker exec session ends. Without nohup, Docker kills the child process
     // even with detached:true + setsid.
-    // Stdout/stderr are redirected to <stateDir>/logs/runtime.log.
     const nodeArgs = [process.argv[1]!, "runtime", "start", slug];
     const isDarwinPlatform = process.platform === "darwin";
     const [spawnCmd, spawnArgs] = isDarwinPlatform
       ? [process.execPath, nodeArgs]
       : ["nohup", [process.execPath, ...nodeArgs]];
 
-    const logDir = `${stateDir}/logs`;
-    fs.mkdirSync(logDir, { recursive: true });
-    const logFile = `${logDir}/runtime.log`;
-    const stdio: Parameters<typeof spawn>[2]["stdio"] = isDarwinPlatform
-      ? "ignore"
-      : ["ignore", fs.openSync(logFile, "a"), fs.openSync(logFile, "a")];
-
     const child = spawn(spawnCmd, spawnArgs, {
       detached: true,
-      stdio,
+      stdio: ["ignore", logFd, logFd],
     });
     child.unref();
+
+    // Track premature exit — if the child dies before writing the PID file, fail fast.
+    let childExitCode: number | null = null;
+    child.once("exit", (code) => {
+      childExitCode = code ?? 1;
+    });
 
     // Poll for PID file (up to 10 s)
     const deadline = Date.now() + 10_000;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 300));
+
       if (isRuntimeRunning(stateDir)) {
         logger.dim(`[lifecycle] claw-runtime started (PID ${getRuntimePid(stateDir)})`);
         return;
       }
+
+      // Child exited without writing a valid PID file — fail immediately
+      if (childExitCode !== null) {
+        const tail = readLastLines(logFile, 20);
+        const hint = tail ? `\n\nLast log lines (${logFile}):\n${tail}` : "";
+        throw new Error(
+          `claw-runtime for "${slug}" exited with code ${childExitCode} before writing PID file.${hint}`,
+        );
+      }
     }
 
+    const tail = readLastLines(logFile, 20);
+    const hint = tail ? `\n\nLast log lines (${logFile}):\n${tail}` : "";
     throw new Error(
-      `claw-runtime for "${slug}" did not start within 10 s (PID file not found at ${getRuntimePidPath(stateDir)})`,
+      `claw-runtime for "${slug}" did not start within 10 s (PID file not found at ${getRuntimePidPath(stateDir)}).${hint}`,
     );
   }
 

@@ -309,11 +309,9 @@ function runtimeStartCommand(): Command {
         logger.error(
           `Failed to start runtime: ${err instanceof Error ? err.message : String(err)}`,
         );
-        try {
-          fs.unlinkSync(pidPath);
-        } catch {
-          /* already gone */
-        }
+        // Do NOT remove the PID file here — the lifecycle poller uses its presence
+        // to detect a premature exit. The shutdown handler will clean it up on SIGTERM.
+        // Removing it here would cause a race where the poller misses the crash window.
         db.close();
         process.exit(1);
       }

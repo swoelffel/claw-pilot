@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.28.2-beta] — 2026-03-15
+
+### Fixed
+
+- **Lifecycle — crash silencieux au démarrage** — si `claw-runtime` mourait avant d'écrire le PID file (config invalide, erreur MCP, erreur channel), le dashboard attendait 10 s en silence puis affichait "PID file not found" sans aucune indication de la cause réelle ; le child process est maintenant surveillé via l'événement `exit` et l'erreur est levée immédiatement avec le code de sortie et les 20 dernières lignes du log
+- **Lifecycle — stdout/stderr perdus sur macOS** — le process enfant était spawné avec `stdio: "ignore"` sur Darwin, rendant tout diagnostic impossible ; stdout et stderr sont maintenant redirigés vers `<stateDir>/logs/runtime.log` sur toutes les plateformes
+- **Runtime — suppression prématurée du PID file** — en cas d'erreur dans `runtime.start()`, le PID file était supprimé avant que le lifecycle poller ait pu détecter le crash, créant une race condition ; le PID file est maintenant conservé jusqu'au SIGTERM/SIGINT
+
+---
+
 ## [0.28.1-beta] — 2026-03-15
 
 ### Fixed
