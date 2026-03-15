@@ -321,9 +321,13 @@ describe("TelegramChannel", () => {
     expect(ch.type).toBe("telegram");
   });
 
-  it("throws ChannelError when token env var not set", async () => {
+  it("resolves silently when token env var not set (graceful degradation)", async () => {
+    // Token missing = fresh install, Telegram not yet configured.
+    // connect() should warn and return without throwing.
     const ch = new TelegramChannel({ botTokenEnvVar: "NONEXISTENT_TOKEN_VAR_XYZ" });
-    await expect(ch.connect()).rejects.toBeInstanceOf(ChannelError);
+    await expect(ch.connect()).resolves.toBeUndefined();
+    // Channel should report not_configured
+    expect(ch.getStatus()).toBe("not_configured");
   });
 
   it("disconnect is idempotent when not connected", async () => {

@@ -63,10 +63,13 @@ export class TelegramChannel implements Channel {
 
     const token = process.env[this.options.botTokenEnvVar];
     if (!token) {
-      throw new ChannelError(
-        "telegram",
-        `Bot token env var not set: ${this.options.botTokenEnvVar}`,
+      // Token not set — Telegram is enabled in config but not yet configured.
+      // This is expected on a fresh install. Log a warning and skip silently
+      // instead of crashing the runtime.
+      console.warn(
+        `[telegram] Bot token env var "${this.options.botTokenEnvVar}" is not set — Telegram channel disabled until token is configured.`,
       );
+      return;
     }
 
     this.poller = new TelegramPoller({

@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.28.3-beta] — 2026-03-15
+
+### Fixed
+
+- **Telegram — crash au démarrage si token absent** — sur une installation fraîche, `telegram.enabled: true` dans `runtime.json` sans token dans `.env` faisait crasher le runtime avec `ChannelError: Bot token env var not set` ; `TelegramChannel.connect()` logue maintenant un warning et retourne silencieusement, le channel reste en état `not_configured` jusqu'à ce que le token soit configuré
+
+---
+
 ## [0.28.2-beta] — 2026-03-15
 
 ### Fixed
