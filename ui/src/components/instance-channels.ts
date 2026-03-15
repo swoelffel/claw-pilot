@@ -571,7 +571,10 @@ export class InstanceChannels extends LitElement {
     this._error = "";
     try {
       // 1. Sauvegarder le token si modifié
-      if (this._tokenEditMode && this._newToken.trim()) {
+      // _tokenEditMode = true  → l'utilisateur a cliqué "Change" sur un token existant
+      // _tokenEditMode = false → pas de token existant, champ password directement visible
+      // Dans les deux cas, envoyer le token si le champ est rempli.
+      if (this._newToken.trim()) {
         await patchTelegramToken(this.instanceSlug, this._newToken.trim());
         this._tokenEditMode = false;
         this._newToken = "";

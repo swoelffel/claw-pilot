@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.28.5-beta] — 2026-03-15
+
+### Fixed
+
+- **UI Channels — token non persisté depuis l'état C** — dans le panneau configuré (état C), quand aucun token n'était présent, le champ password était visible sans que `_tokenEditMode` soit `true` ; `_saveEdit()` conditionnait l'envoi du token à `_tokenEditMode && _newToken`, donc le token saisi n'était jamais envoyé au backend ; la condition est maintenant `_newToken` seul (le token est envoyé dès qu'il est rempli, que ce soit en mode "Change" ou en saisie initiale)
+
+---
+
 ## [0.28.4-beta] — 2026-03-15
 
 ### Fixed
