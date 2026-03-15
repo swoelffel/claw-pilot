@@ -31,8 +31,8 @@ export class InstanceRepository {
     this.db
       .prepare(
         `INSERT OR IGNORE INTO instances (server_id, slug, display_name, port, config_path, state_dir,
-         systemd_unit, telegram_bot, default_model, discovered, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         systemd_unit, telegram_bot, default_model, discovered, instance_type, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         data.serverId,
@@ -45,6 +45,7 @@ export class InstanceRepository {
         data.telegramBot ?? null,
         data.defaultModel ?? null,
         data.discovered ? 1 : 0,
+        "claw-runtime",
         now(),
         now(),
       );

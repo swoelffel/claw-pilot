@@ -5,8 +5,6 @@ import type { Registry } from "../core/registry.js";
 import type { ServerConnection } from "../server/connection.js";
 import type { HealthChecker } from "../core/health.js";
 import type { Lifecycle } from "../core/lifecycle.js";
-import type { UpdateChecker } from "../core/update-checker.js";
-import type { Updater } from "../core/updater.js";
 import type { SelfUpdateChecker } from "../core/self-update-checker.js";
 import type { SelfUpdater } from "../core/self-updater.js";
 import type { TokenCache } from "./token-cache.js";
@@ -17,8 +15,6 @@ export interface RouteDeps {
   conn: ServerConnection;
   health: HealthChecker;
   lifecycle: Lifecycle;
-  updateChecker: UpdateChecker;
-  updater: Updater;
   selfUpdateChecker: SelfUpdateChecker;
   selfUpdater: SelfUpdater;
   tokenCache: TokenCache;

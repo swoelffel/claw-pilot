@@ -158,8 +158,8 @@ async function handleImport(
       logger.success(`Created ${result.agents_imported} agents`);
       logger.success(`Written ${result.files_written} workspace files`);
       logger.success(`Created ${result.links_imported} links`);
-      logger.success("Regenerated openclaw.json");
-      logger.success("Restarted daemon");
+      logger.success("Regenerated runtime.json");
+      logger.success("Restarted runtime");
       console.log(chalk.green("\nImport complete."));
     }
   }

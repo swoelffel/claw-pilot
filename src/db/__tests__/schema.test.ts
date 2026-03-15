@@ -178,9 +178,9 @@ describe("initDatabase — fresh database", () => {
     db.close();
   });
 
-  it("reaches the latest schema version (7)", () => {
+  it("reaches the latest schema version (12)", () => {
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(7);
+    expect(schemaVersion(db)).toBe(12);
     db.close();
   });
 
@@ -225,12 +225,12 @@ describe("initDatabase — fresh database", () => {
 // ---------------------------------------------------------------------------
 
 describe("migration v1 → v4", () => {
-  it("applies all migrations and reaches version 7", () => {
+  it("applies all migrations and reaches version 12", () => {
     const v1 = buildV1Db(dbPath);
     v1.close();
 
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(7);
+    expect(schemaVersion(db)).toBe(12);
     db.close();
   });
 
@@ -323,6 +323,16 @@ describe("migration v1 → v4", () => {
 // ---------------------------------------------------------------------------
 
 describe("migration v2 → v4", () => {
+  it("v12: rt_pairing_codes table has meta column", () => {
+    const v1 = buildV1Db(dbPath);
+    v1.close();
+
+    const db = initDatabase(dbPath);
+    const cols = columnNames(db, "rt_pairing_codes");
+    expect(cols).toContain("meta");
+    db.close();
+  });
+
   it("applies only v3, v4, v5, v6 and v7 migrations when starting from v2", () => {
     // Build v1 then apply v2 manually
     const v1 = buildV1Db(dbPath);
@@ -357,13 +367,14 @@ describe("migration v2 → v4", () => {
     v1.close();
 
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(7);
+    expect(schemaVersion(db)).toBe(12);
     expect(tableNames(db)).toContain("blueprints");
     expect(tableNames(db)).toContain("users");
     expect(tableNames(db)).toContain("sessions");
     expect(columnNames(db, "agents")).toContain("blueprint_id");
     expect(columnNames(db, "agents")).toContain("skills");
     expect(columnNames(db, "instances")).not.toContain("nginx_domain");
+    expect(columnNames(db, "rt_pairing_codes")).toContain("meta");
 
     // Data preserved
     const registry = new Registry(db);

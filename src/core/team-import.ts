@@ -11,6 +11,7 @@ import { TeamFileSchema, type TeamFile } from "./team-schema.js";
 import { now } from "../lib/date.js";
 import { constants } from "../lib/constants.js";
 import { loadWorkspaceTemplate, type TemplateVars } from "../lib/workspace-templates.js";
+import { Lifecycle } from "./lifecycle.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -144,15 +145,15 @@ async function _importTeamCore(
     }
 
     // 3. Insert new agents + files
-    const openclawHome = target.type === "instance" ? path.dirname(target.configPath) : null;
+    const stateDir = target.type === "instance" ? path.dirname(target.configPath) : null;
 
     for (const agent of team.agents) {
       const workspacePath =
         target.type === "blueprint"
           ? `blueprint://${target.blueprintId}/${agent.id}`
           : agent.is_default
-            ? path.join(openclawHome!, "workspaces", "workspace")
-            : path.join(openclawHome!, "workspaces", `workspace-${agent.id}`);
+            ? path.join(stateDir!, "workspaces", "workspace")
+            : path.join(stateDir!, "workspaces", `workspace-${agent.id}`);
 
       const tagsJson = agent.meta?.tags ? JSON.stringify(agent.meta.tags) : null;
       let modelValue: string | null = null;
@@ -165,7 +166,6 @@ async function _importTeamCore(
 
       if (target.type === "blueprint") {
         // Serialize skills from config.skills (array) → JSON string for DB column.
-        // Array.isArray check handles both populated arrays and empty arrays [].
         const skillsJson =
           Array.isArray(agent.config?.skills) && (agent.config.skills as string[]).length >= 0
             ? JSON.stringify(agent.config.skills)
@@ -259,8 +259,6 @@ async function _importTeamCore(
   })();
 
   // --- Phase 2: Gap-fill missing EXPORTABLE_FILES from templates (async) ---
-  // This runs outside the transaction since template loading is async.
-  // We use a separate INSERT for each gap-filled file.
   const insertFile = db.prepare(
     `INSERT INTO agent_files (agent_id, filename, content, content_hash, updated_at)
      VALUES (?, ?, ?, ?, ?)`,
@@ -328,7 +326,7 @@ export async function importBlueprintTeam(
 }
 
 // ---------------------------------------------------------------------------
-// Import into instance (DB + filesystem + openclaw.json + restart)
+// Import into instance (DB + filesystem + runtime.json + restart)
 // ---------------------------------------------------------------------------
 
 export async function importInstanceTeam(
@@ -366,19 +364,20 @@ export async function importInstanceTeam(
 
   // --- Phase B: Filesystem operations ---
 
-  // B1. Regenerate openclaw.json (partial merge)
+  // B1. Regenerate runtime.json (partial merge)
   const configRaw = await conn.readFile(instance.config_path);
   const config = JSON.parse(configRaw) as Record<string, unknown>;
-  mergeTeamIntoConfig(config, team);
+  mergeTeamIntoRuntimeConfig(config, team);
   await conn.writeFile(instance.config_path, JSON.stringify(config, null, 2) + "\n");
 
   // B2. Write workspace files to disk
-  const openclawHome = path.dirname(instance.config_path);
-  const filesWritten = await syncWorkspacesToDisk(conn, openclawHome, team);
+  const stateDir = path.dirname(instance.config_path);
+  const filesWritten = await syncWorkspacesToDisk(conn, stateDir, team);
 
   // B3. Restart daemon (best-effort, don't fail the import)
   try {
-    await restartDaemon(conn, instance, xdgRuntimeDir);
+    const lifecycle = new Lifecycle(conn, registry, xdgRuntimeDir);
+    await lifecycle.restart(instance.slug);
   } catch {
     // Best-effort restart — import is still successful
   }
@@ -395,175 +394,71 @@ export async function importInstanceTeam(
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Update agents.defaults from team.defaults and the default agent's config. */
-function buildDefaultsSection(
-  existingDefaults: Record<string, unknown>,
-  team: TeamFile,
-): Record<string, unknown> {
-  let merged: Record<string, unknown> = { ...existingDefaults };
-
-  // Apply top-level team.defaults first
-  if (team.defaults) {
-    merged = { ...merged, ...team.defaults };
-  }
-
-  // Then merge the default agent's config into agents.defaults
-  const defaultAgent = team.agents.find((a) => a.is_default);
-  if (defaultAgent?.config) {
-    const {
-      model,
-      identity,
-      subagents,
-      heartbeat,
-      sandbox,
-      tools,
-      params,
-      skills,
-      humanDelay,
-      groupChat,
-    } = defaultAgent.config;
-    if (model !== undefined) merged["model"] = model;
-    if (identity !== undefined) merged["identity"] = identity;
-    if (subagents !== undefined)
-      merged["subagents"] = {
-        ...((merged["subagents"] as Record<string, unknown>) ?? {}),
-        ...subagents,
-      };
-    if (heartbeat !== undefined) merged["heartbeat"] = heartbeat;
-    if (sandbox !== undefined) merged["sandbox"] = sandbox;
-    if (tools !== undefined) merged["tools"] = tools;
-    if (params !== undefined) merged["params"] = params;
-    if (skills !== undefined) merged["skills"] = skills;
-    if (humanDelay !== undefined) merged["humanDelay"] = humanDelay;
-    if (groupChat !== undefined) merged["groupChat"] = groupChat;
-  }
-
-  return merged;
-}
-
-/** Build the agents.list[] array from non-default agents + default agent entry. */
-function buildAgentsList(team: TeamFile): Array<Record<string, unknown>> {
-  // Rebuild agents.list[] from non-default agents
-  // NOTE: spawn links for the default agent (main) are handled via a dedicated
-  // list[] entry for "main" appended below. OpenClaw rejects allowAgents inside
-  // agents.defaults.subagents — it is only valid inside list[].subagents.
-  const agentsList = team.agents
-    .filter((a) => !a.is_default)
-    .map((a) => {
-      const entry: Record<string, unknown> = {
-        id: a.id,
-        name: a.name,
-        workspace: `workspace-${a.id}`,
-      };
-      // Spread config fields
-      if (a.config) {
-        const {
-          model,
-          identity,
-          subagents,
-          heartbeat,
-          sandbox,
-          tools,
-          params,
-          skills,
-          humanDelay,
-          groupChat,
-        } = a.config;
-        if (model !== undefined) entry["model"] = model;
-        if (identity !== undefined) entry["identity"] = identity;
-        if (subagents !== undefined) entry["subagents"] = subagents;
-        if (heartbeat !== undefined) entry["heartbeat"] = heartbeat;
-        if (sandbox !== undefined) entry["sandbox"] = sandbox;
-        if (tools !== undefined) entry["tools"] = tools;
-        if (params !== undefined) entry["params"] = params;
-        if (skills !== undefined) entry["skills"] = skills;
-        if (humanDelay !== undefined) entry["humanDelay"] = humanDelay;
-        if (groupChat !== undefined) entry["groupChat"] = groupChat;
-      }
-
-      // Inject subagents.allowAgents from spawn links for this non-default agent.
-      // Same reason as for the default agent: agent-sync.ts reads this field to
-      // reconstruct spawn links, so it must be present in openclaw.json.
-      const agentSpawnTargets = team.links
-        .filter((l) => l.type === "spawn" && l.source === a.id)
-        .map((l) => l.target);
-      if (agentSpawnTargets.length > 0) {
-        const existingSubagents = (entry["subagents"] ?? {}) as Record<string, unknown>;
-        entry["subagents"] = { ...existingSubagents, allowAgents: agentSpawnTargets };
-      }
-
-      return entry;
-    });
-
-  // Always prepend a dedicated list[] entry for the default agent (main).
-  // - "default": true is required so OpenClaw knows which agent is the default;
-  //   without it, OpenClaw picks the first entry alphabetically.
-  // - "name" preserves the display name.
-  // - subagents.allowAgents carries spawn links (only valid location in list[],
-  //   OpenClaw rejects it in defaults.subagents).
-  // Prepend so main appears first in the list, matching the source instance order.
-  const defaultAgent = team.agents.find((a) => a.is_default);
-  if (defaultAgent) {
-    const mainSpawnTargets = team.links
-      .filter((l) => l.type === "spawn" && l.source === defaultAgent.id)
-      .map((l) => l.target);
-    const mainEntry: Record<string, unknown> = {
-      id: defaultAgent.id,
-      default: true,
-    };
-    if (defaultAgent.name) mainEntry["name"] = defaultAgent.name;
-    if (defaultAgent.config?.model !== undefined) mainEntry["model"] = defaultAgent.config.model;
-    if (mainSpawnTargets.length > 0) {
-      mainEntry["subagents"] = { allowAgents: mainSpawnTargets };
-    }
-    agentsList.unshift(mainEntry);
-  }
-
-  return agentsList;
-}
-
-/** Extract tools.agentToAgent from team if present. */
-function buildAgentToAgentSection(team: TeamFile): unknown | undefined {
-  return team.agent_to_agent;
-}
-
 /**
- * Merge team data into an existing openclaw.json config.
- * Only modifies agents.defaults, agents.list[], and tools.agentToAgent.
- * All other sections (providers, telegram, mem0, etc.) are preserved.
+ * Merge team data into an existing runtime.json config.
+ * Updates the agents[] array and defaultModel.
+ * All other sections (channels, port, etc.) are preserved.
  */
-function mergeTeamIntoConfig(config: Record<string, unknown>, team: TeamFile): void {
-  if (!config["agents"] || typeof config["agents"] !== "object") config["agents"] = {};
-  const agentsConf = config["agents"] as Record<string, unknown>;
-
-  const existingDefaults = (agentsConf["defaults"] ?? {}) as Record<string, unknown>;
-  agentsConf["defaults"] = buildDefaultsSection(existingDefaults, team);
-  agentsConf["list"] = buildAgentsList(team);
-
-  const a2a = buildAgentToAgentSection(team);
-  if (a2a !== undefined) {
-    if (!config["tools"] || typeof config["tools"] !== "object") config["tools"] = {};
-    (config["tools"] as Record<string, unknown>)["agentToAgent"] = a2a;
+function mergeTeamIntoRuntimeConfig(config: Record<string, unknown>, team: TeamFile): void {
+  // Update defaultModel from team defaults
+  if (team.defaults?.model) {
+    config["defaultModel"] = team.defaults.model;
   }
+
+  // Rebuild agents[] array from team
+  const agents: Array<Record<string, unknown>> = [];
+
+  for (const agent of team.agents) {
+    const entry: Record<string, unknown> = {
+      id: agent.id,
+      name: agent.name,
+    };
+
+    if (agent.is_default) {
+      entry["isDefault"] = true;
+    }
+
+    // Spread config fields
+    if (agent.config) {
+      const { model, permissions, subagents, tools, params, skills } = agent.config;
+      if (model !== undefined) entry["model"] = model;
+      if (permissions !== undefined) entry["permissions"] = permissions;
+      if (subagents !== undefined) entry["subagents"] = subagents;
+      if (tools !== undefined) entry["tools"] = tools;
+      if (params !== undefined) entry["params"] = params;
+      if (skills !== undefined) entry["skills"] = skills;
+    }
+
+    // Inject subagents.allowAgents from spawn links
+    const spawnTargets = team.links
+      .filter((l) => l.type === "spawn" && l.source === agent.id)
+      .map((l) => l.target);
+    if (spawnTargets.length > 0) {
+      const existingSubagents = (entry["subagents"] ?? {}) as Record<string, unknown>;
+      entry["subagents"] = { ...existingSubagents, allowAgents: spawnTargets };
+    }
+
+    agents.push(entry);
+  }
+
+  config["agents"] = agents;
 }
 
 /**
  * Write workspace files to disk for all agents.
- * Gap-fills missing EXPORTABLE_FILES with default templates — same logic as
- * the DB gap-fill in _importTeamCore, but for the filesystem.
+ * Gap-fills missing EXPORTABLE_FILES with default templates.
  */
 async function syncWorkspacesToDisk(
   conn: ServerConnection,
-  openclawHome: string,
+  stateDir: string,
   team: TeamFile,
 ): Promise<number> {
   let filesWritten = 0;
 
   for (const agent of team.agents) {
-    // Same convention as agent-sync.ts: stateDir/workspaces/{workspace}
     const workspacePath = agent.is_default
-      ? path.join(openclawHome, "workspaces", "workspace")
-      : path.join(openclawHome, "workspaces", `workspace-${agent.id}`);
+      ? path.join(stateDir, "workspaces", "workspace")
+      : path.join(stateDir, "workspaces", `workspace-${agent.id}`);
 
     // Create workspace directory
     await conn.mkdir(workspacePath);
@@ -594,24 +489,4 @@ async function syncWorkspacesToDisk(
   }
 
   return filesWritten;
-}
-
-/** Restart the OpenClaw daemon for an instance. */
-async function restartDaemon(
-  conn: ServerConnection,
-  instance: InstanceRecord,
-  xdgRuntimeDir: string,
-): Promise<void> {
-  const { getServiceManager, getLaunchdPlistPath } = await import("../lib/platform.js");
-  const sm = getServiceManager();
-
-  if (sm === "launchd") {
-    const plistPath = getLaunchdPlistPath(instance.slug);
-    await conn.execFile("launchctl", ["unload", plistPath]);
-    await conn.execFile("launchctl", ["load", "-w", plistPath]);
-  } else {
-    await conn.execFile("systemctl", ["--user", "restart", instance.systemd_unit], {
-      env: { XDG_RUNTIME_DIR: xdgRuntimeDir },
-    });
-  }
 }

@@ -10,10 +10,9 @@ export interface ProviderInfo {
 }
 
 /**
- * Provider catalog — kept in sync with OpenClaw model registry.
- * Source: src/openclaw/node_modules/@mariozechner/pi-ai/dist/models.generated.js
- * OpenClaw version reference: 2026.3.8
- * Update this catalog on each OpenClaw release (see docs/OPENCLAW-COMPAT.md).
+ * Provider catalog — AI model registry for the creation wizard.
+ * Source: @mariozechner/pi-ai model catalog.
+ * Last updated: 2026-03-13.
  */
 export const PROVIDER_CATALOG: ProviderInfo[] = [
   {

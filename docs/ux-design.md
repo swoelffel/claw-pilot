@@ -12,26 +12,83 @@ Sert de base d'échange pour les évolutions d'interface.
 
 ## Tokens de style globaux
 
-| Token | Valeur approximative | Usage |
+| Token | Valeur | Usage |
 |---|---|---|
 | `--bg-base` | `#0f1117` | Fond de page |
-| `--bg-surface` | `#111827` | Cards, panels, dialogs |
-| `--bg-border` | `#1f2937` | Bordures |
-| `--bg-hover` | `#1a1d27` | Hover sur items |
-| `--text-primary` | `#f9fafb` | Titres, valeurs importantes |
-| `--text-secondary` | `#9ca3af` | Corps de texte |
-| `--text-muted` | `#6b7280` | Labels, métadonnées |
-| `--font-mono` | `JetBrains Mono`, `monospace` | Valeurs techniques |
+| `--bg-surface` | `#1a1d27` | Cards, panels, dialogs |
+| `--bg-hover` | `#1e2130` | Hover sur items |
+| `--bg-border` | `#2a2d3a` | Bordures |
+| `--text-primary` | `#e2e8f0` | Titres, valeurs importantes |
+| `--text-secondary` | `#94a3b8` | Corps de texte |
+| `--text-muted` | `#64748b` | Labels, métadonnées |
+| `--font-ui` | `Geist`, `-apple-system`, `sans-serif` | Police principale |
+| `--font-mono` | `Geist Mono`, `monospace` | Valeurs techniques |
 | `--accent` | `#4f6ef7` | Bleu principal (CTA, sélection) |
+| `--accent-hover` | `#6b85f8` | Bleu hover |
 | `--accent-subtle` | `rgba(79,110,247,0.08)` | Fond accent léger |
 | `--accent-border` | `rgba(79,110,247,0.25)` | Bordure accent |
-| `--state-success` | `#22c55e` | Running, succès |
+| `--state-running` | `#10b981` | Running, succès |
+| `--state-stopped` | `#64748b` | Arrêté |
 | `--state-error` | `#ef4444` | Erreur, danger |
-| `--state-warning` | `#f59e0b` | Ambre — bouton UI |
-| `--state-info` | `#0ea5e9` | Cyan — bouton Agents |
+| `--state-warning` | `#f59e0b` | Ambre — avertissement |
+| `--state-info` | `#0ea5e9` | Cyan — info |
+| `--focus-ring` | `0 0 0 2px rgba(79,110,247,0.5)` | Focus outline |
 | `--radius-sm` | `4px` | Badges, petits éléments |
-| `--radius-md` | `6px` | Boutons, inputs |
-| `--radius-lg` | `10px` | Cards, dialogs |
+| `--radius-md` | `8px` | Boutons, inputs |
+| `--radius-lg` | `12px` | Cards, dialogs |
+
+---
+
+## Écran 0 — Login (`cp-login-view`)
+
+**Fichier source** : `ui/src/components/login-view.ts`
+
+Affiché à la place de toute l'application si l'utilisateur n'est pas authentifié (ou si la session a expiré). Centré verticalement et horizontalement sur `min-height: 100vh`.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                 │
+│              ┌─ Card (max-width 360px) ──────────────────┐     │
+│              │                                           │     │
+│              │           Claw Pilot                      │     │
+│              │                                           │     │
+│              │  [Bandeau session expirée — ambre]        │     │
+│              │  (conditionnel)                           │     │
+│              │                                           │     │
+│              │  Username                                 │     │
+│              │  [admin                          ]        │     │
+│              │                                           │     │
+│              │  Password                                 │     │
+│              │  [                               ]        │     │
+│              │                                           │     │
+│              │  [Sign in]                                │     │
+│              │                                           │     │
+│              │  (message d'erreur si échec)              │     │
+│              │                                           │     │
+│              │  v0.20.0                                  │     │
+│              └───────────────────────────────────────────┘     │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Éléments
+
+| Élément | Description |
+|---|---|
+| **Titre** | "Claw**Pilot**" — span accent sur "Pilot", `font-size: --text-xl`, `font-weight: 700`, centré |
+| **Bandeau session expirée** | Fond ambre `rgba(245,158,11,0.1)`, bordure ambre. Visible si prop `sessionExpired = true`. Message : "Your session has expired. Please sign in again." |
+| **Username** | Input texte, pré-rempli avec `"admin"` |
+| **Password** | Input password, autofocus à l'ouverture |
+| **[Sign in]** | Bouton plein `--accent`, largeur 100%, `min-height: 44px`. Affiche "…" pendant la soumission. |
+| **Erreur** | Texte rouge centré sous le bouton. Messages : "Invalid credentials" (401), "Too many attempts. Please wait a moment." (429), "An error occurred. Please try again." (autres). |
+| **Version** | `v{APP_VERSION}` monospace muted, centré, `font-size: 11px` |
+
+### Comportements
+
+- `Enter` dans n'importe quel champ → soumet le formulaire
+- Pendant la soumission : bouton disabled
+- Succès : émet `authenticated { token }` → `cp-app` stocke le token et initialise l'app
+- La card a `background: --bg-surface`, `border: 1px solid --bg-border`, `border-radius: 8px`, `padding: 32px`
 
 ---
 
@@ -39,13 +96,13 @@ Sert de base d'échange pour les évolutions d'interface.
 
 Depuis v0.7.1, la navigation utilise des hash URLs (`#/...`). Le browser back/forward et le refresh de page fonctionnent correctement.
 
-| Hash URL | Vue rendue |
-|---|---|
-| `#/` ou `#/instances` | Vue Instances (accueil) |
-| `#/instances/:slug/builder` | Constructeur d'agents |
-| `#/instances/:slug/settings` | Settings instance |
-| `#/blueprints` | Vue Blueprints |
-| `#/blueprints/:id/builder` | Blueprint Builder |
+| Hash URL | Vue rendue | Composant |
+|---|---|---|
+| `#/` | Vue Instances (accueil) | `cp-cluster-view` |
+| `#/instances/:slug/builder` | Constructeur d'agents | `cp-agents-builder` |
+| `#/instances/:slug/settings` | Settings instance | `cp-instance-settings` |
+| `#/blueprints` | Vue Blueprints | `cp-blueprints-view` |
+| `#/blueprints/:id/builder` | Blueprint Builder | `cp-blueprint-builder` |
 
 La navigation entre vues émet des événements `navigate { view, slug?, blueprintId? }` capturés par `app.ts`, qui met à jour le hash URL et rend le composant correspondant.
 
@@ -53,22 +110,38 @@ La navigation entre vues émet des événements `navigate { view, slug?, bluepri
 
 ## Navigation globale (`app.ts`)
 
-Barre de navigation fixe en haut de page.
+Barre de navigation fixe en haut de page (`height: 56px`, `background: --bg-surface`).
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  ClawPilot   Instances [2]   Blueprints [3]       ● En direct   │
+│  ClawPilot   Instances [2]   Blueprints [3]   ● Live  [Sign out]│
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 | Élément | Description |
 |---|---|
-| **Logo** | "ClawPilot" — lien vers la vue Instances |
-| **Instances** | Onglet avec badge numérique (nombre d'instances chargées) |
-| **Blueprints** | Onglet vers la vue Blueprints. Badge numérique affiché si au moins 1 blueprint existe (nombre de blueprints chargés). Le badge n'est pas affiché si aucun blueprint ou si la vue Blueprints n'a pas encore été visitée. |
-| **Indicateur WS** | Point vert + "En direct" si WebSocket connecté, gris + "Hors ligne" sinon |
+| **Logo** | "Claw**Pilot**" (span accent sur "Pilot") — clic → vue Instances |
+| **Instances** | Onglet actif si vue cluster, agents-builder ou instance-settings. Badge numérique si `instanceCount > 0`. |
+| **Blueprints** | Onglet actif si vue blueprints ou blueprint-builder. Badge numérique si `blueprintCount !== null && blueprintCount > 0`. |
+| **Indicateur WS** | Point vert (`--state-running`) + "Live" si connecté ; point rouge (`--state-error`) + "Offline" si déconnecté. |
+| **Sign out** | Bouton outline gris, hover rouge (`--state-error`). Appelle `POST /api/auth/logout` puis réinitialise l'état local. |
 
-**Footer** : `ClawPilot v0.14.x` | GitHub | Signaler un bug | Sélecteur de langue | © SWO — Licence MIT
+**Footer** (`height: 48px`, `background: --bg-surface`) :
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  ClawPilot  [v0.20.0]  ·  GitHub  ·  Issues    🌐 EN ▾  ·  © 2026 SWO — MIT License │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+| Élément | Description |
+|---|---|
+| **ClawPilot** | Marque avec span accent, `font-weight: 600` |
+| **[vX.Y.Z]** | Badge version monospace accent (`--accent-subtle`, `--accent-border`) |
+| **GitHub** | Lien `https://github.com/swoelffel/claw-pilot`, `target="_blank"` |
+| **Issues** | Lien `https://github.com/swoelffel/claw-pilot/issues`, `target="_blank"` |
+| **Sélecteur de langue** | Bouton `🌐 XX ▾` — ouvre un dropdown vers le haut avec les 6 langues disponibles. Clic extérieur ferme le dropdown. |
+| **© année SWO** | Texte muted avec "MIT License" |
 
 ### Bannière update claw-pilot (`cp-self-update-banner`)
 
@@ -76,10 +149,11 @@ Composant `<cp-self-update-banner>` affiché **en haut du `<main>`**, au-dessus 
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
+│  [nav header]                                                   │
+├─────────────────────────────────────────────────────────────────┤
 │  ┌─ Bannière update claw-pilot (conditionnelle) ──────────────┐ │
 │  │  ↑ claw-pilot update available  v0.12.0   [Update claw-pilot]│ │
 │  └─────────────────────────────────────────────────────────────┘ │
-│  [nav header]                                                   │
 │  [contenu de la vue active]                                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -149,18 +223,13 @@ Tags de version : `font-family: var(--font-mono)`, `font-size: 12px`, `font-weig
 
 ## Écran 1 — Vue Instances (`cp-cluster-view`)
 
-**Fichier source** : `ui/src/components/cluster-view.ts`  
-**Capture de référence** : `screen2.png`
+**Fichier source** : `ui/src/components/cluster-view.ts`
 
-Page d'accueil. Grille de cards d'instances.
+Page d'accueil. Grille de cards d'instances. `padding: 24px`.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  ┌─ Bannière update (conditionnelle) ──────────────────────────┐ │
-│  │  ↑ OpenClaw update available  v2026.3.1   [Update all]      │ │
-│  └─────────────────────────────────────────────────────────────┘ │
-│                                                                 │
-│  2 instances                          [+ Nouvelle instance]     │
+│  2 instances                          [+ New Instance]          │
 │                                                                 │
 │  ┌──────────────────┐  ┌──────────────────┐                    │
 │  │  Instance Card   │  │  Instance Card   │                    │
@@ -175,7 +244,7 @@ Page d'accueil. Grille de cards d'instances.
 | **Chargement** | Texte centré "Loading instances..." (early return — header non affiché) |
 | **Erreur** | Bandeau d'erreur rouge en haut, grille vide |
 | **Vide** | Icône + "No instances found" centré + bouton **[Discover instances]** |
-| **Normal** | Bannière update (si applicable) + grille `auto-fill minmax(300px, 1fr)`, gap 16px |
+| **Normal** | Header "N instances" + grille `auto-fill minmax(300px, 1fr)`, gap 16px |
 
 **État vide — détail :**
 
@@ -190,31 +259,12 @@ Page d'accueil. Grille de cards d'instances.
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-Le bouton **[Discover instances]** (`btn btn-secondary`) ouvre le dialog `cp-discover-dialog` qui scanne le système à la recherche d'instances OpenClaw existantes et propose de les adopter.
-
-### Bannière update OpenClaw (`cp-update-banner`)
-
-Composant `<cp-update-banner>` affiché en haut de la vue, avant le header de section. Invisible si pas d'update et pas de job actif.
-
-Wrapper léger autour de `<cp-update-banner-base>` (voir section dédiée ci-dessous).
-
-| État | Style | Contenu |
-|---|---|---|
-| **idle + updateAvailable** | Ambre (`--state-warning`) | "OpenClaw update available vX.Y.Z" + version courante + bouton **[Update all instances]** |
-| **running** | Cyan (`--state-info`) | Spinner + "Updating OpenClaw…" + "This may take up to 60 seconds" |
-| **done** | Vert (`--state-running`) | "OpenClaw updated → vX.Y.Z" + message (ex: "All instances restarted") |
-| **error** | Rouge (`--state-error`) | "OpenClaw update failed" + message d'erreur + bouton **[Retry]** |
-
-**Polling** : pendant `status === "running"`, `cluster-view` poll `fetchUpdateStatus()` toutes les 2s. À la transition vers `done`, recharge la liste des instances.
-
-**Événement** : le bouton Update/Retry émet `cp-update-action` (bubbles + composed) → capturé par `cluster-view` qui appelle `triggerUpdate()`.
-
-**Pas de dismiss manuel** — le bandeau disparaît automatiquement quand `updateAvailable === false && status === "idle"`.
+Le bouton **[Discover instances]** (`btn btn-secondary`) ouvre le dialog `cp-discover-dialog` qui scanne le système à la recherche d'instances claw-runtime existantes et propose de les adopter.
 
 ### Interactions
 
 - **Clic sur une card** → navigation vers la Vue Détail de l'instance
-- **Bouton "+ Nouvelle instance"** → ouvre le Dialog de création (`cp-create-dialog`)
+- **Bouton "+ New Instance"** → ouvre le Dialog de création (`cp-create-dialog`)
 - Après création : ferme le dialog + recharge la liste
 
 ---
@@ -506,25 +556,103 @@ Pendant le provisioning : le formulaire est remplacé par un spinner + message "
 
 ---
 
+## Composant : Runtime Chat (`cp-runtime-chat`)
+
+**Fichier source** : `ui/src/components/runtime-chat.ts`
+
+Composant de chat temps réel avec un agent claw-runtime via SSE. Intégré dans la section **Runtime** des Settings instance. Layout flex colonne, hauteur 100% de son conteneur.
+
+```
+┌─ cp-runtime-chat ─────────────────────────────────────────────┐
+│  [Session selector ▼]  [+ New]                                │  ← header
+├───────────────────────────────────────────────────────────────┤
+│                                                               │
+│  (zone messages — flex: 1, overflow-y: auto)                  │  ← messages
+│                                                               │
+│  ┌─ message user ──────────────────────────────────────────┐  │
+│  │  Mon message                                            │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│  ┌─ message assistant ─────────────────────────────────────┐  │
+│  │  Réponse de l'agent                                     │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│  [spinner]  Agent is thinking…                                │  ← état sending/streaming
+│                                                               │
+├───────────────────────────────────────────────────────────────┤
+│  [textarea…]                                    [Send]        │  ← input
+├───────────────────────────────────────────────────────────────┤
+│  (bandeau d'erreur si connexion perdue)                       │  ← erreur conditionnelle
+└───────────────────────────────────────────────────────────────┘
+```
+
+### Header
+
+| Élément | Description |
+|---|---|
+| **Session selector** | `<select>` flex:1. Option "New session" (valeur vide) + liste des sessions existantes (titre ou ID tronqué). Auto-sélectionne la première session active au chargement. |
+| **[+ New]** | `btn btn-ghost`, `font-size: 12px`. Crée une nouvelle session (vide les messages, ferme le stream SSE). |
+
+### Zone messages
+
+- Fond transparent, `padding: 16px`, `gap: 12px`
+- **État vide** : "Start a conversation with the agent" centré, `--text-muted`
+- **Message user** : `background: --bg-hover`, aligné à droite, `max-width: 85%`, `border-radius: --radius-md`
+- **Message assistant** : fond transparent, `border: 1px solid --bg-border`, aligné à gauche
+- **Message streaming** : même style assistant + curseur `▋` + `opacity: 0.85`
+- **Spinner "thinking"** : affiché si `status === "sending"` ou `status === "streaming"` sans texte accumulé. Spinner 16px + "Agent is thinking…"
+
+### Input
+
+- `<textarea>` flex:1, `rows="2"`, `resize: none`, `background: --bg-hover`
+- `Enter` (sans Shift) → envoie le message
+- `Shift+Enter` → saut de ligne
+- Disabled si `status !== "idle"`
+- **[Send]** : `btn btn-primary`, disabled si textarea vide ou status ≠ idle
+
+### Flux SSE
+
+Ouvert via `EventSource` sur `GET /api/instances/:slug/runtime/sessions/:id/stream`.
+
+| Événement SSE | Comportement |
+|---|---|
+| `message.part.delta` | Accumule `_streamingText` |
+| `message.created` (assistant) | Réinitialise `_streamingText`, status → streaming |
+| `message.updated` | Vide `_streamingText`, status → idle |
+| `session.status` (busy/idle) | Met à jour le status |
+| `session.ended` | status → idle |
+| `ping` | Ignoré (keep-alive) |
+| Erreur SSE | status → error, message "Connection to runtime lost. Please refresh." |
+
+### Premier message (nouvelle session)
+
+Le premier message d'une nouvelle session est envoyé via `POST /api/instances/:slug/runtime/chat`. La réponse HTTP contient directement le texte de l'assistant (le stream SSE n'est pas encore ouvert). Le stream est ouvert après pour les messages suivants.
+
+### Props
+
+| Prop | Type | Description |
+|---|---|---|
+| `slug` | `string` | Slug de l'instance |
+
+---
+
 ## Écran 2b — Vue Settings Instance (`cp-instance-settings`)
 
 **Fichier source** : `ui/src/components/instance-settings.ts`
 
-Vue de configuration complète d'une instance. Accessible via le bouton **Settings** de la card ou de la vue détail. Layout deux colonnes : sidebar fixe + zone de contenu par panneau (une section à la fois).
+Vue de configuration complète d'une instance. Accessible via le bouton **Settings** de la card. Layout deux colonnes : sidebar fixe + zone de contenu par panneau (une section à la fois).
 
 ```
 ┌─ Header bar ──────────────────────────────────────────────────┐
-│  ← Back   Settings — default          [Cancel]  [Save]        │
+│  ← Back   default — Settings          [Cancel]  [Save]        │
 └───────────────────────────────────────────────────────────────┘
 ┌─ Layout ──────────────────────────────────────────────────────┐
 │  ┌─ Sidebar ──┐  ┌─ Content (panneau actif) ───────────────┐  │
 │  │  General   │  │  ┌─ GENERAL ──────────────────────────┐ │  │
 │  │  Agents    │  │  │  Display name  Port (readonly)      │ │  │
-│  │  Telegram  │  │  │  Default model (select grouped)     │ │  │
-│  │  Plugins   │  │  │  Tools profile (select)             │ │  │
-│  │  Gateway   │  │  │                                     │ │  │
-│  │  Devices   │  │  │  PROVIDERS                          │ │  │
-│  └────────────┘  │  │  [Anthropic]  sk-ant-***  [Change]  │ │  │
+│  │  Runtime   │  │  │  Default model (select grouped)     │ │  │
+│  └────────────┘  │  │  Tools profile (select)             │ │  │
+│                  │  │                                     │ │  │
+│                  │  │  PROVIDERS                          │ │  │
+│                  │  │  [Anthropic]  sk-ant-***  [Change]  │ │  │
 │                  │  │  [+ Add provider]                   │ │  │
 │                  │  └─────────────────────────────────────┘ │  │
 │                  └──────────────────────────────────────────┘  │
@@ -533,7 +661,7 @@ Vue de configuration complète d'une instance. Accessible via le bouton **Settin
 
 ### Principe de navigation par panneau
 
-Clic sur un item de la sidebar → **remplace** le contenu par le panneau correspondant (pas de scroll). Une seule section visible à la fois. Section active par défaut : **General**.
+Clic sur un item de la sidebar → **remplace** le contenu par le panneau correspondant (pas de scroll). Une seule section visible à la fois. Section active par défaut : **General** (ou `initialSection` passé en prop).
 
 ### Header bar
 
@@ -542,26 +670,17 @@ Toujours visible. Fond `--bg-surface`, bordure basse.
 | Élément | Description |
 |---|---|
 | **← Back** | Outline gris, hover accent. Émet `navigate { slug: null }` → retour vue Instances. |
-| **Titre** | "Settings — **slug**" (`font-size: 16px`, `font-weight: 700`). |
-| **[Cancel]** | Visible si `_hasChanges` ET section active ≠ "devices". Annule toutes les modifications dirty. |
-| **[Save]** | Visible si `_hasChanges` ET section active ≠ "devices". Disabled si erreur de validation ou `_saving`. Appelle `PATCH /api/instances/:slug/config`. |
-
-> La section **Devices** n'a pas de champs éditables — Save/Cancel sont masqués quand elle est active.
+| **Titre** | "**slug** — Settings" (`font-size: 16px`, `font-weight: 700` sur le slug). |
+| **[Cancel]** | Visible si `_hasChanges`. Annule toutes les modifications dirty. |
+| **[Save]** | Visible si `_hasChanges`. Disabled si erreur de validation ou `_saving`. Appelle `PATCH /api/instances/:slug/config`. |
 
 ### Sidebar
 
-`flex: 0 0 180px`, sticky `top: 80px`. Navigation par panneaux : General, Agents, Telegram, Plugins, Gateway, Devices. Item actif : fond `--accent-subtle`, couleur `--accent`, `font-weight: 600`. Clic → `_activeSection = section` (swap immédiat du contenu).
-
-**Badges numériques** sur les items de la sidebar :
-
-| Item | Badge | Condition |
-|---|---|---|
-| **Telegram** | Rouge | Si des demandes de pairing Telegram sont en attente (`telegramPairing.pending.length > 0`) |
-| **Devices** | Rouge | Si des demandes de device pairing sont en attente (`pendingDevices > 0`) |
+Navigation par panneaux : **General**, **Agents**, **Runtime**. Item actif : fond `--accent-subtle`, couleur `--accent`, `font-weight: 600`. Clic → `_activeSection = section` (swap immédiat du contenu).
 
 ### Champs modifiés
 
-Les champs modifiés affichent une bordure `--accent` (classe `changed`). Les champs readonly ont un fond `--bg-surface` et `opacity: 0.6`.
+Les champs modifiés affichent une bordure `--accent` (classe `changed`). Les champs readonly ont un fond `--bg-surface`.
 
 ### Section General
 
@@ -570,7 +689,7 @@ Grid 2 colonnes.
 | Champ | Type | Comportement |
 |---|---|---|
 | **Display name** | Input texte | Éditable |
-| **Port** | Readonly | Non modifiable |
+| **Port** | Readonly | Non modifiable (`:XXXXX`) |
 | **Default model** | Select groupé par provider | Options groupées par provider configuré. Si le modèle courant n'est pas dans la liste, ajouté comme option isolée. |
 | **Tools profile** | Select | Options : `coding`, `minimal`, `full`, `none` |
 
@@ -589,7 +708,7 @@ Grid 2 colonnes.
 | Heartbeat interval | Input texte. Validation : format `30m`, `1h`, `1h30m`. Bare number auto-corrigé → `Xm` au blur. Erreur inline si format invalide. |
 | Heartbeat model | Select groupé par provider (+ option "— none —") |
 
-**List** : tableau des agents (ID, Name, Model, Workspace, **Actions**). Affiché si `agents.length > 0`.
+**Agents — List** : tableau des agents (ID, Name, Model, Workspace, **Actions**). Affiché si `agents.length > 0`.
 
 La colonne **Actions** contient un bouton ✏ (icône crayon SVG) par agent. Clic → charge les données de l'agent via l'API et ouvre le `cp-agent-detail-panel` en **drawer latéral** :
 
@@ -611,84 +730,34 @@ La colonne **Actions** contient un bouton ✏ (icône crayon SVG) par agent. Cli
 | **Expand** | Événement `panel-expand-changed` → le drawer passe en plein écran. |
 | **Mise à jour** | Événement `agent-meta-updated` → recharge le panel ET la config de l'instance. |
 
-### Section Telegram
+### Section Runtime
 
-**Cas 1 — Telegram déjà configuré (`channels.telegram !== null`)**
-
-Toggle **Enabled** + champs éditables :
-
-| Champ | Type | Valeurs |
-|---|---|---|
-| **Bot Token** | Secret masqué + bouton `[Change]` / `[Cancel]` | Badge `hot-reload` |
-| **DM Policy** | Select | `pairing` / `open` / `allowlist` / `disabled` |
-| **Group Policy** | Select | `allowlist` / `open` / `disabled` |
-| **Stream Mode** | Select | `partial` / `full` / `off` |
-
-**Cas 2 — Telegram non configuré (`channels.telegram === null`)**
+Panneau informatif + chat intégré. Pas de champs éditables (Save/Cancel non affichés quand active).
 
 ```
-Telegram is not configured for this instance.
-[Configure Telegram]   ← btn btn-ghost
-```
-
-Clic sur "Configure Telegram" → formulaire d'initialisation inline :
-
-```
-Bot Token *    [_________________________]  [BotFather ↗]
-DM Policy      [pairing              ▼]
-Group Policy   [allowlist            ▼]
-Stream Mode    [partial              ▼]
-
-                              [Cancel]  [Add]
-```
-
-- **[BotFather ↗]** : lien `https://t.me/BotFather`, `target="_blank"`, style `btn-reveal`
-- **[Cancel]** : `btn btn-ghost` — remet `_addingTelegram = false`, vide les dirty keys telegram
-- **[Add]** : `btn btn-primary` — disabled si `botToken` vide ou `_saving`. Déclenche `_save()` directement (pas d'attente du Save global). Affiche "Saving…" pendant l'opération.
-- Après save réussi : config rechargée → section passe en Cas 1 avec les champs éditables.
-
-### Sous-section Pairing Requests *(Telegram — visible si dmPolicy = "pairing")*
-
-Affichée sous les champs Telegram quand le DM Policy effectif est `pairing` (valeur sauvegardée ou dirty). Chargée automatiquement à l'ouverture du panneau Telegram. Polling toutes les 10s si des demandes sont en attente.
-
-```
-┌─ Pairing Requests ──────────────────────────────── [↻] ┐
-│                                                         │
-│  ┌─ Demande ──────────────────────────────────────────┐ │
-│  │  @username          1234   2m ago   [Approve]      │ │
-│  │  user_id_mono                                      │ │
-│  └────────────────────────────────────────────────────┘ │
-│                                                         │
-│  Approved senders: 3                                    │
-└─────────────────────────────────────────────────────────┘
+┌─ Runtime ─────────────────────────────────────────────────────┐
+│  This instance runs on claw-runtime — the native claw-pilot   │
+│  agent engine.                                                │
+│                                                               │
+│  Engine      claw-runtime                                     │
+│  Config file runtime.json                                     │
+│                                                               │
+│  ── Chat ──────────────────────────────────────────────────── │
+│  ┌─ cp-runtime-chat (480px hauteur) ────────────────────────┐ │
+│  │  [Session selector ▼]  [+ New]                           │ │
+│  │  ─────────────────────────────────────────────────────── │ │
+│  │  (messages)                                              │ │
+│  │  ─────────────────────────────────────────────────────── │ │
+│  │  [textarea…]  [Send]                                     │ │
+│  └──────────────────────────────────────────────────────────┘ │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 | Élément | Description |
 |---|---|
-| **Header** | "Pairing Requests" + bouton **[↻]** (refresh manuel, disabled pendant chargement) |
-| **Carte demande** | Username (`@username` ou user_id si pas de username), user_id monospace, code de pairing (`font-weight: 700`, `letter-spacing: 0.08em`), âge relatif, bouton **[Approve]** |
-| **Bouton Approve** | `btn btn-primary`, disabled pendant l'approbation. Affiche "…" pendant l'opération. |
-| **Approved senders** | Compteur des utilisateurs déjà approuvés. |
-| **État vide** | "No pending pairing requests." |
-| **Erreur** | Bandeau rouge si chargement ou approbation échoue. |
-
-**Âge relatif** : "just now" / "Xm ago" / "Xh ago" / "Xd ago" (basé sur `lastSeenAt` ou `createdAt`).
-
-### Section Plugins
-
-Plugin **mem0** : toggle Enabled + Ollama URL, Qdrant Host, Qdrant Port. Badge `restart` dans le header de section (indique que les changements nécessitent un restart). Si aucun plugin : message informatif.
-
-### Section Gateway
-
-Grid 2 colonnes.
-
-| Champ | Type | Valeurs / Comportement |
-|---|---|---|
-| **Port** | Readonly | Non modifiable |
-| **Bind** | Readonly | Non modifiable |
-| **Auth Mode** | Readonly | Non modifiable |
-| **Reload Mode** | Select | `hybrid`, `poll`, `off` |
-| **Reload Debounce (ms)** | Input number | Min 100, max 5000 |
+| **Engine** | Valeur fixe `claw-runtime`, monospace |
+| **Config file** | Valeur fixe `runtime.json`, monospace muted |
+| **Chat** | Composant `cp-runtime-chat` intégré dans un conteneur `height: 480px`, `border: 1px solid --bg-border`, `border-radius: --radius-md` |
 
 ### Toast de confirmation
 
@@ -700,13 +769,7 @@ Apparaît en bas à droite (`position: fixed`, `bottom: 80px`, `right: 24px`) pe
 | **warning** | Ambre | "Configuration saved — instance restarted (raison)" |
 | **error** | Rouge | Message d'erreur |
 
-### Bannière instance arrêtée
-
-Si l'instance n'est pas `running`, un bandeau gris discret s'affiche en haut du contenu : "Instance is stopped. Changes will apply on next start."
-
-### Section Devices
-
-Panneau autonome — pas de champs éditables, pas de Save/Cancel. Affiche le composant `cp-instance-devices` (voir section dédiée ci-dessous). Polling automatique si des demandes sont en attente.
+**Avertissement port changé** : si le port a changé, un bandeau `⚠` s'affiche sous le header : "Port changed — browser pairing will be lost after restart. Go to the Devices tab to approve the new request."
 
 ---
 
@@ -1363,4 +1426,4 @@ Swatch sélectionné : bordure blanche + scale 1.1.
 
 ---
 
-*Mis à jour : 2026-03-10 - Refonte Instance Card v0.14.0 : menu popover `···`, status bar (gateway/telegram/agents/devices), hiérarchie display_name > slug, action Restart, propagation `telegram` dans HealthUpdate WS*
+*Mis à jour : 2026-03-15 - v0.20.0 : tokens de style corrigés (Geist, valeurs réelles), navigation (Sign out, Live/Offline), suppression bannière OpenClaw update, refonte Settings (General/Agents/Runtime), ajout écran Login et composant cp-runtime-chat*

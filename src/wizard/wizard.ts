@@ -21,7 +21,7 @@ export async function runWizard(
   conn: ServerConnection,
   serverId: number,
 ): Promise<WizardAnswers> {
-  console.log(chalk.bold("\n=== New OpenClaw instance wizard ===\n"));
+  console.log(chalk.bold("\n=== New claw-runtime instance wizard ===\n"));
 
   // Step 1: Identity
   const { slug, displayName } = await promptSlug(registry);

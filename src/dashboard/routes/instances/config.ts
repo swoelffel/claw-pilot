@@ -5,17 +5,218 @@ import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
 import { instanceGuard } from "../../../lib/guards.js";
 import { logger } from "../../../lib/logger.js";
-import {
-  readInstanceConfig,
-  applyConfigPatch,
-  ConfigPatchSchema,
-} from "../../../core/config-updater.js";
-import type { ConfigPatch } from "../../../core/config-updater.js";
 import { PROVIDER_CATALOG } from "../../../lib/provider-catalog.js";
 import type { ProviderInfo } from "../../../lib/provider-catalog.js";
+import { getRuntimeStateDir } from "../../../lib/platform.js";
+import {
+  runtimeConfigExists,
+  loadRuntimeConfig,
+  saveRuntimeConfig,
+  createDefaultRuntimeConfig,
+  type RuntimeConfig,
+} from "../../../runtime/index.js";
+import { z } from "zod/v4";
+import * as fs from "node:fs/promises";
+import { readFileSync } from "node:fs";
+
+// InstanceConfig type — matches ui/src/types.ts
+interface InstanceConfig {
+  general: {
+    displayName: string;
+    defaultModel: string;
+    port: number;
+    toolsProfile: string;
+  };
+  providers: Array<{ id: string; label: string; apiKey: string }>;
+  agentDefaults: {
+    workspace: string;
+    subagents: { maxConcurrent: number; archiveAfterMinutes: number };
+    compaction: { mode: string; reserveTokensFloor?: number };
+    contextPruning: { mode: string; ttl?: string };
+    heartbeat: { every?: string; model?: string; target?: string };
+  };
+  agents: Array<{
+    id: string;
+    name: string;
+    model: string | null;
+    workspace: string;
+    identity: { name?: string; emoji?: string; avatar?: string } | null;
+  }>;
+  channels: {
+    telegram: {
+      enabled: boolean;
+      botTokenMasked: string | null;
+      dmPolicy: string;
+      groupPolicy: string;
+      streamMode?: string;
+    } | null;
+  };
+  plugins: {
+    mem0: {
+      enabled: boolean;
+      ollamaUrl: string;
+      qdrantHost: string;
+      qdrantPort: number;
+    } | null;
+  };
+  gateway: {
+    port: number;
+    bind: string;
+    authMode: string;
+    reloadMode: string;
+    reloadDebounceMs: number;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Config patch schema for runtime instances
+// ---------------------------------------------------------------------------
+
+const RuntimeConfigPatchSchema = z.object({
+  general: z
+    .object({
+      displayName: z.string().optional(),
+      defaultModel: z.string().optional(),
+    })
+    .optional(),
+  channels: z
+    .object({
+      telegram: z
+        .object({
+          enabled: z.boolean().optional(),
+          botTokenEnvVar: z.string().optional(),
+          pollingIntervalMs: z.number().int().min(0).optional(),
+          allowedUserIds: z.array(z.number().int()).optional(),
+          dmPolicy: z.enum(["pairing", "open", "allowlist", "disabled"]).optional(),
+          groupPolicy: z.enum(["open", "allowlist", "disabled"]).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+});
+
+type RuntimeConfigPatch = z.infer<typeof RuntimeConfigPatchSchema>;
+
+// ---------------------------------------------------------------------------
+// Helper: Build complete InstanceConfig from RuntimeConfig
+// ---------------------------------------------------------------------------
+
+function buildInstanceConfig(
+  instance: { display_name?: string | null; default_model?: string | null; port: number },
+  config: RuntimeConfig,
+  stateDir: string,
+): InstanceConfig {
+  // Extract toolsProfile from first agent or default to "coding"
+  const toolsProfile = config.agents[0]?.toolProfile ?? "coding";
+
+  // Map runtime agents to UI format
+  const agents = config.agents.map((a) => ({
+    id: a.id,
+    name: a.name,
+    model: a.model ?? null,
+    workspace: "workspace", // claw-runtime doesn't track per-agent workspaces in config
+    identity: null,
+  }));
+
+  // Map providers to UI format
+  const providers = config.providers.map((p) => ({
+    id: p.id,
+    label: p.id,
+    apiKey: "", // Never expose API keys in config response
+  }));
+
+  // Read botTokenMasked from .env (synchronous — buildInstanceConfig is sync)
+  let botTokenMasked: string | null = null;
+  try {
+    const envPath = `${stateDir}/.env`;
+    const envContent = readFileSync(envPath, "utf-8");
+    const varName = config.telegram.botTokenEnvVar;
+    const match = envContent.match(new RegExp(`^${varName}=(.+)$`, "m"));
+    if (match?.[1]) {
+      const raw = match[1].trim();
+      botTokenMasked =
+        raw.length > 4 ? `${"•".repeat(Math.min(raw.length - 4, 20))}${raw.slice(-4)}` : "••••";
+    }
+  } catch {
+    /* .env absent ou illisible — botTokenMasked reste null */
+  }
+
+  return {
+    general: {
+      displayName: instance.display_name ?? "",
+      defaultModel: config.defaultModel,
+      port: instance.port,
+      toolsProfile,
+    },
+    providers,
+    agentDefaults: {
+      workspace: "workspace",
+      subagents: { maxConcurrent: 4, archiveAfterMinutes: 60 },
+      compaction: { mode: config.compaction.auto ? "auto" : "manual" },
+      contextPruning: { mode: "off" },
+      heartbeat: {},
+    },
+    agents,
+    channels: {
+      telegram: {
+        enabled: config.telegram.enabled,
+        botTokenMasked,
+        dmPolicy: config.telegram.dmPolicy ?? "pairing",
+        groupPolicy: config.telegram.groupPolicy ?? "allowlist",
+      },
+    },
+    plugins: {
+      mem0: null,
+    },
+    gateway: {
+      port: instance.port,
+      bind: "loopback",
+      authMode: "token",
+      reloadMode: "hybrid",
+      reloadDebounceMs: 500,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Helper: Build stub InstanceConfig when runtime.json doesn't exist
+// ---------------------------------------------------------------------------
+
+function buildInstanceConfigStub(instance: {
+  display_name?: string | null;
+  default_model?: string | null;
+  port: number;
+}): InstanceConfig {
+  return {
+    general: {
+      displayName: instance.display_name ?? "",
+      defaultModel: instance.default_model ?? "anthropic/claude-sonnet-4-5",
+      port: instance.port,
+      toolsProfile: "coding",
+    },
+    providers: [],
+    agentDefaults: {
+      workspace: "workspace",
+      subagents: { maxConcurrent: 4, archiveAfterMinutes: 60 },
+      compaction: { mode: "auto" },
+      contextPruning: { mode: "off" },
+      heartbeat: {},
+    },
+    agents: [],
+    channels: { telegram: null },
+    plugins: { mem0: null },
+    gateway: {
+      port: instance.port,
+      bind: "loopback",
+      authMode: "token",
+      reloadMode: "hybrid",
+      reloadDebounceMs: 500,
+    },
+  };
+}
 
 export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
-  const { registry, conn, lifecycle } = deps;
+  const { registry, lifecycle } = deps;
 
   // GET /api/instances/:slug/config — structured config for the settings UI
   app.get("/api/instances/:slug/config", async (c) => {
@@ -24,9 +225,29 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
 
+    const stateDir = getRuntimeStateDir(slug);
+
+    if (!runtimeConfigExists(stateDir)) {
+      // Return a complete stub when runtime.json does not exist yet
+      const stub = buildInstanceConfigStub({
+        display_name: instance!.display_name,
+        default_model: instance!.default_model,
+        port: instance!.port,
+      });
+      return c.json(stub);
+    }
+
     try {
-      const payload = await readInstanceConfig(conn, instance!.config_path, instance!.state_dir);
-      payload.general.displayName = instance!.display_name ?? "";
+      const config = loadRuntimeConfig(stateDir);
+      const payload = buildInstanceConfig(
+        {
+          display_name: instance!.display_name,
+          default_model: instance!.default_model,
+          port: instance!.port,
+        },
+        config,
+        stateDir,
+      );
       return c.json(payload);
     } catch (err) {
       logger.error(
@@ -48,109 +269,175 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
 
-    let patch: ConfigPatch;
+    let patch: RuntimeConfigPatch;
     try {
       const raw = await c.req.json();
-      const result = ConfigPatchSchema.safeParse(raw);
+      const result = RuntimeConfigPatchSchema.safeParse(raw);
       if (!result.success) {
-        const issues = result.error.issues
-          .map((i) => `${i.path.join(".")}: ${i.message}`)
-          .join("; ");
-        return apiError(c, 400, "INVALID_BODY", `Invalid config patch: ${issues}`);
+        return apiError(c, 400, "INVALID_BODY", "Invalid config patch");
       }
-      patch = result.data as ConfigPatch;
+      patch = result.data;
     } catch {
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
-    logger.info(`[config] PATCH /config slug=${slug} patch=${JSON.stringify(patch)}`);
+    let requiresRestart = false;
 
-    try {
-      const result = await applyConfigPatch(
-        conn,
-        registry,
-        slug,
-        instance!.config_path,
-        instance!.state_dir,
-        patch,
-      );
+    // Update display name in DB
+    if (patch.general?.displayName !== undefined) {
+      registry.updateInstance(slug, { displayName: patch.general.displayName });
+    }
 
-      if (result.requiresRestart && instance!.state === "running") {
+    // Update default model in runtime.json
+    if (patch.general?.defaultModel !== undefined) {
+      const stateDir = getRuntimeStateDir(slug);
+      if (runtimeConfigExists(stateDir)) {
         try {
-          await lifecycle.restart(slug);
+          const config = loadRuntimeConfig(stateDir);
+          config.defaultModel = patch.general.defaultModel;
+          saveRuntimeConfig(stateDir, config);
+          requiresRestart = true;
         } catch (err) {
-          result.warnings.push(
-            `Restart failed: ${err instanceof Error ? err.message : "unknown error"}`,
+          logger.error(
+            `[config] PATCH /config error updating runtime.json for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          return apiError(
+            c,
+            500,
+            "CONFIG_PATCH_FAILED",
+            err instanceof Error ? err.message : "Failed to update runtime.json",
           );
         }
       }
+    }
 
-      logger.info(`[config] PATCH /config slug=${slug} result=${JSON.stringify(result)}`);
-      return c.json(result);
+    // Update telegram config in runtime.json
+    if (patch.channels?.telegram !== undefined) {
+      const stateDir = getRuntimeStateDir(slug);
+      try {
+        // Load or create runtime.json
+        let config: RuntimeConfig;
+        if (runtimeConfigExists(stateDir)) {
+          config = loadRuntimeConfig(stateDir);
+        } else {
+          config = createDefaultRuntimeConfig({
+            ...(instance!.default_model !== null && instance!.default_model !== undefined
+              ? { defaultModel: instance!.default_model }
+              : {}),
+          });
+        }
+        const tg = patch.channels.telegram;
+        if (tg.enabled !== undefined) config.telegram.enabled = tg.enabled;
+        if (tg.botTokenEnvVar !== undefined) config.telegram.botTokenEnvVar = tg.botTokenEnvVar;
+        if (tg.pollingIntervalMs !== undefined)
+          config.telegram.pollingIntervalMs = tg.pollingIntervalMs;
+        if (tg.allowedUserIds !== undefined) config.telegram.allowedUserIds = tg.allowedUserIds;
+        if (tg.dmPolicy !== undefined) config.telegram.dmPolicy = tg.dmPolicy;
+        if (tg.groupPolicy !== undefined) config.telegram.groupPolicy = tg.groupPolicy;
+        saveRuntimeConfig(stateDir, config);
+        requiresRestart = true;
+      } catch (err) {
+        logger.error(
+          `[config] PATCH telegram error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return apiError(
+          c,
+          500,
+          "CONFIG_PATCH_FAILED",
+          err instanceof Error ? err.message : "Failed to update telegram config",
+        );
+      }
+    }
+
+    // Restart if needed and instance is running
+    if (requiresRestart && instance!.state === "running") {
+      try {
+        await lifecycle.restart(slug);
+      } catch (err) {
+        logger.warn(
+          `[config] restart after config patch failed for ${slug}: ${err instanceof Error ? err.message : "unknown"}`,
+        );
+      }
+    }
+
+    logger.info(`[config] PATCH /config slug=${slug} patch=${JSON.stringify(patch)}`);
+    return c.json({ ok: true, requiresRestart, hotReloaded: false, warnings: [] });
+  });
+
+  // PATCH /api/instances/:slug/config/telegram/token — write/remove bot token in .env
+  app.patch("/api/instances/:slug/config/telegram/token", async (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
+
+    let token: string | null;
+    try {
+      const raw = (await c.req.json()) as { token?: unknown };
+      if (raw.token !== undefined && raw.token !== null && typeof raw.token !== "string") {
+        return apiError(c, 400, "INVALID_BODY", "token must be a string or null");
+      }
+      token = (raw.token as string | null | undefined) ?? null;
+    } catch {
+      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+    }
+
+    const stateDir = getRuntimeStateDir(slug);
+    const envPath = `${stateDir}/.env`;
+
+    try {
+      // Read existing .env or start empty
+      let envContent = "";
+      try {
+        envContent = await fs.readFile(envPath, "utf-8");
+      } catch {
+        /* file doesn't exist yet */
+      }
+
+      // Get the botTokenEnvVar name from config (default: TELEGRAM_BOT_TOKEN)
+      let varName = "TELEGRAM_BOT_TOKEN";
+      if (runtimeConfigExists(stateDir)) {
+        try {
+          const config = loadRuntimeConfig(stateDir);
+          varName = config.telegram.botTokenEnvVar;
+        } catch {
+          /* use default */
+        }
+      }
+
+      // Parse, update, serialize
+      const lines = envContent.split("\n");
+      const filtered = lines.filter((l) => !l.startsWith(`${varName}=`) && l !== "");
+      if (token !== null) {
+        filtered.push(`${varName}=${token}`);
+      }
+      const newContent = filtered.join("\n") + (filtered.length > 0 ? "\n" : "");
+
+      // Ensure stateDir exists
+      await fs.mkdir(stateDir, { recursive: true });
+      await fs.writeFile(envPath, newContent, { mode: 0o600 });
+
+      logger.info(`[config] PATCH telegram/token slug=${slug} configured=${token !== null}`);
+      return c.json({ configured: token !== null });
     } catch (err) {
       logger.error(
-        `[config] PATCH /config error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+        `[config] PATCH telegram/token error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
       );
-      return apiError(
-        c,
-        500,
-        "CONFIG_PATCH_FAILED",
-        err instanceof Error ? err.message : "Failed to apply config",
-      );
+      return apiError(c, 500, "TOKEN_WRITE_FAILED", "Failed to write token to .env");
     }
   });
 
   // GET /api/providers — list available providers with their model catalogs
   app.get("/api/providers", async (c) => {
-    const existing = registry.listInstances();
-    let canReuseCredentials = false;
-    let sourceInstance: string | null = null;
-
     const providers: ProviderInfo[] = PROVIDER_CATALOG.map((p) => ({
       ...p,
       models: [...p.models],
     }));
 
-    if (existing.length > 0) {
-      const source = existing[0]!;
-      sourceInstance = source.slug;
-
-      try {
-        const raw = await conn.readFile(source.config_path);
-        const cfg = JSON.parse(raw) as {
-          models?: { providers?: Record<string, unknown> };
-          auth?: { profiles?: Record<string, { provider?: string }> };
-        };
-
-        const cfgProviderIds = new Set(Object.keys(cfg.models?.providers ?? {}));
-
-        const profiles = cfg.auth?.profiles ?? {};
-        for (const profile of Object.values(profiles)) {
-          if (profile.provider === "opencode") cfgProviderIds.add("opencode");
-        }
-
-        if (cfgProviderIds.size > 0) {
-          canReuseCredentials = true;
-          for (const p of providers) {
-            if (cfgProviderIds.has(p.id)) {
-              p.requiresKey = false;
-              p.label =
-                p.id === "opencode"
-                  ? `${p.label} (via ${source.slug})`
-                  : `${p.label} (reuse from ${source.slug})`;
-              p.isDefault = true;
-            }
-          }
-        }
-      } catch {
-        // Non-fatal: source config unreadable → fall through to defaults
-      }
-    }
-
     if (!providers.some((p) => p.isDefault)) {
       providers[0]!.isDefault = true;
     }
 
-    return c.json({ canReuseCredentials, sourceInstance, providers });
+    return c.json({ canReuseCredentials: false, sourceInstance: null, providers });
   });
 }

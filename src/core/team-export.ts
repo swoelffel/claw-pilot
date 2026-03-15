@@ -3,7 +3,7 @@
 
 import { stringify } from "yaml";
 import type { ServerConnection } from "../server/connection.js";
-import type { Registry, InstanceRecord, AgentRecord, AgentLinkRecord } from "./registry.js";
+import type { Registry, InstanceRecord, AgentRecord } from "./registry.js";
 import { AgentSync } from "./agent-sync.js";
 import {
   EXPORTABLE_FILES,
@@ -17,18 +17,14 @@ import {
 // Config extraction helpers
 // ---------------------------------------------------------------------------
 
-/** Fields we extract per-agent from openclaw.json. */
+/** Fields we extract per-agent from runtime.json agents[]. */
 const AGENT_CONFIG_KEYS = [
   "model",
-  "identity",
+  "permissions",
   "subagents",
-  "heartbeat",
-  "sandbox",
   "tools",
   "params",
   "skills",
-  "humanDelay",
-  "groupChat",
 ] as const;
 
 function pick(
@@ -47,27 +43,25 @@ function pick(
 }
 
 /**
- * Extract per-agent config from the parsed openclaw.json.
- * For the default (main) agent, reads from agents.defaults.
- * For other agents, reads from agents.list[].
+ * Extract per-agent config from the parsed runtime.json.
+ * Reads from the agents[] array entries.
  */
 function extractAgentConfig(
-  openclawConfig: Record<string, unknown>,
+  runtimeConfig: Record<string, unknown>,
   agentId: string,
   isDefault: boolean,
 ): Record<string, unknown> | undefined {
-  const agents = openclawConfig["agents"] as
-    | { defaults?: Record<string, unknown>; list?: Array<Record<string, unknown>> }
-    | undefined;
+  const agents = (runtimeConfig["agents"] ?? []) as Array<Record<string, unknown>>;
 
-  if (isDefault) {
-    const d = agents?.defaults;
-    if (!d) return undefined;
-    return pick(d, AGENT_CONFIG_KEYS);
+  // For the default agent, try to find it in the agents array
+  const entry = agents.find((a) => a["id"] === agentId);
+  if (!entry) {
+    // If default agent and not in array, extract defaultModel as config
+    if (isDefault && runtimeConfig["defaultModel"]) {
+      return { model: runtimeConfig["defaultModel"] };
+    }
+    return undefined;
   }
-
-  const entry = agents?.list?.find((a) => a["id"] === agentId);
-  if (!entry) return undefined;
   return pick(entry, AGENT_CONFIG_KEYS);
 }
 
@@ -134,9 +128,9 @@ export async function exportInstanceTeam(
   const agentSync = new AgentSync(conn, registry);
   await agentSync.sync(instance);
 
-  // 2. Read openclaw.json for config extraction
+  // 2. Read runtime.json for config extraction
   const configRaw = await conn.readFile(instance.config_path);
-  const openclawConfig = JSON.parse(configRaw) as Record<string, unknown>;
+  const runtimeConfig = JSON.parse(configRaw) as Record<string, unknown>;
 
   // 3. Load agents
   const agents = registry.listAgents(instance.slug);
@@ -145,7 +139,7 @@ export async function exportInstanceTeam(
   const teamAgents: TeamAgent[] = [];
   for (const agent of agents) {
     const files = registry.listAgentFiles(agent.id);
-    const config = extractAgentConfig(openclawConfig, agent.agent_id, agent.is_default === 1);
+    const config = extractAgentConfig(runtimeConfig, agent.agent_id, agent.is_default === 1);
     teamAgents.push(buildTeamAgent(agent, files, config));
   }
 
@@ -157,21 +151,9 @@ export async function exportInstanceTeam(
     type: l.link_type,
   }));
 
-  // 6. Extract defaults and agent_to_agent from openclaw.json
-  const agentsConf = openclawConfig["agents"] as { defaults?: Record<string, unknown> } | undefined;
-  const toolsConf = openclawConfig["tools"] as
-    | { agentToAgent?: { enabled: boolean; allow: string[] } }
-    | undefined;
-
-  const defaults = agentsConf?.defaults
-    ? pick(agentsConf.defaults, ["model", "subagents"])
-    : undefined;
-
-  const agentToAgent = toolsConf?.agentToAgent
-    ? {
-        enabled: toolsConf.agentToAgent.enabled,
-        allow: toolsConf.agentToAgent.allow,
-      }
+  // 6. Extract defaults from runtime.json
+  const defaults = runtimeConfig["defaultModel"]
+    ? { model: runtimeConfig["defaultModel"] }
     : undefined;
 
   // 7. Assemble TeamFile
@@ -180,7 +162,6 @@ export async function exportInstanceTeam(
     exported_at: new Date().toISOString(),
     source: instance.slug,
     defaults: defaults as TeamFile["defaults"],
-    agent_to_agent: agentToAgent,
     agents: teamAgents,
     links: teamLinks,
   };
@@ -199,7 +180,7 @@ export function exportBlueprintTeam(registry: Registry, blueprintId: number): Te
   // 1. Load agents
   const agents = registry.listBlueprintAgents(blueprintId);
 
-  // 2. Build team agents (no openclaw.json for blueprints)
+  // 2. Build team agents (no runtime.json for blueprints)
   const teamAgents: TeamAgent[] = [];
   for (const agent of agents) {
     const files = registry.listAgentFiles(agent.id);

@@ -15,8 +15,6 @@ import { HealthChecker } from "../core/health.js";
 import { Lifecycle } from "../core/lifecycle.js";
 import { Monitor } from "./monitor.js";
 import { resolveXdgRuntimeDir } from "../lib/xdg.js";
-import { UpdateChecker } from "../core/update-checker.js";
-import { Updater } from "../core/updater.js";
 import { SelfUpdateChecker } from "../core/self-update-checker.js";
 import { SelfUpdater } from "../core/self-updater.js";
 import { createRateLimiter } from "./rate-limit.js";
@@ -33,6 +31,16 @@ import { registerBlueprintRoutes } from "./routes/blueprints.js";
 import { registerTeamRoutes } from "./routes/teams.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerAuthRoutes } from "./routes/auth.js";
+
+/** Result returned by buildDashboardApp — contains the wired Hono app and cleanup helpers. */
+export interface DashboardAppResult {
+  app: Hono;
+  deps: RouteDeps;
+  /** Monitor instance — used by startDashboard to wire the WebSocket server. */
+  monitor: Monitor;
+  /** Call this to clear the session cleanup interval and stop the monitor. */
+  cleanup: () => void;
+}
 
 // Resolve dist/ui/ relative to this bundle chunk.
 // When bundled: this file is at <install>/dist/server-*.mjs
@@ -80,8 +88,21 @@ function safeTokenCompare(a: string, b: string): boolean {
   return timingSafeEqual(Buffer.from(a, "utf-8"), Buffer.from(b, "utf-8"));
 }
 
-export async function startDashboard(options: DashboardOptions): Promise<void> {
-  const { port, token, registry, conn, sessionStore, db } = options;
+/**
+ * Build the wired Hono app without starting an HTTP server.
+ * Useful for testing: call this to get the app, then start a server manually
+ * on port 0 to get an OS-assigned port.
+ *
+ * Does NOT:
+ * - Call serve()
+ * - Create a WebSocket server
+ * - Register a SIGTERM handler
+ *
+ * DOES:
+ * - Set up the session cleanup interval (returned via cleanup())
+ */
+export async function buildDashboardApp(options: DashboardOptions): Promise<DashboardAppResult> {
+  const { token, registry, conn, sessionStore, db } = options;
   // Capture startup timestamp for uptime reporting
   const startedAt = Date.now();
   const app = new Hono();
@@ -91,9 +112,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
 
   const health = new HealthChecker(conn, registry, xdgRuntimeDir);
   const lifecycle = new Lifecycle(conn, registry, xdgRuntimeDir);
-  const monitor = new Monitor(health);
-  const updateChecker = new UpdateChecker(conn);
-  const updater = new Updater(conn, registry, lifecycle);
+  const monitor = new Monitor(health, undefined, db);
   const selfUpdateChecker = new SelfUpdateChecker();
   const selfUpdater = new SelfUpdater(conn);
   const tokenCache = new TokenCache(conn);
@@ -133,7 +152,6 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   app.use("/api/*", createRateLimiter({ maxRequests: 60, windowMs: 60_000 }));
   // Stricter rate limit on expensive operations
   app.use("/api/instances", createRateLimiter({ maxRequests: 10, windowMs: 60_000 }));
-  app.use("/api/openclaw/update", createRateLimiter({ maxRequests: 1, windowMs: 300_000 }));
   app.use(
     "/api/self/update",
     createRateLimiter({ maxRequests: 1, windowMs: constants.SELF_UPDATE_RATE_LIMIT_MS }),
@@ -145,8 +163,6 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     conn,
     health,
     lifecycle,
-    updateChecker,
-    updater,
     selfUpdateChecker,
     selfUpdater,
     tokenCache,
@@ -255,8 +271,23 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     }
   });
 
+  const cleanup = () => {
+    clearInterval(cleanupInterval);
+    monitor.stop();
+  };
+
+  return { app, deps, monitor, cleanup };
+}
+
+export async function startDashboard(options: DashboardOptions): Promise<void> {
+  const { port, token, db } = options;
+
+  const { app, monitor, cleanup } = await buildDashboardApp(options);
+
   // Start HTTP server
   const server = serve({ fetch: app.fetch, port });
+
+  monitor.start();
 
   // WebSocket server
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -271,12 +302,9 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     monitor.addClient(ws);
   });
 
-  monitor.start();
-
   // Graceful shutdown — clean up resources on SIGTERM (systemd stop)
   process.once("SIGTERM", () => {
-    monitor.stop();
-    clearInterval(cleanupInterval);
+    cleanup();
     server.close();
     db.close();
     process.exit(0);

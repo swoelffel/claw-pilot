@@ -311,7 +311,8 @@ export class CreateDialog extends DialogMixin(LitElement) {
       const data: ProvidersResponse = await fetchProviders();
       this._providers = data.providers;
       this._canReuseCredentials = data.canReuseCredentials;
-      const defaultProvider = data.providers.find((p) => p.isDefault) ?? data.providers[0] ?? null;
+      const defaultProvider =
+        data.providers.find((p: ProviderInfo) => p.isDefault) ?? data.providers[0] ?? null;
       this._selectedProvider = defaultProvider;
       this._model = defaultProvider?.defaultModel ?? defaultProvider?.models[0] ?? "";
     } catch (err) {
@@ -435,7 +436,7 @@ export class CreateDialog extends DialogMixin(LitElement) {
             `
           : html`
               <div class="spinner-msg">
-                ${msg("This may take 20-30 seconds (systemd start + health check)", {
+                ${msg("This may take 20-30 seconds (startup + health check)", {
                   id: "spinner-wait",
                 })}
               </div>
@@ -578,7 +579,7 @@ export class CreateDialog extends DialogMixin(LitElement) {
 
         <hr class="divider" />
 
-        <!-- Port -->
+        <!-- Configuration -->
         <div class="section">
           <div class="section-label">${msg("Configuration", { id: "section-configuration" })}</div>
           <div class="field">

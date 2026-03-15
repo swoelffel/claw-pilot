@@ -14,13 +14,14 @@ import type {
   CreateBlueprintRequest,
   InstanceConfig,
   ConfigPatchResult,
-  OpenClawUpdateStatus,
   DeviceList,
   TelegramPairingList,
   AgentMetaPatch,
   DiscoverResult,
   AdoptResult,
   SkillsListResponse,
+  RuntimeSession,
+  RuntimeChatResponse,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 
@@ -423,16 +424,6 @@ export async function updateBlueprintSpawnLinks(
   );
 }
 
-// --- OpenClaw update API ---
-
-export async function fetchUpdateStatus(): Promise<OpenClawUpdateStatus> {
-  return apiFetch<OpenClawUpdateStatus>("/openclaw/update-status");
-}
-
-export async function triggerUpdate(): Promise<{ ok: boolean; jobId: string }> {
-  return apiFetch<{ ok: boolean; jobId: string }>("/openclaw/update", { method: "POST" });
-}
-
 // --- Devices API ---
 
 export async function fetchInstanceDevices(slug: string): Promise<DeviceList> {
@@ -465,6 +456,41 @@ export async function approveTelegramPairing(slug: string, code: string): Promis
   });
 }
 
+export async function patchTelegramToken(
+  slug: string,
+  token: string | null,
+): Promise<{ configured: boolean }> {
+  return apiFetch<{ configured: boolean }>(`/instances/${slug}/config/telegram/token`, {
+    method: "PATCH",
+    body: JSON.stringify({ token }),
+  });
+}
+
+export async function rejectTelegramPairing(slug: string, code: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/instances/${slug}/telegram/pairing/${code}`, {
+    method: "DELETE",
+  });
+}
+
+export async function patchChannelsConfig(
+  slug: string,
+  channels: {
+    telegram?: {
+      enabled?: boolean;
+      botTokenEnvVar?: string;
+      pollingIntervalMs?: number;
+      allowedUserIds?: number[];
+      dmPolicy?: "pairing" | "open" | "allowlist" | "disabled";
+      groupPolicy?: "open" | "allowlist" | "disabled";
+    };
+  },
+): Promise<ConfigPatchResult> {
+  return apiFetch<ConfigPatchResult>(`/instances/${slug}/config`, {
+    method: "PATCH",
+    body: JSON.stringify({ channels }),
+  });
+}
+
 // --- Discover instances API ---
 
 export async function discoverInstances(): Promise<DiscoverResult> {
@@ -476,4 +502,27 @@ export async function adoptInstances(slugs: string[]): Promise<AdoptResult> {
     method: "POST",
     body: JSON.stringify({ slugs }),
   });
+}
+
+// --- Runtime chat API ---
+
+export async function fetchRuntimeSessions(slug: string): Promise<RuntimeSession[]> {
+  const data = await apiFetch<{ sessions: RuntimeSession[] }>(
+    `/instances/${slug}/runtime/sessions`,
+  );
+  return data.sessions;
+}
+
+export async function postRuntimeChat(
+  slug: string,
+  body: { message: string; sessionId?: string; agentId?: string; model?: string },
+): Promise<RuntimeChatResponse> {
+  return apiFetch<RuntimeChatResponse>(`/instances/${slug}/runtime/chat`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function getRuntimeChatStreamUrl(slug: string, sessionId: string): string {
+  return `/api/instances/${slug}/runtime/chat/stream?sessionId=${encodeURIComponent(sessionId)}`;
 }

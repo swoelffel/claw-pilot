@@ -24,21 +24,15 @@ export function statusCommand(): Command {
         console.log(`  Display name : ${instance?.display_name ?? "-"}`);
         console.log(`  Port         : ${status.port}`);
         console.log(
-          `  Gateway      : ${
-            status.gateway === "healthy" ? chalk.green("healthy") : chalk.red("unhealthy")
-          }`,
-        );
-        console.log(
-          `  Service      : ${
-            status.systemd === "active"
-              ? chalk.green("active")
-              : status.systemd === "failed"
-                ? chalk.red("failed")
-                : chalk.yellow(status.systemd)
+          `  State        : ${
+            status.state === "running"
+              ? chalk.green("running")
+              : status.state === "error"
+                ? chalk.red("error")
+                : chalk.yellow(status.state)
           }`,
         );
         if (status.pid) console.log(`  PID          : ${status.pid}`);
-        if (status.uptime) console.log(`  Since        : ${status.uptime}`);
         console.log(`  Agents       : ${status.agentCount ?? "?"}`);
         console.log(
           `  Telegram     : ${

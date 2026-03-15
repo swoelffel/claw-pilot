@@ -860,4 +860,225 @@ export const agentDetailPanelStyles = css`
     opacity: 0.45;
     cursor: not-allowed;
   }
+
+  /* ── Heartbeat tab ────────────────────────────────────────────────────── */
+
+  .hb-tab {
+    padding: 4px 0;
+  }
+
+  .hb-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin: 14px 0 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--bg-border);
+  }
+
+  .hb-field-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .hb-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+
+  .hb-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .hb-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+
+  .hb-select,
+  .hb-input {
+    background: var(--bg-hover);
+    border: 1px solid var(--bg-border);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 12px;
+    padding: 5px 8px;
+    outline: none;
+    font-family: var(--font-ui);
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .hb-select:focus,
+  .hb-input:focus {
+    border-color: var(--accent);
+    box-shadow: var(--focus-ring);
+  }
+
+  .hb-time-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .hb-time-sep {
+    color: var(--text-muted);
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  .hb-radio-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 8px;
+  }
+
+  .hb-radio-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .hb-textarea {
+    width: 100%;
+    background: var(--bg-hover);
+    border: 1px solid var(--bg-border);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-family: var(--font-ui);
+    padding: 8px 10px;
+    outline: none;
+    resize: vertical;
+    box-sizing: border-box;
+    line-height: 1.5;
+    margin-bottom: 8px;
+  }
+
+  .hb-textarea:focus {
+    border-color: var(--accent);
+    box-shadow: var(--focus-ring);
+  }
+
+  /* Toggle (shared with permission overlay) */
+  .toggle-track {
+    position: relative;
+    width: 32px;
+    height: 18px;
+    background: var(--bg-border);
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+
+  .toggle-track.on {
+    background: var(--accent);
+  }
+
+  .toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    background: var(--text-primary);
+    border-radius: 50%;
+    transition: transform 0.2s;
+  }
+
+  .toggle-track.on .toggle-thumb {
+    transform: translateX(14px);
+  }
+
+  /* Tick history */
+  .hb-tick-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--bg-border);
+    font-size: 12px;
+  }
+
+  .hb-tick-row:last-child {
+    border-bottom: none;
+  }
+
+  .hb-tick-status {
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .hb-tick-status.ok {
+    color: var(--state-running);
+  }
+
+  .hb-tick-status.alert {
+    color: var(--state-warning);
+  }
+
+  .hb-tick-time {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+  }
+
+  .hb-tick-text {
+    font-size: 11px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+
+  .hb-empty {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-style: italic;
+    margin: 8px 0;
+  }
+
+  .hb-save-bar {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--bg-border);
+  }
+
+  .btn-add-item {
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px dashed var(--bg-border);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    transition:
+      color 0.15s,
+      border-color 0.15s;
+    margin-top: 2px;
+  }
+
+  .btn-add-item:hover {
+    color: var(--accent);
+    border-color: var(--accent-border);
+  }
 `;

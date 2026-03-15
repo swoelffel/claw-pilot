@@ -8,6 +8,10 @@ import { registerLifecycleRoutes } from "./lifecycle.js";
 import { registerConfigRoutes } from "./config.js";
 import { registerAgentRoutes } from "./agents.js";
 import { registerDeviceRoutes } from "./devices.js";
+import { registerRuntimeRoutes } from "./runtime.js";
+import { registerMcpRoutes } from "./mcp.js";
+import { registerPermissionRoutes } from "./permissions.js";
+import { registerTelegramRoutes } from "./telegram.js";
 
 export function registerInstanceRoutes(app: Hono, deps: RouteDeps): void {
   // /discover must be registered before /:slug to avoid Hono route collision
@@ -16,4 +20,8 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps): void {
   registerConfigRoutes(app, deps);
   registerAgentRoutes(app, deps);
   registerDeviceRoutes(app, deps);
+  registerRuntimeRoutes(app, deps);
+  registerMcpRoutes(app, deps);
+  registerPermissionRoutes(app, deps);
+  registerTelegramRoutes(app, deps);
 }

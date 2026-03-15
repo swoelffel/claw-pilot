@@ -1,7 +1,7 @@
 {
   "name": "claw-pilot",
-  "version": "0.19.0",
-  "description": "Orchestrator for OpenClaw multi-instance clusters",
+  "version": "0.28.5-beta",
+  "description": "Orchestrator for claw-runtime multi-agent instances",
   "type": "module",
   "license": "MIT",
   "bin": {
@@ -14,6 +14,7 @@
     "build:ui": "vite build ui/",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "lint": "oxlint src/",
     "lint:ui": "oxlint ui/src/",
     "lint:all": "pnpm lint && pnpm lint:ui",
@@ -44,8 +45,14 @@
     ]
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.58",
+    "@ai-sdk/google": "^3.0.43",
+    "@ai-sdk/openai": "^3.0.41",
     "@inquirer/prompts": "^7",
     "@lit/localize": "^0.12.2",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@openrouter/ai-sdk-provider": "^2.3.0",
+    "ai": "^6.0.116",
     "better-sqlite3": "^11",
     "chalk": "^5",
     "cli-table3": "^0.6",

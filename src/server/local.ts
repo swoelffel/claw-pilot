@@ -59,8 +59,7 @@ export class LocalConnection implements ServerConnection {
     try {
       return await fs.readFile(filePath, "utf-8");
     } catch (err) {
-      // On Linux, fall back to `sudo cat` for files owned by another user
-      // (e.g. openclaw instance configs in /opt/openclaw/.openclaw-*/openclaw.json).
+      // On Linux, fall back to `sudo cat` for files owned by another user.
       // Only retry on permission errors — propagate all other failures as-is.
       if (isLinux) {
         const code = (err as NodeJS.ErrnoException).code;

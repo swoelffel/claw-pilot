@@ -1,4 +1,12 @@
-export type SidebarSection = "general" | "agents" | "telegram" | "plugins" | "gateway" | "devices";
+export type SidebarSection =
+  | "general"
+  | "agents"
+  | "runtime"
+  | "channels"
+  | "devices"
+  | "mcp"
+  | "permissions"
+  | "config";
 
 export interface InstanceInfo {
   id: number;
@@ -12,13 +20,14 @@ export interface InstanceInfo {
   telegram_bot: string | null;
   default_model: string | null;
   discovered: number;
+  instance_type: "claw-runtime";
   created_at: string;
   updated_at: string;
   // health (from WS updates or /api/instances)
   gateway?: "healthy" | "unhealthy" | "unknown";
-  systemd?: "active" | "inactive" | "failed" | "unknown";
   agentCount?: number;
   pendingDevices?: number;
+  pendingPermissions?: number;
   telegram?: "connected" | "disconnected" | "not_configured";
   // gateway token for zero-friction Control UI login
   gatewayToken?: string | null;
@@ -43,12 +52,19 @@ export interface HealthUpdate {
       /** Pre-computed state from backend — use directly, do not re-derive */
       state: "running" | "stopped" | "error" | "unknown";
       gateway: "healthy" | "unhealthy" | "unknown";
-      systemd: "active" | "inactive" | "failed" | "unknown";
       pid?: number;
       uptime?: string;
       agentCount?: number;
       pendingDevices?: number;
       telegram?: "connected" | "disconnected" | "not_configured";
+      /** Number of persisted permission rules awaiting a decision */
+      pendingPermissions?: number;
+      /** Number of MCP servers currently connected */
+      mcpConnected?: number;
+      /** Number of agents with heartbeat enabled */
+      heartbeatAgents?: number;
+      /** Number of heartbeat alerts in the last 24h */
+      heartbeatAlerts?: number;
     }>;
   };
 }
@@ -277,8 +293,8 @@ export interface InstanceConfig {
     telegram: {
       enabled: boolean;
       botTokenMasked: string | null;
-      dmPolicy: string;
-      groupPolicy: string;
+      dmPolicy: "pairing" | "open" | "allowlist" | "disabled";
+      groupPolicy: "open" | "allowlist" | "disabled";
       streamMode?: string;
     } | null;
   };
@@ -369,7 +385,6 @@ export interface DiscoveredInstanceInfo {
   port: number;
   agentCount: number;
   gatewayHealthy: boolean;
-  systemdState: string | null;
   telegramBot: string | null;
   defaultModel: string | null;
   source: string;
@@ -401,18 +416,28 @@ export interface SelfUpdateStatus {
   toVersion?: string;
 }
 
-/** Etat de la mise a jour OpenClaw — GET /api/openclaw/update-status */
-export interface OpenClawUpdateStatus {
-  // Versions
-  currentVersion: string | null;
-  latestVersion: string | null;
-  updateAvailable: boolean;
-  // Job en cours (polling)
-  status: "idle" | "running" | "done" | "error";
-  jobId?: string;
-  startedAt?: string;
-  finishedAt?: string;
-  message?: string;
-  fromVersion?: string;
-  toVersion?: string;
+// Runtime chat types
+
+export interface RuntimeSession {
+  id: string;
+  instanceSlug: string;
+  agentId: string;
+  channel: string;
+  state: "active" | "archived";
+  title: string | null;
+  createdAt: string;
+  updatedAt: string;
+  // Champs agrégés (enrichis par le backend depuis rt_messages)
+  totalCostUsd?: number;
+  messageCount?: number;
+  totalTokens?: number;
+}
+
+export interface RuntimeChatResponse {
+  sessionId: string;
+  messageId: string;
+  text: string;
+  tokens: { input: number; output: number };
+  costUsd: number | null;
+  steps: number;
 }

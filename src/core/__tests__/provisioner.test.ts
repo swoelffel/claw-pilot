@@ -24,9 +24,9 @@ vi.mock("../../lib/platform.js", async (importOriginal) => {
     ...actual,
     getServiceManager: () => _mockServiceManager ?? actual.getServiceManager(),
     SERVICE_MANAGER: "systemd" as const,
-    getOpenClawHome: () => "/tmp/openclaw-test-home",
+    getHomeDir: () => "/tmp/openclaw-test-home",
+    getRuntimeStateDir: (slug: string) => `/tmp/openclaw-test-home/.runtime-${slug}`,
     getSystemdDir: () => "/tmp/systemd-test",
-    getSystemdUnit: (slug: string) => `openclaw-${slug}.service`,
   };
 });
 
@@ -38,24 +38,12 @@ vi.mock("../secrets.js", () => ({
   generateGatewayToken: () => "aabbccdd".repeat(6),
 }));
 
-// Mock OpenClawCLI.detect() — we control the return value per test
-let _mockDetectResult: { bin: string; version: string } | null = {
-  bin: "/usr/bin/openclaw",
-  version: "1.0.0",
-};
-
-vi.mock("../openclaw-cli.js", () => ({
-  OpenClawCLI: class {
-    async detect() {
-      return _mockDetectResult;
-    }
-    async installPlugin() {
-      return { stdout: "", stderr: "", exitCode: 0 };
-    }
-  },
+// Mock ensureRuntimeConfig to avoid real filesystem operations
+vi.mock("../../runtime/engine/config-loader.js", () => ({
+  ensureRuntimeConfig: () => {},
 }));
 
-// Mock Lifecycle to avoid real HTTP health checks (waitForHealth polls the gateway)
+// Mock Lifecycle to avoid real daemon spawn
 vi.mock("../lifecycle.js", () => ({
   Lifecycle: class {
     async daemonReload() {}
@@ -116,7 +104,6 @@ beforeEach(() => {
   conn = new MockConnection();
   _mockServiceManager = "systemd";
   _mockVerifyPort = true;
-  _mockDetectResult = { bin: "/usr/bin/openclaw", version: "1.0.0" };
 });
 
 afterEach(() => {
@@ -161,21 +148,14 @@ describe("Provisioner.provision()", () => {
     expect(conn.dirs.has(result.stateDir)).toBe(true);
   });
 
-  it("happy path — openclaw.json and .env are written", async () => {
+  it("happy path — .env is written with gateway token and API key", async () => {
     const { provisioner, serverId } = makeProvisioner();
 
     const result = await provisioner.provision(BASE_ANSWERS, serverId);
 
-    const configPath = path.join(result.stateDir, "openclaw.json");
     const envPath = path.join(result.stateDir, ".env");
 
-    expect(conn.files.has(configPath)).toBe(true);
     expect(conn.files.has(envPath)).toBe(true);
-
-    // Verify config is valid JSON
-    const configContent = conn.files.get(configPath)!;
-    const config = JSON.parse(configContent);
-    expect(config.gateway.port).toBe(18790);
 
     // Verify .env contains the gateway token
     const envContent = conn.files.get(envPath)!;
@@ -225,20 +205,11 @@ describe("Provisioner.provision()", () => {
     );
   });
 
-  it("OpenClaw not found — throws ClawPilotError with code OPENCLAW_NOT_FOUND", async () => {
-    _mockDetectResult = null;
-    const { provisioner, serverId } = makeProvisioner();
-
-    await expect(provisioner.provision(BASE_ANSWERS, serverId)).rejects.toThrow(
-      expect.objectContaining({ code: "OPENCLAW_NOT_FOUND" }),
-    );
-  });
-
   it("rollback on failure — state dir is removed when writeFile throws after mkdir", async () => {
     const { provisioner, serverId } = makeProvisioner();
 
     // The state dir that will be created
-    const stateDir = path.join("/tmp/openclaw-test-home", ".openclaw-test-inst");
+    const stateDir = path.join("/tmp/openclaw-test-home", ".runtime-test-inst");
 
     // Make writeFile throw on the first call (writing .env)
     let writeCount = 0;

@@ -6,8 +6,6 @@ import type {
   ConfigPatchResult,
   ProviderInfo,
   ProviderEntry,
-  TelegramPairingList,
-  TelegramPairingRequest,
   AgentBuilderInfo,
   AgentLink,
   PanelContext,
@@ -17,16 +15,19 @@ import {
   fetchInstanceConfig,
   patchInstanceConfig,
   fetchProviders,
-  fetchTelegramPairing,
-  approveTelegramPairing,
   fetchBuilderData,
 } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { badgeStyles, buttonStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
 import { instanceSettingsStyles } from "../styles/instance-settings.styles.js";
-import "./instance-devices.js";
 import "./agent-detail-panel.js";
+import "./runtime-chat.js";
+import "./instance-devices.js";
+import "./instance-mcp.js";
+import "./instance-permissions.js";
+import "./instance-config.js";
+import "./instance-channels.js";
 
 @localized()
 @customElement("cp-instance-settings")
@@ -70,15 +71,13 @@ export class InstanceSettings extends LitElement {
   @state() private _updatedKeys: Record<string, string> = {};
   @state() private _showAddProvider = false;
 
-  // ── Telegram state ────────────────────────────────────────────────────────
+  // ── MCP badge state ───────────────────────────────────────────────────────
 
-  @state() private _editingBotToken = false;
-  @state() private _addingTelegram = false;
-  @state() private _telegramPairing: TelegramPairingList | null = null;
-  @state() private _telegramPairingLoading = false;
-  @state() private _telegramPairingError = "";
-  @state() private _approvingCode: string | null = null;
-  private _pairingPollTimer: ReturnType<typeof setInterval> | null = null;
+  @state() private _mcpConnectedCount = 0;
+
+  // ── Permissions badge state ───────────────────────────────────────────────
+
+  @state() private _pendingPermissionsCount = 0;
 
   // ── Agent panel state ─────────────────────────────────────────────────────
 
@@ -88,7 +87,6 @@ export class InstanceSettings extends LitElement {
   @state() private _loadingAgentPanel = false;
   @state() private _agentPanelError = "";
   @state() private _panelExpanded = false;
-  @state() private _pendingDeviceCount = 0;
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -99,18 +97,14 @@ export class InstanceSettings extends LitElement {
     this._loadProviderCatalog();
   }
 
-  override disconnectedCallback(): void {
-    super.disconnectedCallback();
-    this._stopPairingPoll();
-  }
-
   // ── Config management ────────────────────────────────────────────────────
 
   private async _loadConfig(): Promise<void> {
     this._loading = true;
     this._error = "";
     try {
-      this._config = await fetchInstanceConfig(this.slug);
+      const config = await fetchInstanceConfig(this.slug);
+      this._config = config;
       this._dirty = {};
       this._heartbeatEveryError = "";
       this._addedProviders = [];
@@ -118,7 +112,6 @@ export class InstanceSettings extends LitElement {
       this._updatedKeys = {};
       this._editingKeyForProvider = null;
       this._showAddProvider = false;
-      this._addingTelegram = false;
     } catch (err) {
       this._error = userMessage(err);
     } finally {
@@ -232,46 +225,6 @@ export class InstanceSettings extends LitElement {
     }
     if (Object.keys(agentDefaults).length > 0) patch["agentDefaults"] = agentDefaults;
 
-    // Channels
-    if (
-      this._isDirty("channels.telegram.enabled") ||
-      this._isDirty("channels.telegram.botToken") ||
-      this._isDirty("channels.telegram.dmPolicy") ||
-      this._isDirty("channels.telegram.groupPolicy") ||
-      this._isDirty("channels.telegram.streamMode")
-    ) {
-      const tg: Record<string, unknown> = {};
-      if (this._isDirty("channels.telegram.enabled"))
-        tg["enabled"] = this._dirty["channels.telegram.enabled"];
-      if (this._isDirty("channels.telegram.botToken"))
-        tg["botToken"] = this._dirty["channels.telegram.botToken"];
-      if (this._isDirty("channels.telegram.dmPolicy"))
-        tg["dmPolicy"] = this._dirty["channels.telegram.dmPolicy"];
-      if (this._isDirty("channels.telegram.groupPolicy"))
-        tg["groupPolicy"] = this._dirty["channels.telegram.groupPolicy"];
-      if (this._isDirty("channels.telegram.streamMode"))
-        tg["streamMode"] = this._dirty["channels.telegram.streamMode"];
-      patch["channels"] = { telegram: tg };
-    }
-
-    // Plugins
-    if (
-      this._isDirty("plugins.mem0.enabled") ||
-      this._isDirty("plugins.mem0.ollamaUrl") ||
-      this._isDirty("plugins.mem0.qdrantHost") ||
-      this._isDirty("plugins.mem0.qdrantPort")
-    ) {
-      const m: Record<string, unknown> = {};
-      if (this._isDirty("plugins.mem0.enabled")) m["enabled"] = this._dirty["plugins.mem0.enabled"];
-      if (this._isDirty("plugins.mem0.ollamaUrl"))
-        m["ollamaUrl"] = this._dirty["plugins.mem0.ollamaUrl"];
-      if (this._isDirty("plugins.mem0.qdrantHost"))
-        m["qdrantHost"] = this._dirty["plugins.mem0.qdrantHost"];
-      if (this._isDirty("plugins.mem0.qdrantPort"))
-        m["qdrantPort"] = this._dirty["plugins.mem0.qdrantPort"];
-      patch["plugins"] = { mem0: m };
-    }
-
     // Gateway
     if (this._isDirty("gateway.reloadMode") || this._isDirty("gateway.reloadDebounceMs")) {
       const gw: Record<string, unknown> = {};
@@ -313,8 +266,6 @@ export class InstanceSettings extends LitElement {
         }
         // Reload config to get fresh state
         await this._loadConfig();
-        this._editingBotToken = false;
-        this._addingTelegram = false;
       }
     } catch (err) {
       this._showToast(userMessage(err), "error");
@@ -326,8 +277,6 @@ export class InstanceSettings extends LitElement {
   private _cancel(): void {
     this._dirty = {};
     this._heartbeatEveryError = "";
-    this._editingBotToken = false;
-    this._addingTelegram = false;
     this._addedProviders = [];
     this._removedProviders = [];
     this._updatedKeys = {};
@@ -395,56 +344,6 @@ export class InstanceSettings extends LitElement {
 
   private _scrollToSection(section: SidebarSection): void {
     this._activeSection = section;
-    if (section === "telegram") {
-      void this._loadTelegramPairing();
-    } else {
-      this._stopPairingPoll();
-    }
-  }
-
-  // ── Telegram management ───────────────────────────────────────────────────
-
-  private async _loadTelegramPairing(): Promise<void> {
-    this._telegramPairingLoading = true;
-    this._telegramPairingError = "";
-    try {
-      this._telegramPairing = await fetchTelegramPairing(this.slug);
-      if ((this._telegramPairing.pending.length ?? 0) > 0) {
-        this._startPairingPoll();
-      } else {
-        this._stopPairingPoll();
-      }
-    } catch (err) {
-      this._telegramPairingError = err instanceof Error ? err.message : "Failed to load pairing";
-    } finally {
-      this._telegramPairingLoading = false;
-    }
-  }
-
-  private _startPairingPoll(): void {
-    if (this._pairingPollTimer !== null) return;
-    this._pairingPollTimer = setInterval(() => {
-      void this._loadTelegramPairing();
-    }, 10_000);
-  }
-
-  private _stopPairingPoll(): void {
-    if (this._pairingPollTimer !== null) {
-      clearInterval(this._pairingPollTimer);
-      this._pairingPollTimer = null;
-    }
-  }
-
-  private async _approvePairing(code: string): Promise<void> {
-    this._approvingCode = code;
-    try {
-      await approveTelegramPairing(this.slug, code);
-      await this._loadTelegramPairing();
-    } catch (err) {
-      this._telegramPairingError = err instanceof Error ? err.message : "Approve failed";
-    } finally {
-      this._approvingCode = null;
-    }
   }
 
   // ── Provider management ───────────────────────────────────────────────────
@@ -489,19 +388,22 @@ export class InstanceSettings extends LitElement {
     const sections: Array<{ id: SidebarSection; label: string; badge?: number }> = [
       { id: "general", label: msg("General", { id: "settings-general" }) },
       { id: "agents", label: msg("Agents", { id: "settings-agents" }) },
+      { id: "runtime", label: "Runtime" },
+      { id: "channels" as const, label: msg("Channels", { id: "settings-channels" }) },
+      { id: "devices", label: msg("Devices", { id: "settings-devices" }) },
       {
-        id: "telegram" as const,
-        label: "Telegram",
-        ...((this._telegramPairing?.pending.length ?? 0) > 0 && {
-          badge: this._telegramPairing!.pending.length,
-        }),
+        id: "mcp" as const,
+        label: "MCP",
+        ...(this._mcpConnectedCount > 0 ? { badge: this._mcpConnectedCount } : {}),
       },
-      { id: "plugins" as const, label: "Plugins" },
-      { id: "gateway" as const, label: "Gateway" },
       {
-        id: "devices" as const,
-        label: "Devices",
-        ...(this._pendingDeviceCount > 0 && { badge: this._pendingDeviceCount }),
+        id: "permissions" as const,
+        label: msg("Permissions", { id: "settings-permissions" }),
+        ...(this._pendingPermissionsCount > 0 ? { badge: this._pendingPermissionsCount } : {}),
+      },
+      {
+        id: "config",
+        label: msg("Config", { id: "settings-config" }),
       },
     ];
 
@@ -515,7 +417,9 @@ export class InstanceSettings extends LitElement {
                 @click=${() => this._scrollToSection(s.id)}
               >
                 ${s.label}
-                ${s.badge !== undefined ? html`<span class="nav-badge">${s.badge}</span>` : nothing}
+                ${s.badge !== undefined
+                  ? html`<span class="sidebar-mcp-badge">${s.badge}</span>`
+                  : nothing}
               </button>
             `,
           )}
@@ -712,6 +616,44 @@ export class InstanceSettings extends LitElement {
               </p>
             `
           : nothing}
+      </div>
+    `;
+  }
+
+  private _renderRuntimeSection() {
+    return html`
+      <div class="section">
+        <div class="section-title">Runtime</div>
+        <div class="section-desc">
+          This instance runs on <strong>claw-runtime</strong> — the native claw-pilot agent engine.
+        </div>
+
+        <div class="field-group" style="margin-top: 20px;">
+          <div class="field-row">
+            <span class="field-label">Engine</span>
+            <span class="field-value" style="font-family: var(--font-mono); font-size: 13px;">
+              claw-runtime
+            </span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">Config file</span>
+            <span
+              class="field-value"
+              style="font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);"
+            >
+              runtime.json
+            </span>
+          </div>
+        </div>
+
+        <div style="margin-top: 28px;">
+          <div class="section-header">Chat</div>
+          <div
+            style="height: 480px; border: 1px solid var(--bg-border); border-radius: var(--radius-md); overflow: hidden;"
+          >
+            <cp-runtime-chat .slug=${this.slug}></cp-runtime-chat>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -1070,541 +1012,6 @@ export class InstanceSettings extends LitElement {
     `;
   }
 
-  private _renderTelegramSection() {
-    const c = this._config!;
-    const tg = c.channels.telegram;
-
-    return html`
-      <div class="section">
-        <div class="section-header">Telegram</div>
-        ${tg
-          ? html`
-              <div class="field-grid">
-                <div class="field full-width">
-                  <div class="toggle-row">
-                    <span class="toggle-label">${msg("Enabled", { id: "settings-enabled" })}</span>
-                    <button
-                      class="toggle ${this._getDirty("channels.telegram.enabled", tg.enabled)
-                        ? "on"
-                        : ""}"
-                      @click=${() =>
-                        this._setDirty(
-                          "channels.telegram.enabled",
-                          !this._getDirty("channels.telegram.enabled", tg.enabled),
-                        )}
-                    ></button>
-                  </div>
-                </div>
-                <div class="field full-width">
-                  <label class="field-label">
-                    Bot Token
-                    <span class="restart-badge">hot-reload</span>
-                  </label>
-                  ${this._editingBotToken
-                    ? html`
-                        <div class="secret-row">
-                          <input
-                            class="field-input mono changed"
-                            type="text"
-                            placeholder=${msg("Enter new bot token", {
-                              id: "settings-enter-bot-token",
-                            })}
-                            @input=${(e: Event) =>
-                              this._setDirty(
-                                "channels.telegram.botToken",
-                                (e.target as HTMLInputElement).value,
-                              )}
-                          />
-                          <button
-                            class="btn-reveal"
-                            @click=${() => {
-                              this._editingBotToken = false;
-                              delete this._dirty["channels.telegram.botToken"];
-                              this.requestUpdate();
-                            }}
-                          >
-                            ${msg("Cancel", { id: "settings-cancel" })}
-                          </button>
-                        </div>
-                      `
-                    : html`
-                        <div class="secret-row">
-                          <div class="field-readonly" style="flex:1">
-                            ${tg.botTokenMasked ?? msg("Not set", { id: "settings-not-set" })}
-                          </div>
-                          <button
-                            class="btn-reveal"
-                            @click=${() => {
-                              this._editingBotToken = true;
-                            }}
-                          >
-                            ${msg("Change", { id: "settings-change" })}
-                          </button>
-                        </div>
-                      `}
-                </div>
-                <div class="field">
-                  <label class="field-label">DM Policy</label>
-                  <select
-                    class="field-input ${this._isDirty("channels.telegram.dmPolicy")
-                      ? "changed"
-                      : ""}"
-                    @change=${(e: Event) =>
-                      this._setDirty(
-                        "channels.telegram.dmPolicy",
-                        (e.target as HTMLSelectElement).value,
-                      )}
-                  >
-                    ${["pairing", "open", "allowlist", "disabled"].map(
-                      (p) => html`
-                        <option
-                          value=${p}
-                          ?selected=${p ===
-                          this._getDirty("channels.telegram.dmPolicy", tg.dmPolicy)}
-                        >
-                          ${p}
-                        </option>
-                      `,
-                    )}
-                  </select>
-                </div>
-                <div class="field">
-                  <label class="field-label">Group Policy</label>
-                  <select
-                    class="field-input ${this._isDirty("channels.telegram.groupPolicy")
-                      ? "changed"
-                      : ""}"
-                    @change=${(e: Event) =>
-                      this._setDirty(
-                        "channels.telegram.groupPolicy",
-                        (e.target as HTMLSelectElement).value,
-                      )}
-                  >
-                    ${["allowlist", "open", "disabled"].map(
-                      (p) => html`
-                        <option
-                          value=${p}
-                          ?selected=${p ===
-                          this._getDirty("channels.telegram.groupPolicy", tg.groupPolicy)}
-                        >
-                          ${p}
-                        </option>
-                      `,
-                    )}
-                  </select>
-                </div>
-                <div class="field">
-                  <label class="field-label">Stream Mode</label>
-                  <select
-                    class="field-input ${this._isDirty("channels.telegram.streamMode")
-                      ? "changed"
-                      : ""}"
-                    @change=${(e: Event) =>
-                      this._setDirty(
-                        "channels.telegram.streamMode",
-                        (e.target as HTMLSelectElement).value,
-                      )}
-                  >
-                    ${["partial", "full", "off"].map(
-                      (p) => html`
-                        <option
-                          value=${p}
-                          ?selected=${p ===
-                          this._getDirty(
-                            "channels.telegram.streamMode",
-                            tg.streamMode ?? "partial",
-                          )}
-                        >
-                          ${p}
-                        </option>
-                      `,
-                    )}
-                  </select>
-                </div>
-              </div>
-              ${this._renderTelegramPairingSection(tg.dmPolicy)}
-            `
-          : this._addingTelegram
-            ? this._renderTelegramInitForm()
-            : html`
-                <p style="color:var(--text-muted);font-size:13px;margin:0 0 12px">
-                  ${msg("Telegram is not configured for this instance.", {
-                    id: "settings-telegram-not-configured",
-                  })}
-                </p>
-                <button
-                  class="btn btn-ghost"
-                  @click=${() => {
-                    this._addingTelegram = true;
-                  }}
-                >
-                  ${msg("Configure Telegram", { id: "settings-configure-telegram" })}
-                </button>
-              `}
-      </div>
-    `;
-  }
-
-  private _renderTelegramPairingSection(dmPolicy: string) {
-    // Only relevant when dmPolicy is "pairing"
-    const effectiveDmPolicy = this._isDirty("channels.telegram.dmPolicy")
-      ? (this._dirty["channels.telegram.dmPolicy"] as string)
-      : dmPolicy;
-
-    if (effectiveDmPolicy !== "pairing") return nothing;
-
-    const pairing = this._telegramPairing;
-    const pending = pairing?.pending ?? [];
-    const approvedCount = pairing?.approved.length ?? 0;
-
-    return html`
-      <div style="margin-top:28px">
-        <div
-          class="section-header"
-          style="display:flex;align-items:center;justify-content:space-between"
-        >
-          <span>Pairing Requests</span>
-          <button
-            class="btn-reveal"
-            ?disabled=${this._telegramPairingLoading}
-            @click=${() => void this._loadTelegramPairing()}
-          >
-            ${this._telegramPairingLoading ? "…" : "↻"}
-          </button>
-        </div>
-
-        ${this._telegramPairingError
-          ? html`
-              <div class="error-banner" style="margin-bottom:12px">
-                ${this._telegramPairingError}
-              </div>
-            `
-          : nothing}
-        ${!pairing && !this._telegramPairingLoading
-          ? html`
-              <p style="color:var(--text-muted);font-size:13px">
-                ${msg("Loading pairing requests…", { id: "settings-pairing-loading" })}
-              </p>
-            `
-          : nothing}
-        ${pairing && pending.length === 0
-          ? html`
-              <p style="color:var(--text-muted);font-size:13px">
-                ${msg("No pending pairing requests.", { id: "settings-pairing-empty" })}
-              </p>
-            `
-          : nothing}
-        ${pending.map((req: TelegramPairingRequest) => {
-          const isApproving = this._approvingCode === req.code;
-          const username = req.meta?.username ? `@${req.meta.username}` : req.id;
-          const age = this._formatAge(req.lastSeenAt ?? req.createdAt);
-          return html`
-            <div class="provider-card" style="margin-bottom:8px">
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-                <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
-                  <span style="font-size:13px;font-weight:600;color:var(--text-primary)"
-                    >${username}</span
-                  >
-                  <span style="font-size:11px;font-family:var(--font-mono);color:var(--text-muted)"
-                    >${req.id}</span
-                  >
-                </div>
-                <div style="display:flex;align-items:center;gap:12px;flex-shrink:0">
-                  <span
-                    style="font-size:13px;font-family:var(--font-mono);font-weight:700;color:var(--text-primary);letter-spacing:0.08em"
-                    >${req.code}</span
-                  >
-                  <span style="font-size:11px;color:var(--text-muted)">${age}</span>
-                  <button
-                    class="btn btn-primary"
-                    style="font-size:12px;padding:5px 12px"
-                    ?disabled=${isApproving}
-                    @click=${() => void this._approvePairing(req.code)}
-                  >
-                    ${isApproving ? "…" : msg("Approve", { id: "settings-approve" })}
-                  </button>
-                </div>
-              </div>
-            </div>
-          `;
-        })}
-        ${pairing
-          ? html`
-              <p style="font-size:12px;color:var(--text-muted);margin-top:8px">
-                ${msg("Approved senders", { id: "settings-approved-senders" })}:
-                <strong style="color:var(--text-secondary)">${approvedCount}</strong>
-              </p>
-            `
-          : nothing}
-      </div>
-    `;
-  }
-
-  private _formatAge(isoDate: string): string {
-    const diff = Date.now() - new Date(isoDate).getTime();
-    const mins = Math.floor(diff / 60_000);
-    if (mins < 1) return "just now";
-    if (mins < 60) return `${mins}m ago`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h ago`;
-    return `${Math.floor(hours / 24)}d ago`;
-  }
-
-  private _renderTelegramInitForm() {
-    const token = (this._dirty["channels.telegram.botToken"] as string | undefined) ?? "";
-    const dmPolicy = (this._dirty["channels.telegram.dmPolicy"] as string | undefined) ?? "pairing";
-    const groupPolicy =
-      (this._dirty["channels.telegram.groupPolicy"] as string | undefined) ?? "allowlist";
-    const streamMode =
-      (this._dirty["channels.telegram.streamMode"] as string | undefined) ?? "partial";
-
-    const cancel = () => {
-      this._addingTelegram = false;
-      delete this._dirty["channels.telegram.botToken"];
-      delete this._dirty["channels.telegram.dmPolicy"];
-      delete this._dirty["channels.telegram.groupPolicy"];
-      delete this._dirty["channels.telegram.streamMode"];
-      delete this._dirty["channels.telegram.enabled"];
-      this.requestUpdate();
-    };
-
-    const add = async () => {
-      if (!token.trim()) return;
-      this._setDirty("channels.telegram.enabled", true);
-      await this._save();
-    };
-
-    return html`
-      <div class="field-grid">
-        <div class="field full-width">
-          <label class="field-label">
-            Bot Token
-            <span class="restart-badge">hot-reload</span>
-          </label>
-          <div class="secret-row">
-            <input
-              class="field-input mono ${token ? "changed" : ""}"
-              type="text"
-              placeholder=${msg("Paste token from BotFather", { id: "settings-paste-bot-token" })}
-              .value=${token}
-              @input=${(e: Event) =>
-                this._setDirty("channels.telegram.botToken", (e.target as HTMLInputElement).value)}
-            />
-            <a
-              href="https://t.me/BotFather"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="btn-reveal"
-              title=${msg("Open BotFather in Telegram", { id: "settings-open-botfather" })}
-              >BotFather ↗</a
-            >
-          </div>
-        </div>
-        <div class="field">
-          <label class="field-label">DM Policy</label>
-          <select
-            class="field-input"
-            @change=${(e: Event) =>
-              this._setDirty("channels.telegram.dmPolicy", (e.target as HTMLSelectElement).value)}
-          >
-            ${["pairing", "open", "allowlist", "disabled"].map(
-              (p) => html` <option value=${p} ?selected=${p === dmPolicy}>${p}</option> `,
-            )}
-          </select>
-        </div>
-        <div class="field">
-          <label class="field-label">Group Policy</label>
-          <select
-            class="field-input"
-            @change=${(e: Event) =>
-              this._setDirty(
-                "channels.telegram.groupPolicy",
-                (e.target as HTMLSelectElement).value,
-              )}
-          >
-            ${["allowlist", "open", "disabled"].map(
-              (p) => html` <option value=${p} ?selected=${p === groupPolicy}>${p}</option> `,
-            )}
-          </select>
-        </div>
-        <div class="field">
-          <label class="field-label">Stream Mode</label>
-          <select
-            class="field-input"
-            @change=${(e: Event) =>
-              this._setDirty("channels.telegram.streamMode", (e.target as HTMLSelectElement).value)}
-          >
-            ${["partial", "full", "off"].map(
-              (p) => html` <option value=${p} ?selected=${p === streamMode}>${p}</option> `,
-            )}
-          </select>
-        </div>
-        <div
-          class="field full-width"
-          style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px"
-        >
-          <button class="btn btn-ghost" @click=${cancel}>
-            ${msg("Cancel", { id: "settings-cancel" })}
-          </button>
-          <button class="btn btn-primary" ?disabled=${!token.trim() || this._saving} @click=${add}>
-            ${this._saving
-              ? msg("Saving…", { id: "settings-saving" })
-              : msg("Add", { id: "settings-add" })}
-          </button>
-        </div>
-      </div>
-    `;
-  }
-
-  private _renderPluginsSection() {
-    const c = this._config!;
-    const mem0 = c.plugins.mem0;
-
-    return html`
-      <div class="section">
-        <div class="section-header">
-          Plugins
-          <span class="restart-badge" style="margin-left:8px">restart</span>
-        </div>
-        ${mem0
-          ? html`
-              <div
-                style="margin-bottom:8px;font-size:13px;font-weight:600;color:var(--text-secondary)"
-              >
-                mem0
-              </div>
-              <div class="field-grid">
-                <div class="field full-width">
-                  <div class="toggle-row">
-                    <span class="toggle-label">${msg("Enabled", { id: "settings-enabled" })}</span>
-                    <button
-                      class="toggle ${this._getDirty("plugins.mem0.enabled", mem0.enabled)
-                        ? "on"
-                        : ""}"
-                      @click=${() =>
-                        this._setDirty(
-                          "plugins.mem0.enabled",
-                          !this._getDirty("plugins.mem0.enabled", mem0.enabled),
-                        )}
-                    ></button>
-                  </div>
-                </div>
-                <div class="field">
-                  <label class="field-label">Ollama URL</label>
-                  <input
-                    class="field-input mono ${this._isDirty("plugins.mem0.ollamaUrl")
-                      ? "changed"
-                      : ""}"
-                    type="text"
-                    .value=${this._getDirty("plugins.mem0.ollamaUrl", mem0.ollamaUrl)}
-                    @input=${(e: Event) =>
-                      this._setDirty(
-                        "plugins.mem0.ollamaUrl",
-                        (e.target as HTMLInputElement).value,
-                      )}
-                  />
-                </div>
-                <div class="field">
-                  <label class="field-label">Qdrant Host</label>
-                  <input
-                    class="field-input mono ${this._isDirty("plugins.mem0.qdrantHost")
-                      ? "changed"
-                      : ""}"
-                    type="text"
-                    .value=${this._getDirty("plugins.mem0.qdrantHost", mem0.qdrantHost)}
-                    @input=${(e: Event) =>
-                      this._setDirty(
-                        "plugins.mem0.qdrantHost",
-                        (e.target as HTMLInputElement).value,
-                      )}
-                  />
-                </div>
-                <div class="field">
-                  <label class="field-label">Qdrant Port</label>
-                  <input
-                    class="field-input mono ${this._isDirty("plugins.mem0.qdrantPort")
-                      ? "changed"
-                      : ""}"
-                    type="number"
-                    .value=${String(this._getDirty("plugins.mem0.qdrantPort", mem0.qdrantPort))}
-                    @input=${(e: Event) =>
-                      this._setDirty(
-                        "plugins.mem0.qdrantPort",
-                        Number((e.target as HTMLInputElement).value),
-                      )}
-                  />
-                </div>
-              </div>
-            `
-          : html`
-              <p style="color:var(--text-muted);font-size:13px">
-                ${msg("No plugins configured.", { id: "settings-no-plugins" })}
-              </p>
-            `}
-      </div>
-    `;
-  }
-
-  private _renderGatewaySection() {
-    const c = this._config!;
-
-    return html`
-      <div class="section">
-        <div class="section-header">Gateway</div>
-        <div class="field-grid">
-          <div class="field">
-            <label class="field-label">${msg("Port", { id: "settings-port" })}</label>
-            <div class="field-readonly">:${c.gateway.port}</div>
-          </div>
-          <div class="field">
-            <label class="field-label">Bind</label>
-            <div class="field-readonly">${c.gateway.bind}</div>
-          </div>
-          <div class="field">
-            <label class="field-label">Auth Mode</label>
-            <div class="field-readonly">${c.gateway.authMode}</div>
-          </div>
-          <div class="field">
-            <label class="field-label">Reload Mode</label>
-            <select
-              class="field-input ${this._isDirty("gateway.reloadMode") ? "changed" : ""}"
-              @change=${(e: Event) =>
-                this._setDirty("gateway.reloadMode", (e.target as HTMLSelectElement).value)}
-            >
-              ${["hybrid", "poll", "off"].map(
-                (m) => html`
-                  <option
-                    value=${m}
-                    ?selected=${m === this._getDirty("gateway.reloadMode", c.gateway.reloadMode)}
-                  >
-                    ${m}
-                  </option>
-                `,
-              )}
-            </select>
-          </div>
-          <div class="field">
-            <label class="field-label">Reload Debounce (ms)</label>
-            <input
-              class="field-input ${this._isDirty("gateway.reloadDebounceMs") ? "changed" : ""}"
-              type="number"
-              min="100"
-              max="5000"
-              .value=${String(
-                this._getDirty("gateway.reloadDebounceMs", c.gateway.reloadDebounceMs),
-              )}
-              @input=${(e: Event) =>
-                this._setDirty(
-                  "gateway.reloadDebounceMs",
-                  Number((e.target as HTMLInputElement).value),
-                )}
-            />
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
   // ── Agent panel ───────────────────────────────────────────────────────────
 
   private async _openAgentPanel(agentId: string): Promise<void> {
@@ -1673,7 +1080,7 @@ export class InstanceSettings extends LitElement {
           </span>
         </div>
         <div class="header-right">
-          ${this._hasChanges && this._activeSection !== "devices"
+          ${this._hasChanges
             ? html`
                 <button class="btn btn-ghost" @click=${this._cancel} ?disabled=${this._saving}>
                   ${msg("Cancel", { id: "settings-cancel" })}
@@ -1695,23 +1102,57 @@ export class InstanceSettings extends LitElement {
       <div class="settings-layout">
         ${this._renderSidebar()}
         <div class="content">
-          ${this._saveWarning && this._activeSection !== "devices"
+          ${this._saveWarning
             ? html`<div class="save-warning">⚠ ${this._saveWarning}</div>`
             : nothing}
           ${this._activeSection === "general" ? this._renderGeneralSection() : nothing}
           ${this._activeSection === "agents" ? this._renderAgentsSection() : nothing}
-          ${this._activeSection === "telegram" ? this._renderTelegramSection() : nothing}
-          ${this._activeSection === "plugins" ? this._renderPluginsSection() : nothing}
-          ${this._activeSection === "gateway" ? this._renderGatewaySection() : nothing}
+          ${this._activeSection === "runtime" ? this._renderRuntimeSection() : nothing}
+          ${this._activeSection === "channels"
+            ? html`
+                <div class="section">
+                  <cp-instance-channels
+                    .instanceSlug=${this.slug}
+                    .config=${this._config}
+                  ></cp-instance-channels>
+                </div>
+              `
+            : nothing}
           ${this._activeSection === "devices"
             ? html`
-                <cp-instance-devices
-                  .slug=${this.slug}
-                  .active=${true}
-                  @pending-count-changed=${(e: CustomEvent<number>) => {
-                    this._pendingDeviceCount = e.detail;
-                  }}
-                ></cp-instance-devices>
+                <div class="section">
+                  <cp-instance-devices .slug=${this.slug} .active=${true}></cp-instance-devices>
+                </div>
+              `
+            : nothing}
+          ${this._activeSection === "mcp"
+            ? html`
+                <div class="section">
+                  <cp-instance-mcp
+                    .slug=${this.slug}
+                    .active=${true}
+                    @mcp-connected-count-changed=${(e: CustomEvent<number>) => {
+                      this._mcpConnectedCount = e.detail;
+                    }}
+                  ></cp-instance-mcp>
+                </div>
+              `
+            : nothing}
+          ${this._activeSection === "permissions"
+            ? html`
+                <div class="section">
+                  <cp-instance-permissions
+                    .slug=${this.slug}
+                    .active=${true}
+                  ></cp-instance-permissions>
+                </div>
+              `
+            : nothing}
+          ${this._activeSection === "config"
+            ? html`
+                <div class="section">
+                  <cp-instance-config .slug=${this.slug} .active=${true}></cp-instance-config>
+                </div>
               `
             : nothing}
         </div>

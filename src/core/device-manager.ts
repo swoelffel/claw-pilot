@@ -1,66 +1,68 @@
 // src/core/device-manager.ts
 //
-// Reads device files and wraps openclaw devices approve/revoke commands.
-// Always uses ServerConnection — never child_process or fs directly.
+// Manages device pairing codes via the rt_pairing_codes DB table.
+// Uses the rt_pairing_codes DB table for pairing code management.
 
-import type { ServerConnection } from "../server/connection.js";
-import type { DeviceList, PendingDevice, PairedDevice } from "./devices.js";
-import { shellEscape } from "../lib/shell.js";
-import { constants } from "../lib/constants.js";
+import type Database from "better-sqlite3";
+import {
+  createPairingCode,
+  listPairingCodes,
+  deletePairingCode,
+  getPairingCode,
+  type PairingCode,
+} from "../runtime/channel/pairing.js";
+
+export interface PairingCodeInfo {
+  code: string;
+  channel: string;
+  used: boolean;
+  used_at: string | null;
+  expires_at: string;
+  created_at: string;
+}
 
 export class DeviceManager {
-  constructor(private conn: ServerConnection) {}
+  constructor(private db: Database.Database) {}
 
   /**
-   * Read pending.json + paired.json from stateDir.
-   * Returns empty lists if files don't exist.
-   *
-   * OpenClaw stores devices as either an array OR a keyed object
-   * (format evolved across versions). Both are handled.
+   * List active (unused, non-expired) pairing codes for an instance.
+   * Returns an array of PairingCodeInfo.
    */
-  async list(stateDir: string): Promise<DeviceList> {
-    const pendingPath = `${stateDir}/devices/pending.json`;
-    const pairedPath = `${stateDir}/devices/paired.json`;
-
-    let pending: PendingDevice[] = [];
-    let paired: PairedDevice[] = [];
-
-    try {
-      const raw = await this.conn.readFile(pendingPath);
-      const parsed = JSON.parse(raw) as PendingDevice[] | Record<string, PendingDevice>;
-      pending = Array.isArray(parsed) ? parsed : Object.values(parsed);
-    } catch {
-      // File doesn't exist or is unreadable — return empty list
-    }
-
-    try {
-      const raw = await this.conn.readFile(pairedPath);
-      const parsed = JSON.parse(raw) as PairedDevice[] | Record<string, PairedDevice>;
-      paired = Array.isArray(parsed) ? parsed : Object.values(parsed);
-    } catch {
-      // File doesn't exist or is unreadable — return empty list
-    }
-
-    return { pending, paired };
+  list(instanceSlug: string): PairingCodeInfo[] {
+    const codes = listPairingCodes(this.db, instanceSlug);
+    return codes.map(toPairingCodeInfo);
   }
 
-  /** Approve a pending device request via `openclaw devices approve <requestId>` */
-  async approve(stateDir: string, requestId: string): Promise<void> {
-    const result = await this.conn.exec(
-      `${constants.OPENCLAW_PATH_PREFIX} && OPENCLAW_STATE_DIR=${stateDir} openclaw devices approve ${shellEscape(requestId)}`,
-    );
-    if (result.exitCode !== 0) {
-      throw new Error(result.stderr || "approve failed");
-    }
+  /**
+   * Create a new pairing code for an instance.
+   */
+  create(
+    instanceSlug: string,
+    options?: { channel?: string; ttlMinutes?: number },
+  ): PairingCodeInfo {
+    const code = createPairingCode(this.db, instanceSlug, options);
+    return toPairingCodeInfo(code);
   }
 
-  /** Revoke a paired device via `openclaw devices revoke <deviceId>` */
-  async revoke(stateDir: string, deviceId: string): Promise<void> {
-    const result = await this.conn.exec(
-      `${constants.OPENCLAW_PATH_PREFIX} && OPENCLAW_STATE_DIR=${stateDir} openclaw devices revoke ${shellEscape(deviceId)}`,
-    );
-    if (result.exitCode !== 0) {
-      throw new Error(result.stderr || "revoke failed");
-    }
+  /**
+   * Revoke (delete) a pairing code.
+   * Returns true if the code existed and was deleted, false otherwise.
+   */
+  revoke(_instanceSlug: string, code: string): boolean {
+    const existing = getPairingCode(this.db, code);
+    if (!existing) return false;
+    deletePairingCode(this.db, code);
+    return true;
   }
+}
+
+function toPairingCodeInfo(code: PairingCode): PairingCodeInfo {
+  return {
+    code: code.code,
+    channel: code.channel,
+    used: code.used,
+    used_at: null, // rt_pairing_codes doesn't track used_at separately
+    expires_at: code.expiresAt.toISOString(),
+    created_at: code.createdAt.toISOString(),
+  };
 }

@@ -1,0 +1,24 @@
+services:
+  claw-pilot:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.vm01
+    container_name: claw-pilot-dev
+    volumes:
+      - .:/app
+      - node_modules_docker:/app/node_modules
+      - dist_docker:/app/dist
+      - claw_pilot_data:/home/openclaw/.claw-pilot
+    ports:
+      - "19000:19000"
+      - "18789-18838:18789-18838"
+    env_file:
+      - .env.local
+    environment:
+      - CLAW_PILOT_ENV=docker
+      - NODE_ENV=development
+
+volumes:
+  node_modules_docker:
+  dist_docker:
+  claw_pilot_data:

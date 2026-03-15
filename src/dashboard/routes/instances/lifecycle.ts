@@ -8,7 +8,6 @@ import type { WizardAnswers } from "../../../core/config-generator.js";
 import { Destroyer } from "../../../core/destroyer.js";
 import { Provisioner } from "../../../core/provisioner.js";
 import { PortAllocator } from "../../../core/port-allocator.js";
-import { PairingManager } from "../../../core/pairing.js";
 import { ClawPilotError, InstanceNotFoundError } from "../../../lib/errors.js";
 
 export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
@@ -175,7 +174,6 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
     const defaultModel = body["defaultModel"];
     const provider = body["provider"];
     const apiKey = body["apiKey"];
-
     if (
       typeof slug !== "string" ||
       !/^[a-z][a-z0-9-]*$/.test(slug) ||
@@ -237,13 +235,6 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
       const provisioner = new Provisioner(conn, registry, portAllocator);
       const blueprintId = typeof body.blueprintId === "number" ? body.blueprintId : undefined;
       const result = await provisioner.provision(answers, server.id, blueprintId);
-
-      try {
-        const pairing = new PairingManager(conn, registry);
-        await pairing.bootstrapDevicePairing(slug as string);
-      } catch {
-        // Pairing is best-effort — don't fail the whole request
-      }
 
       return c.json(result, 201);
     } catch (err) {

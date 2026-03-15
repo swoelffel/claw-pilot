@@ -11,7 +11,7 @@ import type { TeamFile } from "../team-schema.js";
 import type { InstanceRecord } from "../registry.js";
 
 // ---------------------------------------------------------------------------
-// Mock platform.js to avoid systemd calls during restartDaemon
+// Mock platform.js to avoid real process spawning during lifecycle.restart()
 // ---------------------------------------------------------------------------
 
 vi.mock("../../lib/platform.js", async (importOriginal) => {
@@ -21,8 +21,20 @@ vi.mock("../../lib/platform.js", async (importOriginal) => {
     getServiceManager: () => "systemd" as const,
     SERVICE_MANAGER: "systemd" as const,
     getSystemdUnit: (slug: string) => `openclaw-${slug}.service`,
+    getRuntimeStateDir: (slug: string) => `/opt/openclaw/.openclaw-${slug}`,
+    getRuntimePidPath: (stateDir: string) => `${stateDir}/runtime.pid`,
+    // stopRuntime: getRuntimePid returns null → nothing to stop
+    getRuntimePid: () => null,
+    // startRuntime: isRuntimeRunning returns true → already running, returns immediately
+    isRuntimeRunning: () => true,
+    isDocker: () => false,
   };
 });
+
+// Mock ensureRuntimeConfig to avoid real filesystem operations
+vi.mock("../../runtime/engine/config-loader.js", () => ({
+  ensureRuntimeConfig: () => {},
+}));
 
 // ---------------------------------------------------------------------------
 // Test setup
@@ -50,15 +62,13 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 const STATE_DIR = "/opt/openclaw/.openclaw-test";
-const CONFIG_PATH = `${STATE_DIR}/openclaw.json`;
+const CONFIG_PATH = `${STATE_DIR}/runtime.json`;
 
-/** Minimal openclaw.json for instance tests */
-const MINIMAL_OPENCLAW_JSON = JSON.stringify({
-  agents: {
-    defaults: { model: "claude-3-5-sonnet-20241022" },
-    list: [],
-  },
-  gateway: { port: 18790 },
+/** Minimal runtime.json for instance tests */
+const MINIMAL_RUNTIME_JSON = JSON.stringify({
+  defaultModel: "claude-3-5-sonnet-20241022",
+  agents: [],
+  port: 18790,
 });
 
 /** A minimal valid TeamFile with 2 agents and 1 link */
@@ -117,7 +127,7 @@ function seedInstance(slug = "test-inst"): InstanceRecord {
     port: 18790,
     configPath: CONFIG_PATH,
     stateDir: STATE_DIR,
-    systemdUnit: `openclaw-${slug}.service`,
+    systemdUnit: `claw-runtime-${slug}`,
   });
 }
 
@@ -248,7 +258,7 @@ describe("importBlueprintTeam()", () => {
 describe("importInstanceTeam()", () => {
   it("dry-run — returns dry_run summary without DB writes", async () => {
     const instance = seedInstance();
-    conn.files.set(CONFIG_PATH, MINIMAL_OPENCLAW_JSON);
+    conn.files.set(CONFIG_PATH, MINIMAL_RUNTIME_JSON);
 
     const team = makeTeam();
     const result = await importInstanceTeam(
@@ -277,7 +287,7 @@ describe("importInstanceTeam()", () => {
 
   it("dry-run — conn.writeFile is NOT called", async () => {
     const instance = seedInstance();
-    conn.files.set(CONFIG_PATH, MINIMAL_OPENCLAW_JSON);
+    conn.files.set(CONFIG_PATH, MINIMAL_RUNTIME_JSON);
 
     const writeFileSpy = vi.spyOn(conn, "writeFile");
 
@@ -297,7 +307,7 @@ describe("importInstanceTeam()", () => {
 
   it("happy path — DB transaction runs, agents are in registry", async () => {
     const instance = seedInstance();
-    conn.files.set(CONFIG_PATH, MINIMAL_OPENCLAW_JSON);
+    conn.files.set(CONFIG_PATH, MINIMAL_RUNTIME_JSON);
 
     const team = makeTeam();
     const result = await importInstanceTeam(db, registry, conn, instance, team, "/run/user/1000");
@@ -316,16 +326,16 @@ describe("importInstanceTeam()", () => {
     expect(agentIds).toContain("helper");
   });
 
-  it("happy path — conn.writeFile is called for openclaw.json", async () => {
+  it("happy path — conn.writeFile is called for runtime.json", async () => {
     const instance = seedInstance();
-    conn.files.set(CONFIG_PATH, MINIMAL_OPENCLAW_JSON);
+    conn.files.set(CONFIG_PATH, MINIMAL_RUNTIME_JSON);
 
     const writeFileSpy = vi.spyOn(conn, "writeFile");
 
     const team = makeSingleAgentTeam();
     await importInstanceTeam(db, registry, conn, instance, team, "/run/user/1000");
 
-    // writeFile should have been called at least once (for openclaw.json)
+    // writeFile should have been called at least once (for runtime.json)
     expect(writeFileSpy).toHaveBeenCalled();
 
     // The config path should have been written
@@ -335,7 +345,7 @@ describe("importInstanceTeam()", () => {
 
   it("happy path — workspace files are written to disk", async () => {
     const instance = seedInstance();
-    conn.files.set(CONFIG_PATH, MINIMAL_OPENCLAW_JSON);
+    conn.files.set(CONFIG_PATH, MINIMAL_RUNTIME_JSON);
 
     const team = makeSingleAgentTeam(); // has SOUL.md for main agent
 
@@ -349,7 +359,7 @@ describe("importInstanceTeam()", () => {
 
   it("happy path — files_written includes YAML files + gap-filled templates", async () => {
     const instance = seedInstance();
-    conn.files.set(CONFIG_PATH, MINIMAL_OPENCLAW_JSON);
+    conn.files.set(CONFIG_PATH, MINIMAL_RUNTIME_JSON);
 
     const team = makeTeam(); // main has SOUL.md (1 file), helper has no files
 
@@ -462,7 +472,7 @@ describe("gap-fill — missing workspace files seeded from templates", () => {
 
   it("instance import — gap-filled files are written to disk", async () => {
     const instance = seedInstance();
-    conn.files.set(CONFIG_PATH, MINIMAL_OPENCLAW_JSON);
+    conn.files.set(CONFIG_PATH, MINIMAL_RUNTIME_JSON);
 
     // Agent with only USER.md — missing 5 other EXPORTABLE_FILES
     const team: TeamFile = {
@@ -497,7 +507,7 @@ describe("gap-fill — missing workspace files seeded from templates", () => {
 
   it("instance import — gap-filled files are also in DB", async () => {
     const instance = seedInstance();
-    conn.files.set(CONFIG_PATH, MINIMAL_OPENCLAW_JSON);
+    conn.files.set(CONFIG_PATH, MINIMAL_RUNTIME_JSON);
 
     const team: TeamFile = {
       version: "1",

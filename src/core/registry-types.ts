@@ -10,9 +10,8 @@ export interface ServerRecord {
   id: number;
   hostname: string;
   ip: string | null;
-  openclaw_home: string;
-  openclaw_bin: string | null;
-  openclaw_version: string | null;
+  /** Home directory for instance state dirs. DB column is still `openclaw_home` (additive-only schema). */
+  home_dir: string;
 }
 
 export interface InstanceRecord {
@@ -28,6 +27,7 @@ export interface InstanceRecord {
   telegram_bot: string | null;
   default_model: string | null;
   discovered: number;
+  instance_type: "claw-runtime";
   created_at: string;
   updated_at: string;
 }

@@ -2,7 +2,6 @@
 import { createHash } from "node:crypto";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
-import { resolveAgentWorkspacePath } from "./agent-workspace.js";
 import { normaliseModel } from "../lib/model-helpers.js";
 import { constants } from "../lib/constants.js";
 
@@ -74,30 +73,28 @@ export class AgentSync {
    * Synchronise the agent roster and workspace files for a given instance.
    *
    * Algorithm:
-   *  1. Read + parse openclaw.json
+   *  1. Read + parse runtime.json
    *  2. Reconcile agents (add / update / remove)
    *  3. For each agent, sync workspace files
-   *  4. Extract and persist agent links (a2a + spawn)
+   *  4. Extract and persist agent links
    *  5. Return a detailed change report
    */
   async sync(instance: InstanceRecord): Promise<AgentSyncResult> {
     // ------------------------------------------------------------------
-    // 1. Read and parse openclaw.json
+    // 1. Read and parse runtime.json
     // ------------------------------------------------------------------
     const configRaw = await this.conn.readFile(instance.config_path);
     const config = JSON.parse(configRaw) as Record<string, unknown>;
 
     // ------------------------------------------------------------------
     // 2. Build the expected agent list from config
+    //    runtime.json uses a flat agents[] array (no agents.defaults/list split)
     // ------------------------------------------------------------------
-    const agentsConf = config["agents"] as Record<string, unknown> | undefined;
-    const agentsDefaults = agentsConf?.["defaults"] as Record<string, unknown> | undefined;
-    const agentsList = (agentsConf?.["list"] ?? []) as Array<Record<string, unknown>>;
-
-    const defaultModel = normaliseModel(agentsDefaults?.["model"]);
+    const agentsList = (config["agents"] ?? []) as Array<Record<string, unknown>>;
+    const defaultModel = normaliseModel(config["defaultModel"]);
     const stateDir = instance.state_dir;
 
-    // Describe each agent from config (same logic as discovery.ts)
+    // Describe each agent from config
     interface ConfigAgent {
       agentId: string;
       name: string;
@@ -110,35 +107,52 @@ export class AgentSync {
 
     const configAgents: ConfigAgent[] = [];
 
-    // Main agent — use defaults.workspace if present
-    const defaultWorkspace = agentsDefaults?.["workspace"] as string | undefined;
-    configAgents.push({
-      agentId: "main",
-      name: (agentsDefaults?.["name"] as string | undefined) ?? "Main",
-      model: defaultModel,
-      workspacePath: resolveAgentWorkspacePath(stateDir, "main", defaultWorkspace, agentsList),
-      isDefault: true,
-      rawBlock: agentsDefaults ?? {},
-    });
+    // If no agents in config, create a synthetic "main" agent
+    if (agentsList.length === 0) {
+      configAgents.push({
+        agentId: "main",
+        name: "Main",
+        model: defaultModel,
+        workspacePath: `${stateDir}/workspaces/workspace`,
+        isDefault: true,
+        // Include defaultModel in rawBlock so the config_hash changes when the model changes
+        rawBlock: { defaultModel: defaultModel ?? null },
+      });
+    }
 
     for (const agent of agentsList) {
       if (!agent["id"]) continue;
       const agentId = agent["id"] as string;
-      // Skip if this entry duplicates the main agent
-      if (agentId === "main") continue;
+      const isDefault =
+        (agent["isDefault"] as boolean | undefined) === true ||
+        (agent["default"] as boolean | undefined) === true ||
+        agentId === "main";
+
+      const explicitWorkspace = agent["workspace"] as string | undefined;
+      let workspacePath: string;
+      if (explicitWorkspace) {
+        workspacePath = explicitWorkspace.startsWith("/")
+          ? explicitWorkspace
+          : `${stateDir}/workspaces/${explicitWorkspace}`;
+      } else {
+        workspacePath = isDefault
+          ? `${stateDir}/workspaces/workspace`
+          : `${stateDir}/workspaces/workspace-${agentId}`;
+      }
+
       configAgents.push({
         agentId,
         name: (agent["name"] as string | undefined) ?? agentId,
         model: normaliseModel(agent["model"]) ?? defaultModel,
-        workspacePath: resolveAgentWorkspacePath(
-          stateDir,
-          agentId,
-          agent["workspace"] as string | undefined,
-          agentsList,
-        ),
-        isDefault: false,
+        workspacePath,
+        isDefault,
         rawBlock: agent,
       });
+    }
+
+    // Ensure at least one default agent exists
+    if (configAgents.length > 0 && !configAgents.some((a) => a.isDefault)) {
+      configAgents[0]!.isDefault = true;
     }
 
     // ------------------------------------------------------------------
@@ -271,37 +285,15 @@ export class AgentSync {
 
     // ------------------------------------------------------------------
     // 5. Extract agent links from config
+    //    runtime.json uses agents[].links[] or agents[].subagents[]
     // ------------------------------------------------------------------
     const links: SyncedLink[] = [];
-
-    // A2A links: tools.agentToAgent.allow[] — each pair (a < b) → one link
-    const tools = config["tools"] as Record<string, unknown> | undefined;
-    const a2aConf = tools?.["agentToAgent"] as Record<string, unknown> | undefined;
-    const a2aAllow = (a2aConf?.["allow"] ?? []) as string[];
-
-    for (let i = 0; i < a2aAllow.length; i++) {
-      for (let j = i + 1; j < a2aAllow.length; j++) {
-        const a = a2aAllow[i]!;
-        const b = a2aAllow[j]!;
-        // Canonical order: alphabetically smaller first
-        const src = a < b ? a : b;
-        const tgt = a < b ? b : a;
-        links.push({ source_agent_id: src, target_agent_id: tgt, link_type: "a2a" });
-      }
-    }
-
-    // Spawn links from each agent in list[].subagents.allowAgents[]
-    // (list entries take precedence — if main has an explicit list entry, skip defaults)
-    const mainListEntry = agentsList.find((a) => a["id"] === "main");
-    const mainHasListSubagents =
-      mainListEntry !== undefined &&
-      Array.isArray(
-        (mainListEntry["subagents"] as Record<string, unknown> | undefined)?.["allowAgents"],
-      );
 
     for (const agent of agentsList) {
       if (!agent["id"]) continue;
       const sourceId = agent["id"] as string;
+
+      // Spawn links from subagents.allowAgents (if present)
       const subagents = agent["subagents"] as Record<string, unknown> | undefined;
       const allowAgents = (subagents?.["allowAgents"] ?? []) as string[];
       for (const target of allowAgents) {
@@ -311,18 +303,19 @@ export class AgentSync {
           link_type: "spawn",
         });
       }
-    }
 
-    // Spawn links from defaults.subagents.allowAgents[] — only if main has no explicit list entry
-    if (!mainHasListSubagents) {
-      const defaultSubagents = agentsDefaults?.["subagents"] as Record<string, unknown> | undefined;
-      const defaultAllowAgents = (defaultSubagents?.["allowAgents"] ?? []) as string[];
-      for (const target of defaultAllowAgents) {
-        links.push({
-          source_agent_id: "main",
-          target_agent_id: target,
-          link_type: "spawn",
-        });
+      // Links from agent.links[] array (if present)
+      const agentLinks = (agent["links"] ?? []) as Array<Record<string, unknown>>;
+      for (const link of agentLinks) {
+        const target = link["target"] as string | undefined;
+        const linkType = (link["type"] as string | undefined) ?? "a2a";
+        if (target) {
+          links.push({
+            source_agent_id: sourceId,
+            target_agent_id: target,
+            link_type: linkType as "a2a" | "spawn",
+          });
+        }
       }
     }
 

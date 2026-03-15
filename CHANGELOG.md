@@ -6,6 +6,184 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.28.5-beta] — 2026-03-15
+
+### Fixed
+
+- **UI Channels — token non persisté depuis l'état C** — dans le panneau configuré (état C), quand aucun token n'était présent, le champ password était visible sans que `_tokenEditMode` soit `true` ; `_saveEdit()` conditionnait l'envoi du token à `_tokenEditMode && _newToken`, donc le token saisi n'était jamais envoyé au backend ; la condition est maintenant `_newToken` seul (le token est envoyé dès qu'il est rempli, que ce soit en mode "Change" ou en saisie initiale)
+
+---
+
+## [0.28.4-beta] — 2026-03-15
+
+### Fixed
+
+- **UI Channels — panneau Telegram affiché par défaut** — sur une installation fraîche, `telegram.enabled: false` sans token faisait quand même passer le composant en état "configuré" (état C), affichant le toggle, les policies et la section pairing ; le composant reste maintenant en état "non configuré" (état A) tant que `enabled: false` ET qu'aucun token n'est présent
+
+---
+
+## [0.28.3-beta] — 2026-03-15
+
+### Fixed
+
+- **Telegram — crash au démarrage si token absent** — sur une installation fraîche, `telegram.enabled: true` dans `runtime.json` sans token dans `.env` faisait crasher le runtime avec `ChannelError: Bot token env var not set` ; `TelegramChannel.connect()` logue maintenant un warning et retourne silencieusement, le channel reste en état `not_configured` jusqu'à ce que le token soit configuré
+
+---
+
+## [0.28.2-beta] — 2026-03-15
+
+### Fixed
+
+- **Lifecycle — crash silencieux au démarrage** — si `claw-runtime` mourait avant d'écrire le PID file (config invalide, erreur MCP, erreur channel), le dashboard attendait 10 s en silence puis affichait "PID file not found" sans aucune indication de la cause réelle ; le child process est maintenant surveillé via l'événement `exit` et l'erreur est levée immédiatement avec le code de sortie et les 20 dernières lignes du log
+- **Lifecycle — stdout/stderr perdus sur macOS** — le process enfant était spawné avec `stdio: "ignore"` sur Darwin, rendant tout diagnostic impossible ; stdout et stderr sont maintenant redirigés vers `<stateDir>/logs/runtime.log` sur toutes les plateformes
+- **Runtime — suppression prématurée du PID file** — en cas d'erreur dans `runtime.start()`, le PID file était supprimé avant que le lifecycle poller ait pu détecter le crash, créant une race condition ; le PID file est maintenant conservé jusqu'au SIGTERM/SIGINT
+
+---
+
+## [0.28.1-beta] — 2026-03-15
+
+### Fixed
+
+- **Telegram — activation ne se sauvegardait pas** — `PATCH /config` pour `channels.telegram` créait silencieusement un `runtime.json` par défaut si absent au lieu d'ignorer le patch ; l'activation est maintenant persistée même sur une instance fraîche
+- **Telegram — config perdue quand `enabled: false`** — `buildInstanceConfig` retournait `telegram: null` quand le bot était désactivé, perdant la visibilité sur le token masqué et les policies ; l'objet telegram est maintenant toujours retourné (jamais null quand `runtime.json` existe)
+- **Telegram — `dmPolicy`/`groupPolicy` non persistés** — les deux champs n'étaient pas dans le schema Zod ni dans le PATCH handler ; ils sont maintenant correctement lus, écrits et retournés
+
+### Added
+
+- **Telegram — workflow de pairing DM** — les utilisateurs non-autorisés qui envoient un message au bot reçoivent automatiquement un code de pairing (`XXXX-XXXX`) ; l'admin approuve en 1 clic depuis Settings → Channels → Telegram → section "Pairing requests" (visible si `dmPolicy === "pairing"`) ; le code est stocké en DB (`rt_pairing_codes`, channel=telegram) avec le `peer_id` et le username
+- **Telegram — routes pairing** — `GET /api/instances/:slug/telegram/pairing` (liste pending + approved), `POST .../approve` (ajoute l'ID à `allowedUserIds`), `DELETE .../pairing/:code` (rejeter)
+- **Telegram — UX Settings refonte** — état A (non configuré → bouton "Configure Telegram"), état B (formulaire d'init avec token + dmPolicy + groupPolicy), état C (édition + section pairing avec poll auto 10s + badge numérique si pending)
+- **Telegram — `groupPolicy`** — nouveau champ (`open` | `allowlist` | `disabled`) dans le schema runtime et dans l'UI
+- **DB — migration v12** — colonne `meta TEXT` dans `rt_pairing_codes` pour stocker le username Telegram du demandeur
+
+---
+
+## [0.28.0-beta] — 2026-03-15
+
+### Added
+
+- **Channels — Section Telegram dans les Settings** — nouvelle section "Channels" dans la sidebar des Settings Instance ; panneau Telegram complet : toggle enable/disable, saisie sécurisée du bot token (écrit dans `<stateDir>/.env`, jamais dans `runtime.json`), env var name, polling interval, DM policy, allowed user IDs ; bannière de restart après modification ; cards "Coming soon" pour WhatsApp et Slack
+- **Channels — Health Telegram réel** — `TelegramChannel.getStatus()` expose l'état réel du poller (`connected` / `disconnected` / `not_configured`) ; `ClawRuntime.getChannelStatuses()` agrège les statuts de tous les channels ; `HealthChecker` lit le statut live si un runtime est actif, sinon déduit depuis `runtime.json`
+- **Channels — botTokenMasked** — `GET /api/instances/:slug/config` retourne désormais `botTokenMasked: "•••...XXXX"` (4 derniers chars) si un token est présent dans `.env`, `null` sinon
+- **Channels — Route PATCH telegram/token** — `PATCH /api/instances/:slug/config/telegram/token` écrit ou supprime le bot token dans `<stateDir>/.env` sans exposer la valeur en clair
+- **Channels — PATCH config channels.telegram** — `PATCH /api/instances/:slug/config` accepte désormais `channels.telegram` (enabled, botTokenEnvVar, pollingIntervalMs, allowedUserIds) ; retourne `requiresRestart: true` si la config Telegram change
+- **Sessions — Badge channel** — la liste des sessions dans `cp-runtime-chat` affiche un badge coloré par channel : `TG` (bleu Telegram), `WEB` (accent), `API` / `CLI` (gris), `INT` (discret)
+- **i18n** — 22 nouvelles clés `channels-*` et `status-telegram-*` traduites en 6 langues (en, fr, de, es, it, pt)
+
+---
+
+## [0.27.1-beta] — 2026-03-15
+
+### Fixed
+
+- **Runtime chat — UNIQUE constraint on session_key** — `createSession()` générait une clé déterministe `"<slug>:<agent>:api:unknown"` pour toutes les sessions sans `peerId`, provoquant un `UNIQUE constraint failed` dès la 2ème session créée depuis le dashboard (erreur 500 sur `POST /runtime/chat`). La clé utilise désormais le `id` nanoid de la session quand `peerId` est absent, garantissant l'unicité de chaque session racine.
+
+---
+
+## [0.27.0-beta.0] — 2026-03-15
+
+### Added
+
+- **Dashboard UX v2 — Permissions interactives** — overlay `cp-permission-request-overlay` monté au niveau racine ; écoute le stream SSE pour les événements `permission.asked` ; file FIFO avec countdown 60s ; boutons Refuser / Refuser+feedback / Autoriser ; toggle persist "cette fois / toujours"
+- **Dashboard UX v2 — Panneau MCP** — nouvelle section "MCP" dans Settings Instance ; affiche les serveurs connectés/déconnectés avec type, nombre d'outils et expand inline de la liste ; polling 30s
+- **Dashboard UX v2 — Sessions avec métriques** — sélecteur de sessions enrichi dans Runtime Chat avec coût USD, nombre de messages, tokens ; barre de stats inline au-dessus du chat
+- **Dashboard UX v2 — Panneau Permissions** — nouvelle section "Permissions" dans Settings Instance ; liste les règles persistées avec révocation ; demandes en attente ; badge rouge si permissions en attente
+- **Dashboard UX v2 — Onglet Heartbeat** — onglet "Heartbeat" dans l'Agent Detail Panel ; formulaire complet (intervalle, heures actives, fuseau, modèle, prompt) ; historique des ticks avec statut ok/alert
+- **Dashboard UX v2 — Onglet Config agent** — onglet "Config" dans l'Agent Detail Panel ; profil d'outils, température, max steps, extended thinking, spawn, timeouts, URLs d'instructions, globs workspace
+- **Dashboard UX v2 — Panneau Config runtime** — nouvelle section "Config" dans Settings Instance ; sous-onglets Modèles (alias), Compaction (seuil, tokens réservés), Sub-agents (profondeur max, max enfants)
+- **Dashboard UX v2 — Session tree** — composant `cp-session-tree` affichant la hiérarchie parent/enfant des sessions avec coût, canal, date relative
+- **Dashboard UX v2 — Bus alerts** — composant `cp-bus-alerts` avec toasts pour doom-loop, heartbeat alert, provider failover, auth failed, agent timeout
+- **Dashboard UX v2 — Badges card enrichis** — badge `⚠ PERM` sur les cards instances si permission en attente
+
+### Backend
+
+- **Routes API permissions** — `GET/DELETE /runtime/permissions`, `POST /runtime/permission/reply` (réponse interactive aux demandes `permission.asked`)
+- **Route heartbeat history** — `GET /runtime/heartbeat/history?agentId=<id>` retourne les ticks heartbeat d'un agent (sessions `channel=internal` avec statut ok/alert)
+- **Extension WS health_update** — payload enrichi avec `pendingPermissions`, `heartbeatAgents`, `heartbeatAlerts`, `mcpConnected`
+- **Sessions enrichies** — `GET /runtime/sessions` agrège `cost_usd`, `message_count`, `total_tokens` depuis `rt_messages`
+
+---
+
+## [0.26.0-beta.0] — 2026-03-15
+
+### Added
+
+- **Pattern Sentinel** — template `HEARTBEAT.md` enrichi avec exemple complet d'agent de surveillance ; `docs/_work/ClawPilot/examples/sentinel-runtime.json` avec configuration de référence (agents main/sentinel/deploy-agent)
+
+---
+
+## [0.25.0] — 2026-03-15
+
+### Added
+
+- **Session enrichie** — `session_key` métier `<slug>:<agentId>:<channel>:<peerId>`, `spawn_depth`, `label`, `metadata` JSON ; lookup O(1) sans scan de table (migration DB v11)
+- **Limites de spawn configurables** — `subagents.maxSpawnDepth` et `maxChildrenPerSession` dans `runtime.json` ; erreurs descriptives si dépassement
+- **File d'attente des sessions** — `ChannelRouter` sérialise les messages concurrents par session (plus de race condition)
+- **Fork de session avec historique** — `forkSession()` copie les messages jusqu'à un point précis
+- **PromptMode minimal** — les sous-agents chargent un subset réduit de DISCOVERY_FILES (économie 2 000–5 000 tokens/appel)
+- **extraSystemPrompt per-run** — contexte parent injecté dans le sous-agent au spawn (qui l'a spawné, profondeur, mission)
+- **Max-steps reminder** — injection d'un `<system-reminder>` au dernier step pour que l'agent conclue proprement
+- **Instructions depuis URLs HTTP** — `instructionUrls` dans `AgentConfigSchema` ; fetch avec timeout 5s, échecs silencieux
+- **Rapport de composition du prompt** — `buildSystemPrompt()` retourne `{ prompt, report }` avec fichiers chargés/skippés, skills injectés, taille totale
+- **Contexte parent A2A** — bloc `## Subagent Context` injecté dans le system prompt du sous-agent
+- **Modes lifecycle A2A** — `lifecycle: "run" | "session"` dans le Task tool ; `"session"` conserve la sous-session active
+- **Mode async A2A** — `mode: "async"` dans le Task tool ; spawn non-bloquant, résultat injecté via `SubagentCompleted` bus event
+- **Double gate de permission A2A** — filtre des agents visibles + vérification à l'exécution
+- **Abort cascade A2A** — annulation du parent propage l'abort au sous-agent
+- **Héritage du modèle parent** — fallback sur le modèle du parent si le sous-agent n'en a pas
+- **Retour enrichi Task tool** — `steps_used`, `tokens_used`, `model` dans la réponse
+- **toolProfile réellement appliqué** — `TOOL_PROFILES` (minimal/messaging/coding/full) filtre les outils built-in
+- **Outils ownerOnly** — `BashTool` et `WriteTool` marqués `ownerOnly: true` ; non disponibles pour les sous-agents internes
+- **Normalisation schémas Gemini** — suppression `anyOf`/`oneOf` pour les providers Google
+- **Doom-loop detection** — 3 appels identiques consécutifs → `DoomLoopDetected` bus event + erreur descriptive
+- **MultiEditTool** — éditions multiples sur un même fichier en un seul appel LLM
+- **Réparation tool calls invalides** — outil `invalid` (hidden) redirige les appels vers des outils inexistants
+- **HeartbeatRunner actif** — scheduler `setInterval` par agent ; `heartbeat.every`, `activeHours`, `model`, `ackMaxChars` dans `AgentConfigSchema`
+- **Pattern Sentinel** — agent de surveillance dédié (toolProfile messaging, heartbeat 1h)
+- **SSE keepalive** — `server.heartbeat` toutes les 10s sur le flux SSE `/runtime/stream`
+- **Watchdog agent timeout** — `timeoutMs` par agent ; abort + `AgentTimeout` bus event si dépassé
+- **Compaction auto-déclenchée** — `shouldCompact()` + `compact()` appelés depuis `runPromptLoop()` après chaque step
+- **Mémoire thématique** — `memory/*.md` chargés en plus de `MEMORY.md` (ordre alphabétique)
+- **Pruning des tool outputs anciens** — outputs > seuil remplacés par `[output pruned]` dans le contexte LLM
+- **Héritage workspace A2A** — `inheritWorkspace` dans `AgentConfigSchema` ; sous-agent hérite du `workDir` parent par défaut
+- **bootstrapFiles** — fichiers additionnels injectés dans le system prompt (glob patterns relatifs au workspace)
+- **BOOTSTRAP.md one-shot** — fichier chargé une seule fois à la première session, puis archivé
+- **Skills injection proactive** — `SkillTool` détecte les skills éligibles et les injecte automatiquement dans le prompt
+- **Skills distants** — `skillUrls` dans `AgentConfigSchema` ; index JSON téléchargé et mis en cache
+- **MCP reconnexion automatique** — backoff exponentiel (1s → 30s max) sur déconnexion
+- **MCP kill tree** — `SIGTERM` sur le process group complet à la fermeture
+- **MCP ToolListChanged** — rechargement dynamique des outils sans redémarrage
+- **Modèles nommés (aliases)** — `models[]` dans `RuntimeConfigSchema` ; agents référencent par alias (`"fast"`, `"smart"`)
+- **defaultInternalModel** — modèle léger pour compaction/title/summary
+- **Extended thinking** — `thinking.enabled` + `budgetTokens` par agent (Anthropic uniquement)
+- **Prompt caching Anthropic** — marquage `cacheControl: ephemeral` sur system prompt + 2 derniers messages
+- **Normalisation tokens** — calcul de coût cohérent entre Anthropic (exclut cache) et OpenAI (inclut tout)
+- **SSE chunk timeout** — `chunkTimeoutMs` par agent ; abort + `LLMChunkTimeout` si aucun chunk reçu
+- **Persistence des approbations en DB** — `rt_permissions` enfin utilisée ; `recordApproval("always")` survit aux redémarrages
+- **Politique agentToAgent** — `agentToAgent.enabled` + `allowList` dans `AgentConfigSchema` ; contrôle déclaratif des spawns
+- **external_directory** — `BashTool` bloque les sous-agents accédant à des chemins hors `workDir`
+- **Feedback textuel sur refus** — `PermissionReplied.feedback` injecté comme message user pour que l'agent corrige son approche
+- **5 hooks plugin manquants** — `agent.beforeStart`, `agent.end`, `tool.beforeCall`, `tool.afterCall`, `message.sending` désormais wirés
+- **Plugin tools** — `PluginHooks.tools()` permet aux plugins d'enregistrer des outils
+- **Plugin routes HTTP** — `PluginHooks.routes(app)` permet aux plugins d'ajouter des routes Hono
+- **Hook tool.definition** — enrichissement dynamique des descriptions d'outils par les plugins
+
+### Changed
+
+- **claw-runtime only** — suppression complète du support OpenClaw tiers (v0.20.0)
+- **Task tool** — retour enrichi avec `steps_used`, `tokens_used`, `model`
+- **PermissionReplied** — champ `feedback?: string` ajouté (rétrocompatible)
+- **HEARTBEAT.md template** — mis à jour pour le HeartbeatRunner actif
+
+### Fixed
+
+- **Compaction** — `shouldCompact()` et `compact()` n'étaient jamais appelés en V1
+- **toolProfile** — défini dans le schema mais non appliqué en V1
+- **5 hooks plugin** — wirés sur le bus mais jamais déclenchés en V1
+- **MCP** — connexions non fermées proprement à l'arrêt du daemon
+
+---
+
 ## [0.19.0] — 2026-03-12
 
 ### Added

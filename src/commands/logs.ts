@@ -7,7 +7,7 @@ import { withContext } from "./_context.js";
 
 export function logsCommand(): Command {
   return new Command("logs")
-    .description("Show gateway logs for an instance")
+    .description("Show runtime logs for an instance")
     .argument("<slug>", "Instance slug")
     .option("-n, --lines <n>", "Number of lines to show", "50")
     .option("-f, --follow", "Follow log output (tail -f)")
@@ -21,7 +21,7 @@ export function logsCommand(): Command {
         const instance = registry.getInstance(slug);
         if (!instance) throw new InstanceNotFoundError(slug);
 
-        const logPath = `${instance.state_dir}/logs/gateway.log`;
+        const logPath = `${instance.state_dir}/logs/runtime.log`;
 
         if (opts.follow) {
           const child = childProcess.spawn("tail", ["-f", "-n", String(lines), logPath], {

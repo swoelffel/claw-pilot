@@ -60,7 +60,7 @@ async function seedBlueprintAgentFiles(
 
 /**
  * Seed the default "main" agent into a newly created blueprint.
- * Mirrors the implicit "main" agent that OpenClaw creates on every fresh instance.
+ * Mirrors the implicit "main" agent that claw-runtime creates on every fresh instance.
  */
 async function seedBlueprintMainAgent(reg: Registry, blueprintId: number): Promise<void> {
   // Create the main agent row
@@ -117,11 +117,24 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
     try {
+      // Normalize tags: convert to JSON array format if it's a plain string
+      let normalizedTags: string | undefined;
+      if (body.tags !== undefined) {
+        try {
+          // If it's already valid JSON, keep it as is
+          JSON.parse(body.tags);
+          normalizedTags = body.tags;
+        } catch {
+          // If it's a plain string, convert to JSON array
+          normalizedTags = JSON.stringify([body.tags]);
+        }
+      }
+
       const blueprint = registry.createBlueprint({
         name: body.name.trim(),
         ...(body.description !== undefined && { description: body.description }),
         ...(body.icon !== undefined && { icon: body.icon }),
-        ...(body.tags !== undefined && { tags: body.tags }),
+        ...(normalizedTags !== undefined && { tags: normalizedTags }),
         ...(body.color !== undefined && { color: body.color }),
       });
 
@@ -172,7 +185,19 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     }
 
     try {
-      const updated = registry.updateBlueprint(id, body);
+      // Normalize tags if provided
+      const normalizedBody = { ...body };
+      if (normalizedBody.tags !== undefined && normalizedBody.tags !== null) {
+        try {
+          // If it's already valid JSON, keep it as is
+          JSON.parse(normalizedBody.tags);
+        } catch {
+          // If it's a plain string, convert to JSON array
+          normalizedBody.tags = JSON.stringify([normalizedBody.tags]);
+        }
+      }
+
+      const updated = registry.updateBlueprint(id, normalizedBody);
       return c.json(updated);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

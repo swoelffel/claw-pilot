@@ -313,6 +313,210 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v8: claw-runtime foundation tables (prefixed rt_).
+    // These tables support the native agent runtime engine being developed
+    // in src/runtime/ as a replacement for OpenClaw instances.
+    //
+    // All tables are additive (CREATE TABLE IF NOT EXISTS) — safe to apply
+    // on existing DBs without data loss.
+    version: 8,
+    up(db) {
+      db.exec(`
+        -- Add instance_type column to instances table.
+        -- 'openclaw' = legacy OpenClaw instance (default)
+        -- 'claw-runtime' = native claw-runtime instance
+        ALTER TABLE instances ADD COLUMN instance_type TEXT NOT NULL DEFAULT 'openclaw'
+          CHECK(instance_type IN ('openclaw', 'claw-runtime'));
+
+        -- Runtime sessions (one per conversation / channel peer)
+        CREATE TABLE IF NOT EXISTS rt_sessions (
+          id            TEXT PRIMARY KEY,
+          instance_slug TEXT NOT NULL REFERENCES instances(slug) ON DELETE CASCADE,
+          parent_id     TEXT REFERENCES rt_sessions(id),
+          agent_id      TEXT NOT NULL,
+          channel       TEXT NOT NULL DEFAULT 'web',
+          peer_id       TEXT,
+          title         TEXT,
+          state         TEXT NOT NULL DEFAULT 'active'
+            CHECK(state IN ('active', 'archived')),
+          permissions   TEXT,
+          created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_sessions_instance
+          ON rt_sessions(instance_slug);
+        CREATE INDEX IF NOT EXISTS idx_rt_sessions_parent
+          ON rt_sessions(parent_id);
+
+        -- Runtime messages (user + assistant turns)
+        CREATE TABLE IF NOT EXISTS rt_messages (
+          id            TEXT PRIMARY KEY,
+          session_id    TEXT NOT NULL REFERENCES rt_sessions(id) ON DELETE CASCADE,
+          role          TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+          agent_id      TEXT,
+          model         TEXT,
+          tokens_in     INTEGER,
+          tokens_out    INTEGER,
+          cost_usd      REAL,
+          finish_reason TEXT,
+          is_compaction INTEGER NOT NULL DEFAULT 0,
+          created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_messages_session
+          ON rt_messages(session_id);
+
+        -- Runtime message parts (atomic content units within a message)
+        CREATE TABLE IF NOT EXISTS rt_parts (
+          id            TEXT PRIMARY KEY,
+          message_id    TEXT NOT NULL REFERENCES rt_messages(id) ON DELETE CASCADE,
+          type          TEXT NOT NULL,
+          state         TEXT CHECK(state IN ('pending', 'running', 'completed', 'error')),
+          content       TEXT,
+          metadata      TEXT,
+          sort_order    INTEGER NOT NULL DEFAULT 0,
+          created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_parts_message
+          ON rt_parts(message_id);
+
+        -- Runtime permission rules (persisted approvals)
+        CREATE TABLE IF NOT EXISTS rt_permissions (
+          id            TEXT PRIMARY KEY,
+          instance_slug TEXT NOT NULL REFERENCES instances(slug) ON DELETE CASCADE,
+          scope         TEXT NOT NULL,
+          permission    TEXT NOT NULL,
+          pattern       TEXT NOT NULL,
+          action        TEXT NOT NULL CHECK(action IN ('allow', 'deny', 'ask')),
+          created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_permissions_scope
+          ON rt_permissions(instance_slug, scope);
+
+        -- Runtime auth profiles (API key rotation per provider)
+        CREATE TABLE IF NOT EXISTS rt_auth_profiles (
+          id              TEXT PRIMARY KEY,
+          instance_slug   TEXT NOT NULL REFERENCES instances(slug) ON DELETE CASCADE,
+          provider_id     TEXT NOT NULL,
+          api_key_env_var TEXT NOT NULL,
+          priority        INTEGER NOT NULL DEFAULT 0,
+          cooldown_until  TEXT,
+          failure_count   INTEGER NOT NULL DEFAULT 0,
+          last_error      TEXT,
+          created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_auth_profiles_provider
+          ON rt_auth_profiles(instance_slug, provider_id);
+      `);
+    },
+  },
+  {
+    // v9: device pairing codes for web-chat channel.
+    // Short-lived 8-char codes that pair a browser session to a runtime instance.
+    version: 9,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS rt_pairing_codes (
+          code          TEXT PRIMARY KEY,
+          instance_slug TEXT NOT NULL REFERENCES instances(slug) ON DELETE CASCADE,
+          channel       TEXT NOT NULL DEFAULT 'web',
+          peer_id       TEXT,
+          used          INTEGER NOT NULL DEFAULT 0,
+          expires_at    TEXT NOT NULL,
+          created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_pairing_codes_instance
+          ON rt_pairing_codes(instance_slug);
+
+        CREATE INDEX IF NOT EXISTS idx_rt_pairing_codes_expires
+          ON rt_pairing_codes(expires_at);
+      `);
+    },
+  },
+  {
+    // v10: normalize blueprint tags to JSON array format.
+    // Converts plain string tags (e.g., "tag1") to JSON array format (e.g., '["tag1"]').
+    version: 10,
+    up(db) {
+      // Get all blueprints with tags
+      const blueprints = db
+        .prepare("SELECT id, tags FROM blueprints WHERE tags IS NOT NULL")
+        .all() as Array<{ id: number; tags: string }>;
+
+      // Normalize each blueprint's tags
+      const updateStmt = db.prepare("UPDATE blueprints SET tags = ? WHERE id = ?");
+      for (const bp of blueprints) {
+        try {
+          // Try to parse as JSON — if it works, it's already in the right format
+          JSON.parse(bp.tags);
+        } catch {
+          // If JSON parse fails, it's a plain string — convert to JSON array
+          const normalizedTags = JSON.stringify([bp.tags]);
+          updateStmt.run(normalizedTags, bp.id);
+        }
+      }
+    },
+  },
+  {
+    // v11: session enrichment — session_key, spawn_depth, label, metadata.
+    //
+    // session_key: business identifier "<instanceSlug>:<agentId>:<channel>:<peerId>"
+    //   Allows O(1) lookup instead of full table scan in findOrCreateSession().
+    //   Backfill is done BEFORE creating the UNIQUE index.
+    //
+    // spawn_depth: depth in the session tree (0 = root, 1 = first sub-agent, etc.)
+    //   Used to enforce maxSpawnDepth limits.
+    //
+    // label: optional human-readable label (assignable by agent or user).
+    //
+    // metadata: extensible JSON blob (skillsSnapshot, promptReport, etc.)
+    version: 11,
+    up(db) {
+      db.exec(`
+        -- session_key: identifiant métier lisible "<instanceSlug>:<agentId>:<channel>:<peerId>"
+        ALTER TABLE rt_sessions ADD COLUMN session_key TEXT;
+
+        -- Backfill des sessions existantes (AVANT la création de l'index UNIQUE)
+        UPDATE rt_sessions
+        SET session_key = instance_slug || ':' || agent_id || ':' || channel || ':' || COALESCE(peer_id, 'unknown')
+        WHERE session_key IS NULL;
+
+        -- Index unique sur les sessions racines uniquement (parent_id IS NULL)
+        -- Les sessions enfants (fork, sub-agent) peuvent partager la même clé métier
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_rt_sessions_key ON rt_sessions(session_key) WHERE parent_id IS NULL;
+
+        -- spawn_depth: profondeur dans l'arbre de sessions (0 = racine)
+        ALTER TABLE rt_sessions ADD COLUMN spawn_depth INTEGER NOT NULL DEFAULT 0;
+
+        -- label: label humain optionnel (assignable par l'agent ou l'utilisateur)
+        ALTER TABLE rt_sessions ADD COLUMN label TEXT;
+
+        -- metadata: JSON extensible (skillsSnapshot, promptReport, etc.)
+        ALTER TABLE rt_sessions ADD COLUMN metadata TEXT;
+
+        -- Index sur (parent_id, state) pour countActiveChildren()
+        CREATE INDEX IF NOT EXISTS idx_rt_sessions_parent_state
+          ON rt_sessions(parent_id, state);
+      `);
+    },
+  },
+  {
+    // v12: add meta column to rt_pairing_codes.
+    // Stores channel-specific metadata as a JSON blob (e.g. Telegram username).
+    // Nullable TEXT — existing rows default to NULL.
+    version: 12,
+    up(db) {
+      db.exec(`ALTER TABLE rt_pairing_codes ADD COLUMN meta TEXT`);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

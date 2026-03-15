@@ -214,7 +214,17 @@ export class BlueprintCard extends LitElement {
 
   override render() {
     const bp = this.blueprint;
-    const tags = bp.tags ? (JSON.parse(bp.tags) as string[]) : [];
+    // Parse tags: handle both JSON array format and plain string format
+    let tags: string[] = [];
+    if (bp.tags) {
+      try {
+        // Try to parse as JSON array first
+        tags = JSON.parse(bp.tags) as string[];
+      } catch {
+        // If JSON parse fails, treat as plain string (single tag)
+        tags = [bp.tags];
+      }
+    }
     const agentCount = bp.agent_count ?? 0;
 
     return html`

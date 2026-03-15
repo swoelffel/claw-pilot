@@ -70,11 +70,8 @@ export class Registry {
   getLocalServer() {
     return this.servers.getLocalServer();
   }
-  upsertLocalServer(hostname: string, openclawHome: string, ip?: string) {
-    return this.servers.upsertLocalServer(hostname, openclawHome, ip);
-  }
-  updateServerBin(bin: string, version: string) {
-    return this.servers.updateServerBin(bin, version);
+  upsertLocalServer(hostname: string, homeDir: string, ip?: string) {
+    return this.servers.upsertLocalServer(hostname, homeDir, ip);
   }
 
   // --- Instances ---

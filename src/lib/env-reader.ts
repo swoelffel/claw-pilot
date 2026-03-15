@@ -1,47 +1,71 @@
 // src/lib/env-reader.ts
 import * as path from "node:path";
+import * as fs from "node:fs";
 import type { ServerConnection } from "../server/connection.js";
 
 /**
- * Read the gateway auth token for an instance.
+ * Read all environment variables from an instance's .env file (synchronously).
  *
- * Strategy:
- * 1. Read OPENCLAW_GW_AUTH_TOKEN from <stateDir>/.env  (claw-pilot-provisioned instances)
- * 2. Fallback: read gateway.auth.token from <stateDir>/openclaw.json  (manually installed instances)
- *
- * Returns the token string, or null if not found.
+ * Reads <stateDir>/.env and returns a map of all key=value pairs.
+ * Returns empty object if file doesn't exist or is unreadable.
  */
-export async function readGatewayToken(
+export function readEnvFileSync(stateDir: string): Record<string, string> {
+  const envPath = path.join(stateDir, ".env");
+  const result: Record<string, string> = {};
+  try {
+    const content = fs.readFileSync(envPath, "utf-8");
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx === -1) continue;
+      const key = trimmed.slice(0, eqIdx).trim();
+      const value = trimmed.slice(eqIdx + 1).trim();
+      if (key && value) {
+        result[key] = value;
+      }
+    }
+  } catch {
+    // .env missing or unreadable — return empty object
+  }
+  return result;
+}
+
+/**
+ * Read an environment variable value from an instance's .env file.
+ *
+ * Reads <stateDir>/.env and returns the value for the given key, or null if not found.
+ */
+export async function readEnvValue(
   conn: ServerConnection,
   stateDir: string,
+  key: string,
 ): Promise<string | null> {
-  // 1. Try .env first
   const envPath = path.join(stateDir, ".env");
   try {
     const raw = await conn.readFile(envPath);
     for (const line of raw.split("\n")) {
       const trimmed = line.trim();
-      if (trimmed.startsWith("OPENCLAW_GW_AUTH_TOKEN=")) {
-        const value = trimmed.slice("OPENCLAW_GW_AUTH_TOKEN=".length).trim();
+      if (trimmed.startsWith(`${key}=`)) {
+        const value = trimmed.slice(key.length + 1).trim();
         if (value.length > 0) return value;
       }
     }
   } catch {
-    // .env missing or unreadable — fall through to openclaw.json
+    // .env missing or unreadable
   }
-
-  // 2. Fallback: openclaw.json → gateway.auth.token
-  const configPath = path.join(stateDir, "openclaw.json");
-  try {
-    const raw = await conn.readFile(configPath);
-    const config = JSON.parse(raw) as Record<string, unknown>;
-    const gateway = config["gateway"] as Record<string, unknown> | undefined;
-    const auth = gateway?.["auth"] as Record<string, unknown> | undefined;
-    const token = auth?.["token"];
-    if (typeof token === "string" && token.length > 0) return token;
-  } catch {
-    // Config missing or invalid JSON — not an error for callers
-  }
-
   return null;
+}
+
+/**
+ * Read the gateway auth token for an instance.
+ *
+ * @deprecated Gateway tokens are an OpenClaw concept. Use readEnvValue() for specific keys.
+ * Kept for backward compatibility during migration.
+ */
+export async function readGatewayToken(
+  conn: ServerConnection,
+  stateDir: string,
+): Promise<string | null> {
+  return readEnvValue(conn, stateDir, "OPENCLAW_GW_AUTH_TOKEN");
 }

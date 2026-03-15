@@ -23,22 +23,20 @@ export class BlueprintDeployer {
     // 3. Read blueprint links
     const blueprintLinks = this.registry.listBlueprintLinks(blueprintId);
 
-    // 4. Read openclaw.json
+    // 4. Read runtime.json
     const configRaw = await this.conn.readFile(instance.config_path);
     const config = JSON.parse(configRaw) as Record<string, unknown>;
 
     const stateDir = path.dirname(instance.config_path);
-    const agentsConf = (config["agents"] ?? {}) as Record<string, unknown>;
-    config["agents"] = agentsConf;
-    if (!Array.isArray(agentsConf["list"])) {
-      agentsConf["list"] = [];
+    if (!Array.isArray(config["agents"])) {
+      config["agents"] = [];
     }
 
     // 5. For each blueprint agent: write files + register in DB + update config
     for (const bpAgent of blueprintAgents) {
       const isDefault = bpAgent.is_default === 1;
 
-      // Workspace path follows OpenClaw convention:
+      // Workspace path:
       //   main (isDefault) → stateDir/workspaces/workspace  (already created by Provisioner)
       //   secondary agents → stateDir/workspaces/workspace-<agent_id>
       const workspaceDir = isDefault
@@ -61,51 +59,51 @@ export class BlueprintDeployer {
       }
 
       // If no files in DB, write minimal placeholders (secondary agents only).
-      // Uses TEMPLATE_FILES (7 files) — OpenClaw seeds its own templates at
-      // startup if files are empty/minimal, so placeholder content is fine.
       if (files.length === 0 && !isDefault) {
         for (const filename of constants.TEMPLATE_FILES) {
           await this.conn.writeFile(path.join(workspaceDir, filename), `# ${bpAgent.name}\n`);
         }
       }
 
-      // Add to agents.list[] for ALL agents:
-      //   - main (isDefault) with default: true so OpenClaw picks it as the default agent
-      //   - secondary agents with their own workspace path
+      // Add to agents[] array in runtime.json
       {
         const agentEntry: Record<string, unknown> = {
           id: bpAgent.agent_id,
           name: bpAgent.name,
-          workspace: isDefault
-            ? "workspace" // main workspace (relative path)
-            : `workspace-${bpAgent.agent_id}`, // relative path (resolved by OpenClaw from stateDir/workspaces/)
+          permissions: [],
         };
         if (isDefault) {
-          agentEntry["default"] = true;
+          agentEntry["isDefault"] = true;
         }
+
+        // Resolve model: use blueprint model if available, otherwise use instance default
+        let modelStr: string;
         if (bpAgent.model) {
           // bpAgent.model may be either:
-          //   - a JSON-serialized object: '{"primary":"opencode/claude-haiku-4-5"}' → parse it
-          //   - a bare model string: "anthropic/claude-haiku-4-5" → wrap as { primary: "..." }
-          let modelValue: unknown;
+          //   - a JSON-serialized object: '{"primary":"opencode/claude-haiku-4-5"}' → use primary
+          //   - a bare "provider/model" string: "anthropic/claude-haiku-4-5" → use as-is
           try {
-            modelValue = JSON.parse(bpAgent.model);
+            const parsed = JSON.parse(bpAgent.model) as Record<string, unknown>;
+            modelStr = typeof parsed["primary"] === "string" ? parsed["primary"] : bpAgent.model;
           } catch {
-            // intentionally ignored — model is a bare string, not JSON; wrap it as { primary: "..." }
-            modelValue = { primary: bpAgent.model };
+            // intentionally ignored — model is a bare string, not JSON
+            modelStr = bpAgent.model;
           }
-          agentEntry["model"] = modelValue;
+        } else {
+          // No model in blueprint: use instance's defaultModel
+          modelStr = (config["defaultModel"] as string) ?? "anthropic/claude-sonnet-4-5";
         }
+        agentEntry["model"] = modelStr;
 
         // Add spawn links for this agent (all agents including main)
         const spawnTargets = blueprintLinks
           .filter((l) => l.source_agent_id === bpAgent.agent_id && l.link_type === "spawn")
           .map((l) => l.target_agent_id);
         if (spawnTargets.length > 0) {
-          agentEntry["subagents"] = { allowAgents: spawnTargets };
+          agentEntry["allowSubAgents"] = true;
         }
 
-        (agentsConf["list"] as unknown[]).push(agentEntry);
+        (config["agents"] as unknown[]).push(agentEntry);
       }
 
       // Register agent in DB (linked to instance)
@@ -137,7 +135,7 @@ export class BlueprintDeployer {
       }
     }
 
-    // 6. Write updated openclaw.json
+    // 6. Write updated runtime.json
     await this.conn.writeFile(instance.config_path, JSON.stringify(config, null, 2) + "\n");
 
     // 7. Register blueprint links as instance links in DB

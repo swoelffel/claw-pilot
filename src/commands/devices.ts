@@ -1,7 +1,9 @@
 // src/commands/devices.ts
 //
 // CLI command: claw-pilot devices
-// Sub-commands: list, approve, revoke
+// Sub-commands: list, revoke
+//
+// Works with the `rt_pairing_codes` DB table for claw-runtime instances.
 
 import { Command } from "commander";
 import chalk from "chalk";
@@ -14,10 +16,11 @@ import { DeviceManager } from "../core/device-manager.js";
 // ---------------------------------------------------------------------------
 
 /**
- * Format a timestamp (ms) as a human-readable relative time string.
+ * Format a timestamp (ISO string or ms) as a human-readable relative time string.
  * Examples: "just now", "5m ago", "2h ago", "3d ago"
  */
-function formatRelativeTime(tsMs: number): string {
+function formatRelativeTime(ts: string | number): string {
+  const tsMs = typeof ts === "number" ? ts : new Date(ts).getTime();
   const diffMs = Date.now() - tsMs;
   const diffSec = Math.floor(diffMs / 1000);
 
@@ -39,10 +42,10 @@ function formatRelativeTime(tsMs: number): string {
 
 function devicesListCommand(): Command {
   return new Command("list")
-    .description("List pending and paired devices for an instance")
+    .description("List pairing codes for an instance")
     .argument("<slug>", "Instance slug")
     .action(async (slug: string) => {
-      await withContext(async ({ conn, registry }) => {
+      await withContext(async ({ db, registry }) => {
         const instance = registry.getInstance(slug);
         if (!instance) {
           throw new CliError(
@@ -50,80 +53,22 @@ function devicesListCommand(): Command {
           );
         }
 
-        const dm = new DeviceManager(conn);
-        const { pending, paired } = await dm.list(instance.state_dir);
+        const dm = new DeviceManager(db);
+        const codes = dm.list(slug);
 
-        if (pending.length === 0 && paired.length === 0) {
-          console.log(`No devices found for instance "${slug}".`);
+        if (codes.length === 0) {
+          console.log(`No pairing codes found for instance "${slug}".`);
           return;
         }
 
-        // --- Pending ---
-        console.log(chalk.yellow(`\nPending (${pending.length})`));
-        for (const d of pending) {
-          const id = d.requestId.slice(0, 8);
-          const time = formatRelativeTime(d.ts);
-          console.log(chalk.yellow(`  ${id}  ${d.platform}  ${d.clientId}  ${time}`));
+        console.log(chalk.bold(`\nPairing codes for "${slug}" (${codes.length})`));
+        for (const code of codes) {
+          const status = code.used_at ? chalk.dim("used") : chalk.green("active");
+          const created = formatRelativeTime(code.created_at);
+          const usedLabel = code.used_at ? `  used ${formatRelativeTime(code.used_at)}` : "";
+          console.log(`  ${code.code}  ${status}  created ${created}${usedLabel}`);
         }
-
-        // --- Paired ---
-        console.log(`\nPaired (${paired.length})`);
-        for (const d of paired) {
-          const id = d.deviceId.slice(0, 8);
-          // Find the most recently used token's lastUsedAtMs, or fall back to approvedAtMs
-          const tokenEntries = Object.values(d.tokens);
-          const lastUsedMs =
-            tokenEntries.length > 0
-              ? (tokenEntries[0]?.lastUsedAtMs ?? d.approvedAtMs)
-              : d.approvedAtMs;
-          const time = formatRelativeTime(lastUsedMs);
-          console.log(`  ${id}  ${d.platform}  ${d.clientId}  ${d.role}  last used ${time}`);
-        }
-
         console.log("");
-      });
-    });
-}
-
-// ---------------------------------------------------------------------------
-// devices approve
-// ---------------------------------------------------------------------------
-
-function devicesApproveCommand(): Command {
-  return new Command("approve")
-    .description("Approve a pending device pairing request")
-    .argument("<slug>", "Instance slug")
-    .argument("[requestId]", "Request ID to approve (omit to approve all pending)")
-    .action(async (slug: string, requestId: string | undefined) => {
-      await withContext(async ({ conn, registry }) => {
-        const instance = registry.getInstance(slug);
-        if (!instance) {
-          throw new CliError(
-            `Instance "${slug}" not found. Run 'claw-pilot list' to see available instances.`,
-          );
-        }
-
-        const dm = new DeviceManager(conn);
-        const { pending } = await dm.list(instance.state_dir);
-
-        if (pending.length === 0) {
-          console.log(`No pending device requests for instance "${slug}".`);
-          return;
-        }
-
-        if (requestId) {
-          // Approve a specific request
-          await dm.approve(instance.state_dir, requestId);
-          console.log(`Approved device request ${requestId.slice(0, 8)} for instance "${slug}".`);
-        } else {
-          // Approve all pending requests
-          for (const d of pending) {
-            await dm.approve(instance.state_dir, d.requestId);
-            console.log(
-              `Approved device request ${d.requestId.slice(0, 8)} for instance "${slug}".`,
-            );
-          }
-        }
       });
     });
 }
@@ -134,11 +79,11 @@ function devicesApproveCommand(): Command {
 
 function devicesRevokeCommand(): Command {
   return new Command("revoke")
-    .description("Revoke a paired device")
+    .description("Revoke a pairing code")
     .argument("<slug>", "Instance slug")
-    .argument("<deviceId>", "Device ID to revoke")
-    .action(async (slug: string, deviceId: string) => {
-      await withContext(async ({ conn, registry }) => {
+    .argument("<code>", "Pairing code to revoke")
+    .action(async (slug: string, code: string) => {
+      await withContext(async ({ db, registry }) => {
         const instance = registry.getInstance(slug);
         if (!instance) {
           throw new CliError(
@@ -146,21 +91,14 @@ function devicesRevokeCommand(): Command {
           );
         }
 
-        const dm = new DeviceManager(conn);
-        const { paired } = await dm.list(instance.state_dir);
+        const dm = new DeviceManager(db);
+        const revoked = dm.revoke(slug, code);
 
-        // Verify the device exists in the paired list
-        const found = paired.find(
-          (d) => d.deviceId === deviceId || d.deviceId.startsWith(deviceId),
-        );
-        if (!found) {
-          throw new CliError(
-            `Device "${deviceId}" not found in paired devices for instance "${slug}".`,
-          );
+        if (revoked) {
+          console.log(`Revoked pairing code ${code} from instance "${slug}".`);
+        } else {
+          throw new CliError(`Pairing code "${code}" not found for instance "${slug}".`);
         }
-
-        await dm.revoke(instance.state_dir, found.deviceId);
-        console.log(`Revoked device ${found.deviceId.slice(0, 8)} from instance "${slug}".`);
       });
     });
 }
@@ -170,12 +108,9 @@ function devicesRevokeCommand(): Command {
 // ---------------------------------------------------------------------------
 
 export function devicesCommand(): Command {
-  const devices = new Command("devices").description(
-    "Manage device pairing for an OpenClaw instance",
-  );
+  const devices = new Command("devices").description("Manage device pairing codes for an instance");
 
   devices.addCommand(devicesListCommand());
-  devices.addCommand(devicesApproveCommand());
   devices.addCommand(devicesRevokeCommand());
 
   return devices;

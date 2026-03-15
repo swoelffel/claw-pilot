@@ -117,6 +117,20 @@ export const instanceSettingsStyles = css`
     font-weight: 600;
   }
 
+  .sidebar-mcp-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    border-radius: 20px;
+    background: rgba(16, 185, 129, 0.12);
+    color: var(--state-running);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    font-size: 10px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    margin-left: auto;
+  }
+
   /* ── Content area ─────────────────────────────────────────────────────── */
 
   .content {

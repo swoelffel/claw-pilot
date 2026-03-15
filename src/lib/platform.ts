@@ -24,11 +24,18 @@ export function isDarwin(): boolean {
   return os.platform() === "darwin";
 }
 
-export function getOpenClawHome(dbPath?: string): string {
-  // Priority: OPENCLAW_HOME env var > openclaw_home stored in DB > os.homedir()
-  if (process.env["OPENCLAW_HOME"]) return process.env["OPENCLAW_HOME"];
+export function isDocker(): boolean {
+  return process.env["CLAW_PILOT_ENV"] === "docker";
+}
 
-  // Read from DB if available (set during `claw-pilot init` from detected openclaw binary)
+/**
+ * Resolve the home directory used for instance state dirs.
+ * Priority: CLAW_PILOT_HOME env var > openclaw_home stored in DB > os.homedir()
+ */
+export function getHomeDir(dbPath?: string): string {
+  if (process.env["CLAW_PILOT_HOME"]) return process.env["CLAW_PILOT_HOME"];
+
+  // Read from DB if available (set during `claw-pilot init`)
   const resolvedDbPath = dbPath ?? getDbPath();
   try {
     // Lazy require to avoid circular dependency — only used at runtime
@@ -50,29 +57,23 @@ export function getOpenClawHome(dbPath?: string): string {
   return os.homedir();
 }
 
-export function getStateDir(slug: string): string {
-  return path.join(getOpenClawHome(), `${constants.OPENCLAW_STATE_PREFIX}${slug}`);
+/** State directory for a claw-runtime instance. */
+export function getRuntimeStateDir(slug: string): string {
+  return path.join(getHomeDir(), `${constants.RUNTIME_STATE_PREFIX}${slug}`);
 }
 
-/** @public */
-export function getConfigPath(slug: string): string {
-  return path.join(getStateDir(slug), "openclaw.json");
+/** Path to runtime.json config for a claw-runtime instance. */
+export function getRuntimeConfigPath(slug: string): string {
+  return path.join(getRuntimeStateDir(slug), "runtime.json");
 }
 
 export function getSystemdDir(): string {
-  // Systemd --user units always live in $HOME/.config/systemd/user/,
-  // regardless of OPENCLAW_HOME.
   return path.join(os.homedir(), ".config/systemd/user");
-}
-
-export function getSystemdUnit(slug: string): string {
-  return `openclaw-${slug}.service`;
 }
 
 export const DASHBOARD_SERVICE_UNIT = "claw-pilot-dashboard.service";
 
 export function getDashboardServicePath(): string {
-  // Uses getSystemdDir() which follows the same home as other systemd units
   return path.join(getSystemdDir(), DASHBOARD_SERVICE_UNIT);
 }
 
@@ -87,22 +88,44 @@ export function getServiceManager(): ServiceManager {
   return SERVICE_MANAGER;
 }
 
-// --- launchd helpers (macOS) ---
+// --- launchd helpers (macOS) — dashboard only ---
 
 export function getLaunchdDir(): string {
   return path.join(os.homedir(), "Library/LaunchAgents");
-}
-
-export function getLaunchdLabel(slug: string): string {
-  return `ai.openclaw.${slug}`;
-}
-
-export function getLaunchdPlistPath(slug: string): string {
-  return path.join(getLaunchdDir(), `${getLaunchdLabel(slug)}.plist`);
 }
 
 export const DASHBOARD_LAUNCHD_LABEL = "io.claw-pilot.dashboard";
 
 export function getDashboardLaunchdPlistPath(): string {
   return path.join(getLaunchdDir(), `${DASHBOARD_LAUNCHD_LABEL}.plist`);
+}
+
+// --- claw-runtime PID helpers ---
+
+export function getRuntimePidPath(stateDir: string): string {
+  return path.join(stateDir, "runtime.pid");
+}
+
+/**
+ * Returns the PID of the running claw-runtime daemon for the given stateDir,
+ * or null if the PID file is absent or the process is no longer alive.
+ */
+export function getRuntimePid(stateDir: string): number | null {
+  const pidPath = getRuntimePidPath(stateDir);
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("node:fs") as typeof import("node:fs");
+    const raw = fs.readFileSync(pidPath, "utf8").trim();
+    const pid = parseInt(raw, 10);
+    if (!pid || isNaN(pid)) return null;
+    // Probe the process — kill(pid, 0) throws if it does not exist
+    process.kill(pid, 0);
+    return pid;
+  } catch {
+    return null;
+  }
+}
+
+export function isRuntimeRunning(stateDir: string): boolean {
+  return getRuntimePid(stateDir) !== null;
 }

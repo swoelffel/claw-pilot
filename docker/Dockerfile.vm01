@@ -1,0 +1,35 @@
+FROM debian:bookworm-slim
+
+# System dependencies
+RUN apt-get update && apt-get install -y \
+    curl git sudo supervisor procps \
+    python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js 22 via NodeSource (same method as VM01)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs
+
+# pnpm
+RUN npm install -g pnpm
+
+# User openclaw (uid 1000, like VM01)
+# Pre-create XDG_RUNTIME_DIR so the user can write to it without root
+RUN useradd -m -u 1000 -s /bin/bash openclaw \
+    && mkdir -p /home/openclaw/.claw-pilot /run/user/1000 \
+    && chown openclaw:openclaw /home/openclaw/.claw-pilot /run/user/1000
+
+USER openclaw
+WORKDIR /app
+
+# Install deps in a separate layer for Docker cache
+# git init satisfies lefthook's git repo check during pnpm prepare hook
+COPY --chown=openclaw:openclaw package.json pnpm-lock.yaml ./
+RUN git init && pnpm install --frozen-lockfile
+
+COPY --chown=openclaw:openclaw . .
+RUN chmod +x /app/docker/entrypoint.sh && pnpm build:cli
+
+EXPOSE 19000
+
+ENTRYPOINT ["/app/docker/entrypoint.sh"]

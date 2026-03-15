@@ -5,6 +5,7 @@ import type { Registry, InstanceRecord } from "./registry.js";
 import { EDITABLE_FILES } from "./agent-sync.js";
 import { createHash } from "node:crypto";
 import { constants } from "../lib/constants.js";
+import { loadWorkspaceTemplate, type TemplateVars } from "../lib/workspace-templates.js";
 
 export interface CreateAgentData {
   agentSlug: string;
@@ -13,8 +14,6 @@ export interface CreateAgentData {
   provider: string;
   model: string;
 }
-
-const DISCOVERABLE_FILES = constants.DISCOVERABLE_FILES;
 
 export class AgentProvisioner {
   constructor(
@@ -27,43 +26,48 @@ export class AgentProvisioner {
     const existing = this.registry.getAgentByAgentId(instance.id, data.agentSlug);
     if (existing) throw new Error(`Agent "${data.agentSlug}" already exists`);
 
-    // 2. Determine workspace dir from instance config_path
-    // config_path is like /home/openclaw/.openclaw/openclaw.json
-    // openclawHome is the directory containing openclaw.json
-    const openclawHome = path.dirname(instance.config_path);
-    const workspaceDir = path.join(openclawHome, `workspace-${data.agentSlug}`);
+    // 2. Determine workspace dir inside <stateDir>/workspaces/ (consistent with provisioner)
+    const stateDir = path.dirname(instance.config_path);
+    const workspaceDir = path.join(stateDir, "workspaces", `workspace-${data.agentSlug}`);
 
-    // 3. Create workspace directory
+    // 3. Create workspace directory + rich template files
     await this.conn.mkdir(workspaceDir);
 
-    // 4. Write minimal workspace files
-    for (const filename of DISCOVERABLE_FILES) {
-      await this.conn.writeFile(path.join(workspaceDir, filename), `# ${data.name}\n`);
+    // Build template vars — include existing agents + the new one for AGENTS.md completeness
+    const existingAgents = this.registry
+      .listAgents(instance.slug)
+      .map((a) => ({ id: a.agent_id, name: a.name }));
+    const vars: TemplateVars = {
+      agentId: data.agentSlug,
+      agentName: data.name,
+      instanceSlug: instance.slug,
+      instanceName: instance.display_name ?? instance.slug,
+      agents: [...existingAgents, { id: data.agentSlug, name: data.name }],
+    };
+
+    // TEMPLATE_FILES: rich content from templates (SOUL, AGENTS, TOOLS, IDENTITY, USER, HEARTBEAT, MEMORY)
+    for (const filename of constants.TEMPLATE_FILES) {
+      const content = await loadWorkspaceTemplate(filename, vars);
+      await this.conn.writeFile(path.join(workspaceDir, filename), content);
     }
 
-    // 5. Read openclaw.json
+    // Append to agents[] array in runtime.json
     const configRaw = await this.conn.readFile(instance.config_path);
     const config = JSON.parse(configRaw) as Record<string, unknown>;
 
-    // 6. Add agent to agents.list[]
-    // Use absolute path so agent-sync.ts resolveWorkspace() doesn't mangle it
-    // (resolveWorkspace prefixes stateDir/workspaces/ for relative paths)
-    const agentsConf = (config["agents"] ?? {}) as Record<string, unknown>;
-    config["agents"] = agentsConf;
-    if (!Array.isArray(agentsConf["list"])) {
-      agentsConf["list"] = [];
+    if (!Array.isArray(config["agents"])) {
+      config["agents"] = [];
     }
-    (agentsConf["list"] as unknown[]).push({
+    (config["agents"] as unknown[]).push({
       id: data.agentSlug,
       name: data.name,
       model: `${data.provider}/${data.model}`,
-      workspace: workspaceDir, // absolute path — avoids resolveWorkspace() prefix bug
+      permissions: [],
     });
 
-    // 7. Write openclaw.json back
     await this.conn.writeFile(instance.config_path, JSON.stringify(config, null, 2) + "\n");
 
-    // 8. Upsert agent in DB
+    // Upsert agent in DB
     this.registry.upsertAgent(instance.id, {
       agentId: data.agentSlug,
       name: data.name,
@@ -72,7 +76,6 @@ export class AgentProvisioner {
       isDefault: false,
     });
 
-    // Note: role is stored via updateAgentMeta after upsert
     if (data.role) {
       const agent = this.registry.getAgentByAgentId(instance.id, data.agentSlug);
       if (agent) {
@@ -89,46 +92,22 @@ export class AgentProvisioner {
     // 2. Block deletion of default agent
     if (agent.is_default) throw new Error(`Cannot delete the default agent`);
 
-    // 3. Read openclaw.json
+    // Remove from agents[] array in runtime.json
     const configRaw = await this.conn.readFile(instance.config_path);
     const config = JSON.parse(configRaw) as Record<string, unknown>;
 
-    // 4. Remove agent from agents.list[]
-    const agentsConf = config["agents"] as Record<string, unknown> | undefined;
-    if (agentsConf && Array.isArray(agentsConf["list"])) {
-      agentsConf["list"] = (agentsConf["list"] as Array<{ id: string }>).filter(
+    if (Array.isArray(config["agents"])) {
+      config["agents"] = (config["agents"] as Array<{ id: string }>).filter(
         (a) => a.id !== agentSlug,
       );
     }
 
-    // 4b. Remove agentSlug from all subagents.allowAgents references in agents.list[]
-    if (agentsConf && Array.isArray(agentsConf["list"])) {
-      for (const entry of agentsConf["list"] as Array<Record<string, unknown>>) {
-        const subagents = entry["subagents"] as Record<string, unknown> | undefined;
-        if (subagents && Array.isArray(subagents["allowAgents"])) {
-          subagents["allowAgents"] = (subagents["allowAgents"] as string[]).filter(
-            (id) => id !== agentSlug,
-          );
-        }
-      }
-    }
-
-    // 4c. Also clean from agents.defaults.subagents.allowAgents (for main agent)
-    const agentsDefaults = agentsConf?.["defaults"] as Record<string, unknown> | undefined;
-    const defaultSubagents = agentsDefaults?.["subagents"] as Record<string, unknown> | undefined;
-    if (defaultSubagents && Array.isArray(defaultSubagents["allowAgents"])) {
-      defaultSubagents["allowAgents"] = (defaultSubagents["allowAgents"] as string[]).filter(
-        (id) => id !== agentSlug,
-      );
-    }
-
-    // 5. Write openclaw.json back
     await this.conn.writeFile(instance.config_path, JSON.stringify(config, null, 2) + "\n");
 
-    // 6. Delete workspace directory on server
+    // Delete workspace directory on server
     await this.conn.remove(agent.workspace_path, { recursive: true });
 
-    // 7. Clean up orphan links in DB
+    // Clean up orphan links in DB
     const allLinks = this.registry.listAgentLinks(instance.id);
     const remainingLinks = allLinks
       .filter((l) => l.source_agent_id !== agentSlug && l.target_agent_id !== agentSlug)
@@ -139,7 +118,7 @@ export class AgentProvisioner {
       }));
     this.registry.replaceAgentLinks(instance.id, remainingLinks);
 
-    // 8. Delete agent from DB (cascades to agent_files)
+    // Delete agent from DB (cascades to agent_files)
     this.registry.deleteAgentById(agent.id);
   }
 

@@ -17,11 +17,10 @@ export COREPACK_ENABLE_STRICT=0
 
 REPO="swoelffel/claw-pilot"
 REPO_URL="https://github.com/${REPO}.git"
-RAW_BASE="https://raw.githubusercontent.com/${REPO}/main"
+CLAW_PILOT_REPO_BRANCH="${CLAW_PILOT_REPO_BRANCH:-main}"
+RAW_BASE="https://raw.githubusercontent.com/${REPO}/${CLAW_PILOT_REPO_BRANCH}"
 MIN_NODE_VERSION=22
 INSTALL_DIR="${CLAW_PILOT_INSTALL_DIR:-/opt/claw-pilot}"
-OPENCLAW_INSTALL_URL="${OPENCLAW_INSTALL_URL:-https://openclaw.ai/install.sh}"
-OPENCLAW_INSTALL_TIMEOUT=600
 
 # Resolve version from package.json on GitHub
 CLAW_PILOT_VERSION=$(curl -fsSL "${RAW_BASE}/package.json" 2>/dev/null \
@@ -57,7 +56,6 @@ mktempfile() {
 # ── PATH helpers ──────────────────────────────────────────────────────────────
 
 # Prepend a directory to PATH, deduplicating any existing occurrence.
-# Inspired by OpenClaw installer — avoids PATH bloat on re-runs.
 # Uses sed for pattern substitution (POSIX sh compatible — works on dash/macOS sh).
 prepend_path_dir() {
   # Strip newlines from input — a path with a newline would break the sed below.
@@ -154,98 +152,15 @@ fix_npm_permissions() {
   log "npm prefix reconfigured to ~/.npm-global"
 }
 
-# ── OpenClaw binary helpers ───────────────────────────────────────────────────
-
-# Validate that an openclaw binary is actually functional (not a broken symlink)
-openclaw_is_valid() {
-  _bin="$1"
-  [ -z "$_bin" ] && return 1
-  [ -f "$_bin" ] || return 1
-  "$_bin" --version >/dev/null 2>&1 || return 1
-  return 0
-}
-
-# Derive the openclaw wrapper bin path from a dist/index.js path found in ps/service.
-# /opt/openclaw/.npm-global/lib/node_modules/openclaw/dist/index.js
-# → /opt/openclaw/.npm-global/bin/openclaw
-_openclaw_bin_from_dist() {
-  printf '%s' "$1" | sed 's|/lib/node_modules/openclaw/dist/index\.js$|/bin/openclaw|'
-}
-
-# Pass 1 — detect from a running openclaw-gateway process.
-# openclaw-gateway renames argv[0] so ps aux shows no path — instead we read
-# HOME from /proc/<pid>/environ (requires sudo, which is a pre-req of this installer).
-# HOME points to the openclaw user's home (e.g. /opt/openclaw), from which we
-# derive the conventional npm-global bin path.
-_find_openclaw_from_process() {
-  # Find PIDs of openclaw-gateway processes
-  _pids=$(ps -eo pid,args 2>/dev/null \
-    | grep 'openclaw-gateway' \
-    | grep -v grep \
-    | awk '{print $1}')
-  [ -z "$_pids" ] && return 1
-  for _pid in $_pids; do
-    # Read HOME from the process environment
-    _home=$(sudo cat "/proc/${_pid}/environ" 2>/dev/null \
-      | tr '\0' '\n' \
-      | grep '^HOME=' \
-      | sed 's/^HOME=//' \
-      | head -1)
-    [ -z "$_home" ] && continue
-    _bin="${_home}/.npm-global/bin/openclaw"
-    openclaw_is_valid "$_bin" && OPENCLAW_BIN="$_bin" && return 0
-  done
-  return 1
-}
-
-# Pass 2 — detect from systemd user service files (openclaw-*.service).
-# Uses sudo (required by the installer) to read files in other users' homes.
-# ExecStart format: /usr/bin/node /path/.npm-global/lib/node_modules/openclaw/dist/index.js ...
-# The sed anchors on a space before the path to avoid capturing a partial prefix.
-_find_openclaw_from_service() {
-  for _svc in $(find /home /opt /root -maxdepth 6 -name "openclaw-*.service" 2>/dev/null | head -20); do
-    _dist=$(sudo cat "$_svc" 2>/dev/null \
-      | grep 'ExecStart' \
-      | sed 's|.* \(/[^ ]*/node_modules/openclaw/dist/index\.js\).*|\1|' \
-      | head -1)
-    [ -z "$_dist" ] && continue
-    _bin=$(_openclaw_bin_from_dist "$_dist")
-    openclaw_is_valid "$_bin" && OPENCLAW_BIN="$_bin" && return 0
-  done
-  return 1
-}
-
-# Pass 3 — hardcoded candidate paths (no pipe, no subshell — POSIX safe).
-# Covers fresh installs where openclaw is installed but not yet running.
-_find_openclaw_from_paths() {
-  for _p in \
-    "$(command -v openclaw 2>/dev/null)" \
-    "$HOME/.npm-global/bin/openclaw" \
-    "/opt/openclaw/.npm-global/bin/openclaw" \
-    "/opt/homebrew/bin/openclaw" \
-    "/usr/local/bin/openclaw"; do
-    openclaw_is_valid "$_p" && OPENCLAW_BIN="$_p" && return 0
-  done
-  # nvm / volta / fnm — dynamic node version managers
-  for _nvm_bin in "$HOME/.nvm/versions/node/"*/bin; do
-    [ -d "$_nvm_bin" ] || continue
-    openclaw_is_valid "$_nvm_bin/openclaw" && OPENCLAW_BIN="$_nvm_bin/openclaw" && return 0
-  done
-  if openclaw_is_valid "$HOME/.volta/bin/openclaw"; then
-    OPENCLAW_BIN="$HOME/.volta/bin/openclaw" && return 0
-  fi
-  return 1
-}
-
 # ── Node.js binary resolver ───────────────────────────────────────────────────
 # Resolve the absolute path of node (handles nvm, volta, fnm, etc.)
 resolve_node_bin() {
   NODE_BIN=$(command -v node 2>/dev/null)
   if [ -z "$NODE_BIN" ]; then
     for _candidate in \
-      "$HOME/.nvm/versions/node/"*/bin/node \
-      "$HOME/.volta/bin/node" \
-      "$HOME/.fnm/node-versions/"*/installation/bin/node \
+      $HOME/.nvm/versions/node/*/bin/node \
+      $HOME/.volta/bin/node \
+      $HOME/.fnm/node-versions/*/installation/bin/node \
       /usr/local/bin/node \
       /usr/bin/node; do
       [ -f "$_candidate" ] && NODE_BIN="$_candidate" && break
@@ -278,9 +193,14 @@ case "$OS" in
 esac
 
 # ── 4. Node.js check ──────────────────────────────────────────────────────────
-if ! command -v node >/dev/null 2>&1; then
+# resolve_node_bin() handles nvm/volta/fnm — PATH may not include node in
+# non-interactive shells (e.g. /bin/bash -c "$(curl ...)").
+_node_bin_early=$(resolve_node_bin)
+if [ -z "$_node_bin_early" ]; then
   error "Node.js not found. Install Node.js >= $MIN_NODE_VERSION first: https://nodejs.org"
 fi
+# Prepend the resolved node's bin dir to PATH so subsequent `node` calls work.
+prepend_path_dir "$(dirname "$_node_bin_early")"
 NODE_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
 if [ "$NODE_VERSION" -lt "$MIN_NODE_VERSION" ]; then
   error "Node.js >= $MIN_NODE_VERSION required (found $(node -v))"
@@ -432,71 +352,16 @@ if [ "$BUILD_TOOLS_OK" -eq 0 ]; then
   fi
 fi
 
-# ── 8. OpenClaw check & install ───────────────────────────────────────────────
-# Install before building claw-pilot so 'claw-pilot init' works immediately.
-OPENCLAW_BIN=""
-# Orchestrate the 3 detection passes in order.
-_find_openclaw() {
-  _find_openclaw_from_process && return 0
-  _find_openclaw_from_service && return 0
-  _find_openclaw_from_paths   && return 0
-  return 1
-}
-
-if _find_openclaw; then
-  _oc_ver=$("$OPENCLAW_BIN" --version 2>/dev/null || true)
-  log "OpenClaw ${_oc_ver} found at $OPENCLAW_BIN"
-else
-  warn "OpenClaw not found — installing now..."
-
-  if [ "$OS" = "Linux" ]; then
-    TOTAL_MEM_KiB=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0)
-    SWAP_KiB=$(grep SwapTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0)
-    TOTAL_MEM_MiB=$((TOTAL_MEM_KiB / 1024))
-    if [ "$TOTAL_MEM_MiB" -lt 1536 ] && [ "$SWAP_KiB" -eq 0 ]; then
-      warn "Low memory detected (${TOTAL_MEM_MiB} MiB RAM, no swap)."
-      warn "OpenClaw installation compiles native modules (libopus) from source."
-      warn "This may fail due to OOM. Consider adding a swapfile first:"
-      warn "  sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile"
-      warn "  sudo mkswap /swapfile && sudo swapon /swapfile"
-      warn "Continuing anyway..."
-    fi
-
-    ARCH=$(uname -m)
-    if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-      log "ARM64 detected — OpenClaw will compile native modules from source."
-      log "This may take several minutes (libopus, ~5 min on 1 vCPU). Please wait..."
-    fi
-  fi
-
-  OPENCLAW_INSTALLED=0
-  if command -v timeout >/dev/null 2>&1; then
-    if timeout "$OPENCLAW_INSTALL_TIMEOUT" sh -c \
-        "curl -fsSL --proto '=https' --tlsv1.2 '$OPENCLAW_INSTALL_URL' | bash"; then
-      OPENCLAW_INSTALLED=1
-    fi
-  else
-    if sh -c "curl -fsSL --proto '=https' --tlsv1.2 '$OPENCLAW_INSTALL_URL' | bash"; then
-      OPENCLAW_INSTALLED=1
-    fi
-  fi
-
-  if [ "$OPENCLAW_INSTALLED" -eq 1 ] && _find_openclaw; then
-    _oc_ver=$("$OPENCLAW_BIN" --version 2>/dev/null || true)
-    log "OpenClaw ${_oc_ver} installed successfully."
-  else
-    warn "OpenClaw installation failed or binary not functional after install."
-    warn "You can install it manually and re-run this script:"
-    warn "  curl -fsSL $OPENCLAW_INSTALL_URL | bash"
-    warn "Continuing claw-pilot installation — you will need OpenClaw to create instances."
-  fi
-fi
-
-# ── 9. Clone or update the repository ────────────────────────────────────────
+# ── 8. Clone or update the repository ─────────────────────────────────────────
 log "Installing claw-pilot from ${REPO_URL}..."
 if [ -d "$INSTALL_DIR/.git" ]; then
   log "Updating existing installation at $INSTALL_DIR..."
-  git -C "$INSTALL_DIR" pull --ff-only
+  # Fetch and switch to the requested branch (respects CLAW_PILOT_REPO_BRANCH).
+  # A plain `git pull --ff-only` would stay on whatever branch was checked out
+  # previously (typically main), ignoring the requested branch entirely.
+  git -C "$INSTALL_DIR" fetch origin
+  git -C "$INSTALL_DIR" checkout "$CLAW_PILOT_REPO_BRANCH"
+  git -C "$INSTALL_DIR" pull --ff-only origin "$CLAW_PILOT_REPO_BRANCH"
 
   run_quiet_step "Installing dependencies" sh -c "cd '$INSTALL_DIR' && pnpm install --frozen-lockfile"
   run_quiet_step "Building CLI" sh -c "cd '$INSTALL_DIR' && pnpm run build:cli"
@@ -504,15 +369,18 @@ if [ -d "$INSTALL_DIR/.git" ]; then
 
   log "claw-pilot $(node "$INSTALL_DIR/dist/index.mjs" --version 2>/dev/null) updated successfully!"
 
+  # Resolve the claw-pilot command — used for auth check and service install below.
+  # Must be initialised here (before the Linux-only systemd block) so it is also
+  # available on macOS where the systemd block is skipped entirely.
+  CP_NODE="node"
+  CP_ENTRY="$INSTALL_DIR/dist/index.mjs"
+  if command -v claw-pilot >/dev/null 2>&1; then
+    CP_NODE="claw-pilot"
+    CP_ENTRY=""
+  fi
+
   # Manage dashboard service (Linux only)
   if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
-    # Use two separate variables to avoid word-splitting issues with "node path/to/file"
-    CP_NODE="node"
-    CP_ENTRY="$INSTALL_DIR/dist/index.mjs"
-    if command -v claw-pilot >/dev/null 2>&1; then
-      CP_NODE="claw-pilot"
-      CP_ENTRY=""
-    fi
     if XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user is-active claw-pilot-dashboard.service >/dev/null 2>&1; then
       log "Restarting dashboard service to load updated code..."
       XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user restart claw-pilot-dashboard.service
@@ -559,18 +427,18 @@ else
     log "Removed $INSTALL_DIR."
   fi
   # Try to clone as current user; use sudo only if needed
-  if git clone "$REPO_URL" "$INSTALL_DIR" 2>/dev/null; then
+  if git clone --branch "$CLAW_PILOT_REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR" 2>/dev/null; then
     : # success
   elif command -v sudo >/dev/null 2>&1; then
     warn "Cloning to $INSTALL_DIR requires elevated privileges..."
-    sudo git clone "$REPO_URL" "$INSTALL_DIR"
+    sudo git clone --branch "$CLAW_PILOT_REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR"
     sudo chown -R "$(id -u):$(id -g)" "$INSTALL_DIR"
   else
     error "Cannot clone to $INSTALL_DIR. Set CLAW_PILOT_INSTALL_DIR to a writable path."
   fi
 fi
 
-# ── 10. Install dependencies and build ───────────────────────────────────────
+# ── 9. Install dependencies and build ────────────────────────────────────────
 ARCH=$(uname -m)
 if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
   log "ARM64 detected — native compilation may take several minutes. Please wait..."
@@ -582,7 +450,7 @@ run_quiet_step "Installing dependencies (compiling better-sqlite3 native binding
 run_quiet_step "Building CLI" sh -c "cd '$INSTALL_DIR' && pnpm run build:cli"
 run_quiet_step "Building UI"  sh -c "cd '$INSTALL_DIR' && pnpm run build:ui"
 
-# ── 11. Install claw-pilot wrapper binary ─────────────────────────────────────
+# ── 10. Install claw-pilot wrapper binary ─────────────────────────────────────
 # A wrapper script is used instead of a symlink so that the correct node
 # binary is always invoked, even when node is installed via nvm/volta/fnm
 # and not present in the system PATH.
@@ -602,11 +470,20 @@ _write_wrapper() {
 
 if _write_wrapper 2>/dev/null; then
   LINK_PATH="$WRAPPER_TARGET"
-elif command -v sudo >/dev/null 2>&1; then
-  sudo sh -c "printf '%s\n' '$WRAPPER_CONTENT' > '$WRAPPER_TARGET' && chmod +x '$WRAPPER_TARGET'"
+elif [ -t 0 ] && command -v sudo >/dev/null 2>&1; then
+  # TTY is available — sudo can prompt for password interactively.
+  # Write via tmpfile to avoid quoting/newline issues when passing WRAPPER_CONTENT
+  # through a sudo subshell. Also ensures the target directory exists (e.g. on a
+  # fresh macOS where /usr/local/bin/ is not created until Homebrew is installed).
+  _wrapper_tmp=$(mktempfile)
+  printf '%s\n' "$WRAPPER_CONTENT" > "$_wrapper_tmp"
+  sudo mkdir -p "$(dirname "$WRAPPER_TARGET")"
+  # Use sh -c to reset umask before install, ensuring 0755 is not masked.
+  sudo sh -c "umask 022 && install -m 0755 '$_wrapper_tmp' '$WRAPPER_TARGET'"
   LINK_PATH="$WRAPPER_TARGET"
 else
-  # Fallback: pnpm global bin dir (already in PATH from step 6)
+  # No TTY (e.g. curl | sh) or no sudo — sudo cannot prompt for password.
+  # Try pnpm global bin dir first, then fall back to ~/bin/ (always writable).
   PNPM_GLOBAL_BIN=$(COREPACK_ENABLE_STRICT=0 pnpm bin --global 2>/dev/null || echo "")
   if [ -n "$PNPM_GLOBAL_BIN" ]; then
     WRAPPER_TARGET="$PNPM_GLOBAL_BIN/claw-pilot"
@@ -614,15 +491,24 @@ else
     chmod +x "$WRAPPER_TARGET"
     LINK_PATH="$WRAPPER_TARGET"
   else
-    error "Cannot install claw-pilot wrapper. Add $INSTALL_DIR/dist/ to PATH manually."
+    # Final fallback: ~/bin/ — no sudo required, works in curl | sh on any OS.
+    WRAPPER_TARGET="$HOME/bin/claw-pilot"
+    mkdir -p "$HOME/bin"
+    printf '%s\n' "$WRAPPER_CONTENT" > "$WRAPPER_TARGET"
+    chmod +x "$WRAPPER_TARGET"
+    LINK_PATH="$WRAPPER_TARGET"
   fi
 fi
 
-# ── 12. Verify & persist PATH ─────────────────────────────────────────────────
+# ── 11. Verify & persist PATH ─────────────────────────────────────────────────
 # Persist the wrapper's bin dir in shell profiles if not already there (idempotent).
 # This ensures `claw-pilot` is found in new shells without manual PATH editing.
 _wrapper_dir=$(dirname "$LINK_PATH")
 for _rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+  # On macOS, ~/.zshrc is not created by default (unlike Linux) — create it if missing.
+  if [ "$OS" = "Darwin" ] && [ "$_rc" = "$HOME/.zshrc" ] && [ ! -f "$_rc" ]; then
+    touch "$_rc" 2>/dev/null || true
+  fi
   [ -f "$_rc" ] || continue
   grep -q "claw-pilot" "$_rc" 2>/dev/null && continue
   grep -q "$_wrapper_dir" "$_rc" 2>/dev/null && continue
@@ -640,40 +526,43 @@ else
   warn "Or run directly: node $INSTALL_DIR/dist/index.mjs"
 fi
 
-# ── 13. Initialize ────────────────────────────────────────────────────────────
-# Resolve the claw-pilot command with retries — the wrapper may have just been
-# written and the shell cache may not have caught up yet (inspired by OpenClaw's
-# resolve_openclaw_bin pattern).
+# ── 12. Initialize ────────────────────────────────────────────────────────────
+# Sets CP_NODE and CP_ENTRY so callers can run: $CP_NODE $CP_ENTRY <args>
+# Avoids storing "node /path/to/index.mjs" in a single variable (word-splitting
+# issue in POSIX sh when the string contains spaces).
 _resolve_claw_pilot_cmd() {
   # Attempt 1: direct lookup after cache invalidation
   hash -r 2>/dev/null || true
   if command -v claw-pilot >/dev/null 2>&1; then
-    printf '%s' "claw-pilot"; return 0
+    CP_NODE="claw-pilot"; CP_ENTRY=""; return 0
   fi
   # Attempt 2: prepend wrapper dir and retry
   [ -n "${_wrapper_dir:-}" ] && prepend_path_dir "$_wrapper_dir"
   hash -r 2>/dev/null || true
   if command -v claw-pilot >/dev/null 2>&1; then
-    printf '%s' "claw-pilot"; return 0
+    CP_NODE="claw-pilot"; CP_ENTRY=""; return 0
   fi
-  # Attempt 3: fall back to direct node invocation
-  printf '%s' "node $INSTALL_DIR/dist/index.mjs"
+  # Attempt 3: fall back to absolute node + entry point (two separate vars — no word-splitting)
+  CP_NODE="$NODE_BIN"
+  CP_ENTRY="$INSTALL_DIR/dist/index.mjs"
 }
 
 echo ""
 log "Running 'claw-pilot init' to set up the registry..."
-CLAW_PILOT_CMD=$(_resolve_claw_pilot_cmd)
-$CLAW_PILOT_CMD init --yes
+_resolve_claw_pilot_cmd
+$CP_NODE $CP_ENTRY init --yes
 
-# ── 14. Create admin account ──────────────────────────────────────────────────
+# ── 13. Create admin account ──────────────────────────────────────────────────
 echo ""
 log "Creating admin account..."
-$CLAW_PILOT_CMD auth setup 2>&1
+$CP_NODE $CP_ENTRY auth setup 2>&1
 echo ""
 warn "Save the admin password above — you will need it to access the dashboard."
-warn "Reset anytime with: claw-pilot auth reset"
+warn "Reset anytime with: $LINK_PATH auth reset"
 
-# ── 15. Install dashboard as systemd service (Linux only) ────────────────────
+# ── 14. Install dashboard as systemd/launchd service ─────────────────────────
+_service_installed=false
+
 if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
   echo ""
   log "Setting up dashboard as a systemd service..."
@@ -685,21 +574,76 @@ if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
     sleep 2
   fi
 
-  # CLAW_PILOT_CMD already resolved in step 13
-  if $CLAW_PILOT_CMD service install; then
+  # CP_NODE / CP_ENTRY already resolved in step 13
+  if $CP_NODE $CP_ENTRY service install; then
     log "Dashboard service installed and started."
     log "View logs: journalctl --user -u claw-pilot-dashboard.service -f"
+    _service_installed=true
   else
     warn "Dashboard service installation failed. You can start it manually:"
     warn "  claw-pilot dashboard"
     warn "  or: claw-pilot service install"
   fi
+elif [ "$OS" = "Darwin" ]; then
+  echo ""
+  # Ask to install as launchd service (only if stdin is a TTY)
+  if [ -t 0 ]; then
+    printf '[?] Install claw-pilot dashboard as a launchd service (auto-start on login)? [Y/n] '
+    read -r _install_service_answer </dev/tty
+    case "$_install_service_answer" in
+      [nN]*)
+        log "Skipping service installation."
+        log "You can install it later with: claw-pilot service install"
+        ;;
+      *)
+        log "Installing dashboard as launchd service..."
+        if $CP_NODE $CP_ENTRY service install; then
+          log "Dashboard service installed and started."
+          log "View logs: tail -f ~/.claw-pilot/dashboard.log"
+          _service_installed=true
+        else
+          warn "Service installation failed. Start manually: claw-pilot dashboard start"
+        fi
+        ;;
+    esac
+  else
+    log "Skipping service setup (non-interactive). Run later: claw-pilot service install"
+  fi
 else
   echo ""
-  log "Skipping systemd service setup (not Linux or systemd not available)."
-  log "Start the dashboard manually: claw-pilot dashboard"
+  log "Skipping service setup (not Linux/macOS or systemd not available)."
 fi
 
 echo ""
 log "Done! Run 'claw-pilot --help' to see available commands."
 log "Run 'claw-pilot create' to provision a new instance."
+echo ""
+if [ "$_service_installed" = "true" ]; then
+  log "Dashboard is running at: http://localhost:19000"
+else
+  log "To start the dashboard:"
+  log "  claw-pilot dashboard start"
+  log "Then open: http://localhost:19000"
+fi
+if [ -t 0 ]; then
+  printf '[?] Open the dashboard in your browser now? [Y/n] '
+  read -r _open_browser </dev/tty
+  case "$_open_browser" in
+    [nN]*) ;;
+    *)
+      if [ "$OS" = "Darwin" ]; then
+        open "http://localhost:19000" 2>/dev/null || true
+      elif command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "http://localhost:19000" 2>/dev/null || true
+      fi
+      ;;
+  esac
+fi
+echo ""
+if ! command -v claw-pilot >/dev/null 2>&1; then
+  warn "claw-pilot is not in your current PATH."
+  warn "Either open a new terminal, or run:"
+  warn "  source ~/.zshrc   (zsh)"
+  warn "  source ~/.bashrc  (bash)"
+  warn "Or use the full path directly: $LINK_PATH"
+fi
