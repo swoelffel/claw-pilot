@@ -451,8 +451,13 @@ export class InstanceChannels extends LitElement {
       this._tokenMasked = tg.botTokenMasked;
       this._dmPolicy = tg.dmPolicy ?? "pairing";
       this._groupPolicy = tg.groupPolicy ?? "allowlist";
-      // État C — configuré (token présent OU enabled)
-      this._panelState = "configured";
+      // État C — configuré seulement si enabled=true OU token déjà présent.
+      // Si enabled=false et pas de token (install fraîche), rester en état A.
+      if (tg.enabled || tg.botTokenMasked) {
+        this._panelState = "configured";
+      } else {
+        this._panelState = "unconfigured";
+      }
     } else {
       // État A — non configuré (telegram null = runtime.json absent)
       this._enabled = false;

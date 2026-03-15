@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.28.4-beta] — 2026-03-15
+
+### Fixed
+
+- **UI Channels — panneau Telegram affiché par défaut** — sur une installation fraîche, `telegram.enabled: false` sans token faisait quand même passer le composant en état "configuré" (état C), affichant le toggle, les policies et la section pairing ; le composant reste maintenant en état "non configuré" (état A) tant que `enabled: false` ET qu'aucun token n'est présent
+
+---
+
 ## [0.28.3-beta] — 2026-03-15
 
 ### Fixed
