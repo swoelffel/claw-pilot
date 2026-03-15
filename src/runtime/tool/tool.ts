@@ -22,6 +22,8 @@ export namespace Tool {
     messageId: MessageId;
     agentId: string;
     abort: AbortSignal;
+    /** True if the sender is an owner channel (web, telegram) — false for internal sub-agents */
+    senderIsOwner?: boolean;
     /** Callback to update the title/metadata of the in-progress tool part */
     metadata(input: { title?: string }): void;
   }
@@ -38,6 +40,8 @@ export namespace Tool {
   export interface Definition<P extends z.ZodType = z.ZodType> {
     description: string;
     parameters: P;
+    /** If true, this tool is only available to owner channels (web, telegram) — not internal sub-agents */
+    ownerOnly?: boolean;
     execute(args: z.infer<P>, ctx: Context): Promise<Result>;
   }
 

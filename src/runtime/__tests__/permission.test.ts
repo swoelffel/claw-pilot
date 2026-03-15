@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   evaluateRuleset,
   checkPermission,
@@ -6,11 +6,14 @@ import {
   lookupApproval,
   clearSessionApprovals,
   clearInstanceApprovals,
+  loadInstanceApprovals,
   EXPLORE_AGENT_RULESET,
   PLAN_AGENT_RULESET,
   INTERNAL_AGENT_RULESET,
 } from "../permission/index.js";
 import { wildcardMatch } from "../permission/wildcard.js";
+import { initDatabase } from "../../db/schema.js";
+import type Database from "better-sqlite3";
 
 // ---------------------------------------------------------------------------
 // Wildcard matching
@@ -251,5 +254,261 @@ describe("checkPermission", () => {
       instanceSlug: slug,
     });
     expect(result.action).toBe("ask");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DB persistence (Phase 0)
+// ---------------------------------------------------------------------------
+
+// Helper: seed a minimal instance row so rt_permissions FK is satisfied
+// Port is derived from slug hash to avoid UNIQUE conflicts when seeding multiple slugs
+let _seedPortCounter = 29001;
+function seedInstanceForPermissions(db: Database.Database, slug: string): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO servers (hostname, openclaw_home) VALUES ('localhost', '/opt/openclaw')`,
+  ).run();
+  const server = db.prepare("SELECT id FROM servers LIMIT 1").get() as { id: number };
+  const port = _seedPortCounter++;
+  db.prepare(
+    `INSERT OR IGNORE INTO instances
+     (server_id, slug, port, config_path, state_dir, systemd_unit)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(server.id, slug, port, "/tmp/config.json", "/tmp/state", "openclaw-test.service");
+}
+
+describe("recordApproval — DB persistence", () => {
+  let db: Database.Database;
+  const slug = "db-persist-test";
+
+  beforeEach(() => {
+    db = initDatabase(":memory:");
+    seedInstanceForPermissions(db, slug);
+    clearInstanceApprovals(slug);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("inserts a row in rt_permissions for persist='always' when db provided", () => {
+    recordApproval(
+      { instanceSlug: slug, sessionId: undefined, permission: "bash", pattern: "ls" },
+      "allow",
+      "always",
+      db,
+      slug,
+    );
+
+    const rows = db
+      .prepare("SELECT * FROM rt_permissions WHERE instance_slug = ?")
+      .all(slug) as Array<{ permission: string; pattern: string; action: string }>;
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.permission).toBe("bash");
+    expect(rows[0]!.pattern).toBe("ls");
+    expect(rows[0]!.action).toBe("allow");
+  });
+
+  it("does not insert a row for persist='once'", () => {
+    recordApproval(
+      { instanceSlug: slug, sessionId: "sess-1", permission: "write", pattern: "*.ts" },
+      "allow",
+      "once",
+      db,
+      slug,
+    );
+
+    const rows = db.prepare("SELECT * FROM rt_permissions WHERE instance_slug = ?").all(slug);
+
+    expect(rows).toHaveLength(0);
+  });
+
+  it("uses INSERT OR REPLACE to avoid duplicates", () => {
+    const key = { instanceSlug: slug, sessionId: undefined, permission: "read", pattern: "**" };
+
+    // Insert twice with same key
+    recordApproval(key, "allow", "always", db, slug);
+    recordApproval(key, "deny", "always", db, slug);
+
+    const rows = db
+      .prepare("SELECT * FROM rt_permissions WHERE instance_slug = ?")
+      .all(slug) as Array<{ action: string }>;
+
+    // Should have only one row (last write wins)
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.action).toBe("deny");
+  });
+});
+
+describe("lookupApproval — DB fallback", () => {
+  let db: Database.Database;
+  const slug = "db-lookup-test";
+
+  beforeEach(() => {
+    db = initDatabase(":memory:");
+    seedInstanceForPermissions(db, slug);
+    clearInstanceApprovals(slug);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("returns action from DB when memory cache is empty", () => {
+    // Insert directly in DB (bypassing memory cache)
+    db.prepare(
+      `INSERT INTO rt_permissions (id, instance_slug, scope, permission, pattern, action, created_at)
+       VALUES ('test-id-1', ?, 'instance', 'bash', 'ls', 'allow', datetime('now'))`,
+    ).run(slug);
+
+    // Memory cache is empty — should fall back to DB
+    const result = lookupApproval(
+      { instanceSlug: slug, sessionId: undefined, permission: "bash", pattern: "ls" },
+      db,
+      slug,
+    );
+
+    expect(result).toBe("allow");
+  });
+
+  it("repopulates memory cache from DB", () => {
+    // Insert directly in DB
+    db.prepare(
+      `INSERT INTO rt_permissions (id, instance_slug, scope, permission, pattern, action, created_at)
+       VALUES ('test-id-2', ?, 'instance', 'write', '*.ts', 'deny', datetime('now'))`,
+    ).run(slug);
+
+    // First lookup — from DB
+    lookupApproval(
+      { instanceSlug: slug, sessionId: undefined, permission: "write", pattern: "*.ts" },
+      db,
+      slug,
+    );
+
+    // Second lookup — should come from memory cache (no DB needed)
+    // We verify by closing the DB and checking the lookup still works via memory
+    const result = lookupApproval({
+      instanceSlug: slug,
+      sessionId: undefined,
+      permission: "write",
+      pattern: "*.ts",
+    });
+
+    expect(result).toBe("deny");
+  });
+});
+
+describe("clearInstanceApprovals — DB cleanup", () => {
+  let db: Database.Database;
+  const slug = "db-clear-test";
+  const slug2 = "db-clear-test-2";
+
+  beforeEach(() => {
+    db = initDatabase(":memory:");
+    seedInstanceForPermissions(db, slug);
+    seedInstanceForPermissions(db, slug2);
+    clearInstanceApprovals(slug);
+    clearInstanceApprovals(slug2);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("deletes rows from rt_permissions for the instance when db provided", () => {
+    // Insert rows for slug
+    recordApproval(
+      { instanceSlug: slug, sessionId: undefined, permission: "bash", pattern: "ls" },
+      "allow",
+      "always",
+      db,
+      slug,
+    );
+    recordApproval(
+      { instanceSlug: slug, sessionId: undefined, permission: "read", pattern: "**" },
+      "allow",
+      "always",
+      db,
+      slug,
+    );
+
+    // Verify rows exist
+    const before = db
+      .prepare("SELECT COUNT(*) as count FROM rt_permissions WHERE instance_slug = ?")
+      .get(slug) as { count: number };
+    expect(before.count).toBe(2);
+
+    // Clear with DB
+    clearInstanceApprovals(slug, db);
+
+    // Verify rows deleted
+    const after = db
+      .prepare("SELECT COUNT(*) as count FROM rt_permissions WHERE instance_slug = ?")
+      .get(slug) as { count: number };
+    expect(after.count).toBe(0);
+  });
+
+  it("does not delete rows for other instances", () => {
+    // Insert rows for both instances
+    recordApproval(
+      { instanceSlug: slug, sessionId: undefined, permission: "bash", pattern: "ls" },
+      "allow",
+      "always",
+      db,
+      slug,
+    );
+    recordApproval(
+      { instanceSlug: slug2, sessionId: undefined, permission: "read", pattern: "**" },
+      "allow",
+      "always",
+      db,
+      slug2,
+    );
+
+    // Clear only slug
+    clearInstanceApprovals(slug, db);
+
+    // slug2 rows should remain
+    const remaining = db
+      .prepare("SELECT COUNT(*) as count FROM rt_permissions WHERE instance_slug = ?")
+      .get(slug2) as { count: number };
+    expect(remaining.count).toBe(1);
+  });
+});
+
+describe("loadInstanceApprovals", () => {
+  let db: Database.Database;
+  const slug = "db-load-test";
+
+  beforeEach(() => {
+    db = initDatabase(":memory:");
+    seedInstanceForPermissions(db, slug);
+    clearInstanceApprovals(slug);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("loads approvals from DB into memory cache", () => {
+    // Insert directly in DB
+    db.prepare(
+      `INSERT INTO rt_permissions (id, instance_slug, scope, permission, pattern, action, created_at)
+       VALUES ('load-id-1', ?, 'instance', 'bash', 'git status', 'allow', datetime('now'))`,
+    ).run(slug);
+
+    // Load into memory
+    loadInstanceApprovals(db, slug);
+
+    // Should now be in memory cache (no DB needed for lookup)
+    const result = lookupApproval({
+      instanceSlug: slug,
+      sessionId: undefined,
+      permission: "bash",
+      pattern: "git status",
+    });
+
+    expect(result).toBe("allow");
   });
 });

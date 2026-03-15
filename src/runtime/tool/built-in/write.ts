@@ -10,6 +10,7 @@ import * as path from "node:path";
 import { Tool } from "../tool.js";
 
 export const WriteTool = Tool.define("write", {
+  ownerOnly: true,
   description:
     "Writes a file to the local filesystem. " +
     "This tool will overwrite the existing file if there is one at the provided path. " +

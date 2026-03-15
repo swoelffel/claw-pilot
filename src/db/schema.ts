@@ -465,6 +465,49 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // v11: session enrichment — session_key, spawn_depth, label, metadata.
+    //
+    // session_key: business identifier "<instanceSlug>:<agentId>:<channel>:<peerId>"
+    //   Allows O(1) lookup instead of full table scan in findOrCreateSession().
+    //   Backfill is done BEFORE creating the UNIQUE index.
+    //
+    // spawn_depth: depth in the session tree (0 = root, 1 = first sub-agent, etc.)
+    //   Used to enforce maxSpawnDepth limits.
+    //
+    // label: optional human-readable label (assignable by agent or user).
+    //
+    // metadata: extensible JSON blob (skillsSnapshot, promptReport, etc.)
+    version: 11,
+    up(db) {
+      db.exec(`
+        -- session_key: identifiant métier lisible "<instanceSlug>:<agentId>:<channel>:<peerId>"
+        ALTER TABLE rt_sessions ADD COLUMN session_key TEXT;
+
+        -- Backfill des sessions existantes (AVANT la création de l'index UNIQUE)
+        UPDATE rt_sessions
+        SET session_key = instance_slug || ':' || agent_id || ':' || channel || ':' || COALESCE(peer_id, 'unknown')
+        WHERE session_key IS NULL;
+
+        -- Index unique sur les sessions racines uniquement (parent_id IS NULL)
+        -- Les sessions enfants (fork, sub-agent) peuvent partager la même clé métier
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_rt_sessions_key ON rt_sessions(session_key) WHERE parent_id IS NULL;
+
+        -- spawn_depth: profondeur dans l'arbre de sessions (0 = racine)
+        ALTER TABLE rt_sessions ADD COLUMN spawn_depth INTEGER NOT NULL DEFAULT 0;
+
+        -- label: label humain optionnel (assignable par l'agent ou l'utilisateur)
+        ALTER TABLE rt_sessions ADD COLUMN label TEXT;
+
+        -- metadata: JSON extensible (skillsSnapshot, promptReport, etc.)
+        ALTER TABLE rt_sessions ADD COLUMN metadata TEXT;
+
+        -- Index sur (parent_id, state) pour countActiveChildren()
+        CREATE INDEX IF NOT EXISTS idx_rt_sessions_parent_state
+          ON rt_sessions(parent_id, state);
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

@@ -521,6 +521,7 @@ function runtimeChatCommand(): Command {
           allowSubAgents: true,
           toolProfile: "coding",
           isDefault: false,
+          inheritWorkspace: true,
         };
 
         // Model override

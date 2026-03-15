@@ -20,6 +20,7 @@ export type {
 export {
   registerHooks,
   clearHooks,
+  getRegisteredHooks,
   triggerAgentBeforeStart,
   triggerAgentEnd,
   triggerToolBeforeCall,

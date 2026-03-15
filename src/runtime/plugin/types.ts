@@ -20,7 +20,10 @@
  * ```
  */
 
+import type { ZodType } from "zod";
+import type { Hono } from "hono";
 import type { InstanceSlug, SessionId } from "../types.js";
+import type { Tool } from "../tool/tool.js";
 
 // ---------------------------------------------------------------------------
 // Hook context types
@@ -97,6 +100,31 @@ export interface PluginHooks {
   "session.start"?: (ctx: SessionContext) => Promise<void> | void;
   /** Called when a session is archived/ended */
   "session.end"?: (ctx: SessionContext) => Promise<void> | void;
+
+  /**
+   * Register additional tools provided by this plugin.
+   * Called once during tool set construction.
+   * Plugin tools are subject to toolProfile filtering and permission checks.
+   */
+  tools?: (ctx: PluginInput) => Tool.Info[] | Promise<Tool.Info[]>;
+
+  /**
+   * Register additional HTTP routes on the runtime's Hono app.
+   * Called once during ClawRuntime.start().
+   * Routes are available immediately after start() completes.
+   */
+  routes?: (app: Hono) => void;
+
+  /**
+   * Transform a tool definition before it is registered in the tool set.
+   * Called for every tool during buildToolSet().
+   * Plugins can enrich the description or modify parameters.
+   * The execute function cannot be replaced (security constraint).
+   */
+  "tool.definition"?: (
+    tool: Tool.Definition<ZodType>,
+    ctx: PluginInput,
+  ) => Tool.Definition<ZodType> | Promise<Tool.Definition<ZodType>>;
 }
 
 // ---------------------------------------------------------------------------

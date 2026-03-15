@@ -11,6 +11,7 @@ import * as path from "node:path";
 import { Tool } from "../tool.js";
 
 export const EditTool = Tool.define("edit", {
+  ownerOnly: true,
   description:
     "Performs exact string replacements in files. " +
     "The edit will FAIL if oldString is not found in the file. " +

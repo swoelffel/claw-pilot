@@ -36,6 +36,15 @@ export function clearHooks(): void {
   _hooks.length = 0;
 }
 
+/**
+ * Returns all currently registered plugin hooks.
+ * Used by getTools() to collect plugin-declared tools and by buildToolSet()
+ * to apply tool.definition transformations.
+ */
+export function getRegisteredHooks(): PluginHooks[] {
+  return [..._hooks];
+}
+
 // ---------------------------------------------------------------------------
 // Hook trigger functions
 // ---------------------------------------------------------------------------
@@ -76,7 +85,14 @@ export async function triggerSessionEnd(ctx: SessionContext): Promise<void> {
 // Internal runner
 // ---------------------------------------------------------------------------
 
-async function runHooks<K extends keyof PluginHooks>(
+/**
+ * Keys of PluginHooks that are simple void-returning event hooks.
+ * Excludes "tools", "routes", and "tool.definition" which have different signatures
+ * and are invoked directly (not via runHooks).
+ */
+type VoidHookKey = Exclude<keyof PluginHooks, "tools" | "routes" | "tool.definition">;
+
+async function runHooks<K extends VoidHookKey>(
   hookName: K,
   ctx: Parameters<NonNullable<PluginHooks[K]>>[0],
 ): Promise<void> {

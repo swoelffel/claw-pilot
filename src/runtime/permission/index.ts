@@ -11,6 +11,8 @@
  * - Approval persistence: "once" (session) or "always" (instance)
  */
 
+import type Database from "better-sqlite3";
+import { nanoid } from "nanoid";
 import type {
   PermissionRule,
   PermissionRuleset,
@@ -78,15 +80,35 @@ const _sessionApprovals = new Map<string, PermissionAction>();
 /**
  * Record a user approval decision.
  * @param persist - "always" = instance-level, "once" = session-level
+ * @param db - Optional DB for persistence (only used when persist="always")
+ * @param instanceSlug - Optional instance slug for DB persistence
  */
 export function recordApproval(
   key: ApprovalKey,
   action: PermissionAction,
   persist: "always" | "once",
+  db?: Database.Database,
+  instanceSlug?: InstanceSlug,
 ): void {
   const k = approvalKeyString(key);
   if (persist === "always") {
     _instanceApprovals.set(k, action);
+    // Persist to DB when db is provided
+    if (db && instanceSlug) {
+      const scope = key.sessionId ? `session:${key.sessionId}` : "instance";
+      // Use DELETE + INSERT in a transaction to emulate upsert
+      // (rt_permissions has no UNIQUE constraint on (instance_slug, scope, permission, pattern))
+      db.transaction(() => {
+        db.prepare(
+          `DELETE FROM rt_permissions
+           WHERE instance_slug = ? AND scope = ? AND permission = ? AND pattern = ?`,
+        ).run(instanceSlug, scope, key.permission, key.pattern);
+        db.prepare(
+          `INSERT INTO rt_permissions (id, instance_slug, scope, permission, pattern, action, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+        ).run(nanoid(), instanceSlug, scope, key.permission, key.pattern, action);
+      })();
+    }
   } else {
     _sessionApprovals.set(k, action);
   }
@@ -95,10 +117,37 @@ export function recordApproval(
 /**
  * Look up a previously recorded approval.
  * Instance-level takes precedence over session-level.
+ * Falls back to DB when db is provided and memory cache misses.
  */
-export function lookupApproval(key: ApprovalKey): PermissionAction | undefined {
+export function lookupApproval(
+  key: ApprovalKey,
+  db?: Database.Database,
+  instanceSlug?: InstanceSlug,
+): PermissionAction | undefined {
   const k = approvalKeyString(key);
-  return _instanceApprovals.get(k) ?? _sessionApprovals.get(k);
+  // Check memory cache first
+  const memResult = _instanceApprovals.get(k) ?? _sessionApprovals.get(k);
+  if (memResult !== undefined) return memResult;
+
+  // DB fallback when db is provided
+  if (db && instanceSlug) {
+    const row = db
+      .prepare(
+        `SELECT action FROM rt_permissions
+         WHERE instance_slug = ? AND permission = ? AND pattern = ?
+         LIMIT 1`,
+      )
+      .get(instanceSlug, key.permission, key.pattern) as { action: string } | undefined;
+
+    if (row) {
+      const action = row.action as PermissionAction;
+      // Repopulate memory cache
+      _instanceApprovals.set(k, action);
+      return action;
+    }
+  }
+
+  return undefined;
 }
 
 /**
@@ -116,14 +165,39 @@ export function clearSessionApprovals(slug: InstanceSlug, sessionId: SessionId):
 
 /**
  * Clear all approvals for an instance (called on instance destroy).
+ * When db is provided, also deletes rows from rt_permissions.
  */
-export function clearInstanceApprovals(slug: InstanceSlug): void {
+export function clearInstanceApprovals(slug: InstanceSlug, db?: Database.Database): void {
   const prefix = `${slug}::`;
   for (const key of _instanceApprovals.keys()) {
     if (key.startsWith(prefix)) _instanceApprovals.delete(key);
   }
   for (const key of _sessionApprovals.keys()) {
     if (key.startsWith(prefix)) _sessionApprovals.delete(key);
+  }
+  // Delete from DB when provided
+  if (db) {
+    db.prepare(`DELETE FROM rt_permissions WHERE instance_slug = ?`).run(slug);
+  }
+}
+
+/**
+ * Load all instance-level approvals from DB into memory cache.
+ * Call this at runtime startup to restore persisted approvals.
+ */
+export function loadInstanceApprovals(db: Database.Database, instanceSlug: InstanceSlug): void {
+  const rows = db
+    .prepare(`SELECT permission, pattern, action FROM rt_permissions WHERE instance_slug = ?`)
+    .all(instanceSlug) as Array<{ permission: string; pattern: string; action: string }>;
+
+  for (const row of rows) {
+    const key: ApprovalKey = {
+      instanceSlug,
+      sessionId: undefined,
+      permission: row.permission,
+      pattern: row.pattern,
+    };
+    _instanceApprovals.set(approvalKeyString(key), row.action as PermissionAction);
   }
 }
 

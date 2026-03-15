@@ -12,8 +12,19 @@
 
 import type { InstanceSlug } from "../types.js";
 import { getBus } from "../bus/index.js";
-import { MessageCreated, SessionCreated, SessionEnded } from "../bus/events.js";
-import { triggerMessageReceived, triggerSessionStart, triggerSessionEnd } from "../plugin/hooks.js";
+import {
+  MessageCreated,
+  SessionCreated,
+  SessionEnded,
+  SessionStatusChanged,
+} from "../bus/events.js";
+import {
+  triggerMessageReceived,
+  triggerSessionStart,
+  triggerSessionEnd,
+  triggerAgentBeforeStart,
+  triggerAgentEnd,
+} from "../plugin/hooks.js";
 
 // ---------------------------------------------------------------------------
 // wirePluginsToBus
@@ -65,6 +76,35 @@ export function wirePluginsToBus(instanceSlug: InstanceSlug): Array<() => void> 
       }).catch((err) => {
         console.warn("[claw-runtime] plugin hook session.end threw:", err);
       });
+    }),
+  );
+
+  // session.status "busy" → plugin "agent.beforeStart"
+  // session.status "idle" → plugin "agent.end"
+  unsubs.push(
+    bus.subscribe(SessionStatusChanged, (payload) => {
+      if (payload.status === "busy") {
+        void triggerAgentBeforeStart({
+          instanceSlug,
+          sessionId: payload.sessionId,
+          agentName: payload.agentId ?? "",
+          model: "",
+        }).catch((err) => {
+          console.warn("[claw-runtime] plugin hook agent.beforeStart threw:", err);
+        });
+      }
+      if (payload.status === "idle") {
+        void triggerAgentEnd({
+          instanceSlug,
+          sessionId: payload.sessionId,
+          agentName: payload.agentId ?? "",
+          tokensIn: payload.tokensIn ?? 0,
+          tokensOut: payload.tokensOut ?? 0,
+          costUsd: payload.costUsd ?? 0,
+        }).catch((err) => {
+          console.warn("[claw-runtime] plugin hook agent.end threw:", err);
+        });
+      }
     }),
   );
 

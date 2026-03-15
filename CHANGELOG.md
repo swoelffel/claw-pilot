@@ -6,6 +6,78 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.25.0] — 2026-03-15
+
+### Added
+
+- **Session enrichie** — `session_key` métier `<slug>:<agentId>:<channel>:<peerId>`, `spawn_depth`, `label`, `metadata` JSON ; lookup O(1) sans scan de table (migration DB v11)
+- **Limites de spawn configurables** — `subagents.maxSpawnDepth` et `maxChildrenPerSession` dans `runtime.json` ; erreurs descriptives si dépassement
+- **File d'attente des sessions** — `ChannelRouter` sérialise les messages concurrents par session (plus de race condition)
+- **Fork de session avec historique** — `forkSession()` copie les messages jusqu'à un point précis
+- **PromptMode minimal** — les sous-agents chargent un subset réduit de DISCOVERY_FILES (économie 2 000–5 000 tokens/appel)
+- **extraSystemPrompt per-run** — contexte parent injecté dans le sous-agent au spawn (qui l'a spawné, profondeur, mission)
+- **Max-steps reminder** — injection d'un `<system-reminder>` au dernier step pour que l'agent conclue proprement
+- **Instructions depuis URLs HTTP** — `instructionUrls` dans `AgentConfigSchema` ; fetch avec timeout 5s, échecs silencieux
+- **Rapport de composition du prompt** — `buildSystemPrompt()` retourne `{ prompt, report }` avec fichiers chargés/skippés, skills injectés, taille totale
+- **Contexte parent A2A** — bloc `## Subagent Context` injecté dans le system prompt du sous-agent
+- **Modes lifecycle A2A** — `lifecycle: "run" | "session"` dans le Task tool ; `"session"` conserve la sous-session active
+- **Mode async A2A** — `mode: "async"` dans le Task tool ; spawn non-bloquant, résultat injecté via `SubagentCompleted` bus event
+- **Double gate de permission A2A** — filtre des agents visibles + vérification à l'exécution
+- **Abort cascade A2A** — annulation du parent propage l'abort au sous-agent
+- **Héritage du modèle parent** — fallback sur le modèle du parent si le sous-agent n'en a pas
+- **Retour enrichi Task tool** — `steps_used`, `tokens_used`, `model` dans la réponse
+- **toolProfile réellement appliqué** — `TOOL_PROFILES` (minimal/messaging/coding/full) filtre les outils built-in
+- **Outils ownerOnly** — `BashTool` et `WriteTool` marqués `ownerOnly: true` ; non disponibles pour les sous-agents internes
+- **Normalisation schémas Gemini** — suppression `anyOf`/`oneOf` pour les providers Google
+- **Doom-loop detection** — 3 appels identiques consécutifs → `DoomLoopDetected` bus event + erreur descriptive
+- **MultiEditTool** — éditions multiples sur un même fichier en un seul appel LLM
+- **Réparation tool calls invalides** — outil `invalid` (hidden) redirige les appels vers des outils inexistants
+- **HeartbeatRunner actif** — scheduler `setInterval` par agent ; `heartbeat.every`, `activeHours`, `model`, `ackMaxChars` dans `AgentConfigSchema`
+- **Pattern Sentinel** — agent de surveillance dédié (toolProfile messaging, heartbeat 1h)
+- **SSE keepalive** — `server.heartbeat` toutes les 10s sur le flux SSE `/runtime/stream`
+- **Watchdog agent timeout** — `timeoutMs` par agent ; abort + `AgentTimeout` bus event si dépassé
+- **Compaction auto-déclenchée** — `shouldCompact()` + `compact()` appelés depuis `runPromptLoop()` après chaque step
+- **Mémoire thématique** — `memory/*.md` chargés en plus de `MEMORY.md` (ordre alphabétique)
+- **Pruning des tool outputs anciens** — outputs > seuil remplacés par `[output pruned]` dans le contexte LLM
+- **Héritage workspace A2A** — `inheritWorkspace` dans `AgentConfigSchema` ; sous-agent hérite du `workDir` parent par défaut
+- **bootstrapFiles** — fichiers additionnels injectés dans le system prompt (glob patterns relatifs au workspace)
+- **BOOTSTRAP.md one-shot** — fichier chargé une seule fois à la première session, puis archivé
+- **Skills injection proactive** — `SkillTool` détecte les skills éligibles et les injecte automatiquement dans le prompt
+- **Skills distants** — `skillUrls` dans `AgentConfigSchema` ; index JSON téléchargé et mis en cache
+- **MCP reconnexion automatique** — backoff exponentiel (1s → 30s max) sur déconnexion
+- **MCP kill tree** — `SIGTERM` sur le process group complet à la fermeture
+- **MCP ToolListChanged** — rechargement dynamique des outils sans redémarrage
+- **Modèles nommés (aliases)** — `models[]` dans `RuntimeConfigSchema` ; agents référencent par alias (`"fast"`, `"smart"`)
+- **defaultInternalModel** — modèle léger pour compaction/title/summary
+- **Extended thinking** — `thinking.enabled` + `budgetTokens` par agent (Anthropic uniquement)
+- **Prompt caching Anthropic** — marquage `cacheControl: ephemeral` sur system prompt + 2 derniers messages
+- **Normalisation tokens** — calcul de coût cohérent entre Anthropic (exclut cache) et OpenAI (inclut tout)
+- **SSE chunk timeout** — `chunkTimeoutMs` par agent ; abort + `LLMChunkTimeout` si aucun chunk reçu
+- **Persistence des approbations en DB** — `rt_permissions` enfin utilisée ; `recordApproval("always")` survit aux redémarrages
+- **Politique agentToAgent** — `agentToAgent.enabled` + `allowList` dans `AgentConfigSchema` ; contrôle déclaratif des spawns
+- **external_directory** — `BashTool` bloque les sous-agents accédant à des chemins hors `workDir`
+- **Feedback textuel sur refus** — `PermissionReplied.feedback` injecté comme message user pour que l'agent corrige son approche
+- **5 hooks plugin manquants** — `agent.beforeStart`, `agent.end`, `tool.beforeCall`, `tool.afterCall`, `message.sending` désormais wirés
+- **Plugin tools** — `PluginHooks.tools()` permet aux plugins d'enregistrer des outils
+- **Plugin routes HTTP** — `PluginHooks.routes(app)` permet aux plugins d'ajouter des routes Hono
+- **Hook tool.definition** — enrichissement dynamique des descriptions d'outils par les plugins
+
+### Changed
+
+- **claw-runtime only** — suppression complète du support OpenClaw tiers (v0.20.0)
+- **Task tool** — retour enrichi avec `steps_used`, `tokens_used`, `model`
+- **PermissionReplied** — champ `feedback?: string` ajouté (rétrocompatible)
+- **HEARTBEAT.md template** — mis à jour pour le HeartbeatRunner actif
+
+### Fixed
+
+- **Compaction** — `shouldCompact()` et `compact()` n'étaient jamais appelés en V1
+- **toolProfile** — défini dans le schema mais non appliqué en V1
+- **5 hooks plugin** — wirés sur le bus mais jamais déclenchés en V1
+- **MCP** — connexions non fermées proprement à l'arrêt du daemon
+
+---
+
 ## [0.19.0] — 2026-03-12
 
 ### Added

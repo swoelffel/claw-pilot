@@ -165,6 +165,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       allowSubAgents: true,
       toolProfile: "coding",
       isDefault: false,
+      inheritWorkspace: true,
     };
 
     // Resolve model

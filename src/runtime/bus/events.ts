@@ -71,7 +71,15 @@ export const SessionEnded = defineEvent<
 
 export const SessionStatusChanged = defineEvent<
   "session.status",
-  { sessionId: SessionId; status: "idle" | "busy" | "retry" }
+  {
+    sessionId: SessionId;
+    status: "idle" | "busy" | "retry";
+    // Populated when status transitions to "idle" (end of prompt loop)
+    agentId?: AgentId;
+    tokensIn?: number;
+    tokensOut?: number;
+    costUsd?: number;
+  }
 >("session.status");
 
 // ---------------------------------------------------------------------------
@@ -115,6 +123,8 @@ export const PermissionReplied = defineEvent<
     sessionId: SessionId;
     action: "allow" | "deny";
     persist: boolean;
+    /** Optional feedback message shown to the agent when the action is "deny" */
+    feedback?: string;
   }
 >("permission.replied");
 
@@ -131,6 +141,66 @@ export const ProviderFailover = defineEvent<
   "provider.failover",
   { providerId: string; fromProfileId: string; toProfileId: string; reason: string }
 >("provider.failover");
+
+// ---------------------------------------------------------------------------
+// Subagent events
+// ---------------------------------------------------------------------------
+
+export const SubagentCompleted = defineEvent<
+  "subagent.completed",
+  {
+    parentSessionId: SessionId;
+    subSessionId: SessionId;
+    result: {
+      text: string;
+      steps: number;
+      tokens: { input: number; output: number };
+      model: string;
+    };
+  }
+>("subagent.completed");
+
+export const AgentTimeout = defineEvent<
+  "agent.timeout",
+  { sessionId: SessionId; agentId: AgentId; timeoutMs: number }
+>("agent.timeout");
+
+export const HeartbeatTick = defineEvent<
+  "heartbeat.tick",
+  { agentId: AgentId; instanceSlug: InstanceSlug }
+>("heartbeat.tick");
+
+export const HeartbeatAlert = defineEvent<
+  "heartbeat.alert",
+  { agentId: AgentId; instanceSlug: InstanceSlug; text: string }
+>("heartbeat.alert");
+
+// ---------------------------------------------------------------------------
+// MCP events
+// ---------------------------------------------------------------------------
+
+export const McpServerReconnected = defineEvent<"mcp.server.reconnected", { serverId: string }>(
+  "mcp.server.reconnected",
+);
+
+export const McpToolsChanged = defineEvent<
+  "mcp.tools.changed",
+  { serverId: string; toolCount: number }
+>("mcp.tools.changed");
+
+// ---------------------------------------------------------------------------
+// Tool events
+// ---------------------------------------------------------------------------
+
+export const DoomLoopDetected = defineEvent<
+  "tool.doom_loop",
+  { sessionId: SessionId; toolName: string }
+>("tool.doom_loop");
+
+export const LLMChunkTimeout = defineEvent<
+  "llm.chunk_timeout",
+  { sessionId: SessionId; agentId: AgentId; elapsedMs: number }
+>("llm.chunk_timeout");
 
 // ---------------------------------------------------------------------------
 // Channel events
@@ -166,8 +236,16 @@ export type AnyEventDef =
   | typeof PermissionReplied
   | typeof ProviderAuthFailed
   | typeof ProviderFailover
+  | typeof DoomLoopDetected
   | typeof ChannelMessageReceived
-  | typeof ChannelMessageSent;
+  | typeof ChannelMessageSent
+  | typeof SubagentCompleted
+  | typeof AgentTimeout
+  | typeof HeartbeatTick
+  | typeof HeartbeatAlert
+  | typeof McpServerReconnected
+  | typeof McpToolsChanged
+  | typeof LLMChunkTimeout;
 
 export type AnyEvent = {
   [K in AnyEventDef["type"]]: {

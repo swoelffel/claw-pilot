@@ -19,8 +19,49 @@ import {
   TodoWriteTool,
   TodoReadTool,
   SkillTool,
+  MultiEditTool,
 } from "./built-in/index.js";
 import type { McpRegistry } from "../mcp/index.js";
+import { getRegisteredHooks } from "../plugin/hooks.js";
+import type { PluginInput } from "../plugin/types.js";
+
+// ---------------------------------------------------------------------------
+// Tool profiles
+// ---------------------------------------------------------------------------
+
+export const TOOL_PROFILES: Record<string, string[]> = {
+  minimal: ["question"],
+  messaging: ["question", "webfetch"],
+  coding: [
+    "read",
+    "write",
+    "edit",
+    "multiedit",
+    "bash",
+    "glob",
+    "grep",
+    "webfetch",
+    "question",
+    "todowrite",
+    "todoread",
+    "skill",
+  ],
+  full: [
+    "read",
+    "write",
+    "edit",
+    "multiedit",
+    "bash",
+    "glob",
+    "grep",
+    "webfetch",
+    "question",
+    "todowrite",
+    "todoread",
+    "skill",
+    "task",
+  ],
+};
 
 // ---------------------------------------------------------------------------
 // Built-in tools
@@ -38,6 +79,7 @@ const BUILTIN_TOOLS: Tool.Info[] = [
   TodoWriteTool,
   TodoReadTool,
   SkillTool,
+  MultiEditTool,
 ];
 
 // ---------------------------------------------------------------------------
@@ -51,14 +93,36 @@ export interface ToolRegistryOptions {
   exclude?: string[];
   /** MCP registry — if provided, MCP tools are appended to the list */
   mcpRegistry?: McpRegistry;
+  /** Tool profile to apply (filters built-in tools) */
+  toolProfile?: string;
+  /** Additional tool IDs to include beyond the profile */
+  alsoAllow?: string[];
+  /** Plugin input — if provided, plugin-declared tools are appended to the list */
+  pluginInput?: PluginInput;
 }
 
 /**
  * Return the list of available tools for an agent.
  * Combines built-ins + custom tools loaded from customToolsDir (if provided).
+ * Applies toolProfile filter if specified.
  */
 export async function getTools(options?: ToolRegistryOptions): Promise<Tool.Info[]> {
-  const tools: Tool.Info[] = [...BUILTIN_TOOLS];
+  let tools: Tool.Info[] = [...BUILTIN_TOOLS];
+
+  // Apply tool profile filter
+  if (options?.toolProfile && TOOL_PROFILES[options.toolProfile]) {
+    const allowed = new Set(TOOL_PROFILES[options.toolProfile]);
+    tools = tools.filter((t) => allowed.has(t.id));
+  }
+
+  // Add extra allowed tools (beyond profile)
+  if (options?.alsoAllow && options.alsoAllow.length > 0) {
+    const extraIds = new Set(options.alsoAllow);
+    const extra = BUILTIN_TOOLS.filter(
+      (t) => extraIds.has(t.id) && !tools.find((e) => e.id === t.id),
+    );
+    tools = [...tools, ...extra];
+  }
 
   if (options?.customToolsDir) {
     const custom = await loadCustomTools(options.customToolsDir);
@@ -68,6 +132,30 @@ export async function getTools(options?: ToolRegistryOptions): Promise<Tool.Info
   if (options?.mcpRegistry) {
     const mcpTools = await options.mcpRegistry.getTools();
     tools.push(...mcpTools);
+  }
+
+  // Append tools declared by plugins (after built-in and MCP tools)
+  if (options?.pluginInput) {
+    const hooks = getRegisteredHooks();
+    for (const hook of hooks) {
+      if (hook.tools) {
+        try {
+          const pluginTools = await hook.tools(options.pluginInput);
+          for (const tool of pluginTools) {
+            // Deduplication: do not overwrite existing tools
+            if (!tools.find((t) => t.id === tool.id)) {
+              tools.push(tool);
+            } else {
+              console.warn(
+                `[claw-runtime] Plugin tool '${tool.id}' conflicts with existing tool — skipped`,
+              );
+            }
+          }
+        } catch (err) {
+          console.warn("[claw-runtime] Plugin hook tools threw:", err);
+        }
+      }
+    }
   }
 
   if (options?.exclude && options.exclude.length > 0) {

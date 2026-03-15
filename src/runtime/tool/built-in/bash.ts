@@ -10,7 +10,29 @@ import { Tool } from "../tool.js";
 
 const DEFAULT_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
+/** Paths that are always allowed (system binaries, temp) */
+const ALLOWED_PATH_PREFIXES = ["/usr/", "/bin/", "/sbin/", "/lib/", "/tmp/", "/var/tmp/"];
+
+/**
+ * Detect absolute paths in a shell command that are outside the working directory.
+ * Returns paths that are not under workDir and not in the allowed system prefixes.
+ */
+export function detectExternalPaths(command: string, workDir: string): string[] {
+  const absolutePathRegex = /(?:^|\s)(\/[^\s;|&><'"]+)/g;
+  const found = new Set<string>();
+  let match: RegExpExecArray | null;
+  while ((match = absolutePathRegex.exec(command)) !== null) {
+    const p = match[1];
+    if (!p) continue;
+    if (p.startsWith(workDir)) continue;
+    if (ALLOWED_PATH_PREFIXES.some((prefix) => p.startsWith(prefix))) continue;
+    found.add(p);
+  }
+  return [...found];
+}
+
 export const BashTool = Tool.define("bash", {
+  ownerOnly: true,
   description:
     "Executes a given bash command in a persistent shell session with optional timeout. " +
     "Use the workdir parameter to change directories instead of 'cd' commands. " +
@@ -36,6 +58,18 @@ export const BashTool = Tool.define("bash", {
   async execute(params, ctx) {
     const cwd = params.workdir ?? process.cwd();
     const timeout = params.timeout ?? DEFAULT_TIMEOUT_MS;
+
+    // Block sub-agents from accessing paths outside workDir
+    if (ctx.senderIsOwner === false) {
+      const externalPaths = detectExternalPaths(params.command, cwd);
+      if (externalPaths.length > 0) {
+        return {
+          title: params.description,
+          output: `Access denied: command accesses path(s) outside workspace '${cwd}': ${externalPaths.join(", ")}. Sub-agents cannot access external directories.`,
+          truncated: false,
+        };
+      }
+    }
 
     const proc = spawn(params.command, {
       shell: true,

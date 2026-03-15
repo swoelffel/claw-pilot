@@ -13,6 +13,7 @@
  */
 
 import type Database from "better-sqlite3";
+import type { Hono } from "hono";
 import type { RuntimeInstanceState, InstanceSlug } from "../types.js";
 import type { RuntimeConfig } from "../config/index.js";
 import type { Channel } from "../channel/channel.js";
@@ -26,9 +27,11 @@ import {
 } from "../bus/events.js";
 import { initAgentRegistry } from "../agent/registry.js";
 import { McpRegistry } from "../mcp/registry.js";
-import { ChannelRouter } from "../channel/router.js";
+import { ChannelRouter, registerSubagentCompletedHandler } from "../channel/router.js";
 import { createChannels } from "./channel-factory.js";
 import { wirePluginsToBus } from "./plugin-wiring.js";
+import { startHeartbeatRunner } from "../heartbeat/runner.js";
+import { getRegisteredHooks } from "../plugin/hooks.js";
 
 // ---------------------------------------------------------------------------
 // ClawRuntime
@@ -39,6 +42,8 @@ export class ClawRuntime {
   private _channels: Channel[] = [];
   private _mcpRegistry: McpRegistry | undefined;
   private _pluginUnsubscribers: Array<() => void> = [];
+  private _subagentUnsubscribe: (() => void) | undefined;
+  private _stopHeartbeat: (() => void) | undefined;
   private _error: string | undefined;
 
   constructor(
@@ -76,11 +81,33 @@ export class ClawRuntime {
       if (this.config.mcpEnabled && this.config.mcpServers.length > 0) {
         this._mcpRegistry = new McpRegistry();
         const enabledServers = this.config.mcpServers.filter((s) => s.enabled);
-        await this._mcpRegistry.init(enabledServers);
+        await this._mcpRegistry.init(enabledServers, this.instanceSlug);
       }
 
       // 3. Wire plugin hooks to bus events
       this._pluginUnsubscribers = wirePluginsToBus(this.instanceSlug);
+
+      // 3b. Register async subagent result handler
+      this._subagentUnsubscribe = registerSubagentCompletedHandler(
+        this.db,
+        this.instanceSlug,
+        this.config,
+      );
+
+      // 3c. Start heartbeat runner for agents with heartbeat config
+      this._stopHeartbeat = startHeartbeatRunner(this.config.agents, {
+        db: this.db,
+        instanceSlug: this.instanceSlug,
+        resolveModel: (_agent) => {
+          // Minimal resolver: use the agent's model string directly
+          // The full resolver is in the channel router — here we just need a basic one
+          // This will be improved when the provider registry is accessible from the engine
+          throw new Error(
+            "HeartbeatRunner.resolveModel not yet wired — use heartbeat.model override",
+          );
+        },
+        workDir: undefined,
+      });
 
       // 4. Create and connect channels
       this._channels = createChannels(this.config, this.instanceSlug);
@@ -150,6 +177,18 @@ export class ClawRuntime {
     }
     this._pluginUnsubscribers = [];
 
+    // 3b. Unsubscribe async subagent result handler
+    if (this._subagentUnsubscribe) {
+      this._subagentUnsubscribe();
+      this._subagentUnsubscribe = undefined;
+    }
+
+    // 3c. Stop heartbeat runner
+    if (this._stopHeartbeat) {
+      this._stopHeartbeat();
+      this._stopHeartbeat = undefined;
+    }
+
     this._setState("stopped");
 
     const bus = getBus(this.instanceSlug);
@@ -181,6 +220,24 @@ export class ClawRuntime {
     return this._mcpRegistry;
   }
 
+  /**
+   * Register plugin routes on the given Hono app.
+   * Must be called after initPlugins() and before start().
+   * Plugins can use this to expose additional HTTP endpoints.
+   */
+  registerPluginRoutes(app: Hono): void {
+    const hooks = getRegisteredHooks();
+    for (const hook of hooks) {
+      if (hook.routes) {
+        try {
+          hook.routes(app);
+        } catch (err) {
+          console.warn("[claw-runtime] Plugin hook routes threw:", err);
+        }
+      }
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Internal helpers
   // -------------------------------------------------------------------------
@@ -193,6 +250,7 @@ export class ClawRuntime {
           instanceSlug: this.instanceSlug,
           config: this.config,
           message,
+          ...(this._mcpRegistry !== undefined ? { mcpRegistry: this._mcpRegistry } : {}),
         });
 
         // Send response back through the originating channel

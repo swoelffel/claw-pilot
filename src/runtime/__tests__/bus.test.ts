@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Bus, getBus, disposeBus, hasBus } from "../bus/index.js";
-import { SessionCreated, SessionStatusChanged, RuntimeStarted } from "../bus/events.js";
+import {
+  SessionCreated,
+  SessionStatusChanged,
+  RuntimeStarted,
+  AgentTimeout,
+  HeartbeatAlert,
+  HeartbeatTick,
+} from "../bus/events.js";
 
 describe("Bus", () => {
   let bus: Bus;
@@ -118,6 +125,52 @@ describe("Bus", () => {
     ).not.toThrow();
 
     expect(goodHandler).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Bus — heartbeat and timeout events", () => {
+  let bus: Bus;
+  beforeEach(() => {
+    bus = new Bus("test-hb");
+  });
+
+  it("[positive] AgentTimeout is published and received with correct payload", () => {
+    const handler = vi.fn();
+    bus.subscribe(AgentTimeout, handler);
+    bus.publish(AgentTimeout, { sessionId: "s1", agentId: "main", timeoutMs: 5000 });
+    expect(handler).toHaveBeenCalledWith({ sessionId: "s1", agentId: "main", timeoutMs: 5000 });
+  });
+
+  it("[negative] AgentTimeout is not delivered to SessionStatusChanged subscriber", () => {
+    const handler = vi.fn();
+    bus.subscribe(SessionStatusChanged, handler);
+    bus.publish(AgentTimeout, { sessionId: "s1", agentId: "main", timeoutMs: 5000 });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("[positive] HeartbeatAlert is published and received with correct payload", () => {
+    const handler = vi.fn();
+    bus.subscribe(HeartbeatAlert, handler);
+    bus.publish(HeartbeatAlert, { agentId: "sentinel", instanceSlug: "test", text: "alert" });
+    expect(handler).toHaveBeenCalledWith({
+      agentId: "sentinel",
+      instanceSlug: "test",
+      text: "alert",
+    });
+  });
+
+  it("[positive] HeartbeatTick is published and received with correct payload", () => {
+    const handler = vi.fn();
+    bus.subscribe(HeartbeatTick, handler);
+    bus.publish(HeartbeatTick, { agentId: "sentinel", instanceSlug: "test" });
+    expect(handler).toHaveBeenCalledWith({ agentId: "sentinel", instanceSlug: "test" });
+  });
+
+  it("[negative] HeartbeatAlert is not delivered to HeartbeatTick subscriber", () => {
+    const handler = vi.fn();
+    bus.subscribe(HeartbeatTick, handler);
+    bus.publish(HeartbeatAlert, { agentId: "sentinel", instanceSlug: "test", text: "alert" });
+    expect(handler).not.toHaveBeenCalled();
   });
 });
 

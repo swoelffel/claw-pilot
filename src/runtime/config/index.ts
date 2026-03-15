@@ -41,14 +41,56 @@ const ProviderConfigSchema = z.object({
   headers: z.record(z.string(), z.string()).optional(),
 });
 
+/** Heartbeat config for periodic agent tasks */
+const HeartbeatConfigSchema = z.object({
+  /** Interval between heartbeat runs. Examples: "5m", "30m", "1h", "24h" */
+  every: z.enum(["5m", "10m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "24h"]),
+  /** Custom prompt sent to the agent. If absent, the agent reads HEARTBEAT.md */
+  prompt: z.string().optional(),
+  /** Active hours restriction */
+  activeHours: z
+    .object({
+      start: z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:MM format"),
+      end: z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:MM format"),
+      tz: z.string().min(1),
+    })
+    .optional(),
+  /** Model override for heartbeat runs (e.g. a cheaper/faster model) */
+  model: z
+    .string()
+    .refine((v) => /^[a-z0-9-]+\/[a-zA-Z0-9._-]+$/.test(v), {
+      message: 'Must be "provider/model" format',
+    })
+    .optional(),
+  /** Max chars for HEARTBEAT_OK acknowledgement (default: 500) */
+  ackMaxChars: z.number().int().min(1).optional(),
+});
+
+/**
+ * Named model alias — maps a short identifier to a provider/model pair.
+ * Allows agents to reference models by alias (e.g. "fast") instead of
+ * the full "provider/model" string.
+ */
+const ModelAliasSchema = z.object({
+  /** Short identifier used in agent config (e.g. "fast", "smart", "local") */
+  id: z.string().min(1),
+  /** Provider ID (e.g. "anthropic", "openai", "ollama") */
+  provider: z.string().min(1),
+  /** Model ID (e.g. "claude-haiku-3-5", "gpt-4o-mini") */
+  model: z.string().min(1),
+  /** Optional context window override (tokens). Overrides the catalog value. */
+  contextWindow: z.number().int().min(1).optional(),
+});
+
 /** Agent config */
 const AgentConfigSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  /** Model in "provider/model" format, e.g. "anthropic/claude-sonnet-4-5" */
-  model: z.string().refine((v) => /^[a-z0-9-]+\/[a-zA-Z0-9._-]+$/.test(v), {
-    message: 'Must be "provider/model" format',
-  }),
+  /**
+   * Model reference — either "provider/model" format (e.g. "anthropic/claude-sonnet-4-5")
+   * or a named alias defined in RuntimeConfig.models (e.g. "fast", "smart").
+   */
+  model: z.string().min(1),
   /** System prompt override (if not using a .md file) */
   systemPrompt: z.string().optional(),
   /** Path to a .md file with the system prompt (relative to stateDir) */
@@ -63,8 +105,82 @@ const AgentConfigSchema = z.object({
   allowSubAgents: z.boolean().default(true),
   /** Tool profile */
   toolProfile: z.enum(["minimal", "coding", "messaging", "full"]).default("coding"),
+  /**
+   * Controls which workspace discovery files are loaded into the system prompt.
+   * - "full": all files including HEARTBEAT.md (default for primary agents)
+   * - "minimal": core files only, excludes HEARTBEAT.md (default for subagents)
+   * If omitted, defaults to "minimal" when toolProfile="minimal", "full" otherwise.
+   */
+  promptMode: z.enum(["full", "minimal"]).optional(),
+  /**
+   * Extra URLs to fetch and append to the system prompt after workspace discovery.
+   * Useful for sharing team standards or context across instances.
+   * Each URL is fetched with a 5s timeout; failures are silently ignored.
+   */
+  instructionUrls: z.array(z.string().url()).optional(),
   /** Whether this is the default agent for new sessions */
   isDefault: z.boolean().default(false),
+  /** Max duration for a single prompt loop run in ms. Default: 300000 (5 min). */
+  timeoutMs: z.number().int().min(1000).optional(),
+  /**
+   * Max time (ms) between consecutive SSE chunks before the stream is aborted.
+   * Prevents sessions from hanging when the LLM provider stalls silently.
+   * Default: 120000 (2 min).
+   */
+  chunkTimeoutMs: z.number().int().min(5000).optional(),
+  /** Heartbeat configuration for periodic autonomous tasks */
+  heartbeat: HeartbeatConfigSchema.optional(),
+  /**
+   * If true (default), sub-agents spawned by this agent inherit the parent's workDir.
+   * Set to false to give the sub-agent its own isolated workspace.
+   * Defaults to true when not specified.
+   */
+  inheritWorkspace: z.boolean().optional(),
+  /**
+   * Additional files to inject into the system prompt, as glob patterns relative to
+   * the agent's workspace directory. Loaded after DISCOVERY_FILES.
+   * Example: ["project-context.md", "docs/architecture/*.md"]
+   */
+  bootstrapFiles: z.array(z.string()).optional(),
+  /**
+   * URLs pointing to remote skill index files (JSON).
+   * Skills are downloaded and cached locally in ~/.cache/claw-pilot/skills/.
+   * Index format: { "skills": [{ "name": "...", "description": "...", "url": "..." }] }
+   * Failures are silently ignored — a missing URL must not block session startup.
+   */
+  skillUrls: z.array(z.string().url()).optional(),
+  /**
+   * Extended thinking configuration (Anthropic only).
+   * When enabled, the model uses a dedicated reasoning phase before responding.
+   * Useful for complex planning and architecture tasks.
+   * Disabled by default — has higher cost and latency.
+   */
+  thinking: z
+    .object({
+      enabled: z.boolean().default(false),
+      /**
+       * Token budget for the thinking phase (1024–100000).
+       * Default: 10000 tokens.
+       */
+      budgetTokens: z.number().int().min(1024).max(100_000).optional(),
+    })
+    .optional(),
+  /**
+   * Agent-to-agent spawn policy.
+   * Controls which sub-agents this agent is allowed to spawn via the task tool.
+   */
+  agentToAgent: z
+    .object({
+      /** Whether this agent can spawn sub-agents at all (default: true) */
+      enabled: z.boolean().default(true),
+      /**
+       * Whitelist of agent IDs this agent can spawn.
+       * ["*"] = all agents (default behavior).
+       * If absent, all agents are allowed (same as ["*"]).
+       */
+      allowList: z.array(z.string().min(1)).min(1).optional(),
+    })
+    .optional(),
 });
 
 /** Telegram channel config */
@@ -97,6 +213,14 @@ const CompactionConfigSchema = z.object({
   reservedTokens: z.number().int().min(1000).max(50_000).default(8_000),
 });
 
+/** Sub-agents spawn limits */
+const SubagentsConfigSchema = z.object({
+  /** Max spawn depth (0 = root only, 1 = one level of sub-agents, etc.) */
+  maxSpawnDepth: z.number().int().min(0).max(10).default(3),
+  /** Max simultaneous active children per session */
+  maxChildrenPerSession: z.number().int().min(1).max(20).default(5),
+});
+
 // ---------------------------------------------------------------------------
 // Root config schema
 // ---------------------------------------------------------------------------
@@ -107,6 +231,21 @@ export const RuntimeConfigSchema = z.object({
 
   /** Default model for new agents (provider/model format) */
   defaultModel: z.string().default("anthropic/claude-sonnet-4-5"),
+
+  /**
+   * Default model for internal agents (compaction, title, summary).
+   * If set, these agents use this model instead of the instance defaultModel.
+   * Useful to assign a cheaper/faster model for simple internal tasks.
+   * Format: "provider/model" or a named alias from models[].
+   */
+  defaultInternalModel: z.string().optional(),
+
+  /**
+   * Named model aliases — map short identifiers to provider/model pairs.
+   * Agents can reference these by alias instead of the full "provider/model" string.
+   * Example: [{ id: "fast", provider: "anthropic", model: "claude-haiku-3-5" }]
+   */
+  models: z.array(ModelAliasSchema).default([]),
 
   /** Provider configurations */
   providers: z.array(ProviderConfigSchema).default([]),
@@ -136,6 +275,12 @@ export const RuntimeConfigSchema = z.object({
     auto: true,
     threshold: 0.85,
     reservedTokens: 8_000,
+  })),
+
+  /** Sub-agents spawn limits */
+  subagents: SubagentsConfigSchema.default(() => ({
+    maxSpawnDepth: 3,
+    maxChildrenPerSession: 5,
   })),
 
   /** Whether to enable MCP tool integration */
@@ -174,10 +319,14 @@ export const RuntimeConfigSchema = z.object({
 
 export type RuntimeConfig = z.infer<typeof RuntimeConfigSchema>;
 export type RuntimeAgentConfig = z.infer<typeof AgentConfigSchema>;
+export type AgentToAgentConfig = z.infer<typeof AgentConfigSchema>["agentToAgent"];
+export type ModelAlias = z.infer<typeof ModelAliasSchema>;
+export type HeartbeatConfig = z.infer<typeof HeartbeatConfigSchema>;
 export type RuntimeProviderConfig = z.infer<typeof ProviderConfigSchema>;
 export type RuntimeAuthProfileConfig = z.infer<typeof AuthProfileConfigSchema>;
 export type RuntimeTelegramConfig = z.infer<typeof TelegramConfigSchema>;
 export type RuntimeMcpServerConfig = RuntimeConfig["mcpServers"][number];
+export type SubagentsConfig = z.infer<typeof SubagentsConfigSchema>;
 
 // ---------------------------------------------------------------------------
 // Default config factory

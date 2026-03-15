@@ -14,12 +14,21 @@
 import type Database from "better-sqlite3";
 import type { InboundMessage, OutboundMessage, InstanceSlug } from "../types.js";
 import type { RuntimeConfig } from "../config/index.js";
-import { createSession, listSessions } from "../session/session.js";
+import type { McpRegistry } from "../mcp/registry.js";
+import { createSession, getSession, getSessionByKey, buildSessionKey } from "../session/session.js";
 import { runPromptLoop } from "../session/prompt-loop.js";
+import type { PromptLoopResult } from "../session/prompt-loop.js";
 import { getAgent, defaultAgentName } from "../agent/registry.js";
 import { resolveModel } from "../provider/provider.js";
 import { getBus } from "../bus/index.js";
-import { ChannelMessageReceived, ChannelMessageSent } from "../bus/events.js";
+import { ChannelMessageReceived, ChannelMessageSent, SubagentCompleted } from "../bus/events.js";
+
+// ---------------------------------------------------------------------------
+// Per-session serialization queue
+// Ensures concurrent messages for the same session are processed in order.
+// ---------------------------------------------------------------------------
+
+const sessionQueues = new Map<string, Promise<unknown>>();
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -36,6 +45,8 @@ export interface RouterInput {
   workDir?: string;
   /** AbortSignal to cancel the loop */
   abort?: AbortSignal;
+  /** MCP registry — forwarded to runPromptLoop to inject MCP tools */
+  mcpRegistry?: McpRegistry;
 }
 
 export interface RouterResult {
@@ -56,7 +67,7 @@ export class ChannelRouter {
    * Route an inbound message through the agent loop and return the response.
    */
   static async route(input: RouterInput): Promise<RouterResult> {
-    const { db, instanceSlug, config, message, workDir } = input;
+    const { db, instanceSlug, config, message, workDir, mcpRegistry } = input;
     const bus = getBus(instanceSlug);
 
     // Emit received event
@@ -76,25 +87,48 @@ export class ChannelRouter {
     // Build RuntimeAgentConfig from Agent.Info + global config
     const agentConfig = buildAgentConfig(agentInfo, config);
 
-    // 2. Resolve model
+    // 2. Resolve model (supports named aliases from config.models)
     const modelStr = agentConfig.model ?? config.defaultModel;
-    const resolvedModel = resolveModelFromString(modelStr);
+    const resolvedModel = resolveModelFromString(modelStr, config.models);
+
+    // Resolve internal model (for compaction/title/summary) if configured
+    const internalResolvedModel = config.defaultInternalModel
+      ? resolveModelFromString(config.defaultInternalModel, config.models)
+      : undefined;
 
     // 3. Find or create session for this peer
-    const sessionId = findOrCreateSession(db, instanceSlug, message);
+    const sessionId = findOrCreateSession(db, instanceSlug, message, agentId);
 
-    // 4. Run prompt loop
-    const result = await runPromptLoop({
-      db,
-      instanceSlug,
-      sessionId,
-      userText: message.text,
-      agentConfig,
-      resolvedModel,
-      workDir,
-      runtimeAgents: config.agents.map((a) => ({ id: a.id, name: a.name })),
-      ...(input.abort !== undefined ? { abort: input.abort } : {}),
-    });
+    // 4. Run prompt loop — serialized per session via queue
+    const prev = sessionQueues.get(sessionId) ?? Promise.resolve();
+    const next: Promise<PromptLoopResult> = prev.then(() =>
+      runPromptLoop({
+        db,
+        instanceSlug,
+        sessionId,
+        userText: message.text,
+        agentConfig,
+        resolvedModel,
+        workDir,
+        runtimeAgents: config.agents.map((a) => ({ id: a.id, name: a.name })),
+        compactionConfig: config.compaction,
+        subagentsConfig: config.subagents,
+        ...(input.abort !== undefined ? { abort: input.abort } : {}),
+        ...(mcpRegistry !== undefined ? { mcpRegistry } : {}),
+        ...(internalResolvedModel !== undefined ? { internalResolvedModel } : {}),
+      }),
+    );
+    sessionQueues.set(sessionId, next);
+
+    let result: PromptLoopResult;
+    try {
+      result = await next;
+    } finally {
+      // Clean up the queue entry once this promise is the last one
+      if (sessionQueues.get(sessionId) === next) {
+        sessionQueues.delete(sessionId);
+      }
+    }
 
     // 5. Build outbound message
     const response: OutboundMessage = {
@@ -126,29 +160,27 @@ export class ChannelRouter {
 // ---------------------------------------------------------------------------
 
 /**
- * Find an existing active session for this (instanceSlug, channel, peerId),
- * or create a new one.
+ * Find an existing active session for this (instanceSlug, agentId, channel, peerId)
+ * using the session_key index (O(1) lookup), or create a new one.
  */
 function findOrCreateSession(
   db: Database.Database,
   instanceSlug: InstanceSlug,
   message: InboundMessage,
+  agentId: string,
 ): string {
-  const sessions = listSessions(db, instanceSlug, { state: "active" });
+  const key = buildSessionKey(instanceSlug, agentId, message.channelType, message.peerId);
+  const existing = getSessionByKey(db, key);
 
-  const existing = sessions.find(
-    (s) => s.channel === message.channelType && s.peerId === message.peerId,
-  );
-
-  if (existing) {
+  if (existing && existing.state === "active") {
     return existing.id;
   }
 
   const session = createSession(db, {
     instanceSlug,
-    agentId: defaultAgentName(),
+    agentId,
     channel: message.channelType,
-    peerId: message.peerId,
+    ...(message.peerId !== undefined ? { peerId: message.peerId } : {}),
   });
 
   return session.id;
@@ -173,18 +205,121 @@ function buildAgentConfig(
     toolProfile: "coding",
     isDefault: false,
     permissions: agent.permission ?? [],
+    inheritWorkspace: true,
   };
 }
 
 /**
- * Parse a "provider/model" string and call resolveModel.
+ * Parse a "provider/model" string or resolve a named alias, then call resolveModel.
+ * If aliases are provided and modelRef matches an alias id, the alias is used.
  */
-function resolveModelFromString(modelStr: string) {
-  const slashIdx = modelStr.indexOf("/");
-  if (slashIdx === -1) {
-    throw new Error(`Invalid model string (expected "provider/model"): ${modelStr}`);
+function resolveModelFromString(
+  modelRef: string,
+  aliases?: import("../config/index.js").ModelAlias[],
+) {
+  // Try alias resolution first
+  if (aliases && aliases.length > 0) {
+    const alias = aliases.find((a) => a.id === modelRef);
+    if (alias) {
+      return resolveModel(alias.provider, alias.model);
+    }
   }
-  const providerId = modelStr.slice(0, slashIdx);
-  const modelId = modelStr.slice(slashIdx + 1);
+
+  // Standard "provider/model" format
+  const slashIdx = modelRef.indexOf("/");
+  if (slashIdx === -1) {
+    throw new Error(
+      `Invalid model reference "${modelRef}": must be "provider/model" format or a named alias.`,
+    );
+  }
+  const providerId = modelRef.slice(0, slashIdx);
+  const modelId = modelRef.slice(slashIdx + 1);
   return resolveModel(providerId, modelId);
+}
+
+// ---------------------------------------------------------------------------
+// Async subagent result injection
+// ---------------------------------------------------------------------------
+
+/**
+ * Register the SubagentCompleted bus handler for a given instance.
+ *
+ * When an async sub-agent completes, its result is injected as a user message
+ * into the parent session, triggering a new prompt loop turn.
+ *
+ * Call this once at runtime startup (from the engine).
+ * Returns an unsubscribe function to clean up on shutdown.
+ */
+export function registerSubagentCompletedHandler(
+  db: Database.Database,
+  instanceSlug: InstanceSlug,
+  config: RuntimeConfig,
+  workDir?: string,
+): () => void {
+  const bus = getBus(instanceSlug);
+
+  const unsubscribe = bus.subscribe(SubagentCompleted, (payload) => {
+    const parentSession = getSession(db, payload.parentSessionId);
+    if (!parentSession || parentSession.state !== "active") return;
+
+    const stepsInfo = `${payload.result.steps}`;
+    const tokensTotal = payload.result.tokens.input + payload.result.tokens.output;
+
+    const resultText = [
+      `[Async subagent result — task_id: ${payload.subSessionId}]`,
+      `steps_used: ${stepsInfo}`,
+      `tokens_used: ${tokensTotal}`,
+      `model: ${payload.result.model}`,
+      "<task_result>",
+      payload.result.text,
+      "</task_result>",
+    ].join("\n");
+
+    // Serialize via the session queue — ensures ordering with other messages
+    const prev = sessionQueues.get(payload.parentSessionId) ?? Promise.resolve();
+    const next = prev
+      .then(() => {
+        // Re-check session is still active before running
+        const session = getSession(db, payload.parentSessionId);
+        if (!session || session.state !== "active") return;
+
+        const agentInfo = getAgent(parentSession.agentId);
+        if (!agentInfo) return;
+
+        const agentConfig = buildAgentConfig(agentInfo, config);
+        const modelStr = agentConfig.model ?? config.defaultModel;
+        const resolvedModel = resolveModelFromString(modelStr, config.models);
+        const internalResolvedModel = config.defaultInternalModel
+          ? resolveModelFromString(config.defaultInternalModel, config.models)
+          : undefined;
+
+        return runPromptLoop({
+          db,
+          instanceSlug,
+          sessionId: payload.parentSessionId,
+          userText: resultText,
+          agentConfig,
+          resolvedModel,
+          workDir,
+          runtimeAgents: config.agents.map((a) => ({ id: a.id, name: a.name })),
+          compactionConfig: config.compaction,
+          subagentsConfig: config.subagents,
+          ...(internalResolvedModel !== undefined ? { internalResolvedModel } : {}),
+        });
+      })
+      .catch(() => {
+        // Ignore errors in async result injection — parent session continues normally
+      });
+
+    sessionQueues.set(payload.parentSessionId, next);
+
+    // Clean up queue entry once this promise settles
+    void next.finally(() => {
+      if (sessionQueues.get(payload.parentSessionId) === next) {
+        sessionQueues.delete(payload.parentSessionId);
+      }
+    });
+  });
+
+  return unsubscribe;
 }

@@ -15,6 +15,7 @@ import type { Tool as MCPToolDef } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { RuntimeMcpServerConfig } from "../config/index.js";
 import { Tool } from "../tool/tool.js";
+import { getDescendants } from "../../lib/process.js";
 
 // ---------------------------------------------------------------------------
 // Status
@@ -24,6 +25,9 @@ export type McpClientStatus =
   | { status: "connected" }
   | { status: "disabled" }
   | { status: "failed"; error: string };
+
+/** Callback invoked when the server's tool list changes (ToolListChanged notification). */
+export type McpToolsChangedCallback = (serverId: string, toolCount: number) => void;
 
 // ---------------------------------------------------------------------------
 // McpClient
@@ -39,14 +43,31 @@ const DEFAULT_TIMEOUT = 30_000;
 export class McpClient {
   readonly id: string;
   private _client: Client | undefined;
+  private _transport: StdioClientTransport | undefined;
   private _status: McpClientStatus = { status: "failed", error: "not connected" };
+  /** Last known config — used for reconnection */
+  private _config: RuntimeMcpServerConfig | undefined;
+  /** Cached tool list — refreshed on ToolListChanged notification */
+  private _cachedTools: Tool.Info[] = [];
+  /** Optional callback invoked when the tool list changes */
+  private _onToolsChanged: McpToolsChangedCallback | undefined;
 
-  constructor(id: string) {
+  constructor(id: string, onToolsChanged?: McpToolsChangedCallback) {
     this.id = id;
+    this._onToolsChanged = onToolsChanged;
   }
 
   get status(): McpClientStatus {
     return this._status;
+  }
+
+  get connected(): boolean {
+    return this._status.status === "connected";
+  }
+
+  /** Expose the stored config (for reconnection from registry) */
+  get config(): RuntimeMcpServerConfig | undefined {
+    return this._config;
   }
 
   // -------------------------------------------------------------------------
@@ -59,6 +80,9 @@ export class McpClient {
       return this._status;
     }
 
+    // Store config for reconnection
+    this._config = config;
+
     const timeout = config.timeout ?? DEFAULT_TIMEOUT;
 
     try {
@@ -66,6 +90,11 @@ export class McpClient {
         this._status = await this._connectStdio(config, timeout);
       } else {
         this._status = await this._connectHttp(config, timeout);
+      }
+
+      // Register ToolListChanged notification handler after successful connection
+      if (this._status.status === "connected" && this._client) {
+        this._registerToolListChangedHandler();
       }
     } catch (err) {
       this._status = {
@@ -75,6 +104,19 @@ export class McpClient {
     }
 
     return this._status;
+  }
+
+  /**
+   * Reconnect using the stored config.
+   * Closes the existing connection first, then reconnects.
+   */
+  async reconnect(): Promise<McpClientStatus> {
+    if (!this._config) {
+      this._status = { status: "failed", error: "no config stored for reconnection" };
+      return this._status;
+    }
+    await this.close();
+    return this.connect(this._config);
   }
 
   // -------------------------------------------------------------------------
@@ -96,7 +138,8 @@ export class McpClient {
       return [];
     }
 
-    return mcpTools.map((def) => this._convertTool(def));
+    this._cachedTools = mcpTools.map((def) => this._convertTool(def));
+    return this._cachedTools;
   }
 
   // -------------------------------------------------------------------------
@@ -104,13 +147,37 @@ export class McpClient {
   // -------------------------------------------------------------------------
 
   async close(): Promise<void> {
-    if (!this._client) return;
+    // Kill tree of child processes (stdio transport only) — best-effort
+    if (this._transport) {
+      const pid = (this._transport as StdioClientTransport & { pid?: number }).pid;
+      if (pid !== undefined) {
+        try {
+          const descendants = await getDescendants(pid);
+          for (const p of [pid, ...descendants]) {
+            try {
+              process.kill(p, "SIGTERM");
+            } catch {
+              // Process may already be dead — ignore
+            }
+          }
+        } catch {
+          // getDescendants failed — ignore, proceed with close
+        }
+      }
+      this._transport = undefined;
+    }
+
+    if (!this._client) {
+      this._status = { status: "disabled" };
+      return;
+    }
     try {
       await this._client.close();
     } catch {
       // ignore close errors
     }
     this._client = undefined;
+    this._cachedTools = [];
     this._status = { status: "disabled" };
   }
 
@@ -148,6 +215,7 @@ export class McpClient {
     const client = new Client({ name: "claw-runtime", version: "1" });
     await withTimeout(client.connect(transport), timeout);
     this._client = client;
+    this._transport = transport; // store for kill tree on close
     return { status: "connected" };
   }
 
@@ -184,11 +252,44 @@ export class McpClient {
     };
   }
 
+  /**
+   * Register the ToolListChanged notification handler.
+   * When the MCP server signals that its tool list has changed, we refresh
+   * the cached tool list and invoke the onToolsChanged callback.
+   */
+  private _registerToolListChangedHandler(): void {
+    if (!this._client) return;
+    try {
+      // The MCP SDK's setNotificationHandler accepts a Zod schema as first arg.
+      // We use a dynamic require to avoid a hard import-time dependency on the schema object.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const sdkTypes = require("@modelcontextprotocol/sdk/types.js") as Record<string, unknown>;
+      const schema = sdkTypes["ToolListChangedNotificationSchema"];
+      if (!schema) return; // SDK version doesn't expose this schema — skip
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this._client.setNotificationHandler(schema as any, async () => {
+        if (!this._client || this._status.status !== "connected") return;
+        try {
+          const result = await this._client.listTools();
+          this._cachedTools = result.tools.map((def) => this._convertTool(def));
+          this._onToolsChanged?.(this.id, this._cachedTools.length);
+        } catch {
+          // Silently ignore — cached list remains valid
+        }
+      });
+    } catch {
+      // setNotificationHandler may not be available in all SDK versions — ignore
+    }
+  }
+
   private _convertTool(def: MCPToolDef): Tool.Info {
     const toolId = `${sanitize(this.id)}_${sanitize(def.name)}`;
-    const client = this._client!;
     const mcpName = def.name;
     const description = def.description ?? `MCP tool ${def.name} (server: ${this.id})`;
+    // Keep a reference to `this` for lazy reconnection in execute()
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const mcpClient = this;
 
     // Use a passthrough record schema — MCP params are validated by the server
     const parameters = z.record(z.string(), z.unknown());
@@ -197,7 +298,25 @@ export class McpClient {
       description,
       parameters,
       async execute(params, _ctx): Promise<Tool.Result> {
-        const result = await client.callTool({
+        // Lazy reconnection: if the client disconnected since tool list was fetched,
+        // attempt to reconnect before calling the tool.
+        if (!mcpClient.connected && mcpClient.config) {
+          try {
+            await mcpClient.reconnect();
+          } catch (err) {
+            throw new Error(
+              `MCP server '${mcpClient.id}' is not connected and reconnection failed: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
+        }
+
+        if (!mcpClient._client) {
+          throw new Error(`MCP server '${mcpClient.id}' is not connected`);
+        }
+
+        const result = await mcpClient._client.callTool({
           name: mcpName,
           arguments: params as Record<string, unknown>,
         });

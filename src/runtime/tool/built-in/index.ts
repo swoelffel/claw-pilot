@@ -14,3 +14,4 @@ export { WebFetchTool } from "./web-fetch.js";
 export { QuestionTool, resolveQuestion, rejectQuestion } from "./question.js";
 export { TodoWriteTool, TodoReadTool, clearTodos } from "./todo.js";
 export { SkillTool } from "./skill.js";
+export { MultiEditTool } from "./multiedit.js";
