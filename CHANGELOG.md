@@ -6,7 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
-## [0.27.1-beta.0] — 2026-03-15
+## [0.27.1-beta] — 2026-03-15
 
 ### Fixed
 
