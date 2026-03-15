@@ -103,8 +103,15 @@ export function createSession(
   // Compute spawn depth from parent session
   const spawnDepth = input.parentId ? (getSession(db, input.parentId)?.spawnDepth ?? 0) + 1 : 0;
 
-  // Compute session key
-  const sessionKey = buildSessionKey(input.instanceSlug, input.agentId, channel, input.peerId);
+  // Compute session key.
+  // When peerId is absent (no external peer, e.g. channel "api" or "web"), append the session id
+  // to guarantee uniqueness — otherwise every new root session would collide on the UNIQUE index.
+  const sessionKey = buildSessionKey(
+    input.instanceSlug,
+    input.agentId,
+    channel,
+    input.peerId ?? id,
+  );
 
   db.prepare(
     `INSERT INTO rt_sessions (id, instance_slug, parent_id, agent_id, channel, peer_id, session_key, spawn_depth, label, created_at, updated_at)

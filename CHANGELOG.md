@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.27.1-beta.0] — 2026-03-15
+
+### Fixed
+
+- **Runtime chat — UNIQUE constraint on session_key** — `createSession()` générait une clé déterministe `"<slug>:<agent>:api:unknown"` pour toutes les sessions sans `peerId`, provoquant un `UNIQUE constraint failed` dès la 2ème session créée depuis le dashboard (erreur 500 sur `POST /runtime/chat`). La clé utilise désormais le `id` nanoid de la session quand `peerId` est absent, garantissant l'unicité de chaque session racine.
+
+---
+
 ## [0.27.0-beta.0] — 2026-03-15
 
 ### Added
