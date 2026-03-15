@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "defaultModel": "anthropic/claude-sonnet-4-5",
+  "defaultInternalModel": "anthropic/claude-haiku-3-5",
+  "models": [
+    {
+      "id": "fast",
+      "provider": "anthropic",
+      "model": "claude-haiku-3-5"
+    },
+    {
+      "id": "smart",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5"
+    }
+  ],
+  "providers": [
+    {
+      "id": "anthropic",
+      "authProfiles": [
+        {
+          "id": "default",
+          "providerId": "anthropic",
+          "apiKeyEnvVar": "ANTHROPIC_API_KEY",
+          "priority": 0
+        }
+      ]
+    }
+  ],
+  "agents": [
+    {
+      "id": "main",
+      "name": "Main",
+      "model": "smart",
+      "isDefault": true,
+      "toolProfile": "full",
+      "maxSteps": 30,
+      "allowSubAgents": true,
+      "permissions": [
+        { "permission": "bash", "pattern": "**", "action": "allow" },
+        { "permission": "write", "pattern": "**", "action": "allow" },
+        { "permission": "edit", "pattern": "**", "action": "allow" },
+        { "permission": "task", "pattern": "**", "action": "allow" }
+      ]
+    },
+    {
+      "id": "sentinel",
+      "name": "Sentinel",
+      "model": "fast",
+      "isDefault": false,
+      "toolProfile": "full",
+      "maxSteps": 20,
+      "allowSubAgents": true,
+      "permissions": [
+        { "permission": "read", "pattern": "**", "action": "allow" },
+        { "permission": "write", "pattern": "**/MEMORY.md", "action": "allow" },
+        { "permission": "task", "pattern": "**", "action": "allow" },
+        { "permission": "bash", "pattern": "**", "action": "deny" },
+        { "permission": "write", "pattern": "**", "action": "deny" },
+        { "permission": "edit", "pattern": "**", "action": "deny" }
+      ],
+      "heartbeat": {
+        "every": "30m",
+        "activeHours": {
+          "start": "08:00",
+          "end": "22:00",
+          "tz": "Europe/Paris"
+        },
+        "model": "anthropic/claude-haiku-3-5",
+        "ackMaxChars": 500,
+        "prompt": "You are a Sentinel agent. Read HEARTBEAT.md for your instructions. Follow the Sentinel Pattern cycle exactly. If nothing to report, reply exactly: HEARTBEAT_OK"
+      },
+      "systemPrompt": "You are a Sentinel agent — an observer that monitors the health and progress of other agents in this instance.\n\nYour role:\n- OBSERVE the status of active tasks by querying other agents via the `task` tool\n- ESCALATE blocked tasks after 2 consecutive failed checks\n- REPORT issues concisely in MEMORY.md\n- NEVER execute tasks directly — always delegate\n\nRules:\n- Keep MEMORY.md under 500 words\n- Use ISO 8601 timestamps for all log entries\n- If nothing to report: reply exactly HEARTBEAT_OK\n- Do not modify files other than MEMORY.md"
+    },
+    {
+      "id": "deploy-agent",
+      "name": "Deploy Agent",
+      "model": "smart",
+      "isDefault": false,
+      "toolProfile": "coding",
+      "maxSteps": 25,
+      "allowSubAgents": false,
+      "permissions": [
+        { "permission": "bash", "pattern": "**", "action": "allow" },
+        { "permission": "read", "pattern": "**", "action": "allow" },
+        { "permission": "write", "pattern": "**/deploy/**", "action": "allow" },
+        { "permission": "edit", "pattern": "**/deploy/**", "action": "allow" }
+      ]
+    }
+  ],
+  "telegram": {
+    "enabled": false,
+    "botTokenEnvVar": "TELEGRAM_BOT_TOKEN",
+    "pollingIntervalMs": 1000,
+    "allowedUserIds": []
+  },
+  "webChat": {
+    "enabled": true,
+    "maxSessions": 10
+  },
+  "compaction": {
+    "auto": true,
+    "threshold": 0.85,
+    "reservedTokens": 8000
+  },
+  "subagents": {
+    "maxSpawnDepth": 2,
+    "maxChildrenPerSession": 3
+  },
+  "mcpEnabled": false,
+  "mcpServers": []
+}

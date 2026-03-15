@@ -14,6 +14,14 @@ export interface HealthStatus {
   pid?: number;
   agentCount?: number;
   telegram?: "connected" | "disconnected" | "not_configured";
+  /** Number of persisted permission rules awaiting a decision (action = 'ask') */
+  pendingPermissions?: number;
+  /** Number of MCP servers currently connected */
+  mcpConnected?: number;
+  /** Number of agents with heartbeat enabled */
+  heartbeatAgents?: number;
+  /** Number of heartbeat alerts in the last 24h */
+  heartbeatAlerts?: number;
 }
 
 export class HealthChecker {

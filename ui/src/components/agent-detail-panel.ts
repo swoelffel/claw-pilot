@@ -102,6 +102,44 @@ export class AgentDetailPanel extends LitElement {
   @state() private _skillsAvailable = false;
   @state() private _loadingSkills = false;
 
+  // ── Config tab state ─────────────────────────────────────────────────────
+
+  @state() private _cfgToolProfile: "minimal" | "messaging" | "coding" | "full" = "coding";
+  @state() private _cfgTemperature: number | null = null;
+  @state() private _cfgMaxSteps = 20;
+  @state() private _cfgPromptMode: "full" | "minimal" = "full";
+  @state() private _cfgThinkingEnabled = false;
+  @state() private _cfgBudgetTokens = 15000;
+  @state() private _cfgAllowSubAgents = true;
+  @state() private _cfgAllowedAgents: string[] = [];
+  @state() private _cfgSessionTimeout = 300000;
+  @state() private _cfgChunkTimeout = 120000;
+  @state() private _cfgInstructionUrls: string[] = [];
+  @state() private _cfgWorkspaceGlobs: string[] = [];
+  @state() private _cfgDirty = false;
+  @state() private _cfgSaving = false;
+
+  // ── Heartbeat tab state ──────────────────────────────────────────────────
+
+  @state() private _hbEnabled = false;
+  @state() private _hbInterval = "30m";
+  @state() private _hbHoursStart = "";
+  @state() private _hbHoursEnd = "";
+  @state() private _hbTimezone = "";
+  @state() private _hbModel = "";
+  @state() private _hbMaxChars = 500;
+  @state() private _hbPromptMode: "file" | "custom" = "file";
+  @state() private _hbCustomPrompt = "";
+  @state() private _hbDirty = false;
+  @state() private _hbSaving = false;
+  @state() private _hbTicks: Array<{
+    sessionId: string;
+    createdAt: string;
+    status: "ok" | "alert";
+    responseText: string;
+  }> = [];
+  @state() private _hbLoadingHistory = false;
+
   // ── Lifecycle ────────────────────────────────────────────────────────────
 
   private async _loadFile(filename: string): Promise<void> {
@@ -136,9 +174,615 @@ export class AgentDetailPanel extends LitElement {
     }
     this._editMode = false;
     this._activeTab = tab;
-    if (tab !== "info") {
+    if (tab !== "info" && tab !== "heartbeat" && tab !== "config") {
       void this._loadFile(tab);
     }
+    if (tab === "heartbeat") {
+      void this._loadHeartbeatHistory();
+    }
+  }
+
+  // ── Config tab methods ───────────────────────────────────────────────────
+
+  private _initConfigFromAgent(): void {
+    const cfg = (this.agent as unknown as Record<string, unknown>).config as
+      | Record<string, unknown>
+      | undefined;
+    this._cfgToolProfile =
+      (cfg?.toolProfile as typeof this._cfgToolProfile | undefined) ?? "coding";
+    this._cfgTemperature = (cfg?.temperature as number | undefined) ?? null;
+    this._cfgMaxSteps = (cfg?.maxSteps as number | undefined) ?? 20;
+    this._cfgPromptMode = (cfg?.promptMode as typeof this._cfgPromptMode | undefined) ?? "full";
+    const thinking = cfg?.thinking as Record<string, unknown> | undefined;
+    this._cfgThinkingEnabled = !!thinking?.enabled;
+    this._cfgBudgetTokens = (thinking?.budgetTokens as number | undefined) ?? 15000;
+    this._cfgAllowSubAgents = (cfg?.allowSubAgents as boolean | undefined) ?? true;
+    this._cfgAllowedAgents = (cfg?.allowedAgents as string[] | undefined) ?? [];
+    this._cfgSessionTimeout = (cfg?.sessionTimeoutMs as number | undefined) ?? 300000;
+    this._cfgChunkTimeout = (cfg?.chunkTimeoutMs as number | undefined) ?? 120000;
+    this._cfgInstructionUrls = (cfg?.instructionUrls as string[] | undefined) ?? [];
+    this._cfgWorkspaceGlobs = (cfg?.workspaceGlobs as string[] | undefined) ?? [];
+    this._cfgDirty = false;
+  }
+
+  private async _saveConfig(): Promise<void> {
+    if (this.context.kind !== "instance") return;
+    this._cfgSaving = true;
+    try {
+      const token = (window as { __CP_TOKEN__?: string }).__CP_TOKEN__ ?? "";
+      const config: Record<string, unknown> = {
+        toolProfile: this._cfgToolProfile,
+        maxSteps: this._cfgMaxSteps,
+        promptMode: this._cfgPromptMode,
+        thinking: {
+          enabled: this._cfgThinkingEnabled,
+          ...(this._cfgThinkingEnabled ? { budgetTokens: this._cfgBudgetTokens } : {}),
+        },
+        allowSubAgents: this._cfgAllowSubAgents,
+        sessionTimeoutMs: this._cfgSessionTimeout,
+        chunkTimeoutMs: this._cfgChunkTimeout,
+        instructionUrls: this._cfgInstructionUrls.filter(Boolean),
+        workspaceGlobs: this._cfgWorkspaceGlobs.filter(Boolean),
+        ...(this._cfgTemperature !== null ? { temperature: this._cfgTemperature } : {}),
+        ...(this._cfgAllowSubAgents && this._cfgAllowedAgents.length > 0
+          ? { allowedAgents: this._cfgAllowedAgents }
+          : {}),
+      };
+      await fetch(`/api/instances/${this.context.slug}/agents/${this.agent.agent_id}/meta`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ config }),
+      });
+      this._cfgDirty = false;
+    } catch {
+      // Silently ignore
+    } finally {
+      this._cfgSaving = false;
+    }
+  }
+
+  private _renderConfigTab() {
+    const TOOL_PROFILES = ["minimal", "messaging", "coding", "full"] as const;
+    const PROMPT_MODES = ["full", "minimal"] as const;
+
+    return html`
+      <div class="hb-tab">
+        <!-- LLM section -->
+        <div class="hb-section-title">${msg("LLM", { id: "cfg-llm" })}</div>
+        <div class="hb-grid-2">
+          <div class="hb-field">
+            <label class="hb-label">${msg("Tool profile", { id: "cfg-tool-profile" })}</label>
+            <select
+              class="hb-select"
+              .value=${this._cfgToolProfile}
+              @change=${(e: Event) => {
+                this._cfgToolProfile = (e.target as HTMLSelectElement)
+                  .value as typeof this._cfgToolProfile;
+                this._cfgDirty = true;
+              }}
+            >
+              ${TOOL_PROFILES.map(
+                (p) =>
+                  html`<option value=${p} ?selected=${this._cfgToolProfile === p}>${p}</option>`,
+              )}
+            </select>
+          </div>
+          <div class="hb-field">
+            <label class="hb-label">${msg("Prompt mode", { id: "cfg-prompt-mode" })}</label>
+            <select
+              class="hb-select"
+              .value=${this._cfgPromptMode}
+              @change=${(e: Event) => {
+                this._cfgPromptMode = (e.target as HTMLSelectElement)
+                  .value as typeof this._cfgPromptMode;
+                this._cfgDirty = true;
+              }}
+            >
+              ${PROMPT_MODES.map(
+                (m) =>
+                  html`<option value=${m} ?selected=${this._cfgPromptMode === m}>${m}</option>`,
+              )}
+            </select>
+          </div>
+          <div class="hb-field">
+            <label class="hb-label">${msg("Max steps", { id: "cfg-max-steps" })}</label>
+            <input
+              type="number"
+              class="hb-input"
+              min="1"
+              max="100"
+              .value=${String(this._cfgMaxSteps)}
+              @change=${(e: Event) => {
+                this._cfgMaxSteps = parseInt((e.target as HTMLInputElement).value, 10) || 20;
+                this._cfgDirty = true;
+              }}
+            />
+          </div>
+          <div class="hb-field">
+            <label class="hb-label">${msg("Temperature", { id: "cfg-temperature" })}</label>
+            <input
+              type="number"
+              class="hb-input"
+              min="0"
+              max="2"
+              step="0.1"
+              placeholder=${msg("Default", { id: "cfg-temperature-default" })}
+              .value=${this._cfgTemperature !== null ? String(this._cfgTemperature) : ""}
+              @change=${(e: Event) => {
+                const v = (e.target as HTMLInputElement).value;
+                this._cfgTemperature = v ? parseFloat(v) : null;
+                this._cfgDirty = true;
+              }}
+            />
+          </div>
+        </div>
+
+        <!-- Extended thinking -->
+        <div class="hb-section-title">
+          ${msg("Extended thinking (Anthropic)", { id: "cfg-thinking" })}
+        </div>
+        <div class="hb-field-row">
+          <label class="hb-label">${msg("Enable", { id: "cfg-thinking-enable" })}</label>
+          <div
+            class="toggle-track ${this._cfgThinkingEnabled ? "on" : ""}"
+            @click=${() => {
+              this._cfgThinkingEnabled = !this._cfgThinkingEnabled;
+              this._cfgDirty = true;
+            }}
+          >
+            <div class="toggle-thumb"></div>
+          </div>
+        </div>
+        ${this._cfgThinkingEnabled
+          ? html`
+              <div class="hb-field" style="max-width:200px">
+                <label class="hb-label">${msg("Budget tokens", { id: "cfg-budget-tokens" })}</label>
+                <input
+                  type="number"
+                  class="hb-input"
+                  min="1000"
+                  max="100000"
+                  .value=${String(this._cfgBudgetTokens)}
+                  @change=${(e: Event) => {
+                    this._cfgBudgetTokens =
+                      parseInt((e.target as HTMLInputElement).value, 10) || 15000;
+                    this._cfgDirty = true;
+                  }}
+                />
+              </div>
+            `
+          : nothing}
+
+        <!-- Spawn -->
+        <div class="hb-section-title">${msg("Spawn", { id: "cfg-spawn" })}</div>
+        <div class="hb-field-row">
+          <label class="hb-label">${msg("Allow sub-agents", { id: "cfg-allow-subagents" })}</label>
+          <div
+            class="toggle-track ${this._cfgAllowSubAgents ? "on" : ""}"
+            @click=${() => {
+              this._cfgAllowSubAgents = !this._cfgAllowSubAgents;
+              this._cfgDirty = true;
+            }}
+          >
+            <div class="toggle-thumb"></div>
+          </div>
+        </div>
+
+        <!-- Timeouts -->
+        <div class="hb-section-title">${msg("Timeouts", { id: "cfg-timeouts" })}</div>
+        <div class="hb-grid-2">
+          <div class="hb-field">
+            <label class="hb-label"
+              >${msg("Session timeout (ms)", { id: "cfg-session-timeout" })}</label
+            >
+            <input
+              type="number"
+              class="hb-input"
+              .value=${String(this._cfgSessionTimeout)}
+              @change=${(e: Event) => {
+                this._cfgSessionTimeout =
+                  parseInt((e.target as HTMLInputElement).value, 10) || 300000;
+                this._cfgDirty = true;
+              }}
+            />
+          </div>
+          <div class="hb-field">
+            <label class="hb-label"
+              >${msg("LLM inter-chunk timeout (ms)", { id: "cfg-chunk-timeout" })}</label
+            >
+            <input
+              type="number"
+              class="hb-input"
+              .value=${String(this._cfgChunkTimeout)}
+              @change=${(e: Event) => {
+                this._cfgChunkTimeout =
+                  parseInt((e.target as HTMLInputElement).value, 10) || 120000;
+                this._cfgDirty = true;
+              }}
+            />
+          </div>
+        </div>
+
+        <!-- Instruction URLs -->
+        <div class="hb-section-title">${msg("Instructions", { id: "cfg-instructions" })}</div>
+        <div class="hb-label" style="margin-bottom:6px">
+          ${msg("Remote instruction URLs", { id: "cfg-instruction-urls" })}
+        </div>
+        ${this._cfgInstructionUrls.map(
+          (url, i) => html`
+            <div class="hb-field-row" style="margin-bottom:4px">
+              <input
+                type="url"
+                class="hb-input"
+                .value=${url}
+                placeholder="https://..."
+                @change=${(e: Event) => {
+                  const next = [...this._cfgInstructionUrls];
+                  next[i] = (e.target as HTMLInputElement).value;
+                  this._cfgInstructionUrls = next;
+                  this._cfgDirty = true;
+                }}
+              />
+              <button
+                class="btn-revoke"
+                @click=${() => {
+                  this._cfgInstructionUrls = this._cfgInstructionUrls.filter((_, j) => j !== i);
+                  this._cfgDirty = true;
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          `,
+        )}
+        <button
+          class="btn-add-item"
+          @click=${() => {
+            this._cfgInstructionUrls = [...this._cfgInstructionUrls, ""];
+            this._cfgDirty = true;
+          }}
+        >
+          + URL
+        </button>
+
+        <!-- Workspace globs -->
+        <div class="hb-label" style="margin-top:10px;margin-bottom:6px">
+          ${msg("Additional workspace files (globs)", { id: "cfg-workspace-globs" })}
+        </div>
+        ${this._cfgWorkspaceGlobs.map(
+          (glob, i) => html`
+            <div class="hb-field-row" style="margin-bottom:4px">
+              <input
+                type="text"
+                class="hb-input"
+                .value=${glob}
+                placeholder="docs/**/*.md"
+                @change=${(e: Event) => {
+                  const next = [...this._cfgWorkspaceGlobs];
+                  next[i] = (e.target as HTMLInputElement).value;
+                  this._cfgWorkspaceGlobs = next;
+                  this._cfgDirty = true;
+                }}
+              />
+              <button
+                class="btn-revoke"
+                @click=${() => {
+                  this._cfgWorkspaceGlobs = this._cfgWorkspaceGlobs.filter((_, j) => j !== i);
+                  this._cfgDirty = true;
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          `,
+        )}
+        <button
+          class="btn-add-item"
+          @click=${() => {
+            this._cfgWorkspaceGlobs = [...this._cfgWorkspaceGlobs, ""];
+            this._cfgDirty = true;
+          }}
+        >
+          + Glob
+        </button>
+
+        <!-- Save bar -->
+        ${this._cfgDirty
+          ? html`
+              <div class="hb-save-bar">
+                <button
+                  class="btn-save-spawn"
+                  ?disabled=${this._cfgSaving}
+                  @click=${() => void this._saveConfig()}
+                >
+                  ${this._cfgSaving ? "…" : msg("Save", { id: "cfg-save" })}
+                </button>
+                <button
+                  class="btn-cancel-spawn"
+                  ?disabled=${this._cfgSaving}
+                  @click=${() => this._initConfigFromAgent()}
+                >
+                  ${msg("Cancel", { id: "cfg-cancel" })}
+                </button>
+              </div>
+            `
+          : nothing}
+      </div>
+    `;
+  }
+
+  // ── Heartbeat methods ────────────────────────────────────────────────────
+
+  private _initHeartbeatFromAgent(): void {
+    const hb = (this.agent as unknown as Record<string, unknown>).heartbeat as
+      | Record<string, unknown>
+      | undefined;
+    this._hbEnabled = !!hb?.enabled;
+    this._hbInterval = (hb?.every as string | undefined) ?? "30m";
+    const ah = hb?.activeHours as Record<string, string> | undefined;
+    this._hbHoursStart = ah?.start ?? "";
+    this._hbHoursEnd = ah?.end ?? "";
+    this._hbTimezone = ah?.tz ?? "";
+    this._hbModel = (hb?.model as string | undefined) ?? "";
+    this._hbMaxChars = (hb?.ackMaxChars as number | undefined) ?? 500;
+    this._hbPromptMode = (hb?.prompt as string | undefined) ? "custom" : "file";
+    this._hbCustomPrompt = (hb?.prompt as string | undefined) ?? "";
+    this._hbDirty = false;
+  }
+
+  private async _loadHeartbeatHistory(): Promise<void> {
+    if (this.context.kind !== "instance") return;
+    this._hbLoadingHistory = true;
+    try {
+      const token = (window as { __CP_TOKEN__?: string }).__CP_TOKEN__ ?? "";
+      const res = await fetch(
+        `/api/instances/${this.context.slug}/runtime/heartbeat/history?agentId=${this.agent.agent_id}&limit=20`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        ticks: Array<{
+          sessionId: string;
+          createdAt: string;
+          status: "ok" | "alert";
+          responseText: string;
+        }>;
+      };
+      this._hbTicks = data.ticks ?? [];
+    } catch {
+      // Silently ignore
+    } finally {
+      this._hbLoadingHistory = false;
+    }
+  }
+
+  private async _saveHeartbeat(): Promise<void> {
+    if (this.context.kind !== "instance") return;
+    this._hbSaving = true;
+    try {
+      const token = (window as { __CP_TOKEN__?: string }).__CP_TOKEN__ ?? "";
+      const heartbeat = this._hbEnabled
+        ? {
+            every: this._hbInterval,
+            ...(this._hbHoursStart && this._hbHoursEnd
+              ? {
+                  activeHours: {
+                    start: this._hbHoursStart,
+                    end: this._hbHoursEnd,
+                    ...(this._hbTimezone ? { tz: this._hbTimezone } : {}),
+                  },
+                }
+              : {}),
+            ...(this._hbModel ? { model: this._hbModel } : {}),
+            ackMaxChars: this._hbMaxChars,
+            ...(this._hbPromptMode === "custom" && this._hbCustomPrompt
+              ? { prompt: this._hbCustomPrompt }
+              : {}),
+          }
+        : null;
+      await fetch(`/api/instances/${this.context.slug}/agents/${this.agent.agent_id}/meta`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ heartbeat }),
+      });
+      this._hbDirty = false;
+    } catch {
+      // Silently ignore
+    } finally {
+      this._hbSaving = false;
+    }
+  }
+
+  private _renderHeartbeatTab() {
+    const INTERVALS = ["5m", "10m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "24h"];
+
+    return html`
+      <div class="hb-tab">
+        <!-- Toggle enable -->
+        <div class="hb-field-row">
+          <label class="hb-label">${msg("Enable heartbeat", { id: "hb-enable" })}</label>
+          <div
+            class="toggle-track ${this._hbEnabled ? "on" : ""}"
+            @click=${() => {
+              this._hbEnabled = !this._hbEnabled;
+              this._hbDirty = true;
+            }}
+          >
+            <div class="toggle-thumb"></div>
+          </div>
+        </div>
+
+        ${this._hbEnabled
+          ? html`
+              <!-- Scheduling -->
+              <div class="hb-section-title">${msg("Scheduling", { id: "hb-scheduling" })}</div>
+              <div class="hb-grid-2">
+                <div class="hb-field">
+                  <label class="hb-label">${msg("Interval", { id: "hb-interval" })}</label>
+                  <select
+                    class="hb-select"
+                    .value=${this._hbInterval}
+                    @change=${(e: Event) => {
+                      this._hbInterval = (e.target as HTMLSelectElement).value;
+                      this._hbDirty = true;
+                    }}
+                  >
+                    ${INTERVALS.map(
+                      (v) =>
+                        html`<option value=${v} ?selected=${this._hbInterval === v}>${v}</option>`,
+                    )}
+                  </select>
+                </div>
+                <div class="hb-field">
+                  <label class="hb-label">${msg("Active hours", { id: "hb-active-hours" })}</label>
+                  <div class="hb-time-row">
+                    <input
+                      type="time"
+                      class="hb-input"
+                      .value=${this._hbHoursStart}
+                      @change=${(e: Event) => {
+                        this._hbHoursStart = (e.target as HTMLInputElement).value;
+                        this._hbDirty = true;
+                      }}
+                    />
+                    <span class="hb-time-sep">–</span>
+                    <input
+                      type="time"
+                      class="hb-input"
+                      .value=${this._hbHoursEnd}
+                      @change=${(e: Event) => {
+                        this._hbHoursEnd = (e.target as HTMLInputElement).value;
+                        this._hbDirty = true;
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <!-- LLM -->
+              <div class="hb-section-title">${msg("LLM", { id: "hb-llm" })}</div>
+              <div class="hb-grid-2">
+                <div class="hb-field">
+                  <label class="hb-label"
+                    >${msg("Max response chars", { id: "hb-max-chars" })}</label
+                  >
+                  <input
+                    type="number"
+                    class="hb-input"
+                    min="100"
+                    max="5000"
+                    .value=${String(this._hbMaxChars)}
+                    @change=${(e: Event) => {
+                      this._hbMaxChars = parseInt((e.target as HTMLInputElement).value, 10) || 500;
+                      this._hbDirty = true;
+                    }}
+                  />
+                </div>
+              </div>
+
+              <!-- Prompt -->
+              <div class="hb-section-title">${msg("Prompt", { id: "hb-prompt" })}</div>
+              <div class="hb-radio-row">
+                <label class="hb-radio-label">
+                  <input
+                    type="radio"
+                    name="hb-prompt-mode"
+                    value="file"
+                    ?checked=${this._hbPromptMode === "file"}
+                    @change=${() => {
+                      this._hbPromptMode = "file";
+                      this._hbDirty = true;
+                    }}
+                  />
+                  ${msg("Use HEARTBEAT.md", { id: "hb-use-file" })}
+                </label>
+                <label class="hb-radio-label">
+                  <input
+                    type="radio"
+                    name="hb-prompt-mode"
+                    value="custom"
+                    ?checked=${this._hbPromptMode === "custom"}
+                    @change=${() => {
+                      this._hbPromptMode = "custom";
+                      this._hbDirty = true;
+                    }}
+                  />
+                  ${msg("Custom prompt", { id: "hb-custom-prompt" })}
+                </label>
+              </div>
+              ${this._hbPromptMode === "custom"
+                ? html`
+                    <textarea
+                      class="hb-textarea"
+                      rows="4"
+                      .value=${this._hbCustomPrompt}
+                      @input=${(e: Event) => {
+                        this._hbCustomPrompt = (e.target as HTMLTextAreaElement).value;
+                        this._hbDirty = true;
+                      }}
+                    ></textarea>
+                  `
+                : nothing}
+            `
+          : nothing}
+
+        <!-- Tick history -->
+        ${this.context.kind === "instance"
+          ? html`
+              <div class="hb-section-title">${msg("Tick history", { id: "hb-history" })}</div>
+              ${this._hbLoadingHistory
+                ? html`<div class="spinner" style="width:16px;height:16px;margin:8px 0"></div>`
+                : nothing}
+              ${this._hbTicks.length === 0 && !this._hbLoadingHistory
+                ? html`<p class="hb-empty">
+                    ${msg("No heartbeat ticks yet.", { id: "hb-no-ticks" })}
+                  </p>`
+                : nothing}
+              ${this._hbTicks.map(
+                (tick) => html`
+                  <div class="hb-tick-row">
+                    <span class="hb-tick-status ${tick.status}">
+                      ${tick.status === "ok" ? "✓" : "⚠"}
+                    </span>
+                    <span class="hb-tick-time"
+                      >${new Date(tick.createdAt).toLocaleTimeString()}</span
+                    >
+                    <span class="hb-tick-text">${tick.responseText.slice(0, 80)}</span>
+                  </div>
+                `,
+              )}
+            `
+          : nothing}
+
+        <!-- Save bar -->
+        ${this._hbDirty
+          ? html`
+              <div class="hb-save-bar">
+                <button
+                  class="btn-save-spawn"
+                  ?disabled=${this._hbSaving}
+                  @click=${() => void this._saveHeartbeat()}
+                >
+                  ${this._hbSaving ? "…" : msg("Save", { id: "hb-save" })}
+                </button>
+                <button
+                  class="btn-cancel-spawn"
+                  ?disabled=${this._hbSaving}
+                  @click=${() => this._initHeartbeatFromAgent()}
+                >
+                  ${msg("Cancel", { id: "hb-cancel" })}
+                </button>
+              </div>
+            `
+          : nothing}
+      </div>
+    `;
   }
 
   private _toggleExpand(): void {
@@ -1184,6 +1828,24 @@ export class AgentDetailPanel extends LitElement {
         >
           ${msg("Info", { id: "adp-tab-info" })}
         </button>
+        <button
+          class="tab ${this._activeTab === "heartbeat" ? "active" : ""}"
+          @click=${() => {
+            this._initHeartbeatFromAgent();
+            this._selectTab("heartbeat");
+          }}
+        >
+          ${msg("Heartbeat", { id: "adp-tab-heartbeat" })}
+        </button>
+        <button
+          class="tab ${this._activeTab === "config" ? "active" : ""}"
+          @click=${() => {
+            this._initConfigFromAgent();
+            this._selectTab("config");
+          }}
+        >
+          ${msg("Config", { id: "adp-tab-config" })}
+        </button>
         ${fileTabs.map(
           (f) => html`
             <button
@@ -1201,7 +1863,13 @@ export class AgentDetailPanel extends LitElement {
           ? "has-save-bar"
           : ""}"
       >
-        ${this._activeTab === "info" ? this._renderInfo() : this._renderFileTab(this._activeTab)}
+        ${this._activeTab === "info"
+          ? this._renderInfo()
+          : this._activeTab === "heartbeat"
+            ? this._renderHeartbeatTab()
+            : this._activeTab === "config"
+              ? this._renderConfigTab()
+              : this._renderFileTab(this._activeTab)}
       </div>
 
       ${this._pendingRemovals.size > 0 || this._pendingAdditions.size > 0

@@ -140,6 +140,25 @@ export class InstanceCard extends LitElement {
         background: rgba(245, 158, 11, 0.18);
       }
 
+      .perm-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: rgba(239, 68, 68, 0.1);
+        color: var(--state-error);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        border-radius: var(--radius-sm);
+        padding: 2px 7px;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+
+      .perm-pill:hover {
+        background: rgba(239, 68, 68, 0.18);
+      }
+
       /* ── Meta (model + tech) ─────────────────────────────── */
 
       .meta {
@@ -417,6 +436,21 @@ export class InstanceCard extends LitElement {
           }}
         >
           ⚠ ${inst.pendingDevices} device${inst.pendingDevices > 1 ? "s" : ""}
+        </button>
+      `);
+    }
+
+    // Pending permissions — badge ⚠ PERM (Sprint 1)
+    if (inst.pendingPermissions && inst.pendingPermissions > 0) {
+      items.push(html`
+        <button
+          class="perm-pill"
+          @click=${(e: Event) => {
+            e.stopPropagation();
+            this._navigate("instance-settings", { section: "runtime" });
+          }}
+        >
+          ⚠ PERM
         </button>
       `);
     }

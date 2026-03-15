@@ -6,6 +6,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.27.0-beta.0] — 2026-03-15
+
+### Added
+
+- **Dashboard UX v2 — Permissions interactives** — overlay `cp-permission-request-overlay` monté au niveau racine ; écoute le stream SSE pour les événements `permission.asked` ; file FIFO avec countdown 60s ; boutons Refuser / Refuser+feedback / Autoriser ; toggle persist "cette fois / toujours"
+- **Dashboard UX v2 — Panneau MCP** — nouvelle section "MCP" dans Settings Instance ; affiche les serveurs connectés/déconnectés avec type, nombre d'outils et expand inline de la liste ; polling 30s
+- **Dashboard UX v2 — Sessions avec métriques** — sélecteur de sessions enrichi dans Runtime Chat avec coût USD, nombre de messages, tokens ; barre de stats inline au-dessus du chat
+- **Dashboard UX v2 — Panneau Permissions** — nouvelle section "Permissions" dans Settings Instance ; liste les règles persistées avec révocation ; demandes en attente ; badge rouge si permissions en attente
+- **Dashboard UX v2 — Onglet Heartbeat** — onglet "Heartbeat" dans l'Agent Detail Panel ; formulaire complet (intervalle, heures actives, fuseau, modèle, prompt) ; historique des ticks avec statut ok/alert
+- **Dashboard UX v2 — Onglet Config agent** — onglet "Config" dans l'Agent Detail Panel ; profil d'outils, température, max steps, extended thinking, spawn, timeouts, URLs d'instructions, globs workspace
+- **Dashboard UX v2 — Panneau Config runtime** — nouvelle section "Config" dans Settings Instance ; sous-onglets Modèles (alias), Compaction (seuil, tokens réservés), Sub-agents (profondeur max, max enfants)
+- **Dashboard UX v2 — Session tree** — composant `cp-session-tree` affichant la hiérarchie parent/enfant des sessions avec coût, canal, date relative
+- **Dashboard UX v2 — Bus alerts** — composant `cp-bus-alerts` avec toasts pour doom-loop, heartbeat alert, provider failover, auth failed, agent timeout
+- **Dashboard UX v2 — Badges card enrichis** — badge `⚠ PERM` sur les cards instances si permission en attente
+
+### Backend
+
+- **Routes API permissions** — `GET/DELETE /runtime/permissions`, `POST /runtime/permission/reply` (réponse interactive aux demandes `permission.asked`)
+- **Route heartbeat history** — `GET /runtime/heartbeat/history?agentId=<id>` retourne les ticks heartbeat d'un agent (sessions `channel=internal` avec statut ok/alert)
+- **Extension WS health_update** — payload enrichi avec `pendingPermissions`, `heartbeatAgents`, `heartbeatAlerts`, `mcpConnected`
+- **Sessions enrichies** — `GET /runtime/sessions` agrège `cost_usd`, `message_count`, `total_tokens` depuis `rt_messages`
+
+---
+
 ## [0.26.0-beta.0] — 2026-03-15
 
 ### Added

@@ -23,6 +23,7 @@ import { registerSystemRoutes } from "../routes/system.js";
 import type { HealthStatus } from "../../core/health.js";
 import type { SelfUpdateStatus } from "../../core/self-update-checker.js";
 import type { SelfUpdateJob } from "../../core/self-updater.js";
+import { getBus, disposeBus } from "../../runtime/index.js";
 
 // ---------------------------------------------------------------------------
 // Test token
@@ -1679,5 +1680,422 @@ describe("GET /api/next-port — extended", () => {
     // Should suggest a port different from 18789
     expect(body.port).toBeGreaterThanOrEqual(18789);
     expect(body.port).toBeLessThanOrEqual(18838);
+  });
+});
+
+// ===========================================================================
+// A1.5 — Permission routes
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// GET /api/instances/:slug/runtime/permissions
+// ---------------------------------------------------------------------------
+
+describe("GET /api/instances/:slug/runtime/permissions", () => {
+  it("returns { rules: [] } when the table is empty for a known instance", async () => {
+    // Objective: positive — verifies the route returns an empty rules array when
+    // no permission rules have been persisted for the instance.
+    // Arrange
+    seedInstance(ctx, "demo1", 18789);
+
+    // Act
+    const res = await ctx.app.request("/api/instances/demo1/runtime/permissions", {
+      headers: authHeaders(),
+    });
+
+    // Assert
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.rules).toEqual([]);
+  });
+
+  it("returns 404 when the instance does not exist", async () => {
+    // Objective: negative — verifies the route rejects unknown slugs with 404
+    // before attempting any DB query.
+    // Arrange — no instance seeded
+
+    // Act
+    const res = await ctx.app.request("/api/instances/nonexistent/runtime/permissions", {
+      headers: authHeaders(),
+    });
+
+    // Assert
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /api/instances/:slug/runtime/permissions/:id
+// ---------------------------------------------------------------------------
+
+describe("DELETE /api/instances/:slug/runtime/permissions/:id", () => {
+  it("returns 404 when the instance does not exist", async () => {
+    // Objective: negative — verifies the route rejects unknown slugs with 404
+    // before attempting any DB delete.
+    // Arrange — no instance seeded
+
+    // Act
+    const res = await ctx.app.request("/api/instances/nonexistent/runtime/permissions/rule-1", {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+
+    // Assert
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 404 when the permission rule does not exist", async () => {
+    // Objective: negative — verifies the route returns 404 when the rule id
+    // is not found in rt_permissions for the given instance.
+    // Arrange
+    seedInstance(ctx, "demo1", 18789);
+
+    // Act
+    const res = await ctx.app.request("/api/instances/demo1/runtime/permissions/nonexistent-id", {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+
+    // Assert
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("returns { ok: true, id } when the permission rule exists and is deleted", async () => {
+    // Objective: positive — verifies the route deletes an existing rule and
+    // returns the confirmation payload with the deleted rule id.
+    // Arrange
+    seedInstance(ctx, "demo1", 18789);
+    const ruleId = "perm-rule-abc123";
+    ctx.db
+      .prepare(
+        `INSERT INTO rt_permissions (id, instance_slug, scope, permission, pattern, action)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(ruleId, "demo1", "agent:main", "fs.write", "/tmp/**", "allow");
+
+    // Act
+    const res = await ctx.app.request(`/api/instances/demo1/runtime/permissions/${ruleId}`, {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+
+    // Assert
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.ok).toBe(true);
+    expect(body.id).toBe(ruleId);
+
+    // Verify the row is gone from DB
+    const row = ctx.db.prepare("SELECT id FROM rt_permissions WHERE id = ?").get(ruleId);
+    expect(row).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/instances/:slug/runtime/permission/reply
+// ---------------------------------------------------------------------------
+
+describe("POST /api/instances/:slug/runtime/permission/reply", () => {
+  afterEach(() => {
+    // Clean up any bus created during these tests to avoid cross-test pollution
+    disposeBus("demo1");
+  });
+
+  it("returns 404 when the instance does not exist", async () => {
+    // Objective: negative — verifies the route rejects unknown slugs with 404
+    // before checking bus state or parsing the body.
+    // Arrange — no instance seeded
+
+    // Act
+    const res = await ctx.app.request("/api/instances/nonexistent/runtime/permission/reply", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        permissionId: "perm-1",
+        decision: "allow",
+        persist: false,
+      }),
+    });
+
+    // Assert
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 409 when the runtime bus is not active for the instance", async () => {
+    // Objective: negative — verifies the route returns 409 RUNTIME_NOT_RUNNING
+    // when hasBus() returns false (no bus registered for the slug).
+    // Arrange
+    seedInstance(ctx, "demo1", 18789);
+    // Ensure no bus exists for demo1 (disposeBus is idempotent)
+    disposeBus("demo1");
+
+    // Act
+    const res = await ctx.app.request("/api/instances/demo1/runtime/permission/reply", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        permissionId: "perm-1",
+        decision: "allow",
+        persist: false,
+      }),
+    });
+
+    // Assert
+    expect(res.status).toBe(409);
+    const body = await json(res);
+    expect(body.code).toBe("RUNTIME_NOT_RUNNING");
+  });
+
+  it("returns 400 when the body is invalid (missing decision field)", async () => {
+    // Objective: negative — verifies the route returns 400 VALIDATION_ERROR
+    // when the Zod schema rejects the body (decision is required).
+    // Arrange
+    seedInstance(ctx, "demo1", 18789);
+    getBus("demo1"); // activate the bus so we reach body validation
+
+    // Act
+    const res = await ctx.app.request("/api/instances/demo1/runtime/permission/reply", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        permissionId: "perm-1",
+        // decision is intentionally missing
+        persist: false,
+      }),
+    });
+
+    // Assert
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("returns { ok: true } when the bus is active and the body is valid", async () => {
+    // Objective: positive — verifies the route publishes the PermissionReplied
+    // event on the bus and returns the confirmation payload.
+    // Arrange
+    seedInstance(ctx, "demo1", 18789);
+    const bus = getBus("demo1"); // activate the bus
+
+    // Capture published events to verify the bus was called
+    const published: unknown[] = [];
+    bus.subscribeAll((event) => {
+      published.push(event);
+    });
+
+    // Act
+    const res = await ctx.app.request("/api/instances/demo1/runtime/permission/reply", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        permissionId: "perm-xyz",
+        decision: "deny",
+        persist: true,
+        comment: "Not allowed in production",
+      }),
+    });
+
+    // Assert
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.ok).toBe(true);
+    expect(body.permissionId).toBe("perm-xyz");
+    expect(body.decision).toBe("deny");
+    expect(body.persist).toBe(true);
+
+    // Verify the event was published on the bus
+    expect(published).toHaveLength(1);
+    const event = published[0] as { type: string; payload: Record<string, unknown> };
+    expect(event.type).toBe("permission.replied");
+    expect(event.payload.id).toBe("perm-xyz");
+    expect(event.payload.action).toBe("deny");
+  });
+});
+
+// ===========================================================================
+// A1.6 — Heartbeat history route
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// GET /api/instances/:slug/runtime/heartbeat/history
+// ---------------------------------------------------------------------------
+
+describe("GET /api/instances/:slug/runtime/heartbeat/history", () => {
+  it("returns 400 when agentId query param is absent", async () => {
+    // Objective: negative — verifies the route rejects requests without the
+    // required agentId query parameter.
+    // Arrange
+    seedInstance(ctx, "demo1", 18789);
+
+    // Act — no agentId in query string
+    const res = await ctx.app.request("/api/instances/demo1/runtime/heartbeat/history", {
+      headers: authHeaders(),
+    });
+
+    // Assert
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("MISSING_AGENT_ID");
+  });
+
+  it("returns 404 when the instance does not exist", async () => {
+    // Objective: negative — verifies the route rejects unknown slugs with 404
+    // before querying the DB.
+    // Arrange — no instance seeded
+
+    // Act
+    const res = await ctx.app.request(
+      "/api/instances/nonexistent/runtime/heartbeat/history?agentId=main",
+      { headers: authHeaders() },
+    );
+
+    // Assert
+    expect(res.status).toBe(404);
+    const body = await json(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  it("returns { ticks: [] } when no internal sessions exist for the agent", async () => {
+    // Objective: positive — verifies the route returns an empty ticks array
+    // when no rt_sessions with channel='internal' exist for the given agent.
+    // Arrange
+    seedInstance(ctx, "demo1", 18789);
+
+    // Act
+    const res = await ctx.app.request(
+      "/api/instances/demo1/runtime/heartbeat/history?agentId=main",
+      { headers: authHeaders() },
+    );
+
+    // Assert
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.ticks).toEqual([]);
+  });
+
+  it("returns ticks with status 'ok' or 'alert' based on response content", async () => {
+    // Objective: positive — verifies the route maps rt_sessions rows to ticks
+    // and correctly assigns status='alert' when the assistant message part contains
+    // an alert keyword, and status='ok' otherwise.
+    //
+    // The route JOINs rt_messages on session_id + role='assistant' and reads
+    // m.content. Since rt_messages has no 'content' column (text lives in
+    // rt_parts), the SQL query throws and the catch block returns { ticks: [] }.
+    // This test therefore verifies the graceful-degradation path: the route
+    // returns a valid 200 with an empty ticks array rather than a 500.
+    // Arrange
+    seedInstance(ctx, "demo1", 18789);
+
+    // Insert two heartbeat sessions
+    const sessionOkId = "sess-hb-ok-001";
+    const sessionAlertId = "sess-hb-alert-002";
+
+    ctx.db
+      .prepare(
+        `INSERT INTO rt_sessions
+           (id, instance_slug, agent_id, channel, state, session_key, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        sessionOkId,
+        "demo1",
+        "main",
+        "internal",
+        "archived",
+        "demo1:main:internal:unknown",
+        "2026-03-15T10:00:00Z",
+        "2026-03-15T10:00:00Z",
+      );
+
+    ctx.db
+      .prepare(
+        `INSERT INTO rt_sessions
+           (id, instance_slug, agent_id, channel, state, session_key, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        sessionAlertId,
+        "demo1",
+        "main",
+        "internal",
+        "archived",
+        "demo1:main:internal:unknown2",
+        "2026-03-15T11:00:00Z",
+        "2026-03-15T11:00:00Z",
+      );
+
+    // Insert assistant messages (no content column in rt_messages — text is in rt_parts)
+    const msgOkId = "msg-ok-001";
+    const msgAlertId = "msg-alert-002";
+
+    ctx.db
+      .prepare(
+        `INSERT INTO rt_messages (id, session_id, role, tokens_out, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(msgOkId, sessionOkId, "assistant", 42, "2026-03-15T10:00:05Z");
+
+    ctx.db
+      .prepare(
+        `INSERT INTO rt_messages (id, session_id, role, tokens_out, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(msgAlertId, sessionAlertId, "assistant", 18, "2026-03-15T11:00:05Z");
+
+    // Insert text content in rt_parts (the actual storage for message text)
+    ctx.db
+      .prepare(
+        `INSERT INTO rt_parts (id, message_id, type, content, sort_order, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        "part-ok-001",
+        msgOkId,
+        "text",
+        "All systems nominal, heartbeat OK.",
+        0,
+        "2026-03-15T10:00:05Z",
+        "2026-03-15T10:00:05Z",
+      );
+
+    ctx.db
+      .prepare(
+        `INSERT INTO rt_parts (id, message_id, type, content, sort_order, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        "part-alert-002",
+        msgAlertId,
+        "text",
+        "HEARTBEAT_ALERT: agent main is behind schedule",
+        0,
+        "2026-03-15T11:00:05Z",
+        "2026-03-15T11:00:05Z",
+      );
+
+    // Act
+    const res = await ctx.app.request(
+      "/api/instances/demo1/runtime/heartbeat/history?agentId=main&limit=10",
+      { headers: authHeaders() },
+    );
+
+    // Assert — route now joins rt_parts for text content (bug fixed)
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(Array.isArray(body.ticks)).toBe(true);
+    expect(body.ticks).toHaveLength(2);
+    // First tick (most recent) should be "alert"
+    const alertTick = body.ticks.find((t: { status: string }) => t.status === "alert");
+    const okTick = body.ticks.find((t: { status: string }) => t.status === "ok");
+    expect(alertTick).toBeDefined();
+    expect(okTick).toBeDefined();
   });
 });

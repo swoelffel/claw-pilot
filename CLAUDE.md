@@ -4,7 +4,7 @@ Guidance for Claude Code when working in this repository.
 
 ## What this project is
 
-`claw-pilot` v0.26.0-beta.0 — **CLI + web dashboard** that orchestrates multiple agent instances on a Linux server. It handles discovery, provisioning, lifecycle management, Nginx config generation, and device pairing.
+`claw-pilot` v0.27.0-beta.0 — **CLI + web dashboard** that orchestrates multiple agent instances on a Linux server. It handles discovery, provisioning, lifecycle management, Nginx config generation, and device pairing.
 
 All instances use the **claw-runtime** engine — a native Node.js engine (`src/runtime/`), managed via PID file daemon.
 
@@ -119,7 +119,7 @@ Use conditional spread for optional fields: `...(val !== undefined ? { key: val 
 
 ## Test coverage
 
-836 tests passing (+ 102 e2e). Tests are under `src/core/__tests__/`, `src/db/__tests__/`, `src/runtime/__tests__/`, `src/runtime/session/__tests__/`, `src/dashboard/__tests__/`. Run with `pnpm test:run` before submitting changes.
+849 tests passing (+ 102 e2e). Tests are under `src/core/__tests__/`, `src/db/__tests__/`, `src/runtime/__tests__/`, `src/runtime/session/__tests__/`, `src/dashboard/__tests__/`. Run with `pnpm test:run` before submitting changes.
 
 ## UI development
 

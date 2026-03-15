@@ -23,6 +23,10 @@ import { badgeStyles, buttonStyles, spinnerStyles, errorBannerStyles } from "../
 import { instanceSettingsStyles } from "../styles/instance-settings.styles.js";
 import "./agent-detail-panel.js";
 import "./runtime-chat.js";
+import "./instance-devices.js";
+import "./instance-mcp.js";
+import "./instance-permissions.js";
+import "./instance-config.js";
 
 @localized()
 @customElement("cp-instance-settings")
@@ -65,6 +69,14 @@ export class InstanceSettings extends LitElement {
   @state() private _removedProviders: string[] = [];
   @state() private _updatedKeys: Record<string, string> = {};
   @state() private _showAddProvider = false;
+
+  // ── MCP badge state ───────────────────────────────────────────────────────
+
+  @state() private _mcpConnectedCount = 0;
+
+  // ── Permissions badge state ───────────────────────────────────────────────
+
+  @state() private _pendingPermissionsCount = 0;
 
   // ── Agent panel state ─────────────────────────────────────────────────────
 
@@ -372,10 +384,25 @@ export class InstanceSettings extends LitElement {
   // ── Render helpers ────────────────────────────────────────────────────────
 
   private _renderSidebar() {
-    const sections: Array<{ id: SidebarSection; label: string }> = [
+    const sections: Array<{ id: SidebarSection; label: string; badge?: number }> = [
       { id: "general", label: msg("General", { id: "settings-general" }) },
       { id: "agents", label: msg("Agents", { id: "settings-agents" }) },
       { id: "runtime", label: "Runtime" },
+      { id: "devices", label: msg("Devices", { id: "settings-devices" }) },
+      {
+        id: "mcp" as const,
+        label: "MCP",
+        ...(this._mcpConnectedCount > 0 ? { badge: this._mcpConnectedCount } : {}),
+      },
+      {
+        id: "permissions" as const,
+        label: msg("Permissions", { id: "settings-permissions" }),
+        ...(this._pendingPermissionsCount > 0 ? { badge: this._pendingPermissionsCount } : {}),
+      },
+      {
+        id: "config",
+        label: msg("Config", { id: "settings-config" }),
+      },
     ];
 
     return html`
@@ -388,6 +415,9 @@ export class InstanceSettings extends LitElement {
                 @click=${() => this._scrollToSection(s.id)}
               >
                 ${s.label}
+                ${s.badge !== undefined
+                  ? html`<span class="sidebar-mcp-badge">${s.badge}</span>`
+                  : nothing}
               </button>
             `,
           )}
@@ -1076,6 +1106,43 @@ export class InstanceSettings extends LitElement {
           ${this._activeSection === "general" ? this._renderGeneralSection() : nothing}
           ${this._activeSection === "agents" ? this._renderAgentsSection() : nothing}
           ${this._activeSection === "runtime" ? this._renderRuntimeSection() : nothing}
+          ${this._activeSection === "devices"
+            ? html`
+                <div class="section">
+                  <cp-instance-devices .slug=${this.slug} .active=${true}></cp-instance-devices>
+                </div>
+              `
+            : nothing}
+          ${this._activeSection === "mcp"
+            ? html`
+                <div class="section">
+                  <cp-instance-mcp
+                    .slug=${this.slug}
+                    .active=${true}
+                    @mcp-connected-count-changed=${(e: CustomEvent<number>) => {
+                      this._mcpConnectedCount = e.detail;
+                    }}
+                  ></cp-instance-mcp>
+                </div>
+              `
+            : nothing}
+          ${this._activeSection === "permissions"
+            ? html`
+                <div class="section">
+                  <cp-instance-permissions
+                    .slug=${this.slug}
+                    .active=${true}
+                  ></cp-instance-permissions>
+                </div>
+              `
+            : nothing}
+          ${this._activeSection === "config"
+            ? html`
+                <div class="section">
+                  <cp-instance-config .slug=${this.slug} .active=${true}></cp-instance-config>
+                </div>
+              `
+            : nothing}
         </div>
       </div>
 

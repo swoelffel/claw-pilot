@@ -112,7 +112,7 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
 
   const health = new HealthChecker(conn, registry, xdgRuntimeDir);
   const lifecycle = new Lifecycle(conn, registry, xdgRuntimeDir);
-  const monitor = new Monitor(health);
+  const monitor = new Monitor(health, undefined, db);
   const selfUpdateChecker = new SelfUpdateChecker();
   const selfUpdater = new SelfUpdater(conn);
   const tokenCache = new TokenCache(conn);

@@ -61,7 +61,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/runtime/sessions
-  // List active runtime sessions for an instance
+  // List active runtime sessions for an instance — enriched with aggregated stats
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/runtime/sessions", (c) => {
     const slug = c.req.param("slug");
@@ -73,10 +73,80 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     const limitParam = c.req.query("limit");
     const limit = limitParam ? parseInt(limitParam, 10) : 50;
 
-    const sessions = listSessions(db, slug, {
-      state: stateParam ?? "active",
-      limit: isNaN(limit) ? 50 : limit,
-    });
+    // Requête enrichie avec agrégats depuis rt_messages
+    interface EnrichedSessionRow {
+      id: string;
+      instance_slug: string;
+      parent_id: string | null;
+      agent_id: string;
+      channel: string;
+      peer_id: string | null;
+      title: string | null;
+      state: string;
+      permissions: string | null;
+      created_at: string;
+      updated_at: string;
+      session_key: string | null;
+      spawn_depth: number;
+      label: string | null;
+      metadata: string | null;
+      total_cost_usd: number;
+      message_count: number;
+      total_tokens: number;
+    }
+
+    let sql = `
+      SELECT s.*,
+        COALESCE(SUM(m.cost_usd), 0) as total_cost_usd,
+        COUNT(m.id) as message_count,
+        COALESCE(SUM(COALESCE(m.tokens_in, 0) + COALESCE(m.tokens_out, 0)), 0) as total_tokens
+      FROM rt_sessions s
+      LEFT JOIN rt_messages m ON m.session_id = s.id
+      WHERE s.instance_slug = ?
+    `;
+    const params: (string | number)[] = [slug];
+
+    const resolvedState = stateParam ?? "active";
+    sql += " AND s.state = ?";
+    params.push(resolvedState);
+
+    sql += " GROUP BY s.id ORDER BY s.created_at DESC LIMIT ?";
+    params.push(isNaN(limit) ? 50 : limit);
+
+    let rows: EnrichedSessionRow[] = [];
+    try {
+      rows = db.prepare(sql).all(...params) as EnrichedSessionRow[];
+    } catch {
+      // Fallback vers listSessions si la requête enrichie échoue (ex: colonnes manquantes)
+      const fallback = listSessions(db, slug, {
+        state: resolvedState,
+        limit: isNaN(limit) ? 50 : limit,
+      });
+      return c.json({ sessions: fallback });
+    }
+
+    // Mapper vers le format SessionInfo + champs agrégés
+    const sessions = rows.map((row) => ({
+      id: row.id,
+      instanceSlug: row.instance_slug,
+      parentId: row.parent_id ?? undefined,
+      agentId: row.agent_id,
+      channel: row.channel,
+      peerId: row.peer_id ?? undefined,
+      title: row.title ?? undefined,
+      state: row.state as "active" | "archived",
+      permissions: row.permissions ?? undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      sessionKey: row.session_key ?? undefined,
+      spawnDepth: row.spawn_depth ?? 0,
+      label: row.label ?? undefined,
+      metadata: row.metadata ?? undefined,
+      // Champs agrégés
+      totalCostUsd: row.total_cost_usd ?? 0,
+      messageCount: row.message_count ?? 0,
+      totalTokens: row.total_tokens ?? 0,
+    }));
 
     return c.json({ sessions });
   });
@@ -300,5 +370,76 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
         stream.onAbort(resolve);
       });
     });
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /api/instances/:slug/runtime/heartbeat/history
+  // Returns heartbeat tick history for a specific agent (channel = 'internal')
+  // Query params: agentId (required), limit (optional, default 20, max 100)
+  // ---------------------------------------------------------------------------
+  app.get("/api/instances/:slug/runtime/heartbeat/history", (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
+
+    const agentId = c.req.query("agentId");
+    if (!agentId) {
+      return apiError(c, 400, "MISSING_AGENT_ID", "agentId query param is required");
+    }
+
+    const limitParam = c.req.query("limit");
+    const limit = Math.min(parseInt(limitParam ?? "20", 10) || 20, 100);
+
+    function detectHeartbeatStatus(text: string): "ok" | "alert" {
+      if (!text) return "ok";
+      const lower = text.toLowerCase();
+      const alertKeywords = ["heartbeat_alert", "alert", "retard", "bloqué", "erreur", "error"];
+      return alertKeywords.some((k) => lower.includes(k)) ? "alert" : "ok";
+    }
+
+    interface HeartbeatRow {
+      sessionId: string;
+      createdAt: string;
+      agentId: string;
+      responseText: string | null;
+      tokensOut: number | null;
+    }
+
+    let rows: HeartbeatRow[] = [];
+    try {
+      // Le texte de la réponse est dans rt_parts (type='text'), pas dans rt_messages
+      rows = db
+        .prepare(
+          `SELECT
+            s.id as sessionId,
+            s.created_at as createdAt,
+            s.agent_id as agentId,
+            p.content as responseText,
+            m.tokens_out as tokensOut
+          FROM rt_sessions s
+          LEFT JOIN rt_messages m ON m.session_id = s.id AND m.role = 'assistant'
+          LEFT JOIN rt_parts p ON p.message_id = m.id AND p.type = 'text'
+          WHERE s.instance_slug = ?
+            AND s.agent_id = ?
+            AND s.channel = 'internal'
+          ORDER BY s.created_at DESC
+          LIMIT ?`,
+        )
+        .all(slug, agentId, limit) as HeartbeatRow[];
+    } catch {
+      return c.json({ ticks: [] });
+    }
+
+    const ticks = rows.map((row) => ({
+      sessionId: row.sessionId,
+      createdAt: row.createdAt,
+      agentId: row.agentId,
+      responseText: row.responseText ?? "",
+      tokensOut: row.tokensOut ?? 0,
+      status: detectHeartbeatStatus(row.responseText ?? ""),
+    }));
+
+    return c.json({ ticks });
   });
 }

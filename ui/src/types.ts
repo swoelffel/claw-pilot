@@ -1,4 +1,11 @@
-export type SidebarSection = "general" | "agents" | "runtime";
+export type SidebarSection =
+  | "general"
+  | "agents"
+  | "runtime"
+  | "devices"
+  | "mcp"
+  | "permissions"
+  | "config";
 
 export interface InstanceInfo {
   id: number;
@@ -19,6 +26,7 @@ export interface InstanceInfo {
   gateway?: "healthy" | "unhealthy" | "unknown";
   agentCount?: number;
   pendingDevices?: number;
+  pendingPermissions?: number;
   telegram?: "connected" | "disconnected" | "not_configured";
   // gateway token for zero-friction Control UI login
   gatewayToken?: string | null;
@@ -48,6 +56,14 @@ export interface HealthUpdate {
       agentCount?: number;
       pendingDevices?: number;
       telegram?: "connected" | "disconnected" | "not_configured";
+      /** Number of persisted permission rules awaiting a decision */
+      pendingPermissions?: number;
+      /** Number of MCP servers currently connected */
+      mcpConnected?: number;
+      /** Number of agents with heartbeat enabled */
+      heartbeatAgents?: number;
+      /** Number of heartbeat alerts in the last 24h */
+      heartbeatAlerts?: number;
     }>;
   };
 }
@@ -410,6 +426,10 @@ export interface RuntimeSession {
   title: string | null;
   createdAt: string;
   updatedAt: string;
+  // Champs agrégés (enrichis par le backend depuis rt_messages)
+  totalCostUsd?: number;
+  messageCount?: number;
+  totalTokens?: number;
 }
 
 export interface RuntimeChatResponse {

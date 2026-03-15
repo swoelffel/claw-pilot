@@ -1,4 +1,4 @@
-import { LitElement, html, css } from "lit";
+import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import {
@@ -25,6 +25,8 @@ import "./components/blueprint-builder.js";
 import "./components/instance-settings.js";
 import "./components/self-update-banner.js";
 import "./components/login-view.js";
+import "./components/permission-request-overlay.js";
+import "./components/bus-alerts.js";
 
 // Initialize locale — resolved before first render via localeReady promise
 export const localeReady = initLocale();
@@ -629,6 +631,7 @@ export class CpApp extends LitElement {
           const newState = update.state;
           const newAgentCount = update.agentCount ?? inst.agentCount;
           const newPendingDevices = update.pendingDevices ?? inst.pendingDevices;
+          const newPendingPermissions = update.pendingPermissions ?? inst.pendingPermissions;
           const newTelegram = update.telegram ?? inst.telegram;
           // Only create a new object if something actually changed
           if (
@@ -636,6 +639,7 @@ export class CpApp extends LitElement {
             inst.state === newState &&
             inst.agentCount === newAgentCount &&
             inst.pendingDevices === newPendingDevices &&
+            inst.pendingPermissions === newPendingPermissions &&
             inst.telegram === newTelegram
           ) {
             return inst;
@@ -647,6 +651,9 @@ export class CpApp extends LitElement {
             state: newState,
             ...(newAgentCount !== undefined && { agentCount: newAgentCount }),
             ...(newPendingDevices !== undefined && { pendingDevices: newPendingDevices }),
+            ...(newPendingPermissions !== undefined && {
+              pendingPermissions: newPendingPermissions,
+            }),
             ...(newTelegram !== undefined && { telegram: newTelegram }),
           };
         });
@@ -864,6 +871,18 @@ export class CpApp extends LitElement {
         <cp-self-update-banner .status=${this._selfUpdateStatus}></cp-self-update-banner>
         ${this._renderMain()}
       </main>
+
+      <!-- Overlay permission requests — monté si une instance est active -->
+      ${"slug" in this._route && this._route.slug
+        ? html`
+            <cp-permission-request-overlay
+              .instanceSlug=${this._route.slug}
+            ></cp-permission-request-overlay>
+          `
+        : nothing}
+
+      <!-- Bus alerts toasts — toujours monté, reçoit les événements WS -->
+      <cp-bus-alerts></cp-bus-alerts>
 
       <footer>
         <div class="footer-left">

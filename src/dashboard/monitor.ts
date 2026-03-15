@@ -1,7 +1,10 @@
 // src/dashboard/monitor.ts
 import type { WebSocket } from "ws";
+import type Database from "better-sqlite3";
 import type { HealthChecker, HealthStatus } from "../core/health.js";
 import { constants } from "../lib/constants.js";
+import { getRuntimeStateDir } from "../lib/platform.js";
+import { runtimeConfigExists, loadRuntimeConfig } from "../runtime/index.js";
 
 interface WSMessage {
   type: "health_update" | "instance_created" | "instance_destroyed" | "log_line";
@@ -16,6 +19,7 @@ export class Monitor {
   constructor(
     private health: HealthChecker,
     private intervalMs: number = constants.HEALTH_POLL_INTERVAL,
+    private db?: Database.Database,
   ) {}
 
   addClient(ws: WebSocket): void {
@@ -23,13 +27,89 @@ export class Monitor {
     ws.on("close", () => this.clients.delete(ws));
   }
 
+  /**
+   * Count pending permission rules (action = 'ask') for a given instance slug.
+   * Returns 0 if the table does not exist or the query fails.
+   */
+  private countPendingPermissions(slug: string): number {
+    if (!this.db) return 0;
+    try {
+      const row = this.db
+        .prepare(
+          `SELECT COUNT(*) AS cnt FROM rt_permissions
+           WHERE instance_slug = ? AND action = 'ask'`,
+        )
+        .get(slug) as { cnt: number } | undefined;
+      return row?.cnt ?? 0;
+    } catch {
+      // Table may not exist on older DBs — degrade gracefully
+      return 0;
+    }
+  }
+
+  /**
+   * Count agents with heartbeat enabled for a given instance slug.
+   * Returns 0 if runtime config is unavailable.
+   */
+  private countHeartbeatAgents(slug: string): number {
+    try {
+      const stateDir = getRuntimeStateDir(slug);
+      if (!runtimeConfigExists(stateDir)) return 0;
+      const config = loadRuntimeConfig(stateDir);
+      return config.agents.filter((a) => a.heartbeat?.every !== undefined).length;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Count heartbeat alerts (sessions with alert keywords) in the last 24h.
+   * Returns 0 if the table does not exist or the query fails.
+   */
+  private countHeartbeatAlerts(slug: string): number {
+    if (!this.db) return 0;
+    try {
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const row = this.db
+        .prepare(
+          `SELECT COUNT(DISTINCT s.id) AS cnt
+           FROM rt_sessions s
+           JOIN rt_messages m ON m.session_id = s.id AND m.role = 'assistant'
+           WHERE s.instance_slug = ?
+             AND s.channel = 'internal'
+             AND s.created_at > ?
+             AND (m.content LIKE '%HEARTBEAT_ALERT%' OR m.content LIKE '%alert%')`,
+        )
+        .get(slug, since) as { cnt: number } | undefined;
+      return row?.cnt ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Enrich a HealthStatus with pendingPermissions, heartbeat and mcp counts.
+   */
+  private enrichStatus(status: HealthStatus): HealthStatus {
+    return {
+      ...status,
+      pendingPermissions: this.countPendingPermissions(status.slug),
+      heartbeatAgents: this.countHeartbeatAgents(status.slug),
+      heartbeatAlerts: this.countHeartbeatAlerts(status.slug),
+      // mcpConnected: not computed here (requires async MCP registry query)
+      // Will be added when MCP registry exposes a sync count method
+      mcpConnected: 0,
+    };
+  }
+
   start(): void {
     this.interval = setInterval(async () => {
       try {
         const statuses = await this.health.checkAll();
+        const enriched = statuses.map((s) => this.enrichStatus(s));
         const msg = {
           type: "health_update" as const,
-          payload: { instances: statuses },
+          payload: { instances: enriched },
         };
         const serialized = JSON.stringify(msg);
         // Only broadcast when state actually changed — eliminates ~90% of WS traffic
