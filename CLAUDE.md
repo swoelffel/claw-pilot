@@ -4,7 +4,7 @@ Guidance for Claude Code when working in this repository.
 
 ## What this project is
 
-`claw-pilot` v0.20.0 — **CLI + web dashboard** that orchestrates multiple agent instances on a Linux server. It handles discovery, provisioning, lifecycle management, Nginx config generation, and device pairing.
+`claw-pilot` v0.26.0-beta.0 — **CLI + web dashboard** that orchestrates multiple agent instances on a Linux server. It handles discovery, provisioning, lifecycle management, Nginx config generation, and device pairing.
 
 All instances use the **claw-runtime** engine — a native Node.js engine (`src/runtime/`), managed via PID file daemon.
 
@@ -16,7 +16,7 @@ GitHub: https://github.com/swoelffel/claw-pilot
 - **Runtime**: Node.js >= 22.12.0, ESM, pnpm
 - **CLI**: Commander.js + @inquirer/prompts
 - **HTTP/WS**: Hono + ws
-- **DB**: better-sqlite3 (SQLite, WAL mode)
+- **DB**: better-sqlite3 (SQLite, WAL mode, schema v11)
 - **UI**: Lit web components + Vite
 - **Build**: tsdown (CLI) + vite (UI)
 - **Tests**: Vitest
@@ -42,7 +42,7 @@ src/
   commands/         # CLI commands — thin wrappers over core/
   core/             # All business logic
   dashboard/        # HTTP server (Hono) + WebSocket monitor
-  db/               # SQLite schema + migrations (schema.ts) — current version: 10
+  db/               # SQLite schema + migrations (schema.ts) — current version: 11
   lib/              # Shared utilities (logger, constants, errors, platform, poll, xdg, shell...)
   runtime/          # claw-runtime engine (bus, provider, session, tool, agent, plugin, mcp, channel, engine)
   server/           # ServerConnection interface + LocalConnection impl
@@ -119,7 +119,7 @@ Use conditional spread for optional fields: `...(val !== undefined ? { key: val 
 
 ## Test coverage
 
-591 tests passing (+ 102 e2e). Tests are under `src/core/__tests__/`, `src/db/__tests__/`, `src/runtime/__tests__/`, `src/runtime/session/__tests__/`, `src/dashboard/__tests__/`. Run with `pnpm test:run` before submitting changes.
+836 tests passing (+ 102 e2e). Tests are under `src/core/__tests__/`, `src/db/__tests__/`, `src/runtime/__tests__/`, `src/runtime/session/__tests__/`, `src/dashboard/__tests__/`. Run with `pnpm test:run` before submitting changes.
 
 ## UI development
 

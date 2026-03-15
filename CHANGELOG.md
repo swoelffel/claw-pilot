@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.26.0-beta.0] — 2026-03-15
+
+### Added
+
+- **Pattern Sentinel** — template `HEARTBEAT.md` enrichi avec exemple complet d'agent de surveillance ; `docs/_work/ClawPilot/examples/sentinel-runtime.json` avec configuration de référence (agents main/sentinel/deploy-agent)
+
+---
+
 ## [0.25.0] — 2026-03-15
 
 ### Added
