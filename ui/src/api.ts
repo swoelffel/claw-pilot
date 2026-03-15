@@ -466,6 +466,12 @@ export async function patchTelegramToken(
   });
 }
 
+export async function rejectTelegramPairing(slug: string, code: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/instances/${slug}/telegram/pairing/${code}`, {
+    method: "DELETE",
+  });
+}
+
 export async function patchChannelsConfig(
   slug: string,
   channels: {
@@ -474,6 +480,8 @@ export async function patchChannelsConfig(
       botTokenEnvVar?: string;
       pollingIntervalMs?: number;
       allowedUserIds?: number[];
+      dmPolicy?: "pairing" | "open" | "allowlist" | "disabled";
+      groupPolicy?: "open" | "allowlist" | "disabled";
     };
   },
 ): Promise<ConfigPatchResult> {

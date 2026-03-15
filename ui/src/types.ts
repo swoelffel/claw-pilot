@@ -293,8 +293,8 @@ export interface InstanceConfig {
     telegram: {
       enabled: boolean;
       botTokenMasked: string | null;
-      dmPolicy: string;
-      groupPolicy: string;
+      dmPolicy: "pairing" | "open" | "allowlist" | "disabled";
+      groupPolicy: "open" | "allowlist" | "disabled";
       streamMode?: string;
     } | null;
   };

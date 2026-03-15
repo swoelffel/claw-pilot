@@ -110,7 +110,7 @@ export class ClawRuntime {
       });
 
       // 4. Create and connect channels
-      this._channels = createChannels(this.config, this.instanceSlug);
+      this._channels = createChannels(this.config, this.instanceSlug, this.db);
       const messageHandler = this._buildMessageHandler();
       for (const channel of this._channels) {
         channel.onMessage(messageHandler);

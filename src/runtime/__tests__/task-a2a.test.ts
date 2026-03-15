@@ -137,6 +137,8 @@ function makeRuntimeConfig(): RuntimeConfig {
       botTokenEnvVar: "TELEGRAM_BOT_TOKEN",
       pollingIntervalMs: 1000,
       allowedUserIds: [],
+      dmPolicy: "pairing" as const,
+      groupPolicy: "allowlist" as const,
     },
     webChat: { enabled: true, maxSessions: 10 },
     compaction: { auto: true, threshold: 0.85, reservedTokens: 8000 },

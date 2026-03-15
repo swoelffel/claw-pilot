@@ -1,12 +1,26 @@
 // ui/src/components/instance-channels.ts
-// Panneau Channels — configuration Telegram et placeholders WhatsApp/Slack
+// Panneau Channels — configuration Telegram avec pairing, états A/B/C
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { InstanceConfig } from "../types.js";
-import { fetchInstanceConfig, patchChannelsConfig, patchTelegramToken } from "../api.js";
+import type { InstanceConfig, TelegramPairingList } from "../types.js";
+import {
+  fetchInstanceConfig,
+  patchChannelsConfig,
+  patchTelegramToken,
+  fetchTelegramPairing,
+  approveTelegramPairing,
+  rejectTelegramPairing,
+} from "../api.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { buttonStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
+
+// ---------------------------------------------------------------------------
+// Panel states
+// ---------------------------------------------------------------------------
+
+/** État A — non configuré (telegram null ou enabled=false ET pas de token) */
+type PanelState = "unconfigured" | "init-form" | "configured";
 
 @localized()
 @customElement("cp-instance-channels")
@@ -60,6 +74,21 @@ export class InstanceChannels extends LitElement {
         gap: 8px;
       }
 
+      .pending-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 5px;
+        border-radius: 9px;
+        background: var(--state-error, #ef4444);
+        color: white;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1;
+      }
+
       .status-badge {
         font-size: 11px;
         font-weight: 600;
@@ -80,6 +109,18 @@ export class InstanceChannels extends LitElement {
       .status-badge.inactive {
         background: rgba(100, 116, 139, 0.12);
         color: var(--text-muted);
+      }
+
+      .unconfigured-body {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .unconfigured-text {
+        font-size: 13px;
+        color: var(--text-secondary);
       }
 
       .form-row {
@@ -103,9 +144,21 @@ export class InstanceChannels extends LitElement {
         margin-top: 2px;
       }
 
+      .form-row-inline {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .form-row-inline .form-label {
+        min-width: 100px;
+        margin-bottom: 0;
+      }
+
       input[type="text"],
       input[type="password"],
       input[type="number"],
+      select,
       textarea {
         background: var(--bg-hover);
         border: 1px solid var(--bg-border);
@@ -118,7 +171,12 @@ export class InstanceChannels extends LitElement {
         width: 100%;
         box-sizing: border-box;
       }
+      select {
+        font-family: var(--font-sans, inherit);
+        cursor: pointer;
+      }
       input:focus,
+      select:focus,
       textarea:focus {
         border-color: var(--accent);
         box-shadow: var(--focus-ring);
@@ -134,6 +192,15 @@ export class InstanceChannels extends LitElement {
         align-items: center;
       }
       .token-row input {
+        flex: 1;
+      }
+
+      .token-input-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .token-input-row input {
         flex: 1;
       }
 
@@ -154,6 +221,7 @@ export class InstanceChannels extends LitElement {
         width: 36px;
         height: 20px;
         cursor: pointer;
+        flex-shrink: 0;
       }
       .toggle input {
         opacity: 0;
@@ -185,23 +253,6 @@ export class InstanceChannels extends LitElement {
         transform: translateX(16px);
       }
 
-      .dm-policy-row {
-        display: flex;
-        gap: 16px;
-        flex-wrap: wrap;
-      }
-      .radio-option {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 13px;
-        color: var(--text-secondary);
-        cursor: pointer;
-      }
-      .radio-option input {
-        cursor: pointer;
-      }
-
       .restart-banner {
         background: rgba(245, 158, 11, 0.08);
         border: 1px solid rgba(245, 158, 11, 0.3);
@@ -223,6 +274,84 @@ export class InstanceChannels extends LitElement {
         margin-top: 16px;
         padding-top: 16px;
         border-top: 1px solid var(--bg-border);
+      }
+
+      /* Pairing section */
+      .pairing-section {
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid var(--bg-border);
+      }
+
+      .pairing-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+
+      .pairing-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .pairing-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .pairing-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        background: var(--bg-hover);
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-md);
+        font-size: 13px;
+        flex-wrap: wrap;
+      }
+
+      .pairing-username {
+        font-weight: 600;
+        color: var(--text-primary);
+        flex: 1;
+        min-width: 80px;
+      }
+
+      .pairing-code {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        color: var(--accent);
+        font-weight: 600;
+        letter-spacing: 0.05em;
+      }
+
+      .pairing-time {
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      .pairing-actions {
+        display: flex;
+        gap: 6px;
+        margin-left: auto;
+      }
+
+      .pairing-empty {
+        font-size: 13px;
+        color: var(--text-muted);
+        padding: 8px 0;
+      }
+
+      .approved-count {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 10px;
       }
 
       /* Coming soon cards */
@@ -252,28 +381,57 @@ export class InstanceChannels extends LitElement {
         padding: 2px 7px;
         border-radius: var(--radius-sm);
       }
+
+      .link-external {
+        font-size: 12px;
+        color: var(--accent);
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      .link-external:hover {
+        text-decoration: underline;
+      }
     `,
   ];
 
   @property({ type: String }) instanceSlug = "";
   @property({ type: Object }) config: InstanceConfig | null = null;
 
+  // Panel state machine
+  @state() private _panelState: PanelState = "unconfigured";
+
+  // Form fields (init + edit)
   @state() private _enabled = false;
   @state() private _botTokenEnvVar = "TELEGRAM_BOT_TOKEN";
   @state() private _pollingIntervalMs = 1000;
-  @state() private _allowedUserIds = "";
-  @state() private _dmPolicy: "allow" | "allowlist" | "disabled" = "allowlist";
+  @state() private _dmPolicy: "pairing" | "open" | "allowlist" | "disabled" = "pairing";
+  @state() private _groupPolicy: "open" | "allowlist" | "disabled" = "allowlist";
+
+  // Token management
   @state() private _tokenMasked: string | null = null;
   @state() private _tokenEditMode = false;
   @state() private _newToken = "";
+
+  // Save state
   @state() private _saving = false;
   @state() private _error = "";
   @state() private _requiresRestart = false;
   @state() private _restarting = false;
 
+  // Pairing
+  @state() private _pairing: TelegramPairingList | null = null;
+  @state() private _pairingLoading = false;
+  @state() private _pairingError = "";
+  private _pairingPollTimer: ReturnType<typeof setInterval> | undefined;
+
   override connectedCallback(): void {
     super.connectedCallback();
     this._syncFromConfig();
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this._stopPairingPoll();
   }
 
   override updated(changed: Map<string, unknown>): void {
@@ -282,44 +440,108 @@ export class InstanceChannels extends LitElement {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Config sync
+  // ---------------------------------------------------------------------------
+
   private _syncFromConfig(): void {
     const tg = this.config?.channels?.telegram;
     if (tg) {
       this._enabled = tg.enabled;
       this._tokenMasked = tg.botTokenMasked;
-      this._dmPolicy = (tg.dmPolicy as "allow" | "allowlist" | "disabled") ?? "allowlist";
+      this._dmPolicy = tg.dmPolicy ?? "pairing";
+      this._groupPolicy = tg.groupPolicy ?? "allowlist";
+      // État C — configuré (token présent OU enabled)
+      this._panelState = "configured";
     } else {
+      // État A — non configuré (telegram null = runtime.json absent)
       this._enabled = false;
       this._tokenMasked = null;
+      this._panelState = "unconfigured";
+    }
+
+    // Charger le pairing si on est en état configuré et dmPolicy=pairing
+    if (this._panelState === "configured" && this._dmPolicy === "pairing") {
+      void this._loadPairing();
     }
   }
 
-  private async _save(): Promise<void> {
+  // ---------------------------------------------------------------------------
+  // Pairing
+  // ---------------------------------------------------------------------------
+
+  private async _loadPairing(): Promise<void> {
+    if (!this.instanceSlug) return;
+    this._pairingLoading = true;
+    this._pairingError = "";
+    try {
+      this._pairing = await fetchTelegramPairing(this.instanceSlug);
+      // Auto-poll si des requêtes sont en attente
+      if ((this._pairing?.pending.length ?? 0) > 0) {
+        this._startPairingPoll();
+      } else {
+        this._stopPairingPoll();
+      }
+    } catch (err) {
+      this._pairingError = err instanceof Error ? err.message : "Failed to load pairing";
+    } finally {
+      this._pairingLoading = false;
+    }
+  }
+
+  private _startPairingPoll(): void {
+    if (this._pairingPollTimer) return;
+    this._pairingPollTimer = setInterval(() => {
+      void this._loadPairing();
+    }, 10_000);
+  }
+
+  private _stopPairingPoll(): void {
+    if (this._pairingPollTimer) {
+      clearInterval(this._pairingPollTimer);
+      this._pairingPollTimer = undefined;
+    }
+  }
+
+  private async _approvePairing(code: string): Promise<void> {
+    try {
+      await approveTelegramPairing(this.instanceSlug, code);
+      await this._loadPairing();
+    } catch (err) {
+      this._pairingError = err instanceof Error ? err.message : "Approve failed";
+    }
+  }
+
+  private async _rejectPairing(code: string): Promise<void> {
+    try {
+      await rejectTelegramPairing(this.instanceSlug, code);
+      await this._loadPairing();
+    } catch (err) {
+      this._pairingError = err instanceof Error ? err.message : "Reject failed";
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Save logic
+  // ---------------------------------------------------------------------------
+
+  /** Formulaire d'init (État B → C) */
+  private async _saveInit(): Promise<void> {
     this._saving = true;
     this._error = "";
     try {
-      // 1. Save token if changed
-      if (this._tokenEditMode && this._newToken.trim()) {
+      // 1. Écrire le token dans .env
+      if (this._newToken.trim()) {
         await patchTelegramToken(this.instanceSlug, this._newToken.trim());
-        this._tokenEditMode = false;
         this._newToken = "";
       }
 
-      // 2. Parse allowedUserIds
-      const allowedUserIds = this._allowedUserIds
-        .split("\n")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0)
-        .map((s) => parseInt(s, 10))
-        .filter((n) => !isNaN(n));
-
-      // 3. Patch config
+      // 2. Créer/mettre à jour runtime.json avec enabled=true + policies
       const result = await patchChannelsConfig(this.instanceSlug, {
         telegram: {
-          enabled: this._enabled,
-          botTokenEnvVar: this._botTokenEnvVar,
-          pollingIntervalMs: this._pollingIntervalMs,
-          allowedUserIds,
+          enabled: true,
+          dmPolicy: this._dmPolicy,
+          groupPolicy: this._groupPolicy,
         },
       });
 
@@ -327,7 +549,45 @@ export class InstanceChannels extends LitElement {
         this._requiresRestart = true;
       }
 
-      // Reload config
+      // 3. Reload config
+      const fresh = await fetchInstanceConfig(this.instanceSlug);
+      this.config = fresh;
+      this._syncFromConfig();
+    } catch (err) {
+      this._error = err instanceof Error ? err.message : "Save failed";
+    } finally {
+      this._saving = false;
+    }
+  }
+
+  /** Formulaire édition (État C) */
+  private async _saveEdit(): Promise<void> {
+    this._saving = true;
+    this._error = "";
+    try {
+      // 1. Sauvegarder le token si modifié
+      if (this._tokenEditMode && this._newToken.trim()) {
+        await patchTelegramToken(this.instanceSlug, this._newToken.trim());
+        this._tokenEditMode = false;
+        this._newToken = "";
+      }
+
+      // 2. Patcher la config
+      const result = await patchChannelsConfig(this.instanceSlug, {
+        telegram: {
+          enabled: this._enabled,
+          botTokenEnvVar: this._botTokenEnvVar,
+          pollingIntervalMs: this._pollingIntervalMs,
+          dmPolicy: this._dmPolicy,
+          groupPolicy: this._groupPolicy,
+        },
+      });
+
+      if (result.requiresRestart) {
+        this._requiresRestart = true;
+      }
+
+      // 3. Reload config
       const fresh = await fetchInstanceConfig(this.instanceSlug);
       this.config = fresh;
       this._syncFromConfig();
@@ -367,6 +627,10 @@ export class InstanceChannels extends LitElement {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+
   override render() {
     return html`
       <div class="channels-panel">
@@ -379,11 +643,170 @@ export class InstanceChannels extends LitElement {
   }
 
   private _renderTelegramCard() {
+    switch (this._panelState) {
+      case "unconfigured":
+        return this._renderUnconfigured();
+      case "init-form":
+        return this._renderInitForm();
+      case "configured":
+        return this._renderConfigured();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // État A — Non configuré
+  // ---------------------------------------------------------------------------
+
+  private _renderUnconfigured() {
     return html`
       <div class="channel-card">
         <div class="channel-card-header">
           <div class="channel-title">
             ✈ ${msg("Telegram Bot", { id: "channels-telegram-title" })}
+          </div>
+          <span class="status-badge inactive"
+            >○ ${msg("Inactive", { id: "status-telegram-inactive" })}</span
+          >
+        </div>
+        <div class="unconfigured-body">
+          <span class="unconfigured-text">
+            ${msg("Telegram is not configured for this instance.", {
+              id: "channels-telegram-not-configured",
+            })}
+          </span>
+          <button
+            class="btn btn-primary"
+            @click=${() => {
+              this._panelState = "init-form";
+            }}
+          >
+            ${msg("Configure Telegram", { id: "channels-telegram-configure-btn" })}
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  // ---------------------------------------------------------------------------
+  // État B — Formulaire d'initialisation
+  // ---------------------------------------------------------------------------
+
+  private _renderInitForm() {
+    return html`
+      <div class="channel-card">
+        <div class="channel-card-header">
+          <div class="channel-title">
+            ✈ ${msg("Telegram Bot", { id: "channels-telegram-title" })}
+          </div>
+        </div>
+
+        <!-- Bot token -->
+        <div class="form-row">
+          <label class="form-label">${msg("Bot token", { id: "channels-token-label" })}</label>
+          <div class="token-input-row">
+            <input
+              type="password"
+              placeholder=${msg("Paste token from BotFather...", {
+                id: "channels-token-placeholder",
+              })}
+              .value=${this._newToken}
+              @input=${(e: Event) => {
+                this._newToken = (e.target as HTMLInputElement).value;
+              }}
+            />
+            <a
+              class="link-external"
+              href="https://t.me/BotFather"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              ${msg("BotFather ↗", { id: "channels-botfather-link" })}
+            </a>
+          </div>
+        </div>
+
+        <!-- DM policy -->
+        <div class="form-row-inline">
+          <label class="form-label">${msg("DM policy", { id: "channels-dmPolicy-label" })}</label>
+          <select
+            .value=${this._dmPolicy}
+            @change=${(e: Event) => {
+              this._dmPolicy = (e.target as HTMLSelectElement).value as typeof this._dmPolicy;
+            }}
+            style="max-width: 220px;"
+          >
+            <option value="pairing">
+              ${msg("Pairing (code approval)", { id: "channels-dmPolicy-pairing" })}
+            </option>
+            <option value="open">${msg("Allow all", { id: "channels-dmPolicy-allowAll" })}</option>
+            <option value="allowlist">
+              ${msg("Allowlist", { id: "channels-dmPolicy-allowlist" })}
+            </option>
+            <option value="disabled">
+              ${msg("Disabled", { id: "channels-dmPolicy-disabled" })}
+            </option>
+          </select>
+        </div>
+
+        <!-- Group policy -->
+        <div class="form-row-inline">
+          <label class="form-label">
+            ${msg("Group policy", { id: "channels-groupPolicy-label" })}
+          </label>
+          <select
+            .value=${this._groupPolicy}
+            @change=${(e: Event) => {
+              this._groupPolicy = (e.target as HTMLSelectElement).value as typeof this._groupPolicy;
+            }}
+            style="max-width: 220px;"
+          >
+            <option value="open">
+              ${msg("Allow all groups", { id: "channels-groupPolicy-open" })}
+            </option>
+            <option value="allowlist">
+              ${msg("Allowlist", { id: "channels-groupPolicy-allowlist" })}
+            </option>
+            <option value="disabled">
+              ${msg("Disabled", { id: "channels-groupPolicy-disabled" })}
+            </option>
+          </select>
+        </div>
+
+        ${this._error ? html`<div class="error-banner">${this._error}</div>` : nothing}
+
+        <div class="form-actions">
+          <button
+            class="btn btn-ghost"
+            @click=${() => {
+              this._panelState = "unconfigured";
+              this._newToken = "";
+              this._error = "";
+            }}
+            ?disabled=${this._saving}
+          >
+            ${msg("Cancel", { id: "settings-cancel" })}
+          </button>
+          <button class="btn btn-primary" @click=${this._saveInit} ?disabled=${this._saving}>
+            ${this._saving ? "…" : msg("Add", { id: "channels-add-btn" })}
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  // ---------------------------------------------------------------------------
+  // État C — Configuré
+  // ---------------------------------------------------------------------------
+
+  private _renderConfigured() {
+    const pendingCount = this._pairing?.pending.length ?? 0;
+
+    return html`
+      <div class="channel-card">
+        <div class="channel-card-header">
+          <div class="channel-title">
+            ✈ ${msg("Telegram Bot", { id: "channels-telegram-title" })}
+            ${pendingCount > 0 ? html`<span class="pending-badge">${pendingCount}</span>` : nothing}
           </div>
           ${this._renderStatusBadge()}
         </div>
@@ -423,7 +846,7 @@ export class InstanceChannels extends LitElement {
               : html`
                   <input
                     type="password"
-                    placeholder=${msg("Paste bot token here...", {
+                    placeholder=${msg("Paste token from BotFather...", {
                       id: "channels-token-placeholder",
                     })}
                     .value=${this._newToken}
@@ -446,88 +869,70 @@ export class InstanceChannels extends LitElement {
           </div>
         </div>
 
-        <!-- Env var name -->
-        <div class="form-row">
-          <label class="form-label">${msg("Env var name", { id: "channels-envVar-label" })}</label>
-          <input
-            type="text"
-            .value=${this._botTokenEnvVar}
-            @input=${(e: Event) => {
-              this._botTokenEnvVar = (e.target as HTMLInputElement).value;
-            }}
-          />
-        </div>
-
-        <!-- Polling interval -->
-        <div class="form-row">
-          <label class="form-label"
-            >${msg("Polling interval (ms)", { id: "channels-polling-label" })}</label
-          >
-          <input
-            type="number"
-            min="0"
-            .value=${String(this._pollingIntervalMs)}
-            @input=${(e: Event) => {
-              this._pollingIntervalMs = parseInt((e.target as HTMLInputElement).value, 10) || 1000;
-            }}
-            style="max-width: 120px;"
-          />
-        </div>
-
         <!-- DM policy -->
-        <div class="form-row">
+        <div class="form-row-inline">
           <label class="form-label">${msg("DM policy", { id: "channels-dmPolicy-label" })}</label>
-          <div class="dm-policy-row">
-            ${(["allow", "allowlist", "disabled"] as const).map(
-              (p) => html`
-                <label class="radio-option">
-                  <input
-                    type="radio"
-                    name="dmPolicy"
-                    value=${p}
-                    .checked=${this._dmPolicy === p}
-                    @change=${() => {
-                      this._dmPolicy = p;
-                    }}
-                  />
-                  ${p === "allow"
-                    ? msg("Allow all", { id: "channels-dmPolicy-allowAll" })
-                    : p === "allowlist"
-                      ? msg("Allowlist", { id: "channels-dmPolicy-allowlist" })
-                      : msg("Disabled", { id: "channels-dmPolicy-disabled" })}
-                </label>
-              `,
-            )}
-          </div>
-        </div>
-
-        <!-- Allowed user IDs -->
-        <div class="form-row">
-          <label class="form-label"
-            >${msg("Allowed user IDs", { id: "channels-allowedIds-label" })}</label
-          >
-          <textarea
-            rows="3"
-            placeholder="123456789&#10;987654321"
-            .value=${this._allowedUserIds}
-            @input=${(e: Event) => {
-              this._allowedUserIds = (e.target as HTMLTextAreaElement).value;
+          <select
+            .value=${this._dmPolicy}
+            @change=${(e: Event) => {
+              this._dmPolicy = (e.target as HTMLSelectElement).value as typeof this._dmPolicy;
+              // Charger le pairing si on passe en mode pairing
+              if (this._dmPolicy === "pairing") {
+                void this._loadPairing();
+              } else {
+                this._stopPairingPoll();
+              }
             }}
-          ></textarea>
-          <span class="form-hint"
-            >${msg("Telegram numeric IDs, one per line", { id: "channels-allowedIds-hint" })}</span
+            style="max-width: 220px;"
           >
+            <option value="pairing">
+              ${msg("Pairing (code approval)", { id: "channels-dmPolicy-pairing" })}
+            </option>
+            <option value="open">${msg("Allow all", { id: "channels-dmPolicy-allowAll" })}</option>
+            <option value="allowlist">
+              ${msg("Allowlist", { id: "channels-dmPolicy-allowlist" })}
+            </option>
+            <option value="disabled">
+              ${msg("Disabled", { id: "channels-dmPolicy-disabled" })}
+            </option>
+          </select>
         </div>
 
+        <!-- Group policy -->
+        <div class="form-row-inline">
+          <label class="form-label">
+            ${msg("Group policy", { id: "channels-groupPolicy-label" })}
+          </label>
+          <select
+            .value=${this._groupPolicy}
+            @change=${(e: Event) => {
+              this._groupPolicy = (e.target as HTMLSelectElement).value as typeof this._groupPolicy;
+            }}
+            style="max-width: 220px;"
+          >
+            <option value="open">
+              ${msg("Allow all groups", { id: "channels-groupPolicy-open" })}
+            </option>
+            <option value="allowlist">
+              ${msg("Allowlist", { id: "channels-groupPolicy-allowlist" })}
+            </option>
+            <option value="disabled">
+              ${msg("Disabled", { id: "channels-groupPolicy-disabled" })}
+            </option>
+          </select>
+        </div>
+
+        <!-- Pairing section (visible uniquement si dmPolicy === "pairing") -->
+        ${this._dmPolicy === "pairing" ? this._renderPairingSection() : nothing}
         ${this._error ? html`<div class="error-banner">${this._error}</div>` : nothing}
         ${this._requiresRestart
           ? html`
               <div class="restart-banner">
-                <span
-                  >${msg("Changes require a runtime restart to take effect.", {
+                <span>
+                  ${msg("Changes require a runtime restart to take effect.", {
                     id: "channels-restartWarning",
-                  })}</span
-                >
+                  })}
+                </span>
                 <button
                   class="btn btn-primary"
                   @click=${this._restartRuntime}
@@ -543,7 +948,7 @@ export class InstanceChannels extends LitElement {
           <button class="btn btn-ghost" @click=${this._syncFromConfig} ?disabled=${this._saving}>
             ${msg("Cancel", { id: "settings-cancel" })}
           </button>
-          <button class="btn btn-primary" @click=${this._save} ?disabled=${this._saving}>
+          <button class="btn btn-primary" @click=${this._saveEdit} ?disabled=${this._saving}>
             ${this._saving ? "…" : msg("Save", { id: "settings-save" })}
           </button>
         </div>
@@ -551,22 +956,101 @@ export class InstanceChannels extends LitElement {
     `;
   }
 
+  // ---------------------------------------------------------------------------
+  // Section pairing
+  // ---------------------------------------------------------------------------
+
+  private _renderPairingSection() {
+    const pending = this._pairing?.pending ?? [];
+    const approvedCount = this._pairing?.approved.length ?? 0;
+
+    return html`
+      <div class="pairing-section">
+        <div class="pairing-header">
+          <span class="pairing-title">
+            ${msg("Pairing requests", { id: "channels-pairing-title" })}
+          </span>
+          <button
+            class="btn btn-ghost"
+            style="font-size: 12px; padding: 3px 8px;"
+            @click=${() => void this._loadPairing()}
+            ?disabled=${this._pairingLoading}
+          >
+            ${this._pairingLoading ? "…" : msg("Refresh", { id: "channels-pairing-refresh" })}
+          </button>
+        </div>
+
+        ${this._pairingError
+          ? html`<div class="error-banner" style="margin-bottom: 8px;">${this._pairingError}</div>`
+          : nothing}
+
+        <div class="pairing-list">
+          ${pending.length === 0
+            ? html`<div class="pairing-empty">
+                ${msg("No pending pairing requests.", { id: "channels-pairing-empty" })}
+              </div>`
+            : pending.map(
+                (req) => html`
+                  <div class="pairing-item">
+                    <span class="pairing-username">
+                      ${req.meta?.username ? `@${req.meta.username}` : req.id}
+                    </span>
+                    <span class="pairing-code">
+                      ${msg("Code", { id: "channels-pairing-code-label" })}:
+                      ${req.code.slice(0, 4)}-${req.code.slice(4)}
+                    </span>
+                    <span class="pairing-time">${this._relativeTime(req.createdAt)}</span>
+                    <div class="pairing-actions">
+                      <button
+                        class="btn btn-primary"
+                        style="font-size: 12px; padding: 3px 10px;"
+                        @click=${() => void this._approvePairing(req.code)}
+                      >
+                        ${msg("Approve", { id: "channels-pairing-approve" })}
+                      </button>
+                      <button
+                        class="btn btn-ghost"
+                        style="font-size: 12px; padding: 3px 8px;"
+                        @click=${() => void this._rejectPairing(req.code)}
+                      >
+                        ${msg("Reject", { id: "channels-pairing-reject" })}
+                      </button>
+                    </div>
+                  </div>
+                `,
+              )}
+        </div>
+
+        <div class="approved-count">
+          ${msg("Approved senders", { id: "channels-pairing-approved-count" })}: ${approvedCount}
+        </div>
+      </div>
+    `;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Status badge
+  // ---------------------------------------------------------------------------
+
   private _renderStatusBadge() {
-    // Status badge based on config (no live health in this component — health comes from instance-card)
     if (!this._enabled) {
-      return html`<span class="status-badge inactive"
-        >○ ${msg("Inactive", { id: "status-telegram-inactive" })}</span
-      >`;
+      return html`<span class="status-badge inactive">
+        ○ ${msg("Inactive", { id: "status-telegram-inactive" })}
+      </span>`;
     }
     if (!this._tokenMasked) {
-      return html`<span class="status-badge disconnected"
-        >◎ ${msg("No token", { id: "status-telegram-no-token" })}</span
-      >`;
+      return html`<span class="status-badge disconnected">
+        ◎ ${msg("No token", { id: "status-telegram-no-token" })}
+      </span>`;
     }
-    return html`<span class="status-badge connected"
-      >● ${msg("Configured", { id: "status-telegram-configured" })}</span
-    >`;
+    return html`<span class="status-badge connected">
+      ● ${msg("Configured", { id: "status-telegram-configured" })}
+    </span>`;
   }
+
+  // ---------------------------------------------------------------------------
+  // Coming soon cards
+  // ---------------------------------------------------------------------------
 
   private _renderComingSoonCard(name: string) {
     return html`
@@ -575,6 +1059,20 @@ export class InstanceChannels extends LitElement {
         <span class="coming-soon-badge">${msg("Coming soon", { id: "channels-comingSoon" })}</span>
       </div>
     `;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
+  private _relativeTime(isoString: string): string {
+    const diff = Date.now() - new Date(isoString).getTime();
+    const minutes = Math.floor(diff / 60_000);
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
   }
 }
 

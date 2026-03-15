@@ -8,14 +8,20 @@
  * - peerId = "telegram:<chat_id>"
  * - Responses are sent as MarkdownV2 (with plain-text fallback on parse error)
  * - Bot token read from process.env[botTokenEnvVar]
+ *
+ * V2 additions:
+ * - dmPolicy: "pairing" generates a pairing code for unknown users
+ * - groupPolicy: controls group message handling
  */
 
+import type Database from "better-sqlite3";
 import type { Channel } from "../channel.js";
 import type { InboundMessage, OutboundMessage } from "../../types.js";
 import { ChannelError } from "../channel.js";
 import { TelegramPoller } from "./polling.js";
 import type { TelegramUpdate } from "./polling.js";
 import { markdownToTelegramV2 } from "./formatter.js";
+import { createPairingCode } from "../pairing.js";
 
 // ---------------------------------------------------------------------------
 // TelegramChannel
@@ -28,6 +34,13 @@ export interface TelegramChannelOptions {
   pollingIntervalMs?: number;
   /** Allowed Telegram user IDs (empty = all) */
   allowedUserIds?: number[];
+  /** DM policy: pairing (code approval), open (all), allowlist (static IDs), disabled */
+  dmPolicy?: "pairing" | "open" | "allowlist" | "disabled";
+  /** Group policy: open (all groups), allowlist (static IDs), disabled */
+  groupPolicy?: "open" | "allowlist" | "disabled";
+  /** DB + slug needed for pairing code generation */
+  db?: Database.Database;
+  instanceSlug?: string;
 }
 
 export class TelegramChannel implements Channel {
@@ -115,7 +128,26 @@ export class TelegramChannel implements Channel {
     if (!message?.text) return; // ignore non-text messages
 
     const chatId = message.chat.id;
+    const userId = message.from?.id;
     const peerId = `telegram:${chatId}`;
+
+    // Check if user is allowed
+    const allowed = this.isUserAllowed(userId);
+
+    if (!allowed) {
+      const policy = this.options.dmPolicy ?? "pairing";
+      if (
+        policy === "pairing" &&
+        userId !== undefined &&
+        this.options.db &&
+        this.options.instanceSlug
+      ) {
+        // Generate pairing code and reply to the user
+        await this.handlePairingRequest(chatId, userId, message.from?.username);
+      }
+      // For other policies (allowlist, disabled, open with no match), silently ignore
+      return;
+    }
 
     const inbound: InboundMessage = {
       channelType: "telegram",
@@ -125,6 +157,83 @@ export class TelegramChannel implements Channel {
     };
 
     await this.handler(inbound);
+  }
+
+  /**
+   * Check if a Telegram user ID is in the allowlist.
+   * If allowedUserIds is empty, all users are allowed (open mode).
+   */
+  private isUserAllowed(userId: number | undefined): boolean {
+    if (this.options.allowedUserIds === undefined || this.options.allowedUserIds.length === 0) {
+      // No allowlist = open (all allowed)
+      return true;
+    }
+    if (userId === undefined) return false;
+    return this.options.allowedUserIds.includes(userId);
+  }
+
+  /**
+   * Handle a pairing request from an unknown user.
+   * Generates (or reuses) a pairing code and sends it to the user via the bot.
+   */
+  private async handlePairingRequest(
+    chatId: number,
+    userId: number,
+    username?: string,
+  ): Promise<void> {
+    if (!this.options.db || !this.options.instanceSlug) return;
+
+    const peerId = `telegram:${chatId}`;
+
+    // Check if a valid (non-expired, non-used) code already exists for this peer
+    const existingCode = this.getExistingPairingCode(peerId);
+    let code: string;
+
+    if (existingCode) {
+      code = existingCode;
+    } else {
+      // Create new pairing code with peer_id and username in meta
+      const record = createPairingCode(this.options.db, this.options.instanceSlug, {
+        channel: "telegram",
+        ttlMinutes: 60,
+        peerId,
+        ...(username !== undefined ? { meta: { username } } : {}),
+      });
+      code = record.code;
+    }
+
+    const token = process.env[this.options.botTokenEnvVar];
+    if (!token) return;
+
+    // Format code as XXXX-XXXX for readability
+    const formatted = `${code.slice(0, 4)}-${code.slice(4)}`;
+    const text = `👋 Hello! To connect to this assistant, send this code to your admin:\n\n*${formatted}*\n\nThis code expires in 60 minutes\\.`;
+
+    try {
+      await this.poller!.sendMessage(chatId, text, "MarkdownV2");
+    } catch {
+      // Fallback plain text
+      const plainText = `Hello! To connect to this assistant, send this code to your admin: ${formatted}\n\nThis code expires in 60 minutes.`;
+      await this.poller!.sendMessage(chatId, plainText);
+    }
+  }
+
+  /**
+   * Look up an existing valid pairing code for a given peer ID.
+   * Returns the code string if found, undefined otherwise.
+   */
+  private getExistingPairingCode(peerId: string): string | undefined {
+    if (!this.options.db || !this.options.instanceSlug) return undefined;
+    const now = new Date().toISOString();
+    const row = this.options.db
+      .prepare(
+        `SELECT code FROM rt_pairing_codes
+         WHERE instance_slug = ? AND channel = 'telegram' AND peer_id = ?
+           AND used = 0 AND expires_at > ?
+         ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(this.options.instanceSlug, peerId, now) as { code: string } | undefined;
+    return row?.code;
   }
 }
 

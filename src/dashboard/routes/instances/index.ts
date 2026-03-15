@@ -11,6 +11,7 @@ import { registerDeviceRoutes } from "./devices.js";
 import { registerRuntimeRoutes } from "./runtime.js";
 import { registerMcpRoutes } from "./mcp.js";
 import { registerPermissionRoutes } from "./permissions.js";
+import { registerTelegramRoutes } from "./telegram.js";
 
 export function registerInstanceRoutes(app: Hono, deps: RouteDeps): void {
   // /discover must be registered before /:slug to avoid Hono route collision
@@ -22,4 +23,5 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps): void {
   registerRuntimeRoutes(app, deps);
   registerMcpRoutes(app, deps);
   registerPermissionRoutes(app, deps);
+  registerTelegramRoutes(app, deps);
 }

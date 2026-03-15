@@ -12,6 +12,7 @@
  * Base port: 19100 (above the dashboard at 19000).
  */
 
+import type Database from "better-sqlite3";
 import type { RuntimeConfig } from "../config/index.js";
 import type { InstanceSlug } from "../types.js";
 import type { Channel } from "../channel/channel.js";
@@ -37,9 +38,14 @@ const WEB_CHAT_PORT_RANGE = 100;
  *
  * @param config  - Validated RuntimeConfig
  * @param slug    - Instance slug (used to derive web-chat port)
+ * @param db      - SQLite database (needed for Telegram pairing code generation)
  * @returns       Array of Channel instances (not yet connected)
  */
-export function createChannels(config: RuntimeConfig, slug: InstanceSlug): Channel[] {
+export function createChannels(
+  config: RuntimeConfig,
+  slug: InstanceSlug,
+  db: Database.Database,
+): Channel[] {
   const channels: Channel[] = [];
 
   // Web chat channel
@@ -62,6 +68,10 @@ export function createChannels(config: RuntimeConfig, slug: InstanceSlug): Chann
         botTokenEnvVar: config.telegram.botTokenEnvVar,
         pollingIntervalMs: config.telegram.pollingIntervalMs,
         allowedUserIds: config.telegram.allowedUserIds,
+        dmPolicy: config.telegram.dmPolicy,
+        groupPolicy: config.telegram.groupPolicy,
+        db,
+        instanceSlug: slug,
       }),
     );
   }

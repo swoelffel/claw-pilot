@@ -4,7 +4,7 @@ Guidance for Claude Code when working in this repository.
 
 ## What this project is
 
-`claw-pilot` v0.28.0-beta — **CLI + web dashboard** that orchestrates multiple agent instances on a Linux server. It handles discovery, provisioning, lifecycle management, Nginx config generation, and device pairing.
+`claw-pilot` v0.28.1-beta — **CLI + web dashboard** that orchestrates multiple agent instances on a Linux server. It handles discovery, provisioning, lifecycle management, Nginx config generation, and device pairing.
 
 All instances use the **claw-runtime** engine — a native Node.js engine (`src/runtime/`), managed via PID file daemon.
 

@@ -508,6 +508,15 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v12: add meta column to rt_pairing_codes.
+    // Stores channel-specific metadata as a JSON blob (e.g. Telegram username).
+    // Nullable TEXT — existing rows default to NULL.
+    version: 12,
+    up(db) {
+      db.exec(`ALTER TABLE rt_pairing_codes ADD COLUMN meta TEXT`);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

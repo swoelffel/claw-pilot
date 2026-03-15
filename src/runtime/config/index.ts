@@ -194,6 +194,10 @@ const TelegramConfigSchema = z.object({
   webhookUrl: z.string().url().optional(),
   /** Allowed Telegram user IDs (empty = all paired users) */
   allowedUserIds: z.array(z.number().int()).default([]),
+  /** DM policy: pairing (code approval), open (all), allowlist (static IDs), disabled */
+  dmPolicy: z.enum(["pairing", "open", "allowlist", "disabled"]).default("pairing"),
+  /** Group policy: open (all groups), allowlist (static IDs), disabled */
+  groupPolicy: z.enum(["open", "allowlist", "disabled"]).default("allowlist"),
 });
 
 /** Web chat config (built-in dashboard channel) */
@@ -258,10 +262,12 @@ export const RuntimeConfigSchema = z.object({
 
   /** Telegram channel */
   telegram: TelegramConfigSchema.default(() => ({
-    enabled: false,
+    enabled: false as boolean,
     botTokenEnvVar: "TELEGRAM_BOT_TOKEN",
     pollingIntervalMs: 1000,
-    allowedUserIds: [],
+    allowedUserIds: [] as number[],
+    dmPolicy: "pairing" as "pairing" | "open" | "allowlist" | "disabled",
+    groupPolicy: "allowlist" as "open" | "allowlist" | "disabled",
   })),
 
   /** Web chat channel */

@@ -34,6 +34,7 @@ export interface PairingCode {
   instanceSlug: InstanceSlug;
   channel: string;
   peerId: string | undefined;
+  meta: Record<string, string> | undefined;
   used: boolean;
   expiresAt: Date;
   createdAt: Date;
@@ -44,6 +45,7 @@ interface PairingCodeRow {
   instance_slug: string;
   channel: string;
   peer_id: string | null;
+  meta: string | null;
   used: number;
   expires_at: string;
   created_at: string;
@@ -55,6 +57,7 @@ function fromRow(row: PairingCodeRow): PairingCode {
     instanceSlug: row.instance_slug,
     channel: row.channel,
     peerId: row.peer_id ?? undefined,
+    meta: row.meta ? (JSON.parse(row.meta) as Record<string, string>) : undefined,
     used: row.used === 1,
     expiresAt: new Date(row.expires_at),
     createdAt: new Date(row.created_at),
@@ -72,20 +75,27 @@ function fromRow(row: PairingCodeRow): PairingCode {
 export function createPairingCode(
   db: Database.Database,
   instanceSlug: InstanceSlug,
-  options?: { channel?: string; ttlMinutes?: number },
+  options?: {
+    channel?: string;
+    ttlMinutes?: number;
+    peerId?: string;
+    meta?: Record<string, string>;
+  },
 ): PairingCode {
   cleanExpiredCodes(db);
 
   const code = generateCode();
   const ttl = options?.ttlMinutes ?? TTL_MINUTES;
   const channel = options?.channel ?? "web";
+  const peerId = options?.peerId ?? null;
+  const meta = options?.meta ? JSON.stringify(options.meta) : null;
   const expiresAt = new Date(Date.now() + ttl * 60 * 1000).toISOString();
   const now = new Date().toISOString();
 
   db.prepare(
-    `INSERT INTO rt_pairing_codes (code, instance_slug, channel, expires_at, created_at)
-     VALUES (?, ?, ?, ?, ?)`,
-  ).run(code, instanceSlug, channel, expiresAt, now);
+    `INSERT INTO rt_pairing_codes (code, instance_slug, channel, peer_id, meta, expires_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(code, instanceSlug, channel, peerId, meta, expiresAt, now);
 
   const row = db
     .prepare("SELECT * FROM rt_pairing_codes WHERE code = ?")

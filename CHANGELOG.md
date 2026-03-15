@@ -6,6 +6,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.28.1-beta] — 2026-03-15
+
+### Fixed
+
+- **Telegram — activation ne se sauvegardait pas** — `PATCH /config` pour `channels.telegram` créait silencieusement un `runtime.json` par défaut si absent au lieu d'ignorer le patch ; l'activation est maintenant persistée même sur une instance fraîche
+- **Telegram — config perdue quand `enabled: false`** — `buildInstanceConfig` retournait `telegram: null` quand le bot était désactivé, perdant la visibilité sur le token masqué et les policies ; l'objet telegram est maintenant toujours retourné (jamais null quand `runtime.json` existe)
+- **Telegram — `dmPolicy`/`groupPolicy` non persistés** — les deux champs n'étaient pas dans le schema Zod ni dans le PATCH handler ; ils sont maintenant correctement lus, écrits et retournés
+
+### Added
+
+- **Telegram — workflow de pairing DM** — les utilisateurs non-autorisés qui envoient un message au bot reçoivent automatiquement un code de pairing (`XXXX-XXXX`) ; l'admin approuve en 1 clic depuis Settings → Channels → Telegram → section "Pairing requests" (visible si `dmPolicy === "pairing"`) ; le code est stocké en DB (`rt_pairing_codes`, channel=telegram) avec le `peer_id` et le username
+- **Telegram — routes pairing** — `GET /api/instances/:slug/telegram/pairing` (liste pending + approved), `POST .../approve` (ajoute l'ID à `allowedUserIds`), `DELETE .../pairing/:code` (rejeter)
+- **Telegram — UX Settings refonte** — état A (non configuré → bouton "Configure Telegram"), état B (formulaire d'init avec token + dmPolicy + groupPolicy), état C (édition + section pairing avec poll auto 10s + badge numérique si pending)
+- **Telegram — `groupPolicy`** — nouveau champ (`open` | `allowlist` | `disabled`) dans le schema runtime et dans l'UI
+- **DB — migration v12** — colonne `meta TEXT` dans `rt_pairing_codes` pour stocker le username Telegram du demandeur
+
+---
+
 ## [0.28.0-beta] — 2026-03-15
 
 ### Added

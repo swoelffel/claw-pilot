@@ -311,4 +311,22 @@ export const templates = {
   "status-telegram-inactive": "Inactive",
   "status-telegram-no-token": "No token",
   "status-telegram-configured": "Configured",
+
+  // instance-channels.ts (v0.28.1 — pairing)
+  "channels-telegram-not-configured": "Telegram is not configured for this instance.",
+  "channels-telegram-configure-btn": "Configure Telegram",
+  "channels-dmPolicy-pairing": "Pairing (code approval)",
+  "channels-groupPolicy-label": "Group policy",
+  "channels-groupPolicy-open": "Allow all groups",
+  "channels-groupPolicy-allowlist": "Allowlist",
+  "channels-groupPolicy-disabled": "Disabled",
+  "channels-pairing-title": "Pairing requests",
+  "channels-pairing-refresh": "Refresh",
+  "channels-pairing-approve": "Approve",
+  "channels-pairing-reject": "Reject",
+  "channels-pairing-approved-count": "Approved senders",
+  "channels-pairing-empty": "No pending pairing requests.",
+  "channels-pairing-code-label": "Code",
+  "channels-add-btn": "Add",
+  "channels-botfather-link": "BotFather ↗",
 };

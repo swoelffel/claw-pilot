@@ -12,6 +12,7 @@ import {
   runtimeConfigExists,
   loadRuntimeConfig,
   saveRuntimeConfig,
+  createDefaultRuntimeConfig,
   type RuntimeConfig,
 } from "../../../runtime/index.js";
 import { z } from "zod/v4";
@@ -86,6 +87,8 @@ const RuntimeConfigPatchSchema = z.object({
           botTokenEnvVar: z.string().optional(),
           pollingIntervalMs: z.number().int().min(0).optional(),
           allowedUserIds: z.array(z.number().int()).optional(),
+          dmPolicy: z.enum(["pairing", "open", "allowlist", "disabled"]).optional(),
+          groupPolicy: z.enum(["open", "allowlist", "disabled"]).optional(),
         })
         .optional(),
     })
@@ -155,14 +158,12 @@ function buildInstanceConfig(
     },
     agents,
     channels: {
-      telegram: config.telegram.enabled
-        ? {
-            enabled: true,
-            botTokenMasked,
-            dmPolicy: "allow",
-            groupPolicy: "deny",
-          }
-        : null,
+      telegram: {
+        enabled: config.telegram.enabled,
+        botTokenMasked,
+        dmPolicy: config.telegram.dmPolicy ?? "pairing",
+        groupPolicy: config.telegram.groupPolicy ?? "allowlist",
+      },
     },
     plugins: {
       mem0: null,
@@ -313,28 +314,38 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
     // Update telegram config in runtime.json
     if (patch.channels?.telegram !== undefined) {
       const stateDir = getRuntimeStateDir(slug);
-      if (runtimeConfigExists(stateDir)) {
-        try {
-          const config = loadRuntimeConfig(stateDir);
-          const tg = patch.channels.telegram;
-          if (tg.enabled !== undefined) config.telegram.enabled = tg.enabled;
-          if (tg.botTokenEnvVar !== undefined) config.telegram.botTokenEnvVar = tg.botTokenEnvVar;
-          if (tg.pollingIntervalMs !== undefined)
-            config.telegram.pollingIntervalMs = tg.pollingIntervalMs;
-          if (tg.allowedUserIds !== undefined) config.telegram.allowedUserIds = tg.allowedUserIds;
-          saveRuntimeConfig(stateDir, config);
-          requiresRestart = true;
-        } catch (err) {
-          logger.error(
-            `[config] PATCH telegram error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-          return apiError(
-            c,
-            500,
-            "CONFIG_PATCH_FAILED",
-            err instanceof Error ? err.message : "Failed to update telegram config",
-          );
+      try {
+        // Load or create runtime.json
+        let config: RuntimeConfig;
+        if (runtimeConfigExists(stateDir)) {
+          config = loadRuntimeConfig(stateDir);
+        } else {
+          config = createDefaultRuntimeConfig({
+            ...(instance!.default_model !== null && instance!.default_model !== undefined
+              ? { defaultModel: instance!.default_model }
+              : {}),
+          });
         }
+        const tg = patch.channels.telegram;
+        if (tg.enabled !== undefined) config.telegram.enabled = tg.enabled;
+        if (tg.botTokenEnvVar !== undefined) config.telegram.botTokenEnvVar = tg.botTokenEnvVar;
+        if (tg.pollingIntervalMs !== undefined)
+          config.telegram.pollingIntervalMs = tg.pollingIntervalMs;
+        if (tg.allowedUserIds !== undefined) config.telegram.allowedUserIds = tg.allowedUserIds;
+        if (tg.dmPolicy !== undefined) config.telegram.dmPolicy = tg.dmPolicy;
+        if (tg.groupPolicy !== undefined) config.telegram.groupPolicy = tg.groupPolicy;
+        saveRuntimeConfig(stateDir, config);
+        requiresRestart = true;
+      } catch (err) {
+        logger.error(
+          `[config] PATCH telegram error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return apiError(
+          c,
+          500,
+          "CONFIG_PATCH_FAILED",
+          err instanceof Error ? err.message : "Failed to update telegram config",
+        );
       }
     }
 

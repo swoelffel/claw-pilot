@@ -213,7 +213,7 @@ describe("migration v11 — rt_sessions new columns", () => {
     const db = initDatabase(dbPath);
 
     // Assert
-    expect(schemaVersion(db)).toBe(11);
+    expect(schemaVersion(db)).toBe(12);
     db.close();
   });
 });

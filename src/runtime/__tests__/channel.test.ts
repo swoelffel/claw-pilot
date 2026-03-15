@@ -185,6 +185,41 @@ describe("pairing codes", () => {
     expect(diffMs).toBeGreaterThan(59 * 60 * 1000);
     expect(diffMs).toBeLessThan(61 * 60 * 1000);
   });
+
+  it("stores peerId and meta when provided", () => {
+    const code = createPairingCode(db, "test-instance", {
+      channel: "telegram",
+      ttlMinutes: 60,
+      peerId: "telegram:123456",
+      meta: { username: "testuser" },
+    });
+    expect(code.peerId).toBe("telegram:123456");
+    expect(code.meta).toEqual({ username: "testuser" });
+    expect(code.channel).toBe("telegram");
+  });
+
+  it("meta is undefined when not provided", () => {
+    const code = createPairingCode(db, "test-instance");
+    expect(code.meta).toBeUndefined();
+  });
+
+  it("peerId is undefined when not provided", () => {
+    const code = createPairingCode(db, "test-instance");
+    expect(code.peerId).toBeUndefined();
+  });
+
+  it("listPairingCodes returns codes with meta", () => {
+    createPairingCode(db, "test-instance", {
+      channel: "telegram",
+      peerId: "telegram:999",
+      meta: { username: "alice" },
+    });
+    const list = listPairingCodes(db, "test-instance");
+    const tgCode = list.find((c) => c.channel === "telegram");
+    expect(tgCode).toBeDefined();
+    expect(tgCode!.meta).toEqual({ username: "alice" });
+    expect(tgCode!.peerId).toBe("telegram:999");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -294,5 +329,71 @@ describe("TelegramChannel", () => {
   it("disconnect is idempotent when not connected", async () => {
     const ch = new TelegramChannel({ botTokenEnvVar: "TELEGRAM_BOT_TOKEN" });
     await expect(ch.disconnect()).resolves.toBeUndefined();
+  });
+
+  it("accepts dmPolicy and groupPolicy options", () => {
+    const ch = new TelegramChannel({
+      botTokenEnvVar: "TELEGRAM_BOT_TOKEN",
+      dmPolicy: "pairing",
+      groupPolicy: "allowlist",
+    });
+    expect(ch.type).toBe("telegram");
+  });
+
+  it("accepts db and instanceSlug options for pairing", () => {
+    const db = makeTempDb();
+    insertTestInstance(db);
+    const ch = new TelegramChannel({
+      botTokenEnvVar: "TELEGRAM_BOT_TOKEN",
+      dmPolicy: "pairing",
+      db,
+      instanceSlug: "test-instance",
+    });
+    expect(ch.type).toBe("telegram");
+    db.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TelegramChannel — pairing code generation (dmPolicy: "pairing")
+// ---------------------------------------------------------------------------
+
+describe("TelegramChannel pairing", () => {
+  let db: Database.Database;
+
+  beforeEach(() => {
+    db = makeTempDb();
+    insertTestInstance(db);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("createPairingCode with telegram channel stores peerId", () => {
+    const code = createPairingCode(db, "test-instance", {
+      channel: "telegram",
+      ttlMinutes: 60,
+      peerId: "telegram:42",
+      meta: { username: "bob" },
+    });
+    expect(code.channel).toBe("telegram");
+    expect(code.peerId).toBe("telegram:42");
+    expect(code.meta?.username).toBe("bob");
+    expect(code.used).toBe(false);
+  });
+
+  it("listPairingCodes filters by channel correctly", () => {
+    createPairingCode(db, "test-instance", { channel: "web" });
+    createPairingCode(db, "test-instance", {
+      channel: "telegram",
+      peerId: "telegram:100",
+    });
+    const all = listPairingCodes(db, "test-instance");
+    const tg = all.filter((c) => c.channel === "telegram");
+    const web = all.filter((c) => c.channel === "web");
+    expect(tg).toHaveLength(1);
+    expect(web).toHaveLength(1);
+    expect(tg[0]!.peerId).toBe("telegram:100");
   });
 });
