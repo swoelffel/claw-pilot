@@ -24,11 +24,17 @@ export interface HealthStatus {
   heartbeatAlerts?: number;
 }
 
+/** Minimal interface for a runtime that exposes channel statuses. */
+export interface RuntimeWithChannelStatuses {
+  getChannelStatuses(): Record<string, "connected" | "disconnected" | "not_configured">;
+}
+
 export class HealthChecker {
   constructor(
     private conn: ServerConnection,
     private registry: Registry,
     private xdgRuntimeDir: string,
+    private getRuntimeForSlug?: (slug: string) => RuntimeWithChannelStatuses | undefined,
   ) {}
 
   async check(slug: string): Promise<HealthStatus> {
@@ -40,12 +46,21 @@ export class HealthChecker {
     const pid = getRuntimePid(runtimeStateDir);
     const state: InstanceState = pid !== null ? "running" : "stopped";
 
+    // Telegram status — lire depuis le runtime en mémoire si disponible
+    let telegramStatus: "connected" | "disconnected" | "not_configured" = "not_configured";
+    if (this.getRuntimeForSlug) {
+      const runtime = this.getRuntimeForSlug(slug);
+      if (runtime) {
+        telegramStatus = runtime.getChannelStatuses()["telegram"] ?? "not_configured";
+      }
+    }
+
     const status: HealthStatus = {
       slug,
       port: instance.port,
       state,
       agentCount: this.registry.listAgents(slug).length,
-      telegram: "not_configured",
+      telegram: telegramStatus,
       ...(pid !== null ? { pid } : {}),
     };
 

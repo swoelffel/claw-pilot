@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.28.0-beta] — 2026-03-15
+
+### Added
+
+- **Channels — Section Telegram dans les Settings** — nouvelle section "Channels" dans la sidebar des Settings Instance ; panneau Telegram complet : toggle enable/disable, saisie sécurisée du bot token (écrit dans `<stateDir>/.env`, jamais dans `runtime.json`), env var name, polling interval, DM policy, allowed user IDs ; bannière de restart après modification ; cards "Coming soon" pour WhatsApp et Slack
+- **Channels — Health Telegram réel** — `TelegramChannel.getStatus()` expose l'état réel du poller (`connected` / `disconnected` / `not_configured`) ; `ClawRuntime.getChannelStatuses()` agrège les statuts de tous les channels ; `HealthChecker` lit le statut live si un runtime est actif, sinon déduit depuis `runtime.json`
+- **Channels — botTokenMasked** — `GET /api/instances/:slug/config` retourne désormais `botTokenMasked: "•••...XXXX"` (4 derniers chars) si un token est présent dans `.env`, `null` sinon
+- **Channels — Route PATCH telegram/token** — `PATCH /api/instances/:slug/config/telegram/token` écrit ou supprime le bot token dans `<stateDir>/.env` sans exposer la valeur en clair
+- **Channels — PATCH config channels.telegram** — `PATCH /api/instances/:slug/config` accepte désormais `channels.telegram` (enabled, botTokenEnvVar, pollingIntervalMs, allowedUserIds) ; retourne `requiresRestart: true` si la config Telegram change
+- **Sessions — Badge channel** — la liste des sessions dans `cp-runtime-chat` affiche un badge coloré par channel : `TG` (bleu Telegram), `WEB` (accent), `API` / `CLI` (gris), `INT` (discret)
+- **i18n** — 22 nouvelles clés `channels-*` et `status-telegram-*` traduites en 6 langues (en, fr, de, es, it, pt)
+
+---
+
 ## [0.27.1-beta] — 2026-03-15
 
 ### Fixed

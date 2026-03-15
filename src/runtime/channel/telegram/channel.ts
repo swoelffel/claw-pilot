@@ -98,6 +98,12 @@ export class TelegramChannel implements Channel {
     this.poller = undefined;
   }
 
+  getStatus(): "connected" | "disconnected" | "not_configured" {
+    if (!this.poller) return "not_configured";
+    // TelegramPoller.running est privé — accéder via cast
+    return (this.poller as unknown as { running: boolean }).running ? "connected" : "disconnected";
+  }
+
   // ---------------------------------------------------------------------------
   // Internal
   // ---------------------------------------------------------------------------

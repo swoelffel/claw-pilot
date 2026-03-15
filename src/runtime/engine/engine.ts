@@ -221,6 +221,27 @@ export class ClawRuntime {
   }
 
   /**
+   * Get the status of all connected channels.
+   * Returns a map of channel type → status.
+   */
+  getChannelStatuses(): Record<string, "connected" | "disconnected" | "not_configured"> {
+    const result: Record<string, "connected" | "disconnected" | "not_configured"> = {};
+    for (const channel of this._channels) {
+      if (
+        "getStatus" in channel &&
+        typeof (channel as Record<string, unknown>).getStatus === "function"
+      ) {
+        result[channel.type] = (
+          channel as unknown as {
+            getStatus(): "connected" | "disconnected" | "not_configured";
+          }
+        ).getStatus();
+      }
+    }
+    return result;
+  }
+
+  /**
    * Register plugin routes on the given Hono app.
    * Must be called after initPlugins() and before start().
    * Plugins can use this to expose additional HTTP endpoints.

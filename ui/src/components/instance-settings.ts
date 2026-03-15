@@ -27,6 +27,7 @@ import "./instance-devices.js";
 import "./instance-mcp.js";
 import "./instance-permissions.js";
 import "./instance-config.js";
+import "./instance-channels.js";
 
 @localized()
 @customElement("cp-instance-settings")
@@ -388,6 +389,7 @@ export class InstanceSettings extends LitElement {
       { id: "general", label: msg("General", { id: "settings-general" }) },
       { id: "agents", label: msg("Agents", { id: "settings-agents" }) },
       { id: "runtime", label: "Runtime" },
+      { id: "channels" as const, label: msg("Channels", { id: "settings-channels" }) },
       { id: "devices", label: msg("Devices", { id: "settings-devices" }) },
       {
         id: "mcp" as const,
@@ -1106,6 +1108,16 @@ export class InstanceSettings extends LitElement {
           ${this._activeSection === "general" ? this._renderGeneralSection() : nothing}
           ${this._activeSection === "agents" ? this._renderAgentsSection() : nothing}
           ${this._activeSection === "runtime" ? this._renderRuntimeSection() : nothing}
+          ${this._activeSection === "channels"
+            ? html`
+                <div class="section">
+                  <cp-instance-channels
+                    .instanceSlug=${this.slug}
+                    .config=${this._config}
+                  ></cp-instance-channels>
+                </div>
+              `
+            : nothing}
           ${this._activeSection === "devices"
             ? html`
                 <div class="section">

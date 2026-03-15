@@ -2,6 +2,7 @@ export type SidebarSection =
   | "general"
   | "agents"
   | "runtime"
+  | "channels"
   | "devices"
   | "mcp"
   | "permissions"

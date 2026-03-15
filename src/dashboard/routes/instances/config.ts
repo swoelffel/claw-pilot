@@ -15,6 +15,8 @@ import {
   type RuntimeConfig,
 } from "../../../runtime/index.js";
 import { z } from "zod/v4";
+import * as fs from "node:fs/promises";
+import { readFileSync } from "node:fs";
 
 // InstanceConfig type — matches ui/src/types.ts
 interface InstanceConfig {
@@ -76,6 +78,18 @@ const RuntimeConfigPatchSchema = z.object({
       defaultModel: z.string().optional(),
     })
     .optional(),
+  channels: z
+    .object({
+      telegram: z
+        .object({
+          enabled: z.boolean().optional(),
+          botTokenEnvVar: z.string().optional(),
+          pollingIntervalMs: z.number().int().min(0).optional(),
+          allowedUserIds: z.array(z.number().int()).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 type RuntimeConfigPatch = z.infer<typeof RuntimeConfigPatchSchema>;
@@ -87,6 +101,7 @@ type RuntimeConfigPatch = z.infer<typeof RuntimeConfigPatchSchema>;
 function buildInstanceConfig(
   instance: { display_name?: string | null; default_model?: string | null; port: number },
   config: RuntimeConfig,
+  stateDir: string,
 ): InstanceConfig {
   // Extract toolsProfile from first agent or default to "coding"
   const toolsProfile = config.agents[0]?.toolProfile ?? "coding";
@@ -106,6 +121,22 @@ function buildInstanceConfig(
     label: p.id,
     apiKey: "", // Never expose API keys in config response
   }));
+
+  // Read botTokenMasked from .env (synchronous — buildInstanceConfig is sync)
+  let botTokenMasked: string | null = null;
+  try {
+    const envPath = `${stateDir}/.env`;
+    const envContent = readFileSync(envPath, "utf-8");
+    const varName = config.telegram.botTokenEnvVar;
+    const match = envContent.match(new RegExp(`^${varName}=(.+)$`, "m"));
+    if (match?.[1]) {
+      const raw = match[1].trim();
+      botTokenMasked =
+        raw.length > 4 ? `${"•".repeat(Math.min(raw.length - 4, 20))}${raw.slice(-4)}` : "••••";
+    }
+  } catch {
+    /* .env absent ou illisible — botTokenMasked reste null */
+  }
 
   return {
     general: {
@@ -127,7 +158,7 @@ function buildInstanceConfig(
       telegram: config.telegram.enabled
         ? {
             enabled: true,
-            botTokenMasked: null,
+            botTokenMasked,
             dmPolicy: "allow",
             groupPolicy: "deny",
           }
@@ -214,6 +245,7 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
           port: instance!.port,
         },
         config,
+        stateDir,
       );
       return c.json(payload);
     } catch (err) {
@@ -278,6 +310,34 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
       }
     }
 
+    // Update telegram config in runtime.json
+    if (patch.channels?.telegram !== undefined) {
+      const stateDir = getRuntimeStateDir(slug);
+      if (runtimeConfigExists(stateDir)) {
+        try {
+          const config = loadRuntimeConfig(stateDir);
+          const tg = patch.channels.telegram;
+          if (tg.enabled !== undefined) config.telegram.enabled = tg.enabled;
+          if (tg.botTokenEnvVar !== undefined) config.telegram.botTokenEnvVar = tg.botTokenEnvVar;
+          if (tg.pollingIntervalMs !== undefined)
+            config.telegram.pollingIntervalMs = tg.pollingIntervalMs;
+          if (tg.allowedUserIds !== undefined) config.telegram.allowedUserIds = tg.allowedUserIds;
+          saveRuntimeConfig(stateDir, config);
+          requiresRestart = true;
+        } catch (err) {
+          logger.error(
+            `[config] PATCH telegram error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          return apiError(
+            c,
+            500,
+            "CONFIG_PATCH_FAILED",
+            err instanceof Error ? err.message : "Failed to update telegram config",
+          );
+        }
+      }
+    }
+
     // Restart if needed and instance is running
     if (requiresRestart && instance!.state === "running") {
       try {
@@ -291,6 +351,69 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
 
     logger.info(`[config] PATCH /config slug=${slug} patch=${JSON.stringify(patch)}`);
     return c.json({ ok: true, requiresRestart, hotReloaded: false, warnings: [] });
+  });
+
+  // PATCH /api/instances/:slug/config/telegram/token — write/remove bot token in .env
+  app.patch("/api/instances/:slug/config/telegram/token", async (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
+
+    let token: string | null;
+    try {
+      const raw = (await c.req.json()) as { token?: unknown };
+      if (raw.token !== undefined && raw.token !== null && typeof raw.token !== "string") {
+        return apiError(c, 400, "INVALID_BODY", "token must be a string or null");
+      }
+      token = (raw.token as string | null | undefined) ?? null;
+    } catch {
+      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+    }
+
+    const stateDir = getRuntimeStateDir(slug);
+    const envPath = `${stateDir}/.env`;
+
+    try {
+      // Read existing .env or start empty
+      let envContent = "";
+      try {
+        envContent = await fs.readFile(envPath, "utf-8");
+      } catch {
+        /* file doesn't exist yet */
+      }
+
+      // Get the botTokenEnvVar name from config (default: TELEGRAM_BOT_TOKEN)
+      let varName = "TELEGRAM_BOT_TOKEN";
+      if (runtimeConfigExists(stateDir)) {
+        try {
+          const config = loadRuntimeConfig(stateDir);
+          varName = config.telegram.botTokenEnvVar;
+        } catch {
+          /* use default */
+        }
+      }
+
+      // Parse, update, serialize
+      const lines = envContent.split("\n");
+      const filtered = lines.filter((l) => !l.startsWith(`${varName}=`) && l !== "");
+      if (token !== null) {
+        filtered.push(`${varName}=${token}`);
+      }
+      const newContent = filtered.join("\n") + (filtered.length > 0 ? "\n" : "");
+
+      // Ensure stateDir exists
+      await fs.mkdir(stateDir, { recursive: true });
+      await fs.writeFile(envPath, newContent, { mode: 0o600 });
+
+      logger.info(`[config] PATCH telegram/token slug=${slug} configured=${token !== null}`);
+      return c.json({ configured: token !== null });
+    } catch (err) {
+      logger.error(
+        `[config] PATCH telegram/token error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return apiError(c, 500, "TOKEN_WRITE_FAILED", "Failed to write token to .env");
+    }
   });
 
   // GET /api/providers — list available providers with their model catalogs

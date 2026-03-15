@@ -456,6 +456,33 @@ export async function approveTelegramPairing(slug: string, code: string): Promis
   });
 }
 
+export async function patchTelegramToken(
+  slug: string,
+  token: string | null,
+): Promise<{ configured: boolean }> {
+  return apiFetch<{ configured: boolean }>(`/instances/${slug}/config/telegram/token`, {
+    method: "PATCH",
+    body: JSON.stringify({ token }),
+  });
+}
+
+export async function patchChannelsConfig(
+  slug: string,
+  channels: {
+    telegram?: {
+      enabled?: boolean;
+      botTokenEnvVar?: string;
+      pollingIntervalMs?: number;
+      allowedUserIds?: number[];
+    };
+  },
+): Promise<ConfigPatchResult> {
+  return apiFetch<ConfigPatchResult>(`/instances/${slug}/config`, {
+    method: "PATCH",
+    body: JSON.stringify({ channels }),
+  });
+}
+
 // --- Discover instances API ---
 
 export async function discoverInstances(): Promise<DiscoverResult> {

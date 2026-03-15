@@ -689,6 +689,25 @@ export class RuntimeChat extends LitElement {
     `;
   }
 
+  private _channelBadge(channel: string) {
+    const map: Record<string, { label: string; bg: string; color: string }> = {
+      telegram: { label: "TG", bg: "rgba(0,136,204,0.15)", color: "#0088cc" },
+      web: { label: "WEB", bg: "var(--accent-subtle)", color: "var(--accent)" },
+      api: { label: "API", bg: "rgba(100,116,139,0.12)", color: "var(--text-muted)" },
+      cli: { label: "CLI", bg: "rgba(100,116,139,0.12)", color: "var(--text-muted)" },
+      internal: { label: "INT", bg: "transparent", color: "var(--text-muted)" },
+    };
+    const style = map[channel] ?? {
+      label: channel.slice(0, 4).toUpperCase(),
+      bg: "rgba(100,116,139,0.12)",
+      color: "var(--text-muted)",
+    };
+    return html`<span
+      style="font-size:10px;font-weight:600;padding:1px 5px;border-radius:3px;letter-spacing:0.04em;background:${style.bg};color:${style.color}"
+      >${style.label}</span
+    >`;
+  }
+
   private _renderSessionOption(s: RuntimeSession, isSelected: boolean) {
     const cost = s.totalCostUsd ?? 0;
     const tokens = s.totalTokens ?? 0;
@@ -705,7 +724,7 @@ export class RuntimeChat extends LitElement {
           <div class="session-option-meta">
             <span>${s.agentId}</span>
             <span>·</span>
-            <span>${s.channel}</span>
+            ${this._channelBadge(s.channel)}
             ${msgCount > 0 ? html`<span>· ${msgCount} msg</span>` : nothing}
             ${tokens > 0 ? html`<span>· ${tokens.toLocaleString()} tok</span>` : nothing}
             <span>· ${relativeTime(s.updatedAt ?? s.createdAt)}</span>
