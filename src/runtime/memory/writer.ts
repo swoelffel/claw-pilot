@@ -11,15 +11,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { generateText } from "ai";
 import type { ResolvedModel } from "../provider/provider.js";
-import { searchMemory } from "./index.js";
-import type Database from "better-sqlite3";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-/** Score BM25 minimum (valeur absolue) pour considerer un doublon semantique */
-const SIMILARITY_THRESHOLD = 0.3;
 
 /** Nombre de lignes au-dela duquel la consolidation est declenchee */
 const CONSOLIDATION_THRESHOLD_LINES = 150;
@@ -49,7 +44,6 @@ Preserve the markdown format (bullet points with "- [score] content").`;
  * Prefixe chaque entree avec un score de confiance [1.0].
  * Filtre les entrees deja presentes (deduplication basique par contenu exact).
  *
- * Pour une deduplication semantique via FTS5, utiliser appendToMemoryFileDeduped().
  */
 export function appendToMemoryFile(
   workspaceDir: string,
@@ -87,45 +81,6 @@ export function appendToMemoryFile(
   const section = `\n\n## ${date}\n${block}\n`;
 
   fs.appendFileSync(filePath, section, "utf-8");
-}
-
-/**
- * Ajoute des entrees dans un fichier memory/*.md avec deduplication FTS5.
- * Si un fait similaire existe deja dans l'index (score BM25 > threshold), il est ignore.
- * Fallback sur appendToMemoryFile() si l'index n'est pas disponible.
- */
-function appendToMemoryFileDeduped(
-  workspaceDir: string,
-  memoryDb: Database.Database | undefined,
-  filename: string,
-  entries: string[],
-): void {
-  if (entries.length === 0) return;
-
-  if (!memoryDb) {
-    // Index non disponible — fallback sur deduplication basique
-    appendToMemoryFile(workspaceDir, filename, entries);
-    return;
-  }
-
-  const newEntries: string[] = [];
-
-  for (const entry of entries) {
-    // Chercher des faits similaires dans l'index FTS5
-    const similar = searchMemory(memoryDb, entry, 3);
-    const hasSimilar = similar.some((r) => {
-      // Verifier si le chunk similaire est dans le meme fichier
-      return r.source === `memory/${filename}` && Math.abs(r.rank) > SIMILARITY_THRESHOLD;
-    });
-
-    if (!hasSimilar) {
-      newEntries.push(entry);
-    }
-  }
-
-  if (newEntries.length > 0) {
-    appendToMemoryFile(workspaceDir, filename, newEntries);
-  }
 }
 
 /**
@@ -183,17 +138,4 @@ export async function consolidateMemoryFileIfNeeded(
   }
 
   return false;
-}
-
-/**
- * Archive le contenu de BOOTSTRAP.md dans memory/bootstrap-history.md.
- * Appele apres la completion du bootstrap wizard.
- */
-function archiveBootstrap(workspaceDir: string, bootstrapContent: string): void {
-  const date = new Date().toISOString();
-  const content = `\n\n## Bootstrap archive — ${date}\n\n${bootstrapContent}\n`;
-
-  const memoryDir = path.join(workspaceDir, "memory");
-  fs.mkdirSync(memoryDir, { recursive: true });
-  fs.appendFileSync(path.join(memoryDir, "bootstrap-history.md"), content, "utf-8");
 }
