@@ -94,7 +94,7 @@ export function appendToMemoryFile(
  * Si un fait similaire existe deja dans l'index (score BM25 > threshold), il est ignore.
  * Fallback sur appendToMemoryFile() si l'index n'est pas disponible.
  */
-export function appendToMemoryFileDeduped(
+function appendToMemoryFileDeduped(
   workspaceDir: string,
   memoryDb: Database.Database | undefined,
   filename: string,
@@ -189,7 +189,7 @@ export async function consolidateMemoryFileIfNeeded(
  * Archive le contenu de BOOTSTRAP.md dans memory/bootstrap-history.md.
  * Appele apres la completion du bootstrap wizard.
  */
-export function archiveBootstrap(workspaceDir: string, bootstrapContent: string): void {
+function archiveBootstrap(workspaceDir: string, bootstrapContent: string): void {
   const date = new Date().toISOString();
   const content = `\n\n## Bootstrap archive — ${date}\n\n${bootstrapContent}\n`;
 
