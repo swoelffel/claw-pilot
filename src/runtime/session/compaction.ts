@@ -7,12 +7,14 @@
  * generates a summary of the conversation and replaces the history with a
  * compaction marker + the summary.
  *
- * Inspired by OpenCode's session/compaction.ts but simplified for V1:
- * - No plugin hooks (Phase 2)
- * - No media stripping (Phase 2)
- * - Uses generateText (not streaming) for the summary
+ * Phase 1 additions:
+ * - extractKnowledge(): extracts permanent facts/decisions/preferences to memory/*.md
+ * - COMPACTION_PROMPT_V2: structured 5-section summary prompt
+ * - workDir in CompactionInput: enables knowledge extraction for permanent agents
  */
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { generateText } from "ai";
 import type Database from "better-sqlite3";
 import type { SessionId, InstanceSlug } from "../types.js";
@@ -22,6 +24,8 @@ import { listMessages, createAssistantMessage, updateMessageMetadata } from "./m
 import { createPart, listParts } from "./part.js";
 import { getBus } from "../bus/index.js";
 import { SessionStatusChanged, MessageCreated, MessageUpdated } from "../bus/events.js";
+import { appendToMemoryFile } from "../memory/writer.js";
+import { openMemoryIndex, rebuildMemoryIndex } from "../memory/index.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -33,17 +37,67 @@ const COMPACTION_THRESHOLD = 0.85;
 /** Tokens to reserve for the compaction summary output */
 const COMPACTION_RESERVED_TOKENS = 8_000;
 
-/** Prompt used to generate the compaction summary */
-const COMPACTION_PROMPT = `Provide a detailed summary of our conversation above that can be used to continue the work.
-Focus on:
-- What goal(s) the user is trying to accomplish
-- Important instructions and constraints given
-- What has been accomplished so far
-- What is currently in progress
-- What still needs to be done
-- Key files, directories, and code structures involved
+/** Structured compaction prompt — 5 sections, actionable for the next agent turn */
+const COMPACTION_PROMPT_V2 = `You are summarizing a conversation to create a compact context for continuing the work.
+The summary will replace the full conversation history — it must be self-sufficient.
 
-Format the summary as a structured document that another agent can read to continue the work seamlessly.`;
+Write the summary in the SAME LANGUAGE as the conversation.
+
+## Required sections (use these exact headings)
+
+### Active Goals
+List what the user is currently trying to accomplish.
+Format: "- [status] Goal description"
+Status values: IN PROGRESS / BLOCKED / COMPLETED
+Include only goals that are still relevant.
+
+### Key Constraints
+List important constraints, requirements, or rules that must be respected.
+Include: technical constraints, user preferences, architectural decisions already made.
+Format: "- Constraint description"
+
+### Current State
+Describe what has been accomplished in this session.
+Focus on the most recent work. Be specific about file names, commands, and outcomes.
+Format: "- What was done and its result"
+
+### Open Items
+List what still needs to be done or decisions that are pending.
+Format: "- Item description"
+
+### Working Context
+List key files, directories, services, commands, or infrastructure involved.
+Format: "- path/to/file or service-name: brief description of its role"
+
+## Rules
+- Be specific and actionable — another instance of this agent must be able to continue from this summary alone
+- Preserve exact file paths, command names, error messages, and technical identifiers
+- Do NOT include information already extracted to long-term memory (facts, decisions, preferences)
+- Keep the summary under 1500 tokens
+- Use bullet points, not prose paragraphs
+- If a section has nothing relevant, write "- (none)"`;
+
+/** Prompt used to extract permanent knowledge before compaction */
+const EXTRACTION_PROMPT = `Analyze the conversation above and extract ONLY new permanent knowledge worth remembering across sessions.
+
+Categorize into three lists:
+1. **facts**: Objective facts about the project, codebase, infrastructure, or domain
+   Examples: "The project uses TypeScript strict mode", "VM01 runs Ubuntu 22.04"
+2. **decisions**: Technical decisions made with their rationale
+   Examples: "Chose SQLite over PostgreSQL for simplicity and zero-dependency deployment"
+3. **preferences**: User preferences, communication style, working habits
+   Examples: "User prefers responses in French", "User wants concise answers without preamble"
+
+Rules:
+- Extract ONLY information not already present in the memory files shown above
+- Each item must be a single, self-contained statement (one line)
+- Do NOT extract transient information: current task progress, temporary errors, in-progress work
+- Do NOT extract information that will become obsolete quickly
+- Do NOT duplicate information already in the memory files
+- If nothing new to extract in a category, return an empty array for that category
+
+Return ONLY valid JSON, no explanation:
+{ "facts": [...], "decisions": [...], "preferences": [...] }`;
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -59,6 +113,8 @@ export interface CompactionInput {
   currentTokens: number;
   /** Model context window size in tokens */
   contextWindow: number;
+  /** Working directory of the instance — needed for knowledge extraction */
+  workDir?: string;
 }
 
 export interface CompactionResult {
@@ -66,6 +122,16 @@ export interface CompactionResult {
   compacted: boolean;
   /** ID of the compaction message created (if compacted) */
   compactionMessageId: string | undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Internal types
+// ---------------------------------------------------------------------------
+
+interface ExtractedKnowledge {
+  facts: string[];
+  decisions: string[];
+  preferences: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -91,14 +157,14 @@ export function shouldCompact(input: {
 }
 
 /**
- * Perform compaction: generate a summary of the conversation and mark it
- * in the DB with a compaction part.
+ * Perform compaction: optionally extract permanent knowledge to memory/*.md,
+ * then generate a structured summary of the conversation and mark it in the DB.
  *
- * After compaction, the prompt loop should use only the compaction summary
- * as context instead of the full message history.
+ * After compaction, the prompt loop loads only the compaction summary + subsequent
+ * messages (via listMessagesFromCompaction) instead of the full history.
  */
 export async function compact(input: CompactionInput): Promise<CompactionResult> {
-  const { db, instanceSlug, sessionId, agentConfig, resolvedModel } = input;
+  const { db, instanceSlug, sessionId, agentConfig, resolvedModel, workDir } = input;
 
   const bus = getBus(instanceSlug);
   bus.publish(SessionStatusChanged, { sessionId, status: "busy" });
@@ -110,16 +176,38 @@ export async function compact(input: CompactionInput): Promise<CompactionResult>
       return { compacted: false, compactionMessageId: undefined };
     }
 
-    // Build a text representation of the conversation for the summary
+    // --- STEP 1: Knowledge extraction (permanent agents only) ---
+    if (workDir && agentConfig.persistence === "permanent") {
+      const wsDir = resolveWorkspaceDir(workDir, agentConfig.id);
+      if (wsDir) {
+        const currentMemory = readCurrentMemory(wsDir);
+
+        const knowledge = await extractKnowledge(db, sessionId, resolvedModel, currentMemory);
+
+        appendToMemoryFile(wsDir, "facts.md", knowledge.facts);
+        appendToMemoryFile(wsDir, "decisions.md", knowledge.decisions);
+        appendToMemoryFile(wsDir, "user-prefs.md", knowledge.preferences);
+
+        // Rebuild FTS5 index in background if anything was written
+        if (
+          knowledge.facts.length + knowledge.decisions.length + knowledge.preferences.length >
+          0
+        ) {
+          const memoryDb = openMemoryIndex(workDir);
+          void rebuildMemoryIndex(memoryDb, workDir, agentConfig.id);
+        }
+      }
+    }
+
+    // --- STEP 2: Generate structured session summary ---
     const conversationText = buildConversationText(db, messages);
 
-    // Generate the summary using the LLM
     const summaryResult = await generateText({
       model: resolvedModel.languageModel,
       messages: [
         {
           role: "user",
-          content: `${conversationText}\n\n---\n\n${COMPACTION_PROMPT}`,
+          content: `${conversationText}\n\n---\n\n${COMPACTION_PROMPT_V2}`,
         },
       ],
     });
@@ -194,6 +282,91 @@ export function getCompactionSummary(
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Extract permanent knowledge from the conversation using an LLM call.
+ * Returns empty arrays on any failure — never blocks compaction.
+ */
+async function extractKnowledge(
+  db: Database.Database,
+  sessionId: SessionId,
+  resolvedModel: ResolvedModel,
+  currentMemoryContent: string,
+): Promise<ExtractedKnowledge> {
+  const messages = listMessages(db, sessionId);
+  if (messages.length === 0) {
+    return { facts: [], decisions: [], preferences: [] };
+  }
+
+  const conversationText = buildConversationText(db, messages);
+
+  let result;
+  try {
+    result = await generateText({
+      model: resolvedModel.languageModel,
+      messages: [
+        {
+          role: "user",
+          content: [
+            currentMemoryContent
+              ? `## Current Memory Files\n${currentMemoryContent}`
+              : "## Current Memory Files\n(empty)",
+            `## Conversation to analyze\n${conversationText}`,
+            `---\n${EXTRACTION_PROMPT}`,
+          ].join("\n\n"),
+        },
+      ],
+    });
+  } catch {
+    // LLM failure — do not block compaction
+    return { facts: [], decisions: [], preferences: [] };
+  }
+
+  try {
+    // Strip markdown code fences if the model wrapped the JSON
+    const cleaned = result.text
+      .replace(/^```json\s*/i, "")
+      .replace(/```\s*$/, "")
+      .trim();
+    return JSON.parse(cleaned) as ExtractedKnowledge;
+  } catch {
+    // Malformed JSON — ignore silently
+    return { facts: [], decisions: [], preferences: [] };
+  }
+}
+
+/**
+ * Read the current memory files content for deduplication during extraction.
+ * Returns a concatenated string of facts.md, decisions.md, user-prefs.md.
+ */
+function readCurrentMemory(workspaceDir: string): string {
+  const memoryDir = path.join(workspaceDir, "memory");
+  const sections: string[] = [];
+
+  for (const file of ["facts.md", "decisions.md", "user-prefs.md"]) {
+    try {
+      const content = fs.readFileSync(path.join(memoryDir, file), "utf-8").trim();
+      if (content) sections.push(`### ${file}\n${content}`);
+    } catch {
+      // File absent — ok
+    }
+  }
+
+  return sections.join("\n\n");
+}
+
+/**
+ * Resolve the agent workspace directory from workDir + agentId.
+ * Mirrors the logic in memory/index.ts: tries workspace-<agentId> then workspace.
+ * Returns undefined if no workspace directory exists.
+ */
+function resolveWorkspaceDir(workDir: string, agentId: string): string | undefined {
+  const candidates = [path.join(workDir, `workspace-${agentId}`), path.join(workDir, "workspace")];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
 
 function buildConversationText(
   db: Database.Database,

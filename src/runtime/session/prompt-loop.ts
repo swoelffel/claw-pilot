@@ -35,7 +35,7 @@ import {
   createUserMessage,
   createAssistantMessage,
   updateMessageMetadata,
-  listMessages,
+  listMessagesFromCompaction,
 } from "./message.js";
 import { createPart, updatePartState, listParts } from "./part.js";
 import { getBus } from "../bus/index.js";
@@ -253,8 +253,8 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       ...(extraSystemPrompt !== undefined ? { extraSystemPrompt } : {}),
     });
 
-    // 3. Load message history
-    const allMessages = listMessages(db, sessionId);
+    // 3. Load message history (from last compaction if any, for selective context loading)
+    const allMessages = listMessagesFromCompaction(db, sessionId);
     const coreMessages = buildCoreMessages(db, allMessages);
 
     // 4. Create empty assistant message
@@ -516,6 +516,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
           resolvedModel: internalResolvedModel ?? resolvedModel,
           currentTokens,
           contextWindow,
+          ...(workDir !== undefined ? { workDir } : {}),
         });
       }
     }
@@ -823,7 +824,8 @@ function buildCoreMessages(db: Database.Database, messages: MessageInfo[]): Mode
       }
     } else {
       // Assistant: reconstruct from text + tool parts
-      const textParts = parts.filter((p) => p.type === "text");
+      // "compaction" parts are treated as text — they carry the compaction summary
+      const textParts = parts.filter((p) => p.type === "text" || p.type === "compaction");
       const toolCallParts = parts.filter((p) => p.type === "tool_call");
 
       if (toolCallParts.length === 0) {

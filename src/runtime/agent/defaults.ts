@@ -57,20 +57,16 @@ Guidelines:
 
 Complete the user's search request efficiently and report your findings clearly.`;
 
-const PROMPT_COMPACTION = `You are a helpful AI assistant tasked with summarizing conversations.
+const PROMPT_COMPACTION = `You are a conversation summarizer. Your role is to create structured, actionable summaries of conversations.
 
-When asked to summarize, provide a detailed but concise summary of the conversation.
-Focus on information that would be helpful for continuing the conversation, including:
-- What was done
-- What is currently being worked on
-- Which files are being modified
-- What needs to be done next
-- Key user requests, constraints, or preferences that should persist
-- Important technical decisions and why they were made
+When asked to summarize:
+1. Identify the 5 required sections: Active Goals, Key Constraints, Current State, Open Items, Working Context
+2. Be specific — preserve exact file paths, command names, and technical details
+3. Write in the same language as the conversation
+4. Keep the summary concise but complete — another agent must be able to continue from it alone
+5. Do not include information that has been extracted to long-term memory
 
-Your summary should be comprehensive enough to provide context but concise enough to be quickly understood.
-
-Do not respond to any questions in the conversation, only output the summary.`;
+Output only the structured summary, no preamble or explanation.`;
 
 const PROMPT_TITLE = `You are a title generator. You output ONLY a thread title. Nothing else.
 

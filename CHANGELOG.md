@@ -6,6 +6,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.30.0] — 2026-03-16
+
+### Added
+
+- **Compaction intelligente (Phase 1)** — transformation de la compaction en système de mémoire cohérent pour sessions permanentes :
+  - `listMessagesFromCompaction()` dans `message.ts` — charge uniquement le message de compaction + messages postérieurs (compaction sélective) ; backward-compat si aucune compaction
+  - `countMessagesSinceLastCompaction()` dans `message.ts` — comptage des messages depuis la dernière compaction (pour déclenchement périodique Phase 3)
+  - `memory/writer.ts` (nouveau module) — `appendToMemoryFile()` avec déduplication basique, `archiveBootstrap()` pour l'archivage post-bootstrap
+  - `extractKnowledge()` dans `compaction.ts` — appel LLM dédié avant chaque compaction pour extraire faits/décisions/préférences vers `memory/facts.md`, `memory/decisions.md`, `memory/user-prefs.md` (agents `persistence: "permanent"` uniquement)
+  - `COMPACTION_PROMPT_V2` — prompt structuré en 5 sections (Active Goals, Key Constraints, Current State, Open Items, Working Context) remplaçant le prompt en prose libre
+  - `CompactionInput.workDir` (optionnel) — passage du répertoire de travail pour l'extraction de connaissances
+  - Prompt de l'agent `compaction` mis à jour pour être cohérent avec le nouveau format structuré
+
+### Changed
+
+- `buildCoreMessages()` dans `prompt-loop.ts` — les parts `"compaction"` sont désormais traitées comme du texte (incluses dans le contexte LLM)
+- `runPromptLoop()` utilise `listMessagesFromCompaction()` au lieu de `listMessages()` — chargement sélectif du contexte après compaction
+- `compact()` passe `workDir` depuis `prompt-loop.ts` — activation de l'extraction de connaissances pour les agents permanents
+
+---
+
 ## [0.29.0] — 2026-03-16
 
 ### Added

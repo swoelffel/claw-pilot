@@ -140,6 +140,84 @@ export function listMessages(db: Database.Database, sessionId: SessionId): Messa
 }
 
 /**
+ * Charge les messages d'une session en partant de la derniere compaction.
+ * Si aucune compaction n'existe, retourne tous les messages (comportement actuel).
+ *
+ * Resultat : [message_compaction, ...messages_posterieurs]
+ * Le message de compaction est toujours le premier element si present.
+ */
+export function listMessagesFromCompaction(
+  db: Database.Database,
+  sessionId: SessionId,
+): MessageInfo[] {
+  // Trouver l'id et le created_at de la derniere compaction
+  const lastCompaction = db
+    .prepare(
+      `SELECT id, created_at
+       FROM rt_messages
+       WHERE session_id = ? AND is_compaction = 1
+       ORDER BY created_at DESC
+       LIMIT 1`,
+    )
+    .get(sessionId) as { id: string; created_at: string } | undefined;
+
+  if (!lastCompaction) {
+    // Pas de compaction — comportement actuel inchange
+    return listMessages(db, sessionId);
+  }
+
+  // Charger le message de compaction + tous les messages posterieurs
+  // Utiliser l'id pour eviter les collisions de timestamp (meme seconde)
+  const rows = db
+    .prepare(
+      `SELECT * FROM rt_messages
+       WHERE session_id = ?
+         AND (id = ? OR created_at > ?)
+       ORDER BY created_at ASC, id ASC`,
+    )
+    .all(sessionId, lastCompaction.id, lastCompaction.created_at) as MessageRow[];
+
+  return rows.map(fromRow);
+}
+
+/**
+ * Compte les messages depuis la derniere compaction (ou depuis le debut si aucune).
+ * Utilise pour le declenchement de la compaction periodique (Phase 3).
+ */
+export function countMessagesSinceLastCompaction(
+  db: Database.Database,
+  sessionId: SessionId,
+): number {
+  const lastCompaction = db
+    .prepare(
+      `SELECT created_at
+       FROM rt_messages
+       WHERE session_id = ? AND is_compaction = 1
+       ORDER BY created_at DESC
+       LIMIT 1`,
+    )
+    .get(sessionId) as { created_at: string } | undefined;
+
+  if (!lastCompaction) {
+    return (
+      db
+        .prepare(`SELECT COUNT(*) as count FROM rt_messages WHERE session_id = ?`)
+        .get(sessionId) as { count: number }
+    ).count;
+  }
+
+  return (
+    db
+      .prepare(
+        `SELECT COUNT(*) as count
+         FROM rt_messages
+         WHERE session_id = ? AND created_at > ? AND is_compaction = 0`,
+      )
+      .get(sessionId, lastCompaction.created_at) as { count: number }
+  ).count;
+}
+
+/**
  * Get a single message by ID.
  */
 export function getMessage(db: Database.Database, id: MessageId): MessageInfo | undefined {
