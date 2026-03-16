@@ -149,6 +149,18 @@ function makeRuntimeConfig(): RuntimeConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Shared mock for runPromptLoop (injected to break circular dependency)
+// ---------------------------------------------------------------------------
+
+const mockRunPromptLoop = vi.fn().mockResolvedValue({
+  messageId: "msg-mock",
+  text: "mock result",
+  tokens: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0 },
+  costUsd: 0,
+  steps: 1,
+});
+
+// ---------------------------------------------------------------------------
 // Test setup
 // ---------------------------------------------------------------------------
 
@@ -190,6 +202,7 @@ describe("createTaskTool — first gate: description filtering", () => {
       resolvedModel: makeResolvedModel(textStreamModel("ok")),
       workDir: undefined,
       agentPermissions,
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
 
@@ -208,6 +221,7 @@ describe("createTaskTool — first gate: description filtering", () => {
       resolvedModel: makeResolvedModel(textStreamModel("ok")),
       workDir: undefined,
       agentPermissions,
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
 
@@ -224,6 +238,7 @@ describe("createTaskTool — first gate: description filtering", () => {
       resolvedModel: makeResolvedModel(textStreamModel("ok")),
       workDir: undefined,
       agentPermissions: [],
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
 
@@ -239,6 +254,7 @@ describe("createTaskTool — first gate: description filtering", () => {
       instanceSlug: INSTANCE_SLUG,
       resolvedModel: makeResolvedModel(textStreamModel("ok")),
       workDir: undefined,
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
 
@@ -269,6 +285,7 @@ describe("createTaskTool — second gate: execute() permission check", () => {
       resolvedModel: makeResolvedModel(textStreamModel("ok")),
       workDir: undefined,
       agentPermissions,
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
     const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
@@ -302,6 +319,7 @@ describe("createTaskTool — second gate: execute() permission check", () => {
       resolvedModel: makeResolvedModel(mockModel),
       workDir: undefined,
       agentPermissions,
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
     const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
@@ -345,12 +363,20 @@ describe("createTaskTool — enriched output (sync mode)", () => {
    */
   it("[positive] sync output contains task_id, steps_used, tokens_used, model, task_result tags", async () => {
     // Arrange
+    mockRunPromptLoop.mockResolvedValueOnce({
+      messageId: "msg-mock",
+      text: "the result text",
+      tokens: { input: 20, output: 8, cacheRead: 0, cacheWrite: 0 },
+      costUsd: 0,
+      steps: 1,
+    });
     const mockModel = textStreamModel("the result text", 20, 8);
     const toolInfo = createTaskTool({
       db,
       instanceSlug: INSTANCE_SLUG,
       resolvedModel: makeResolvedModel(mockModel),
       workDir: undefined,
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
     const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
@@ -386,6 +412,7 @@ describe("createTaskTool — enriched output (sync mode)", () => {
       instanceSlug: INSTANCE_SLUG,
       resolvedModel: makeResolvedModel(mockModel),
       workDir: undefined,
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
     const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
@@ -428,6 +455,7 @@ describe("createTaskTool — lifecycle modes", () => {
       instanceSlug: INSTANCE_SLUG,
       resolvedModel: makeResolvedModel(mockModel),
       workDir: undefined,
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
     const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
@@ -464,6 +492,7 @@ describe("createTaskTool — lifecycle modes", () => {
       instanceSlug: INSTANCE_SLUG,
       resolvedModel: makeResolvedModel(mockModel),
       workDir: undefined,
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
     const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
@@ -514,6 +543,7 @@ describe("createTaskTool — async mode", () => {
       instanceSlug: INSTANCE_SLUG,
       resolvedModel: makeResolvedModel(mockModel),
       workDir: undefined,
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
     const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
@@ -544,6 +574,7 @@ describe("createTaskTool — async mode", () => {
       instanceSlug: INSTANCE_SLUG,
       resolvedModel: makeResolvedModel(mockModel),
       workDir: undefined,
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
     const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
@@ -596,6 +627,7 @@ describe("createTaskTool — async mode", () => {
       instanceSlug: INSTANCE_SLUG,
       resolvedModel: makeResolvedModel(mockModel),
       workDir: undefined,
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
     const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
@@ -625,6 +657,7 @@ describe("createTaskTool — async mode", () => {
       instanceSlug: INSTANCE_SLUG,
       resolvedModel: makeResolvedModel(mockModel),
       workDir: undefined,
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
     const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
@@ -1013,6 +1046,7 @@ describe("checkA2APolicy", () => {
       resolvedModel: makeResolvedModel(textStreamModel("ok")),
       workDir: undefined,
       callerAgentConfig,
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
     const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
@@ -1053,6 +1087,7 @@ describe("checkA2APolicy", () => {
       resolvedModel: makeResolvedModel(textStreamModel("ok")),
       workDir: undefined,
       callerAgentConfig,
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
     const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });

@@ -23,13 +23,38 @@ import {
   archiveSession,
   countActiveChildren,
 } from "../session/session.js";
-import { runPromptLoop } from "../session/prompt-loop.js";
+
 import { evaluateRuleset } from "../permission/index.js";
 import { getBus } from "../bus/index.js";
 import { SubagentCompleted } from "../bus/events.js";
-import type { InstanceSlug, PermissionRuleset } from "../types.js";
+import type { InstanceSlug, PermissionRuleset, SessionId } from "../types.js";
 import type { ResolvedModel } from "../provider/provider.js";
 import type { SubagentsConfig, RuntimeConfig, RuntimeAgentConfig } from "../config/index.js";
+
+// ---------------------------------------------------------------------------
+// Prompt loop injection types (avoids circular dependency with session/prompt-loop)
+// ---------------------------------------------------------------------------
+
+/** Minimal subset of PromptLoopInput used by the task tool */
+interface TaskPromptLoopInput {
+  db: Database.Database;
+  instanceSlug: InstanceSlug;
+  sessionId: SessionId;
+  userText: string;
+  agentConfig: RuntimeAgentConfig;
+  resolvedModel: ResolvedModel;
+  workDir: string | undefined;
+  abort?: AbortSignal;
+  extraSystemPrompt?: string;
+  compactionConfig?: RuntimeConfig["compaction"];
+}
+
+/** Minimal subset of PromptLoopResult used by the task tool */
+interface TaskPromptLoopResult {
+  text: string;
+  steps: number;
+  tokens: { input: number; output: number; cacheRead: number; cacheWrite: number };
+}
 
 // ---------------------------------------------------------------------------
 // Task tool factory
@@ -52,6 +77,8 @@ export function createTaskTool(options: {
   compactionConfig?: RuntimeConfig["compaction"];
   /** Config of the calling agent — used to determine workspace inheritance */
   callerAgentConfig?: RuntimeAgentConfig;
+  /** Injected prompt loop runner — breaks circular dependency with session/prompt-loop */
+  runPromptLoop: (input: TaskPromptLoopInput) => Promise<TaskPromptLoopResult>;
 }): Tool.Info {
   const {
     db,
@@ -62,6 +89,7 @@ export function createTaskTool(options: {
     agentPermissions,
     compactionConfig,
     callerAgentConfig,
+    runPromptLoop,
   } = options;
 
   // Build description dynamically from available subagents

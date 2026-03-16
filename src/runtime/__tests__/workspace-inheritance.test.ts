@@ -138,6 +138,7 @@ describe("createTaskTool — inheritWorkspace (Phase 1a)", () => {
       resolvedModel: makeResolvedModel(),
       workDir: PARENT_WORK_DIR,
       // callerAgentConfig intentionally omitted
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
     const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
@@ -179,6 +180,7 @@ describe("createTaskTool — inheritWorkspace (Phase 1a)", () => {
       resolvedModel: makeResolvedModel(),
       workDir: PARENT_WORK_DIR,
       callerAgentConfig,
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
     const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
@@ -218,6 +220,7 @@ describe("createTaskTool — inheritWorkspace (Phase 1a)", () => {
       resolvedModel: makeResolvedModel(),
       workDir: PARENT_WORK_DIR,
       callerAgentConfig,
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
     const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
@@ -257,6 +260,7 @@ describe("createTaskTool — inheritWorkspace (Phase 1a)", () => {
       resolvedModel: makeResolvedModel(),
       workDir: PARENT_WORK_DIR,
       callerAgentConfig,
+      runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
     const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });

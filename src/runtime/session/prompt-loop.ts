@@ -1073,6 +1073,7 @@ async function buildToolSet(
         agentPermissions: callerAgentConfig.permissions,
         ...(compactionConfig !== undefined ? { compactionConfig } : {}),
         callerAgentConfig,
+        runPromptLoop,
       });
       const taskDef = await taskToolInfo.init();
       const normalizedTaskParams = normalizeForProvider(
