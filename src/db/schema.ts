@@ -517,6 +517,48 @@ const MIGRATIONS: Migration[] = [
       db.exec(`ALTER TABLE rt_pairing_codes ADD COLUMN meta TEXT`);
     },
   },
+  {
+    // v13: persistent sessions + agent creation date.
+    //
+    // rt_sessions.persistent: distinguishes permanent sessions (long-lived, never archived)
+    //   from ephemeral sessions (per-task, archived after completion).
+    //   INTEGER NOT NULL DEFAULT 0 — existing sessions are ephemeral by default (backward-compat).
+    //
+    // agents.created_at: date the agent was provisioned, injected into the generic identity
+    //   block of the system prompt (§5 of PLAN-15a).
+    //   Nullable TEXT — backfilled with current datetime for existing agents.
+    version: 13,
+    up(db) {
+      // 1. Colonne persistent sur rt_sessions
+      db.exec(`
+        ALTER TABLE rt_sessions
+        ADD COLUMN persistent INTEGER NOT NULL DEFAULT 0;
+      `);
+
+      // 2. Index partiel pour le lookup rapide des sessions permanentes actives
+      // SQLite supporte les index partiels (WHERE clause) depuis 3.8.0
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_rt_sessions_permanent
+          ON rt_sessions(instance_slug, agent_id, peer_id)
+          WHERE persistent = 1 AND state = 'active';
+      `);
+
+      // 3. Colonne created_at sur agents (si absente)
+      // Verifier d'abord — la colonne peut exister selon les migrations precedentes
+      const agentCols = db.prepare("PRAGMA table_info(agents)").all() as Array<{ name: string }>;
+      const hasCreatedAt = agentCols.some((c) => c.name === "created_at");
+      if (!hasCreatedAt) {
+        db.exec(`
+          ALTER TABLE agents
+          ADD COLUMN created_at TEXT;
+        `);
+        // Backfill avec la date courante pour les agents existants
+        db.exec(`
+          UPDATE agents SET created_at = datetime('now') WHERE created_at IS NULL;
+        `);
+      }
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

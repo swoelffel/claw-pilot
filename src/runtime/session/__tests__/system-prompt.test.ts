@@ -37,6 +37,7 @@ vi.mock("node:fs", () => ({
 // Import AFTER mocking so the module picks up the mocked fs
 import { buildSystemPrompt } from "../system-prompt.js";
 import type { SystemPromptContext } from "../system-prompt.js";
+import { resetAgentRegistry, initAgentRegistry } from "../../agent/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -81,11 +82,14 @@ beforeEach(() => {
   mockMkdirSync.mockImplementation(() => undefined);
   // Restore any fetch stub from previous test
   vi.unstubAllGlobals();
+  // Reset agent registry so each test starts with built-in agents
+  resetAgentRegistry();
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  resetAgentRegistry();
 });
 
 // ---------------------------------------------------------------------------
@@ -526,10 +530,12 @@ describe("BOOTSTRAP.md one-shot", () => {
     // Assert: BOOTSTRAP.md content injected
     expect(prompt).toContain("This is the bootstrap content.");
 
-    // Assert: writeFileSync called with bootstrapDone: true
-    expect(mockWriteFileSync).toHaveBeenCalledOnce();
-    const [writtenPath, writtenData] = mockWriteFileSync.mock.calls[0]!;
-    expect(writtenPath).toBe(statePath);
+    // Assert: writeFileSync called at least once for workspace-state.json with bootstrapDone: true
+    // (a second call may occur for bootstrap-history.md archiving)
+    expect(mockWriteFileSync).toHaveBeenCalled();
+    const stateCall = mockWriteFileSync.mock.calls.find(([p]) => p === statePath);
+    expect(stateCall).toBeDefined();
+    const [, writtenData] = stateCall!;
     const parsed = JSON.parse(writtenData as string) as { bootstrapDone: boolean };
     expect(parsed.bootstrapDone).toBe(true);
   });
@@ -890,5 +896,317 @@ describe("bootstrapFiles", () => {
     // Assert: env block present (structure intact)
     expect(prompt).toContain("<env>");
     expect(prompt).toContain("<behavior>");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// agent_identity block (PLAN-15a Phase 0)
+// ---------------------------------------------------------------------------
+
+describe("buildSystemPrompt — agent_identity block", () => {
+  /**
+   * Objective: a primary agent with a workDir must have the <agent_identity> block
+   * injected at the start of the system prompt.
+   *
+   * [positive] agent kind="primary" → bloc <agent_identity> présent en début de prompt
+   */
+  it("[positive] agent kind='primary' → <agent_identity> block present at start of prompt", async () => {
+    const workDir = "/workspace";
+    const wsDir = `${workDir}/workspace-build`;
+
+    // Arrange: registry has built-in agents (build is kind="primary")
+    // workspace directory exists so the identity block is triggered
+    mockExistsSync.mockImplementation((p) => p === wsDir);
+    mockReadFileSync.mockImplementation(() => {
+      throw new Error("ENOENT");
+    });
+
+    const ctx = makeCtx({
+      workDir,
+      agentConfig: makeAgentConfig({ id: "build", name: "build" }),
+    });
+
+    // Act
+    const prompt = await buildSystemPrompt(ctx);
+
+    // Assert: <agent_identity> block is present
+    expect(prompt).toContain("<agent_identity>");
+    expect(prompt).toContain("</agent_identity>");
+
+    // Assert: block appears before the env block (injected at start)
+    const identityIdx = prompt.indexOf("<agent_identity>");
+    const envIdx = prompt.indexOf("<env>");
+    expect(identityIdx).toBeLessThan(envIdx);
+  });
+
+  /**
+   * Objective: a subagent must NOT have the <agent_identity> block.
+   * Subagents are ephemeral tools — they don't need a stable identity.
+   *
+   * [negative] agent kind="subagent" → bloc <agent_identity> absent
+   */
+  it("[negative] agent kind='subagent' → <agent_identity> block absent", async () => {
+    const workDir = "/workspace";
+    const wsDir = `${workDir}/workspace-explore`;
+
+    // Arrange: explore agent is kind="subagent"
+    mockExistsSync.mockImplementation((p) => p === wsDir);
+    mockReadFileSync.mockImplementation(() => {
+      throw new Error("ENOENT");
+    });
+
+    const ctx = makeCtx({
+      workDir,
+      agentConfig: makeAgentConfig({ id: "explore", name: "explore" }),
+    });
+
+    // Act
+    const prompt = await buildSystemPrompt(ctx);
+
+    // Assert: <agent_identity> block must NOT be present for subagents
+    expect(prompt).not.toContain("<agent_identity>");
+  });
+
+  /**
+   * Objective: the <agent_identity> block must contain all required fields.
+   *
+   * [positive] bloc contient Name:, ID:, Born:, Instance:, Channel:, Runtime:
+   */
+  it("[positive] <agent_identity> block contains Name:, ID:, Born:, Instance:, Channel:, Runtime:", async () => {
+    const workDir = "/workspace";
+    const wsDir = `${workDir}/workspace-build`;
+
+    // Arrange
+    mockExistsSync.mockImplementation((p) => p === wsDir);
+    mockReadFileSync.mockImplementation(() => {
+      throw new Error("ENOENT");
+    });
+
+    const ctx = makeCtx({
+      workDir,
+      instanceSlug: "my-instance",
+      channel: "telegram",
+      agentConfig: makeAgentConfig({ id: "build", name: "build" }),
+    });
+
+    // Act
+    const prompt = await buildSystemPrompt(ctx);
+
+    // Assert: all required fields present
+    expect(prompt).toContain("Name:");
+    expect(prompt).toContain("ID:");
+    expect(prompt).toContain("Born:");
+    expect(prompt).toContain("Instance:");
+    expect(prompt).toContain("Channel:");
+    expect(prompt).toContain("Runtime:");
+  });
+
+  /**
+   * Objective: when agentCreatedAt is absent from workspace-state, Born must show "inconnue".
+   *
+   * [positive] agentCreatedAt absent → Born: inconnue
+   */
+  it("[positive] agentCreatedAt absent in workspace-state → Born: inconnue", async () => {
+    const workDir = "/workspace";
+    const wsDir = `${workDir}/workspace-build`;
+    const stateDir = `${wsDir}/.claw-pilot`;
+    const statePath = `${stateDir}/workspace-state.json`;
+
+    // Arrange: workspace exists, state file has no agentCreatedAt
+    mockExistsSync.mockImplementation((p) => p === wsDir || p === stateDir);
+    mockReadFileSync.mockImplementation((p) => {
+      if (p === statePath) return JSON.stringify({ bootstrapDone: true });
+      throw new Error("ENOENT");
+    });
+
+    const ctx = makeCtx({
+      workDir,
+      agentConfig: makeAgentConfig({ id: "build", name: "build" }),
+    });
+
+    // Act
+    const prompt = await buildSystemPrompt(ctx);
+
+    // Assert: Born shows "inconnue" when agentCreatedAt is absent
+    expect(prompt).toContain("Born: inconnue");
+  });
+
+  /**
+   * Objective: when agentCreatedAt is present in workspace-state, Born must show
+   * the formatted date (not "inconnue").
+   *
+   * [positive] agentCreatedAt présent → Born: affiche la date formatée
+   */
+  it("[positive] agentCreatedAt present in workspace-state → Born: shows formatted date", async () => {
+    const workDir = "/workspace";
+    const wsDir = `${workDir}/workspace-build`;
+    const stateDir = `${wsDir}/.claw-pilot`;
+    const statePath = `${stateDir}/workspace-state.json`;
+
+    // Arrange: workspace exists, state file has agentCreatedAt
+    const createdAt = "2025-01-15T10:00:00.000Z";
+    mockExistsSync.mockImplementation((p) => p === wsDir || p === stateDir);
+    mockReadFileSync.mockImplementation((p) => {
+      if (p === statePath)
+        return JSON.stringify({ bootstrapDone: true, agentCreatedAt: createdAt });
+      throw new Error("ENOENT");
+    });
+
+    const ctx = makeCtx({
+      workDir,
+      agentConfig: makeAgentConfig({ id: "build", name: "build" }),
+    });
+
+    // Act
+    const prompt = await buildSystemPrompt(ctx);
+
+    // Assert: Born must NOT show "inconnue" — it shows the formatted date
+    expect(prompt).not.toContain("Born: inconnue");
+    // The date is formatted via toLocaleDateString("fr-FR") — verify it contains a year
+    expect(prompt).toMatch(/Born: .+2025/);
+  });
+
+  /**
+   * Objective: when workDir is undefined, the <agent_identity> block must NOT be injected
+   * even for a primary agent (no workspace = no identity context).
+   *
+   * [negative] workDir absent → bloc <agent_identity> absent même pour primary
+   */
+  it("[negative] workDir absent → <agent_identity> block absent even for primary agent", async () => {
+    // Arrange: no workDir
+    const ctx = makeCtx({
+      workDir: undefined,
+      agentConfig: makeAgentConfig({ id: "build", name: "build" }),
+    });
+
+    // Act
+    const prompt = await buildSystemPrompt(ctx);
+
+    // Assert: no identity block without workDir
+    expect(prompt).not.toContain("<agent_identity>");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// archiveBootstrapContent (PLAN-15a Phase 0)
+// ---------------------------------------------------------------------------
+
+describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
+  /**
+   * Objective: on the first session, after BOOTSTRAP.md is injected,
+   * writeFileSync must be called for memory/bootstrap-history.md with the bootstrap content.
+   *
+   * [positive] archiveBootstrapContent crée memory/bootstrap-history.md avec le contenu BOOTSTRAP.md
+   */
+  it("[positive] first session: writeFileSync called for memory/bootstrap-history.md", async () => {
+    const workDir = "/workspace";
+    const wsDir = `${workDir}/workspace-build`;
+    const stateDir = `${wsDir}/.claw-pilot`;
+    const historyPath = `${wsDir}/memory/bootstrap-history.md`;
+
+    // Arrange: workspace exists, BOOTSTRAP.md present with real content (>1 line)
+    // workspace-state.json absent → bootstrapDone is false → BOOTSTRAP.md injected
+    mockExistsSync.mockImplementation((p) => {
+      if (p === wsDir) return true;
+      if (p === stateDir) return false;
+      return false;
+    });
+    mockReadFileSync.mockImplementation((p) => {
+      if (p === `${wsDir}/BOOTSTRAP.md`)
+        return "# Bootstrap\nThis is the bootstrap content to archive.\nLine 3.";
+      throw new Error("ENOENT");
+    });
+
+    const ctx = makeCtx({
+      workDir,
+      agentConfig: makeAgentConfig({ id: "build", name: "build" }),
+    });
+
+    // Act
+    await buildSystemPrompt(ctx);
+
+    // Assert: writeFileSync called for bootstrap-history.md
+    const historyCall = mockWriteFileSync.mock.calls.find(([p]) => p === historyPath);
+    expect(historyCall).toBeDefined();
+
+    // Assert: the written content contains the bootstrap content
+    const [, writtenData] = historyCall!;
+    expect(writtenData as string).toContain("This is the bootstrap content to archive.");
+  });
+
+  /**
+   * Objective: the bootstrap-history.md entry must contain a timestamp header.
+   *
+   * [positive] bootstrap-history.md contient un header avec timestamp
+   */
+  it("[positive] bootstrap-history.md entry contains a timestamp header", async () => {
+    const workDir = "/workspace";
+    const wsDir = `${workDir}/workspace-build`;
+    const stateDir = `${wsDir}/.claw-pilot`;
+    const historyPath = `${wsDir}/memory/bootstrap-history.md`;
+
+    // Arrange
+    mockExistsSync.mockImplementation((p) => {
+      if (p === wsDir) return true;
+      if (p === stateDir) return false;
+      return false;
+    });
+    mockReadFileSync.mockImplementation((p) => {
+      if (p === `${wsDir}/BOOTSTRAP.md`) return "# Bootstrap\nContent to archive.\nLine 3.";
+      throw new Error("ENOENT");
+    });
+
+    const ctx = makeCtx({
+      workDir,
+      agentConfig: makeAgentConfig({ id: "build", name: "build" }),
+    });
+
+    // Act
+    await buildSystemPrompt(ctx);
+
+    // Assert: history entry contains the "Bootstrap completed:" timestamp header
+    const historyCall = mockWriteFileSync.mock.calls.find(([p]) => p === historyPath);
+    expect(historyCall).toBeDefined();
+    const [, writtenData] = historyCall!;
+    expect(writtenData as string).toContain("## Bootstrap completed:");
+  });
+
+  /**
+   * Objective: when bootstrapDone is already true, archiveBootstrapContent must NOT
+   * be called (BOOTSTRAP.md is not re-injected on subsequent sessions).
+   *
+   * [negative] bootstrapDone=true → writeFileSync non appelé pour bootstrap-history.md
+   */
+  it("[negative] bootstrapDone=true → writeFileSync not called for bootstrap-history.md", async () => {
+    const workDir = "/workspace";
+    const wsDir = `${workDir}/workspace-build`;
+    const stateDir = `${wsDir}/.claw-pilot`;
+    const statePath = `${stateDir}/workspace-state.json`;
+    const historyPath = `${wsDir}/memory/bootstrap-history.md`;
+
+    // Arrange: bootstrapDone is already true
+    mockExistsSync.mockImplementation((p) => {
+      if (p === wsDir) return true;
+      if (p === stateDir) return true;
+      return false;
+    });
+    mockReadFileSync.mockImplementation((p) => {
+      if (p === `${wsDir}/BOOTSTRAP.md`)
+        return "# Bootstrap\nContent that should not be archived again.\nLine 3.";
+      if (p === statePath) return JSON.stringify({ bootstrapDone: true });
+      throw new Error("ENOENT");
+    });
+
+    const ctx = makeCtx({
+      workDir,
+      agentConfig: makeAgentConfig({ id: "build", name: "build" }),
+    });
+
+    // Act
+    await buildSystemPrompt(ctx);
+
+    // Assert: writeFileSync must NOT be called for bootstrap-history.md
+    const historyCall = mockWriteFileSync.mock.calls.find(([p]) => p === historyPath);
+    expect(historyCall).toBeUndefined();
   });
 });
