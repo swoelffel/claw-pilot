@@ -181,6 +181,23 @@ const AgentConfigSchema = z.object({
       allowList: z.array(z.string().min(1)).min(1).optional(),
     })
     .optional(),
+  /**
+   * Session lifecycle for this agent.
+   * - "permanent": single long-lived session per user, maintained across restarts
+   *   via intelligent compaction and long-term memory extraction.
+   * - "ephemeral": new session per task, archived after completion (default for subagents).
+   * If omitted, inferred from 'kind' (set in Agent.Info): primary→permanent, subagent→ephemeral.
+   */
+  persistence: z
+    .enum(["permanent", "ephemeral"])
+    .optional()
+    .describe(
+      "Session lifecycle for this agent. " +
+        "'permanent': single long-lived session per user, maintained across restarts " +
+        "via intelligent compaction and long-term memory extraction. " +
+        "'ephemeral': new session per task, archived after completion (default for subagents). " +
+        "If omitted, inferred from 'kind': primary→permanent, subagent→ephemeral, all→ephemeral.",
+    ),
 });
 
 /** Telegram channel config */
@@ -333,6 +350,22 @@ export type RuntimeAuthProfileConfig = z.infer<typeof AuthProfileConfigSchema>;
 export type RuntimeTelegramConfig = z.infer<typeof TelegramConfigSchema>;
 export type RuntimeMcpServerConfig = RuntimeConfig["mcpServers"][number];
 export type SubagentsConfig = z.infer<typeof SubagentsConfigSchema>;
+
+/** Resolved session lifecycle type for an agent */
+export type AgentPersistence = "permanent" | "ephemeral";
+
+/**
+ * Resolve the effective persistence for an agent config.
+ * Returns the explicit value if set, otherwise "ephemeral" as safe default.
+ * The definitive resolution (using Agent.Info.kind) is done in initAgentRegistry()
+ * via resolveEffectivePersistence().
+ */
+export function resolveAgentPersistence(config: RuntimeAgentConfig): AgentPersistence {
+  // Explicit value — absolute priority
+  if (config.persistence !== undefined) return config.persistence;
+  // Safe default — will be overridden by initAgentRegistry() using kind
+  return "ephemeral";
+}
 
 // ---------------------------------------------------------------------------
 // Default config factory

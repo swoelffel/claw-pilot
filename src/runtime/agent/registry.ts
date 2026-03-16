@@ -11,7 +11,7 @@
 
 import { Agent } from "./agent.js";
 import { BUILTIN_AGENTS } from "./defaults.js";
-import type { RuntimeAgentConfig } from "../config/index.js";
+import type { RuntimeAgentConfig, AgentPersistence } from "../config/index.js";
 
 // ---------------------------------------------------------------------------
 // Registry state (module-level singleton, reset on init)
@@ -121,6 +121,25 @@ function getRegistry(): Map<string, Agent.Info> {
 }
 
 /**
+ * Resolve the effective persistence for an agent.
+ * Priority: explicit config value > kind inference > safe default.
+ */
+export function resolveEffectivePersistence(
+  agentInfo: Agent.Info,
+  config?: RuntimeAgentConfig,
+): AgentPersistence {
+  // 1. Explicit value in runtime.json config
+  if (config?.persistence !== undefined) return config.persistence;
+
+  // 2. Infer from kind
+  if (agentInfo.kind === "primary") return "permanent";
+  if (agentInfo.kind === "subagent") return "ephemeral";
+
+  // 3. Safe default
+  return "ephemeral";
+}
+
+/**
  * Merge a RuntimeAgentConfig override onto an existing Agent.Info.
  */
 function mergeAgentConfig(base: Agent.Info, cfg: RuntimeAgentConfig): Agent.Info {
@@ -143,11 +162,15 @@ function mergeAgentConfig(base: Agent.Info, cfg: RuntimeAgentConfig): Agent.Info
 
 /**
  * Create a new Agent.Info from a RuntimeAgentConfig (for user-defined agents).
+ * User-defined agents default to mode "all" and kind "primary" (safe default).
  */
 function createFromConfig(cfg: RuntimeAgentConfig): Agent.Info {
+  // User-defined agents have no mode in RuntimeAgentConfig — default to "all"
+  // kind defaults to "primary" (safe default: visible agent = primary agent)
   return Agent.Info.parse({
     name: cfg.name,
     mode: "all",
+    kind: "primary",
     native: false,
     prompt: cfg.systemPrompt,
     temperature: cfg.temperature,

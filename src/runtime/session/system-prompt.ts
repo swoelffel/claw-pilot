@@ -5,14 +5,67 @@
  * Combines agent instructions (from RuntimeAgentConfig) and environment info.
  */
 
-import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { resolve, join, dirname } from "node:path";
 import type { RuntimeAgentConfig } from "../config/index.js";
 import type { InstanceSlug } from "../types.js";
 import { listAvailableSkills } from "../tool/built-in/skill.js";
 import { readWorkspaceState, writeWorkspaceState } from "../../core/workspace-state.js";
+import { getAgent } from "../agent/registry.js";
+
+// Read claw-pilot version from package.json once at module load time
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const _pkgPath = resolve(__dirname, "../../../../package.json");
+let _clawPilotVersion = "unknown";
+try {
+  const pkg = JSON.parse(readFileSync(_pkgPath, "utf-8")) as { version?: string };
+  _clawPilotVersion = pkg.version ?? "unknown";
+} catch {
+  /* intentionally ignored — version stays "unknown" */
+}
 
 const DEFAULT_INSTRUCTIONS = "You are a helpful AI assistant. Be concise and accurate.";
+
+// ---------------------------------------------------------------------------
+// Agent identity block (injected for primary agents only)
+// ---------------------------------------------------------------------------
+
+interface AgentIdentityContext {
+  agentId: string;
+  agentName: string;
+  /** ISO 8601 date string from workspace-state.json (agents.created_at equivalent) */
+  agentCreatedAt: string | undefined;
+  instanceSlug: string;
+  channel: string;
+  clawPilotVersion: string;
+}
+
+/**
+ * Build the <agent_identity> block injected at the start of the system prompt
+ * for primary agents. Provides stable, objective context about the agent.
+ * Position at the start of the prompt benefits from Anthropic's prompt caching.
+ */
+function buildAgentIdentityBlock(ctx: AgentIdentityContext): string {
+  const createdAt = ctx.agentCreatedAt
+    ? new Date(ctx.agentCreatedAt).toLocaleDateString("fr-FR", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    : "inconnue";
+
+  return [
+    "<agent_identity>",
+    `Name: ${ctx.agentName}`,
+    `ID: ${ctx.agentId}`,
+    `Born: ${createdAt}`,
+    `Instance: ${ctx.instanceSlug}`,
+    `Channel: ${ctx.channel}`,
+    `Runtime: claw-pilot v${ctx.clawPilotVersion}`,
+    "</agent_identity>",
+  ].join("\n");
+}
 
 /** Workspace files read during auto-discovery for agents with promptMode="full". */
 const DISCOVERY_FILES_FULL = [
@@ -68,6 +121,23 @@ export interface SystemPromptContext {
 export async function buildSystemPrompt(ctx: SystemPromptContext): Promise<string> {
   const sections: string[] = [];
 
+  // 0. Agent identity block (primary agents only — stable position for Anthropic cache)
+  const agentInfo = getAgent(ctx.agentConfig.id);
+  if (agentInfo?.kind === "primary" && ctx.workDir) {
+    const wsDir = resolveWorkspaceDir(ctx.workDir, ctx.agentConfig.id);
+    const wsState = wsDir ? readWorkspaceState(wsDir) : {};
+    sections.push(
+      buildAgentIdentityBlock({
+        agentId: ctx.agentConfig.id,
+        agentName: ctx.agentConfig.name,
+        agentCreatedAt: wsState.agentCreatedAt,
+        instanceSlug: ctx.instanceSlug,
+        channel: ctx.channel,
+        clawPilotVersion: _clawPilotVersion,
+      }),
+    );
+  }
+
   // 1. Agent instructions (inline > file > auto-discovery > default)
   const instructions = await resolveInstructions(ctx);
   if (instructions) sections.push(instructions.trim());
@@ -100,6 +170,43 @@ export async function buildSystemPrompt(ctx: SystemPromptContext): Promise<strin
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Archive BOOTSTRAP.md content to memory/bootstrap-history.md with a timestamp.
+ * Called once when bootstrapDone transitions from false to true.
+ * BOOTSTRAP.md is NOT deleted — the user can still read it.
+ * Failures are silently ignored — bootstrap archiving must not block session startup.
+ */
+function archiveBootstrapContent(wsDir: string, bootstrapContent: string): void {
+  try {
+    const memoryDir = join(wsDir, "memory");
+    mkdirSync(memoryDir, { recursive: true });
+
+    const historyPath = join(memoryDir, "bootstrap-history.md");
+    const timestamp = new Date().toISOString();
+    const entry =
+      `\n\n## Bootstrap completed: ${timestamp}\n\n` +
+      `<!-- Original BOOTSTRAP.md content archived below -->\n\n` +
+      bootstrapContent;
+
+    writeFileSync(historyPath, entry, { flag: "a", encoding: "utf-8" });
+  } catch {
+    // Silently ignore — bootstrap archiving must not block session startup
+  }
+}
+
+/**
+ * Resolve the workspace directory for an agent.
+ * Checks workspace-<agentId>/ first, then workspace/ (OpenClaw-compatible layout).
+ * Returns the first existing directory, or undefined if none found.
+ */
+function resolveWorkspaceDir(workDir: string, agentId: string): string | undefined {
+  const candidates = [join(workDir, `workspace-${agentId}`), join(workDir, "workspace")];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
 
 /**
  * Resolve the discovery file list based on the agent's promptMode.
@@ -239,6 +346,10 @@ function discoverWorkspaceInstructions(
           if (filename === "BOOTSTRAP.md" && !wsState.bootstrapDone) {
             writeWorkspaceState(wsDir, { ...wsState, bootstrapDone: true });
             wsState.bootstrapDone = true; // update local copy to avoid double-write
+
+            // Archive BOOTSTRAP.md content to memory/bootstrap-history.md
+            // BOOTSTRAP.md stays on disk (user can re-read it), only the content is archived
+            archiveBootstrapContent(wsDir, raw);
           }
         }
       } catch {

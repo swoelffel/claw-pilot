@@ -13,6 +13,15 @@ export namespace Agent {
     description: z.string().optional(),
     /** "primary" = user-facing, "subagent" = spawned by task tool, "all" = both */
     mode: z.enum(["subagent", "primary", "all"]),
+    /**
+     * Functional role of the agent (lifecycle decisions).
+     * - "primary": user-facing agent with permanent session, full workspace context,
+     *   and ability to spawn subagents.
+     * - "subagent": ephemeral tool spawned by primary agents, minimal context,
+     *   no spawn capability, not visible to users.
+     * Defaults to "primary". Derived from mode if not set explicitly.
+     */
+    kind: z.enum(["primary", "subagent"]).default("primary"),
     /** Whether this is a built-in agent (not user-defined) */
     native: z.boolean().optional(),
     /** Whether to hide from agent picker UI */
@@ -45,6 +54,7 @@ export namespace Agent {
     name: string;
     description: string | undefined;
     mode: Info["mode"];
+    kind: Info["kind"];
     hidden: boolean;
     native: boolean;
     color: string | undefined;
@@ -55,6 +65,7 @@ export namespace Agent {
       name: info.name,
       description: info.description,
       mode: info.mode,
+      kind: info.kind,
       hidden: info.hidden ?? false,
       native: info.native ?? false,
       color: info.color,

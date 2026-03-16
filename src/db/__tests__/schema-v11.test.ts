@@ -207,13 +207,13 @@ describe("migration v11 — rt_sessions new columns", () => {
     expect(colsBefore).not.toContain("metadata");
   });
 
-  it(// Positive: schema version must be 11 after initDatabase()
+  it(// Positive: schema version must be 13 after initDatabase() (latest migration)
   "schema version is 11 after initDatabase()", () => {
     // Arrange + Act
     const db = initDatabase(dbPath);
 
     // Assert
-    expect(schemaVersion(db)).toBe(12);
+    expect(schemaVersion(db)).toBe(13);
     db.close();
   });
 });

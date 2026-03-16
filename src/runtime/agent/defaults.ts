@@ -149,6 +149,7 @@ export const BUILD_AGENT: Agent.Info = {
   name: "build",
   description: "The default agent. Executes tools based on configured permissions.",
   mode: "primary",
+  kind: "primary",
   native: true,
   prompt: PROMPT_BUILD,
   permission: [...DEFAULT_RULESET, { permission: "question", pattern: "**", action: "allow" }],
@@ -160,6 +161,7 @@ export const PLAN_AGENT: Agent.Info = {
   name: "plan",
   description: "Plan mode. Reads the codebase and produces plans without editing files.",
   mode: "primary",
+  kind: "primary",
   native: true,
   prompt: PROMPT_PLAN,
   permission: PLAN_AGENT_RULESET,
@@ -172,6 +174,7 @@ export const EXPLORE_AGENT: Agent.Info = {
   description:
     'Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns (eg. "src/components/**/*.tsx"), search code for keywords (eg. "API endpoints"), or answer questions about the codebase (eg. "how do API endpoints work?"). When calling this agent, specify the desired thoroughness level: "quick" for basic searches, "medium" for moderate exploration, or "very thorough" for comprehensive analysis across multiple locations and naming conventions.',
   mode: "subagent",
+  kind: "subagent",
   native: true,
   prompt: PROMPT_EXPLORE,
   permission: EXPLORE_AGENT_RULESET,
@@ -184,6 +187,7 @@ export const GENERAL_AGENT: Agent.Info = {
   description:
     "General-purpose agent for researching complex questions and executing multi-step tasks. Use this agent to execute multiple units of work in parallel.",
   mode: "subagent",
+  kind: "subagent",
   native: true,
   permission: [
     ...DEFAULT_RULESET,
@@ -197,6 +201,7 @@ export const GENERAL_AGENT: Agent.Info = {
 export const COMPACTION_AGENT: Agent.Info = {
   name: "compaction",
   mode: "primary",
+  kind: "primary",
   native: true,
   hidden: true,
   prompt: PROMPT_COMPACTION,
@@ -208,6 +213,7 @@ export const COMPACTION_AGENT: Agent.Info = {
 export const TITLE_AGENT: Agent.Info = {
   name: "title",
   mode: "primary",
+  kind: "primary",
   native: true,
   hidden: true,
   temperature: 0.5,
@@ -220,6 +226,7 @@ export const TITLE_AGENT: Agent.Info = {
 export const SUMMARY_AGENT: Agent.Info = {
   name: "summary",
   mode: "primary",
+  kind: "primary",
   native: true,
   hidden: true,
   prompt: PROMPT_SUMMARY,

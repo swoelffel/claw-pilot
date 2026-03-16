@@ -179,14 +179,14 @@ Composant `<cp-self-update-banner>` affiché **en haut du `<main>`**, au-dessus 
 
 **Fichier source** : `ui/src/components/update-banner-base.ts`
 
-Composant Lit de base factorisant le CSS et la structure HTML des deux bandeaux de mise à jour (OpenClaw et claw-pilot). Non utilisé directement — instancié via les wrappers `cp-update-banner` et `cp-self-update-banner`.
+Composant Lit de base factorisant le CSS et la structure HTML du bandeau de mise à jour claw-pilot. Non utilisé directement — instancié via le wrapper `cp-self-update-banner`.
 
 ### Props
 
 | Prop | Type | Description |
 |---|---|---|
-| `status` | `OpenClawUpdateStatus \| SelfUpdateStatus \| null` | Statut de mise à jour passé par le wrapper |
-| `productName` | `string` | Nom du produit affiché dans les messages (ex: `"OpenClaw"`, `"claw-pilot"`) |
+| `status` | `SelfUpdateStatus \| null` | Statut de mise à jour passé par le wrapper |
+| `productName` | `string` | Nom du produit affiché dans les messages (ex: `"claw-pilot"`) |
 | `buttonLabel` | `string` | Label du bouton d'action (état idle+updateAvailable) |
 | `runningSubtitle` | `string` | Sous-titre affiché pendant l'état running |
 | `doneSubtitle` | `string` | Sous-titre affiché après succès (état done) |
@@ -274,17 +274,17 @@ Le bouton **[Discover instances]** (`btn btn-secondary`) ouvre le dialog `cp-dis
 **Fichier source** : `ui/src/components/instance-card.ts`
 
 ```
-┌────────────────────────────────────────────┐
-│  Mon instance          ● RUNNING [Stop] ···│  ← header
-│  default                                   │
-├────────────────────────────────────────────┤
-│  ◉ Gateway  ✈ @my_bot  ⬡ 11 agents        │  ← status bar
-├────────────────────────────────────────────┤
-│  anthropic/claude-sonnet-4-5               │  ← modèle
-│  :18789                  openclaw v2026.3.1│  ← technique
-│                                            │
-│  (message d'erreur si échec)               │  ← erreur conditionnelle
-└────────────────────────────────────────────┘
+┌────────────────────────────────────────────────┐
+│  Mon instance    ⚡ runtime  ● running  [···]  │  ← header
+│  default                                       │
+├────────────────────────────────────────────────┤
+│  ◉ Gateway  ✈ @my_bot  ⬡ 11 agents  ⚠ PERM   │  ← status bar
+├────────────────────────────────────────────────┤
+│  anthropic/claude-sonnet-4-5                   │  ← modèle
+│  :18789                                        │  ← port
+│                                                │
+│  (message d'erreur si échec)                   │  ← erreur conditionnelle
+└────────────────────────────────────────────────┘
 ```
 
 ### Hiérarchie typographique
@@ -294,7 +294,7 @@ Le bouton **[Discover instances]** (`btn btn-secondary`) ouvre le dialog `cp-dis
 | `display_name` (ou slug si absent) | 16px | 700 | `--text-primary` |
 | `slug` (si display_name défini) | 11px | 400 | `--text-muted`, monospace |
 | Modèle | 13px | 400 | `--text-secondary`, monospace |
-| Port / version | 11px | 400 | `--text-muted`, monospace |
+| Port | 11px | 400 | `--text-muted`, monospace |
 
 ### Zone 1 — Header
 
@@ -304,15 +304,15 @@ Flex row `justify-content: space-between`, `gap: 10px`.
 
 | Élément | Description |
 |---|---|
-| **display_name** | `font-size: 16px`, `font-weight: 700`, `--text-primary`. Si `display_name` est null, affiche le slug à la place avec le même style. |
+| **display_name** | `font-size: 16px`, `font-weight: 700`, `--text-primary`. Si `display_name` est null, affiche le slug à la place. |
 | **slug** *(conditionnel)* | `font-size: 11px`, `--text-muted`, monospace, `margin-top: 2px`. Affiché uniquement si `display_name` est défini. |
 
 **Côté droit** (`card-header-right`, flex row `gap: 8px`) :
 
 | Élément | Description |
 |---|---|
-| **Badge état** | Pill coloré avec point lumineux + label. Voir états ci-dessous. |
-| **Bouton Start/Stop** | Bouton unique toggle. "Start" (style `btn-start` vert) si non running, "Stop" (style `btn-stop` rouge) si running. Disabled pendant `_loading`. |
+| **Badge `⚡ runtime`** | Pill violet indigo `rgba(99,102,241,0.12)` / `#818cf8`. Toujours affiché. Indique le moteur claw-runtime. |
+| **Badge état** | Pill coloré avec point lumineux + label texte de l'état. |
 | **Bouton `···`** | Bouton menu 28×28px. Ouvre le popover d'actions au clic. Classe `open` quand actif. |
 
 **États du badge :**
@@ -320,13 +320,13 @@ Flex row `justify-content: space-between`, `gap: 10px`.
 | État | Couleur |
 |---|---|
 | `running` | Vert `--state-running` |
-| `stopped` | Gris `--text-muted` |
+| `stopped` | Gris `--state-stopped` |
 | `error` | Rouge `--state-error` |
 | `unknown` | Gris |
 
 ### Zone 2 — Status bar
 
-Flex row, `gap: 10px`, séparée du header et du meta par des bordures `--bg-border`. Masquée si aucun indicateur à afficher.
+Flex row, `gap: 10px`, `flex-wrap: wrap`, séparée du header et du meta par des bordures `--bg-border`. Masquée si aucun indicateur à afficher (`items.length === 0`).
 
 | Indicateur | Condition | Style |
 |---|---|---|
@@ -336,6 +336,7 @@ Flex row, `gap: 10px`, séparée du header et du meta par des bordures `--bg-bor
 | `✈ @bot ⚠` | `telegram_bot` défini ET `telegram === "disconnected"` | Pill ambre `--state-warning` |
 | `⬡ N agent(s)` | `agentCount > 0` | Texte `--text-muted` |
 | `⚠ N device(s)` | `pendingDevices > 0` | Pill ambre cliquable → `navigate { view: "instance-settings", section: "devices" }` |
+| `⚠ PERM` | `pendingPermissions > 0` | Pill rouge cliquable → `navigate { view: "instance-settings", section: "runtime" }`. `font-weight: 700`. |
 
 ### Zone 3 — Meta
 
@@ -345,7 +346,6 @@ Colonne flex, `gap: 4px`.
 |---|---|---|
 | **Modèle** | Si `default_model` défini. Résolution intelligente : si JSON `{"primary":"..."}`, extrait la clé `primary`. | `font-size: 13px`, `--text-secondary`, monospace |
 | **Port** | Toujours. | `font-size: 11px`, `--text-muted`, monospace |
-| **openclaw vX.Y.Z** | Si prop `openclawVersion` définie (injectée par `cluster-view`). Aligné à droite sur la même ligne que le port. | `font-size: 11px`, `--text-muted`, monospace |
 
 ### Zone 4 — Erreur *(conditionnelle)*
 
@@ -353,11 +353,12 @@ Colonne flex, `gap: 4px`.
 
 ### Menu popover `···`
 
-Ouvert au clic sur le bouton `···`. Fermé au clic extérieur (listener `document click` dans `connectedCallback`/`disconnectedCallback`). Position `absolute`, `top: calc(100% + 4px)`, `right: 0`, `z-index: 100`.
+Ouvert au clic sur le bouton `···`. Fermé au clic extérieur (listener `document click`). Position `absolute`, `top: calc(100% + 4px)`, `right: 0`, `z-index: 100`, `min-width: 164px`, `box-shadow: 0 4px 20px rgba(0,0,0,0.45)`.
 
 ```
 ┌─────────────────────┐
-│  ⎋  ⎋ UI            │  ← visible si state === "running"
+│  ■  Stop            │  ← rouge si running / ▶ Start vert si stopped
+│  ─────────────────  │
 │  ⬡  Agents          │  ← visible si running OU agentCount > 0
 │  ⚙  Settings        │  ← toujours
 │  ↺  Restart         │  ← visible si state === "running"
@@ -366,34 +367,34 @@ Ouvert au clic sur le bouton `···`. Fermé au clic extérieur (listener `docu
 └─────────────────────┘
 ```
 
-| Item | Condition | Comportement |
-|---|---|---|
-| **⎋ UI** | `state === "running"` | Lien `<a>` vers `localhost:port/#token=<gatewayToken>`, `target="_blank"` |
-| **Agents** | `state === "running"` OU `agentCount > 0` | Émet `navigate { view: "agents-builder", slug }` |
-| **Settings** | Toujours | Émet `navigate { view: "instance-settings", slug }` |
-| **Restart** | `state === "running"` | Appel API `restartInstance(slug)`, `_loading = true` |
-| **Delete** | Toujours | Émet `request-delete { slug }` (confirmation gérée par le parent) |
+| Item | Condition | Style | Comportement |
+|---|---|---|---|
+| **■ Stop / ▶ Start** | Toujours | Rouge `.stop` si running, vert `.start` si stopped | Appel API `stopInstance` / `startInstance`. Disabled pendant `_loading`. |
+| **⬡ Agents** | `state === "running"` OU `agentCount > 0` | Normal | Émet `navigate { view: "agents-builder", slug }` |
+| **⚙ Settings** | Toujours | Normal | Émet `navigate { view: "instance-settings", slug }` |
+| **↺ Restart** | `state === "running"` | Normal | Appel API `restartInstance(slug)` |
+| **✕ Delete** | Toujours | Rouge `.danger` | Émet `request-delete { slug }` (confirmation gérée par le parent) |
 
 Tous les items : `stopPropagation()` + `_menuOpen = false` avant action.
 
 ### Comportements
 
-- **Clic card** : géré par le parent (`cluster-view`) → navigation vers la vue détail
-- **Clic Start/Stop** : `stopPropagation()` + appel API + `_loading = true` pendant l'opération
 - **Clic `···`** : `stopPropagation()` + toggle `_menuOpen`
-- **Clic extérieur** : ferme le popover via listener `document click`
+- **Clic extérieur** : ferme le popover via listener `document click` (ajouté dans `connectedCallback`, retiré dans `disconnectedCallback`)
 - **Clic pill devices** : `stopPropagation()` + `navigate { view: "instance-settings", section: "devices" }`
+- **Clic pill PERM** : `stopPropagation()` + `navigate { view: "instance-settings", section: "runtime" }`
 
 ### Données temps réel (WebSocket)
 
-Le handler `health_update` dans `app.ts` propage les champs suivants vers `InstanceInfo` à chaque tick (toutes les 10s) :
+Le handler `health_update` dans `app.ts` propage les champs suivants vers `InstanceInfo` à chaque tick :
 
 | Champ | Type |
 |---|---|
 | `gateway` | `"healthy" \| "unhealthy" \| "unknown"` |
-| `systemd` | `"active" \| "inactive" \| "failed" \| "unknown"` |
+| `state` | `"running" \| "stopped" \| "error" \| "unknown"` |
 | `agentCount` | `number` |
 | `pendingDevices` | `number` |
+| `pendingPermissions` | `number` |
 | `telegram` | `"connected" \| "disconnected" \| "not_configured"` |
 
 ---
@@ -649,12 +650,12 @@ Vue de configuration complète d'une instance. Accessible via le bouton **Settin
 │  │  General   │  │  ┌─ GENERAL ──────────────────────────┐ │  │
 │  │  Agents    │  │  │  Display name  Port (readonly)      │ │  │
 │  │  Runtime   │  │  │  Default model (select grouped)     │ │  │
-│  └────────────┘  │  │  Tools profile (select)             │ │  │
-│                  │  │                                     │ │  │
-│                  │  │  PROVIDERS                          │ │  │
-│                  │  │  [Anthropic]  sk-ant-***  [Change]  │ │  │
-│                  │  │  [+ Add provider]                   │ │  │
-│                  │  └─────────────────────────────────────┘ │  │
+│  │  Channels  │  │  │  Tools profile (select)             │ │  │
+│  │  Devices   │  │  │                                     │ │  │
+│  │  MCP  [3]  │  │  │  PROVIDERS                          │ │  │
+│  │  Permissions│ │  │  [Anthropic]  sk-ant-***  [Change]  │ │  │
+│  │  Config    │  │  │  [+ Add provider]                   │ │  │
+│  └────────────┘  │  └─────────────────────────────────────┘ │  │
 │                  └──────────────────────────────────────────┘  │
 └───────────────────────────────────────────────────────────────┘
 ```
@@ -676,7 +677,14 @@ Toujours visible. Fond `--bg-surface`, bordure basse.
 
 ### Sidebar
 
-Navigation par panneaux : **General**, **Agents**, **Runtime**. Item actif : fond `--accent-subtle`, couleur `--accent`, `font-weight: 600`. Clic → `_activeSection = section` (swap immédiat du contenu).
+Navigation par 8 panneaux : **General**, **Agents**, **Runtime**, **Channels**, **Devices**, **MCP**, **Permissions**, **Config**. Item actif : fond `--accent-subtle`, couleur `--accent`, `font-weight: 600`. Clic → `_activeSection = section` (swap immédiat du contenu).
+
+**Badges numériques** sur les items de la sidebar :
+
+| Item | Badge | Condition |
+|---|---|---|
+| **MCP** | Numérique accent | Nombre de serveurs MCP connectés (`_mcpConnectedCount > 0`) |
+| **Permissions** | Numérique accent | Nombre de demandes de permission en attente (`_pendingPermissionsCount > 0`) |
 
 ### Champs modifiés
 
@@ -770,6 +778,188 @@ Apparaît en bas à droite (`position: fixed`, `bottom: 80px`, `right: 24px`) pe
 | **error** | Rouge | Message d'erreur |
 
 **Avertissement port changé** : si le port a changé, un bandeau `⚠` s'affiche sous le header : "Port changed — browser pairing will be lost after restart. Go to the Devices tab to approve the new request."
+
+### Section Channels (`cp-instance-channels`)
+
+**Fichier source** : `ui/src/components/instance-channels.ts`
+
+Panneau autonome — pas de Save/Cancel global (sauvegarde inline par canal). Affiche une card par canal de communication.
+
+**Machine à états Telegram (3 états) :**
+
+| État | Condition | Rendu |
+|---|---|---|
+| **A — unconfigured** | `channels.telegram === null` OU `enabled=false` sans token | "Telegram is not configured" + bouton **[Configure Telegram]** |
+| **B — init-form** | Clic sur [Configure Telegram] | Formulaire d'initialisation inline |
+| **C — configured** | `enabled=true` OU token présent | Formulaire d'édition complet |
+
+**État A — Non configuré :**
+
+```
+┌─ ✈ Telegram Bot ─────────────────────── ○ Inactive ─┐
+│  Telegram is not configured for this instance.       │
+│                              [Configure Telegram]    │
+└──────────────────────────────────────────────────────┘
+```
+
+**État B — Formulaire d'initialisation :**
+
+```
+┌─ ✈ Telegram Bot ─────────────────────────────────────┐
+│  Bot token *  [_________________________]  [BotFather ↗] │
+│  DM policy    [Pairing (code approval) ▼]            │
+│  Group policy [Allowlist               ▼]            │
+│                                  [Cancel]  [Add]     │
+└──────────────────────────────────────────────────────┘
+```
+
+**État C — Configuré :**
+
+```
+┌─ ✈ Telegram Bot [N] ─────────────── ● Configured ───┐
+│  [toggle] Enabled                                    │
+│  Bot token  [sk-***masked***]  [Change]  [×]         │
+│  DM policy  [Pairing ▼]                              │
+│  Group policy [Allowlist ▼]                          │
+│                                                      │
+│  ── Pairing requests ──────────────────── [Refresh] ─│
+│  @username  Code: 1234-5678  2m ago  [Approve] [Reject]│
+│  Approved senders: 3                                 │
+│                                                      │
+│  [Bannière restart si requiresRestart]               │
+│                              [Cancel]  [Save]        │
+└──────────────────────────────────────────────────────┘
+```
+
+| Champ | Valeurs |
+|---|---|
+| **DM policy** | `pairing` (code approval) / `open` (allow all) / `allowlist` / `disabled` |
+| **Group policy** | `open` (allow all groups) / `allowlist` / `disabled` |
+
+**Badge pending** : nombre rouge sur le titre "Telegram Bot" si des demandes de pairing sont en attente.
+
+**Status badge** : `● Configured` (vert) si enabled + token présent ; `◎ No token` (ambre) si enabled sans token ; `○ Inactive` (gris) si disabled.
+
+**Bannière restart** : fond ambre, message "Changes require a runtime restart to take effect." + bouton **[Restart runtime]**.
+
+**Pairing requests** : visible uniquement si `dmPolicy === "pairing"`. Polling toutes les 10s si des demandes sont en attente. Boutons **[Approve]** et **[Reject]** par demande.
+
+**Canaux "Coming soon"** : WhatsApp et Slack affichés en cards grises `opacity: 0.55` avec badge "COMING SOON".
+
+### Section Devices (`cp-instance-devices`)
+
+**Fichier source** : `ui/src/components/instance-devices.ts`
+
+Panneau autonome — pas de Save/Cancel. Voir section dédiée [Composant : Devices](#composant--devices-cp-instance-devices) ci-dessous.
+
+### Section MCP (`cp-instance-mcp`)
+
+**Fichier source** : `ui/src/components/instance-mcp.ts`
+
+Panneau autonome — pas de Save/Cancel. Affiche les serveurs MCP connectés à l'instance claw-runtime.
+
+```
+┌─ MCP ─────────────────────────────────────────────────┐
+│                                                       │
+│  CONNECTED [3] ────────────────────────────────────── │
+│  ┌──────────────────────────────────────────────────┐ │
+│  │  ● my-server    stdio   5 tools  [Tools ▾]       │ │
+│  │  ● web-search   http    3 tools  [Tools ▾]       │ │
+│  └──────────────────────────────────────────────────┘ │
+│                                                       │
+│  DISCONNECTED [1] ─────────────────────────────────── │
+│  ┌──────────────────────────────────────────────────┐ │
+│  │  ○ old-server   stdio   0 tools                  │ │
+│  │    ⚠ Connection refused                          │ │
+│  └──────────────────────────────────────────────────┘ │
+│                                                       │
+│  [↻ Refresh]                                          │
+└───────────────────────────────────────────────────────┘
+```
+
+| Élément | Description |
+|---|---|
+| **Groupe CONNECTED** | Titre vert + badge count vert. Serveurs avec `connected: true`. |
+| **Groupe DISCONNECTED** | Titre gris + badge count gris. Serveurs avec `connected: false`. |
+| **Ligne serveur** | Point vert/gris + nom + badge type (`stdio`/`http`) + count outils + bouton **[Tools ▾]** si outils disponibles |
+| **Expand outils** | Grid 2 colonnes, fond `--bg-hover`, noms monospace |
+| **Erreur serveur** | `⚠ message` rouge sous la ligne si `lastError` défini |
+| **[↻ Refresh]** | Recharge manuellement |
+
+**Polling** : toutes les 30s quand le panneau est actif.
+
+**Badge sidebar** : nombre de serveurs connectés (`mcp-connected-count-changed` event).
+
+### Section Permissions (`cp-instance-permissions`)
+
+**Fichier source** : `ui/src/components/instance-permissions.ts`
+
+Panneau autonome — pas de Save/Cancel. Affiche les règles de permission persistées et les demandes en attente.
+
+```
+┌─ PERMISSIONS ─────────────────────────────────────────┐
+│                                                       │
+│  ┌─ PENDING REQUESTS (2) ────────────────────────────┐│
+│  │  Bash  /tmp/**  2m ago  [Handle]                  ││
+│  │  Read  ~/docs/* 5m ago  [Handle]                  ││
+│  └───────────────────────────────────────────────────┘│
+│                                                       │
+│  PERSISTENT RULES (3)                                 │
+│  Approved by user — survive restarts                  │
+│  ┌──────────────────────────────────────────────────┐ │
+│  │  [allow]  Bash  /tmp/**   global  2h ago  [✕]   │ │
+│  │  [deny]   Read  ~/secret  agent1  1d ago  [✕]   │ │
+│  └──────────────────────────────────────────────────┘ │
+│                                                       │
+│  [↻ Refresh]                                          │
+└───────────────────────────────────────────────────────┘
+```
+
+| Élément | Description |
+|---|---|
+| **Pending requests** | Fond ambre transparent, bordure ambre. Visible si `action === "ask"`. Bouton **[Handle]** → émet `open-permission-overlay` pour ouvrir l'overlay global. |
+| **Persistent rules** | Règles `allow`/`deny`. Badge action coloré (vert/rouge). Colonnes : action, permission, pattern, scope, âge relatif, bouton **[✕]** (revoke). |
+| **Revoke** | Appel `DELETE /api/instances/:slug/runtime/permissions/:id`. Spinner inline pendant l'opération. |
+| **[↻ Refresh]** | Recharge manuellement |
+
+**Badge sidebar** : nombre de demandes en attente (`_pendingPermissionsCount`).
+
+### Section Config (`cp-instance-config`)
+
+**Fichier source** : `ui/src/components/instance-config.ts`
+
+Panneau de configuration avancée du runtime. Sous-navigation par onglets. Save/Cancel propres au panneau (indépendants du Save global).
+
+```
+┌─ CONFIG ──────────────────────────────────────────────┐
+│  [Models]  [Compaction]  [Sub-agents]                 │
+│  ─────────────────────────────────────────────────── │
+│  (contenu selon onglet actif)                         │
+│                                                       │
+│  [Save]  [Cancel]  ← visible si dirty                 │
+└───────────────────────────────────────────────────────┘
+```
+
+**Onglet Models :**
+
+| Champ | Description |
+|---|---|
+| **Internal model** | Input texte. Modèle utilisé pour la compaction et les résumés (ex: `anthropic/claude-haiku-3-5`). |
+| **Model aliases** | Liste d'alias (id → provider + model). Chaque alias : 3 inputs inline (alias, provider, model) + bouton **[✕]**. Bouton **[+ Add alias]** en bas. |
+
+**Onglet Compaction :**
+
+| Champ | Description |
+|---|---|
+| **Threshold** | Slider 50–99%. Pourcentage de la fenêtre de contexte avant déclenchement. |
+| **Reserved tokens** | Input number 1000–32000. Tokens réservés pour le résumé. |
+
+**Onglet Sub-agents :**
+
+| Champ | Description |
+|---|---|
+| **Max spawn depth** | Slider 0–10. Profondeur maximale d'imbrication des sous-agents. |
+| **Max active children per session** | Slider 1–20. Nombre max de sous-agents actifs simultanément par session. |
 
 ---
 
@@ -1365,6 +1555,106 @@ Bouton **[↻ Refresh]** (outline gris) + message d'erreur inline si une opérat
 
 ---
 
+## Composant global : Overlay de permission (`cp-permission-request-overlay`)
+
+**Fichier source** : `ui/src/components/permission-request-overlay.ts`
+
+Overlay fixe coin bas-droit (`bottom: 24px`, `right: 24px`, `z-index: 9999`, `width: 480px`). Affiché automatiquement quand un agent claw-runtime émet un événement `permission.asked` via le stream SSE. Géré par `cp-app` (ou le composant parent qui surveille l'instance active).
+
+```
+┌─ 🔐 Permission Request ──────────────────────── [✕] ─┐
+│                                                       │
+│  Description de la demande (si fournie)               │
+│                                                       │
+│  ┌─ Détails ────────────────────────────────────────┐ │
+│  │  Permission  Bash                                │ │
+│  │  Pattern     /tmp/**                             │ │
+│  └──────────────────────────────────────────────────┘ │
+│                                                       │
+│  42s  ████████████████░░░░░░░░  (countdown bar)       │
+│                                                       │
+│  [toggle]  This time only / Always (for this agent)   │
+│                                                       │
+│  [Deny]  [Deny with feedback]  [Approve]  [Dismiss]   │
+└───────────────────────────────────────────────────────┘
+```
+
+### Comportement
+
+| Élément | Description |
+|---|---|
+| **Header** | Fond rouge transparent `rgba(239,68,68,0.06)`. Titre rouge `--state-error` + icône 🔐. Badge count si plusieurs demandes en file. Bouton **[✕]** dismiss. |
+| **Description** | Texte libre fourni par l'agent (optionnel). |
+| **Détails** | Fond `--bg-hover`, bordure `--bg-border`. Lignes : Permission (monospace) + Pattern (monospace). |
+| **Countdown** | Barre de progression rouge qui se vide en 60s. Auto-dismiss à 0. |
+| **Toggle persist** | "This time only" (défaut) / "Always (for this agent)". Contrôle si la règle est persistée. |
+| **[Deny]** | Rouge outline. Envoie `decision: "deny"` immédiatement. |
+| **[Deny with feedback]** | Rouge outline transparent. Premier clic → affiche textarea commentaire. Deuxième clic → envoie avec commentaire. |
+| **[Approve]** | Vert outline. Envoie `decision: "allow"`. |
+| **[Dismiss]** | Gris, `margin-left: auto`. Retire la demande de la file sans répondre. |
+
+### File FIFO
+
+Les demandes s'accumulent en file. Une seule est affichée à la fois. Après réponse ou dismiss, la suivante s'affiche et le countdown repart à 60s.
+
+### Source SSE
+
+Écoute `GET /api/instances/:slug/runtime/chat/stream`. Événement `permission.asked` → ajoute à la file.
+
+### API de réponse
+
+`POST /api/instances/:slug/runtime/permission/reply` avec `{ permissionId, decision, persist, comment? }`.
+
+---
+
+## Composant global : Bus Alerts (`cp-bus-alerts`)
+
+**Fichier source** : `ui/src/components/bus-alerts.ts`
+
+Toasts d'alertes live positionnés en bas-droit (`bottom: 100px`, `right: 24px`, `z-index: 9998`). Affichés au-dessus du footer, en-dessous de l'overlay de permission. Maximum 3 toasts simultanés (FIFO — le plus ancien est retiré si dépassé).
+
+```
+                              ┌─ Toast (360px) ──────────────────┐
+                              │ ⚠  Doom loop detected            │
+                              │    Agent: researcher             │
+                              │                              [✕] │
+                              └──────────────────────────────────┘
+                              ┌─ Toast ──────────────────────────┐
+                              │ ♥  Heartbeat alert               │
+                              │    Message de l'agent...  [View] │
+                              │                              [✕] │
+                              └──────────────────────────────────┘
+```
+
+### Types d'alertes
+
+| Type d'événement | Variante | Icône | Titre | Persistant |
+|---|---|---|---|---|
+| `tool.doom_loop` | warning | ⚠ | "Doom loop detected" | Oui |
+| `heartbeat.alert` | warning | ♥ | "Heartbeat alert" | Oui |
+| `provider.failover` | info | ↺ | "Provider failover" | Non (8s) |
+| `provider.auth_failed` | error | ✕ | "Provider auth failed" | Oui |
+| `llm.chunk_timeout` | warning | ⏱ | "LLM chunk timeout" | Non (8s) |
+| `agent.timeout` | error | ⏱ | "Agent timeout" | Oui |
+
+### Design
+
+| Élément | Description |
+|---|---|
+| **Bordure gauche** | 3px colorée selon variante (ambre/rouge/cyan) |
+| **Icône** | Colorée selon variante |
+| **Titre** | `font-size: 12px`, `font-weight: 700`, `--text-primary` |
+| **Corps** | `font-size: 11px`, `--text-secondary`, tronqué avec ellipsis |
+| **[View]** | Bouton ambre outline. Visible uniquement pour `heartbeat.alert`. Émet `navigate-to-session { sessionId, slug }`. |
+| **[✕]** | Bouton dismiss muted → primary au hover. |
+| **Animation** | `slide-in` : translateX(20px) → 0, opacity 0 → 1, 0.2s ease-out. |
+
+### API publique
+
+`addAlert(event: { type, payload, slug? })` — appelé depuis `app.ts` lors de la réception de messages WebSocket bus.
+
+---
+
 ## Accessibilité des dialogs
 
 Depuis v0.7.1, tous les dialogs modaux implémentent `DialogMixin` :
@@ -1426,4 +1716,4 @@ Swatch sélectionné : bordure blanche + scale 1.1.
 
 ---
 
-*Mis à jour : 2026-03-15 - v0.20.0 : tokens de style corrigés (Geist, valeurs réelles), navigation (Sign out, Live/Offline), suppression bannière OpenClaw update, refonte Settings (General/Agents/Runtime), ajout écran Login et composant cp-runtime-chat*
+*Mis à jour : 2026-03-16 - v0.28.5 : refonte Instance Card (badge ⚡ runtime, pill ⚠ PERM, menu simplifié), sidebar Settings étendue (8 panneaux : General/Agents/Runtime/Channels/Devices/MCP/Permissions/Config), ajout composants cp-instance-channels, cp-instance-mcp, cp-instance-permissions, cp-instance-config, cp-permission-request-overlay, cp-bus-alerts*

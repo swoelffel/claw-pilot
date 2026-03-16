@@ -31,6 +31,11 @@ export interface SessionInfo {
   label: string | undefined;
   /** Extensible JSON metadata blob */
   metadata: string | undefined;
+  /**
+   * Whether this is a permanent session (long-lived, never archived automatically).
+   * Permanent sessions are maintained across restarts via compaction.
+   */
+  persistent: boolean;
 }
 
 // Row type from SQLite (all fields are string/number/null)
@@ -50,6 +55,7 @@ interface SessionRow {
   spawn_depth: number;
   label: string | null;
   metadata: string | null;
+  persistent: number; // SQLite INTEGER: 0 = false, 1 = true
 }
 
 function fromRow(row: SessionRow): SessionInfo {
@@ -69,11 +75,12 @@ function fromRow(row: SessionRow): SessionInfo {
     spawnDepth: row.spawn_depth ?? 0,
     label: row.label ?? undefined,
     metadata: row.metadata ?? undefined,
+    persistent: row.persistent === 1,
   };
 }
 
 /**
- * Build the business key for a session.
+ * Build the business key for an ephemeral session.
  * Format: "<instanceSlug>:<agentId>:<channel>:<peerId|unknown>"
  */
 export function buildSessionKey(
@@ -85,6 +92,19 @@ export function buildSessionKey(
   return `${instanceSlug}:${agentId}:${channel}:${peerId ?? "unknown"}`;
 }
 
+/**
+ * Build the business key for a permanent session.
+ * Format: "<instanceSlug>:<agentId>:<peerId|unknown>" (no channel — cross-channel)
+ * A permanent session is shared across all channels for the same user (peer).
+ */
+export function buildPermanentSessionKey(
+  instanceSlug: string,
+  agentId: string,
+  peerId: string | undefined,
+): string {
+  return `${instanceSlug}:${agentId}:${peerId ?? "unknown"}`;
+}
+
 export function createSession(
   db: Database.Database,
   input: {
@@ -94,28 +114,30 @@ export function createSession(
     peerId?: string;
     parentId?: SessionId;
     label?: string;
+    /** Whether this is a permanent session (never archived automatically). Default: false. */
+    persistent?: boolean;
   },
 ): SessionInfo {
   const id = nanoid();
   const now = new Date().toISOString();
   const channel = input.channel ?? "web";
+  const persistent = input.persistent ?? false;
 
   // Compute spawn depth from parent session
   const spawnDepth = input.parentId ? (getSession(db, input.parentId)?.spawnDepth ?? 0) + 1 : 0;
 
   // Compute session key.
+  // Permanent sessions: cross-channel key (no channel component)
+  // Ephemeral sessions: channel-scoped key (current behavior)
   // When peerId is absent (no external peer, e.g. channel "api" or "web"), append the session id
   // to guarantee uniqueness — otherwise every new root session would collide on the UNIQUE index.
-  const sessionKey = buildSessionKey(
-    input.instanceSlug,
-    input.agentId,
-    channel,
-    input.peerId ?? id,
-  );
+  const sessionKey = persistent
+    ? buildPermanentSessionKey(input.instanceSlug, input.agentId, input.peerId)
+    : buildSessionKey(input.instanceSlug, input.agentId, channel, input.peerId ?? id);
 
   db.prepare(
-    `INSERT INTO rt_sessions (id, instance_slug, parent_id, agent_id, channel, peer_id, session_key, spawn_depth, label, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO rt_sessions (id, instance_slug, parent_id, agent_id, channel, peer_id, session_key, spawn_depth, label, persistent, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     input.instanceSlug,
@@ -126,6 +148,7 @@ export function createSession(
     sessionKey,
     spawnDepth,
     input.label ?? null,
+    persistent ? 1 : 0,
     now,
     now,
   );
@@ -190,7 +213,26 @@ export function updateSessionTitle(db: Database.Database, id: SessionId, title: 
   db.prepare("UPDATE rt_sessions SET title = ?, updated_at = ? WHERE id = ?").run(title, now, id);
 }
 
-export function archiveSession(db: Database.Database, id: SessionId): void {
+export function archiveSession(
+  db: Database.Database,
+  id: SessionId,
+  options?: { force?: boolean },
+): void {
+  const session = getSession(db, id);
+  if (!session) return;
+
+  // Guard: refuse to archive a permanent session without force flag.
+  // Log warning but do not throw — callers (e.g. task.ts) may call archiveSession()
+  // without knowing if the session is permanent. Permanent sessions are never
+  // children of subagents, so this case should not occur in practice.
+  if (session.persistent && !options?.force) {
+    console.warn(
+      `[session] Attempted to archive permanent session ${id} — ignored. ` +
+        `Use force: true for admin cleanup.`,
+    );
+    return;
+  }
+
   const now = new Date().toISOString();
   db.prepare(
     "UPDATE rt_sessions SET state = 'archived', updated_at = ? WHERE id = ? AND state = 'active'",

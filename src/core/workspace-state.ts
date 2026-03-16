@@ -20,6 +20,12 @@ import { join } from "node:path";
 export interface WorkspaceState {
   /** True once BOOTSTRAP.md has been injected into the system prompt at least once. */
   bootstrapDone?: boolean;
+  /**
+   * ISO 8601 date string of when the agent was first provisioned.
+   * Written during agent provisioning, injected into the generic identity block
+   * of the system prompt for primary agents.
+   */
+  agentCreatedAt?: string;
 }
 
 // ---------------------------------------------------------------------------
