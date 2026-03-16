@@ -60,6 +60,7 @@ export namespace Agent {
     color: string | undefined;
   }
 
+  /** @public */
   export function toSummary(info: Info): Summary {
     return {
       name: info.name,

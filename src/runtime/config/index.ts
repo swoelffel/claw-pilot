@@ -359,6 +359,7 @@ export type AgentPersistence = "permanent" | "ephemeral";
  * Returns the explicit value if set, otherwise "ephemeral" as safe default.
  * The definitive resolution (using Agent.Info.kind) is done in initAgentRegistry()
  * via resolveEffectivePersistence().
+ * @public
  */
 export function resolveAgentPersistence(config: RuntimeAgentConfig): AgentPersistence {
   // Explicit value — absolute priority
