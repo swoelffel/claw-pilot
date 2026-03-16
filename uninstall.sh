@@ -1,9 +1,10 @@
 #!/bin/sh
 # claw-pilot uninstaller
 # Usage: curl -fsSL https://raw.githubusercontent.com/swoelffel/claw-pilot/main/uninstall.sh | sh
+# Note: pipe to sh disables interactive prompts — pass --yes to confirm automatically.
 # Options:
 #   --dry-run    Show what would be removed, do nothing
-#   --yes        Remove everything without confirmation
+#   --yes        Remove everything without confirmation (required when piping to sh)
 #   --keep-data  Remove claw-pilot binary/repo but keep ~/.claw-pilot/ and instance state dirs
 set -e
 
@@ -102,11 +103,19 @@ stop_launchd_agent() {
   launchctl unload "$plist" 2>/dev/null && log "Unloaded agent: $label" || true
 }
 
-# Confirm action interactively (skipped if --yes or --dry-run)
+# Confirm action interactively (skipped if --yes or --dry-run).
+# When stdin is not a TTY (e.g. curl | sh), prompts cannot be answered interactively.
+# In that case, abort with a clear message asking the user to pass --yes.
 confirm() {
   msg="$1"
   if [ "$DRY_RUN" -eq 1 ] || [ "$YES" -eq 1 ]; then
     return 0
+  fi
+  if [ ! -t 0 ]; then
+    warn "Non-interactive shell detected (stdin is not a TTY)."
+    warn "Re-run with --yes to skip confirmation prompts:"
+    warn "  curl -fsSL https://raw.githubusercontent.com/swoelffel/claw-pilot/main/uninstall.sh | sh -s -- --yes"
+    exit 1
   fi
   printf "%s [y/N] " "$msg"
   read -r answer
@@ -118,16 +127,26 @@ confirm() {
 
 # --- Step 1: Detect installation ---
 
-# Resolve INSTALL_DIR from the claw-pilot symlink or fallback
+# Resolve INSTALL_DIR from the claw-pilot binary (wrapper script or symlink) or fallback.
+# Since install.sh >= v0.20 installs a wrapper script (not a symlink), we parse the
+# wrapper content to extract the entry point path rather than relying on readlink.
 resolve_install_dir() {
-  # Try to find the symlink
   CLAW_PILOT_BIN=$(command -v claw-pilot 2>/dev/null || true)
   if [ -n "$CLAW_PILOT_BIN" ]; then
-    # Follow the symlink to the actual file
-    REAL_BIN=$(readlink "$CLAW_PILOT_BIN" 2>/dev/null || echo "")
+    # Case 1: wrapper script — contains: exec "/path/to/node" "/opt/claw-pilot/dist/index.mjs"
+    # Extract the entry point path from the exec line (second quoted argument).
+    ENTRY=$(grep -m1 'exec ' "$CLAW_PILOT_BIN" 2>/dev/null \
+      | sed 's/.*exec "[^"]*" "\([^"]*\)".*/\1/' || true)
+    if [ -n "$ENTRY" ] && [ "$ENTRY" != "$CLAW_PILOT_BIN" ]; then
+      CANDIDATE=$(dirname "$(dirname "$ENTRY")")
+      if [ -f "$CANDIDATE/package.json" ]; then
+        echo "$CANDIDATE"
+        return 0
+      fi
+    fi
+    # Case 2: legacy symlink — follow with readlink
+    REAL_BIN=$(readlink "$CLAW_PILOT_BIN" 2>/dev/null || true)
     if [ -n "$REAL_BIN" ]; then
-      # REAL_BIN is something like /opt/claw-pilot/dist/index.mjs
-      # Go up two levels: dist/ -> repo root
       CANDIDATE=$(dirname "$(dirname "$REAL_BIN")")
       if [ -f "$CANDIDATE/package.json" ]; then
         echo "$CANDIDATE"
@@ -139,20 +158,25 @@ resolve_install_dir() {
   echo "${CLAW_PILOT_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
 }
 
-# List instance slugs by scanning ~/.runtime-*/runtime.json and legacy ~/.openclaw-*/
+# List instance slugs by scanning ~/.runtime-<slug>/ and legacy ~/.openclaw-<slug>/
+# Uses explicit glob expansion check to avoid iterating on unexpanded patterns
+# (POSIX sh does not support nullglob).
 list_instances() {
   _seen=""
-  # Scan new state dirs (~/.runtime-<slug>/runtime.json)
+  # Scan new state dirs (~/.runtime-<slug>/)
   for dir in "${STATE_PREFIX_RUNTIME}"*/; do
+    # Skip if glob was not expanded (no matching dirs)
     [ -d "$dir" ] || continue
-    slug=$(basename "$dir" | sed "s/^\.runtime-//")
-    [ -n "$slug" ] && echo "$slug" && _seen="$_seen $slug"
+    slug=$(basename "$dir")
+    slug=${slug#.runtime-}
+    [ -n "$slug" ] && [ "$slug" != "*" ] && echo "$slug" && _seen="$_seen $slug"
   done
-  # Scan legacy state dirs (~/.openclaw-<slug>/) — skip if already found above
+  # Scan legacy state dirs (~/.openclaw-<slug>/) — skip duplicates
   for dir in "${STATE_PREFIX_LEGACY}"*/; do
     [ -d "$dir" ] || continue
-    slug=$(basename "$dir" | sed "s/^\.openclaw-//")
-    [ -z "$slug" ] && continue
+    slug=$(basename "$dir")
+    slug=${slug#.openclaw-}
+    [ -z "$slug" ] || [ "$slug" = "*" ] && continue
     case " $_seen " in *" $slug "*) continue ;; esac
     echo "$slug"
   done
@@ -163,8 +187,8 @@ INSTANCES=$(list_instances)
 INSTANCE_COUNT=0
 for _i in $INSTANCES; do INSTANCE_COUNT=$((INSTANCE_COUNT + 1)); done
 
-# Detect symlink path
-SYMLINK_PATH=$(command -v claw-pilot 2>/dev/null || true)
+# Detect binary path (wrapper script or symlink)
+BINARY_PATH=$(command -v claw-pilot 2>/dev/null || true)
 
 # --- Step 2: Summary ---
 
@@ -178,7 +202,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 info "Installation directory : ${INSTALL_DIR}"
-info "Binary symlink         : ${SYMLINK_PATH:-not found in PATH}"
+info "Binary                 : ${BINARY_PATH:-not found in PATH}"
 info "Data directory         : ${DATA_DIR}"
 info "Instances found        : ${INSTANCE_COUNT}"
 
@@ -199,7 +223,7 @@ fi
 echo ""
 
 # Check that there is something to uninstall
-if [ ! -d "$INSTALL_DIR" ] && [ -z "$SYMLINK_PATH" ] && [ ! -d "$DATA_DIR" ] && [ "$INSTANCE_COUNT" -eq 0 ]; then
+if [ ! -d "$INSTALL_DIR" ] && [ -z "$BINARY_PATH" ] && [ ! -d "$DATA_DIR" ] && [ "$INSTANCE_COUNT" -eq 0 ]; then
   warn "claw-pilot does not appear to be installed. Nothing to remove."
   exit 0
 fi
@@ -298,38 +322,57 @@ if [ "$KEEP_DATA" -eq 0 ] && [ -d "$DATA_DIR" ]; then
   fi
 fi
 
-# --- Step 7: Remove binary symlink ---
+# --- Step 7: Remove binary (wrapper script or symlink) ---
 
 echo ""
-log "Removing binary symlink..."
+log "Removing claw-pilot binary..."
 
-if [ -n "$SYMLINK_PATH" ] && [ -L "$SYMLINK_PATH" ]; then
-  # Verify the symlink points to our install dir before removing
-  LINK_TARGET=$(readlink "$SYMLINK_PATH" 2>/dev/null || echo "")
-  case "$LINK_TARGET" in
-    "$INSTALL_DIR"*)
-      safe_remove "$SYMLINK_PATH"
-      ;;
-    *)
-      warn "Symlink at $SYMLINK_PATH points to $LINK_TARGET (not $INSTALL_DIR) — skipping"
-      ;;
+# is_our_binary <path> — returns 0 if the file at <path> belongs to our install dir.
+# Handles both wrapper scripts (exec line contains INSTALL_DIR) and legacy symlinks.
+is_our_binary() {
+  _b="$1"
+  [ -f "$_b" ] || [ -L "$_b" ] || return 1
+  # Wrapper script: check exec line references INSTALL_DIR
+  if grep -q "$INSTALL_DIR" "$_b" 2>/dev/null; then
+    return 0
+  fi
+  # Legacy symlink: follow and check target path
+  _t=$(readlink "$_b" 2>/dev/null || true)
+  case "$_t" in
+    "$INSTALL_DIR"*) return 0 ;;
   esac
-else
-  # Try common locations
+  return 1
+}
+
+_removed_binary=0
+
+# Primary: use the resolved BINARY_PATH
+if [ -n "$BINARY_PATH" ]; then
+  if is_our_binary "$BINARY_PATH"; then
+    safe_remove "$BINARY_PATH"
+    _removed_binary=1
+  else
+    warn "Binary at $BINARY_PATH does not belong to $INSTALL_DIR — skipping"
+  fi
+fi
+
+# Fallback: scan common install locations (covers cases where binary is not in PATH)
+if [ "$_removed_binary" -eq 0 ]; then
+  _pnpm_bin=$(pnpm bin --global 2>/dev/null || true)
   for candidate in \
-    "$(pnpm bin --global 2>/dev/null || true)/claw-pilot" \
     "/usr/local/bin/claw-pilot" \
-    "$HOME/.local/bin/claw-pilot"; do
-    if [ -L "$candidate" ]; then
-      LINK_TARGET=$(readlink "$candidate" 2>/dev/null || echo "")
-      case "$LINK_TARGET" in
-        "$INSTALL_DIR"*)
-          safe_remove "$candidate"
-          ;;
-      esac
+    "$HOME/.local/bin/claw-pilot" \
+    "$HOME/bin/claw-pilot" \
+    "${_pnpm_bin:+$_pnpm_bin/claw-pilot}"; do
+    [ -n "$candidate" ] || continue
+    if is_our_binary "$candidate"; then
+      safe_remove "$candidate"
+      _removed_binary=1
     fi
   done
 fi
+
+[ "$_removed_binary" -eq 0 ] && info "No binary found to remove."
 
 # --- Step 8: Remove installation directory ---
 
@@ -344,6 +387,33 @@ if [ -d "$INSTALL_DIR" ]; then
 else
   info "Installation directory not found at $INSTALL_DIR — skipping"
 fi
+
+# --- Step 8b: Clean up shell profile entries added by installer ---
+
+# The installer appends PATH export lines to ~/.zshrc, ~/.bashrc, ~/.profile.
+# Remove any block matching the installer comment marker (idempotent, best-effort).
+_clean_shell_profile() {
+  _rc="$1"
+  [ -f "$_rc" ] || return 0
+  if grep -q 'claw-pilot' "$_rc" 2>/dev/null; then
+    if [ "$DRY_RUN" -eq 1 ]; then
+      drylog "Remove claw-pilot PATH lines from $_rc"
+      return 0
+    fi
+    # Remove the comment line + the export PATH line that follows it
+    # Pattern: "# claw-pilot bin dir (added by claw-pilot installer)" + next line
+    _tmp=$(mktemp)
+    awk '
+      /# claw-pilot bin dir \(added by claw-pilot installer\)/ { skip=2 }
+      skip > 0 { skip--; next }
+      { print }
+    ' "$_rc" > "$_tmp" && mv "$_tmp" "$_rc" && log "Cleaned PATH entry from $_rc" || true
+  fi
+}
+
+for _rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.profile"; do
+  _clean_shell_profile "$_rc"
+done
 
 # --- Step 9: Done ---
 
