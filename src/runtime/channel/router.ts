@@ -90,6 +90,16 @@ export class ChannelRouter {
       throw new Error(`Agent not found: ${agentId}`);
     }
 
+    // Guard: only primary agents can receive user messages through channels.
+    // Subagents are ephemeral tools spawned by primary agents — they must never
+    // be addressable directly from a user-facing channel (chat, Telegram, etc.).
+    if (agentInfo.kind === "subagent") {
+      throw new Error(
+        `Agent "${agentId}" is a subagent and cannot receive messages from user channels. ` +
+          `Only primary agents (kind: "primary") are user-facing.`,
+      );
+    }
+
     // Build RuntimeAgentConfig from Agent.Info + global config
     const agentConfig = buildAgentConfig(agentInfo, config);
 

@@ -424,6 +424,10 @@ export function createDefaultRuntimeConfig(options: {
         allowSubAgents: true,
         permissions: [],
         temperature: undefined,
+        // Main is always permanent — it is the default user-facing agent.
+        // Without this, mode "all" → kind "primary" → persistence "permanent" by
+        // inference, but being explicit avoids any ambiguity.
+        persistence: "permanent" as const,
       },
     ],
     telegram: {

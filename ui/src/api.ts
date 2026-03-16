@@ -35,6 +35,26 @@ function getToken(): string {
   return window.__CP_TOKEN__ ?? "";
 }
 
+/**
+ * Returns a stable device ID for this browser, stored in localStorage.
+ * Used as a stable peerId for permanent agent sessions so the same browser
+ * always maps to the same session (even across page reloads or reconnections).
+ */
+function getDeviceId(): string {
+  const KEY = "cp:deviceId";
+  let id = localStorage.getItem(KEY);
+  if (!id) {
+    // Generate a random 16-char hex ID
+    const bytes = new Uint8Array(8);
+    crypto.getRandomValues(bytes);
+    id = Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    localStorage.setItem(KEY, id);
+  }
+  return id;
+}
+
 function authHeaders(): HeadersInit {
   return {
     Authorization: `Bearer ${getToken()}`,
@@ -520,6 +540,10 @@ export async function postRuntimeChat(
   return apiFetch<RuntimeChatResponse>(`/instances/${slug}/runtime/chat`, {
     method: "POST",
     body: JSON.stringify(body),
+    // X-Device-Id: stable browser identity for permanent session routing.
+    // Ensures the same browser always maps to the same permanent session,
+    // even across page reloads, reconnections, or channel changes.
+    headers: { "X-Device-Id": getDeviceId() },
   });
 }
 

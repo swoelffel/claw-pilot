@@ -16,6 +16,8 @@ import {
   resolveModel,
   runPromptLoop,
   createSession,
+  getOrCreatePermanentSession,
+  resolveEffectivePersistence,
   initAgentRegistry,
   defaultAgentName,
   getAgent,
@@ -283,7 +285,32 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
         return apiError(c, 404, "SESSION_NOT_FOUND", `Session "${body.sessionId}" not found`);
       }
     } else {
-      session = createSession(db, { instanceSlug: slug, agentId, channel: "api" });
+      // Resolve persistence for this agent
+      const isPermanent =
+        resolveEffectivePersistence(
+          agentInfo,
+          config.agents.find((a) => a.id === agentId),
+        ) === "permanent";
+
+      if (isPermanent) {
+        // Permanent agents: single session per user (cross-channel).
+        // Derive a stable peerId from the X-Device-Id header (set by the dashboard UI),
+        // falling back to the remote IP so the same browser always maps to the same session.
+        const deviceId = c.req.header("x-device-id");
+        const remoteIp =
+          c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
+          (c.env as Record<string, string> | undefined)?.["remoteAddr"] ??
+          "unknown";
+        const peerId = `web:${deviceId ?? remoteIp}`;
+        session = getOrCreatePermanentSession(db, {
+          instanceSlug: slug,
+          agentId,
+          channel: "web",
+          peerId,
+        });
+      } else {
+        session = createSession(db, { instanceSlug: slug, agentId, channel: "api" });
+      }
     }
 
     // Run prompt loop

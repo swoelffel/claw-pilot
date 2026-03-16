@@ -15,4 +15,5 @@ export {
   listAgents,
   defaultAgentName,
   resetAgentRegistry,
+  resolveEffectivePersistence,
 } from "./registry.js";
