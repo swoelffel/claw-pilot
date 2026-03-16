@@ -1,11 +1,27 @@
 // src/core/agent-provisioner.ts
+import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
 import { EDITABLE_FILES } from "./agent-sync.js";
 import { createHash } from "node:crypto";
 import { constants } from "../lib/constants.js";
 import { loadWorkspaceTemplate, type TemplateVars } from "../lib/workspace-templates.js";
+
+// Resolve templates directory relative to this file
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMPLATES_MEMORY_DIR = path.resolve(__dirname, "../../templates/workspace/memory");
+
+/** Memory template files created for primary agents during provisioning */
+const MEMORY_TEMPLATE_FILES = [
+  "facts.md",
+  "decisions.md",
+  "user-prefs.md",
+  "timeline.md",
+  "knowledge.md",
+] as const;
 
 export interface CreateAgentData {
   agentSlug: string;
@@ -61,6 +77,22 @@ export class AgentProvisioner {
     for (const filename of workspaceFiles) {
       const content = await loadWorkspaceTemplate(filename, vars);
       await this.conn.writeFile(path.join(workspaceDir, filename), content);
+    }
+
+    // Create memory template files for primary agents
+    if (agentKind === "primary") {
+      const memoryDir = path.join(workspaceDir, "memory");
+      await this.conn.mkdir(memoryDir);
+      for (const filename of MEMORY_TEMPLATE_FILES) {
+        const templatePath = path.join(TEMPLATES_MEMORY_DIR, filename);
+        const destPath = path.join(memoryDir, filename);
+        try {
+          const content = fs.readFileSync(templatePath, "utf-8");
+          await this.conn.writeFile(destPath, content);
+        } catch {
+          // Template absent — skip silently (non-blocking)
+        }
+      }
     }
 
     // Append to agents[] array in runtime.json

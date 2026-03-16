@@ -24,8 +24,9 @@ import { listMessages, createAssistantMessage, updateMessageMetadata } from "./m
 import { createPart, listParts } from "./part.js";
 import { getBus } from "../bus/index.js";
 import { SessionStatusChanged, MessageCreated, MessageUpdated } from "../bus/events.js";
-import { appendToMemoryFile } from "../memory/writer.js";
+import { appendToMemoryFile, consolidateMemoryFileIfNeeded } from "../memory/writer.js";
 import { openMemoryIndex, rebuildMemoryIndex } from "../memory/index.js";
+import { applyDecayToFile, extractReferencedContents } from "../memory/decay.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -77,16 +78,20 @@ Format: "- path/to/file or service-name: brief description of its role"
 - Use bullet points, not prose paragraphs
 - If a section has nothing relevant, write "- (none)"`;
 
-/** Prompt used to extract permanent knowledge before compaction */
+/** Prompt used to extract permanent knowledge before compaction (Phase 4 — 5 categories) */
 const EXTRACTION_PROMPT = `Analyze the conversation above and extract ONLY new permanent knowledge worth remembering across sessions.
 
-Categorize into three lists:
+Categorize into five lists:
 1. **facts**: Objective facts about the project, codebase, infrastructure, or domain
    Examples: "The project uses TypeScript strict mode", "VM01 runs Ubuntu 22.04"
 2. **decisions**: Technical decisions made with their rationale
    Examples: "Chose SQLite over PostgreSQL for simplicity and zero-dependency deployment"
 3. **preferences**: User preferences, communication style, working habits
    Examples: "User prefers responses in French", "User wants concise answers without preamble"
+4. **timeline**: Important events or milestones (format: "YYYY-MM-DD: Event description")
+   Examples: "2026-03-16: Migrated database to schema v13"
+5. **knowledge**: Learned patterns, conventions, pitfalls, or domain knowledge
+   Examples: "exactOptionalPropertyTypes requires conditional spread for optional fields"
 
 Rules:
 - Extract ONLY information not already present in the memory files shown above
@@ -97,7 +102,7 @@ Rules:
 - If nothing new to extract in a category, return an empty array for that category
 
 Return ONLY valid JSON, no explanation:
-{ "facts": [...], "decisions": [...], "preferences": [...] }`;
+{ "facts": [...], "decisions": [...], "preferences": [...], "timeline": [...], "knowledge": [...] }`;
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -132,6 +137,10 @@ interface ExtractedKnowledge {
   facts: string[];
   decisions: string[];
   preferences: string[];
+  /** Important events or milestones → memory/timeline.md */
+  timeline: string[];
+  /** Learned patterns, conventions, pitfalls → memory/knowledge.md */
+  knowledge: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -187,15 +196,43 @@ export async function compact(input: CompactionInput): Promise<CompactionResult>
         appendToMemoryFile(wsDir, "facts.md", knowledge.facts);
         appendToMemoryFile(wsDir, "decisions.md", knowledge.decisions);
         appendToMemoryFile(wsDir, "user-prefs.md", knowledge.preferences);
+        appendToMemoryFile(wsDir, "timeline.md", knowledge.timeline);
+        appendToMemoryFile(wsDir, "knowledge.md", knowledge.knowledge);
 
         // Rebuild FTS5 index in background if anything was written
-        if (
-          knowledge.facts.length + knowledge.decisions.length + knowledge.preferences.length >
-          0
-        ) {
+        const totalExtracted =
+          knowledge.facts.length +
+          knowledge.decisions.length +
+          knowledge.preferences.length +
+          knowledge.timeline.length +
+          knowledge.knowledge.length;
+        if (totalExtracted > 0) {
           const memoryDb = openMemoryIndex(workDir);
           void rebuildMemoryIndex(memoryDb, workDir, agentConfig.id);
         }
+
+        // Decay — appliquer sur les fichiers memoire (sauf timeline.md)
+        const conversationText = buildConversationText(db, messages);
+        const referenced = extractReferencedContents(conversationText);
+        const decayFiles = ["facts.md", "decisions.md", "user-prefs.md", "knowledge.md"];
+        for (const filename of decayFiles) {
+          applyDecayToFile(path.join(wsDir, "memory", filename), referenced);
+        }
+
+        // Consolidation asynchrone — ne bloque pas la compaction
+        const filesToConsolidate = ["facts.md", "decisions.md", "user-prefs.md", "knowledge.md"];
+        void Promise.all(
+          filesToConsolidate.map((f) =>
+            consolidateMemoryFileIfNeeded(wsDir, f, resolvedModel).catch(() => false),
+          ),
+        ).then((results) => {
+          const consolidated = results.filter(Boolean).length;
+          if (consolidated > 0) {
+            // Re-indexer apres consolidation
+            const memoryDb = openMemoryIndex(workDir);
+            void rebuildMemoryIndex(memoryDb, workDir, agentConfig.id);
+          }
+        });
       }
     }
 
@@ -295,7 +332,7 @@ async function extractKnowledge(
 ): Promise<ExtractedKnowledge> {
   const messages = listMessages(db, sessionId);
   if (messages.length === 0) {
-    return { facts: [], decisions: [], preferences: [] };
+    return { facts: [], decisions: [], preferences: [], timeline: [], knowledge: [] };
   }
 
   const conversationText = buildConversationText(db, messages);
@@ -319,7 +356,7 @@ async function extractKnowledge(
     });
   } catch {
     // LLM failure — do not block compaction
-    return { facts: [], decisions: [], preferences: [] };
+    return { facts: [], decisions: [], preferences: [], timeline: [], knowledge: [] };
   }
 
   try {
@@ -328,10 +365,17 @@ async function extractKnowledge(
       .replace(/^```json\s*/i, "")
       .replace(/```\s*$/, "")
       .trim();
-    return JSON.parse(cleaned) as ExtractedKnowledge;
+    const parsed = JSON.parse(cleaned) as Partial<ExtractedKnowledge>;
+    return {
+      facts: parsed.facts ?? [],
+      decisions: parsed.decisions ?? [],
+      preferences: parsed.preferences ?? [],
+      timeline: parsed.timeline ?? [],
+      knowledge: parsed.knowledge ?? [],
+    };
   } catch {
     // Malformed JSON — ignore silently
-    return { facts: [], decisions: [], preferences: [] };
+    return { facts: [], decisions: [], preferences: [], timeline: [], knowledge: [] };
   }
 }
 
@@ -343,7 +387,7 @@ function readCurrentMemory(workspaceDir: string): string {
   const memoryDir = path.join(workspaceDir, "memory");
   const sections: string[] = [];
 
-  for (const file of ["facts.md", "decisions.md", "user-prefs.md"]) {
+  for (const file of ["facts.md", "decisions.md", "user-prefs.md", "timeline.md", "knowledge.md"]) {
     try {
       const content = fs.readFileSync(path.join(memoryDir, file), "utf-8").trim();
       if (content) sections.push(`### ${file}\n${content}`);

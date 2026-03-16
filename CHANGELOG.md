@@ -6,6 +6,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.33.0] — 2026-03-16
+
+### Added
+
+- **Mémoire structurée (Phase 4)** — système de mémoire long terme intelligent avec 5 catégories, déduplication, consolidation et decay :
+  - `templates/workspace/memory/` — 5 templates mémoire par défaut (`facts.md`, `decisions.md`, `user-prefs.md`, `timeline.md`, `knowledge.md`) créés lors du provisionnement d'un agent `primary`
+  - `memory/decay.ts` (nouveau module) — `parseMemoryEntry()`, `applyDecayToFile()`, `extractReferencedContents()` : score de confiance `[0.0-1.0]` décroissant à chaque compaction, suppression des entrées sous `0.3`
+  - `appendToMemoryFileDeduped()` dans `writer.ts` — déduplication sémantique via FTS5 avant ajout (fallback sur déduplication basique si index absent)
+  - `consolidateMemoryFileIfNeeded()` dans `writer.ts` — consolidation LLM asynchrone quand un fichier dépasse 150 lignes (backup avant écrasement, supprimé après succès)
+  - Score `[1.0]` préfixé sur toutes les nouvelles entrées mémoire
+
+### Changed
+
+- `ExtractedKnowledge` dans `compaction.ts` — étendu à 5 catégories : `facts`, `decisions`, `preferences`, `timeline`, `knowledge`
+- `EXTRACTION_PROMPT` dans `compaction.ts` — prompt V2 avec 5 catégories et exemples de format
+- `compact()` — intègre decay (sauf `timeline.md`) et consolidation asynchrone après extraction
+- `readCurrentMemory()` — lit les 5 fichiers mémoire pour la déduplication lors de l'extraction
+- `rebuildMemoryIndex()` dans `memory/index.ts` — nettoie les scores `[x.x]` avant indexation FTS5 pour ne pas polluer les recherches
+- `AgentProvisioner.createAgent()` — crée les 5 fichiers mémoire pour les agents `primary`
+- `templates/workspace/SOUL.md` — section "Memory and Continuity" ajoutée avec liste des fichiers mémoire et instruction `memory_search`
+
+---
+
 ## [0.32.0] — 2026-03-16
 
 ### Added

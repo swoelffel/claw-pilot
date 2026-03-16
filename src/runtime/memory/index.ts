@@ -155,7 +155,9 @@ export function rebuildMemoryIndex(
 
   for (const { source, filePath } of filesToIndex) {
     try {
-      const content = fs.readFileSync(filePath, "utf-8");
+      const rawContent = fs.readFileSync(filePath, "utf-8");
+      // Strip decay scores [x.x] before indexing to avoid polluting FTS5 searches
+      const content = rawContent.replace(/^- \[\d+\.\d+\]\s*/gm, "- ");
       const chunks = chunkText(content, CHUNK_SIZE, CHUNK_OVERLAP);
       if (chunks.length > 0) {
         entries.push({ source, chunks });
