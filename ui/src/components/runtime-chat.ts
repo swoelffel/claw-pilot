@@ -7,6 +7,7 @@ import type { RuntimeSession } from "../types.js";
 import { fetchRuntimeSessions, postRuntimeChat, getRuntimeChatStreamUrl } from "../api.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { buttonStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
+import { getToken } from "../services/auth-state.js";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -899,7 +900,7 @@ export class RuntimeChat extends LitElement {
  * Fonction locale — pas exportée dans api.ts pour éviter la duplication.
  */
 async function fetchRuntimeSessionsArchived(slug: string): Promise<RuntimeSession[]> {
-  const token = (window as { __CP_TOKEN__?: string }).__CP_TOKEN__ ?? "";
+  const token = getToken();
   const res = await fetch(`/api/instances/${slug}/runtime/sessions?state=archived&limit=20`, {
     headers: { Authorization: `Bearer ${token}` },
   });

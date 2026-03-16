@@ -8,7 +8,7 @@ import { logger } from "../../../lib/logger.js";
 import { AgentSync } from "../../../core/agent-sync.js";
 import { InstanceDiscovery } from "../../../core/discovery.js";
 import { getHomeDir } from "../../../lib/platform.js";
-import { z } from "zod/v4";
+import { z } from "zod";
 
 export function registerDiscoverRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, conn, lifecycle, xdgRuntimeDir } = deps;

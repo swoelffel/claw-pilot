@@ -9,15 +9,13 @@ import {
   type SupportedLocale,
 } from "./localization.js";
 import { createRef, ref, type Ref } from "lit/directives/ref.js";
-import type {
-  InstanceInfo,
-  WsMessage,
-  HealthUpdate,
-  SelfUpdateStatus,
-  SidebarSection,
-} from "./types.js";
+import type { InstanceInfo, WsMessage, HealthUpdate, SelfUpdateStatus } from "./types.js";
 import { fetchBlueprints } from "./api.js";
 import { tokenStyles } from "./styles/tokens.js";
+import { setToken, clearToken } from "./services/auth-state.js";
+import { WsMonitor } from "./services/ws-monitor.js";
+import { UpdatePoller } from "./services/update-poller.js";
+import { hashToRoute, routeToHash, type Route } from "./services/router.js";
 import "./components/cluster-view.js";
 import "./components/agents-builder.js";
 import "./components/blueprints-view.js";
@@ -32,18 +30,8 @@ import "./components/bus-alerts.js";
 export const localeReady = initLocale();
 
 declare global {
-  interface Window {
-    __CP_TOKEN__?: string;
-  }
   const __APP_VERSION__: string;
 }
-
-type Route =
-  | { view: "cluster" }
-  | { view: "agents-builder"; slug: string }
-  | { view: "blueprints" }
-  | { view: "blueprint-builder"; blueprintId: number }
-  | { view: "instance-settings"; slug: string; initialSection?: SidebarSection };
 
 @localized()
 @customElement("cp-app")
@@ -102,59 +90,47 @@ export class CpApp extends LitElement {
         align-items: center;
         gap: 6px;
         font-size: 12px;
-        color: var(--text-secondary);
+        color: var(--text-muted);
       }
 
       .ws-dot {
-        width: 8px;
-        height: 8px;
+        width: 7px;
+        height: 7px;
         border-radius: 50%;
-        transition: background 0.3s;
+        flex-shrink: 0;
       }
 
       .ws-dot.connected {
-        background: var(--state-running);
-        box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+        background: var(--state-success);
+        box-shadow: 0 0 6px var(--state-success);
       }
 
       .ws-dot.disconnected {
-        background: var(--state-error);
-      }
-
-      main {
-        min-height: calc(100vh - 56px - 48px);
+        background: var(--text-muted);
       }
 
       footer {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 8px;
-        padding: 0 24px;
-        height: 48px;
-        background: var(--bg-surface);
+        padding: 12px 24px;
         border-top: 1px solid var(--bg-border);
         font-size: 12px;
         color: var(--text-muted);
+        flex-wrap: wrap;
+        gap: 8px;
       }
 
-      .footer-left {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-      }
-
+      .footer-left,
       .footer-right {
         display: flex;
         align-items: center;
-        gap: 16px;
+        gap: 8px;
       }
 
       .footer-brand {
         font-weight: 600;
-        color: var(--state-stopped);
-        letter-spacing: -0.01em;
+        color: var(--text-secondary);
       }
 
       .footer-brand span {
@@ -162,14 +138,7 @@ export class CpApp extends LitElement {
       }
 
       .footer-version {
-        background: var(--accent-subtle);
-        color: var(--accent);
-        border: 1px solid var(--accent-border);
-        border-radius: var(--radius-sm);
-        padding: 1px 7px;
-        font-size: 11px;
-        font-weight: 600;
-        font-family: var(--font-mono);
+        color: var(--text-muted);
       }
 
       .footer-sep {
@@ -183,7 +152,11 @@ export class CpApp extends LitElement {
       }
 
       .footer-link:hover {
-        color: var(--text-secondary);
+        color: var(--accent);
+      }
+
+      .lang-wrapper {
+        position: relative;
       }
 
       .lang-trigger {
@@ -192,10 +165,9 @@ export class CpApp extends LitElement {
         gap: 5px;
         background: none;
         border: 1px solid var(--bg-border);
-        border-radius: 5px;
-        color: var(--state-stopped);
-        font-size: 11px;
-        font-weight: 600;
+        border-radius: 4px;
+        color: var(--text-muted);
+        font-size: 12px;
         cursor: pointer;
         padding: 3px 8px;
         letter-spacing: 0.04em;
@@ -275,10 +247,6 @@ export class CpApp extends LitElement {
       .lang-option .flag {
         font-size: 15px;
         line-height: 1;
-      }
-
-      .lang-wrapper {
-        position: relative;
       }
 
       .nav-tabs {
@@ -372,9 +340,6 @@ export class CpApp extends LitElement {
   @state() private _langOpen = false;
   @state() private _selfUpdateStatus: SelfUpdateStatus | null = null;
 
-  private _selfUpdatePollTimer: ReturnType<typeof setInterval> | null = null;
-  private static readonly SELF_UPDATE_POLL_MS = 60_000;
-
   private _langWrapperRef: Ref<HTMLElement> = createRef();
   private _onDocClick = (e: MouseEvent) => {
     const wrapper = this._langWrapperRef.value;
@@ -389,65 +354,23 @@ export class CpApp extends LitElement {
     }
   };
 
-  private _ws: WebSocket | null = null;
-  private _wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
-
   /** Guard to prevent hash→route→hash feedback loops. */
   private _updatingHash = false;
 
+  private _wsMonitor: WsMonitor | null = null;
+  private _updatePoller: UpdatePoller | null = null;
+
   // ---------------------------------------------------------------------------
-  // Hash-based routing — sync URL ↔ _route
+  // Hash-based routing
   // ---------------------------------------------------------------------------
-
-  /** Convert a Route to a hash string (without the leading #). */
-  private static _routeToHash(route: Route): string {
-    switch (route.view) {
-      case "cluster":
-        return "/";
-      case "agents-builder":
-        return `/instances/${route.slug}/builder`;
-      case "instance-settings":
-        return `/instances/${route.slug}/settings`;
-      case "blueprints":
-        return "/blueprints";
-      case "blueprint-builder":
-        return `/blueprints/${route.blueprintId}/builder`;
-    }
-  }
-
-  /** Parse a hash string into a Route (returns cluster view for unknown hashes). */
-  private static _hashToRoute(hash: string): Route {
-    // Strip leading # and /
-    const path = hash.replace(/^#?\/?/, "");
-    if (!path || path === "/") return { view: "cluster" };
-
-    // /instances/:slug/builder
-    const builderMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/builder$/);
-    if (builderMatch) return { view: "agents-builder", slug: builderMatch[1]! };
-
-    // /instances/:slug/settings
-    const settingsMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/settings$/);
-    if (settingsMatch) return { view: "instance-settings", slug: settingsMatch[1]! };
-
-    // /blueprints/:id/builder
-    const bpBuilderMatch = path.match(/^blueprints\/(\d+)\/builder$/);
-    if (bpBuilderMatch)
-      return { view: "blueprint-builder", blueprintId: Number(bpBuilderMatch[1]) };
-
-    // /blueprints
-    if (path === "blueprints") return { view: "blueprints" };
-
-    return { view: "cluster" };
-  }
 
   private _onHashChange = (): void => {
     if (this._updatingHash) return;
-    this._route = CpApp._hashToRoute(location.hash);
+    this._route = hashToRoute(location.hash);
   };
 
-  /** Push the current route into the URL hash (called from updated()). */
   private _syncHashFromRoute(): void {
-    const target = CpApp._routeToHash(this._route);
+    const target = routeToHash(this._route);
     const current = location.hash.replace(/^#?\/?/, "");
     const targetNorm = target.replace(/^\//, "");
     if (current === targetNorm) return;
@@ -455,6 +378,10 @@ export class CpApp extends LitElement {
     location.hash = `#${target}`;
     this._updatingHash = false;
   }
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -464,11 +391,32 @@ export class CpApp extends LitElement {
     void this._boot();
   }
 
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    window.removeEventListener("hashchange", this._onHashChange);
+    window.removeEventListener("cp:session-expired", this._onSessionExpired);
+    window.removeEventListener("lit-localize-status", this._onLocaleStatus);
+    document.removeEventListener("click", this._onDocClick);
+    this._wsMonitor?.disconnect();
+    this._updatePoller?.stop();
+  }
+
+  override updated(changed: Map<string, unknown>): void {
+    if (changed.has("_route")) {
+      this._syncHashFromRoute();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Auth
+  // ---------------------------------------------------------------------------
+
   private _onSessionExpired = (): void => {
     this._authenticated = false;
     this._sessionExpired = true;
-    delete window.__CP_TOKEN__;
-    this._closeWs();
+    clearToken();
+    this._wsMonitor?.disconnect();
+    this._wsMonitor = null;
   };
 
   private async _boot(): Promise<void> {
@@ -479,24 +427,6 @@ export class CpApp extends LitElement {
     }
   }
 
-  private _initApp(): void {
-    // Restore route from URL hash on first load
-    this._route = CpApp._hashToRoute(location.hash);
-    window.addEventListener("hashchange", this._onHashChange);
-    this._connectWs();
-    // Pre-fetch blueprint count so the badge is visible from the start
-    void fetchBlueprints()
-      .then((bps) => {
-        this._blueprintCount = bps.length;
-      })
-      .catch(() => {});
-    // Self-update polling — check immediately then every 60s
-    void this._pollSelfUpdate();
-    this._selfUpdatePollTimer = setInterval(() => {
-      void this._pollSelfUpdate();
-    }, CpApp.SELF_UPDATE_POLL_MS);
-  }
-
   private async _checkAuth(): Promise<void> {
     this._authChecking = true;
     try {
@@ -504,7 +434,7 @@ export class CpApp extends LitElement {
       if (res.ok) {
         const data = (await res.json()) as { authenticated: boolean; token: string };
         if (data.authenticated && data.token) {
-          window.__CP_TOKEN__ = data.token;
+          setToken(data.token);
           this._authenticated = true;
         }
       }
@@ -516,7 +446,7 @@ export class CpApp extends LitElement {
 
   private _onAuthenticated(e: Event): void {
     const { token } = (e as CustomEvent<{ token: string }>).detail;
-    window.__CP_TOKEN__ = token;
+    setToken(token);
     this._authenticated = true;
     this._sessionExpired = false;
     this._initApp();
@@ -530,94 +460,56 @@ export class CpApp extends LitElement {
     }
     this._authenticated = false;
     this._sessionExpired = false;
-    delete window.__CP_TOKEN__;
-    this._closeWs();
-    // Clean up app state
+    clearToken();
     window.removeEventListener("hashchange", this._onHashChange);
-    if (this._selfUpdatePollTimer) {
-      clearInterval(this._selfUpdatePollTimer);
-      this._selfUpdatePollTimer = null;
-    }
+    this._wsMonitor?.disconnect();
+    this._wsMonitor = null;
+    this._updatePoller?.stop();
+    this._updatePoller = null;
   }
 
-  private _closeWs(): void {
-    this._ws?.close();
-    this._ws = null;
-    if (this._wsReconnectTimer) {
-      clearTimeout(this._wsReconnectTimer);
-      this._wsReconnectTimer = null;
-    }
-    this._wsConnected = false;
-  }
+  // ---------------------------------------------------------------------------
+  // App initialization (post-auth)
+  // ---------------------------------------------------------------------------
 
-  override disconnectedCallback(): void {
-    super.disconnectedCallback();
-    window.removeEventListener("hashchange", this._onHashChange);
-    window.removeEventListener("cp:session-expired", this._onSessionExpired);
-    this._closeWs();
-    if (this._selfUpdatePollTimer) clearInterval(this._selfUpdatePollTimer);
-    document.removeEventListener("click", this._onDocClick);
-    window.removeEventListener("lit-localize-status", this._onLocaleStatus);
-  }
+  private _initApp(): void {
+    // Restore route from URL hash on first load
+    this._route = hashToRoute(location.hash);
+    window.addEventListener("hashchange", this._onHashChange);
 
-  override updated(changed: Map<string, unknown>): void {
-    if (changed.has("_route")) {
-      this._syncHashFromRoute();
-    }
-  }
+    // Start WebSocket monitor
+    this._wsMonitor = new WsMonitor(
+      (msg) => this._handleWsMessage(msg),
+      () => {
+        this._wsConnected = true;
+        // If a self-update was running and WS just reconnected, server restarted → reload
+        if (this._selfUpdateStatus?.status === "running") {
+          location.reload();
+        }
+      },
+      () => {
+        this._wsConnected = false;
+      },
+    );
+    this._wsMonitor.connect();
 
-  private _connectWs(): void {
-    const token = window.__CP_TOKEN__ ?? "";
-    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    // Pass token as query param for WS auth (cookie not sent on WS upgrade in all browsers)
-    const url = token
-      ? `${protocol}//${location.host}/ws?token=${encodeURIComponent(token)}`
-      : `${protocol}//${location.host}/ws`;
+    // Pre-fetch blueprint count so the badge is visible from the start
+    void fetchBlueprints()
+      .then((bps) => {
+        this._blueprintCount = bps.length;
+      })
+      .catch(() => {});
 
-    try {
-      this._ws = new WebSocket(url);
-    } catch {
-      this._scheduleReconnect();
-      return;
-    }
-
-    this._ws.addEventListener("open", () => {
-      this._wsConnected = true;
-      // Si un self-update était en cours et que le WS vient de se reconnecter,
-      // c'est que le serveur a redémarré après le build → recharger le bundle.
-      if (this._selfUpdateStatus?.status === "running") {
-        location.reload();
-      }
+    // Start self-update poller
+    this._updatePoller = new UpdatePoller((status) => {
+      this._selfUpdateStatus = status;
     });
-
-    this._ws.addEventListener("close", () => {
-      this._wsConnected = false;
-      this._scheduleReconnect();
-    });
-
-    this._ws.addEventListener("error", () => {
-      this._wsConnected = false;
-    });
-
-    this._ws.addEventListener("message", (ev: MessageEvent) => {
-      try {
-        const msg = JSON.parse(ev.data as string) as WsMessage;
-        this._handleWsMessage(msg);
-        // Broadcast to child components via window event
-        window.dispatchEvent(new CustomEvent("cp-ws-message", { detail: msg }));
-      } catch {
-        // Ignore malformed messages
-      }
-    });
+    this._updatePoller.start();
   }
 
-  private _scheduleReconnect(): void {
-    if (this._wsReconnectTimer) return;
-    this._wsReconnectTimer = setTimeout(() => {
-      this._wsReconnectTimer = null;
-      this._connectWs();
-    }, 5000);
-  }
+  // ---------------------------------------------------------------------------
+  // WS message handler
+  // ---------------------------------------------------------------------------
 
   private _handleWsMessage(msg: WsMessage): void {
     if (msg.type === "health_update") {
@@ -630,15 +522,12 @@ export class CpApp extends LitElement {
           if (!update) return inst;
           const newState = update.state;
           const newAgentCount = update.agentCount ?? inst.agentCount;
-          const newPendingDevices = update.pendingDevices ?? inst.pendingDevices;
           const newPendingPermissions = update.pendingPermissions ?? inst.pendingPermissions;
           const newTelegram = update.telegram ?? inst.telegram;
-          // Only create a new object if something actually changed
           if (
             inst.gateway === update.gateway &&
             inst.state === newState &&
             inst.agentCount === newAgentCount &&
-            inst.pendingDevices === newPendingDevices &&
             inst.pendingPermissions === newPendingPermissions &&
             inst.telegram === newTelegram
           ) {
@@ -650,14 +539,12 @@ export class CpApp extends LitElement {
             gateway: update.gateway,
             state: newState,
             ...(newAgentCount !== undefined && { agentCount: newAgentCount }),
-            ...(newPendingDevices !== undefined && { pendingDevices: newPendingDevices }),
             ...(newPendingPermissions !== undefined && {
               pendingPermissions: newPendingPermissions,
             }),
             ...(newTelegram !== undefined && { telegram: newTelegram }),
           };
         });
-        // Only reassign (triggering Lit re-render) when at least one instance changed
         if (changed) {
           this._instances = next;
         }
@@ -665,13 +552,17 @@ export class CpApp extends LitElement {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Navigation & locale
+  // ---------------------------------------------------------------------------
+
   private _navigate(e: Event): void {
     const detail = (
       e as CustomEvent<{
         slug?: string | null;
         view?: string;
         blueprintId?: number;
-        section?: SidebarSection;
+        section?: import("./types.js").SidebarSection;
       }>
     ).detail;
     if (detail.view === "instance-settings" && detail.slug) {
@@ -703,53 +594,17 @@ export class CpApp extends LitElement {
 
   private _onInstanceDeleted(e: Event): void {
     const { slug } = (e as CustomEvent<{ slug: string }>).detail;
-    // Remove from local instances list immediately (optimistic update)
     this._instances = this._instances.filter((i) => i.slug !== slug);
-    // Navigate back to cluster view
     this._route = { view: "cluster" };
   }
 
-  private async _pollSelfUpdate(): Promise<void> {
-    const token = window.__CP_TOKEN__ ?? "";
-    try {
-      const res = await fetch("/api/self/update-status", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return;
-      const data = (await res.json()) as SelfUpdateStatus;
-      const wasRunning = this._selfUpdateStatus?.status === "running";
-      this._selfUpdateStatus = data;
-      // Si un job est en cours, accelerer le polling pour rafraichir l'etat
-      if (data.status === "running") {
-        setTimeout(() => {
-          void this._pollSelfUpdate();
-        }, 3_000);
-      }
-      // Si le job vient de passer a "done", recharger la page pour charger le nouveau bundle
-      if (wasRunning && data.status === "done") {
-        setTimeout(() => {
-          location.reload();
-        }, 2_000);
-      }
-    } catch {
-      // Silencieux — le serveur peut etre en cours de restart
-    }
+  private _onSelfUpdateStart(): void {
+    void this._updatePoller?.triggerUpdate();
   }
 
-  private async _onSelfUpdateStart(): Promise<void> {
-    const token = window.__CP_TOKEN__ ?? "";
-    try {
-      const res = await fetch("/api/self/update", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return;
-      // Rafraichir immediatement pour afficher l'etat "running"
-      void this._pollSelfUpdate();
-    } catch {
-      // Silencieux
-    }
-  }
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   private _renderMain() {
     if (this._route.view === "cluster") {
@@ -802,12 +657,10 @@ export class CpApp extends LitElement {
   }
 
   override render() {
-    // Auth checking — brief blank screen while verifying session
     if (this._authChecking) {
       return html`<div class="auth-checking"></div>`;
     }
 
-    // Not authenticated — show login view
     if (!this._authenticated) {
       return html`
         <cp-login-view
@@ -872,7 +725,6 @@ export class CpApp extends LitElement {
         ${this._renderMain()}
       </main>
 
-      <!-- Overlay permission requests — monté si une instance est active -->
       ${"slug" in this._route && this._route.slug
         ? html`
             <cp-permission-request-overlay
@@ -881,7 +733,6 @@ export class CpApp extends LitElement {
           `
         : nothing}
 
-      <!-- Bus alerts toasts — toujours monté, reçoit les événements WS -->
       <cp-bus-alerts></cp-bus-alerts>
 
       <footer>

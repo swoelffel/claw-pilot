@@ -122,24 +122,6 @@ export class InstanceCard extends LitElement {
         color: var(--text-muted);
       }
 
-      .pairing-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        background: rgba(245, 158, 11, 0.1);
-        color: var(--state-warning);
-        border: 1px solid rgba(245, 158, 11, 0.3);
-        border-radius: var(--radius-sm);
-        padding: 2px 7px;
-        font-size: 11px;
-        cursor: pointer;
-        transition: background 0.15s;
-      }
-
-      .pairing-pill:hover {
-        background: rgba(245, 158, 11, 0.18);
-      }
-
       .perm-pill {
         display: inline-flex;
         align-items: center;
@@ -422,21 +404,6 @@ export class InstanceCard extends LitElement {
             ? msg("agent", { id: "meta-agent" })
             : msg("agents", { id: "meta-agents" })}
         </span>
-      `);
-    }
-
-    // Pending devices — cliquable
-    if (inst.pendingDevices && inst.pendingDevices > 0) {
-      items.push(html`
-        <button
-          class="pairing-pill"
-          @click=${(e: Event) => {
-            e.stopPropagation();
-            this._navigate("instance-settings", { section: "devices" });
-          }}
-        >
-          ⚠ ${inst.pendingDevices} device${inst.pendingDevices > 1 ? "s" : ""}
-        </button>
       `);
     }
 

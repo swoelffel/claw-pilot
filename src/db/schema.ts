@@ -559,6 +559,28 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // v14: composite index on rt_messages(session_id, role) for heartbeat alert queries.
+    //
+    // countHeartbeatAlerts() in monitor.ts JOINs rt_messages with a role='assistant' filter.
+    // The existing idx_rt_messages_session covers session_id only, forcing a full scan of
+    // all messages per session to apply the role filter.
+    // This composite index lets SQLite satisfy both predicates in one index scan.
+    //
+    // Defensive: check table existence first (for partial-schema test environments).
+    version: 14,
+    up(db) {
+      const hasTable = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='rt_messages'")
+        .get();
+      if (hasTable) {
+        db.exec(`
+          CREATE INDEX IF NOT EXISTS idx_rt_messages_session_role
+            ON rt_messages(session_id, role);
+        `);
+      }
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

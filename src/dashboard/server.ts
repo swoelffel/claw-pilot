@@ -144,7 +144,10 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
     c.header("Referrer-Policy", "no-referrer");
     c.header(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'",
+      // 'unsafe-inline' removed from script-src — Vite bundles all scripts as external files.
+      // 'unsafe-inline' kept for style-src — Lit uses inline styles in shadow DOM.
+      // font-src allows Google Fonts CDN for the UI font (Geist).
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://fonts.googleapis.com",
     );
   });
 
@@ -289,17 +292,36 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
 
   monitor.start();
 
-  // WebSocket server
+  // WebSocket server — auth via first applicative message { type: "auth", token: "..." }
+  // This avoids exposing the token in the URL (query params appear in server logs,
+  // browser history, and proxy logs).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const wss = new WebSocketServer({ server: server as any });
-  wss.on("connection", (ws, req) => {
-    const url = new URL(req.url ?? "/", `http://localhost`);
-    const wsToken = url.searchParams.get("token") ?? "";
-    if (!safeTokenCompare(wsToken, token)) {
-      ws.close(1008, "Unauthorized");
-      return;
-    }
-    monitor.addClient(ws);
+  wss.on("connection", (ws) => {
+    // Give the client 5 seconds to send the auth message
+    const authTimeout = setTimeout(() => {
+      ws.close(4001, "Auth timeout");
+    }, 5_000);
+
+    const onFirstMessage = (data: import("ws").RawData) => {
+      clearTimeout(authTimeout);
+      ws.off("message", onFirstMessage);
+      try {
+        const msg = JSON.parse(String(data)) as { type?: string; token?: string };
+        if (
+          msg.type === "auth" &&
+          typeof msg.token === "string" &&
+          safeTokenCompare(msg.token, token)
+        ) {
+          monitor.addClient(ws);
+        } else {
+          ws.close(4001, "Unauthorized");
+        }
+      } catch {
+        ws.close(4001, "Invalid auth message");
+      }
+    };
+    ws.on("message", onFirstMessage);
   });
 
   // Graceful shutdown — clean up resources on SIGTERM (systemd stop)

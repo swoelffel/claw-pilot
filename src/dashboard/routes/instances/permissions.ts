@@ -7,7 +7,7 @@
 // de répondre aux demandes de permission en attente via le bus.
 
 import type { Hono } from "hono";
-import { z } from "zod/v4";
+import { z } from "zod";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
 import { instanceGuard } from "../../../lib/guards.js";

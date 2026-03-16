@@ -5,6 +5,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
 import { buttonStyles, spinnerStyles } from "../styles/shared.js";
+import { getToken } from "../services/auth-state.js";
 
 interface PermissionRule {
   id: string;
@@ -285,7 +286,7 @@ export class InstancePermissions extends LitElement {
     this._loading = true;
     this._error = "";
     try {
-      const token = (window as { __CP_TOKEN__?: string }).__CP_TOKEN__ ?? "";
+      const token = getToken();
       const res = await fetch(`/api/instances/${this.slug}/runtime/permissions`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -304,7 +305,7 @@ export class InstancePermissions extends LitElement {
     next.add(id);
     this._revoking = next;
     try {
-      const token = (window as { __CP_TOKEN__?: string }).__CP_TOKEN__ ?? "";
+      const token = getToken();
       await fetch(`/api/instances/${this.slug}/runtime/permissions/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },

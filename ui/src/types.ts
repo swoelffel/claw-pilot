@@ -3,7 +3,6 @@ export type SidebarSection =
   | "agents"
   | "runtime"
   | "channels"
-  | "devices"
   | "mcp"
   | "permissions"
   | "config";
@@ -26,7 +25,6 @@ export interface InstanceInfo {
   // health (from WS updates or /api/instances)
   gateway?: "healthy" | "unhealthy" | "unknown";
   agentCount?: number;
-  pendingDevices?: number;
   pendingPermissions?: number;
   telegram?: "connected" | "disconnected" | "not_configured";
   // gateway token for zero-friction Control UI login
@@ -55,7 +53,6 @@ export interface HealthUpdate {
       pid?: number;
       uptime?: string;
       agentCount?: number;
-      pendingDevices?: number;
       telegram?: "connected" | "disconnected" | "not_configured";
       /** Number of persisted permission rules awaiting a decision */
       pendingPermissions?: number;
@@ -322,38 +319,6 @@ export interface ConfigPatchResult {
   hotReloaded: boolean;
   warnings: string[];
   restartReason?: string;
-  pairingWarning?: boolean;
-}
-
-// Device pairing types
-
-export interface PendingDevice {
-  requestId: string;
-  deviceId: string;
-  publicKey: string;
-  platform: string;
-  clientId: string;
-  clientMode: string;
-  role: string;
-  ts: number;
-}
-
-export interface PairedDevice {
-  deviceId: string;
-  publicKey: string;
-  platform: string;
-  clientId: string;
-  clientMode: string;
-  role: string;
-  scopes: string[];
-  tokens: Record<string, { token: string; createdAtMs: number; lastUsedAtMs?: number }>;
-  createdAtMs: number;
-  approvedAtMs: number;
-}
-
-export interface DeviceList {
-  pending: PendingDevice[];
-  paired: PairedDevice[];
 }
 
 // Telegram DM pairing types

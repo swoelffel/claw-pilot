@@ -23,7 +23,6 @@ import { badgeStyles, buttonStyles, spinnerStyles, errorBannerStyles } from "../
 import { instanceSettingsStyles } from "../styles/instance-settings.styles.js";
 import "./agent-detail-panel.js";
 import "./runtime-chat.js";
-import "./instance-devices.js";
 import "./instance-mcp.js";
 import "./instance-permissions.js";
 import "./instance-config.js";
@@ -259,11 +258,6 @@ export class InstanceSettings extends LitElement {
             "success",
           );
         }
-        // Show pairing warning if port changed
-        if (result.pairingWarning) {
-          this._saveWarning =
-            "Port changed — browser pairing will be lost after restart. Go to the Devices tab to approve the new request.";
-        }
         // Reload config to get fresh state
         await this._loadConfig();
       }
@@ -390,7 +384,6 @@ export class InstanceSettings extends LitElement {
       { id: "agents", label: msg("Agents", { id: "settings-agents" }) },
       { id: "runtime", label: "Runtime" },
       { id: "channels" as const, label: msg("Channels", { id: "settings-channels" }) },
-      { id: "devices", label: msg("Devices", { id: "settings-devices" }) },
       {
         id: "mcp" as const,
         label: "MCP",
@@ -1115,13 +1108,6 @@ export class InstanceSettings extends LitElement {
                     .instanceSlug=${this.slug}
                     .config=${this._config}
                   ></cp-instance-channels>
-                </div>
-              `
-            : nothing}
-          ${this._activeSection === "devices"
-            ? html`
-                <div class="section">
-                  <cp-instance-devices .slug=${this.slug} .active=${true}></cp-instance-devices>
                 </div>
               `
             : nothing}

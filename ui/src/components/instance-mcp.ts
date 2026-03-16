@@ -5,6 +5,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
 import { buttonStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
+import { getToken } from "../services/auth-state.js";
 
 interface McpServerStatus {
   id: string;
@@ -290,7 +291,7 @@ export class InstanceMcp extends LitElement {
     this._loading = true;
     this._error = "";
     try {
-      const token = (window as { __CP_TOKEN__?: string }).__CP_TOKEN__ ?? "";
+      const token = getToken();
       const headers = { Authorization: `Bearer ${token}` };
 
       // Charge status et tools en parallèle

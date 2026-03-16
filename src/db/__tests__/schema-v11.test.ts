@@ -212,8 +212,8 @@ describe("migration v11 — rt_sessions new columns", () => {
     // Arrange + Act
     const db = initDatabase(dbPath);
 
-    // Assert
-    expect(schemaVersion(db)).toBe(13);
+    // Assert: v14 is the latest migration (composite index on rt_messages)
+    expect(schemaVersion(db)).toBe(14);
     db.close();
   });
 });

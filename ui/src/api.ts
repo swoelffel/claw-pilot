@@ -14,7 +14,6 @@ import type {
   CreateBlueprintRequest,
   InstanceConfig,
   ConfigPatchResult,
-  DeviceList,
   TelegramPairingList,
   AgentMetaPatch,
   DiscoverResult,
@@ -24,16 +23,7 @@ import type {
   RuntimeChatResponse,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
-
-declare global {
-  interface Window {
-    __CP_TOKEN__?: string;
-  }
-}
-
-function getToken(): string {
-  return window.__CP_TOKEN__ ?? "";
-}
+import { getToken } from "./services/auth-state.js";
 
 /**
  * Returns a stable device ID for this browser, stored in localStorage.
@@ -442,25 +432,6 @@ export async function updateBlueprintSpawnLinks(
     `/blueprints/${blueprintId}/agents/${agentId}/spawn-links`,
     { method: "PATCH", body: JSON.stringify({ targets }) },
   );
-}
-
-// --- Devices API ---
-
-export async function fetchInstanceDevices(slug: string): Promise<DeviceList> {
-  return apiFetch<DeviceList>(`/instances/${slug}/devices`);
-}
-
-export async function approveDevice(slug: string, requestId: string): Promise<{ ok: boolean }> {
-  return apiFetch<{ ok: boolean }>(`/instances/${slug}/devices/approve`, {
-    method: "POST",
-    body: JSON.stringify({ requestId }),
-  });
-}
-
-export async function revokeDevice(slug: string, deviceId: string): Promise<{ ok: boolean }> {
-  return apiFetch<{ ok: boolean }>(`/instances/${slug}/devices/${deviceId}`, {
-    method: "DELETE",
-  });
 }
 
 // --- Telegram DM pairing API ---

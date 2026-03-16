@@ -38,6 +38,7 @@ vi.mock("node:fs", () => ({
 import { buildSystemPrompt } from "../system-prompt.js";
 import type { SystemPromptContext } from "../system-prompt.js";
 import { resetAgentRegistry, initAgentRegistry } from "../../agent/index.js";
+import { clearWorkspaceCache } from "../workspace-cache.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -90,6 +91,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
   resetAgentRegistry();
+  // Clear workspace cache between tests — prevents stale entries from affecting
+  // subsequent tests that mock different file contents
+  clearWorkspaceCache();
 });
 
 // ---------------------------------------------------------------------------

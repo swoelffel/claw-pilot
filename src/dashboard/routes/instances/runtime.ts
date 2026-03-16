@@ -10,7 +10,6 @@ import { readEnvFileSync } from "../../../lib/env-reader.js";
 import {
   runtimeConfigExists,
   loadRuntimeConfig,
-  listSessions,
   listMessages,
   listParts,
   resolveModel,
@@ -25,6 +24,7 @@ import {
   hasBus,
   type RuntimeAgentConfig,
 } from "../../../runtime/index.js";
+import { listEnrichedSessions } from "../../../core/repositories/runtime-session-repository.js";
 
 export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, db } = deps;
@@ -76,86 +76,12 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     const limit = limitParam ? parseInt(limitParam, 10) : 50;
     const includeInternal = c.req.query("includeInternal") === "true";
 
-    // Requête enrichie avec agrégats depuis rt_messages
-    interface EnrichedSessionRow {
-      id: string;
-      instance_slug: string;
-      parent_id: string | null;
-      agent_id: string;
-      channel: string;
-      peer_id: string | null;
-      title: string | null;
-      state: string;
-      permissions: string | null;
-      created_at: string;
-      updated_at: string;
-      session_key: string | null;
-      spawn_depth: number;
-      label: string | null;
-      metadata: string | null;
-      total_cost_usd: number;
-      message_count: number;
-      total_tokens: number;
-    }
-
-    let sql = `
-      SELECT s.*,
-        COALESCE(SUM(m.cost_usd), 0) as total_cost_usd,
-        COUNT(m.id) as message_count,
-        COALESCE(SUM(COALESCE(m.tokens_in, 0) + COALESCE(m.tokens_out, 0)), 0) as total_tokens
-      FROM rt_sessions s
-      LEFT JOIN rt_messages m ON m.session_id = s.id
-      WHERE s.instance_slug = ?
-    `;
-    const params: (string | number)[] = [slug];
-
-    const resolvedState = stateParam ?? "active";
-    sql += " AND s.state = ?";
-    params.push(resolvedState);
-
-    // Filter out internal sessions (subagent sessions) unless explicitly requested
-    if (!includeInternal) {
-      sql += " AND s.channel != 'internal'";
-    }
-
-    sql += " GROUP BY s.id ORDER BY s.created_at DESC LIMIT ?";
-    params.push(isNaN(limit) ? 50 : limit);
-
-    let rows: EnrichedSessionRow[] = [];
-    try {
-      rows = db.prepare(sql).all(...params) as EnrichedSessionRow[];
-    } catch {
-      // Fallback vers listSessions si la requête enrichie échoue (ex: colonnes manquantes)
-      const fallback = listSessions(db, slug, {
-        state: resolvedState,
-        limit: isNaN(limit) ? 50 : limit,
-        ...(includeInternal ? {} : { excludeChannels: ["internal"] }),
-      });
-      return c.json({ sessions: fallback });
-    }
-
-    // Mapper vers le format SessionInfo + champs agrégés
-    const sessions = rows.map((row) => ({
-      id: row.id,
-      instanceSlug: row.instance_slug,
-      parentId: row.parent_id ?? undefined,
-      agentId: row.agent_id,
-      channel: row.channel,
-      peerId: row.peer_id ?? undefined,
-      title: row.title ?? undefined,
-      state: row.state as "active" | "archived",
-      permissions: row.permissions ?? undefined,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      sessionKey: row.session_key ?? undefined,
-      spawnDepth: row.spawn_depth ?? 0,
-      label: row.label ?? undefined,
-      metadata: row.metadata ?? undefined,
-      // Champs agrégés
-      totalCostUsd: row.total_cost_usd ?? 0,
-      messageCount: row.message_count ?? 0,
-      totalTokens: row.total_tokens ?? 0,
-    }));
+    // Delegate to repository (handles fallback on older DB schemas)
+    const sessions = listEnrichedSessions(db, slug, {
+      ...(stateParam !== undefined ? { state: stateParam } : {}),
+      limit,
+      includeInternal,
+    });
 
     return c.json({ sessions });
   });

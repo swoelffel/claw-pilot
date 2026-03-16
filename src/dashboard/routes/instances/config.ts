@@ -15,7 +15,7 @@ import {
   createDefaultRuntimeConfig,
   type RuntimeConfig,
 } from "../../../runtime/index.js";
-import { z } from "zod/v4";
+import { z } from "zod";
 import * as fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
 

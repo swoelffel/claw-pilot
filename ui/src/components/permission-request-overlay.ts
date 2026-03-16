@@ -5,6 +5,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
 import { buttonStyles } from "../styles/shared.js";
+import { getToken } from "../services/auth-state.js";
 
 interface PermissionRequest {
   id: string;
@@ -487,7 +488,7 @@ export class PermissionRequestOverlay extends LitElement {
 
     this._submitting = true;
     try {
-      const token = (window as { __CP_TOKEN__?: string }).__CP_TOKEN__ ?? "";
+      const token = getToken();
       const body: Record<string, unknown> = {
         permissionId: current.id,
         decision,

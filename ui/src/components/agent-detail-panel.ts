@@ -31,6 +31,7 @@ import { sectionLabelStyles } from "../styles/shared.js";
 import { agentDetailPanelStyles } from "../styles/agent-detail-panel.styles.js";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { getToken } from "../services/auth-state.js";
 
 const EDITABLE_FILES = new Set([
   "AGENTS.md",
@@ -209,7 +210,7 @@ export class AgentDetailPanel extends LitElement {
     if (this.context.kind !== "instance") return;
     this._cfgSaving = true;
     try {
-      const token = (window as { __CP_TOKEN__?: string }).__CP_TOKEN__ ?? "";
+      const token = getToken();
       const config: Record<string, unknown> = {
         toolProfile: this._cfgToolProfile,
         maxSteps: this._cfgMaxSteps,
@@ -537,7 +538,7 @@ export class AgentDetailPanel extends LitElement {
     if (this.context.kind !== "instance") return;
     this._hbLoadingHistory = true;
     try {
-      const token = (window as { __CP_TOKEN__?: string }).__CP_TOKEN__ ?? "";
+      const token = getToken();
       const res = await fetch(
         `/api/instances/${this.context.slug}/runtime/heartbeat/history?agentId=${this.agent.agent_id}&limit=20`,
         { headers: { Authorization: `Bearer ${token}` } },
@@ -563,7 +564,7 @@ export class AgentDetailPanel extends LitElement {
     if (this.context.kind !== "instance") return;
     this._hbSaving = true;
     try {
-      const token = (window as { __CP_TOKEN__?: string }).__CP_TOKEN__ ?? "";
+      const token = getToken();
       const heartbeat = this._hbEnabled
         ? {
             every: this._hbInterval,

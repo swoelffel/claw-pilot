@@ -14,6 +14,7 @@ import {
 } from "../api.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { buttonStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
+import { getToken } from "../services/auth-state.js";
 
 // ---------------------------------------------------------------------------
 // Panel states
@@ -623,7 +624,7 @@ export class InstanceChannels extends LitElement {
       await fetch(`/api/instances/${this.instanceSlug}/restart`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${(window as unknown as { __CP_TOKEN__?: string }).__CP_TOKEN__ ?? ""}`,
+          Authorization: `Bearer ${getToken()}`,
           "Content-Type": "application/json",
         },
       });

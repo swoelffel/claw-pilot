@@ -5,7 +5,7 @@ import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { apiError } from "../../../route-deps.js";
 import { instanceGuard } from "../../../../lib/guards.js";
-import { z } from "zod/v4";
+import { z } from "zod";
 
 const AgentMetaPatchSchema = z
   .object({

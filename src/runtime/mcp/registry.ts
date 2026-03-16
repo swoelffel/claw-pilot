@@ -117,6 +117,22 @@ export class McpRegistry {
   }
 
   // -------------------------------------------------------------------------
+  // getConnectedCount — count of currently connected MCP clients
+  // -------------------------------------------------------------------------
+
+  /**
+   * Returns the number of MCP clients that are currently connected.
+   * Synchronous — reads the in-memory client state without I/O.
+   */
+  getConnectedCount(): number {
+    let count = 0;
+    for (const client of this._clients.values()) {
+      if (client.connected) count++;
+    }
+    return count;
+  }
+
+  // -------------------------------------------------------------------------
   // getClient — access a specific client by server ID
   // -------------------------------------------------------------------------
 

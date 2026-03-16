@@ -10,3 +10,6 @@ export * from "./part.js";
 export * from "./system-prompt.js";
 export * from "./prompt-loop.js";
 export * from "./compaction.js";
+export * from "./message-builder.js";
+export * from "./usage-tracker.js";
+export * from "./workspace-cache.js";

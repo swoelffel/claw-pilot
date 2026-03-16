@@ -331,13 +331,13 @@ describe("migration v13 — idempotency", () => {
     }).not.toThrow();
   });
 
-  it(// Positive: schema version must be 13 after initDatabase() (latest migration).
+  it(// Positive: schema version must be 14 after initDatabase() (latest migration).
   "schema version is 13 after initDatabase()", () => {
     // Arrange + Act
     const db = initDatabase(dbPath);
 
-    // Assert
-    expect(schemaVersion(db)).toBe(13);
+    // Assert: v14 is the latest migration (composite index on rt_messages)
+    expect(schemaVersion(db)).toBe(14);
     db.close();
   });
 });

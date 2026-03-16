@@ -730,54 +730,6 @@ describe("PATCH /api/blueprints/:id/agents/:agentId/spawn-links", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Device routes
-// ---------------------------------------------------------------------------
-
-describe("Device routes", () => {
-  it("GET /api/instances/:slug/devices — returns empty codes list when no codes exist", async () => {
-    seedInstance(ctx, "demo1", 18789);
-    const res = await ctx.app.request("/api/instances/demo1/devices", {
-      headers: authHeaders(),
-    });
-    expect(res.status).toBe(200);
-    const body = await json(res);
-    expect(body.codes).toEqual([]);
-  });
-
-  it("GET /api/instances/:slug/devices — returns 404 for unknown slug", async () => {
-    const res = await ctx.app.request("/api/instances/nonexistent/devices", {
-      headers: authHeaders(),
-    });
-    expect(res.status).toBe(404);
-    const body = await json(res);
-    expect(body.code).toBe("NOT_FOUND");
-  });
-
-  it("DELETE /api/instances/:slug/devices/:code — returns 404 for unknown slug", async () => {
-    const res = await ctx.app.request("/api/instances/nonexistent/devices/ABCD1234", {
-      method: "DELETE",
-      headers: authHeaders(),
-    });
-    expect(res.status).toBe(404);
-    const body = await json(res);
-    expect(body.code).toBe("NOT_FOUND");
-  });
-
-  it("DELETE /api/instances/:slug/devices/:code — returns 404 for non-existent code", async () => {
-    seedInstance(ctx, "demo1", 18789);
-    const res = await ctx.app.request("/api/instances/demo1/devices/NONEXIST", {
-      method: "DELETE",
-      headers: authHeaders(),
-    });
-    expect(res.status).toBe(404);
-    const body = await json(res);
-    expect(body.code).toBe("CODE_NOT_FOUND");
-  });
-});
-
-// Telegram pairing routes — removed (routes no longer exist)
-
 // ===========================================================================
 // A1.1 — Instance agent routes
 // ===========================================================================

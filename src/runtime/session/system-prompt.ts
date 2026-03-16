@@ -6,6 +6,7 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from "node:fs";
+import { readWorkspaceFileCached } from "./workspace-cache.js";
 import { fileURLToPath } from "node:url";
 import { resolve, join, dirname } from "node:path";
 import type Database from "better-sqlite3";
@@ -456,8 +457,10 @@ function discoverWorkspaceInstructions(
       }
 
       const filePath = join(wsDir, filename);
-      try {
-        const raw = readFileSync(filePath, "utf-8").trim();
+      // Use cached read — workspace files rarely change between LLM calls
+      const rawContent = readWorkspaceFileCached(filePath);
+      if (rawContent !== undefined) {
+        const raw = rawContent.trim();
         // Skip stub-only content (e.g. "# AgentName" with nothing else)
         if (raw && raw !== `# ${agentId}` && raw.split("\n").length > 1) {
           parts.push(raw);
@@ -472,8 +475,6 @@ function discoverWorkspaceInstructions(
             archiveBootstrapContent(wsDir, raw);
           }
         }
-      } catch {
-        // File absent — skip silently
       }
     }
 
@@ -488,14 +489,14 @@ function discoverWorkspaceInstructions(
 
           for (const filename of memoryFiles) {
             const filePath = join(memoryDir, filename);
-            try {
-              const raw = readFileSync(filePath, "utf-8").trim();
+            // Use cached read — memory files rarely change mid-session
+            const rawContent = readWorkspaceFileCached(filePath);
+            if (rawContent !== undefined) {
+              const raw = rawContent.trim();
               // Skip stub-only content (same rule as DISCOVERY_FILES)
               if (raw && raw !== `# ${filename.replace(".md", "")}` && raw.split("\n").length > 1) {
                 parts.push(raw);
               }
-            } catch {
-              // File inaccessible — skip silently
             }
           }
         }
@@ -516,13 +517,13 @@ function discoverWorkspaceInstructions(
           // Path traversal guard: resolved path must stay within wsDir
           const absPath = join(wsDir, relPath);
           if (!absPath.startsWith(wsDir + "/") && absPath !== wsDir) continue;
-          try {
-            const raw = readFileSync(absPath, "utf-8").trim();
+          // Use cached read for bootstrapFiles too
+          const rawContent = readWorkspaceFileCached(absPath);
+          if (rawContent !== undefined) {
+            const raw = rawContent.trim();
             if (raw && raw.split("\n").length > 1) {
               parts.push(raw);
             }
-          } catch {
-            // File absent or inaccessible — skip silently
           }
         }
       }
@@ -575,7 +576,8 @@ function expandSimpleGlob(baseDir: string, pattern: string): string[] {
 function readSystemPromptFile(filePath: string, workDir: string): string | undefined {
   try {
     const absPath = resolve(workDir, filePath);
-    return readFileSync(absPath, "utf-8");
+    // Use cached read — systemPromptFile rarely changes during runtime
+    return readWorkspaceFileCached(absPath);
   } catch {
     console.warn(`[claw-runtime] Could not read systemPromptFile: ${filePath}`);
     return undefined;

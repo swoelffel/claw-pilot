@@ -5,6 +5,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
 import { buttonStyles, spinnerStyles } from "../styles/shared.js";
+import { getToken } from "../services/auth-state.js";
 
 type ConfigTab = "models" | "compaction" | "subagents";
 
@@ -253,7 +254,7 @@ export class InstanceConfig extends LitElement {
     if (!this.slug) return;
     this._loading = true;
     try {
-      const token = (window as { __CP_TOKEN__?: string }).__CP_TOKEN__ ?? "";
+      const token = getToken();
       const res = await fetch(`/api/instances/${this.slug}/config`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -284,7 +285,7 @@ export class InstanceConfig extends LitElement {
   private async _save(): Promise<void> {
     this._saving = true;
     try {
-      const token = (window as { __CP_TOKEN__?: string }).__CP_TOKEN__ ?? "";
+      const token = getToken();
       await fetch(`/api/instances/${this.slug}/config`, {
         method: "PATCH",
         headers: {

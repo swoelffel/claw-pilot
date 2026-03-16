@@ -49,9 +49,9 @@ export function registerAuthRoutes(app: Hono, deps: RouteDeps, token: string): v
 
     // Lookup user
     const db = registry.getDb();
-    const user = db.prepare("SELECT * FROM users WHERE username = ?").get(username) as
-      | UserRow
-      | undefined;
+    const user = db
+      .prepare("SELECT id, username, password_hash, role FROM users WHERE username = ?")
+      .get(username) as UserRow | undefined;
 
     const valid = user ? await verifyPassword(password, user.password_hash) : false;
 

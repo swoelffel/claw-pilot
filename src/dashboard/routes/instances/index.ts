@@ -7,7 +7,6 @@ import { registerDiscoverRoutes } from "./discover.js";
 import { registerLifecycleRoutes } from "./lifecycle.js";
 import { registerConfigRoutes } from "./config.js";
 import { registerAgentRoutes } from "./agents.js";
-import { registerDeviceRoutes } from "./devices.js";
 import { registerRuntimeRoutes } from "./runtime.js";
 import { registerMcpRoutes } from "./mcp.js";
 import { registerPermissionRoutes } from "./permissions.js";
@@ -19,7 +18,6 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps): void {
   registerLifecycleRoutes(app, deps);
   registerConfigRoutes(app, deps);
   registerAgentRoutes(app, deps);
-  registerDeviceRoutes(app, deps);
   registerRuntimeRoutes(app, deps);
   registerMcpRoutes(app, deps);
   registerPermissionRoutes(app, deps);

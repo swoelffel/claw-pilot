@@ -16,7 +16,7 @@ GitHub: https://github.com/swoelffel/claw-pilot
 - **Runtime**: Node.js >= 22.12.0, ESM, pnpm
 - **CLI**: Commander.js + @inquirer/prompts
 - **HTTP/WS**: Hono + ws
-- **DB**: better-sqlite3 (SQLite, WAL mode, schema v12)
+- **DB**: better-sqlite3 (SQLite, WAL mode, schema v14)
 - **UI**: Lit web components + Vite
 - **Build**: tsdown (CLI) + vite (UI)
 - **Tests**: Vitest
@@ -42,7 +42,7 @@ src/
   commands/         # CLI commands — thin wrappers over core/
   core/             # All business logic
   dashboard/        # HTTP server (Hono) + WebSocket monitor
-  db/               # SQLite schema + migrations (schema.ts) — current version: 11
+  db/               # SQLite schema + migrations (schema.ts) — current version: 14
   lib/              # Shared utilities (logger, constants, errors, platform, poll, xdg, shell...)
   runtime/          # claw-runtime engine (bus, provider, session, tool, agent, plugin, mcp, channel, engine)
   server/           # ServerConnection interface + LocalConnection impl
@@ -50,7 +50,7 @@ src/
 ui/
   src/              # Frontend — Lit web components, built to dist/ui/
     components/     # Reusable UI components (cards, dialogs, status badges...)
-    services/       # API client, WebSocket monitor, state management
+    services/       # Auth state, WS monitor, router, update poller (extracted from app.ts)
     localization/   # i18n via @lit/localize (6 languages)
     styles/         # Design tokens, shared CSS
 templates/          # Workspace bootstrap files + systemd/nginx templates
@@ -142,3 +142,7 @@ Reference docs:
 - Do not add new DB tables without a corresponding migration in `src/db/schema.ts`
 - Do not use `"provider/model"` string format with `resolveModel()` — pass 2 separate args
 - Do not call `createBus()` — use `getBus(slug)` and `disposeBus(slug)`
+- Do not import from `"zod/v4"` — use `from "zod"` everywhere (standardized on Zod v4 main entrypoint)
+- Do not use `window.__CP_TOKEN__` — use `getToken()` / `setToken()` / `clearToken()` from `ui/src/services/auth-state.ts`
+- Do not add direct `readFileSync` calls in workspace hot paths — use `readWorkspaceFileCached()` from `src/runtime/session/workspace-cache.ts`
+- Do not write SQL aggregations inline in route handlers — add methods to the appropriate repository in `src/core/repositories/`

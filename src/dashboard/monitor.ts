@@ -16,11 +16,26 @@ export class Monitor {
   private clients: Set<WebSocket> = new Set();
   private previousState = "";
 
+  /**
+   * Optional callback that returns the number of connected MCP clients for a given slug.
+   * Injected from outside to avoid a direct dependency on McpRegistry in this module.
+   * Returns 0 by default (unchanged behaviour when not configured).
+   */
+  private _getMcpConnectedCount: (slug: string) => number = () => 0;
+
   constructor(
     private health: HealthChecker,
     private intervalMs: number = constants.HEALTH_POLL_INTERVAL,
     private db?: Database.Database,
   ) {}
+
+  /**
+   * Register a callback for MCP connected count per slug.
+   * Should be called by the runtime engine when MCP is initialized for an instance.
+   */
+  setMcpConnectedCountFn(fn: (slug: string) => number): void {
+    this._getMcpConnectedCount = fn;
+  }
 
   addClient(ws: WebSocket): void {
     this.clients.add(ws);
@@ -96,14 +111,14 @@ export class Monitor {
       pendingPermissions: this.countPendingPermissions(status.slug),
       heartbeatAgents: this.countHeartbeatAgents(status.slug),
       heartbeatAlerts: this.countHeartbeatAlerts(status.slug),
-      // mcpConnected: not computed here (requires async MCP registry query)
-      // Will be added when MCP registry exposes a sync count method
-      mcpConnected: 0,
+      mcpConnected: this._getMcpConnectedCount(status.slug),
     };
   }
 
   start(): void {
     this.interval = setInterval(async () => {
+      // Skip serialisation work when no clients are connected
+      if (this.clients.size === 0) return;
       try {
         const statuses = await this.health.checkAll();
         const enriched = statuses.map((s) => this.enrichStatus(s));

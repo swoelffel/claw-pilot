@@ -4,6 +4,7 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
+import { getToken } from "../services/auth-state.js";
 
 interface SessionNode {
   id: string;
@@ -261,7 +262,7 @@ export class SessionTree extends LitElement {
     this._loading = true;
     this._error = "";
     try {
-      const token = (window as { __CP_TOKEN__?: string }).__CP_TOKEN__ ?? "";
+      const token = getToken();
       // Charge les sessions actives et archivées
       const [activeRes, archivedRes] = await Promise.all([
         fetch(`/api/instances/${this.slug}/runtime/sessions?state=active&limit=20`, {

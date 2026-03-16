@@ -267,19 +267,6 @@ export const templates = {
   "discover-adopting": "Enregistrement en cours...",
   "discover-done": "{n} instance(s) enregistrée(s) avec succès.",
 
-  // instance-devices.ts (v0.18.0)
-  "idev-section-title": "Appareils",
-  "idev-pending-title": "En attente",
-  "idev-btn-approve-all": "Tout approuver",
-  "idev-btn-approve": "Approuver",
-  "idev-confirm-revoke": "Révoquer ?",
-  "idev-btn-confirm": "Confirmer",
-  "idev-btn-cancel": "Annuler",
-  "idev-paired-title": "Associés",
-  "idev-no-paired": "Aucun appareil associé.",
-  "idev-btn-refresh": "Actualiser",
-  "idev-btn-revoke-title": "Révoquer l'appareil",
-
   // login-view.ts + app.ts (auth — v0.15.0)
   "login-title": "claw-pilot",
   "login-label-username": "Nom d'utilisateur",
