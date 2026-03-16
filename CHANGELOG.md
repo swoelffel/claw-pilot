@@ -6,6 +6,43 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.34.0] — 2026-03-16
+
+### Added
+
+- **Sessions permanentes cross-canal (PLAN-15c/d)** — un agent `primary` a désormais une seule session par utilisateur, indépendante du canal (chat, Telegram, CLI) :
+  - `getOrCreatePermanentSession()` — session unique scopée par `(instanceSlug, agentId, peerId)` sans canal
+  - `ChannelRouter` : garde-fou — les agents `kind: "subagent"` ne peuvent plus recevoir de messages utilisateur
+  - `createDefaultRuntimeConfig()` : l'agent `main` est explicitement `persistence: "permanent"`
+  - `POST /runtime/chat` : utilise `getOrCreatePermanentSession()` pour les agents permanents
+  - `ui/api.ts` : `deviceId` stable en `localStorage` envoyé via `X-Device-Id` pour garantir la continuité de session entre rechargements
+- **UI services** — extraction de `app.ts` en modules testables :
+  - `ui/src/services/auth-state.ts` : encapsulation du token Bearer (remplace `window.__CP_TOKEN__`)
+  - `ui/src/services/ws-monitor.ts` : gestion WS avec auth par message applicatif (token plus visible en query param)
+  - `ui/src/services/router.ts` : routage hash-based extrait comme fonctions pures
+  - `ui/src/services/update-poller.ts` : polling self-update extrait comme classe
+- **Runtime chat UI** — header compact (36px) avec sélecteur d'agent :
+  - Combo agent remplace la combo session — affichée uniquement si plusieurs agents configurés
+  - Stats (msg count, coût) inline dans le header — stats bar supprimée
+- **DB migration v14** — index composite `idx_rt_messages_session_role` sur `(session_id, role)` pour optimiser `countHeartbeatAlerts()`
+
+### Changed
+
+- **`prompt-loop.ts` décomposé** (1100 → 495 lignes) en 4 modules cohésifs :
+  - `message-builder.ts` : construction des messages LLM, correction N+1 sur le chargement des parts (une seule requête SQL batch)
+  - `tool-set-builder.ts` : toolset Vercel AI SDK, doom-loop, hooks plugin, injection dep circulaire résolue
+  - `usage-tracker.ts` : normalisation comptage tokens (Anthropic vs OpenAI)
+  - `workspace-cache.ts` : cache mtime/TTL pour les fichiers workspace (SOUL.md etc.)
+- **`runtime-session-repository.ts`** — requête SQL enrichie (coût, tokens, nb messages) extraite du route handler vers le repository
+- **CSP renforcée** — `unsafe-inline` retiré de `script-src` dans `dashboard/server.ts`
+- **`resolveEffectivePersistence()`** exportée depuis `agent/index.ts`
+
+### Removed
+
+- **Device pairing supprimé** (feature morte) : `devices.ts` (CLI), `device-manager.ts` (core), `instance-devices.ts` (UI, 588 lignes), `devices.e2e.test.ts`, route handler, types, traductions i18n
+
+---
+
 ## [0.33.0] — 2026-03-16
 
 ### Added
