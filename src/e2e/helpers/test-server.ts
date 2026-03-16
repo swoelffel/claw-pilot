@@ -9,6 +9,7 @@ import { buildDashboardApp } from "../../dashboard/server.js";
 import { TestClient } from "./test-client.js";
 
 export const TEST_TOKEN = "test-e2e-dashboard-token-64chars-hex-0123456789abcdef01234567";
+/** @public */
 export const TEST_PASSWORD = "E2eTestPassword1";
 
 export interface TestContext {

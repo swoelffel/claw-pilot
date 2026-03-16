@@ -62,7 +62,7 @@ export function getRuntimeStateDir(slug: string): string {
   return path.join(getHomeDir(), `${constants.RUNTIME_STATE_PREFIX}${slug}`);
 }
 
-/** Path to runtime.json config for a claw-runtime instance. */
+/** @public Path to runtime.json config for a claw-runtime instance. */
 export function getRuntimeConfigPath(slug: string): string {
   return path.join(getRuntimeStateDir(slug), "runtime.json");
 }

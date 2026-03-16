@@ -46,7 +46,7 @@ export function getAuthProfiles(slug: InstanceSlug, providerId: ProviderId): Aut
     .sort((a, b) => a.priority - b.priority);
 }
 
-/** Remove an auth profile */
+/** @public Remove an auth profile */
 export function removeAuthProfile(slug: InstanceSlug, profileId: string): void {
   getStore(slug).delete(profileId);
 }

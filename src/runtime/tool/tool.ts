@@ -58,6 +58,7 @@ export namespace Tool {
    * 1. Validate args via schema.parse() — throws Error with clear message if invalid
    * 2. Execute the tool
    * 3. Truncate output if > MAX_OUTPUT_CHARS
+   * @public
    */
   export function define<P extends z.ZodType>(
     id: string,

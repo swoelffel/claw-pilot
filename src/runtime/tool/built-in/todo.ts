@@ -33,7 +33,7 @@ function setTodos(sessionId: string, todos: TodoItemType[]): void {
   _todos.set(sessionId, todos);
 }
 
-/** Clear todos for a session (call on session end) */
+/** @public Clear todos for a session (call on session end) */
 export function clearTodos(sessionId: string): void {
   _todos.delete(sessionId);
 }

@@ -24,6 +24,7 @@ const _pending = new Map<string, PendingQuestion>();
 /**
  * Resolve a pending question from the channel layer.
  * Called by the dashboard/channel when the user submits an answer.
+ * @public
  */
 export function resolveQuestion(questionId: string, answer: string): boolean {
   const pending = _pending.get(questionId);
@@ -35,6 +36,7 @@ export function resolveQuestion(questionId: string, answer: string): boolean {
 
 /**
  * Reject a pending question (e.g. session aborted).
+ * @public
  */
 export function rejectQuestion(questionId: string, reason: string): boolean {
   const pending = _pending.get(questionId);

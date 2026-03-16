@@ -53,6 +53,7 @@ export interface MemorySearchResult {
 /**
  * Open (or create) the memory index database.
  * Creates the FTS5 virtual table if it does not exist.
+ * @public
  */
 export function openMemoryIndex(stateDir: string): Database.Database {
   const dbPath = path.join(stateDir, "memory-index.db");

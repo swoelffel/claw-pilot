@@ -13,7 +13,7 @@ export const PROVIDER_ENV_VARS: Record<string, string> = {
   opencode: "OPENCODE_API_KEY",
 };
 
-/** Maps provider ID to its API base URL. */
+/** @public Maps provider ID to its API base URL. */
 export const PROVIDER_BASE_URLS: Record<string, string> = {
   anthropic: "https://api.anthropic.com",
   openai: "https://api.openai.com/v1",

@@ -43,7 +43,7 @@ export type ProviderId = string;
 /** Model identifier (e.g. "claude-sonnet-4-5", "gpt-4o") */
 export type ModelId = string;
 
-/** Fully qualified model reference: "provider/model" */
+/** @public Fully qualified model reference: "provider/model" */
 export type ModelRef = `${ProviderId}/${ModelId}`;
 
 /** Model capability flags */
@@ -171,7 +171,7 @@ export interface OutboundMessage {
 /** Lifecycle state of a runtime instance */
 export type RuntimeInstanceState = "starting" | "running" | "stopping" | "stopped" | "error";
 
-/** Minimal runtime instance descriptor (used by the registry) */
+/** @public Minimal runtime instance descriptor (used by the registry) */
 export interface RuntimeInstanceInfo {
   slug: InstanceSlug;
   state: RuntimeInstanceState;

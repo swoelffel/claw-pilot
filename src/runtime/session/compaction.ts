@@ -169,6 +169,7 @@ export async function compact(input: CompactionInput): Promise<CompactionResult>
 /**
  * Get the compaction summary for a session (if any).
  * Returns the content of the most recent compaction part, or undefined.
+ * @public
  */
 export function getCompactionSummary(
   db: Database.Database,

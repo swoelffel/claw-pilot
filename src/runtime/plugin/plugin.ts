@@ -50,6 +50,7 @@ export async function initPlugins(input: PluginInput): Promise<void> {
 /**
  * Load a plugin from a file path and register it.
  * Supports absolute paths and file:// URLs.
+ * @public
  */
 export async function loadPluginFromFile(filePath: string): Promise<void> {
   const { pathToFileURL } = await import("node:url");

@@ -183,7 +183,7 @@ export function findModel(providerId: string, modelId: string): ModelInfo | unde
   return MODEL_CATALOG.find((m) => m.providerId === providerId && m.id === modelId);
 }
 
-/** Get all models for a given provider */
+/** @public Get all models for a given provider */
 export function getProviderModels(providerId: string): ModelInfo[] {
   return MODEL_CATALOG.filter((m) => m.providerId === providerId);
 }

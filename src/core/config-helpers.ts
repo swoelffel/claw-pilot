@@ -7,7 +7,7 @@
 // Env file helpers
 // ---------------------------------------------------------------------------
 
-/** Parse a .env file into a key-value map */
+/** @public Parse a .env file into a key-value map */
 export function parseEnv(raw: string): Map<string, string> {
   const map = new Map<string, string>();
   for (const line of raw.split("\n")) {
@@ -22,7 +22,7 @@ export function parseEnv(raw: string): Map<string, string> {
   return map;
 }
 
-/** Serialize a key-value map back to .env format */
+/** @public Serialize a key-value map back to .env format */
 export function serializeEnv(map: Map<string, string>): string {
   const lines: string[] = [];
   for (const [key, value] of map) {

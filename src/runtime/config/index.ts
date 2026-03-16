@@ -342,11 +342,17 @@ export const RuntimeConfigSchema = z.object({
 
 export type RuntimeConfig = z.infer<typeof RuntimeConfigSchema>;
 export type RuntimeAgentConfig = z.infer<typeof AgentConfigSchema>;
+/** @public */
 export type AgentToAgentConfig = z.infer<typeof AgentConfigSchema>["agentToAgent"];
+/** @public */
 export type ModelAlias = z.infer<typeof ModelAliasSchema>;
+/** @public */
 export type HeartbeatConfig = z.infer<typeof HeartbeatConfigSchema>;
+/** @public */
 export type RuntimeProviderConfig = z.infer<typeof ProviderConfigSchema>;
+/** @public */
 export type RuntimeAuthProfileConfig = z.infer<typeof AuthProfileConfigSchema>;
+/** @public */
 export type RuntimeTelegramConfig = z.infer<typeof TelegramConfigSchema>;
 export type RuntimeMcpServerConfig = RuntimeConfig["mcpServers"][number];
 export type SubagentsConfig = z.infer<typeof SubagentsConfigSchema>;

@@ -278,7 +278,7 @@ export const PLAN_AGENT_RULESET: PermissionRuleset = [
   { permission: "bash", pattern: "**", action: "ask" },
 ];
 
-/** Ruleset for sub-agents spawned via the task tool */
+/** @public Ruleset for sub-agents spawned via the task tool */
 export const SUBAGENT_RULESET: PermissionRuleset = [
   { permission: "task", pattern: "**", action: "deny" }, // No nested spawning by default
 ];

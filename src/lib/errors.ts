@@ -48,6 +48,7 @@ export class PortConflictError extends ClawPilotError {
   }
 }
 
+/** @public */
 export class GatewayUnhealthyError extends ClawPilotError {
   constructor(slug: string, port: number, detail?: string) {
     const base = `Gateway for "${slug}" not responding on port ${port}`;

@@ -19,6 +19,7 @@
  *
  * If an explicit `workspace` field is provided for the agent (absolute or relative),
  * it always takes precedence over both heuristics.
+ * @public
  */
 export function resolveAgentWorkspacePath(
   stateDir: string,

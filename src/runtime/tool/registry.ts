@@ -175,6 +175,7 @@ export function getBuiltinTools(): Tool.Info[] {
 
 /**
  * Get a single built-in tool by ID.
+ * @public
  */
 export function getBuiltinTool(id: string): Tool.Info | undefined {
   return BUILTIN_TOOLS.find((t) => t.id === id);
