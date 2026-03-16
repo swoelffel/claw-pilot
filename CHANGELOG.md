@@ -6,6 +6,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.29.0] — 2026-03-16
+
+### Added
+
+- **Agents permanents — modèle de données (Phase 0)** — fondation pour la distinction agents permanents / sous-agents éphémères :
+  - `AgentConfigSchema.persistence` (`"permanent"` | `"ephemeral"`, optionnel) — cycle de vie de session configurable par agent dans `runtime.json`
+  - `Agent.Info.kind` (`"primary"` | `"subagent"`) — rôle fonctionnel distinct du champ `mode` (visibilité UI) ; les 7 agents built-in sont annotés explicitement
+  - `resolveEffectivePersistence()` — résolution de la persistence effective (config > kind > safe default)
+  - `buildPermanentSessionKey()` — clé de session cross-canal `<slug>:<agentId>:<peerId>` (sans canal) pour les sessions permanentes
+  - `createSession({ persistent: true })` — création de sessions permanentes avec session_key cross-canal
+  - `archiveSession()` garde-fou — refuse d'archiver une session permanente sans `force: true`
+  - Bloc `<agent_identity>` injecté en début de prompt système pour les agents `kind: "primary"` (Name, ID, Born, Instance, Channel, Runtime) — position stable pour le cache Anthropic
+  - `WorkspaceState.agentCreatedAt` — date de création de l'agent stockée dans `workspace-state.json`
+  - `archiveBootstrapContent()` — archive le contenu de `BOOTSTRAP.md` dans `memory/bootstrap-history.md` lors du premier bootstrap
+
+- **DB — migration v13** :
+  - `rt_sessions.persistent INTEGER NOT NULL DEFAULT 0` — sessions existantes non affectées (backward-compat)
+  - Index partiel `idx_rt_sessions_permanent` pour lookup rapide des sessions permanentes actives
+  - `agents.created_at TEXT` avec backfill conditionnel pour les agents existants
+
+---
+
 ## [0.28.5-beta] — 2026-03-15
 
 ### Fixed
