@@ -8,11 +8,12 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve, join, dirname } from "node:path";
-import type { RuntimeAgentConfig } from "../config/index.js";
+import type Database from "better-sqlite3";
+import type { RuntimeAgentConfig, RuntimeConfig } from "../config/index.js";
 import type { InstanceSlug } from "../types.js";
 import { listAvailableSkills } from "../tool/built-in/skill.js";
 import { readWorkspaceState, writeWorkspaceState } from "../../core/workspace-state.js";
-import { getAgent } from "../agent/registry.js";
+import { getAgent, resolveEffectivePersistence } from "../agent/registry.js";
 
 // Read claw-pilot version from package.json once at module load time
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -117,6 +118,12 @@ export interface SystemPromptContext {
    * Used by the Task tool to inject subagent context (parent agent, task, depth).
    */
   extraSystemPrompt?: string;
+  /** DB instance — used to fetch compaction summary for permanent agents */
+  db?: Database.Database;
+  /** Session ID — used to fetch compaction summary for permanent agents */
+  sessionId?: string;
+  /** Full runtime config — used to resolve agent persistence */
+  runtimeConfig?: RuntimeConfig;
 }
 
 /**
@@ -160,7 +167,31 @@ export async function buildSystemPrompt(ctx: SystemPromptContext): Promise<strin
   // 3. Behavior constraints (always present)
   sections.push(BEHAVIOR_BLOCK);
 
-  // 3.5. Available skills block (proactive injection)
+  // 3.5. Session context — résumé de la dernière compaction (agents permanents uniquement)
+  if (ctx.db && ctx.sessionId) {
+    const agentInfoForCtx = getAgent(ctx.agentConfig.id);
+    const agentConfigForCtx = ctx.runtimeConfig?.agents.find((a) => a.id === ctx.agentConfig.id);
+    const isPermanent =
+      resolveEffectivePersistence(
+        agentInfoForCtx ?? {
+          kind: "primary",
+          name: ctx.agentConfig.id,
+          permission: [],
+          mode: "all",
+          options: {},
+        },
+        agentConfigForCtx,
+      ) === "permanent";
+
+    if (isPermanent) {
+      const compactionSummary = getCompactionSummary(ctx.db, ctx.sessionId);
+      if (compactionSummary) {
+        sections.push(buildSessionContextBlock(compactionSummary));
+      }
+    }
+  }
+
+  // 3.6. Available skills block (proactive injection)
   if (ctx.workDir) {
     const skillsBlock = await buildSkillsBlock(ctx.workDir, ctx.agentConfig);
     if (skillsBlock) sections.push(skillsBlock);
@@ -177,6 +208,55 @@ export async function buildSystemPrompt(ctx: SystemPromptContext): Promise<strin
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Get the last compaction summary for a session.
+ * Returns the text content of the last compaction message, or undefined if none.
+ */
+function getCompactionSummary(db: Database.Database, sessionId: string): string | undefined {
+  // Find the last compaction message
+  const row = db
+    .prepare(
+      `
+    SELECT m.id FROM rt_messages m
+    WHERE m.session_id = ? AND m.is_compaction = 1
+    ORDER BY m.created_at DESC
+    LIMIT 1
+  `,
+    )
+    .get(sessionId) as { id: string } | undefined;
+
+  if (!row) return undefined;
+
+  // Get the text content of the compaction message
+  const part = db
+    .prepare(
+      `
+    SELECT content FROM rt_parts
+    WHERE message_id = ? AND type IN ('text', 'compaction')
+    ORDER BY sort_order ASC
+    LIMIT 1
+  `,
+    )
+    .get(row.id) as { content: string | null } | undefined;
+
+  return part?.content ?? undefined;
+}
+
+/**
+ * Build the <session_context> block injected into the system prompt for permanent agents.
+ * Contains the last compaction summary to provide continuity after restarts.
+ */
+function buildSessionContextBlock(summary: string): string {
+  return [
+    "<session_context>",
+    "The following is a summary of our previous conversation.",
+    "Use it to understand the current state and continue the work seamlessly.",
+    "",
+    summary,
+    "</session_context>",
+  ].join("\n");
+}
 
 /**
  * Archive BOOTSTRAP.md content to memory/bootstrap-history.md with a timestamp.

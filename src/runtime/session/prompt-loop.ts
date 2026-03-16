@@ -36,6 +36,7 @@ import {
   createAssistantMessage,
   updateMessageMetadata,
   listMessagesFromCompaction,
+  countMessagesSinceLastCompaction,
 } from "./message.js";
 import { createPart, updatePartState, listParts } from "./part.js";
 import { getBus } from "../bus/index.js";
@@ -122,6 +123,11 @@ export interface PromptLoopInput {
    * Allows using a cheaper/faster model for these simple tasks.
    */
   internalResolvedModel?: ResolvedModel;
+  /**
+   * Full runtime config — forwarded to buildSystemPrompt for session context injection.
+   * Optional for backward-compat.
+   */
+  runtimeConfig?: RuntimeConfig;
 }
 
 export interface PromptLoopResult {
@@ -160,6 +166,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
     subagentsConfig,
     mcpRegistry,
     internalResolvedModel,
+    runtimeConfig,
   } = input;
 
   // Abort check before starting
@@ -252,6 +259,9 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       workDir,
       ...(runtimeAgents !== undefined ? { runtimeAgents } : {}),
       ...(extraSystemPrompt !== undefined ? { extraSystemPrompt } : {}),
+      db,
+      sessionId,
+      ...(runtimeConfig !== undefined ? { runtimeConfig } : {}),
     });
 
     // 3. Load message history (from last compaction if any, for selective context loading)
@@ -501,7 +511,9 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       auto: true,
       threshold: 0.85,
       reservedTokens: 8_000,
+      periodicMessageCount: 0,
     };
+    let compactedThisTurn = false;
     if (effectiveCompaction.auto && tokensIn + tokensOut > 0) {
       const modelInfo = findModel(resolvedModel.providerId, resolvedModel.modelId);
       const contextWindow = modelInfo?.capabilities.contextWindow ?? 100_000;
@@ -522,6 +534,27 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
           agentConfig,
           resolvedModel: internalResolvedModel ?? resolvedModel,
           currentTokens,
+          contextWindow,
+          ...(workDir !== undefined ? { workDir } : {}),
+        });
+        compactedThisTurn = true;
+      }
+    }
+
+    // Compaction périodique (agents permanents uniquement)
+    const periodicCount = effectiveCompaction.periodicMessageCount ?? 0;
+    if (!compactedThisTurn && periodicCount > 0 && agentConfig.persistence === "permanent") {
+      const messagesSince = countMessagesSinceLastCompaction(db, sessionId);
+      if (messagesSince >= periodicCount) {
+        const modelInfo = findModel(resolvedModel.providerId, resolvedModel.modelId);
+        const contextWindow = modelInfo?.capabilities.contextWindow ?? 100_000;
+        await compact({
+          db,
+          instanceSlug,
+          sessionId,
+          agentConfig,
+          resolvedModel: internalResolvedModel ?? resolvedModel,
+          currentTokens: tokensIn + tokensOut,
           contextWindow,
           ...(workDir !== undefined ? { workDir } : {}),
         });

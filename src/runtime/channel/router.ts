@@ -15,10 +15,16 @@ import type Database from "better-sqlite3";
 import type { InboundMessage, OutboundMessage, InstanceSlug } from "../types.js";
 import type { RuntimeConfig } from "../config/index.js";
 import type { McpRegistry } from "../mcp/registry.js";
-import { createSession, getSession, getSessionByKey, buildSessionKey } from "../session/session.js";
+import {
+  createSession,
+  getSession,
+  getSessionByKey,
+  buildSessionKey,
+  getOrCreatePermanentSession,
+} from "../session/session.js";
 import { runPromptLoop } from "../session/prompt-loop.js";
 import type { PromptLoopResult } from "../session/prompt-loop.js";
-import { getAgent, defaultAgentName } from "../agent/registry.js";
+import { getAgent, defaultAgentName, resolveEffectivePersistence } from "../agent/registry.js";
 import { resolveModel } from "../provider/provider.js";
 import { getBus } from "../bus/index.js";
 import { ChannelMessageReceived, ChannelMessageSent, SubagentCompleted } from "../bus/events.js";
@@ -97,7 +103,7 @@ export class ChannelRouter {
       : undefined;
 
     // 3. Find or create session for this peer
-    const sessionId = findOrCreateSession(db, instanceSlug, message, agentId);
+    const sessionId = findOrCreateSession(db, instanceSlug, message, agentId, config);
 
     // 4. Run prompt loop — serialized per session via queue
     const prev = sessionQueues.get(sessionId) ?? Promise.resolve();
@@ -113,6 +119,7 @@ export class ChannelRouter {
         runtimeAgents: config.agents.map((a) => ({ id: a.id, name: a.name })),
         compactionConfig: config.compaction,
         subagentsConfig: config.subagents,
+        runtimeConfig: config,
         ...(input.abort !== undefined ? { abort: input.abort } : {}),
         ...(mcpRegistry !== undefined ? { mcpRegistry } : {}),
         ...(internalResolvedModel !== undefined ? { internalResolvedModel } : {}),
@@ -162,19 +169,40 @@ export class ChannelRouter {
 /**
  * Find an existing active session for this (instanceSlug, agentId, channel, peerId)
  * using the session_key index (O(1) lookup), or create a new one.
+ *
+ * For permanent agents, routes to getOrCreatePermanentSession() which provides
+ * cross-channel session continuity and automatic reactivation after force cleanup.
  */
 function findOrCreateSession(
   db: Database.Database,
   instanceSlug: InstanceSlug,
   message: InboundMessage,
   agentId: string,
+  config: RuntimeConfig,
 ): string {
+  // Déterminer si l'agent est permanent
+  const agentInfo = getAgent(agentId);
+  const agentConfig = config.agents.find((a) => a.id === agentId);
+  const isPermanent =
+    resolveEffectivePersistence(
+      agentInfo ?? { kind: "primary", name: agentId, permission: [], mode: "all", options: {} },
+      agentConfig,
+    ) === "permanent";
+
+  if (isPermanent) {
+    const session = getOrCreatePermanentSession(db, {
+      instanceSlug,
+      agentId,
+      channel: message.channelType,
+      ...(message.peerId !== undefined ? { peerId: message.peerId } : {}),
+    });
+    return session.id;
+  }
+
+  // Session éphémère : comportement actuel
   const key = buildSessionKey(instanceSlug, agentId, message.channelType, message.peerId);
   const existing = getSessionByKey(db, key);
-
-  if (existing && existing.state === "active") {
-    return existing.id;
-  }
+  if (existing && existing.state === "active") return existing.id;
 
   const session = createSession(db, {
     instanceSlug,
@@ -182,7 +210,6 @@ function findOrCreateSession(
     channel: message.channelType,
     ...(message.peerId !== undefined ? { peerId: message.peerId } : {}),
   });
-
   return session.id;
 }
 
@@ -194,6 +221,10 @@ function buildAgentConfig(
   agent: ReturnType<typeof getAgent> & object,
   config: RuntimeConfig,
 ): import("../config/index.js").RuntimeAgentConfig {
+  // Resolve persistence from config (explicit) or agent kind (inferred)
+  const agentConfigFromRuntime = config.agents.find((a) => a.id === agent.name);
+  const persistence = resolveEffectivePersistence(agent, agentConfigFromRuntime);
+
   return {
     id: agent.name,
     name: agent.name,
@@ -206,6 +237,7 @@ function buildAgentConfig(
     isDefault: false,
     permissions: agent.permission ?? [],
     inheritWorkspace: true,
+    persistence,
   };
 }
 
@@ -304,6 +336,7 @@ export function registerSubagentCompletedHandler(
           runtimeAgents: config.agents.map((a) => ({ id: a.id, name: a.name })),
           compactionConfig: config.compaction,
           subagentsConfig: config.subagents,
+          runtimeConfig: config,
           ...(internalResolvedModel !== undefined ? { internalResolvedModel } : {}),
         });
       })

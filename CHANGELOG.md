@@ -6,6 +6,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.32.0] — 2026-03-16
+
+### Added
+
+- **Session permanente (Phase 3)** — session unique cross-canal par utilisateur, jamais archivée, avec contexte de reprise après restart :
+  - `getOrCreatePermanentSession()` dans `session.ts` — trouve ou crée la session permanente scopée par `(instanceSlug, agentId, peerId)` sans canal ; réactive automatiquement une session archivée par force
+  - Titre initial des sessions permanentes = `agentId` (mis à jour par l'agent `title` après la première interaction)
+  - `SystemPromptContext` étendu — nouveaux champs optionnels `db`, `sessionId`, `runtimeConfig` (backward-compat)
+  - `getCompactionSummary()` + `buildSessionContextBlock()` dans `system-prompt.ts` — injection du dernier résumé de compaction dans le prompt système sous `<session_context>` pour les agents permanents (continuité après restart)
+  - `PromptLoopInput.runtimeConfig` — nouveau champ optionnel pour transmettre la config complète à `buildSystemPrompt()`
+  - `CompactionConfigSchema.periodicMessageCount` — déclenchement périodique de la compaction tous les N messages pour les agents permanents (0 = désactivé, défaut)
+  - Compaction périodique dans `prompt-loop.ts` — flag `compactedThisTurn` pour éviter double compaction dans le même tour
+
+### Changed
+
+- `ChannelRouter.findOrCreateSession()` — routage conditionnel : agents permanents → `getOrCreatePermanentSession()`, agents éphémères → comportement actuel
+- `buildAgentConfig()` dans `router.ts` — résout et injecte `persistence` dans le `RuntimeAgentConfig` construit dynamiquement
+- `runPromptLoop()` — passe `db`, `sessionId` et `runtimeConfig` à `buildSystemPrompt()`
+- `buildSystemPrompt()` — injecte `<session_context>` après `BEHAVIOR_BLOCK` pour les agents permanents avec compaction existante
+
+---
+
 ## [0.31.0] — 2026-03-16
 
 ### Added

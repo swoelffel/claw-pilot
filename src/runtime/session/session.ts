@@ -165,6 +165,71 @@ export function getSession(db: Database.Database, id: SessionId): SessionInfo | 
 }
 
 /**
+ * Trouve ou crée la session permanente d'un agent pour un utilisateur donné.
+ *
+ * Contrairement aux sessions éphémères, la session permanente :
+ * - Est scopée par (instanceSlug, agentId, peerId) — sans canal (cross-canal)
+ * - N'est jamais archivée automatiquement
+ * - Est réactivée si elle a été archivée par force (admin cleanup)
+ * - Est unique : une seule session permanente active par (instanceSlug, agentId, peerId)
+ */
+export function getOrCreatePermanentSession(
+  db: Database.Database,
+  params: {
+    instanceSlug: string;
+    agentId: string;
+    channel: string; // Canal courant — stocké pour info mais pas dans la key
+    peerId?: string;
+  },
+): SessionInfo {
+  const peerId = params.peerId ?? "unknown";
+  const permanentKey = buildPermanentSessionKey(params.instanceSlug, params.agentId, peerId);
+
+  // Chercher une session permanente existante (active ou archivée)
+  const existing = db
+    .prepare(
+      `
+    SELECT * FROM rt_sessions
+    WHERE session_key = ? AND persistent = 1
+    ORDER BY created_at ASC
+    LIMIT 1
+  `,
+    )
+    .get(permanentKey) as SessionRow | undefined;
+
+  if (existing) {
+    // Réactiver si archivée (cas admin force cleanup)
+    if (existing.state === "archived") {
+      const now = new Date().toISOString();
+      db.prepare(
+        `
+        UPDATE rt_sessions
+        SET state = 'active', updated_at = ?
+        WHERE id = ?
+      `,
+      ).run(now, existing.id);
+      return fromRow({ ...existing, state: "active", updated_at: now });
+    }
+    return fromRow(existing);
+  }
+
+  // Créer une nouvelle session permanente
+  const session = createSession(db, {
+    instanceSlug: params.instanceSlug,
+    agentId: params.agentId,
+    channel: params.channel,
+    ...(params.peerId !== undefined ? { peerId: params.peerId } : {}),
+    persistent: true,
+  });
+
+  // Titre initial : agentId (sera mis à jour par l'agent title après la première interaction)
+  updateSessionTitle(db, session.id, params.agentId);
+
+  // Retourner la session avec le titre mis à jour
+  return getSession(db, session.id) ?? session;
+}
+
+/**
  * Find a session by its business key (O(1) lookup via unique index).
  */
 export function getSessionByKey(db: Database.Database, key: string): SessionInfo | undefined {

@@ -141,7 +141,7 @@ function makeRuntimeConfig(): RuntimeConfig {
       groupPolicy: "allowlist" as const,
     },
     webChat: { enabled: true, maxSessions: 10 },
-    compaction: { auto: true, threshold: 0.85, reservedTokens: 8000 },
+    compaction: { auto: true, threshold: 0.85, reservedTokens: 8000, periodicMessageCount: 0 },
     subagents: { maxSpawnDepth: 3, maxChildrenPerSession: 5, retentionHours: 72 },
     mcpEnabled: false,
     mcpServers: [],

@@ -233,6 +233,21 @@ const CompactionConfigSchema = z.object({
   threshold: z.number().min(0.5).max(0.99).default(0.85),
   /** Number of tokens to reserve for the compaction summary */
   reservedTokens: z.number().int().min(1000).max(50_000).default(8_000),
+  /**
+   * Trigger compaction every N messages for permanent agents.
+   * 0 = disabled (only threshold-based compaction).
+   * Recommended: 50 for active agents, 20 for agents with short messages.
+   */
+  periodicMessageCount: z
+    .number()
+    .int()
+    .min(0)
+    .default(0)
+    .describe(
+      "Trigger compaction every N messages for permanent agents. " +
+        "0 = disabled (only threshold-based compaction). " +
+        "Recommended: 50 for active agents, 20 for agents with short messages.",
+    ),
 });
 
 /** Sub-agents spawn limits */
@@ -308,6 +323,7 @@ export const RuntimeConfigSchema = z.object({
     auto: true,
     threshold: 0.85,
     reservedTokens: 8_000,
+    periodicMessageCount: 0,
   })),
 
   /** Sub-agents spawn limits */
