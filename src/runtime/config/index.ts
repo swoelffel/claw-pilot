@@ -106,12 +106,13 @@ const AgentConfigSchema = z.object({
   /** Tool profile */
   toolProfile: z.enum(["minimal", "coding", "messaging", "full"]).default("coding"),
   /**
-   * Controls which workspace discovery files are loaded into the system prompt.
-   * - "full": all files including HEARTBEAT.md (default for primary agents)
-   * - "minimal": core files only, excludes HEARTBEAT.md (default for subagents)
-   * If omitted, defaults to "minimal" when toolProfile="minimal", "full" otherwise.
+   * Controls which workspace files are injected into the system prompt.
+   * - "full": all files including BOOTSTRAP.md and HEARTBEAT.md (default for primary agents)
+   * - "minimal": core files only, excludes HEARTBEAT.md
+   * - "subagent": method files only (AGENTS.md, TOOLS.md) — for ephemeral subagents
+   * If omitted, inferred from kind: primary→full, subagent→subagent.
    */
-  promptMode: z.enum(["full", "minimal"]).optional(),
+  promptMode: z.enum(["full", "minimal", "subagent"]).optional(),
   /**
    * Extra URLs to fetch and append to the system prompt after workspace discovery.
    * Useful for sharing team standards or context across instances.
@@ -240,6 +241,15 @@ const SubagentsConfigSchema = z.object({
   maxSpawnDepth: z.number().int().min(0).max(10).default(3),
   /** Max simultaneous active children per session */
   maxChildrenPerSession: z.number().int().min(1).max(20).default(5),
+  /** Hours to retain archived ephemeral sessions before cleanup. 0 = keep forever (no cleanup). Default: 72 (3 days). */
+  retentionHours: z
+    .number()
+    .min(0)
+    .default(72)
+    .describe(
+      "Hours to retain archived ephemeral sessions before cleanup. " +
+        "0 = keep forever (no cleanup). Default: 72 (3 days).",
+    ),
 });
 
 // ---------------------------------------------------------------------------
@@ -304,6 +314,7 @@ export const RuntimeConfigSchema = z.object({
   subagents: SubagentsConfigSchema.default(() => ({
     maxSpawnDepth: 3,
     maxChildrenPerSession: 5,
+    retentionHours: 72,
   })),
 
   /** Whether to enable MCP tool integration */

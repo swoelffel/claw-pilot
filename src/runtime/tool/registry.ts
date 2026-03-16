@@ -167,6 +167,28 @@ export async function getTools(options?: ToolRegistryOptions): Promise<Tool.Info
 }
 
 /**
+ * Returns the tools available for an agent based on its profile and kind.
+ * Subagents (kind: "subagent") never have access to the task tool,
+ * regardless of their configured toolProfile.
+ *
+ * This is a thin wrapper over getTools() that enforces the hard rule:
+ * subagents cannot spawn — the task tool is always removed for them.
+ */
+export async function getToolsForAgent(
+  options: ToolRegistryOptions & { agentKind?: "primary" | "subagent" },
+): Promise<Tool.Info[]> {
+  const { agentKind, ...toolOptions } = options;
+  const tools = await getTools(toolOptions);
+
+  if (agentKind === "subagent") {
+    // Hard rule: subagents can never spawn — remove task tool
+    return tools.filter((t) => t.id !== "task");
+  }
+
+  return tools;
+}
+
+/**
  * Return only the built-in tools (no custom tools).
  */
 export function getBuiltinTools(): Tool.Info[] {

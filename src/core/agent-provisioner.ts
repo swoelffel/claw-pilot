@@ -13,6 +13,12 @@ export interface CreateAgentData {
   role: string;
   provider: string;
   model: string;
+  /**
+   * Functional role of the agent.
+   * - "primary" (default): full workspace context, permanent session, all template files
+   * - "subagent": minimal context, only AGENTS.md + TOOLS.md created
+   */
+  kind?: "primary" | "subagent";
 }
 
 export class AgentProvisioner {
@@ -45,8 +51,14 @@ export class AgentProvisioner {
       agents: [...existingAgents, { id: data.agentSlug, name: data.name }],
     };
 
-    // TEMPLATE_FILES: rich content from templates (SOUL, AGENTS, TOOLS, IDENTITY, USER, HEARTBEAT, MEMORY)
-    for (const filename of constants.TEMPLATE_FILES) {
+    // Determine which workspace files to create based on agent kind.
+    // Subagents only need method files (AGENTS.md, TOOLS.md) — no identity, no memory, no heartbeat.
+    const agentKind = data.kind ?? "primary";
+    const workspaceFiles: readonly string[] =
+      agentKind === "subagent" ? (["AGENTS.md", "TOOLS.md"] as const) : constants.TEMPLATE_FILES;
+
+    // Create workspace files from templates
+    for (const filename of workspaceFiles) {
       const content = await loadWorkspaceTemplate(filename, vars);
       await this.conn.writeFile(path.join(workspaceDir, filename), content);
     }

@@ -90,6 +90,13 @@ const DISCOVERY_FILES_MINIMAL = [
   "USER.md",
 ] as const;
 
+/**
+ * Workspace files for agents with promptMode="subagent".
+ * Only method files — no identity, no memory, no heartbeat.
+ * Saves 4 000–10 000 tokens per subagent call.
+ */
+const DISCOVERY_FILES_SUBAGENT = ["AGENTS.md", "TOOLS.md"] as const;
+
 const BEHAVIOR_BLOCK = `<behavior>
   - Respond in the same language as the user's message
   - Be concise — avoid unnecessary preamble or repetition
@@ -211,13 +218,38 @@ function resolveWorkspaceDir(workDir: string, agentId: string): string | undefin
 /**
  * Resolve the discovery file list based on the agent's promptMode.
  * - "full" (default for primary agents): all workspace files including HEARTBEAT.md
- * - "minimal" (default for subagents): core files only, excludes HEARTBEAT.md
- *   → saves 2 000–5 000 tokens per subagent call
+ * - "minimal": core files only, excludes HEARTBEAT.md
+ * - "subagent": method files only (AGENTS.md, TOOLS.md) — for ephemeral subagents
+ *
+ * If promptMode is not set, infer from agent kind:
+ * - kind="subagent" → "subagent"
+ * - kind="primary" (or unknown) → "full"
+ * Legacy fallback: toolProfile="minimal" → "minimal"
  */
 function resolveDiscoveryFiles(agentConfig: RuntimeAgentConfig): readonly string[] {
-  const mode =
-    agentConfig.promptMode ?? (agentConfig.toolProfile === "minimal" ? "minimal" : "full");
-  return mode === "minimal" ? DISCOVERY_FILES_MINIMAL : DISCOVERY_FILES_FULL;
+  const agentInfo = getAgent(agentConfig.id);
+  const agentKind = agentInfo?.kind ?? "primary";
+
+  let mode: "full" | "minimal" | "subagent";
+  if (agentConfig.promptMode !== undefined) {
+    mode = agentConfig.promptMode;
+  } else if (agentKind === "subagent") {
+    mode = "subagent";
+  } else if (agentConfig.toolProfile === "minimal") {
+    // Legacy fallback — kept for backward-compat
+    mode = "minimal";
+  } else {
+    mode = "full";
+  }
+
+  switch (mode) {
+    case "subagent":
+      return DISCOVERY_FILES_SUBAGENT;
+    case "minimal":
+      return DISCOVERY_FILES_MINIMAL;
+    default:
+      return DISCOVERY_FILES_FULL;
+  }
 }
 
 async function resolveInstructions(ctx: SystemPromptContext): Promise<string | undefined> {
@@ -248,11 +280,17 @@ async function resolveInstructions(ctx: SystemPromptContext): Promise<string | u
   // 3. Auto-discovery: look for workspace files in <workDir>/workspace-<agentId>/ or <workDir>/workspace/
   if (workDir) {
     const discoveryFiles = resolveDiscoveryFiles(agentConfig);
+    const agentInfo = getAgent(agentConfig.id);
+    const agentKind = agentInfo?.kind ?? "primary";
+    const effectiveMode =
+      agentConfig.promptMode ?? (agentKind === "subagent" ? "subagent" : undefined);
+    const skipMemory = effectiveMode === "subagent";
     const discovered = discoverWorkspaceInstructions(
       workDir,
       agentConfig.id,
       discoveryFiles,
       agentConfig.bootstrapFiles,
+      skipMemory,
     );
     if (discovered) {
       const extra = await fetchInstructionUrls(agentConfig);
@@ -311,12 +349,14 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<string>
  *
  * @param bootstrapFiles Optional glob patterns (relative to wsDir) for extra files to inject
  *                       after DISCOVERY_FILES. Loaded in alphabetical order per pattern.
+ * @param skipMemory     If true, skip reading memory/*.md files (for subagents with no long-term memory)
  */
 function discoverWorkspaceInstructions(
   workDir: string,
   agentId: string,
   discoveryFiles: readonly string[],
   bootstrapFiles?: readonly string[],
+  skipMemory?: boolean,
 ): string | undefined {
   // Candidate workspace directories in priority order
   const candidates = [join(workDir, `workspace-${agentId}`), join(workDir, "workspace")];
@@ -357,9 +397,9 @@ function discoverWorkspaceInstructions(
       }
     }
 
-    // Also read memory/*.md files (thematic memory) in alphabetical order
+    // Also read memory/*.md files — skipped for subagents (no long-term memory)
     const memoryDir = join(wsDir, "memory");
-    if (existsSync(memoryDir)) {
+    if (!skipMemory && existsSync(memoryDir)) {
       try {
         if (statSync(memoryDir).isDirectory()) {
           const memoryFiles = readdirSync(memoryDir)

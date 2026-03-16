@@ -72,6 +72,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     const stateParam = c.req.query("state") as "active" | "archived" | undefined;
     const limitParam = c.req.query("limit");
     const limit = limitParam ? parseInt(limitParam, 10) : 50;
+    const includeInternal = c.req.query("includeInternal") === "true";
 
     // Requête enrichie avec agrégats depuis rt_messages
     interface EnrichedSessionRow {
@@ -110,6 +111,11 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     sql += " AND s.state = ?";
     params.push(resolvedState);
 
+    // Filter out internal sessions (subagent sessions) unless explicitly requested
+    if (!includeInternal) {
+      sql += " AND s.channel != 'internal'";
+    }
+
     sql += " GROUP BY s.id ORDER BY s.created_at DESC LIMIT ?";
     params.push(isNaN(limit) ? 50 : limit);
 
@@ -121,6 +127,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       const fallback = listSessions(db, slug, {
         state: resolvedState,
         limit: isNaN(limit) ? 50 : limit,
+        ...(includeInternal ? {} : { excludeChannels: ["internal"] }),
       });
       return c.json({ sessions: fallback });
     }

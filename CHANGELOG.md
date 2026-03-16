@@ -6,6 +6,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.31.0] — 2026-03-16
+
+### Added
+
+- **Sous-agents comme outils purs (Phase 2)** — formalisation des sous-agents éphémères sans identité propre, sans mémoire, sans capacité de spawn :
+  - `promptMode: "subagent"` — nouveau mode de découverte workspace chargeant uniquement `AGENTS.md` et `TOOLS.md` (économie estimée : 4 000–10 000 tokens par appel sous-agent)
+  - `DISCOVERY_FILES_SUBAGENT` dans `system-prompt.ts` — liste réduite pour les sous-agents éphémères
+  - `resolveDiscoveryFiles()` — inférence automatique du mode depuis `agentKind` si `promptMode` absent (`kind="subagent"` → `"subagent"`, `kind="primary"` → `"full"`)
+  - `discoverWorkspaceInstructions()` — nouveau paramètre `skipMemory` — skip la lecture de `memory/*.md` pour les sous-agents
+  - `getToolsForAgent()` dans `registry.ts` — wrapper de `getTools()` qui filtre le tool `task` pour les agents `kind="subagent"` (hard rule : les sous-agents ne peuvent jamais spawner)
+  - `session/cleanup.ts` (nouveau module) — `cleanupEphemeralSessions()` : suppression en cascade (parts → messages → sessions) des sessions éphémères archivées au-delà du délai de rétention
+  - `SubagentsConfigSchema.retentionHours` — délai de rétention configurable (défaut : 72h, 0 = conservation indéfinie)
+  - Cleanup déclenché au démarrage du runtime + timer périodique toutes les 6h dans `engine.ts`
+  - `ListSessionsOptions.excludeChannels` dans `session.ts` — filtre de canaux pour `listSessions()`
+  - `agent-provisioner.ts` — les agents `kind="subagent"` ne reçoivent que `AGENTS.md` et `TOOLS.md` lors du provisionnement
+
+### Changed
+
+- `listSessions()` — nouvelle interface `ListSessionsOptions` avec `excludeChannels` (rétrocompatible)
+- `GET /api/instances/:slug/runtime/sessions` — filtre par défaut `channel != "internal"` ; paramètre `?includeInternal=true` pour l'audit
+- `runPromptLoop()` — utilise `getToolsForAgent()` avec `agentKind` au lieu de `getTools()`
+- `task.ts` — suppression de `canSpawnSubagents` (désormais géré au niveau du registry par `getToolsForAgent`)
+
+---
+
 ## [0.30.0] — 2026-03-16
 
 ### Added

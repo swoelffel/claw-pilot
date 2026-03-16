@@ -12,10 +12,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MockLanguageModelV3, simulateReadableStream } from "ai/test";
 import { z } from "zod";
 
-// Mock getTools to avoid loading heavy built-in tools in unit tests
-vi.mock("../../tool/registry.js", () => ({
-  getTools: vi.fn().mockResolvedValue([]),
-}));
+// Mock getTools / getToolsForAgent to avoid loading heavy built-in tools in unit tests.
+// getToolsForAgent delegates to getTools so tests can keep mocking getTools only.
+vi.mock("../../tool/registry.js", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../../tool/registry.js")>();
+  const mockGetTools = vi.fn().mockResolvedValue([]);
+  return {
+    ...mod,
+    getTools: mockGetTools,
+    getToolsForAgent: (...args: Parameters<typeof mockGetTools>) => mockGetTools(...args),
+  };
+});
 import { initDatabase } from "../../../db/schema.js";
 import type Database from "better-sqlite3";
 import { createSession } from "../session.js";

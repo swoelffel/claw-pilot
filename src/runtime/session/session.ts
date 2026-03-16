@@ -185,27 +185,38 @@ export function countActiveChildren(db: Database.Database, parentId: SessionId):
   return row.count;
 }
 
+export interface ListSessionsOptions {
+  limit?: number;
+  offset?: number;
+  state?: "active" | "archived";
+  excludeChannels?: string[];
+}
+
 export function listSessions(
   db: Database.Database,
   instanceSlug: InstanceSlug,
-  options?: { state?: "active" | "archived"; limit?: number },
+  options: ListSessionsOptions = {},
 ): SessionInfo[] {
-  const state = options?.state;
-  const limit = options?.limit ?? 100;
+  const { limit = 100, offset = 0, state, excludeChannels } = options;
 
-  let sql = "SELECT * FROM rt_sessions WHERE instance_slug = ?";
-  const params: (string | number)[] = [instanceSlug];
+  let query = `SELECT * FROM rt_sessions WHERE instance_slug = ?`;
+  const params: unknown[] = [instanceSlug];
 
   if (state) {
-    sql += " AND state = ?";
+    query += ` AND state = ?`;
     params.push(state);
   }
 
-  sql += " ORDER BY created_at DESC LIMIT ?";
-  params.push(limit);
+  if (excludeChannels && excludeChannels.length > 0) {
+    const placeholders = excludeChannels.map(() => "?").join(", ");
+    query += ` AND channel NOT IN (${placeholders})`;
+    params.push(...excludeChannels);
+  }
 
-  const rows = db.prepare(sql).all(...params) as SessionRow[];
-  return rows.map(fromRow);
+  query += ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`;
+  params.push(limit, offset);
+
+  return (db.prepare(query).all(...params) as SessionRow[]).map(fromRow);
 }
 
 export function updateSessionTitle(db: Database.Database, id: SessionId, title: string): void {

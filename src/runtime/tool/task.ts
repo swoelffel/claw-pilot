@@ -185,11 +185,6 @@ export function createTaskTool(options: {
         );
       }
 
-      // Determine if this sub-agent can itself spawn sub-agents
-      const canSpawnSubagents = agent.permission.some(
-        (r) => r.permission === "task" && r.action !== "deny",
-      );
-
       // Find or create the sub-agent session
       let sessionId: string;
 
@@ -204,7 +199,6 @@ export function createTaskTool(options: {
             ctx.sessionId,
             agent.name,
             params.description,
-            canSpawnSubagents,
             subagentsConfig,
           );
         }
@@ -215,7 +209,6 @@ export function createTaskTool(options: {
           ctx.sessionId,
           agent.name,
           params.description,
-          canSpawnSubagents,
           subagentsConfig,
         );
       }
@@ -231,7 +224,7 @@ export function createTaskTool(options: {
         systemPrompt: agent.prompt,
         temperature: agent.temperature,
         maxSteps: agent.steps ?? 20,
-        allowSubAgents: canSpawnSubagents,
+        allowSubAgents: false,
         toolProfile: "coding" as const,
         isDefault: false,
         permissions: agent.permission,
@@ -407,7 +400,6 @@ function createSubSession(
   parentId: string,
   agentName: string,
   description: string,
-  canSpawnSubagents: boolean,
   subagentsConfig?: SubagentsConfig,
 ): string {
   // Enforce spawn depth limit
@@ -432,12 +424,11 @@ function createSubSession(
     }
   }
 
-  // Sub-agents cannot use todowrite/todoread by default
-  // and cannot spawn further sub-agents unless explicitly allowed
+  // Sub-agents cannot use todowrite/todoread by default.
+  // The task tool is never available to subagents (enforced at the tool registry level).
   const restrictedPermissions = [
     { permission: "todowrite", pattern: "*", action: "deny" as const },
     { permission: "todoread", pattern: "*", action: "deny" as const },
-    ...(!canSpawnSubagents ? [{ permission: "task", pattern: "*", action: "deny" as const }] : []),
   ];
 
   const session = createSession(db, {

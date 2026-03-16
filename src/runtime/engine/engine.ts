@@ -32,6 +32,7 @@ import { createChannels } from "./channel-factory.js";
 import { wirePluginsToBus } from "./plugin-wiring.js";
 import { startHeartbeatRunner } from "../heartbeat/runner.js";
 import { getRegisteredHooks } from "../plugin/hooks.js";
+import { cleanupEphemeralSessions } from "../session/cleanup.js";
 
 // ---------------------------------------------------------------------------
 // ClawRuntime
@@ -44,6 +45,7 @@ export class ClawRuntime {
   private _pluginUnsubscribers: Array<() => void> = [];
   private _subagentUnsubscribe: (() => void) | undefined;
   private _stopHeartbeat: (() => void) | undefined;
+  private _cleanupTimer: ReturnType<typeof setInterval> | undefined;
   private _error: string | undefined;
 
   constructor(
@@ -119,6 +121,12 @@ export class ClawRuntime {
 
       this._setState("running");
 
+      // 5. Initial cleanup on startup (catch-up after prolonged stop)
+      this._runCleanup();
+
+      // Periodic cleanup every 6 hours
+      this._cleanupTimer = setInterval(() => this._runCleanup(), 6 * 3_600_000);
+
       const bus = getBus(this.instanceSlug);
       bus.publish(RuntimeStarted, { slug: this.instanceSlug });
     } catch (err) {
@@ -146,6 +154,12 @@ export class ClawRuntime {
     if (this._state === "stopped" || this._state === "stopping") return;
 
     this._setState("stopping");
+
+    // Stop cleanup timer before shutting down
+    if (this._cleanupTimer) {
+      clearInterval(this._cleanupTimer);
+      this._cleanupTimer = undefined;
+    }
 
     const errors: string[] = [];
 
@@ -290,6 +304,26 @@ export class ClawRuntime {
         });
       }
     };
+  }
+
+  private _runCleanup(): void {
+    const retentionHours = this.config.subagents?.retentionHours ?? 72;
+    if (retentionHours <= 0) return;
+
+    setImmediate(() => {
+      try {
+        const result = cleanupEphemeralSessions(this.db, this.instanceSlug, retentionHours);
+        if (result.sessionsDeleted > 0) {
+          console.info(
+            `[cleanup] Deleted ${result.sessionsDeleted} ephemeral sessions, ` +
+              `${result.messagesDeleted} messages, ${result.partsDeleted} parts ` +
+              `(${result.durationMs}ms)`,
+          );
+        }
+      } catch (err) {
+        console.error("[cleanup] Error during ephemeral session cleanup:", err);
+      }
+    });
   }
 
   private _setState(next: RuntimeInstanceState): void {

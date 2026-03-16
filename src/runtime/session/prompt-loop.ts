@@ -27,7 +27,7 @@ import type { SessionId, InstanceSlug } from "../types.js";
 import type { RuntimeAgentConfig } from "../config/index.js";
 import type { ResolvedModel } from "../provider/provider.js";
 import type { Tool } from "../tool/tool.js";
-import { getTools } from "../tool/registry.js";
+import { getToolsForAgent } from "../tool/registry.js";
 import { normalizeForProvider } from "../tool/normalize.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { getSession } from "./session.js";
@@ -57,6 +57,7 @@ import type { McpRegistry } from "../mcp/registry.js";
 import { createMemorySearchTool } from "../memory/search-tool.js";
 import { rebuildMemoryIndex } from "../memory/index.js";
 import { createTaskTool } from "../tool/task.js";
+import { getAgent } from "../agent/registry.js";
 import {
   triggerToolBeforeCall,
   triggerToolAfterCall,
@@ -274,10 +275,15 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       version: _getRuntimeVersion(),
     };
 
-    const toolInfos = await getTools({
+    // Determine agent kind to enforce subagent tool restrictions
+    const agentInfoForTools = getAgent(agentConfig.id);
+    const agentKindForTools = agentInfoForTools?.kind ?? "primary";
+
+    const toolInfos = await getToolsForAgent({
       toolProfile: agentConfig.toolProfile,
       ...(mcpRegistry !== undefined ? { mcpRegistry } : {}),
       pluginInput,
+      agentKind: agentKindForTools,
     });
 
     // Owner channels (web, telegram) have access to ownerOnly tools; internal sub-agents do not
@@ -307,6 +313,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       subagentsConfig,
       compactionConfig,
       pluginInput,
+      agentKindForTools,
     );
 
     // 6. Stream the response
@@ -924,6 +931,7 @@ async function buildToolSet(
   subagentsConfig?: SubagentsConfig,
   compactionConfig?: RuntimeConfig["compaction"],
   pluginInput?: PluginInput,
+  agentKind?: "primary" | "subagent",
 ): Promise<ToolSet> {
   const set: ToolSet = {};
   const bus = getBus(instanceSlug);
@@ -1062,7 +1070,8 @@ async function buildToolSet(
 
   // Inject task tool if the agent's toolProfile is "full" (the only profile that includes "task").
   // The task tool is dynamic (needs DB, model, workDir) so it cannot be in BUILTIN_TOOLS.
-  if (callerAgentConfig) {
+  // Hard rule: subagents (kind="subagent") can never spawn — task tool is never injected for them.
+  if (callerAgentConfig && agentKind !== "subagent") {
     const profile = callerAgentConfig.toolProfile ?? "coding";
     const profileAllows = profile === "full";
     if (profileAllows) {

@@ -142,7 +142,7 @@ function makeRuntimeConfig(): RuntimeConfig {
     },
     webChat: { enabled: true, maxSessions: 10 },
     compaction: { auto: true, threshold: 0.85, reservedTokens: 8000 },
-    subagents: { maxSpawnDepth: 3, maxChildrenPerSession: 5 },
+    subagents: { maxSpawnDepth: 3, maxChildrenPerSession: 5, retentionHours: 72 },
     mcpEnabled: false,
     mcpServers: [],
   };
