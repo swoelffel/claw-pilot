@@ -17,12 +17,28 @@ export COREPACK_ENABLE_STRICT=0
 
 REPO="swoelffel/claw-pilot"
 REPO_URL="https://github.com/${REPO}.git"
-CLAW_PILOT_REPO_BRANCH="${CLAW_PILOT_REPO_BRANCH:-main}"
-RAW_BASE="https://raw.githubusercontent.com/${REPO}/${CLAW_PILOT_REPO_BRANCH}"
 MIN_NODE_VERSION=22
 INSTALL_DIR="${CLAW_PILOT_INSTALL_DIR:-/opt/claw-pilot}"
 
-# Resolve version from package.json on GitHub
+# Resolve the ref to install:
+#   - CLAW_PILOT_REPO_BRANCH set explicitly → use it as-is (dev/beta override)
+#   - otherwise → resolve latest GitHub release tag via API, fallback to main
+if [ -n "${CLAW_PILOT_REPO_BRANCH:-}" ]; then
+  CLAW_PILOT_REF="$CLAW_PILOT_REPO_BRANCH"
+else
+  CLAW_PILOT_REF=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
+    | grep '"tag_name"' | head -1 \
+    | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/') \
+    || CLAW_PILOT_REF=""
+  if [ -z "$CLAW_PILOT_REF" ]; then
+    printf '\033[1;33m[!]\033[0m Could not resolve latest release tag — falling back to main branch.\n'
+    CLAW_PILOT_REF="main"
+  fi
+fi
+
+RAW_BASE="https://raw.githubusercontent.com/${REPO}/${CLAW_PILOT_REF}"
+
+# Resolve version from package.json at the resolved ref
 CLAW_PILOT_VERSION=$(curl -fsSL "${RAW_BASE}/package.json" 2>/dev/null \
   | grep '"version"' | head -1 | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/') \
   || CLAW_PILOT_VERSION="unknown"
@@ -170,7 +186,7 @@ resolve_node_bin() {
 }
 
 # ── 1. Banner ─────────────────────────────────────────────────────────────────
-log "Installing claw-pilot v${CLAW_PILOT_VERSION} from ${REPO_URL}"
+log "Installing claw-pilot v${CLAW_PILOT_VERSION} (${CLAW_PILOT_REF}) from ${REPO_URL}"
 echo ""
 
 # ── 2. sudo check ─────────────────────────────────────────────────────────────
@@ -356,12 +372,15 @@ fi
 log "Installing claw-pilot from ${REPO_URL}..."
 if [ -d "$INSTALL_DIR/.git" ]; then
   log "Updating existing installation at $INSTALL_DIR..."
-  # Fetch and switch to the requested branch (respects CLAW_PILOT_REPO_BRANCH).
-  # A plain `git pull --ff-only` would stay on whatever branch was checked out
-  # previously (typically main), ignoring the requested branch entirely.
-  git -C "$INSTALL_DIR" fetch origin
-  git -C "$INSTALL_DIR" checkout "$CLAW_PILOT_REPO_BRANCH"
-  git -C "$INSTALL_DIR" pull --ff-only origin "$CLAW_PILOT_REPO_BRANCH"
+  # Fetch all tags and refs, then checkout the resolved ref (tag or branch).
+  # For a tag: detached HEAD is expected and correct — no pull needed.
+  # For a branch: pull --ff-only to advance to the latest commit.
+  git -C "$INSTALL_DIR" fetch --tags origin
+  git -C "$INSTALL_DIR" checkout "$CLAW_PILOT_REF"
+  # Pull only if REF is a branch (tags are immutable — pull would error on detached HEAD)
+  if git -C "$INSTALL_DIR" symbolic-ref HEAD >/dev/null 2>&1; then
+    git -C "$INSTALL_DIR" pull --ff-only origin "$CLAW_PILOT_REF"
+  fi
 
   run_quiet_step "Installing dependencies" sh -c "cd '$INSTALL_DIR' && pnpm install --frozen-lockfile"
   run_quiet_step "Building CLI" sh -c "cd '$INSTALL_DIR' && pnpm run build:cli"
@@ -427,11 +446,11 @@ else
     log "Removed $INSTALL_DIR."
   fi
   # Try to clone as current user; use sudo only if needed
-  if git clone --branch "$CLAW_PILOT_REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR" 2>/dev/null; then
+  if git clone --branch "$CLAW_PILOT_REF" "$REPO_URL" "$INSTALL_DIR" 2>/dev/null; then
     : # success
   elif command -v sudo >/dev/null 2>&1; then
     warn "Cloning to $INSTALL_DIR requires elevated privileges..."
-    sudo git clone --branch "$CLAW_PILOT_REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR"
+    sudo git clone --branch "$CLAW_PILOT_REF" "$REPO_URL" "$INSTALL_DIR"
     sudo chown -R "$(id -u):$(id -g)" "$INSTALL_DIR"
   else
     error "Cannot clone to $INSTALL_DIR. Set CLAW_PILOT_INSTALL_DIR to a writable path."
