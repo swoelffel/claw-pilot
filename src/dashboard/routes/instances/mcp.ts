@@ -10,7 +10,7 @@ import { apiError } from "../../route-deps.js";
 import { instanceGuard } from "../../../lib/guards.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
 import { readEnvFileSync } from "../../../lib/env-reader.js";
-import { runtimeConfigExists, loadRuntimeConfig, hasBus } from "../../../runtime/index.js";
+import { runtimeConfigExists, loadRuntimeConfig } from "../../../runtime/index.js";
 import { McpRegistry } from "../../../runtime/mcp/registry.js";
 
 // ---------------------------------------------------------------------------
@@ -77,10 +77,6 @@ export function registerMcpRoutes(app: Hono, deps: RouteDeps): void {
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
 
-    if (!hasBus(slug)) {
-      return c.json({ tools: [] });
-    }
-
     const mcpRegistry = await getMcpRegistryForSlug(slug);
     if (!mcpRegistry) {
       return c.json({ tools: [] });
@@ -123,10 +119,6 @@ export function registerMcpRoutes(app: Hono, deps: RouteDeps): void {
     const instance = registry.getInstance(slug);
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
-
-    if (!hasBus(slug)) {
-      return c.json({ servers: [] });
-    }
 
     const mcpRegistry = await getMcpRegistryForSlug(slug);
     if (!mcpRegistry) {

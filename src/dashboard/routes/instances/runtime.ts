@@ -21,7 +21,6 @@ import {
   defaultAgentName,
   getAgent,
   getBus,
-  hasBus,
   type RuntimeAgentConfig,
 } from "../../../runtime/index.js";
 import { listEnrichedSessions } from "../../../core/repositories/runtime-session-repository.js";
@@ -279,14 +278,6 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     const instance = registry.getInstance(slug);
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
-
-    // Check that the runtime bus is active for this instance
-    if (!hasBus(slug)) {
-      return c.json(
-        { code: "RUNTIME_NOT_RUNNING", error: "Runtime not running for this instance" },
-        404,
-      );
-    }
 
     const sessionId = c.req.query("sessionId");
     const bus = getBus(slug);

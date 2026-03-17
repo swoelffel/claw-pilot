@@ -1781,9 +1781,10 @@ describe("POST /api/instances/:slug/runtime/permission/reply", () => {
     expect(body.code).toBe("NOT_FOUND");
   });
 
-  it("returns 409 when the runtime bus is not active for the instance", async () => {
-    // Objective: negative — verifies the route returns 409 RUNTIME_NOT_RUNNING
-    // when hasBus() returns false (no bus registered for the slug).
+  it("returns { ok: true } even when no bus is pre-registered (bus created lazily)", async () => {
+    // Objective: verifies the route succeeds regardless of whether hasBus() is true —
+    // getBus() creates the bus lazily and the event is published (silently dropped if
+    // no one is subscribed, which is the expected behaviour when no prompt loop is running).
     // Arrange
     seedInstance(ctx, "demo1", 18789);
     // Ensure no bus exists for demo1 (disposeBus is idempotent)
@@ -1801,9 +1802,9 @@ describe("POST /api/instances/:slug/runtime/permission/reply", () => {
     });
 
     // Assert
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(200);
     const body = await json(res);
-    expect(body.code).toBe("RUNTIME_NOT_RUNNING");
+    expect(body.ok).toBe(true);
   });
 
   it("returns 400 when the body is invalid (missing decision field)", async () => {
@@ -1811,7 +1812,6 @@ describe("POST /api/instances/:slug/runtime/permission/reply", () => {
     // when the Zod schema rejects the body (decision is required).
     // Arrange
     seedInstance(ctx, "demo1", 18789);
-    getBus("demo1"); // activate the bus so we reach body validation
 
     // Act
     const res = await ctx.app.request("/api/instances/demo1/runtime/permission/reply", {

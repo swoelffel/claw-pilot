@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.35.0] — 2026-03-17
+
+### Fixed
+
+- **Bug critique "Connection to runtime lost"** — suppression du check `hasBus()` dans les routes du dashboard (`runtime.ts`, `mcp.ts`, `permissions.ts`). Ce check vérifiait le registre bus du processus dashboard, qui est toujours vide car les buses sont créés dans les processus runtime daemon (processus séparés). Conséquence : la route SSE `GET /runtime/chat/stream` retournait systématiquement 404 `RUNTIME_NOT_RUNNING`, bloquant le chat web sur toutes les instances. Le bus est désormais créé lazily par `getBus()` dans le processus dashboard lors du premier appel à `runPromptLoop()`.
+
+---
+
 ## [0.34.0] — 2026-03-16
 
 ### Added

@@ -11,7 +11,7 @@ import { z } from "zod";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
 import { instanceGuard } from "../../../lib/guards.js";
-import { getBus, hasBus, PermissionReplied } from "../../../runtime/index.js";
+import { getBus, PermissionReplied } from "../../../runtime/index.js";
 
 // ---------------------------------------------------------------------------
 // Zod schema — body de POST /reply
@@ -111,16 +111,6 @@ export function registerPermissionRoutes(app: Hono, deps: RouteDeps): void {
     const instance = registry.getInstance(slug);
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
-
-    // Le runtime doit être actif pour pouvoir publier sur le bus
-    if (!hasBus(slug)) {
-      return apiError(
-        c,
-        409,
-        "RUNTIME_NOT_RUNNING",
-        `Runtime is not running for instance "${slug}"`,
-      );
-    }
 
     // Parse + validation du body
     let rawBody: unknown;
