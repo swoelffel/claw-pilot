@@ -65,9 +65,11 @@ export class InstanceSettings extends LitElement {
   // Catalog from /api/providers — used for "Add provider" dropdown
   @state() private _providerCatalog: ProviderInfo[] = [];
   @state() private _editingKeyForProvider: string | null = null;
-  @state() private _addedProviders: Array<{ id: string; apiKey: string }> = [];
+  @state() private _editingBaseUrlForProvider: string | null = null;
+  @state() private _addedProviders: Array<{ id: string; apiKey: string; baseUrl?: string }> = [];
   @state() private _removedProviders: string[] = [];
   @state() private _updatedKeys: Record<string, string> = {};
+  @state() private _updatedBaseUrls: Record<string, string | null> = {};
   @state() private _showAddProvider = false;
 
   // ── MCP badge state ───────────────────────────────────────────────────────
@@ -109,7 +111,9 @@ export class InstanceSettings extends LitElement {
       this._addedProviders = [];
       this._removedProviders = [];
       this._updatedKeys = {};
+      this._updatedBaseUrls = {};
       this._editingKeyForProvider = null;
+      this._editingBaseUrlForProvider = null;
       this._showAddProvider = false;
     } catch (err) {
       this._error = userMessage(err);
@@ -145,7 +149,8 @@ export class InstanceSettings extends LitElement {
       Object.keys(this._dirty).length > 0 ||
       this._addedProviders.length > 0 ||
       this._removedProviders.length > 0 ||
-      Object.keys(this._updatedKeys).length > 0
+      Object.keys(this._updatedKeys).length > 0 ||
+      Object.keys(this._updatedBaseUrls).length > 0
     );
   }
 
@@ -167,11 +172,18 @@ export class InstanceSettings extends LitElement {
     const providersAdd = this._addedProviders.map((p) => ({
       id: p.id,
       apiKey: p.apiKey || undefined,
+      ...(p.baseUrl !== undefined ? { baseUrl: p.baseUrl || undefined } : {}),
     }));
-    const providersUpdate = Object.entries(this._updatedKeys).map(([id, apiKey]) => ({
-      id,
-      apiKey,
-    }));
+    const providersUpdate: Array<{ id: string; apiKey?: string; baseUrl?: string | null }> = [
+      ...Object.entries(this._updatedKeys).map(([id, apiKey]) => ({
+        id,
+        apiKey,
+        ...(id in this._updatedBaseUrls ? { baseUrl: this._updatedBaseUrls[id] } : {}),
+      })),
+      ...Object.entries(this._updatedBaseUrls)
+        .filter(([id]) => !(id in this._updatedKeys))
+        .map(([id, baseUrl]) => ({ id, baseUrl })),
+    ];
     const providersRemove = [...this._removedProviders];
 
     if (providersAdd.length > 0 || providersUpdate.length > 0 || providersRemove.length > 0) {
@@ -274,7 +286,9 @@ export class InstanceSettings extends LitElement {
     this._addedProviders = [];
     this._removedProviders = [];
     this._updatedKeys = {};
+    this._updatedBaseUrls = {};
     this._editingKeyForProvider = null;
+    this._editingBaseUrlForProvider = null;
     this._showAddProvider = false;
     this.requestUpdate();
   }
@@ -422,8 +436,11 @@ export class InstanceSettings extends LitElement {
   }
 
   private _renderProviderCard(p: ProviderEntry, isNew: boolean) {
-    const isEditing = this._editingKeyForProvider === p.id;
+    const isEditingKey = this._editingKeyForProvider === p.id;
+    const isEditingUrl = this._editingBaseUrlForProvider === p.id;
     const isDefaultProvider = this._isDefaultModelProvider(p.id);
+    const baseUrl =
+      this._updatedBaseUrls[p.id] !== undefined ? this._updatedBaseUrls[p.id] : p.baseUrl;
 
     return html`
       <div class="provider-card">
@@ -448,7 +465,7 @@ export class InstanceSettings extends LitElement {
         </div>
         <div class="provider-key-row">
           <span class="provider-env-var">${p.envVar || "—"}</span>
-          ${isEditing
+          ${isEditingKey
             ? html`
                 <input
                   class="field-input mono changed"
@@ -496,11 +513,61 @@ export class InstanceSettings extends LitElement {
                 </button>
               `}
         </div>
+        ${baseUrl
+          ? html`
+              <div class="provider-url-row">
+                <span style="font-size:11px;color:var(--text-muted)">Base URL</span>
+                ${isEditingUrl
+                  ? html`
+                      <input
+                        class="field-input changed"
+                        style="flex:1"
+                        type="url"
+                        placeholder="https://api.example.com"
+                        .value=${baseUrl}
+                        @input=${(e: Event) => {
+                          this._updatedBaseUrls = {
+                            ...this._updatedBaseUrls,
+                            [p.id]: (e.target as HTMLInputElement).value || null,
+                          };
+                          this.requestUpdate();
+                        }}
+                      />
+                      <button
+                        class="btn-reveal"
+                        @click=${() => {
+                          this._editingBaseUrlForProvider = null;
+                          const updated = { ...this._updatedBaseUrls };
+                          delete updated[p.id];
+                          this._updatedBaseUrls = updated;
+                          this.requestUpdate();
+                        }}
+                      >
+                        ${msg("Cancel", { id: "settings-cancel" })}
+                      </button>
+                    `
+                  : html`
+                      <span class="field-readonly mono" style="flex:1;font-size:12px"
+                        >${baseUrl}</span
+                      >
+                      <button
+                        class="btn-reveal"
+                        @click=${() => {
+                          this._editingBaseUrlForProvider = p.id;
+                          this.requestUpdate();
+                        }}
+                      >
+                        ${msg("Edit", { id: "settings-edit" })}
+                      </button>
+                    `}
+              </div>
+            `
+          : nothing}
       </div>
     `;
   }
 
-  private _renderNewProviderCard(p: { id: string; apiKey: string }) {
+  private _renderNewProviderCard(p: { id: string; apiKey: string; baseUrl?: string }) {
     // Build a synthetic ProviderEntry from catalog info
     const catalogEntry = this._providerCatalog.find((c) => c.id === p.id);
     const entry: ProviderEntry = {
@@ -545,6 +612,26 @@ export class InstanceSettings extends LitElement {
               this._addedProviders = this._addedProviders.map((ap) =>
                 ap.id === p.id ? { ...ap, apiKey: val } : ap,
               );
+              this.requestUpdate();
+            }}
+          />
+        </div>
+        <div class="provider-url-row">
+          <span style="font-size:11px;color:var(--text-muted)">Base URL (optional)</span>
+          <input
+            class="field-input changed"
+            style="flex:1"
+            type="url"
+            placeholder="https://api.example.com"
+            .value=${p.baseUrl ?? ""}
+            @input=${(e: Event) => {
+              const val = (e.target as HTMLInputElement).value;
+              this._addedProviders = this._addedProviders.map((ap) => {
+                if (ap.id !== p.id) return ap;
+                const updated: typeof ap = { id: ap.id, apiKey: ap.apiKey };
+                if (val) updated.baseUrl = val;
+                return updated;
+              });
               this.requestUpdate();
             }}
           />

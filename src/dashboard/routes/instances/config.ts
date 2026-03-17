@@ -7,7 +7,9 @@ import { instanceGuard } from "../../../lib/guards.js";
 import { logger } from "../../../lib/logger.js";
 import { PROVIDER_CATALOG } from "../../../lib/provider-catalog.js";
 import type { ProviderInfo } from "../../../lib/provider-catalog.js";
+import { PROVIDER_ENV_VARS, PROVIDER_BASE_URLS } from "../../../lib/providers.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
+import { readEnvVar, writeEnvVar, removeEnvVar, maskSecret } from "../../../lib/dotenv.js";
 import {
   runtimeConfigExists,
   loadRuntimeConfig,
@@ -16,8 +18,18 @@ import {
   type RuntimeConfig,
 } from "../../../runtime/index.js";
 import { z } from "zod";
-import * as fs from "node:fs/promises";
-import { readFileSync } from "node:fs";
+
+// ProviderEntry — matches ui/src/types.ts
+interface ProviderEntry {
+  id: string;
+  label: string;
+  envVar: string;
+  apiKeyMasked: string | null;
+  apiKeySet: boolean;
+  requiresKey: boolean;
+  baseUrl: string | null;
+  source: "models" | "auth";
+}
 
 // InstanceConfig type — matches ui/src/types.ts
 interface InstanceConfig {
@@ -27,7 +39,7 @@ interface InstanceConfig {
     port: number;
     toolsProfile: string;
   };
-  providers: Array<{ id: string; label: string; apiKey: string }>;
+  providers: ProviderEntry[];
   agentDefaults: {
     workspace: string;
     subagents: { maxConcurrent: number; archiveAfterMinutes: number };
@@ -79,6 +91,29 @@ const RuntimeConfigPatchSchema = z.object({
       defaultModel: z.string().optional(),
     })
     .optional(),
+  providers: z
+    .object({
+      add: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            apiKey: z.string().optional(),
+            baseUrl: z.string().url().optional(),
+          }),
+        )
+        .optional(),
+      update: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            apiKey: z.string().optional(),
+            baseUrl: z.string().url().nullish(),
+          }),
+        )
+        .optional(),
+      remove: z.array(z.string().min(1)).optional(),
+    })
+    .optional(),
   channels: z
     .object({
       telegram: z
@@ -118,28 +153,31 @@ function buildInstanceConfig(
     identity: null,
   }));
 
-  // Map providers to UI format
-  const providers = config.providers.map((p) => ({
-    id: p.id,
-    label: p.id,
-    apiKey: "", // Never expose API keys in config response
-  }));
+  // Read .env for providers and telegram
+  const envPath = `${stateDir}/.env`;
+
+  // Map providers to UI format (enriched ProviderEntry)
+  const providers: ProviderEntry[] = config.providers.map((p) => {
+    const catalogEntry = PROVIDER_CATALOG.find((c) => c.id === p.id);
+    const envVar = PROVIDER_ENV_VARS[p.id] ?? `${p.id.toUpperCase()}_API_KEY`;
+    const raw = readEnvVar(envPath, envVar);
+
+    return {
+      id: p.id,
+      label: catalogEntry?.label ?? p.id,
+      envVar,
+      apiKeyMasked: raw ? maskSecret(raw) : null,
+      apiKeySet: raw !== null && raw.length > 0,
+      requiresKey: catalogEntry?.requiresKey ?? true,
+      baseUrl: p.baseUrl ?? PROVIDER_BASE_URLS[p.id] ?? null,
+      source: "auth" as const,
+    };
+  });
 
   // Read botTokenMasked from .env (synchronous — buildInstanceConfig is sync)
-  let botTokenMasked: string | null = null;
-  try {
-    const envPath = `${stateDir}/.env`;
-    const envContent = readFileSync(envPath, "utf-8");
-    const varName = config.telegram.botTokenEnvVar;
-    const match = envContent.match(new RegExp(`^${varName}=(.+)$`, "m"));
-    if (match?.[1]) {
-      const raw = match[1].trim();
-      botTokenMasked =
-        raw.length > 4 ? `${"•".repeat(Math.min(raw.length - 4, 20))}${raw.slice(-4)}` : "••••";
-    }
-  } catch {
-    /* .env absent ou illisible — botTokenMasked reste null */
-  }
+  const varName = config.telegram.botTokenEnvVar;
+  const telegramRaw = readEnvVar(envPath, varName);
+  const botTokenMasked = telegramRaw ? maskSecret(telegramRaw) : null;
 
   return {
     general: {
@@ -311,6 +349,112 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
       }
     }
 
+    // Update providers in runtime.json and .env
+    if (patch.providers) {
+      const stateDir = getRuntimeStateDir(slug);
+      const envPath = `${stateDir}/.env`;
+
+      try {
+        // Load or create config
+        let config: RuntimeConfig;
+        if (runtimeConfigExists(stateDir)) {
+          config = loadRuntimeConfig(stateDir);
+        } else {
+          config = createDefaultRuntimeConfig(
+            instance!.default_model != null ? { defaultModel: instance!.default_model } : {},
+          );
+        }
+
+        // --- ADD ---
+        if (patch.providers.add) {
+          for (const entry of patch.providers.add) {
+            // Skip if already present
+            if (config.providers.some((p) => p.id === entry.id)) continue;
+
+            const envVar = PROVIDER_ENV_VARS[entry.id] ?? `${entry.id.toUpperCase()}_API_KEY`;
+
+            // Add to runtime.json providers[]
+            config.providers.push({
+              id: entry.id,
+              ...(entry.baseUrl !== undefined ? { baseUrl: entry.baseUrl } : {}),
+              authProfiles: [
+                {
+                  id: `${entry.id}-default`,
+                  providerId: entry.id,
+                  apiKeyEnvVar: envVar,
+                  priority: 0,
+                },
+              ],
+            });
+
+            // Write API key to .env (if provided)
+            if (entry.apiKey) {
+              await writeEnvVar(envPath, envVar, entry.apiKey);
+            }
+          }
+        }
+
+        // --- UPDATE ---
+        if (patch.providers.update) {
+          for (const entry of patch.providers.update) {
+            const envVar = PROVIDER_ENV_VARS[entry.id] ?? `${entry.id.toUpperCase()}_API_KEY`;
+
+            // Update API key in .env
+            if (entry.apiKey !== undefined) {
+              await writeEnvVar(envPath, envVar, entry.apiKey);
+            }
+
+            // Update baseUrl in runtime.json
+            if (entry.baseUrl !== undefined) {
+              const provider = config.providers.find((p) => p.id === entry.id);
+              if (provider) {
+                if (entry.baseUrl === null) {
+                  delete (provider as Record<string, unknown>).baseUrl;
+                } else {
+                  provider.baseUrl = entry.baseUrl;
+                }
+              }
+            }
+          }
+        }
+
+        // --- REMOVE ---
+        if (patch.providers.remove) {
+          for (const id of patch.providers.remove) {
+            // Guard: block removal if provider is used by defaultModel
+            if (config.defaultModel.startsWith(`${id}/`)) {
+              return apiError(
+                c,
+                400,
+                "PROVIDER_IN_USE",
+                `Cannot remove provider "${id}" — used by default model "${config.defaultModel}"`,
+              );
+            }
+
+            // Remove from runtime.json
+            config.providers = config.providers.filter((p) => p.id !== id);
+
+            // Remove API key from .env
+            const envVar = PROVIDER_ENV_VARS[id] ?? `${id.toUpperCase()}_API_KEY`;
+            await removeEnvVar(envPath, envVar);
+          }
+        }
+
+        saveRuntimeConfig(stateDir, config);
+        requiresRestart = true;
+      } catch (err) {
+        logger.error(
+          `[config] PATCH providers error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return apiError(
+          c,
+          500,
+          "CONFIG_PATCH_FAILED",
+          err instanceof Error ? err.message : "Failed to update providers",
+        );
+      }
+    }
+
     // Update telegram config in runtime.json
     if (patch.channels?.telegram !== undefined) {
       const stateDir = getRuntimeStateDir(slug);
@@ -320,11 +464,11 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
         if (runtimeConfigExists(stateDir)) {
           config = loadRuntimeConfig(stateDir);
         } else {
-          config = createDefaultRuntimeConfig({
-            ...(instance!.default_model !== null && instance!.default_model !== undefined
+          config = createDefaultRuntimeConfig(
+            instance!.default_model !== null && instance!.default_model !== undefined
               ? { defaultModel: instance!.default_model }
-              : {}),
-          });
+              : {},
+          );
         }
         const tg = patch.channels.telegram;
         if (tg.enabled !== undefined) config.telegram.enabled = tg.enabled;
@@ -386,14 +530,6 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
     const envPath = `${stateDir}/.env`;
 
     try {
-      // Read existing .env or start empty
-      let envContent = "";
-      try {
-        envContent = await fs.readFile(envPath, "utf-8");
-      } catch {
-        /* file doesn't exist yet */
-      }
-
       // Get the botTokenEnvVar name from config (default: TELEGRAM_BOT_TOKEN)
       let varName = "TELEGRAM_BOT_TOKEN";
       if (runtimeConfigExists(stateDir)) {
@@ -405,17 +541,12 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
         }
       }
 
-      // Parse, update, serialize
-      const lines = envContent.split("\n");
-      const filtered = lines.filter((l) => !l.startsWith(`${varName}=`) && l !== "");
+      // Write or remove token via helper
       if (token !== null) {
-        filtered.push(`${varName}=${token}`);
+        await writeEnvVar(envPath, varName, token);
+      } else {
+        await removeEnvVar(envPath, varName);
       }
-      const newContent = filtered.join("\n") + (filtered.length > 0 ? "\n" : "");
-
-      // Ensure stateDir exists
-      await fs.mkdir(stateDir, { recursive: true });
-      await fs.writeFile(envPath, newContent, { mode: 0o600 });
 
       logger.info(`[config] PATCH telegram/token slug=${slug} configured=${token !== null}`);
       return c.json({ configured: token !== null });
