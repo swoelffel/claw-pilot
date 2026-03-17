@@ -26,7 +26,7 @@
     "build:safe": "pnpm typecheck:all && pnpm build",
     "knip": "knip",
     "check:circular": "madge --circular --extensions ts src/",
-    "spellcheck": "cspell \"src/**/*.ts\" \"ui/src/**/*.ts\"",
+    "spellcheck": "cspell --config cspell.json \"src/**/*.ts\" \"ui/src/**/*.ts\"",
     "prepare": "lefthook install"
   },
   "engines": {
