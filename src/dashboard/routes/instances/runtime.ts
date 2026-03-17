@@ -28,6 +28,7 @@ import {
   countMessagesSinceLastCompaction,
   type RuntimeAgentConfig,
 } from "../../../runtime/index.js";
+import { resolveAgentWorkspacePath } from "../../../core/agent-workspace.js";
 import { listEnrichedSessions } from "../../../core/repositories/runtime-session-repository.js";
 
 export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
@@ -535,6 +536,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     }
 
     // Run prompt loop
+    const agentWorkDir = resolveAgentWorkspacePath(stateDir, agentId, undefined, config.agents);
     try {
       const result = await runPromptLoop({
         db,
@@ -544,6 +546,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
         agentConfig: agentCfg,
         resolvedModel: resolvedModelObj,
         workDir: stateDir,
+        agentWorkDir,
         runtimeAgents: config.agents.map((a) => ({ id: a.id, name: a.name })),
       });
 

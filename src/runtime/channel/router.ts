@@ -28,6 +28,7 @@ import { getAgent, defaultAgentName, resolveEffectivePersistence } from "../agen
 import { resolveModel } from "../provider/provider.js";
 import { getBus } from "../bus/index.js";
 import { ChannelMessageReceived, ChannelMessageSent, SubagentCompleted } from "../bus/events.js";
+import { resolveAgentWorkspacePath } from "../../core/agent-workspace.js";
 
 // ---------------------------------------------------------------------------
 // Per-session serialization queue
@@ -116,6 +117,15 @@ export class ChannelRouter {
     const sessionId = findOrCreateSession(db, instanceSlug, message, agentId, config);
 
     // 4. Run prompt loop — serialized per session via queue
+    // Resolve the agent's workspace directory to show to the agent (env block).
+    // This restricts the agent's perceived working directory to its own workspace
+    // instead of the full instance stateDir (which contains .env, runtime.json, etc.).
+    // workspace field is not part of RuntimeAgentConfig (Zod schema) — it is resolved
+    // at provisioning time and stored in DB. At runtime, we rely on agentId heuristics.
+    const agentWorkDir = workDir
+      ? resolveAgentWorkspacePath(workDir, agentId, undefined, config.agents)
+      : undefined;
+
     const prev = sessionQueues.get(sessionId) ?? Promise.resolve();
     const next: Promise<PromptLoopResult> = prev.then(() =>
       runPromptLoop({
@@ -126,6 +136,7 @@ export class ChannelRouter {
         agentConfig,
         resolvedModel,
         workDir,
+        ...(agentWorkDir !== undefined ? { agentWorkDir } : {}),
         runtimeAgents: config.agents.map((a) => ({ id: a.id, name: a.name })),
         compactionConfig: config.compaction,
         subagentsConfig: config.subagents,

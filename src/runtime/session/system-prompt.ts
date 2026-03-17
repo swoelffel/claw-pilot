@@ -110,8 +110,13 @@ export interface SystemPromptContext {
   instanceSlug: InstanceSlug;
   agentConfig: RuntimeAgentConfig;
   channel: string;
-  /** Working directory of the instance (for the env block + workspace discovery) */
+  /** Working directory of the instance (for workspace discovery + skills) */
   workDir: string | undefined;
+  /** Resolved workspace directory shown to the agent in the env block.
+   * Defaults to workDir if not set. Should point to the agent's workspace
+   * (e.g. ~/.claw-pilot/instances/{slug}/workspaces/{workspace}) rather than
+   * the instance stateDir, to avoid exposing .env / runtime.json to the agent. */
+  agentWorkDir?: string;
   /** Agents configured in this runtime instance (for teammates block) */
   runtimeAgents?: Array<{ id: string; name: string }>;
   /**
@@ -605,12 +610,13 @@ function buildTeammatesBlock(
 }
 
 function buildEnvBlock(ctx: SystemPromptContext): string {
+  const displayDir = ctx.agentWorkDir ?? ctx.workDir ?? "unknown";
   return [
     "Here is some useful information about the environment you are running in:",
     "<env>",
     `  Instance: ${ctx.instanceSlug}`,
     `  Channel: ${ctx.channel}`,
-    `  Working directory: ${ctx.workDir ?? "unknown"}`,
+    `  Working directory: ${displayDir}`,
     `  Platform: ${process.platform}`,
     `  Today's date: ${new Date().toDateString()}`,
     "</env>",

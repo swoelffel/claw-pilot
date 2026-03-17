@@ -64,6 +64,8 @@ export interface PromptLoopInput {
   agentConfig: RuntimeAgentConfig;
   resolvedModel: ResolvedModel;
   workDir: string | undefined;
+  /** Resolved workspace path shown to the agent (env block). Defaults to workDir. */
+  agentWorkDir?: string;
   runtimeAgents?: Array<{ id: string; name: string }>;
   abort?: AbortSignal;
   extraSystemPrompt?: string;
@@ -114,6 +116,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
     agentConfig,
     resolvedModel,
     workDir,
+    agentWorkDir,
     runtimeAgents,
     extraSystemPrompt,
     compactionConfig,
@@ -191,6 +194,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       agentConfig,
       channel: session.channel,
       workDir,
+      ...(agentWorkDir !== undefined ? { agentWorkDir } : {}),
       ...(runtimeAgents !== undefined ? { runtimeAgents } : {}),
       ...(extraSystemPrompt !== undefined ? { extraSystemPrompt } : {}),
       db,

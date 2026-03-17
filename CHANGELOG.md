@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.40.1] — 2026-03-17
+
+### Security
+
+- **Workspace isolation** : le `Working directory` affiché à l'agent dans le system prompt pointe désormais vers son workspace (`~/.claw-pilot/instances/{slug}/workspaces/{workspace}`) plutôt que vers la racine de l'instance, évitant d'exposer `.env`, `runtime.json` et `runtime.pid` à l'agent.
+
+### Changed
+
+- Ajout de `agentWorkDir` dans `SystemPromptContext`, `PromptLoopInput` et `RouterInput` — le `workDir` (stateDir) continue d'être utilisé en interne pour la résolution des fichiers workspace, skills et mémoire.
+
+---
+
 ## [0.39.0] — 2026-03-17
 
 ### Changed

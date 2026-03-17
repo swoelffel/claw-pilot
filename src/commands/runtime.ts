@@ -30,6 +30,7 @@ import {
   type RuntimeAgentConfig,
   type RuntimeMcpServerConfig,
 } from "../runtime/index.js";
+import { resolveAgentWorkspacePath } from "../core/agent-workspace.js";
 
 // ---------------------------------------------------------------------------
 // runtime config init <slug>
@@ -565,6 +566,12 @@ function runtimeChatCommand(): Command {
         if (opts.once) {
           logger.info(`Session: ${session.id}`);
           process.stdout.write(chalk.green("Agent: "));
+          const agentWorkDir = resolveAgentWorkspacePath(
+            stateDir,
+            agentId,
+            undefined,
+            config.agents,
+          );
           try {
             const result = await runPromptLoop({
               db,
@@ -574,6 +581,7 @@ function runtimeChatCommand(): Command {
               agentConfig: agentCfg,
               resolvedModel: resolvedModelObj,
               workDir: stateDir,
+              agentWorkDir,
             });
             console.log(result.text);
             console.log(
@@ -617,6 +625,9 @@ function runtimeChatCommand(): Command {
           }
           if (msgs.length > 0) console.log("");
         }
+
+        // Resolve agent workspace directory once for the whole REPL session
+        const agentWorkDir = resolveAgentWorkspacePath(stateDir, agentId, undefined, config.agents);
 
         // REPL loop
         const rl = readline.createInterface({
@@ -680,6 +691,7 @@ function runtimeChatCommand(): Command {
               agentConfig: agentCfg,
               resolvedModel: resolvedModelObj,
               workDir: stateDir,
+              agentWorkDir,
             });
 
             // runPromptLoop streams internally but we print the final text here
