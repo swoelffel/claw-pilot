@@ -94,10 +94,11 @@ export class CpApp extends LitElement {
       }
 
       .ws-dot {
-        width: 7px;
-        height: 7px;
+        width: 8px;
+        height: 8px;
         border-radius: 50%;
         flex-shrink: 0;
+        transition: background 0.3s;
       }
 
       .ws-dot.connected {
@@ -109,11 +110,17 @@ export class CpApp extends LitElement {
         background: var(--text-muted);
       }
 
+      main {
+        min-height: calc(100vh - 56px - 48px);
+      }
+
       footer {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 12px 24px;
+        padding: 0 24px;
+        height: 48px;
+        background: var(--bg-surface);
         border-top: 1px solid var(--bg-border);
         font-size: 12px;
         color: var(--text-muted);
@@ -125,7 +132,7 @@ export class CpApp extends LitElement {
       .footer-right {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 16px;
       }
 
       .footer-brand {
@@ -138,7 +145,14 @@ export class CpApp extends LitElement {
       }
 
       .footer-version {
-        color: var(--text-muted);
+        background: var(--accent-subtle);
+        color: var(--accent);
+        border: 1px solid var(--accent-border);
+        border-radius: var(--radius-sm);
+        padding: 1px 7px;
+        font-size: 11px;
+        font-weight: 600;
+        font-family: var(--font-mono);
       }
 
       .footer-sep {
@@ -165,9 +179,10 @@ export class CpApp extends LitElement {
         gap: 5px;
         background: none;
         border: 1px solid var(--bg-border);
-        border-radius: 4px;
+        border-radius: 5px;
         color: var(--text-muted);
-        font-size: 12px;
+        font-size: 11px;
+        font-weight: 600;
         cursor: pointer;
         padding: 3px 8px;
         letter-spacing: 0.04em;
