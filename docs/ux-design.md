@@ -65,7 +65,7 @@ Affiché à la place de toute l'application si l'utilisateur n'est pas authentif
 │              │                                           │     │
 │              │  (message d'erreur si échec)              │     │
 │              │                                           │     │
-│              │  v0.20.0                                  │     │
+│              │  v0.36.1                                  │     │
 │              └───────────────────────────────────────────┘     │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -130,7 +130,7 @@ Barre de navigation fixe en haut de page (`height: 56px`, `background: --bg-surf
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  ClawPilot  [v0.20.0]  ·  GitHub  ·  Issues    🌐 EN ▾  ·  © 2026 SWO — MIT License │
+│  ClawPilot  [v0.36.1]  ·  GitHub  ·  Issues    🌐 EN ▾  ·  © 2026 SWO — MIT License │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -335,7 +335,7 @@ Flex row, `gap: 10px`, `flex-wrap: wrap`, séparée du header et du meta par des
 | `✈ @bot` | `telegram_bot` défini ET `telegram !== "disconnected"` | Pill bleu `#0088cc` |
 | `✈ @bot ⚠` | `telegram_bot` défini ET `telegram === "disconnected"` | Pill ambre `--state-warning` |
 | `⬡ N agent(s)` | `agentCount > 0` | Texte `--text-muted` |
-| `⚠ N device(s)` | `pendingDevices > 0` | Pill ambre cliquable → `navigate { view: "instance-settings", section: "devices" }` |
+| ~~`⚠ N device(s)`~~ | *(removed in v0.34.0 — device pairing no longer supported)* | — |
 | `⚠ PERM` | `pendingPermissions > 0` | Pill rouge cliquable → `navigate { view: "instance-settings", section: "runtime" }`. `font-weight: 700`. |
 
 ### Zone 3 — Meta
@@ -565,7 +565,9 @@ Composant de chat temps réel avec un agent claw-runtime via SSE. Intégré dans
 
 ```
 ┌─ cp-runtime-chat ─────────────────────────────────────────────┐
-│  [Session selector ▼]  [+ New]                                │  ← header
+│  [Agent ▼]  🔒 Permanent                     [···]            │  ← header (permanent agent)
+│  — ou —                                                       │
+│  [Agent ▼]  [Session selector ▼]  [+ New]                     │  ← header (ephemeral agent)
 ├───────────────────────────────────────────────────────────────┤
 │                                                               │
 │  (zone messages — flex: 1, overflow-y: auto)                  │  ← messages
@@ -589,8 +591,11 @@ Composant de chat temps réel avec un agent claw-runtime via SSE. Intégré dans
 
 | Élément | Description |
 |---|---|
-| **Session selector** | `<select>` flex:1. Option "New session" (valeur vide) + liste des sessions existantes (titre ou ID tronqué). Auto-sélectionne la première session active au chargement. |
-| **[+ New]** | `btn btn-ghost`, `font-size: 12px`. Crée une nouvelle session (vide les messages, ferme le stream SSE). |
+| **Agent selector** | `<select>` affiché si l'instance a plusieurs agents. Sélection de l'agent courant. |
+| **Badge 🔒 Permanent** | Affiché si l'agent courant est permanent (`persistent === true`). Texte muted. |
+| **Session selector** | `<select>` flex:1. Option "New session" + sessions existantes. **Masqué pour les agents permanents** (une seule session). |
+| **[+ New]** | `btn btn-ghost`, `font-size: 12px`. Crée une nouvelle session. **Masqué pour les agents permanents**. |
+| **[···]** | Menu dropdown avec actions. L'option "New session" est **masquée pour les agents permanents**. |
 
 ### Zone messages
 
@@ -677,7 +682,7 @@ Toujours visible. Fond `--bg-surface`, bordure basse.
 
 ### Sidebar
 
-Navigation par 8 panneaux : **General**, **Agents**, **Runtime**, **Channels**, **Devices**, **MCP**, **Permissions**, **Config**. Item actif : fond `--accent-subtle`, couleur `--accent`, `font-weight: 600`. Clic → `_activeSection = section` (swap immédiat du contenu).
+Navigation par 7 panneaux : **General**, **Agents**, **Runtime**, **Channels**, **MCP**, **Permissions**, **Config**. *(Devices panel removed in v0.34.0)* Item actif : fond `--accent-subtle`, couleur `--accent`, `font-weight: 600`. Clic → `_activeSection = section` (swap immédiat du contenu).
 
 **Badges numériques** sur les items de la sidebar :
 
@@ -846,11 +851,9 @@ Panneau autonome — pas de Save/Cancel global (sauvegarde inline par canal). Af
 
 **Canaux "Coming soon"** : WhatsApp et Slack affichés en cards grises `opacity: 0.55` avec badge "COMING SOON".
 
-### Section Devices (`cp-instance-devices`)
+### ~~Section Devices~~ *(removed in v0.34.0)*
 
-**Fichier source** : `ui/src/components/instance-devices.ts`
-
-Panneau autonome — pas de Save/Cancel. Voir section dédiée [Composant : Devices](#composant--devices-cp-instance-devices) ci-dessous.
+Device pairing has been removed. The `cp-instance-devices` component and sidebar panel are no longer rendered. The `rt_pairing_codes` table is retained in the DB (additive-only policy).
 
 ### Section MCP (`cp-instance-mcp`)
 
@@ -1481,7 +1484,9 @@ Fond `--bg-base`, bordure `--bg-border`, `border-radius: --radius-md`.
 
 ---
 
-## Composant : Devices (`cp-instance-devices`)
+## ~~Composant : Devices (`cp-instance-devices`)~~ *(removed in v0.34.0)*
+
+> **DEPRECATED** — Device pairing was removed in v0.34.0. This component is no longer rendered. The documentation below is retained for historical reference only.
 
 **Fichier source** : `ui/src/components/instance-devices.ts`
 

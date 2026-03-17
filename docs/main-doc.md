@@ -1,6 +1,6 @@
 # claw-pilot — Architecture fonctionnelle
 
-> **Version** : 0.20.0
+> **Version** : 0.36.1
 > **Stack** : TypeScript / Node.js ESM, Lit web components, SQLite, Hono
 > **Repo** : https://github.com/swoelffel/claw-pilot
 > **Références détaillées** : [ux-design.md](./ux-design.md) · [i18n.md](./i18n.md) · [design-rules.md](./design-rules.md) · `CLAUDE.md`
@@ -59,12 +59,12 @@ Toutes les instances utilisent le moteur **claw-runtime** — un moteur natif No
 | `agent_files` | v2 | Fichiers workspace par agent — contenu + hash |
 | `agent_links` | v2 → v3 | Liens entre agents (`a2a` ou `spawn`) |
 | `blueprints` | v3 | Templates d'équipes réutilisables |
-| `rt_sessions` | v8 | Sessions claw-runtime |
-| `rt_messages` | v8 | Messages par session |
+| `rt_sessions` | v8 + v11 + v13 + v14 | Sessions claw-runtime — permanentes (1 par agent, cross-canal) ou éphémères. Clé : `<slug>:<agentId>` (permanent) ou `<slug>:<agentId>:<channel>:<peerId>` (éphémère) |
+| `rt_messages` | v8 + v14 | Messages par session (index composite `session_id, role` en v14) |
 | `rt_parts` | v8 | Parties de message (text, tool-call, tool-result) |
-| `rt_pairing_codes` | v9 | Codes de pairing device 8-char |
+| `rt_pairing_codes` | v9 | Codes de pairing device (legacy, table conservée) |
 
-**Version courante des migrations : 10**
+**Version courante des migrations : 15**
 
 **Plage de ports par défaut** : 18789–18799 (11 instances max). Dashboard : 19000.
 
@@ -82,7 +82,7 @@ auth.ts           gestion des auth-profiles providers
 create.ts         wizard création instance
 dashboard.ts      démarrage/arrêt dashboard
 destroy.ts        suppression instance
-devices.ts        gestion device pairing
+devices.ts        gestion device pairing (legacy, disabled)
 doctor.ts         diagnostic environnement
 init.ts           initialisation premier démarrage
 list.ts           liste instances
@@ -117,17 +117,21 @@ bus/          getBus(slug), disposeBus(), events Zod types
 provider/     resolveModel(providerId, modelId), 5 providers, auth-profiles rotation
 permission/   ruleset last-match-wins, allow/deny/ask
 config/       RuntimeConfig schema Zod, parseRuntimeConfig(), createDefaultRuntimeConfig()
-session/      createSession(), runPromptLoop() → {text,tokens,costUsd,steps,messageId}
-              compaction auto, system-prompt builder
+session/      createSession(), getOrCreatePermanentSession(), runPromptLoop()
+              permanent session key: <slug>:<agentId> (cross-channel, no peerId)
+              compaction auto, system-prompt builder, workspace-cache
 tool/         Tool.define() factory, registry (11 built-ins + MCP)
               built-in: read,write,edit,bash,glob,grep,web-fetch,question,todo,skill,task
 agent/        7 built-ins (build,plan,explore,general,compaction,title,summary)
+              build/plan: workspace-only (no inline prompt) — use SOUL.md, IDENTITY.md
               initAgentRegistry(config.agents), getAgent(), defaultAgentName()
+              resolveEffectivePersistence(): kind="primary" → "permanent"
 plugin/       8 hooks V1 (agent.before/end, tool.before/after, message.recv/send, session.start/end)
 mcp/          stdio + HTTP remote, sanitize tool IDs
-channel/      Channel interface, router, web-chat WS, pairing codes 8-char
+channel/      Channel interface, router, web-chat WS
               telegram: polling + MarkdownV2 formatter
-engine/       ClawRuntime state machine, channel-factory, plugin-wiring
+engine/       ClawRuntime(config, db, slug, workDir?) — state machine, channel-factory
+              workDir propagated to ChannelRouter.route() and heartbeat runner
               config-loader: loadRuntimeConfig(), saveRuntimeConfig(), ensureRuntimeConfig()
 ```
 
@@ -356,7 +360,6 @@ runtime start (foreground)
 |---|---|---|
 | Web Chat | WebSocket | `webChat.enabled`, `webChat.port` |
 | Telegram | Polling HTTPS | `telegram.enabled`, `telegram.botToken` |
-| Device pairing | Codes 8-char | `rt_pairing_codes` en DB |
 
 ### Outils built-in (11)
 
@@ -388,4 +391,4 @@ runtime start (foreground)
 
 ---
 
-*Mis à jour : 2026-03-13 - v0.20.0 : suppression support openclaw, claw-runtime uniquement*
+*Mis à jour : 2026-03-17 - v0.36.1 : PLAN-16 sessions permanentes sans peerId, workDir daemon, suppression prompts legacy*

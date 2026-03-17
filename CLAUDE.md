@@ -4,7 +4,7 @@ Guidance for Claude Code when working in this repository.
 
 ## What this project is
 
-`claw-pilot` v0.28.5 — **CLI + web dashboard** that orchestrates multiple agent instances on a Linux server. It handles discovery, provisioning, lifecycle management, Nginx config generation, and device pairing.
+`claw-pilot` v0.36.1 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, and permanent cross-channel sessions.
 
 All instances use the **claw-runtime** engine — a native Node.js engine (`src/runtime/`), managed via PID file daemon.
 
@@ -16,7 +16,7 @@ GitHub: https://github.com/swoelffel/claw-pilot
 - **Runtime**: Node.js >= 22.12.0, ESM, pnpm
 - **CLI**: Commander.js + @inquirer/prompts
 - **HTTP/WS**: Hono + ws
-- **DB**: better-sqlite3 (SQLite, WAL mode, schema v14)
+- **DB**: better-sqlite3 (SQLite, WAL mode, schema v15)
 - **UI**: Lit web components + Vite
 - **Build**: tsdown (CLI) + vite (UI)
 - **Tests**: Vitest
@@ -42,7 +42,7 @@ src/
   commands/         # CLI commands — thin wrappers over core/
   core/             # All business logic
   dashboard/        # HTTP server (Hono) + WebSocket monitor
-  db/               # SQLite schema + migrations (schema.ts) — current version: 14
+  db/               # SQLite schema + migrations (schema.ts) — current version: 15
   lib/              # Shared utilities (logger, constants, errors, platform, poll, xdg, shell...)
   runtime/          # claw-runtime engine (bus, provider, session, tool, agent, plugin, mcp, channel, engine)
   server/           # ServerConnection interface + LocalConnection impl
@@ -70,10 +70,10 @@ docs/main-doc.md    # Functional architecture — read this before major changes
 | `agent_files` | Workspace files per agent |
 | `agent_links` | Agent links (a2a / spawn) |
 | `blueprints` | Reusable team templates |
-| `rt_sessions` | claw-runtime sessions |
+| `rt_sessions` | claw-runtime sessions — permanent (one per agent, cross-channel) or ephemeral (per conversation). Key format: `<slug>:<agentId>` (permanent) or `<slug>:<agentId>:<channel>:<peerId>` (ephemeral) |
 | `rt_messages` | Messages per session |
 | `rt_parts` | Message parts (text, tool-call, tool-result) |
-| `rt_pairing_codes` | Device pairing codes (8-char) + `meta` (username JSON) |
+| `rt_pairing_codes` | Device pairing codes (legacy, table retained for additive-only policy) |
 
 Schema lives in `src/db/schema.ts`. Migrations run on DB open. **Always additive** — never DROP COLUMN/TABLE.
 
@@ -117,9 +117,25 @@ Breaking changes vs v5:
 ### exactOptionalPropertyTypes
 Use conditional spread for optional fields: `...(val !== undefined ? { key: val } : {})`
 
+### Permanent sessions (PLAN-16)
+- Primary agents (`kind: "primary"`) get a single permanent session shared across all channels (Telegram, web, CLI)
+- Session key format: `<slug>:<agentId>` — no peerId, no channel in the key
+- Use `getOrCreatePermanentSession(db, { instanceSlug, agentId })` — never pass peerId for permanent keys
+- Subagent sessions remain ephemeral, scoped by `parentSessionId`
+- `buildPermanentSessionKey(instanceSlug, agentId)` takes exactly 2 args (no peerId)
+
+### ClawRuntime daemon
+- Constructor: `new ClawRuntime(config, db, slug, workDir?)` — 4th arg is `stateDir` for workspace file loading
+- Without `workDir`, workspace files (SOUL.md, IDENTITY.md, etc.) are NOT loaded in the system prompt
+- The daemon command (`runtime start --daemon`) passes `stateDir` as `workDir`
+
+### Agent defaults (defaults.ts)
+- `BUILD_AGENT` and `PLAN_AGENT` have NO inline `prompt` — they use workspace files (SOUL.md, IDENTITY.md) or `DEFAULT_INSTRUCTIONS` as fallback
+- Internal agents (`COMPACTION_AGENT`, `TITLE_AGENT`, `SUMMARY_AGENT`, `EXPLORE_AGENT`, `GENERAL_AGENT`) keep their inline prompts (they are not user-configurable)
+
 ## Test coverage
 
-849 tests passing (+ 102 e2e). Tests are under `src/core/__tests__/`, `src/db/__tests__/`, `src/runtime/__tests__/`, `src/runtime/session/__tests__/`, `src/dashboard/__tests__/`. Run with `pnpm test:run` before submitting changes.
+892 tests passing (+ 102 e2e). Tests are under `src/core/__tests__/`, `src/db/__tests__/`, `src/runtime/__tests__/`, `src/runtime/session/__tests__/`, `src/dashboard/__tests__/`. Run with `pnpm test:run` before submitting changes.
 
 ## UI development
 

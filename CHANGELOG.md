@@ -6,6 +6,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.1] — 2026-03-17
+
+### Fixed
+
+- **PLAN-16: Session unique par agent permanent** — la clé de session permanente est maintenant `<slug>:<agentId>` (sans peerId). Un agent permanent a une seule session partagée entre tous les canaux (Telegram, web, CLI). Corrige la fragmentation de sessions introduite en v0.34.0 :
+  - `buildPermanentSessionKey(slug, agentId)` — signature réduite à 2 arguments (peerId supprimé)
+  - `getOrCreatePermanentSession()` — ne dépend plus du peerId pour la clé
+  - Route `POST /runtime/chat` — suppression de la dérivation peerId depuis `X-Device-Id` / IP
+  - Migration DB v14 étendue : archive les doublons permanents (garde le plus ancien), recalcule les clés au format `<slug>:<agentId>`, supprime l'index `idx_rt_sessions_permanent`
+- **workDir absent du daemon** — `ClawRuntime` reçoit maintenant `workDir` (= `stateDir`) comme 4e argument du constructeur. Les messages reçus via Telegram/WebChat chargent maintenant les fichiers workspace (SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md, etc.) dans le prompt système. Propagé à `ChannelRouter.route()` et au heartbeat runner.
+- **Prompts legacy BUILD_AGENT / PLAN_AGENT** — suppression du champ `prompt` inline hardcodé sur `BUILD_AGENT` et `PLAN_AGENT` dans `defaults.ts`. Ces agents utilisent maintenant leurs fichiers workspace (SOUL.md, IDENTITY.md) ou `DEFAULT_INSTRUCTIONS` en fallback. Les agents internes (compaction, title, summary, explore, general) conservent leur prompt inline.
+
+### Changed
+
+- **UI runtime chat** — le bouton "New session" et l'option dropdown correspondante sont masqués pour les agents permanents. Badge "🔒 Permanent" affiché dans le header du chat. Champ `persistent: boolean` ajouté à `RuntimeSession` et propagé dans le repository.
+- **Documentation mise à jour** — CLAUDE.md, main-doc.md, registry-db.md, ux-design.md mis à jour pour PLAN-16 (sessions permanentes, schema v15, suppression Devices).
+
+---
+
 ## [0.36.0] — 2026-03-17
 
 ### Changed

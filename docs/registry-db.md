@@ -1,7 +1,7 @@
 # claw-pilot — Registry Database (`registry.db`)
 
 SQLite database at `~/.claw-pilot/registry.db`. WAL mode, foreign keys enforced.  
-Current schema version: **10**. Source of truth: `src/db/schema.ts`.
+Current schema version: **15**. Source of truth: `src/db/schema.ts`.
 
 ---
 
@@ -56,12 +56,12 @@ schema_version  (single row)
 | `blueprints` | v3 | Reusable team templates |
 | `users` | v6 | Dashboard auth — single admin in v1, role column prepared for multi-user |
 | `sessions` | v6 | Server-side sessions with TTL and sliding window |
-| `rt_sessions` | v8 | claw-runtime sessions (one per conversation / channel peer) |
-| `rt_messages` | v8 | User + assistant turns within a session |
+| `rt_sessions` | v8 + v11 + v13 + v14 | claw-runtime sessions — permanent (one per agent, cross-channel, key: `<slug>:<agentId>`) or ephemeral (key: `<slug>:<agentId>:<channel>:<peerId>`). Columns: `session_key` (v11), `persistent` (v13), index cleanup (v14). |
+| `rt_messages` | v8 + v14 | User + assistant turns within a session. Index `(session_id, role)` added in v14. |
 | `rt_parts` | v8 | Atomic content units within a message (text, tool-call, tool-result) |
 | `rt_permissions` | v8 | Persisted permission rules (allow/deny/ask per scope+pattern) |
 | `rt_auth_profiles` | v8 | API key rotation per provider (priority, cooldown, failure tracking) |
-| `rt_pairing_codes` | v9 | Short-lived 8-char codes pairing a browser to a runtime instance |
+| `rt_pairing_codes` | v9 | Device pairing codes (legacy — feature removed in v0.34.0, table retained for additive-only policy) |
 
 ---
 
@@ -79,6 +79,11 @@ schema_version  (single row)
 | 8 | Added `instance_type` to `instances`; added `rt_sessions`, `rt_messages`, `rt_parts`, `rt_permissions`, `rt_auth_profiles` |
 | 9 | Added `rt_pairing_codes` for web-chat device pairing |
 | 10 | Removed openclaw support — `instance_type` column retained (additive-only) but all instances are now `claw-runtime` |
+| 11 | Added `session_key` to `rt_sessions`, `spawn_depth`, `label`, `metadata` columns. UNIQUE partial index on `session_key` for root sessions. |
+| 12 | Added `meta` (JSON) to `rt_pairing_codes` for storing username/display name. |
+| 13 | Added `persistent` flag to `rt_sessions` (permanent sessions). Added `created_at` to `agents`. Partial index `idx_rt_sessions_permanent`. |
+| 14 | Index `idx_rt_messages_session_role` on `(session_id, role)`. **PLAN-16**: archives duplicate permanent sessions (keeps oldest per agent), recalculates permanent keys to `<slug>:<agentId>` (removes peerId), drops `idx_rt_sessions_permanent`. |
+| 15 | Relocated instance state directories from `~/.runtime-<slug>/` to `~/.claw-pilot/instances/<slug>/`. Recalculates `state_dir` and `config_path`. |
 
 ---
 
@@ -99,4 +104,4 @@ All DB access goes through `src/core/registry.ts` methods — never raw SQL in c
 
 ---
 
-*Mis à jour : 2026-03-13 — schema v10 (removed openclaw support, claw-runtime only)*
+*Mis à jour : 2026-03-17 — schema v15 (PLAN-16 permanent sessions, state_dir relocation)*
