@@ -222,9 +222,15 @@ export class UpdateBannerBase extends LitElement {
   @state() private _dismissed = false;
 
   override willUpdate(changed: Map<string, unknown>): void {
-    // Reset le dismiss si le statut change (nouveau cycle de mise à jour)
+    // Reset le dismiss uniquement si le statut fonctionnel change (idle/running/done/error),
+    // pas si le poller renvoie la même valeur (nouvel objet JS = même status.status).
     if (changed.has("status")) {
-      this._dismissed = false;
+      const prev = changed.get("status") as UpdateStatus | null | undefined;
+      const prevStatus = prev?.status ?? null;
+      const nextStatus = this.status?.status ?? null;
+      if (prevStatus !== nextStatus) {
+        this._dismissed = false;
+      }
     }
   }
 

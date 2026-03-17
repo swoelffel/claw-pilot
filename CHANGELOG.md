@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.38.1] — 2026-03-17
+
+### Fixed
+
+- **Bandeau "claw-pilot updated"** : ne réapparaît plus après avoir été fermé lors d'un changement de page — le dismiss est maintenant persisté jusqu'à un vrai changement de statut fonctionnel (`idle`/`running`/`done`/`error`), pas à chaque re-rendu du poller
+
+### Changed
+
+- **Layout Instance Settings** : toutes les sections (General, Agents, Channels, MCP, Permissions, Config) utilisent désormais le même layout plein écran que Pilot (`max-width: none`)
+- **Hauteur Pilot** : corrigée — `calc(100vh - 56px - 56px - 48px)` prend en compte les 3 couches de chrome (nav app + header settings + save bar), plus de scroll involontaire
+
+---
+
 ## [0.38.0] — 2026-03-17
 
 ### Added

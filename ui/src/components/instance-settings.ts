@@ -702,9 +702,9 @@ export class InstanceSettings extends LitElement {
 
   private _renderRuntimeSection() {
     return html`
-      <div class="section" style="display: flex; flex-direction: column; height: 100%;">
+      <div class="section pilot-section">
         <div
-          style="flex: 1; border: 1px solid var(--bg-border); border-radius: var(--radius-md); overflow: hidden; min-height: 0;"
+          style="height: 100%; border: 1px solid var(--bg-border); border-radius: var(--radius-md); overflow: hidden;"
         >
           <cp-runtime-pilot .slug=${this.slug}></cp-runtime-pilot>
         </div>
@@ -1153,9 +1153,9 @@ export class InstanceSettings extends LitElement {
         </div>
       </div>
 
-      <div class="settings-layout ${this._activeSection === "runtime" ? "pilot-layout" : ""}">
+      <div class="settings-layout pilot-layout">
         ${this._renderSidebar()}
-        <div class="content ${this._activeSection === "runtime" ? "pilot-content" : ""}">
+        <div class="content pilot-content">
           ${this._saveWarning
             ? html`<div class="save-warning">⚠ ${this._saveWarning}</div>`
             : nothing}

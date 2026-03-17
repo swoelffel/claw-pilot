@@ -20,7 +20,7 @@ export const instanceSettingsStyles = css`
 
   .settings-layout.pilot-layout {
     max-width: none;
-    height: calc(100vh - 56px - 48px);
+    height: calc(100vh - 56px - 56px - 48px);
     padding: 16px;
     box-sizing: border-box;
   }
@@ -29,10 +29,12 @@ export const instanceSettingsStyles = css`
     display: flex;
     flex-direction: column;
     min-height: 0;
-    overflow: hidden;
+    overflow-y: auto;
   }
 
-  .content.pilot-content .section {
+  /* Pilot section (cp-runtime-pilot) fills all available height without scrolling —
+     the component manages its own internal scroll */
+  .content.pilot-content .section.pilot-section {
     flex: 1;
     margin-bottom: 0;
     min-height: 0;
