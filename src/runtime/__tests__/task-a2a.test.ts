@@ -104,7 +104,7 @@ function makeToolContext(db: Database.Database, sessionId: string): Tool.Context
   return {
     sessionId,
     messageId: "msg-test",
-    agentId: "build",
+    agentId: "main",
     abort: new AbortController().signal,
     metadata: vi.fn(),
   };
@@ -120,8 +120,8 @@ function makeRuntimeConfig(): RuntimeConfig {
     providers: [],
     agents: [
       {
-        id: "build",
-        name: "build",
+        id: "main",
+        name: "Main",
         model: "anthropic/claude-sonnet-4-5",
         permissions: [],
         maxSteps: 5,
@@ -288,7 +288,7 @@ describe("createTaskTool — second gate: execute() permission check", () => {
       runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
-    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
+    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
     const ctx = makeToolContext(db, parentSession.id);
 
     // Act & Assert
@@ -322,7 +322,7 @@ describe("createTaskTool — second gate: execute() permission check", () => {
       runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
-    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
+    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
     const ctx = makeToolContext(db, parentSession.id);
 
     // Act: should not throw a permission error (may succeed or fail for other reasons)
@@ -379,7 +379,7 @@ describe("createTaskTool — enriched output (sync mode)", () => {
       runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
-    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
+    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
     const ctx = makeToolContext(db, parentSession.id);
 
     // Act
@@ -415,7 +415,7 @@ describe("createTaskTool — enriched output (sync mode)", () => {
       runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
-    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
+    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
     const ctx = makeToolContext(db, parentSession.id);
 
     // Act
@@ -458,7 +458,7 @@ describe("createTaskTool — lifecycle modes", () => {
       runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
-    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
+    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
     const ctx = makeToolContext(db, parentSession.id);
 
     // Act
@@ -495,7 +495,7 @@ describe("createTaskTool — lifecycle modes", () => {
       runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
-    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
+    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
     const ctx = makeToolContext(db, parentSession.id);
 
     // Act
@@ -546,7 +546,7 @@ describe("createTaskTool — async mode", () => {
       runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
-    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
+    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
     const ctx = makeToolContext(db, parentSession.id);
 
     // Act
@@ -577,7 +577,7 @@ describe("createTaskTool — async mode", () => {
       runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
-    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
+    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
     const ctx = makeToolContext(db, parentSession.id);
 
     const bus = getBus(INSTANCE_SLUG);
@@ -630,7 +630,7 @@ describe("createTaskTool — async mode", () => {
       runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
-    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
+    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
     const ctx = makeToolContext(db, parentSession.id);
 
     // Act
@@ -660,7 +660,7 @@ describe("createTaskTool — async mode", () => {
       runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
-    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
+    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
     const ctx = makeToolContext(db, parentSession.id);
 
     const bus = getBus(INSTANCE_SLUG);
@@ -810,7 +810,7 @@ describe("registerSubagentCompletedHandler", () => {
     const unsubscribe = registerSubagentCompletedHandler(db, INSTANCE_SLUG, config);
 
     // Create an active parent session
-    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
+    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
 
     // Unsubscribe before publishing
     unsubscribe();
@@ -852,7 +852,7 @@ describe("registerSubagentCompletedHandler", () => {
     registerSubagentCompletedHandler(db, INSTANCE_SLUG, config);
 
     // Create and immediately archive the parent session
-    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
+    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
     const { archiveSession } = await import("../session/session.js");
     archiveSession(db, parentSession.id);
 
@@ -1049,7 +1049,7 @@ describe("checkA2APolicy", () => {
       runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
-    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
+    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
     const ctx = makeToolContext(db, parentSession.id);
 
     // Act & Assert: should throw A2A policy error
@@ -1090,7 +1090,7 @@ describe("checkA2APolicy", () => {
       runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
-    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
+    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
     const ctx = makeToolContext(db, parentSession.id);
 
     // Act & Assert: "explore" is not in allowList

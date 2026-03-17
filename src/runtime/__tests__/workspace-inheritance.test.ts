@@ -72,7 +72,7 @@ function makeToolContext(db: Database.Database, sessionId: string): Tool.Context
   return {
     sessionId,
     messageId: "msg-test",
-    agentId: "build",
+    agentId: "main",
     abort: new AbortController().signal,
     metadata: vi.fn(),
   };
@@ -80,8 +80,8 @@ function makeToolContext(db: Database.Database, sessionId: string): Tool.Context
 
 function makeCallerAgentConfig(overrides?: Partial<RuntimeAgentConfig>): RuntimeAgentConfig {
   return {
-    id: "build",
-    name: "build",
+    id: "main",
+    name: "Main",
     model: "anthropic/claude-sonnet-4-5",
     permissions: [],
     maxSteps: 20,
@@ -141,7 +141,7 @@ describe("createTaskTool — inheritWorkspace (Phase 1a)", () => {
       runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
-    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
+    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
     const ctx = makeToolContext(db, parentSession.id);
 
     // Act
@@ -183,7 +183,7 @@ describe("createTaskTool — inheritWorkspace (Phase 1a)", () => {
       runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
-    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
+    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
     const ctx = makeToolContext(db, parentSession.id);
 
     // Act
@@ -223,7 +223,7 @@ describe("createTaskTool — inheritWorkspace (Phase 1a)", () => {
       runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
-    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
+    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
     const ctx = makeToolContext(db, parentSession.id);
 
     // Act
@@ -263,7 +263,7 @@ describe("createTaskTool — inheritWorkspace (Phase 1a)", () => {
       runPromptLoop: mockRunPromptLoop,
     });
     const def = await toolInfo.init();
-    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "build" });
+    const parentSession = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
     const ctx = makeToolContext(db, parentSession.id);
 
     // Act

@@ -6,6 +6,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.39.0] — 2026-03-17
+
+### Changed
+
+- **Reclassification des agents built-in** : tous les 7 agents built-in (`build`, `plan`, `explore`, `general`, `compaction`, `title`, `summary`) sont désormais des sous-agents techniques (`kind: "subagent"`, `hidden: true` pour `build`, `plan`, `compaction`, `title`, `summary`). `explore` et `general` restent visibles pour le task tool.
+- **Agent "Main" comme agent primaire par défaut** : `createDefaultRuntimeConfig()` crée un agent `id: "main"`, `name: "Main"` avec les permissions complètes (`DEFAULT_RULESET + question:allow`) et `persistence: "permanent"`. C'est désormais le vrai agent de travail de l'utilisateur.
+- **`defaultAgentName()` réécrit** : plus de préférence hardcodée sur `"build"`. La fonction retourne l'agent avec `isDefault: true`, ou le premier agent visible non-subagent (agents config). Lance une erreur si aucun agent primaire visible n'est trouvé.
+- **`isDefault` propagé dans `Agent.Info`** : nouveau champ optionnel, propagé depuis `RuntimeAgentConfig.isDefault` via `createFromConfig()` et `mergeAgentConfig()`.
+- **`build` et `plan` ont désormais un prompt inline** : `PROMPT_BUILD` et `PROMPT_PLAN` sont assignés aux agents built-in correspondants (nécessaire en mode subagent).
+- **Permissions par défaut pour "Main"** : `createDefaultRuntimeConfig()` inclut maintenant le `DEFAULT_RULESET` complet, plus `question: allow`. Plus de mode "ask" systématique pour chaque outil.
+- **Header Pilot affiche le nom d'affichage** : `cp-pilot-header` reçoit désormais `agentName` (display name) en plus de `agentId` et affiche `"Main"` au lieu de `"main"` (ou `"build"`).
+
+### Fixed
+
+- **Nom d'agent incorrect dans le header Pilot** : le header affichait `"build"` (l'id de l'agent built-in) au lieu du nom d'affichage de l'agent config. Corrigé en passant `context.agent.name` au header.
+
+---
+
 ## [0.38.1] — 2026-03-17
 
 ### Fixed

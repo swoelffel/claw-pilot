@@ -51,12 +51,12 @@ describe("registerHooks() + trigger functions", () => {
     await triggerAgentBeforeStart({
       instanceSlug: "test",
       sessionId: "s1",
-      agentName: "build",
+      agentName: "main",
       model: "anthropic/claude-sonnet-4-5",
     });
 
     expect(fn).toHaveBeenCalledOnce();
-    expect(fn).toHaveBeenCalledWith(expect.objectContaining({ agentName: "build" }));
+    expect(fn).toHaveBeenCalledWith(expect.objectContaining({ agentName: "main" }));
   });
 
   it("triggers agent.end hook", async () => {
@@ -66,7 +66,7 @@ describe("registerHooks() + trigger functions", () => {
     await triggerAgentEnd({
       instanceSlug: "test",
       sessionId: "s1",
-      agentName: "build",
+      agentName: "main",
       tokensIn: 100,
       tokensOut: 50,
       costUsd: 0.001,

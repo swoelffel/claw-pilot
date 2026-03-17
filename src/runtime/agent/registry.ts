@@ -81,19 +81,23 @@ export function listAgents(options?: {
 
 /**
  * Return the name of the default primary agent.
- * Prefers "build" if available, otherwise first visible primary agent.
+ * Prefers the agent with isDefault=true, otherwise the first visible non-subagent.
+ * Built-in agents (hidden=true) are never selected as default.
  */
 export function defaultAgentName(): string {
   const registry = getRegistry();
 
-  const build = registry.get("build");
-  if (build && build.mode !== "subagent" && !build.hidden) {
-    return "build";
+  // 1. Prefer agent explicitly marked as default
+  for (const [key, agent] of registry.entries()) {
+    if (agent.isDefault && !agent.hidden && agent.kind !== "subagent") {
+      return key;
+    }
   }
 
-  for (const agent of registry.values()) {
-    if (agent.mode !== "subagent" && !agent.hidden) {
-      return agent.name;
+  // 2. Fallback: first visible non-subagent agent
+  for (const [key, agent] of registry.entries()) {
+    if (!agent.hidden && agent.kind !== "subagent") {
+      return key;
     }
   }
 
@@ -149,6 +153,7 @@ function mergeAgentConfig(base: Agent.Info, cfg: RuntimeAgentConfig): Agent.Info
   if (cfg.systemPrompt) result.prompt = cfg.systemPrompt;
   if (cfg.temperature !== undefined) result.temperature = cfg.temperature;
   if (cfg.maxSteps !== undefined) result.steps = cfg.maxSteps;
+  if (cfg.isDefault !== undefined) result.isDefault = cfg.isDefault;
   // model is always set in RuntimeAgentConfig (required field)
   result.model = cfg.model;
 
@@ -178,5 +183,6 @@ function createFromConfig(cfg: RuntimeAgentConfig): Agent.Info {
     model: cfg.model,
     permission: cfg.permissions,
     options: {},
+    ...(cfg.isDefault !== undefined ? { isDefault: cfg.isDefault } : {}),
   });
 }

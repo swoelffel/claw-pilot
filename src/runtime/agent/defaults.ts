@@ -129,7 +129,7 @@ Rules:
 // Default permission ruleset for most agents
 // ---------------------------------------------------------------------------
 
-const DEFAULT_RULESET = [
+export const DEFAULT_RULESET = [
   { permission: "*", pattern: "**", action: "allow" as const },
   { permission: "read", pattern: "*.env", action: "ask" as const },
   { permission: "read", pattern: "*.env.*", action: "ask" as const },
@@ -140,24 +140,29 @@ const DEFAULT_RULESET = [
 // Built-in agent definitions
 // ---------------------------------------------------------------------------
 
-/** Build agent — default coding agent */
+/** Build agent — technical sub-agent for code execution (hidden, internal) */
 export const BUILD_AGENT: Agent.Info = {
   name: "build",
-  description: "The default agent. Executes tools based on configured permissions.",
-  mode: "primary",
-  kind: "primary",
+  description: "Technical coding sub-agent. Executes tools based on configured permissions.",
+  mode: "subagent",
+  kind: "subagent",
   native: true,
+  hidden: true,
+  prompt: PROMPT_BUILD,
   permission: [...DEFAULT_RULESET, { permission: "question", pattern: "**", action: "allow" }],
   options: {},
 };
 
-/** Plan agent — read-only planning */
+/** Plan agent — technical sub-agent for read-only planning (hidden, internal) */
 export const PLAN_AGENT: Agent.Info = {
   name: "plan",
-  description: "Plan mode. Reads the codebase and produces plans without editing files.",
-  mode: "primary",
-  kind: "primary",
+  description:
+    "Technical planning sub-agent. Reads the codebase and produces plans without editing files.",
+  mode: "subagent",
+  kind: "subagent",
   native: true,
+  hidden: true,
+  prompt: PROMPT_PLAN,
   permission: PLAN_AGENT_RULESET,
   options: {},
 };
@@ -194,8 +199,8 @@ export const GENERAL_AGENT: Agent.Info = {
 /** Compaction agent — internal, hidden */
 export const COMPACTION_AGENT: Agent.Info = {
   name: "compaction",
-  mode: "primary",
-  kind: "primary",
+  mode: "subagent",
+  kind: "subagent",
   native: true,
   hidden: true,
   prompt: PROMPT_COMPACTION,
@@ -206,8 +211,8 @@ export const COMPACTION_AGENT: Agent.Info = {
 /** Title agent — internal, hidden */
 export const TITLE_AGENT: Agent.Info = {
   name: "title",
-  mode: "primary",
-  kind: "primary",
+  mode: "subagent",
+  kind: "subagent",
   native: true,
   hidden: true,
   temperature: 0.5,
@@ -219,8 +224,8 @@ export const TITLE_AGENT: Agent.Info = {
 /** Summary agent — internal, hidden */
 export const SUMMARY_AGENT: Agent.Info = {
   name: "summary",
-  mode: "primary",
-  kind: "primary",
+  mode: "subagent",
+  kind: "subagent",
   native: true,
   hidden: true,
   prompt: PROMPT_SUMMARY,

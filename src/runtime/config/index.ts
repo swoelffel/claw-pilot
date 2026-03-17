@@ -9,6 +9,7 @@
  */
 
 import { z } from "zod";
+import { DEFAULT_RULESET } from "../agent/defaults.js";
 
 // ---------------------------------------------------------------------------
 // Sub-schemas
@@ -422,7 +423,12 @@ export function createDefaultRuntimeConfig(options: {
         toolProfile: "coding",
         maxSteps: 20,
         allowSubAgents: true,
-        permissions: [],
+        // Default permissions: allow all tools, ask for .env reads, allow question tool.
+        // Matches the built-in BUILD_AGENT ruleset so Main has the same capabilities.
+        permissions: [
+          ...DEFAULT_RULESET,
+          { permission: "question", pattern: "**", action: "allow" as const },
+        ],
         temperature: undefined,
         // Main is always permanent — it is the default user-facing agent.
         // Without this, mode "all" → kind "primary" → persistence "permanent" by

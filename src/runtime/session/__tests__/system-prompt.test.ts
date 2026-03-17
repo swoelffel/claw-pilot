@@ -908,6 +908,22 @@ describe("bootstrapFiles", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildSystemPrompt — agent_identity block", () => {
+  // All built-ins are now hidden subagents — tests in this suite need a primary user agent
+  beforeEach(() => {
+    initAgentRegistry([
+      {
+        id: "main",
+        name: "Main",
+        model: "anthropic/claude-sonnet-4-5",
+        permissions: [],
+        maxSteps: 20,
+        allowSubAgents: true,
+        toolProfile: "coding",
+        isDefault: true,
+      },
+    ]);
+  });
+
   /**
    * Objective: a primary agent with a workDir must have the <agent_identity> block
    * injected at the start of the system prompt.
@@ -916,7 +932,7 @@ describe("buildSystemPrompt — agent_identity block", () => {
    */
   it("[positive] agent kind='primary' → <agent_identity> block present at start of prompt", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspace-build`;
+    const wsDir = `${workDir}/workspace-main`;
 
     // Arrange: registry has built-in agents (build is kind="primary")
     // workspace directory exists so the identity block is triggered
@@ -927,7 +943,7 @@ describe("buildSystemPrompt — agent_identity block", () => {
 
     const ctx = makeCtx({
       workDir,
-      agentConfig: makeAgentConfig({ id: "build", name: "build" }),
+      agentConfig: makeAgentConfig({ id: "main", name: "Main" }),
     });
 
     // Act
@@ -978,7 +994,7 @@ describe("buildSystemPrompt — agent_identity block", () => {
    */
   it("[positive] <agent_identity> block contains Name:, ID:, Born:, Instance:, Channel:, Runtime:", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspace-build`;
+    const wsDir = `${workDir}/workspace-main`;
 
     // Arrange
     mockExistsSync.mockImplementation((p) => p === wsDir);
@@ -990,7 +1006,7 @@ describe("buildSystemPrompt — agent_identity block", () => {
       workDir,
       instanceSlug: "my-instance",
       channel: "telegram",
-      agentConfig: makeAgentConfig({ id: "build", name: "build" }),
+      agentConfig: makeAgentConfig({ id: "main", name: "Main" }),
     });
 
     // Act
@@ -1012,7 +1028,7 @@ describe("buildSystemPrompt — agent_identity block", () => {
    */
   it("[positive] agentCreatedAt absent in workspace-state → Born: inconnue", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspace-build`;
+    const wsDir = `${workDir}/workspace-main`;
     const stateDir = `${wsDir}/.claw-pilot`;
     const statePath = `${stateDir}/workspace-state.json`;
 
@@ -1025,7 +1041,7 @@ describe("buildSystemPrompt — agent_identity block", () => {
 
     const ctx = makeCtx({
       workDir,
-      agentConfig: makeAgentConfig({ id: "build", name: "build" }),
+      agentConfig: makeAgentConfig({ id: "main", name: "Main" }),
     });
 
     // Act
@@ -1043,7 +1059,7 @@ describe("buildSystemPrompt — agent_identity block", () => {
    */
   it("[positive] agentCreatedAt present in workspace-state → Born: shows formatted date", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspace-build`;
+    const wsDir = `${workDir}/workspace-main`;
     const stateDir = `${wsDir}/.claw-pilot`;
     const statePath = `${stateDir}/workspace-state.json`;
 
@@ -1058,7 +1074,7 @@ describe("buildSystemPrompt — agent_identity block", () => {
 
     const ctx = makeCtx({
       workDir,
-      agentConfig: makeAgentConfig({ id: "build", name: "build" }),
+      agentConfig: makeAgentConfig({ id: "main", name: "Main" }),
     });
 
     // Act
@@ -1080,7 +1096,7 @@ describe("buildSystemPrompt — agent_identity block", () => {
     // Arrange: no workDir
     const ctx = makeCtx({
       workDir: undefined,
-      agentConfig: makeAgentConfig({ id: "build", name: "build" }),
+      agentConfig: makeAgentConfig({ id: "main", name: "Main" }),
     });
 
     // Act
@@ -1096,6 +1112,22 @@ describe("buildSystemPrompt — agent_identity block", () => {
 // ---------------------------------------------------------------------------
 
 describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
+  // All built-ins are now hidden subagents — tests in this suite need a primary user agent
+  beforeEach(() => {
+    initAgentRegistry([
+      {
+        id: "main",
+        name: "Main",
+        model: "anthropic/claude-sonnet-4-5",
+        permissions: [],
+        maxSteps: 20,
+        allowSubAgents: true,
+        toolProfile: "coding",
+        isDefault: true,
+      },
+    ]);
+  });
+
   /**
    * Objective: on the first session, after BOOTSTRAP.md is injected,
    * writeFileSync must be called for memory/bootstrap-history.md with the bootstrap content.
@@ -1104,7 +1136,7 @@ describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
    */
   it("[positive] first session: writeFileSync called for memory/bootstrap-history.md", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspace-build`;
+    const wsDir = `${workDir}/workspace-main`;
     const stateDir = `${wsDir}/.claw-pilot`;
     const historyPath = `${wsDir}/memory/bootstrap-history.md`;
 
@@ -1123,7 +1155,7 @@ describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
 
     const ctx = makeCtx({
       workDir,
-      agentConfig: makeAgentConfig({ id: "build", name: "build" }),
+      agentConfig: makeAgentConfig({ id: "main", name: "Main" }),
     });
 
     // Act
@@ -1145,7 +1177,7 @@ describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
    */
   it("[positive] bootstrap-history.md entry contains a timestamp header", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspace-build`;
+    const wsDir = `${workDir}/workspace-main`;
     const stateDir = `${wsDir}/.claw-pilot`;
     const historyPath = `${wsDir}/memory/bootstrap-history.md`;
 
@@ -1162,7 +1194,7 @@ describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
 
     const ctx = makeCtx({
       workDir,
-      agentConfig: makeAgentConfig({ id: "build", name: "build" }),
+      agentConfig: makeAgentConfig({ id: "main", name: "Main" }),
     });
 
     // Act
@@ -1183,7 +1215,7 @@ describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
    */
   it("[negative] bootstrapDone=true → writeFileSync not called for bootstrap-history.md", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspace-build`;
+    const wsDir = `${workDir}/workspace-main`;
     const stateDir = `${wsDir}/.claw-pilot`;
     const statePath = `${stateDir}/workspace-state.json`;
     const historyPath = `${wsDir}/memory/bootstrap-history.md`;
@@ -1203,7 +1235,7 @@ describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
 
     const ctx = makeCtx({
       workDir,
-      agentConfig: makeAgentConfig({ id: "build", name: "build" }),
+      agentConfig: makeAgentConfig({ id: "main", name: "Main" }),
     });
 
     // Act

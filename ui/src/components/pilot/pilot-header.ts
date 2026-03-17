@@ -179,6 +179,8 @@ export class PilotHeader extends LitElement {
   ];
 
   @property() agentId = "";
+  /** Display name for the agent — falls back to agentId if not set */
+  @property() agentName = "";
   @property() model = "";
   @property() status: PilotStatus = "idle";
   @property({ type: Number }) messageCount = 0;
@@ -217,7 +219,7 @@ export class PilotHeader extends LitElement {
     return html`
       <div class="header">
         <span class="agent-dot" style="${agentDotStyle}"></span>
-        <span class="agent-name">${this.agentId || "—"}</span>
+        <span class="agent-name">${this.agentName || this.agentId || "—"}</span>
 
         ${this._shortModel()
           ? html`

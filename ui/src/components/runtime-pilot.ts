@@ -568,11 +568,13 @@ export class RuntimePilot extends LitElement {
   override render() {
     const isDisabled = this._status !== "idle";
     const agentId = this._context?.agent.id ?? "";
+    const agentName = this._context?.agent.name ?? agentId;
     const model = this._context?.agent.model ?? "";
 
     return html`
       <cp-pilot-header
         .agentId=${agentId}
+        .agentName=${agentName}
         .model=${model}
         .status=${this._status}
         .messageCount=${this._messages.length}

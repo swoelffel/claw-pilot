@@ -26,6 +26,8 @@ export namespace Agent {
     native: z.boolean().optional(),
     /** Whether to hide from agent picker UI */
     hidden: z.boolean().optional(),
+    /** Whether this is the default agent for new sessions */
+    isDefault: z.boolean().optional(),
     topP: z.number().min(0).max(1).optional(),
     temperature: z.number().min(0).max(2).optional(),
     color: z.string().optional(),

@@ -81,7 +81,7 @@ describe("buildPermanentSessionKey()", () => {
   it("permanent key has fewer segments than ephemeral key", () => {
     // Arrange
     const slug = "inst";
-    const agentId = "build";
+    const agentId = "main";
     const peerId = "peer-1";
 
     // Act

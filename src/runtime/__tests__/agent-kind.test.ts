@@ -32,24 +32,24 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("built-in agent kind annotations", () => {
-  it(// Positive: build agent is user-facing → kind must be "primary".
-  "getAgent('build').kind === 'primary'", () => {
+  it(// build is now a hidden technical sub-agent → kind must be "subagent".
+  "getAgent('build').kind === 'subagent'", () => {
     // Arrange + Act
     const agent = getAgent("build");
 
     // Assert
     expect(agent).toBeDefined();
-    expect(agent!.kind).toBe("primary");
+    expect(agent!.kind).toBe("subagent");
   });
 
-  it(// Positive: plan agent is user-facing → kind must be "primary".
-  "getAgent('plan').kind === 'primary'", () => {
+  it(// plan is now a hidden technical sub-agent → kind must be "subagent".
+  "getAgent('plan').kind === 'subagent'", () => {
     // Arrange + Act
     const agent = getAgent("plan");
 
     // Assert
     expect(agent).toBeDefined();
-    expect(agent!.kind).toBe("primary");
+    expect(agent!.kind).toBe("subagent");
   });
 
   it(// Positive: explore agent is spawned by task tool → kind must be "subagent".
@@ -72,34 +72,34 @@ describe("built-in agent kind annotations", () => {
     expect(agent!.kind).toBe("subagent");
   });
 
-  it(// Positive: compaction agent is internal but user-facing lifecycle → kind must be "primary".
-  "getAgent('compaction').kind === 'primary'", () => {
+  it(// compaction is an internal technical sub-agent → kind must be "subagent".
+  "getAgent('compaction').kind === 'subagent'", () => {
     // Arrange + Act
     const agent = getAgent("compaction");
 
     // Assert
     expect(agent).toBeDefined();
-    expect(agent!.kind).toBe("primary");
+    expect(agent!.kind).toBe("subagent");
   });
 
-  it(// Positive: title agent is internal but user-facing lifecycle → kind must be "primary".
-  "getAgent('title').kind === 'primary'", () => {
+  it(// title is an internal technical sub-agent → kind must be "subagent".
+  "getAgent('title').kind === 'subagent'", () => {
     // Arrange + Act
     const agent = getAgent("title");
 
     // Assert
     expect(agent).toBeDefined();
-    expect(agent!.kind).toBe("primary");
+    expect(agent!.kind).toBe("subagent");
   });
 
-  it(// Positive: summary agent is internal but user-facing lifecycle → kind must be "primary".
-  "getAgent('summary').kind === 'primary'", () => {
+  it(// summary is an internal technical sub-agent → kind must be "subagent".
+  "getAgent('summary').kind === 'subagent'", () => {
     // Arrange + Act
     const agent = getAgent("summary");
 
     // Assert
     expect(agent).toBeDefined();
-    expect(agent!.kind).toBe("primary");
+    expect(agent!.kind).toBe("subagent");
   });
 });
 
@@ -155,8 +155,8 @@ describe("custom agent kind default via initAgentRegistry()", () => {
     // Act
     const agent = getAgent("build");
 
-    // Assert — kind must still be "primary" (not changed by config override)
-    expect(agent!.kind).toBe("primary");
+    // Assert — kind must still be "subagent" (build is now a technical sub-agent)
+    expect(agent!.kind).toBe("subagent");
     // And the override was applied
     expect(agent!.temperature).toBe(0.5);
   });
@@ -170,8 +170,14 @@ describe("resolveEffectivePersistence()", () => {
   it(// Positive: a primary agent without config override must resolve to "permanent".
   // Primary agents have long-lived sessions maintained across restarts.
   "resolveEffectivePersistence({ kind: 'primary' }) → 'permanent'", () => {
-    // Arrange
-    const agentInfo = getAgent("build")!;
+    // Arrange — use a minimal Agent.Info with kind="primary" (all built-ins are now subagents)
+    const agentInfo = Agent.Info.parse({
+      name: "test-primary",
+      mode: "all",
+      kind: "primary",
+      permission: [],
+      options: {},
+    });
     expect(agentInfo.kind).toBe("primary");
 
     // Act
@@ -198,13 +204,19 @@ describe("resolveEffectivePersistence()", () => {
   it(// Positive: explicit config persistence="ephemeral" must override kind="primary".
   // Config always wins — allows forcing ephemeral mode on a primary agent.
   "resolveEffectivePersistence({ kind: 'primary' }, { persistence: 'ephemeral' }) → 'ephemeral'", () => {
-    // Arrange
-    const agentInfo = getAgent("build")!;
+    // Arrange — use a minimal Agent.Info with kind="primary" (all built-ins are now subagents)
+    const agentInfo = Agent.Info.parse({
+      name: "test-primary",
+      mode: "all",
+      kind: "primary",
+      permission: [],
+      options: {},
+    });
     expect(agentInfo.kind).toBe("primary");
 
     const configOverride = {
-      id: "build",
-      name: "build",
+      id: "test-primary",
+      name: "test-primary",
       model: "anthropic/claude-sonnet-4-5",
       maxSteps: 20,
       allowSubAgents: true,

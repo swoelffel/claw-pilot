@@ -60,7 +60,8 @@ describe("getAgent()", () => {
     const agent = getAgent("build");
     expect(agent).toBeDefined();
     expect(agent?.name).toBe("build");
-    expect(agent?.mode).toBe("primary");
+    // build is now a hidden technical sub-agent
+    expect(agent?.mode).toBe("subagent");
   });
 
   it("returns undefined for unknown agent", () => {
@@ -83,14 +84,15 @@ describe("getAgent()", () => {
 // ---------------------------------------------------------------------------
 
 describe("listAgents()", () => {
-  it("returns all non-hidden agents by default", () => {
+  it("returns only explore and general by default (build and plan are now hidden)", () => {
     const agents = listAgents();
     const names = agents.map((a) => a.name);
-    expect(names).toContain("build");
-    expect(names).toContain("plan");
+    // Visible subagents
     expect(names).toContain("explore");
     expect(names).toContain("general");
-    // Hidden agents should be excluded
+    // Hidden technical sub-agents should be excluded
+    expect(names).not.toContain("build");
+    expect(names).not.toContain("plan");
     expect(names).not.toContain("compaction");
     expect(names).not.toContain("title");
     expect(names).not.toContain("summary");
@@ -99,19 +101,22 @@ describe("listAgents()", () => {
   it("includes hidden agents when includeHidden=true", () => {
     const agents = listAgents({ includeHidden: true });
     const names = agents.map((a) => a.name);
+    expect(names).toContain("build");
+    expect(names).toContain("plan");
     expect(names).toContain("compaction");
     expect(names).toContain("title");
     expect(names).toContain("summary");
   });
 
-  it("filters by mode=primary", () => {
+  it("filters by mode=primary returns no built-in agents (all built-ins are now subagents)", () => {
     const agents = listAgents({ mode: "primary" });
-    for (const a of agents) {
-      expect(a.mode === "primary" || a.mode === "all").toBe(true);
-    }
+    const names = agents.map((a) => a.name);
+    // All built-ins are now mode=subagent; only user-defined agents with mode=primary/all appear
+    expect(names).not.toContain("build");
+    expect(names).not.toContain("plan");
   });
 
-  it("filters by mode=subagent", () => {
+  it("filters by mode=subagent includes explore, general (visible) and not hidden ones", () => {
     const agents = listAgents({ mode: "subagent" });
     for (const a of agents) {
       expect(a.mode === "subagent" || a.mode === "all").toBe(true);
@@ -119,6 +124,18 @@ describe("listAgents()", () => {
     const names = agents.map((a) => a.name);
     expect(names).toContain("explore");
     expect(names).toContain("general");
+    // build and plan are hidden subagents — excluded by default
+    expect(names).not.toContain("build");
+    expect(names).not.toContain("plan");
+  });
+
+  it("filters by mode=subagent with includeHidden=true includes build and plan", () => {
+    const agents = listAgents({ mode: "subagent", includeHidden: true });
+    const names = agents.map((a) => a.name);
+    expect(names).toContain("explore");
+    expect(names).toContain("general");
+    expect(names).toContain("build");
+    expect(names).toContain("plan");
   });
 });
 
@@ -127,15 +144,43 @@ describe("listAgents()", () => {
 // ---------------------------------------------------------------------------
 
 describe("defaultAgentName()", () => {
-  it("returns 'build' when build agent is available", () => {
-    expect(defaultAgentName()).toBe("build");
+  it("throws when no primary visible agent exists (all built-ins are now hidden subagents)", () => {
+    // After reclassification, built-ins are all hidden/subagent.
+    // Without a config-defined primary agent, defaultAgentName() must throw.
+    initAgentRegistry([]);
+    expect(() => defaultAgentName()).toThrow("No primary visible agent found in registry");
   });
 
-  it("throws when no primary visible agent exists", () => {
-    // Init with only hidden/subagent agents
-    initAgentRegistry([]);
-    // Manually override to test edge case — just verify the function exists
-    expect(typeof defaultAgentName).toBe("function");
+  it("returns the isDefault agent when a config agent with isDefault=true is registered", () => {
+    initAgentRegistry([
+      {
+        id: "main",
+        name: "Main",
+        model: "anthropic/claude-sonnet-4-5",
+        maxSteps: 20,
+        allowSubAgents: true,
+        toolProfile: "coding",
+        isDefault: true,
+        permissions: [],
+      },
+    ]);
+    expect(defaultAgentName()).toBe("main");
+  });
+
+  it("falls back to first visible non-subagent when no isDefault agent exists", () => {
+    initAgentRegistry([
+      {
+        id: "my-agent",
+        name: "My Agent",
+        model: "anthropic/claude-sonnet-4-5",
+        maxSteps: 20,
+        allowSubAgents: true,
+        toolProfile: "coding",
+        isDefault: false,
+        permissions: [],
+      },
+    ]);
+    expect(defaultAgentName()).toBe("my-agent");
   });
 });
 
@@ -214,14 +259,15 @@ describe("initAgentRegistry() with config overrides", () => {
 // ---------------------------------------------------------------------------
 
 describe("Agent.toSummary()", () => {
-  it("returns a summary with correct fields", () => {
+  it("returns a summary with correct fields for build (now hidden subagent)", () => {
     const agent = getAgent("build")!;
     const summary = Agent.toSummary(agent);
 
     expect(summary.name).toBe("build");
-    expect(summary.mode).toBe("primary");
+    expect(summary.mode).toBe("subagent");
+    expect(summary.kind).toBe("subagent");
     expect(summary.native).toBe(true);
-    expect(summary.hidden).toBe(false);
+    expect(summary.hidden).toBe(true);
     expect(typeof summary.description).toBe("string");
   });
 });
