@@ -314,10 +314,12 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       });
     })();
 
-    // Teammates (other agents in the config)
+    // Teammates: visible primary agents other than the current agent.
+    // Excludes technical sub-agents (explore, general, …) and the agent itself.
     const allAgents = listAgents();
     const teammates = allAgents
-      .filter((a) => a.name !== agentId)
+      .filter((a) => a.kind !== "subagent")
+      .filter((a) => a.name.toLowerCase() !== agentId.toLowerCase())
       .map((a) => ({
         id: a.name,
         name: a.name,
