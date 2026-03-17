@@ -739,22 +739,27 @@ export class RuntimeChat extends LitElement {
   private _renderDropdown() {
     const active = this._sessions.filter((s) => s.state === "active");
     const archived = this._sessions.filter((s) => s.state === "archived");
+    const currentSession = this._currentSession;
+    const isPermanent = currentSession?.persistent ?? false;
 
     return html`
       <div class="session-dropdown" @click=${(e: Event) => e.stopPropagation()}>
-        <!-- Option "New session" -->
-        <button
-          class="session-option ${!this._sessionId ? "selected" : ""}"
-          @click=${this._createNewSession}
-        >
-          <span class="session-trigger-dot new"></span>
-          <div class="session-option-info">
-            <div class="session-option-title">
-              + ${msg("New session", { id: "chat-new-session" })}
-            </div>
-          </div>
-        </button>
-
+        <!-- Option "New session" — hidden for permanent agents -->
+        ${!isPermanent
+          ? html`
+              <button
+                class="session-option ${!this._sessionId ? "selected" : ""}"
+                @click=${this._createNewSession}
+              >
+                <span class="session-trigger-dot new"></span>
+                <div class="session-option-info">
+                  <div class="session-option-title">
+                    + ${msg("New session", { id: "chat-new-session" })}
+                  </div>
+                </div>
+              </button>
+            `
+          : nothing}
         ${active.length > 0
           ? html`
               <div class="session-group-label">
@@ -820,6 +825,8 @@ export class RuntimeChat extends LitElement {
 
   override render() {
     const isDisabled = this._status !== "idle";
+    const currentSession = this._currentSession;
+    const isPermanent = currentSession?.persistent ?? false;
 
     return html`
       <div
@@ -828,18 +835,29 @@ export class RuntimeChat extends LitElement {
           if (this._dropdownOpen) this._dropdownOpen = false;
         }}
       >
-        <!-- Header: session selector + new session button -->
+        <!-- Header: session selector + new session button (hidden for permanent agents) -->
         <div class="chat-header">
           <div class="session-selector">
             ${this._renderSessionTrigger()} ${this._dropdownOpen ? this._renderDropdown() : nothing}
           </div>
-          <button
-            class="btn btn-ghost"
-            style="font-size:12px;padding:5px 10px;flex-shrink:0"
-            @click=${this._createNewSession}
-          >
-            + ${msg("New", { id: "chat-btn-new" })}
-          </button>
+          ${isPermanent
+            ? html`
+                <span
+                  style="font-size:11px;padding:4px 8px;border-radius:4px;background:var(--accent-subtle);color:var(--accent);white-space:nowrap;flex-shrink:0;font-weight:500"
+                  title="This agent has a permanent session shared across all channels"
+                >
+                  🔒 ${msg("Permanent", { id: "chat-permanent-session" })}
+                </span>
+              `
+            : html`
+                <button
+                  class="btn btn-ghost"
+                  style="font-size:12px;padding:5px 10px;flex-shrink:0"
+                  @click=${this._createNewSession}
+                >
+                  + ${msg("New", { id: "chat-btn-new" })}
+                </button>
+              `}
         </div>
 
         <!-- Stats bar -->

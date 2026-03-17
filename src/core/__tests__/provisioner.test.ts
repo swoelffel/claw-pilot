@@ -24,8 +24,8 @@ vi.mock("../../lib/platform.js", async (importOriginal) => {
     ...actual,
     getServiceManager: () => _mockServiceManager ?? actual.getServiceManager(),
     SERVICE_MANAGER: "systemd" as const,
-    getHomeDir: () => "/tmp/openclaw-test-home",
-    getRuntimeStateDir: (slug: string) => `/tmp/openclaw-test-home/.runtime-${slug}`,
+    getInstancesDir: () => "/tmp/openclaw-test-home/.claw-pilot/instances",
+    getRuntimeStateDir: (slug: string) => `/tmp/openclaw-test-home/.claw-pilot/instances/${slug}`,
     getSystemdDir: () => "/tmp/systemd-test",
   };
 });
@@ -209,7 +209,7 @@ describe("Provisioner.provision()", () => {
     const { provisioner, serverId } = makeProvisioner();
 
     // The state dir that will be created
-    const stateDir = path.join("/tmp/openclaw-test-home", ".runtime-test-inst");
+    const stateDir = path.join("/tmp/openclaw-test-home/.claw-pilot/instances", "test-inst");
 
     // Make writeFile throw on the first call (writing .env)
     let writeCount = 0;

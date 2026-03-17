@@ -22,6 +22,7 @@ export interface EnrichedSessionRow {
   spawn_depth: number;
   label: string | null;
   metadata: string | null;
+  persistent: number; // SQLite INTEGER: 0 = false, 1 = true
   total_cost_usd: number;
   message_count: number;
   total_tokens: number;
@@ -43,6 +44,7 @@ export interface EnrichedSession {
   spawnDepth: number;
   label: string | undefined;
   metadata: string | undefined;
+  persistent: boolean;
   // Aggregated fields
   totalCostUsd: number;
   messageCount: number;
@@ -118,6 +120,7 @@ export function listEnrichedSessions(
       spawnDepth: s.spawnDepth ?? 0,
       label: s.label,
       metadata: s.metadata,
+      persistent: s.persistent,
       totalCostUsd: 0,
       messageCount: 0,
       totalTokens: 0,
@@ -140,6 +143,7 @@ export function listEnrichedSessions(
     spawnDepth: row.spawn_depth ?? 0,
     label: row.label ?? undefined,
     metadata: row.metadata ?? undefined,
+    persistent: row.persistent === 1,
     totalCostUsd: row.total_cost_usd ?? 0,
     messageCount: row.message_count ?? 0,
     totalTokens: row.total_tokens ?? 0,

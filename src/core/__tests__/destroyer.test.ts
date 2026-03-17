@@ -17,7 +17,7 @@ vi.mock("../../lib/platform.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/platform.js")>();
   return {
     ...actual,
-    getRuntimeStateDir: (slug: string) => `/home/test/.runtime-${slug}`,
+    getRuntimeStateDir: (slug: string) => `/home/test/.claw-pilot/instances/${slug}`,
     getRuntimePid: () => _mockPid,
     getRuntimePidPath: (stateDir: string) => `${stateDir}/runtime.pid`,
     isRuntimeRunning: () => _mockRunning,
@@ -48,8 +48,8 @@ afterEach(() => {
 /** Create a minimal claw-runtime instance in the registry and seed the mock filesystem */
 function seedInstance(opts: { slug?: string } = {}) {
   const slug = opts.slug ?? "demo1";
-  const server = registry.upsertLocalServer("testhost", "/home/test");
-  const stateDir = `/home/test/.runtime-${slug}`;
+  const server = registry.upsertLocalServer("testhost", "/home/test/.claw-pilot/instances");
+  const stateDir = `/home/test/.claw-pilot/instances/${slug}`;
 
   // Seed files in mock connection
   conn.files.set(`${stateDir}/runtime.json`, "{}");

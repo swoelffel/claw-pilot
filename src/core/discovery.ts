@@ -4,7 +4,7 @@ import type { Registry, InstanceRecord } from "./registry.js";
 import type { AgentSync } from "./agent-sync.js";
 import { constants } from "../lib/constants.js";
 import { logger } from "../lib/logger.js";
-import { getHomeDir, getRuntimePid } from "../lib/platform.js";
+import { getInstancesDir, getRuntimePid } from "../lib/platform.js";
 import { normaliseModel } from "../lib/model-helpers.js";
 
 export interface DiscoveredAgent {
@@ -39,7 +39,7 @@ export class InstanceDiscovery {
   constructor(
     private conn: ServerConnection,
     private registry: Registry,
-    private homeDir: string,
+    private instancesDir: string,
     private xdgRuntimeDir: string,
   ) {}
 
@@ -49,7 +49,7 @@ export class InstanceDiscovery {
    * against the current registry.
    *
    * Strategy:
-   *   1. Directory scan for .runtime-<slug>/runtime.json under homeDir
+   *   1. Directory scan for <slug>/ under ~/.claw-pilot/instances/
    *   2. Reconcile against registry
    */
   async scan(): Promise<DiscoveryResult> {
@@ -60,25 +60,23 @@ export class InstanceDiscovery {
     return this.reconcile(found);
   }
 
-  // --- Strategy 1: Directory scan for .runtime-<slug>/ ---
+  // --- Strategy 1: Directory scan for instances/ ---
 
   private async scanDirectories(found: Map<string, DiscoveredInstance>): Promise<void> {
-    const prefix = constants.RUNTIME_STATE_PREFIX;
     let entries: string[];
 
     try {
-      entries = await this.conn.readdir(this.homeDir);
+      entries = await this.conn.readdir(this.instancesDir);
     } catch {
       // Directory not accessible — skip
       return;
     }
 
     for (const entry of entries) {
-      if (!entry.startsWith(prefix)) continue;
-      const slug = entry.slice(prefix.length);
+      const slug = entry;
       if (!slug || found.has(slug)) continue;
 
-      const stateDir = `${this.homeDir}/${entry}`;
+      const stateDir = `${this.instancesDir}/${entry}`;
       const configPath = `${stateDir}/runtime.json`;
 
       if (!(await this.conn.exists(configPath))) continue;

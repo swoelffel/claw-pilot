@@ -28,38 +28,14 @@ export function isDocker(): boolean {
   return process.env["CLAW_PILOT_ENV"] === "docker";
 }
 
-/**
- * Resolve the home directory used for instance state dirs.
- * Priority: CLAW_PILOT_HOME env var > openclaw_home stored in DB > os.homedir()
- */
-export function getHomeDir(dbPath?: string): string {
-  if (process.env["CLAW_PILOT_HOME"]) return process.env["CLAW_PILOT_HOME"];
-
-  // Read from DB if available (set during `claw-pilot init`)
-  const resolvedDbPath = dbPath ?? getDbPath();
-  try {
-    // Lazy require to avoid circular dependency — only used at runtime
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Database = require("better-sqlite3") as typeof import("better-sqlite3");
-    const db = new Database(resolvedDbPath, { readonly: true });
-    try {
-      const row = db.prepare("SELECT openclaw_home FROM servers WHERE id = 1").get() as
-        | { openclaw_home: string }
-        | undefined;
-      if (row?.openclaw_home) return row.openclaw_home;
-    } finally {
-      db.close();
-    }
-  } catch {
-    // DB not yet initialized or not accessible — fall through to default
-  }
-
-  return os.homedir();
+/** Instances directory: ~/.claw-pilot/instances/ */
+export function getInstancesDir(): string {
+  return path.join(getDataDir(), constants.INSTANCES_DIR);
 }
 
 /** State directory for a claw-runtime instance. */
 export function getRuntimeStateDir(slug: string): string {
-  return path.join(getHomeDir(), `${constants.RUNTIME_STATE_PREFIX}${slug}`);
+  return path.join(getInstancesDir(), slug);
 }
 
 /** @public Path to runtime.json config for a claw-runtime instance. */

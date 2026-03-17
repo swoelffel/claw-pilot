@@ -11,7 +11,7 @@ import { PROVIDER_CATALOG } from "../lib/provider-catalog.js";
 import { generateGatewayToken } from "./secrets.js";
 import { Lifecycle } from "./lifecycle.js";
 import { constants } from "../lib/constants.js";
-import { getRuntimeStateDir } from "../lib/platform.js";
+import { getInstancesDir, getRuntimeStateDir } from "../lib/platform.js";
 import { InstanceAlreadyExistsError, ClawPilotError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
 import { shellEscape } from "../lib/shell.js";
@@ -120,6 +120,7 @@ export class Provisioner {
     try {
       // Step 2: Create directory structure
       logger.step("Creating directories...");
+      await this.conn.mkdir(getInstancesDir(), { mode: constants.DIR_MODE });
       await this.conn.mkdir(stateDir, { mode: constants.DIR_MODE });
       await this.conn.mkdir(path.join(stateDir, "workspaces"));
       await this.conn.mkdir(logsDir);

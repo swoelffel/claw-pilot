@@ -54,48 +54,42 @@ beforeEach(() => {
 describe("buildPermanentSessionKey()", () => {
   it(// Positive: verifies the cross-channel format "<slug>:<agentId>:<peerId>"
   // (no channel component — permanent sessions are shared across channels).
-  "returns '<slug>:<agentId>:<peerId>' when peerId is defined", () => {
+  "returns '<slug>:<agentId>' when slug and agentId are provided", () => {
     // Arrange
     const slug = "my-instance";
     const agentId = "main";
-    const peerId = "user-42";
 
     // Act
-    const key = buildPermanentSessionKey(slug, agentId, peerId);
+    const key = buildPermanentSessionKey(slug, agentId);
 
     // Assert
-    expect(key).toBe("my-instance:main:user-42");
+    expect(key).toBe("my-instance:main");
   });
 
-  it(// Negative: verifies that undefined peerId falls back to the literal "unknown"
-  // (same convention as buildSessionKey — no empty segments in the key).
-  "returns '<slug>:<agentId>:unknown' when peerId is undefined", () => {
+  it("permanent key is independent of peerId", () => {
     // Arrange
     const slug = "my-instance";
     const agentId = "main";
-    const peerId = undefined;
 
     // Act
-    const key = buildPermanentSessionKey(slug, agentId, peerId);
+    const key = buildPermanentSessionKey(slug, agentId);
 
-    // Assert
-    expect(key).toBe("my-instance:main:unknown");
+    // Assert — same key regardless of peerId
+    expect(key).toBe("my-instance:main");
   });
 
-  it(// Positive: permanent key must have exactly 2 colons (3 segments),
-  // while ephemeral key has 3 colons (4 segments) — the channel is absent.
-  "permanent key has fewer segments than ephemeral key (no channel component)", () => {
+  it("permanent key has fewer segments than ephemeral key", () => {
     // Arrange
     const slug = "inst";
     const agentId = "build";
     const peerId = "peer-1";
 
     // Act
-    const permanentKey = buildPermanentSessionKey(slug, agentId, peerId);
+    const permanentKey = buildPermanentSessionKey(slug, agentId);
     const ephemeralKey = buildSessionKey(slug, agentId, "web", peerId);
 
-    // Assert — permanent key has 2 colons, ephemeral has 3
-    expect(permanentKey.split(":").length).toBe(3);
+    // Assert — permanent key has 1 colon (2 segments), ephemeral has 3 colons (4 segments)
+    expect(permanentKey.split(":").length).toBe(2);
     expect(ephemeralKey.split(":").length).toBe(4);
   });
 });
@@ -200,9 +194,9 @@ describe("createSession() — persistent flag", () => {
 // ---------------------------------------------------------------------------
 
 describe("session key format — permanent vs ephemeral", () => {
-  it(// Positive: a permanent session must use the cross-channel key format
-  // "<slug>:<agentId>:<peerId>" (3 segments, no channel).
-  "permanent session has a session_key without channel (3 segments)", () => {
+  it(// Positive: a permanent session must use the agent-scoped key format
+  // "<slug>:<agentId>" (2 segments, no channel, no peerId).
+  "permanent session has a session_key without channel or peerId (2 segments)", () => {
     // Arrange + Act
     const session = createSession(db, {
       instanceSlug: "test-instance",
@@ -211,10 +205,10 @@ describe("session key format — permanent vs ephemeral", () => {
       persistent: true,
     });
 
-    // Assert — key has exactly 3 segments (no channel)
+    // Assert — key has exactly 2 segments (no channel, no peerId)
     expect(session.sessionKey).toBeDefined();
-    expect(session.sessionKey!.split(":").length).toBe(3);
-    expect(session.sessionKey).toBe("test-instance:main:user-3");
+    expect(session.sessionKey!.split(":").length).toBe(2);
+    expect(session.sessionKey).toBe("test-instance:main");
   });
 
   it(// Positive: an ephemeral session must use the channel-scoped key format

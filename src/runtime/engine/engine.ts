@@ -52,6 +52,7 @@ export class ClawRuntime {
     private readonly config: RuntimeConfig,
     private readonly db: Database.Database,
     private readonly instanceSlug: InstanceSlug,
+    private readonly workDir: string | undefined = undefined,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -94,6 +95,7 @@ export class ClawRuntime {
         this.db,
         this.instanceSlug,
         this.config,
+        this.workDir,
       );
 
       // 3c. Start heartbeat runner for agents with heartbeat config
@@ -108,7 +110,7 @@ export class ClawRuntime {
             "HeartbeatRunner.resolveModel not yet wired — use heartbeat.model override",
           );
         },
-        workDir: undefined,
+        workDir: this.workDir,
       });
 
       // 4. Create and connect channels
@@ -285,6 +287,7 @@ export class ClawRuntime {
           instanceSlug: this.instanceSlug,
           config: this.config,
           message,
+          ...(this.workDir !== undefined ? { workDir: this.workDir } : {}),
           ...(this._mcpRegistry !== undefined ? { mcpRegistry: this._mcpRegistry } : {}),
         });
 

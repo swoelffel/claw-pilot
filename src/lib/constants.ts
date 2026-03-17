@@ -7,8 +7,8 @@ export const constants = {
   CONFIG_FILE: "config.json",
   DASHBOARD_TOKEN_FILE: "dashboard-token",
 
-  // claw-runtime state directory prefix
-  RUNTIME_STATE_PREFIX: ".runtime-", // ~/.runtime-<slug>/
+  // claw-runtime instances directory
+  INSTANCES_DIR: "instances", // ~/.claw-pilot/instances/
 
   // Ports
   PORT_RANGE_START: 18789,

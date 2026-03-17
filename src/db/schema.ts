@@ -575,9 +575,126 @@ const MIGRATIONS: Migration[] = [
         .get();
       if (hasTable) {
         db.exec(`
-          CREATE INDEX IF NOT EXISTS idx_rt_messages_session_role
-            ON rt_messages(session_id, role);
-        `);
+           CREATE INDEX IF NOT EXISTS idx_rt_messages_session_role
+             ON rt_messages(session_id, role);
+         `);
+      }
+
+      // PLAN-16: recalculate permanent session keys (remove peerId from key).
+      // Changes the permanent session key from "<slug>:<agentId>:<peerId>"
+      // to "<slug>:<agentId>" — a single session per agent, shared across all channels and peers.
+
+      // Step 1: Archive duplicate permanent sessions
+      // For each (instance_slug, agent_id) with multiple persistent=1 sessions,
+      // keep the oldest (MIN(id)) and archive the rest.
+      const hasSessions = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='rt_sessions'")
+        .get();
+      if (hasSessions) {
+        db.exec(`
+           UPDATE rt_sessions
+           SET state = 'archived', updated_at = CURRENT_TIMESTAMP
+           WHERE persistent = 1
+             AND id NOT IN (
+               SELECT MIN(id) FROM rt_sessions
+               WHERE persistent = 1
+               GROUP BY instance_slug, agent_id
+             );
+         `);
+
+        // Step 2: Recalculate session_key for all persistent sessions
+        // New format: "<instance_slug>:<agent_id>" (no peerId, no channel)
+        db.exec(`
+           UPDATE rt_sessions
+           SET session_key = instance_slug || ':' || agent_id
+           WHERE persistent = 1;
+         `);
+
+        // Step 3: Recreate the partial unique index on session_key
+        // Only apply if parent_id column exists (defensive for partial-schema test environments)
+        const hasParentId = db
+          .prepare("PRAGMA table_info(rt_sessions)")
+          .all()
+          .some((col: any) => col.name === "parent_id");
+
+        if (hasParentId) {
+          db.exec(`
+             DROP INDEX IF EXISTS idx_rt_sessions_key;
+             CREATE UNIQUE INDEX IF NOT EXISTS idx_rt_sessions_key
+               ON rt_sessions(session_key) WHERE parent_id IS NULL;
+           `);
+        }
+
+        // Step 4: Drop the old permanent sessions index (no longer needed)
+        db.exec(`
+           DROP INDEX IF EXISTS idx_rt_sessions_permanent;
+         `);
+      }
+    },
+  },
+  {
+    // v15: relocate instance state directories from ~/.runtime-<slug>/ to ~/.claw-pilot/instances/<slug>/
+    //
+    // Recalculates state_dir and config_path for all instances based on the new directory structure.
+    // Workspace paths for agents are also updated to reflect the new state_dir location.
+    //
+    // Note: This migration updates the database paths only. The actual files on disk must be
+    // moved manually (or via deployment script) after the migration runs.
+    version: 15,
+    up(db) {
+      // Helper to compute the new state_dir path
+      // In the migration context, we can't import getInstancesDir() directly,
+      // so we compute it inline: ~/.claw-pilot/instances/<slug>
+      // We use a placeholder that will be replaced by the actual path at runtime.
+      // For now, we'll compute relative to the data dir which is ~/.claw-pilot/
+
+      const instances = db.prepare("SELECT id, slug FROM instances").all() as Array<{
+        id: number;
+        slug: string;
+      }>;
+
+      const updateInstance = db.prepare(
+        "UPDATE instances SET state_dir = ?, config_path = ? WHERE id = ?",
+      );
+
+      for (const inst of instances) {
+        // New path: ~/.claw-pilot/instances/<slug>
+        // We use a relative computation: dataDir/instances/slug
+        // Since we can't access getDataDir() here, we'll use a pattern that works:
+        // Extract the old state_dir, replace .runtime-<slug> with instances/<slug>
+
+        const oldStateDir = db
+          .prepare("SELECT state_dir FROM instances WHERE id = ?")
+          .get(inst.id) as { state_dir: string } | undefined;
+
+        if (oldStateDir) {
+          // Replace ~/.runtime-<slug> with ~/.claw-pilot/instances/<slug>
+          const newStateDir = oldStateDir.state_dir
+            .replace(/\.runtime-[^/]+$/, `instances/${inst.slug}`)
+            .replace(/\/\.runtime-[^/]+$/, `/instances/${inst.slug}`);
+
+          const newConfigPath = `${newStateDir}/runtime.json`;
+          updateInstance.run(newStateDir, newConfigPath, inst.id);
+        }
+      }
+
+      // Update agent workspace paths
+      const agents = db.prepare("SELECT id, workspace_path FROM agents").all() as Array<{
+        id: number;
+        workspace_path: string;
+      }>;
+
+      const updateAgent = db.prepare("UPDATE agents SET workspace_path = ? WHERE id = ?");
+
+      for (const agent of agents) {
+        // Replace ~/.runtime-<slug> with ~/.claw-pilot/instances/<slug> in workspace paths
+        const newWorkspacePath = agent.workspace_path
+          .replace(/\.runtime-([^/]+)/, "instances/$1")
+          .replace(/\/\.runtime-([^/]+)/, "/instances/$1");
+
+        if (newWorkspacePath !== agent.workspace_path) {
+          updateAgent.run(newWorkspacePath, agent.id);
+        }
       }
     },
   },

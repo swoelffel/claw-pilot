@@ -1,7 +1,7 @@
 // src/commands/init.ts
 import { Command } from "commander";
 import { confirm } from "@inquirer/prompts";
-import { getDataDir, getDbPath, getHomeDir } from "../lib/platform.js";
+import { getDataDir, getDbPath, getInstancesDir } from "../lib/platform.js";
 import { initDatabase } from "../db/schema.js";
 import { Registry } from "../core/registry.js";
 import { InstanceDiscovery } from "../core/discovery.js";
@@ -25,13 +25,13 @@ export function initCommand(): Command {
       try {
         // 3. Register local server
         const hostname = await conn.hostname();
-        const homeDir = getHomeDir();
-        const server = registry.upsertLocalServer(hostname, homeDir);
+        const instancesDir = getInstancesDir();
+        const server = registry.upsertLocalServer(hostname, instancesDir);
 
         // 4. Discover existing claw-runtime instances
         logger.info("\nScanning for existing claw-runtime instances...");
         const xdgRuntimeDir = await resolveXdgRuntimeDir(conn);
-        const discovery = new InstanceDiscovery(conn, registry, homeDir, xdgRuntimeDir);
+        const discovery = new InstanceDiscovery(conn, registry, instancesDir, xdgRuntimeDir);
         const result = await discovery.scan();
 
         // 4a. Display results

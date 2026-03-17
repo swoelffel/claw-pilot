@@ -264,7 +264,7 @@ function runtimeStartCommand(): Command {
       // Open DB
       const db = initDatabase(getDbPath());
 
-      const runtime = new ClawRuntime(config, db, slug);
+      const runtime = new ClawRuntime(config, db, slug, stateDir);
 
       // Write PID file so lifecycle/health can detect us
       const pidPath = getRuntimePidPath(stateDir);

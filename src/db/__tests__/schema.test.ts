@@ -178,9 +178,9 @@ describe("initDatabase — fresh database", () => {
     db.close();
   });
 
-  it("reaches the latest schema version (14)", () => {
+  it("reaches the latest schema version (15)", () => {
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(14);
+    expect(schemaVersion(db)).toBe(15);
     db.close();
   });
 
@@ -230,7 +230,7 @@ describe("migration v1 → v4", () => {
     v1.close();
 
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(14);
+    expect(schemaVersion(db)).toBe(15);
     db.close();
   });
 
@@ -367,7 +367,7 @@ describe("migration v2 → v4", () => {
     v1.close();
 
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(14);
+    expect(schemaVersion(db)).toBe(15);
     expect(tableNames(db)).toContain("blueprints");
     expect(tableNames(db)).toContain("users");
     expect(tableNames(db)).toContain("sessions");

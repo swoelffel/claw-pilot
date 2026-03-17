@@ -392,6 +392,7 @@ export interface RuntimeSession {
   title: string | null;
   createdAt: string;
   updatedAt: string;
+  persistent: boolean;
   // Champs agrégés (enrichis par le backend depuis rt_messages)
   totalCostUsd?: number;
   messageCount?: number;

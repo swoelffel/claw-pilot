@@ -133,8 +133,8 @@ beforeAll(() => {
   db.close();
 
   // Create the state dir + runtime.json for the test slug
-  // getRuntimeStateDir(slug) = openclaw_home + "/.runtime-" + slug = tmpHome + "/.runtime-" + slug
-  const stateDir = join(tmpHome, `.runtime-${SLUG}`);
+  // getRuntimeStateDir(slug) = ~/.claw-pilot/instances/<slug>
+  const stateDir = join(tmpHome, ".claw-pilot/instances", SLUG);
   writeRuntimeJson(stateDir);
 });
 

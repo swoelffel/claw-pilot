@@ -19,7 +19,7 @@ vi.mock("../../lib/platform.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/platform.js")>();
   return {
     ...actual,
-    getRuntimeStateDir: (slug: string) => `/home/test/.runtime-${slug}`,
+    getRuntimeStateDir: (slug: string) => `/home/test/.claw-pilot/instances/${slug}`,
     getRuntimePid: (stateDir: string) => _mockPidMap.get(stateDir) ?? null,
   };
 });
@@ -62,8 +62,8 @@ function seedInstance(
 ) {
   const slug = opts.slug ?? "demo1";
   const port = opts.port ?? 18790;
-  const server = registry.upsertLocalServer("testhost", "/home/test");
-  const stateDir = `/home/test/.runtime-${slug}`;
+  const server = registry.upsertLocalServer("testhost", "/home/test/.claw-pilot/instances");
+  const stateDir = `/home/test/.claw-pilot/instances/${slug}`;
 
   const instance = registry.createInstance({
     serverId: server.id,
@@ -91,7 +91,7 @@ describe("HealthChecker.check()", () => {
 
   it("returns state='running' when PID file exists and process is alive", async () => {
     const { slug } = seedInstance();
-    _mockPidMap.set(`/home/test/.runtime-${slug}`, 12345);
+    _mockPidMap.set(`/home/test/.claw-pilot/instances/${slug}`, 12345);
 
     const checker = new HealthChecker(conn, registry, XDG);
     const status = await checker.check(slug);

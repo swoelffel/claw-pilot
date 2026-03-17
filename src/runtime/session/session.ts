@@ -94,15 +94,12 @@ export function buildSessionKey(
 
 /**
  * Build the business key for a permanent session.
- * Format: "<instanceSlug>:<agentId>:<peerId|unknown>" (no channel — cross-channel)
- * A permanent session is shared across all channels for the same user (peer).
+ * Format: "<instanceSlug>:<agentId>" (no channel, no peerId — truly unique per agent)
+ * A permanent session is shared across all channels and all peers for the same agent.
+ * This ensures a single conversational identity per agent, regardless of how it's accessed.
  */
-export function buildPermanentSessionKey(
-  instanceSlug: string,
-  agentId: string,
-  peerId: string | undefined,
-): string {
-  return `${instanceSlug}:${agentId}:${peerId ?? "unknown"}`;
+export function buildPermanentSessionKey(instanceSlug: string, agentId: string): string {
+  return `${instanceSlug}:${agentId}`;
 }
 
 export function createSession(
@@ -127,12 +124,12 @@ export function createSession(
   const spawnDepth = input.parentId ? (getSession(db, input.parentId)?.spawnDepth ?? 0) + 1 : 0;
 
   // Compute session key.
-  // Permanent sessions: cross-channel key (no channel component)
+  // Permanent sessions: cross-channel, cross-peer key (no channel, no peerId component)
   // Ephemeral sessions: channel-scoped key (current behavior)
   // When peerId is absent (no external peer, e.g. channel "api" or "web"), append the session id
   // to guarantee uniqueness — otherwise every new root session would collide on the UNIQUE index.
   const sessionKey = persistent
-    ? buildPermanentSessionKey(input.instanceSlug, input.agentId, input.peerId)
+    ? buildPermanentSessionKey(input.instanceSlug, input.agentId)
     : buildSessionKey(input.instanceSlug, input.agentId, channel, input.peerId ?? id);
 
   db.prepare(
@@ -165,13 +162,14 @@ export function getSession(db: Database.Database, id: SessionId): SessionInfo | 
 }
 
 /**
- * Trouve ou crée la session permanente d'un agent pour un utilisateur donné.
+ * Trouve ou crée la session permanente d'un agent.
  *
  * Contrairement aux sessions éphémères, la session permanente :
- * - Est scopée par (instanceSlug, agentId, peerId) — sans canal (cross-canal)
+ * - Est scopée par (instanceSlug, agentId) uniquement — sans canal, sans peerId
  * - N'est jamais archivée automatiquement
  * - Est réactivée si elle a été archivée par force (admin cleanup)
- * - Est unique : une seule session permanente active par (instanceSlug, agentId, peerId)
+ * - Est unique : une seule session permanente active par (instanceSlug, agentId)
+ * - Est partagée entre tous les canaux et tous les peers (identité conversationnelle unique)
  */
 export function getOrCreatePermanentSession(
   db: Database.Database,
@@ -179,11 +177,10 @@ export function getOrCreatePermanentSession(
     instanceSlug: string;
     agentId: string;
     channel: string; // Canal courant — stocké pour info mais pas dans la key
-    peerId?: string;
+    peerId?: string; // Ignoré pour la clé — conservé pour info uniquement
   },
 ): SessionInfo {
-  const peerId = params.peerId ?? "unknown";
-  const permanentKey = buildPermanentSessionKey(params.instanceSlug, params.agentId, peerId);
+  const permanentKey = buildPermanentSessionKey(params.instanceSlug, params.agentId);
 
   // Chercher une session permanente existante (active ou archivée)
   const existing = db

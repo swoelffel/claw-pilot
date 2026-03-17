@@ -147,7 +147,6 @@ export const BUILD_AGENT: Agent.Info = {
   mode: "primary",
   kind: "primary",
   native: true,
-  prompt: PROMPT_BUILD,
   permission: [...DEFAULT_RULESET, { permission: "question", pattern: "**", action: "allow" }],
   options: {},
 };
@@ -159,7 +158,6 @@ export const PLAN_AGENT: Agent.Info = {
   mode: "primary",
   kind: "primary",
   native: true,
-  prompt: PROMPT_PLAN,
   permission: PLAN_AGENT_RULESET,
   options: {},
 };

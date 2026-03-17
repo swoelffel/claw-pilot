@@ -21,7 +21,7 @@ vi.mock("../../lib/platform.js", async (importOriginal) => {
     getServiceManager: () => "systemd" as const,
     SERVICE_MANAGER: "systemd" as const,
     getSystemdUnit: (slug: string) => `openclaw-${slug}.service`,
-    getRuntimeStateDir: (slug: string) => `/opt/openclaw/.openclaw-${slug}`,
+    getRuntimeStateDir: (slug: string) => `/opt/openclaw/.claw-pilot/instances/${slug}`,
     getRuntimePidPath: (stateDir: string) => `${stateDir}/runtime.pid`,
     // stopRuntime: getRuntimePid returns null → nothing to stop
     getRuntimePid: () => null,

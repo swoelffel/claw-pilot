@@ -7,7 +7,7 @@ import { apiError } from "../../route-deps.js";
 import { logger } from "../../../lib/logger.js";
 import { AgentSync } from "../../../core/agent-sync.js";
 import { InstanceDiscovery } from "../../../core/discovery.js";
-import { getHomeDir } from "../../../lib/platform.js";
+import { getInstancesDir } from "../../../lib/platform.js";
 import { z } from "zod";
 
 export function registerDiscoverRoutes(app: Hono, deps: RouteDeps): void {
@@ -16,8 +16,8 @@ export function registerDiscoverRoutes(app: Hono, deps: RouteDeps): void {
   // POST /api/instances/discover — scan system for new claw-runtime instances (no DB write)
   app.post("/api/instances/discover", async (c) => {
     try {
-      const homeDir = getHomeDir();
-      const discovery = new InstanceDiscovery(conn, registry, homeDir, xdgRuntimeDir);
+      const instancesDir = getInstancesDir();
+      const discovery = new InstanceDiscovery(conn, registry, instancesDir, xdgRuntimeDir);
       const result = await discovery.scan();
 
       const found = result.newInstances.map((inst) => ({
@@ -66,11 +66,11 @@ export function registerDiscoverRoutes(app: Hono, deps: RouteDeps): void {
     }
 
     try {
-      const homeDir = getHomeDir();
+      const instancesDir = getInstancesDir();
       const hostname = await conn.hostname();
-      const server = registry.upsertLocalServer(hostname, homeDir);
+      const server = registry.upsertLocalServer(hostname, instancesDir);
 
-      const discovery = new InstanceDiscovery(conn, registry, homeDir, xdgRuntimeDir);
+      const discovery = new InstanceDiscovery(conn, registry, instancesDir, xdgRuntimeDir);
       const result = await discovery.scan();
 
       const adopted: string[] = [];

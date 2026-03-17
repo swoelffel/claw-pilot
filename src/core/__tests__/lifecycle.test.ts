@@ -22,7 +22,7 @@ vi.mock("../../lib/platform.js", async (importOriginal) => {
   return {
     ...actual,
     getServiceManager: () => _mockServiceManager,
-    getRuntimeStateDir: (slug: string) => `/home/test/.runtime-${slug}`,
+    getRuntimeStateDir: (slug: string) => `/home/test/.claw-pilot/instances/${slug}`,
     getRuntimePidPath: (stateDir: string) => `${stateDir}/runtime.pid`,
     getRuntimePid: (stateDir: string) => _mockPidMap.get(stateDir) ?? null,
     isRuntimeRunning: (stateDir: string) => _mockRunningMap.get(stateDir) ?? false,
@@ -69,8 +69,8 @@ afterEach(() => {
 function seedInstance(opts: { slug?: string; port?: number } = {}) {
   const slug = opts.slug ?? "demo1";
   const port = opts.port ?? 18790;
-  const server = registry.upsertLocalServer("testhost", "/home/test");
-  const stateDir = `/home/test/.runtime-${slug}`;
+  const server = registry.upsertLocalServer("testhost", "/home/test/.claw-pilot/instances");
+  const stateDir = `/home/test/.claw-pilot/instances/${slug}`;
 
   const instance = registry.createInstance({
     serverId: server.id,

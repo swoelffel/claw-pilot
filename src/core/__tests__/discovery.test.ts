@@ -48,13 +48,14 @@ function makeConfig(port: number, agents?: Array<{ id: string; name: string }>):
 }
 
 describe("InstanceDiscovery — directory scan", () => {
-  it("discovers instance from .runtime-<slug> directory", async () => {
-    const stateDir = `${HOME}/.runtime-demo1`;
+  it("discovers instance from instances/<slug> directory", async () => {
+    const instancesDir = `${HOME}/.claw-pilot/instances`;
+    const stateDir = `${instancesDir}/demo1`;
     const configPath = `${stateDir}/runtime.json`;
-    // Seed the config file — MockConnection.readdir() will find .runtime-demo1 under HOME
+    // Seed the config file — MockConnection.readdir() will find demo1 under instances/
     conn.files.set(configPath, makeConfig(18789));
 
-    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
+    const discovery = new InstanceDiscovery(conn, registry, instancesDir, "/run/user/1000");
     const result = await discovery.scan();
 
     expect(result.instances).toHaveLength(1);
@@ -65,36 +66,40 @@ describe("InstanceDiscovery — directory scan", () => {
 
   it("skips directories without runtime.json", async () => {
     // Add a directory but no runtime.json file
-    conn.dirs.add(`${HOME}/.runtime-empty`);
+    const instancesDir = `${HOME}/.claw-pilot/instances`;
+    conn.dirs.add(`${instancesDir}/empty`);
 
-    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
+    const discovery = new InstanceDiscovery(conn, registry, instancesDir, "/run/user/1000");
     const result = await discovery.scan();
     expect(result.instances).toHaveLength(0);
   });
 
   it("skips malformed runtime.json", async () => {
-    conn.files.set(`${HOME}/.runtime-bad/runtime.json`, "not json {{{");
+    const instancesDir = `${HOME}/.claw-pilot/instances`;
+    conn.files.set(`${instancesDir}/bad/runtime.json`, "not json {{{");
 
-    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
+    const discovery = new InstanceDiscovery(conn, registry, instancesDir, "/run/user/1000");
     const result = await discovery.scan();
     expect(result.instances).toHaveLength(0);
   });
 
   it("skips config without port", async () => {
-    conn.files.set(`${HOME}/.runtime-nport/runtime.json`, JSON.stringify({}));
+    const instancesDir = `${HOME}/.claw-pilot/instances`;
+    conn.files.set(`${instancesDir}/nport/runtime.json`, JSON.stringify({}));
 
-    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
+    const discovery = new InstanceDiscovery(conn, registry, instancesDir, "/run/user/1000");
     const result = await discovery.scan();
     expect(result.instances).toHaveLength(0);
   });
 
   it("discovers agents list from config", async () => {
+    const instancesDir = `${HOME}/.claw-pilot/instances`;
     conn.files.set(
-      `${HOME}/.runtime-demo1/runtime.json`,
+      `${instancesDir}/demo1/runtime.json`,
       makeConfig(18789, [{ id: "pm", name: "Project Manager" }]),
     );
 
-    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
+    const discovery = new InstanceDiscovery(conn, registry, instancesDir, "/run/user/1000");
     const result = await discovery.scan();
     // Should have at least the pm agent (and possibly a synthetic main)
     expect(result.instances[0]?.agents.length).toBeGreaterThanOrEqual(1);
@@ -102,11 +107,12 @@ describe("InstanceDiscovery — directory scan", () => {
   });
 
   it("reports runtimeRunning=true and pid when PID file exists", async () => {
-    const stateDir = `${HOME}/.runtime-running1`;
+    const instancesDir = `${HOME}/.claw-pilot/instances`;
+    const stateDir = `${instancesDir}/running1`;
     conn.files.set(`${stateDir}/runtime.json`, makeConfig(18789));
     _mockPidMap.set(stateDir, 12345);
 
-    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
+    const discovery = new InstanceDiscovery(conn, registry, instancesDir, "/run/user/1000");
     const result = await discovery.scan();
 
     expect(result.instances).toHaveLength(1);
@@ -115,10 +121,11 @@ describe("InstanceDiscovery — directory scan", () => {
   });
 
   it("reports runtimeRunning=false when no PID file", async () => {
-    const stateDir = `${HOME}/.runtime-stopped1`;
+    const instancesDir = `${HOME}/.claw-pilot/instances`;
+    const stateDir = `${instancesDir}/stopped1`;
     conn.files.set(`${stateDir}/runtime.json`, makeConfig(18789));
 
-    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
+    const discovery = new InstanceDiscovery(conn, registry, instancesDir, "/run/user/1000");
     const result = await discovery.scan();
 
     expect(result.instances).toHaveLength(1);
@@ -129,9 +136,10 @@ describe("InstanceDiscovery — directory scan", () => {
 
 describe("InstanceDiscovery — reconciliation", () => {
   it("identifies new instances", async () => {
-    conn.files.set(`${HOME}/.runtime-demo1/runtime.json`, makeConfig(18789));
+    const instancesDir = `${HOME}/.claw-pilot/instances`;
+    conn.files.set(`${instancesDir}/demo1/runtime.json`, makeConfig(18789));
 
-    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
+    const discovery = new InstanceDiscovery(conn, registry, instancesDir, "/run/user/1000");
     const result = await discovery.scan();
 
     expect(result.newInstances).toHaveLength(1);
@@ -140,19 +148,20 @@ describe("InstanceDiscovery — reconciliation", () => {
   });
 
   it("identifies unchanged instances (already in registry)", async () => {
+    const instancesDir = `${HOME}/.claw-pilot/instances`;
     const server = registry.getLocalServer()!;
     registry.createInstance({
       serverId: server.id,
       slug: "demo1",
       port: 18789,
-      configPath: `${HOME}/.runtime-demo1/runtime.json`,
-      stateDir: `${HOME}/.runtime-demo1`,
+      configPath: `${instancesDir}/demo1/runtime.json`,
+      stateDir: `${instancesDir}/demo1`,
       systemdUnit: "claw-runtime-demo1",
     });
 
-    conn.files.set(`${HOME}/.runtime-demo1/runtime.json`, makeConfig(18789));
+    conn.files.set(`${instancesDir}/demo1/runtime.json`, makeConfig(18789));
 
-    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
+    const discovery = new InstanceDiscovery(conn, registry, instancesDir, "/run/user/1000");
     const result = await discovery.scan();
 
     expect(result.newInstances).toHaveLength(0);
@@ -160,18 +169,19 @@ describe("InstanceDiscovery — reconciliation", () => {
   });
 
   it("identifies removed instances", async () => {
+    const instancesDir = `${HOME}/.claw-pilot/instances`;
     const server = registry.getLocalServer()!;
     registry.createInstance({
       serverId: server.id,
       slug: "ghost",
       port: 18789,
-      configPath: `${HOME}/.runtime-ghost/runtime.json`,
-      stateDir: `${HOME}/.runtime-ghost`,
+      configPath: `${instancesDir}/ghost/runtime.json`,
+      stateDir: `${instancesDir}/ghost`,
       systemdUnit: "claw-runtime-ghost",
     });
 
     // No files on disk for "ghost"
-    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
+    const discovery = new InstanceDiscovery(conn, registry, instancesDir, "/run/user/1000");
     const result = await discovery.scan();
 
     expect(result.removedSlugs).toContain("ghost");
@@ -180,13 +190,14 @@ describe("InstanceDiscovery — reconciliation", () => {
 
 describe("InstanceDiscovery — adopt", () => {
   it("registers instance, agents, and port in registry", async () => {
+    const instancesDir = `${HOME}/.claw-pilot/instances`;
     conn.files.set(
-      `${HOME}/.runtime-demo1/runtime.json`,
+      `${instancesDir}/demo1/runtime.json`,
       makeConfig(18789, [{ id: "pm", name: "PM" }]),
     );
 
     const server = registry.getLocalServer()!;
-    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
+    const discovery = new InstanceDiscovery(conn, registry, instancesDir, "/run/user/1000");
     const result = await discovery.scan();
 
     await discovery.adopt(result.newInstances[0]!, server.id);
@@ -204,10 +215,11 @@ describe("InstanceDiscovery — adopt", () => {
   });
 
   it("logs a 'discovered' event after adopt", async () => {
-    conn.files.set(`${HOME}/.runtime-demo1/runtime.json`, makeConfig(18789));
+    const instancesDir = `${HOME}/.claw-pilot/instances`;
+    conn.files.set(`${instancesDir}/demo1/runtime.json`, makeConfig(18789));
 
     const server = registry.getLocalServer()!;
-    const discovery = new InstanceDiscovery(conn, registry, HOME, "/run/user/1000");
+    const discovery = new InstanceDiscovery(conn, registry, instancesDir, "/run/user/1000");
     const result = await discovery.scan();
     await discovery.adopt(result.newInstances[0]!, server.id);
 

@@ -195,17 +195,17 @@ describe("migration v13 — rt_sessions.persistent column", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Suite — Migration v13: idx_rt_sessions_permanent index
+// Suite — Migration v14: idx_rt_sessions_permanent removed (PLAN-16)
 // ---------------------------------------------------------------------------
 
-describe("migration v13 — idx_rt_sessions_permanent index", () => {
-  it(// Positive: the partial index for fast lookup of permanent active sessions must exist.
-  "index 'idx_rt_sessions_permanent' exists after migration", () => {
+describe("migration v14 — idx_rt_sessions_permanent removed", () => {
+  it(// Positive: the old partial index is dropped in v14 (no longer needed for per-agent sessions).
+  "index 'idx_rt_sessions_permanent' is removed after full migration", () => {
     // Arrange + Act
     const db = initDatabase(dbPath);
 
-    // Assert
-    expect(indexNames(db)).toContain("idx_rt_sessions_permanent");
+    // Assert — index is dropped in v14 since session keys are now per-agent, not per-peer
+    expect(indexNames(db)).not.toContain("idx_rt_sessions_permanent");
     db.close();
   });
 });
@@ -337,7 +337,7 @@ describe("migration v13 — idempotency", () => {
     const db = initDatabase(dbPath);
 
     // Assert: v14 is the latest migration (composite index on rt_messages)
-    expect(schemaVersion(db)).toBe(14);
+    expect(schemaVersion(db)).toBe(15);
     db.close();
   });
 });
