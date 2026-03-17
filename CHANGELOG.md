@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.0] — 2026-03-17
+
+### Changed
+
+- **Instance state directories relocated** — moved from `~/.runtime-<slug>/` to `~/.claw-pilot/instances/<slug>/` for better organization and discoverability. All claw-pilot data is now consolidated under `~/.claw-pilot/`:
+  - `constants.ts`: replaced `RUNTIME_STATE_PREFIX` with `INSTANCES_DIR`
+  - `platform.ts`: removed `getHomeDir()`, added `getInstancesDir()`
+  - `discovery.ts`: adapted directory scanning to new structure
+  - `provisioner.ts`: creates `instances/` parent directory
+  - **DB migration v15**: recalculates `state_dir` and `config_path` for all instances
+  - All tests updated and passing (892 tests)
+
+---
+
 ## [0.35.0] — 2026-03-17
 
 ### Fixed
