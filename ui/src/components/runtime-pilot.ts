@@ -4,15 +4,18 @@
 // - Full message history with parts (tool calls, reasoning, subtasks, compaction)
 // - Context panel (token gauge, tools, agent info, system prompt, event log)
 // - All bus events forwarded via enriched SSE stream
+// - Auto-detects permanent session on load (no first-message required)
+// - Quasi real-time: SSE + polling fallback + visibilitychange refresh + SSE auto-reconnect
 import { LitElement, html, nothing, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { localized, msg } from "@lit/localize";
-import type { PilotMessage, SessionContext, PilotBusEvent } from "../types.js";
+import { localized } from "@lit/localize";
+import type { PilotMessage, SessionContext, PilotBusEvent, RuntimeSession } from "../types.js";
 import {
   postRuntimeChat,
   getRuntimeChatStreamUrl,
   fetchSessionMessages,
   fetchSessionContext,
+  fetchRuntimeSessions,
 } from "../api.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { errorBannerStyles } from "../styles/shared.js";
@@ -26,6 +29,14 @@ type PilotStatus = "idle" | "loading" | "sending" | "streaming" | "error";
 
 /** Max events kept in the ring buffer */
 const MAX_EVENTS = 100;
+
+/** Polling interval when SSE is healthy (fallback for missed events) */
+const POLL_INTERVAL_MS = 10_000;
+
+/** SSE reconnect backoff: initial delay, multiplier, max delay */
+const SSE_RECONNECT_INITIAL_MS = 1_000;
+const SSE_RECONNECT_MULTIPLIER = 2;
+const SSE_RECONNECT_MAX_MS = 30_000;
 
 @localized()
 @customElement("cp-runtime-pilot")
@@ -72,7 +83,7 @@ export class RuntimePilot extends LitElement {
   @property({ type: String }) slug = "";
   /**
    * sessionId of the permanent session to pilot.
-   * If empty, the component will use postRuntimeChat to create/resume the session.
+   * If empty, the component auto-detects the primary persistent session.
    */
   @property({ type: String }) sessionId = "";
 
@@ -95,10 +106,34 @@ export class RuntimePilot extends LitElement {
   private _eventSource: EventSource | null = null;
   private _activeSessionId = "";
 
+  // SSE reconnect state
+  private _reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private _reconnectDelay = SSE_RECONNECT_INITIAL_MS;
+  private _sseConnected = false;
+
+  // Polling fallback
+  private _pollInterval: ReturnType<typeof setInterval> | null = null;
+
+  // visibilitychange listener (stored to remove on disconnect)
+  private _onVisibilityChange: (() => void) | null = null;
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   override connectedCallback(): void {
     super.connectedCallback();
+
+    // Refresh when the tab becomes visible again
+    this._onVisibilityChange = () => {
+      if (document.visibilityState === "visible" && this._activeSessionId) {
+        void this._refreshMessages();
+        // Reopen SSE if it dropped while the tab was hidden
+        if (!this._sseConnected) {
+          this._scheduleReconnect(0);
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", this._onVisibilityChange);
+
     if (this.slug) {
       void this._init();
     }
@@ -106,7 +141,11 @@ export class RuntimePilot extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
-    this._closeStream();
+    this._teardown();
+    if (this._onVisibilityChange) {
+      document.removeEventListener("visibilitychange", this._onVisibilityChange);
+      this._onVisibilityChange = null;
+    }
   }
 
   override updated(changed: Map<string, unknown>): void {
@@ -118,6 +157,7 @@ export class RuntimePilot extends LitElement {
   // ── Initialization ────────────────────────────────────────────────────────
 
   private async _init(): Promise<void> {
+    this._teardown();
     this._status = "loading";
     this._error = "";
     this._messages = [];
@@ -125,15 +165,39 @@ export class RuntimePilot extends LitElement {
     this._streamingText = "";
     this._events = [];
     this._context = null;
-    this._closeStream();
+    this._activeSessionId = "";
+    this._reconnectDelay = SSE_RECONNECT_INITIAL_MS;
 
-    // If we already have a sessionId, use it; otherwise we'll create one on first send.
-    if (this.sessionId) {
-      this._activeSessionId = this.sessionId;
+    // 1. Resolve the session ID — prop takes priority, otherwise auto-detect
+    const resolvedId = this.sessionId || (await this._detectPermanentSession());
+
+    if (resolvedId) {
+      this._activeSessionId = resolvedId;
       await Promise.all([this._loadMessages(), this._loadContext()]);
       this._openStream();
+      this._startPolling();
     } else {
+      // No permanent session yet — show empty state, wait for first send
       this._status = "idle";
+      // Still open the SSE stream so we catch session.created when first message is sent
+      this._openStream();
+    }
+  }
+
+  /**
+   * Auto-detect the primary persistent session for this instance.
+   * Returns the session ID if found, otherwise undefined.
+   */
+  private async _detectPermanentSession(): Promise<string | undefined> {
+    try {
+      const sessions: RuntimeSession[] = await fetchRuntimeSessions(this.slug);
+      // Prefer persistent sessions (permanent agents), most recently updated first
+      const sorted = sessions
+        .filter((s) => s.persistent && s.state === "active")
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      return sorted[0]?.id;
+    } catch {
+      return undefined;
     }
   }
 
@@ -170,6 +234,41 @@ export class RuntimePilot extends LitElement {
     await this._loadMessages(firstId);
   }
 
+  /**
+   * Light refresh: fetch the latest messages and merge without resetting the list.
+   * Used by polling and visibilitychange. Does not change _status.
+   */
+  private async _refreshMessages(): Promise<void> {
+    if (!this._activeSessionId || this._status === "streaming" || this._status === "sending") {
+      return;
+    }
+    try {
+      const { messages } = await fetchSessionMessages(this.slug, this._activeSessionId, {
+        limit: 20,
+      });
+      this._mergeMessages(messages);
+    } catch {
+      // Non-fatal — polling will retry
+    }
+  }
+
+  /**
+   * Merge a batch of fresh messages into the existing list.
+   * Updates in-place if already present, appends new ones at the end.
+   */
+  private _mergeMessages(fresh: PilotMessage[]): void {
+    if (fresh.length === 0) return;
+    const existingIds = new Set(this._messages.map((m) => m.id));
+    const newMsgs = fresh.filter((m) => !existingIds.has(m.id));
+    const updatedMsgs = this._messages.map((m) => {
+      const updated = fresh.find((nm) => nm.id === m.id);
+      return updated ?? m;
+    });
+    if (newMsgs.length > 0 || updatedMsgs.some((m, i) => m !== this._messages[i])) {
+      this._messages = [...updatedMsgs, ...newMsgs];
+    }
+  }
+
   // ── Context loading ───────────────────────────────────────────────────────
 
   private async _loadContext(): Promise<void> {
@@ -193,28 +292,43 @@ export class RuntimePilot extends LitElement {
     const url = token ? `${baseUrl}?token=${encodeURIComponent(token)}` : baseUrl;
     const es = new EventSource(url);
     this._eventSource = es;
+    this._sseConnected = false; // will be set true on first message or open
+
+    es.onopen = () => {
+      this._sseConnected = true;
+      this._reconnectDelay = SSE_RECONNECT_INITIAL_MS; // reset backoff on success
+      // Clear any SSE error banner if the reconnect succeeds
+      if (this._error.includes("Connection")) {
+        this._error = "";
+        if (this._status === "error") this._status = "idle";
+      }
+    };
 
     es.onmessage = (e: MessageEvent) => {
+      this._sseConnected = true;
       let event: PilotBusEvent;
       try {
         event = JSON.parse(e.data as string) as PilotBusEvent;
       } catch {
         return;
       }
-
       this._handleBusEvent(event);
     };
 
     es.addEventListener("ping", () => {
+      this._sseConnected = true;
       // Keep-alive — ignore
     });
 
     es.onerror = () => {
-      this._status = "error";
-      this._error = msg("Connection to runtime lost. Please refresh.", {
-        id: "pilot-connection-lost",
-      });
+      this._sseConnected = false;
       this._closeStream();
+      // Schedule reconnect with exponential backoff (silent — no error banner unless persistent)
+      this._scheduleReconnect(this._reconnectDelay);
+      this._reconnectDelay = Math.min(
+        this._reconnectDelay * SSE_RECONNECT_MULTIPLIER,
+        SSE_RECONNECT_MAX_MS,
+      );
     };
   }
 
@@ -223,11 +337,65 @@ export class RuntimePilot extends LitElement {
       this._eventSource.close();
       this._eventSource = null;
     }
+    this._sseConnected = false;
+    if (this._reconnectTimeout !== null) {
+      clearTimeout(this._reconnectTimeout);
+      this._reconnectTimeout = null;
+    }
   }
+
+  private _scheduleReconnect(delayMs: number): void {
+    if (this._reconnectTimeout !== null) return;
+    this._reconnectTimeout = setTimeout(() => {
+      this._reconnectTimeout = null;
+      if (this.slug) {
+        this._openStream();
+      }
+    }, delayMs);
+  }
+
+  // ── Polling fallback ──────────────────────────────────────────────────────
+
+  private _startPolling(): void {
+    this._stopPolling();
+    this._pollInterval = setInterval(() => {
+      // Only poll if SSE might have missed something (tab was hidden, SSE reconnecting, etc.)
+      // When SSE is healthy and active, this is a lightweight safety net
+      if (this._activeSessionId) {
+        void this._refreshMessages();
+      }
+    }, POLL_INTERVAL_MS);
+  }
+
+  private _stopPolling(): void {
+    if (this._pollInterval !== null) {
+      clearInterval(this._pollInterval);
+      this._pollInterval = null;
+    }
+  }
+
+  // ── Full teardown ─────────────────────────────────────────────────────────
+
+  private _teardown(): void {
+    this._closeStream();
+    this._stopPolling();
+  }
+
+  // ── Bus event handler ─────────────────────────────────────────────────────
 
   private _handleBusEvent(event: PilotBusEvent): void {
     const p = event.payload;
     const eventSessionId = p.sessionId as string | undefined;
+
+    // If we don't have a session yet but an event arrives with a sessionId,
+    // adopt it as our active session (handles the case where a message arrives
+    // from another channel before the UI has loaded the session).
+    if (!this._activeSessionId && eventSessionId) {
+      this._activeSessionId = eventSessionId;
+      void this._loadMessages();
+      void this._loadContext();
+      this._startPolling();
+    }
 
     switch (event.type) {
       // ── Message streaming ────────────────────────────────────────────────
@@ -247,6 +415,9 @@ export class RuntimePilot extends LitElement {
           this._streamingText = "";
           this._streamingAgentId = (p.agentId as string | undefined) ?? "";
           this._status = "streaming";
+        } else if (p.role === "user") {
+          // Message from another channel (Telegram, CLI, etc.) — load it immediately
+          void this._reloadLastMessages();
         }
         break;
       }
@@ -254,9 +425,9 @@ export class RuntimePilot extends LitElement {
       case "message.updated": {
         if (eventSessionId && eventSessionId !== this._activeSessionId) break;
         // Reload the last message from API to get its parts
-        void this._reloadLastMessage(p.messageId as string | undefined);
+        void this._reloadLastMessages(p.messageId as string | undefined);
         this._streamingText = "";
-        this._status = "idle";
+        if (this._status !== "sending") this._status = "idle";
         break;
       }
 
@@ -331,22 +502,14 @@ export class RuntimePilot extends LitElement {
     this._events = next.length > MAX_EVENTS ? next.slice(next.length - MAX_EVENTS) : next;
   }
 
-  private async _reloadLastMessage(messageId?: string): Promise<void> {
+  private async _reloadLastMessages(messageId?: string): Promise<void> {
     if (!this._activeSessionId) return;
     try {
       // Reload the last few messages to pick up the completed message with parts
       const { messages } = await fetchSessionMessages(this.slug, this._activeSessionId, {
         limit: 5,
       });
-      // Merge: replace/append messages we already have
-      const existingIds = new Set(this._messages.map((m) => m.id));
-      const newMsgs = messages.filter((m) => !existingIds.has(m.id));
-      // Update existing messages (e.g. token counts filled in)
-      const updatedMsgs = this._messages.map((m) => {
-        const updated = messages.find((nm) => nm.id === m.id);
-        return updated ?? m;
-      });
-      this._messages = [...updatedMsgs, ...newMsgs];
+      this._mergeMessages(messages);
     } catch {
       // Non-fatal
     }
@@ -368,15 +531,15 @@ export class RuntimePilot extends LitElement {
         ...(this._activeSessionId ? { sessionId: this._activeSessionId } : {}),
       });
 
-      // If this is the first message, we now have a sessionId — open SSE stream
+      // If this is the first message, we now have a sessionId — load context + start polling
       if (!this._activeSessionId && result.sessionId) {
         this._activeSessionId = result.sessionId;
-        this._openStream();
         void this._loadContext();
+        this._startPolling();
       }
 
       // Reload messages to show the complete exchange
-      await this._reloadLastMessage(result.messageId);
+      await this._reloadLastMessages(result.messageId);
 
       if (this._status === "sending") {
         this._status = "idle";

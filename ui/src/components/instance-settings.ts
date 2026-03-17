@@ -396,7 +396,7 @@ export class InstanceSettings extends LitElement {
     const sections: Array<{ id: SidebarSection; label: string; badge?: number }> = [
       { id: "general", label: msg("General", { id: "settings-general" }) },
       { id: "agents", label: msg("Agents", { id: "settings-agents" }) },
-      { id: "runtime", label: "Runtime" },
+      { id: "runtime", label: msg("Pilot", { id: "settings-pilot" }) },
       { id: "channels" as const, label: msg("Channels", { id: "settings-channels" }) },
       {
         id: "mcp" as const,
@@ -702,39 +702,11 @@ export class InstanceSettings extends LitElement {
 
   private _renderRuntimeSection() {
     return html`
-      <div class="section">
-        <div class="section-title">Runtime</div>
-        <div class="section-desc">
-          This instance runs on <strong>claw-runtime</strong> — the native claw-pilot agent engine.
-        </div>
-
-        <div class="field-group" style="margin-top: 20px;">
-          <div class="field-row">
-            <span class="field-label">Engine</span>
-            <span class="field-value" style="font-family: var(--font-mono); font-size: 13px;">
-              claw-runtime
-            </span>
-          </div>
-          <div class="field-row">
-            <span class="field-label">Config file</span>
-            <span
-              class="field-value"
-              style="font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);"
-            >
-              runtime.json
-            </span>
-          </div>
-        </div>
-
-        <div style="margin-top: 28px;">
-          <div class="section-header">
-            ${msg("Runtime Pilot", { id: "settings-runtime-pilot" })}
-          </div>
-          <div
-            style="height: 560px; border: 1px solid var(--bg-border); border-radius: var(--radius-md); overflow: hidden;"
-          >
-            <cp-runtime-pilot .slug=${this.slug}></cp-runtime-pilot>
-          </div>
+      <div class="section" style="display: flex; flex-direction: column; height: 100%;">
+        <div
+          style="flex: 1; border: 1px solid var(--bg-border); border-radius: var(--radius-md); overflow: hidden; min-height: 0;"
+        >
+          <cp-runtime-pilot .slug=${this.slug}></cp-runtime-pilot>
         </div>
       </div>
     `;
@@ -1181,9 +1153,9 @@ export class InstanceSettings extends LitElement {
         </div>
       </div>
 
-      <div class="settings-layout">
+      <div class="settings-layout ${this._activeSection === "runtime" ? "pilot-layout" : ""}">
         ${this._renderSidebar()}
-        <div class="content">
+        <div class="content ${this._activeSection === "runtime" ? "pilot-content" : ""}">
           ${this._saveWarning
             ? html`<div class="save-warning">⚠ ${this._saveWarning}</div>`
             : nothing}

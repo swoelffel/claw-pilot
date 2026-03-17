@@ -18,6 +18,27 @@ export const instanceSettingsStyles = css`
     gap: 32px;
   }
 
+  .settings-layout.pilot-layout {
+    max-width: none;
+    height: calc(100vh - 56px - 48px);
+    padding: 16px;
+    box-sizing: border-box;
+  }
+
+  .content.pilot-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .content.pilot-content .section {
+    flex: 1;
+    margin-bottom: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
   /* ── Header bar ───────────────────────────────────────────────────────── */
 
   .settings-header {

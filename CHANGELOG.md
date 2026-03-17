@@ -6,6 +6,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.38.0] — 2026-03-17
+
+### Added
+
+- **`cp-runtime-pilot` quasi real-time** — chargement automatique de la session permanente au démarrage (sans premier message), messages des autres channels (Telegram, CLI) visibles en temps réel
+- **Auto-détection de session** : `_detectPermanentSession()` liste les sessions actives au chargement et sélectionne la plus récente avec `persistent: true` — l'historique s'affiche immédiatement
+- **SSE auto-reconnexion** avec backoff exponentiel (1s → 2s → … → 30s max) — plus de perte silencieuse de stream
+- **Polling léger 10s** — filet de sécurité pour les messages arrivés pendant une micro-déconnexion SSE
+- **`visibilitychange`** — refresh immédiat + réouverture SSE au retour sur l'onglet
+- **`message.created` role=user** géré côté client — un message entrant depuis Telegram/CLI déclenche immédiatement `_reloadLastMessages()`
+- **Adoption de session via SSE** — si un event arrive avec un `sessionId` avant que l'auto-detect soit terminé, le composant l'adopte immédiatement
+
+### Changed
+
+- **Onglet "Runtime" → "Pilot"** dans la sidebar Instance Settings
+- **Bloc en-tête supprimé** dans la section Pilot (Engine, Config file, description) — `cp-runtime-pilot` occupe maintenant toute la surface disponible
+- **Layout plein écran** pour la section Pilot : `max-width: none`, hauteur = `100vh - header - savebar`, le composant s'étire avec `flex: 1`
+
+---
+
 ## [0.37.0] — 2026-03-17
 
 ### Added
