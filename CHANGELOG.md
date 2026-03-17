@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.1] — 2026-03-17
+
+### Fixed
+
+- **Panel Teammates** : les sous-agents techniques (`explore`, `general`) n'apparaissent plus dans la liste Teammates du Pilot. Seuls les agents `kind: "primary"` y sont affichés.
+- **Auto-exclusion Teammates** : l'agent courant ne s'affichait plus dans sa propre liste Teammates — la comparaison `a.name !== agentId` était case-sensitive (`"Main" !== "main"`). Corrigé avec `.toLowerCase()`.
+
+---
+
 ## [0.40.1] — 2026-03-17
 
 ### Security
