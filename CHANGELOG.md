@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.2] — 2026-03-17
+
+### Fixed
+
+- **Onglet SYSTEM — "No workspace files detected"** : le endpoint `/context` cherchait les fichiers workspace directement à la racine de `stateDir` (`~/.claw-pilot/instances/<slug>/SOUL.md`) au lieu du vrai dossier workspace (`workspaces/<agentId>/` ou `workspaces/workspace/`). Corrigé en résolvant le dossier workspace avec le même layout que le runtime. Ajout de `MEMORY.md` dans la liste des candidats.
+
+---
+
 ## [0.41.1] — 2026-03-17
 
 ### Fixed

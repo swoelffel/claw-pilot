@@ -288,6 +288,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     }));
 
     // System prompt files (from workspace discovery heuristic)
+    // Workspace files live in workspaces/<agentId>/ or workspaces/workspace/ (single-agent layout).
     const workspaceFiles = (() => {
       const candidates = [
         "SOUL.md",
@@ -297,6 +298,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
         "IDENTITY.md",
         "USER.md",
         "HEARTBEAT.md",
+        "MEMORY.md",
       ];
       const memoryFiles = [
         "facts.md",
@@ -305,9 +307,22 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
         "timeline.md",
         "knowledge.md",
       ].map((f) => `memory/${f}`);
+      // Resolve workspace dir: prefer agent-specific, fallback to shared "workspace"
+      const workspaceDirs = [
+        path.join(stateDir, "workspaces", agentId),
+        path.join(stateDir, "workspaces", "workspace"),
+      ];
+      const workspaceDir = workspaceDirs.find((d) => {
+        try {
+          return fs.existsSync(d);
+        } catch {
+          return false;
+        }
+      });
+      if (!workspaceDir) return [];
       return [...candidates, ...memoryFiles].filter((f) => {
         try {
-          return fs.existsSync(path.join(stateDir, f));
+          return fs.existsSync(path.join(workspaceDir, f));
         } catch {
           return false;
         }
