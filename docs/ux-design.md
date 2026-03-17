@@ -561,7 +561,7 @@ Pendant le provisioning : le formulaire est remplacé par un spinner + message "
 
 **Fichier source** : `ui/src/components/runtime-chat.ts`
 
-Composant de chat temps réel avec un agent claw-runtime via SSE. Intégré dans la section **Runtime** des Settings instance. Layout flex colonne, hauteur 100% de son conteneur.
+Composant de chat temps réel avec un agent claw-runtime via SSE. Intégré dans la section **Runtime** des Settings instance. Layout flex colonne, hauteur 100% de son conteneur. Fond `--bg-surface`.
 
 ```
 ┌─ cp-runtime-chat ─────────────────────────────────────────────┐
@@ -589,6 +589,8 @@ Composant de chat temps réel avec un agent claw-runtime via SSE. Intégré dans
 
 ### Header
 
+Flex row, `padding: 10px 12px`, `border-bottom: 1px solid --bg-border`, `gap: 8px`.
+
 | Élément | Description |
 |---|---|
 | **Agent selector** | `<select>` affiché si l'instance a plusieurs agents. Sélection de l'agent courant. |
@@ -600,15 +602,16 @@ Composant de chat temps réel avec un agent claw-runtime via SSE. Intégré dans
 ### Zone messages
 
 - Fond transparent, `padding: 16px`, `gap: 12px`
-- **État vide** : "Start a conversation with the agent" centré, `--text-muted`
-- **Message user** : `background: --bg-hover`, aligné à droite, `max-width: 85%`, `border-radius: --radius-md`
-- **Message assistant** : fond transparent, `border: 1px solid --bg-border`, aligné à gauche
-- **Message streaming** : même style assistant + curseur `▋` + `opacity: 0.85`
+- **État vide** : "Start a conversation with the agent" centré, `--text-muted`. Affiché si `messages.length === 0` ET pas de streaming ET `status === "idle"`.
+- **Message user** : `background: --bg-hover`, aligné à droite (`align-self: flex-end`), `max-width: 85%`, `border-radius: --radius-md`
+- **Message assistant** : fond transparent, `border: 1px solid --bg-border`, aligné à gauche (`align-self: flex-start`)
+- **Message streaming** : même style assistant + curseur `▋` clignotant + `opacity: 0.85`
 - **Spinner "thinking"** : affiché si `status === "sending"` ou `status === "streaming"` sans texte accumulé. Spinner 16px + "Agent is thinking…"
 
 ### Input
 
 - `<textarea>` flex:1, `rows="2"`, `resize: none`, `background: --bg-hover`
+- Placeholder : "Message… (Enter to send, Shift+Enter for newline)"
 - `Enter` (sans Shift) → envoie le message
 - `Shift+Enter` → saut de ligne
 - Disabled si `status !== "idle"`
@@ -616,27 +619,51 @@ Composant de chat temps réel avec un agent claw-runtime via SSE. Intégré dans
 
 ### Flux SSE
 
-Ouvert via `EventSource` sur `GET /api/instances/:slug/runtime/sessions/:id/stream`.
+Ouvert via `EventSource` sur `GET /api/instances/:slug/runtime/sessions/:id/stream` (URL construite par `getRuntimeChatStreamUrl()`).
 
 | Événement SSE | Comportement |
 |---|---|
-| `message.part.delta` | Accumule `_streamingText` |
-| `message.created` (assistant) | Réinitialise `_streamingText`, status → streaming |
-| `message.updated` | Vide `_streamingText`, status → idle |
-| `session.status` (busy/idle) | Met à jour le status |
-| `session.ended` | status → idle |
+| `message.part.delta` | Accumule `_streamingText` += `payload.delta`, status → streaming |
+| `message.created` (assistant) | Réinitialise `_streamingText = ""`, status → streaming |
+| `message.updated` | Vide `_streamingText = ""`, status → idle |
+| `session.status` (`busy`) | status → streaming |
+| `session.status` (`idle`) | status → idle **seulement si** on est en streaming sans texte accumulé (évite de couper un stream en cours) |
+| `session.ended` | status → idle, vide `_streamingText` |
 | `ping` | Ignoré (keep-alive) |
-| Erreur SSE | status → error, message "Connection to runtime lost. Please refresh." |
+| Erreur SSE | status → error, message "Connection to runtime lost. Please refresh.", ferme le stream |
 
 ### Premier message (nouvelle session)
 
-Le premier message d'une nouvelle session est envoyé via `POST /api/instances/:slug/runtime/chat`. La réponse HTTP contient directement le texte de l'assistant (le stream SSE n'est pas encore ouvert). Le stream est ouvert après pour les messages suivants.
+Le premier message d'une nouvelle session est envoyé via `POST /api/instances/:slug/runtime/chat`. La réponse HTTP (`RuntimeChatResponse`) contient : `sessionId`, `messageId`, `text`, `tokens` (`{ input, output }`), `costUsd`, `steps`. Le stream SSE est ouvert **après** réception de la réponse. La liste des sessions est rechargée pour inclure la nouvelle session dans le dropdown.
+
+### Chargement initial
+
+Au `connectedCallback`, le composant charge en parallèle :
+- Les sessions actives via `fetchRuntimeSessions(slug)`
+- Les sessions archivées via `GET /api/instances/:slug/runtime/sessions?state=archived&limit=20`
+
+Les deux listes sont fusionnées dans `_sessions`. La première session active est auto-sélectionnée.
 
 ### Props
 
 | Prop | Type | Description |
 |---|---|---|
 | `slug` | `string` | Slug de l'instance |
+
+### État interne
+
+| State | Type | Description |
+|---|---|---|
+| `_sessions` | `RuntimeSession[]` | Sessions actives + archivées fusionnées |
+| `_sessionId` | `string \| null` | ID session sélectionnée (`null` = nouvelle session) |
+| `_messages` | `ChatMessage[]` | Messages affichés (`{ role, text, id? }`) |
+| `_streamingText` | `string` | Texte en cours d'accumulation SSE |
+| `_status` | `"idle" \| "loading" \| "sending" \| "streaming" \| "error"` | État du composant |
+| `_error` | `string` | Message d'erreur affiché dans le bandeau |
+| `_inputText` | `string` | Contenu du textarea |
+| `_sessionsLoading` | `boolean` | Chargement initial des sessions |
+| `_dropdownOpen` | `boolean` | Dropdown session ouvert/fermé |
+| `_archivedExpanded` | `boolean` | Groupe archivé déplié dans le dropdown |
 
 ---
 
@@ -757,7 +784,8 @@ Panneau informatif + chat intégré. Pas de champs éditables (Save/Cancel non a
 │                                                               │
 │  ── Chat ──────────────────────────────────────────────────── │
 │  ┌─ cp-runtime-chat (480px hauteur) ────────────────────────┐ │
-│  │  [Session selector ▼]  [+ New]                           │ │
+│  │  [● Session title  $0.03 ▾]  [+ New] / [Permanent]      │ │
+│  │  main · web · 5 msg · 1.2k tok · $0.03  [Fork] [Archive]│ │
 │  │  ─────────────────────────────────────────────────────── │ │
 │  │  (messages)                                              │ │
 │  │  ─────────────────────────────────────────────────────── │ │
@@ -1722,3 +1750,5 @@ Swatch sélectionné : bordure blanche + scale 1.1.
 ---
 
 *Mis à jour : 2026-03-16 - v0.28.5 : refonte Instance Card (badge ⚡ runtime, pill ⚠ PERM, menu simplifié), sidebar Settings étendue (8 panneaux : General/Agents/Runtime/Channels/Devices/MCP/Permissions/Config), ajout composants cp-instance-channels, cp-instance-mcp, cp-instance-permissions, cp-instance-config, cp-permission-request-overlay, cp-bus-alerts*
+
+*Mis à jour : 2026-03-17 - v0.37.0 : remplacement de cp-runtime-chat par cp-runtime-pilot (17 composants) — affichage des parts (tool calls, reasoning, subtasks, compaction), panneau contexte LLM latéral (jauge tokens, tools, agent info, system prompt, event log), SSE élargi à 17 event types*

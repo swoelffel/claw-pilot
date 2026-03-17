@@ -6,6 +6,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.37.0] — 2026-03-17
+
+### Added
+
+- **`cp-runtime-pilot`** — remplace `cp-runtime-chat` par un écran de pilotage complet de l'agent et du LLM :
+  - Affichage de l'historique complet des messages avec leurs **parts** : text, tool_call (args + output collapsibles + durée d'exécution), reasoning (collapsible), subtask (lien sous-agent + résumé), compaction (marqueur visuel)
+  - **Panneau de contexte** latéral rétractable (5 sections : jauge tokens, tools disponibles, info agent + session tree, system prompt / fichiers workspace, journal d'événements temps réel)
+  - **17 event types** bus forwarded via SSE (vs 5 avant) : permissions, provider failover, doom loop, MCP tools changed, agent timeout, subagent completed, etc.
+  - Cross-channel : messages de tous les channels dans le même flux
+- **Endpoint `GET /sessions/:id/context`** — vue synthétique du contexte LLM (agent config, model capabilities, token usage estimé, tools, MCP servers, workspace files, session tree)
+- **Pagination curseur** sur `GET /sessions/:id/messages` (`?limit=50&before=<id>`) + `hasMore` — prépare les sessions permanentes longues
+- **`durationMs`** persisté dans le metadata des parts `tool_call` pour affichage côté UI
+- `fetchSessionMessages()` et `fetchSessionContext()` dans `api.ts`
+- Types `PilotMessage`, `PilotPart`, `SessionContext`, `PilotBusEvent` dans `types.ts`
+
+### Changed
+
+- `cp-runtime-chat` supprimé — remplacé par `cp-runtime-pilot`
+- Hauteur du panneau Runtime dans Instance Settings passée de 480px à 560px
+- SSE stream : `sessionId` query param désormais optionnel (stream all-instance events)
+- `getRuntimeChatStreamUrl()` : `sessionId` rendu optionnel
+
+---
+
 ## [0.36.1] — 2026-03-17
 
 ### Fixed

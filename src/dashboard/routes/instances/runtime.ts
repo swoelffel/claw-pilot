@@ -1,5 +1,7 @@
 // src/dashboard/routes/instances/runtime.ts
 // Routes: GET runtime/status, GET runtime/sessions, POST runtime/chat, GET runtime/chat/stream
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { RouteDeps } from "../../route-deps.js";
@@ -20,7 +22,10 @@ import {
   initAgentRegistry,
   defaultAgentName,
   getAgent,
+  listAgents,
   getBus,
+  MODEL_CATALOG,
+  countMessagesSinceLastCompaction,
   type RuntimeAgentConfig,
 } from "../../../runtime/index.js";
 import { listEnrichedSessions } from "../../../core/repositories/runtime-session-repository.js";
@@ -87,7 +92,10 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/runtime/sessions/:sessionId/messages
-  // List messages for a session (with parts)
+  // List messages for a session (with parts) — supports cursor pagination
+  // Query params:
+  //   limit  — max messages to return (default 50, max 200)
+  //   before — ULID cursor: return messages created before this message ID
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/runtime/sessions/:sessionId/messages", (c) => {
     const slug = c.req.param("slug");
@@ -96,13 +104,294 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
 
-    const messages = listMessages(db, sessionId);
-    const enriched = messages.map((msg) => ({
+    const limitParam = c.req.query("limit");
+    const limit = Math.min(parseInt(limitParam ?? "50", 10) || 50, 200);
+    const before = c.req.query("before");
+
+    const allMessages = listMessages(db, sessionId);
+
+    // Apply cursor filter if provided (messages before the given ID, sorted by createdAt)
+    let filtered = allMessages;
+    if (before) {
+      const pivotIdx = allMessages.findIndex((m) => m.id === before);
+      if (pivotIdx !== -1) {
+        filtered = allMessages.slice(0, pivotIdx);
+      }
+    }
+
+    // Take the last `limit` messages (most recent end of the slice)
+    const paged = filtered.slice(-limit);
+    const hasMore = filtered.length > limit;
+
+    const enriched = paged.map((msg) => ({
       ...msg,
-      parts: listParts(db, msg.id),
+      createdAt: msg.createdAt instanceof Date ? msg.createdAt.toISOString() : msg.createdAt,
+      parts: listParts(db, msg.id).map((p) => ({
+        ...p,
+        createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
+        updatedAt: p.updatedAt instanceof Date ? p.updatedAt.toISOString() : p.updatedAt,
+      })),
     }));
 
-    return c.json({ messages: enriched });
+    return c.json({ messages: enriched, hasMore });
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /api/instances/:slug/runtime/sessions/:sessionId/context
+  // Returns a synthetic view of what the LLM "sees" for the current session:
+  // agent config, model capabilities, token usage estimate, available tools,
+  // MCP server status, workspace files, teammates, session tree.
+  // ---------------------------------------------------------------------------
+  app.get("/api/instances/:slug/runtime/sessions/:sessionId/context", (c) => {
+    const slug = c.req.param("slug");
+    const sessionId = c.req.param("sessionId");
+    const instance = registry.getInstance(slug);
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
+
+    const stateDir = getRuntimeStateDir(slug);
+    if (!runtimeConfigExists(stateDir)) {
+      return apiError(c, 404, "RUNTIME_CONFIG_NOT_FOUND", "No runtime.json found");
+    }
+
+    let config;
+    try {
+      config = loadRuntimeConfig(stateDir);
+    } catch (err) {
+      return apiError(
+        c,
+        500,
+        "RUNTIME_CONFIG_INVALID",
+        err instanceof Error ? err.message : "Failed to load runtime.json",
+      );
+    }
+
+    // Load session from DB directly
+    const sessionRow = db
+      .prepare("SELECT * FROM rt_sessions WHERE id = ? LIMIT 1")
+      .get(sessionId) as
+      | {
+          agent_id: string;
+          instance_slug: string;
+          parent_id: string | null;
+          spawn_depth: number;
+          state: string;
+          label: string | null;
+        }
+      | undefined;
+
+    if (!sessionRow || sessionRow.instance_slug !== slug) {
+      return apiError(c, 404, "SESSION_NOT_FOUND", `Session "${sessionId}" not found`);
+    }
+
+    const agentId = sessionRow.agent_id;
+
+    // Init agent registry with current config
+    initAgentRegistry(config.agents);
+    const agentInfo = getAgent(agentId);
+    const agentCfg = config.agents.find((a) => a.id === agentId);
+
+    // Resolve model string
+    const modelStr = agentCfg?.model ?? agentInfo?.model ?? config.defaultModel ?? "";
+    const slashIdx = modelStr.indexOf("/");
+    const providerId = slashIdx !== -1 ? modelStr.slice(0, slashIdx) : "";
+    const modelId = slashIdx !== -1 ? modelStr.slice(slashIdx + 1) : modelStr;
+
+    // Find model in catalog
+    const catalogEntry = MODEL_CATALOG.find((m) => m.id === modelId && m.providerId === providerId);
+
+    // Compaction info
+    const messagesSinceCompaction = (() => {
+      try {
+        return countMessagesSinceLastCompaction(db, sessionId);
+      } catch {
+        return 0;
+      }
+    })();
+
+    const lastCompactionRow = db
+      .prepare(
+        "SELECT created_at FROM rt_messages WHERE session_id = ? AND is_compaction = 1 ORDER BY created_at DESC LIMIT 1",
+      )
+      .get(sessionId) as { created_at: string } | undefined;
+
+    // Token usage estimate: sum of recent messages tokens
+    const tokenSumRow = db
+      .prepare(
+        "SELECT COALESCE(SUM(COALESCE(tokens_in, 0) + COALESCE(tokens_out, 0)), 0) as total FROM rt_messages WHERE session_id = ?",
+      )
+      .get(sessionId) as { total: number };
+
+    // Build tools list (builtin from toolProfile + placeholder for MCP)
+    const toolProfile = agentCfg?.toolProfile ?? "coding";
+    const builtinToolsByProfile: Record<string, string[]> = {
+      minimal: ["question"],
+      messaging: ["question", "webfetch"],
+      coding: [
+        "read",
+        "write",
+        "edit",
+        "multiedit",
+        "bash",
+        "glob",
+        "grep",
+        "webfetch",
+        "question",
+        "todowrite",
+        "todoread",
+        "skill",
+      ],
+      full: [
+        "read",
+        "write",
+        "edit",
+        "multiedit",
+        "bash",
+        "glob",
+        "grep",
+        "webfetch",
+        "question",
+        "todowrite",
+        "todoread",
+        "skill",
+        "task",
+      ],
+    };
+    const builtinTools = (
+      builtinToolsByProfile[toolProfile] ?? builtinToolsByProfile["coding"]!
+    ).map((name) => ({ name, source: "builtin" as const }));
+
+    // MCP tools — attempt to read from DB snapshot if available, else return empty
+    const mcpToolRows = (() => {
+      try {
+        return db
+          .prepare("SELECT server_id, tool_name FROM rt_mcp_tools WHERE instance_slug = ?")
+          .all(slug) as Array<{ server_id: string; tool_name: string }>;
+      } catch {
+        return [];
+      }
+    })();
+
+    const mcpTools = mcpToolRows.map((r) => ({
+      name: `${r.server_id}_${r.tool_name}`,
+      source: "mcp" as const,
+      serverId: r.server_id,
+    }));
+
+    // MCP server status — from config (static; live status requires running runtime)
+    const mcpServers = (config.mcpServers ?? []).map((srv) => ({
+      id: srv.id,
+      type: srv.type,
+      status: srv.enabled !== false ? "unknown" : ("disabled" as string),
+      toolCount: mcpToolRows.filter((r) => r.server_id === srv.id).length,
+    }));
+
+    // System prompt files (from workspace discovery heuristic)
+    const workspaceFiles = (() => {
+      const candidates = [
+        "SOUL.md",
+        "BOOTSTRAP.md",
+        "AGENTS.md",
+        "TOOLS.md",
+        "IDENTITY.md",
+        "USER.md",
+        "HEARTBEAT.md",
+      ];
+      const memoryFiles = [
+        "facts.md",
+        "decisions.md",
+        "user-prefs.md",
+        "timeline.md",
+        "knowledge.md",
+      ].map((f) => `memory/${f}`);
+      return [...candidates, ...memoryFiles].filter((f) => {
+        try {
+          return fs.existsSync(path.join(stateDir, f));
+        } catch {
+          return false;
+        }
+      });
+    })();
+
+    // Teammates (other agents in the config)
+    const allAgents = listAgents();
+    const teammates = allAgents
+      .filter((a) => a.name !== agentId)
+      .map((a) => ({
+        id: a.name,
+        name: a.name,
+        kind: a.kind ?? "primary",
+      }));
+
+    // Session tree: parent + siblings + children of current session
+    interface SessionTreeRow {
+      id: string;
+      parent_id: string | null;
+      agent_id: string;
+      spawn_depth: number;
+      state: string;
+      label: string | null;
+    }
+    const sessionTreeRows = db
+      .prepare(
+        `SELECT id, parent_id, agent_id, spawn_depth, state, label
+         FROM rt_sessions
+         WHERE instance_slug = ?
+           AND (id = ? OR parent_id = ? OR (parent_id IS NOT NULL AND parent_id IN (
+             SELECT parent_id FROM rt_sessions WHERE id = ?
+           )))
+         ORDER BY spawn_depth ASC, created_at ASC
+         LIMIT 50`,
+      )
+      .all(slug, sessionId, sessionId, sessionId) as SessionTreeRow[];
+
+    const sessionTree = sessionTreeRows.map((r) => ({
+      sessionId: r.id,
+      parentId: r.parent_id ?? null,
+      agentId: r.agent_id,
+      spawnDepth: r.spawn_depth,
+      state: r.state as "active" | "archived",
+      ...(r.label ? { label: r.label } : {}),
+    }));
+
+    return c.json({
+      agent: {
+        id: agentId,
+        name: agentInfo?.name ?? agentId,
+        model: modelStr,
+        toolProfile,
+        ...(agentCfg?.temperature !== undefined ? { temperature: agentCfg.temperature } : {}),
+        ...(agentCfg?.maxSteps !== undefined ? { maxSteps: agentCfg.maxSteps } : {}),
+        ...(agentCfg?.thinking ? { thinking: agentCfg.thinking } : {}),
+      },
+      model: {
+        providerId,
+        modelId,
+        contextWindow: catalogEntry?.capabilities.contextWindow ?? 200_000,
+        maxOutputTokens: catalogEntry?.capabilities.maxOutputTokens ?? 8_192,
+        capabilities: {
+          streaming: catalogEntry?.capabilities.streaming ?? true,
+          toolCalling: catalogEntry?.capabilities.toolCalling ?? true,
+          vision: catalogEntry?.capabilities.vision ?? false,
+          reasoning: catalogEntry?.capabilities.reasoning ?? false,
+        },
+      },
+      tokenUsage: {
+        estimated: tokenSumRow.total,
+        contextWindow: catalogEntry?.capabilities.contextWindow ?? 200_000,
+        compactionThreshold: config.compaction?.threshold ?? 0.85,
+      },
+      compaction: {
+        lastCompactedAt: lastCompactionRow?.created_at ?? null,
+        messagesSinceCompaction,
+        periodicMessageCount: config.compaction?.periodicMessageCount ?? null,
+      },
+      tools: [...builtinTools, ...mcpTools],
+      mcpServers,
+      systemPromptFiles: workspaceFiles,
+      teammates,
+      sessionTree,
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -278,7 +567,8 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/runtime/chat/stream?sessionId=<id>
-  // SSE stream of bus events for a runtime session
+  // SSE stream of bus events for a runtime session.
+  // sessionId is now optional — omitting it streams all instance events.
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/runtime/chat/stream", (c) => {
     const slug = c.req.param("slug");
@@ -292,24 +582,52 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     return streamSSE(c, async (stream) => {
       // Subscribe to all bus events and forward relevant ones to the SSE stream
       const unsub = bus.subscribeAll((event) => {
-        // Filter by event type — only forward chat-relevant events
+        // Forward all pilot-relevant event types
         const relevantTypes = new Set([
+          // Message streaming
           "message.part.delta",
           "message.created",
           "message.updated",
+          // Session lifecycle
           "session.status",
           "session.ended",
+          "session.created",
+          "session.updated",
+          // Permissions
+          "permission.asked",
+          "permission.replied",
+          // Sub-agents
+          "subagent.completed",
+          // Provider
+          "provider.failover",
+          "provider.auth_failed",
+          // Tools
+          "tool.doom_loop",
+          // MCP
+          "mcp.tools.changed",
+          // Timeouts
+          "llm.chunk_timeout",
+          "agent.timeout",
         ]);
 
         if (!relevantTypes.has(event.type)) return;
 
         // If sessionId filter is provided, only forward events for that session
+        // (skip for instance-scoped events that have no sessionId)
         if (sessionId) {
           const payload = event.payload as Record<string, unknown>;
-          if (payload.sessionId !== sessionId) return;
+          const instanceScopedTypes = new Set([
+            "provider.failover",
+            "provider.auth_failed",
+            "mcp.tools.changed",
+          ]);
+          if (!instanceScopedTypes.has(event.type) && payload.sessionId !== sessionId) return;
         }
 
-        void stream.writeSSE({ data: JSON.stringify(event) });
+        // Attach server-side timestamp for the event log
+        void stream.writeSSE({
+          data: JSON.stringify({ ...event, timestamp: new Date().toISOString() }),
+        });
       });
 
       // Ping every 15s to keep the connection alive

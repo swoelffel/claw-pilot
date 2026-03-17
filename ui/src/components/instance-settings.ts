@@ -22,7 +22,7 @@ import { tokenStyles } from "../styles/tokens.js";
 import { badgeStyles, buttonStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
 import { instanceSettingsStyles } from "../styles/instance-settings.styles.js";
 import "./agent-detail-panel.js";
-import "./runtime-chat.js";
+import "./runtime-pilot.js";
 import "./instance-mcp.js";
 import "./instance-permissions.js";
 import "./instance-config.js";
@@ -727,11 +727,13 @@ export class InstanceSettings extends LitElement {
         </div>
 
         <div style="margin-top: 28px;">
-          <div class="section-header">Chat</div>
+          <div class="section-header">
+            ${msg("Runtime Pilot", { id: "settings-runtime-pilot" })}
+          </div>
           <div
-            style="height: 480px; border: 1px solid var(--bg-border); border-radius: var(--radius-md); overflow: hidden;"
+            style="height: 560px; border: 1px solid var(--bg-border); border-radius: var(--radius-md); overflow: hidden;"
           >
-            <cp-runtime-chat .slug=${this.slug}></cp-runtime-chat>
+            <cp-runtime-pilot .slug=${this.slug}></cp-runtime-pilot>
           </div>
         </div>
       </div>

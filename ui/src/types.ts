@@ -407,3 +407,112 @@ export interface RuntimeChatResponse {
   costUsd: number | null;
   steps: number;
 }
+
+// --- Runtime Pilot types ---
+
+export type PilotPartType =
+  | "text"
+  | "tool_call"
+  | "tool_result"
+  | "reasoning"
+  | "subtask"
+  | "compaction";
+
+export type PilotPartState = "pending" | "running" | "completed" | "error";
+
+export interface PilotPart {
+  id: string;
+  messageId: string;
+  type: PilotPartType;
+  state?: PilotPartState;
+  content?: string;
+  /** JSON — parsed client-side per part type */
+  metadata?: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Message enrichi avec ses parts — retourné par GET /sessions/:id/messages */
+export interface PilotMessage {
+  id: string;
+  sessionId: string;
+  role: "user" | "assistant";
+  agentId?: string;
+  model?: string;
+  tokensIn?: number;
+  tokensOut?: number;
+  costUsd?: number;
+  finishReason?: string;
+  isCompaction: boolean;
+  createdAt: string;
+  parts: PilotPart[];
+}
+
+/** Contexte LLM de la session — retourné par GET /sessions/:id/context */
+export interface SessionContext {
+  agent: {
+    id: string;
+    name: string;
+    model: string;
+    toolProfile: string;
+    temperature?: number;
+    maxSteps?: number;
+    thinking?: { enabled: boolean; budgetTokens?: number };
+  };
+  model: {
+    providerId: string;
+    modelId: string;
+    contextWindow: number;
+    maxOutputTokens: number;
+    capabilities: {
+      streaming: boolean;
+      toolCalling: boolean;
+      vision: boolean;
+      reasoning: boolean;
+    };
+  };
+  tokenUsage: {
+    estimated: number;
+    contextWindow: number;
+    compactionThreshold: number;
+  };
+  compaction: {
+    lastCompactedAt: string | null;
+    messagesSinceCompaction: number;
+    periodicMessageCount: number | null;
+  };
+  tools: Array<{
+    name: string;
+    source: "builtin" | "mcp";
+    serverId?: string;
+  }>;
+  mcpServers: Array<{
+    id: string;
+    type: string;
+    status: string;
+    toolCount: number;
+    lastError?: string;
+  }>;
+  systemPromptFiles: string[];
+  teammates: Array<{
+    id: string;
+    name: string;
+    kind: string;
+  }>;
+  sessionTree: Array<{
+    sessionId: string;
+    parentId: string | null;
+    agentId: string;
+    spawnDepth: number;
+    state: "active" | "archived";
+    label?: string;
+  }>;
+}
+
+/** Événement bus générique pour le journal d'événements */
+export interface PilotBusEvent {
+  type: string;
+  payload: Record<string, unknown>;
+  timestamp: string;
+}

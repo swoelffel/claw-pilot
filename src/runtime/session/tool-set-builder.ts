@@ -142,7 +142,14 @@ export async function buildToolSet(
         try {
           const result = await def.execute(args as never, ctx);
 
+          const durationMs = Date.now() - callStart;
           updatePartState(db, part.id, "completed", result.output);
+          // Persist durationMs in metadata so the UI can display execution time
+          db.prepare("UPDATE rt_parts SET metadata = ?, updated_at = ? WHERE id = ?").run(
+            JSON.stringify({ toolName: toolInfo.id, args, durationMs }),
+            new Date().toISOString(),
+            part.id,
+          );
           bus.publish(MessageUpdated, { sessionId, messageId });
 
           await triggerToolAfterCall({
@@ -152,7 +159,7 @@ export async function buildToolSet(
             toolName: toolInfo.id,
             args,
             output: result.output,
-            durationMs: Date.now() - callStart,
+            durationMs,
           }).catch((err) => {
             console.warn("[claw-runtime] plugin hook tool.afterCall threw:", err);
           });

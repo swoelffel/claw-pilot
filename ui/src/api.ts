@@ -21,6 +21,8 @@ import type {
   SkillsListResponse,
   RuntimeSession,
   RuntimeChatResponse,
+  PilotMessage,
+  SessionContext,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 import { getToken } from "./services/auth-state.js";
@@ -518,6 +520,35 @@ export async function postRuntimeChat(
   });
 }
 
-export function getRuntimeChatStreamUrl(slug: string, sessionId: string): string {
-  return `/api/instances/${slug}/runtime/chat/stream?sessionId=${encodeURIComponent(sessionId)}`;
+export function getRuntimeChatStreamUrl(slug: string, sessionId?: string): string {
+  const base = `/api/instances/${slug}/runtime/chat/stream`;
+  return sessionId ? `${base}?sessionId=${encodeURIComponent(sessionId)}` : base;
+}
+
+/**
+ * Fetch messages for a session with cursor pagination.
+ * Returns messages in chronological order + hasMore flag.
+ */
+export async function fetchSessionMessages(
+  slug: string,
+  sessionId: string,
+  opts: { limit?: number; before?: string } = {},
+): Promise<{ messages: PilotMessage[]; hasMore: boolean }> {
+  const params = new URLSearchParams();
+  if (opts.limit) params.set("limit", String(opts.limit));
+  if (opts.before) params.set("before", opts.before);
+  const qs = params.toString();
+  return apiFetch<{ messages: PilotMessage[]; hasMore: boolean }>(
+    `/instances/${slug}/runtime/sessions/${sessionId}/messages${qs ? `?${qs}` : ""}`,
+  );
+}
+
+/**
+ * Fetch the LLM context view for a session (agent config, model, tools, MCP, session tree).
+ */
+export async function fetchSessionContext(
+  slug: string,
+  sessionId: string,
+): Promise<SessionContext> {
+  return apiFetch<SessionContext>(`/instances/${slug}/runtime/sessions/${sessionId}/context`);
 }
