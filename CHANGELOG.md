@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.24] — 2026-03-18
+
+### Fixed
+
+- **Agent card — onglets Config et Heartbeat inéditables** : `_initConfigTab()` et `_initHeartbeatTab()` appellent désormais `fetchInstanceConfig()` pour charger les vraies valeurs depuis `runtime.json` au lieu de lire les champs `.config`/`.heartbeat` absents de `AgentBuilderInfo`. Un spinner s'affiche pendant le chargement. Les onglets Config et Heartbeat sont masqués en contexte Blueprint (ces données sont propres aux instances).
+
+---
+
 ## [0.41.23] — 2026-03-18
 
 ### Changed
