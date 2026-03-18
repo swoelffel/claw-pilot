@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.12] — 2026-03-18
+
+### Fixed
+
+- **Vue Pilot trop haute** : le conteneur pilot utilisait `height: calc(100vh - 56px - 48px)` hardcodé dans le template, ce qui s'additionnait avec `min-height` du `<main>` et causait un débordement vertical. Correction : `<main>` reçoit la classe `pilot` en vue pilot (`height` exact, `min-height: unset`), et le conteneur interne utilise `height: 100%`.
+
+---
+
 ## [0.41.11] — 2026-03-18
 
 ### Fixed

@@ -127,6 +127,12 @@ export class CpApp extends LitElement {
         overflow-x: hidden;
       }
 
+      main.pilot {
+        height: calc(100vh - 56px - 48px);
+        min-height: unset;
+        overflow: hidden;
+      }
+
       footer {
         display: flex;
         width: 100%;
@@ -737,9 +743,7 @@ export class CpApp extends LitElement {
     if (this._route.view === "pilot") {
       const pilotSlug = this._route.slug;
       return html`
-        <div
-          style="display:flex;flex-direction:column;height:calc(100vh - 56px - 48px);overflow:hidden;"
-        >
+        <div style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
           <div
             style="display:flex;align-items:center;gap:8px;padding:0 16px;min-height:48px;flex-wrap:wrap;background:var(--bg-surface);border-bottom:1px solid var(--bg-border);flex-shrink:0;"
           >
@@ -840,7 +844,10 @@ export class CpApp extends LitElement {
         </div>
       </header>
 
-      <main @cp-update-action=${this._onSelfUpdateStart}>
+      <main
+        class="${this._route.view === "pilot" ? "pilot" : ""}"
+        @cp-update-action=${this._onSelfUpdateStart}
+      >
         <cp-self-update-banner .status=${this._selfUpdateStatus}></cp-self-update-banner>
         ${this._renderMain()}
       </main>
