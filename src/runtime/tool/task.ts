@@ -20,6 +20,7 @@ import { getAgent, listAgents } from "../agent/registry.js";
 import {
   createSession,
   getSession,
+  getOrCreatePermanentSession,
   archiveSession,
   countActiveChildren,
 } from "../session/session.js";
@@ -28,8 +29,14 @@ import { evaluateRuleset } from "../permission/index.js";
 import { getBus } from "../bus/index.js";
 import { SubagentCompleted } from "../bus/events.js";
 import type { InstanceSlug, PermissionRuleset, SessionId } from "../types.js";
+import { resolveModel } from "../provider/provider.js";
 import type { ResolvedModel } from "../provider/provider.js";
-import type { SubagentsConfig, RuntimeConfig, RuntimeAgentConfig } from "../config/index.js";
+import type {
+  SubagentsConfig,
+  RuntimeConfig,
+  RuntimeAgentConfig,
+  ModelAlias,
+} from "../config/index.js";
 
 // ---------------------------------------------------------------------------
 // Prompt loop injection types (avoids circular dependency with session/prompt-loop)
@@ -47,6 +54,7 @@ interface TaskPromptLoopInput {
   abort?: AbortSignal;
   extraSystemPrompt?: string;
   compactionConfig?: RuntimeConfig["compaction"];
+  runtimeAgentConfigs?: RuntimeAgentConfig[];
 }
 
 /** Minimal subset of PromptLoopResult used by the task tool */
@@ -77,6 +85,15 @@ export function createTaskTool(options: {
   compactionConfig?: RuntimeConfig["compaction"];
   /** Config of the calling agent — used to determine workspace inheritance */
   callerAgentConfig?: RuntimeAgentConfig;
+  /**
+   * Configs of all runtime agents in this instance.
+   * Used to resolve primary agents (A2A peer delegation).
+   */
+  runtimeAgentConfigs?: RuntimeAgentConfig[];
+  /**
+   * Model aliases from the runtime config — used to resolve the model of a primary peer agent.
+   */
+  modelAliases?: ModelAlias[];
   /** Injected prompt loop runner — breaks circular dependency with session/prompt-loop */
   runPromptLoop: (input: TaskPromptLoopInput) => Promise<TaskPromptLoopResult>;
 }): Tool.Info {
@@ -89,31 +106,52 @@ export function createTaskTool(options: {
     agentPermissions,
     compactionConfig,
     callerAgentConfig,
+    runtimeAgentConfigs,
+    modelAliases,
     runPromptLoop,
   } = options;
 
-  // Build description dynamically from available subagents
-  // Filter visible agents according to the calling agent's permission ruleset (first gate)
+  // Build description dynamically from available agents.
+  // 1. Built-in subagents (mode: "subagent" or "all", hidden=false)
   const allSubagents = listAgents({ mode: "subagent", includeHidden: false });
-  const visibleAgents = allSubagents.filter((a) => {
+  const visibleSubagents = allSubagents.filter((a) => {
     if (!agentPermissions || agentPermissions.length === 0) return true;
     const result = evaluateRuleset(agentPermissions, "task", a.name);
     return result.action !== "deny";
   });
 
-  const agentList = visibleAgents
+  // 2. User-defined primary agents (kind: "primary") from runtimeAgentConfigs,
+  //    excluding the calling agent itself and agents with agentToAgent.enabled=false.
+  const primaryPeers: RuntimeAgentConfig[] = (runtimeAgentConfigs ?? []).filter((cfg) => {
+    if (cfg.id === callerAgentConfig?.id) return false; // skip self
+    if (cfg.agentToAgent && cfg.agentToAgent.enabled === false) return false;
+    return true;
+  });
+
+  const subagentList = visibleSubagents
     .map(
       (a) =>
         `- ${a.name}: ${a.description ?? "This subagent should only be called manually by the user."}`,
     )
     .join("\n");
 
+  const primaryList = primaryPeers
+    .map((cfg) => `- ${cfg.id} (${cfg.name}): Primary agent — use for peer-to-peer delegation.`)
+    .join("\n");
+
+  const agentSection =
+    subagentList +
+    (primaryList
+      ? `\n\nUser-defined primary agents (peer delegation — use lifecycle:'session' to keep state):\n${primaryList}`
+      : "");
+
   const description =
     `Launch a new agent to handle complex, multistep tasks autonomously.\n\n` +
-    `Available agent types and the tools they have access to:\n${agentList}\n\n` +
+    `Available agent types and the tools they have access to:\n${agentSection}\n\n` +
     `When to use the Task tool:\n` +
     `- When you need to delegate a complex subtask to a specialized agent\n` +
-    `- When parallel execution would speed up the work\n\n` +
+    `- When parallel execution would speed up the work\n` +
+    `- When you want to communicate with a peer agent (use the agent's id as subagent_type)\n\n` +
     `When NOT to use the Task tool:\n` +
     `- For simple single-file operations — use the direct tools instead\n` +
     `- When you already have all the context needed to complete the task\n\n` +
@@ -173,15 +211,142 @@ export function createTaskTool(options: {
         }
       }
 
-      // Resolve the agent
+      // 1. Try to resolve as a user-defined primary agent (A2A peer delegation)
+      const primaryPeerConfig = (runtimeAgentConfigs ?? []).find(
+        (cfg) => cfg.id === params.subagent_type,
+      );
+
+      if (primaryPeerConfig) {
+        // --- A2A primary-to-primary path ---
+        // Use the permanent session of the target primary agent.
+        const targetSession = getOrCreatePermanentSession(db, {
+          instanceSlug,
+          agentId: primaryPeerConfig.id,
+          channel: "internal",
+        });
+
+        ctx.metadata({ title: params.description });
+
+        // For primary agents, use their own toolProfile and permissions
+        const targetAgentConfig: RuntimeAgentConfig = {
+          ...primaryPeerConfig,
+        };
+
+        // Build context block injected into the target agent's prompt
+        const extraSystemPrompt = [
+          "## Incoming delegation",
+          `Agent '${ctx.agentId}' is delegating the following task to you:`,
+          `${params.description}`,
+          "Please respond with your result. It will be forwarded back to the delegating agent.",
+        ].join("\n");
+
+        // Resolve the target agent's model. Fall back to caller's model if unavailable.
+        const targetModel: ResolvedModel = primaryPeerConfig.model
+          ? resolveAgentModel(primaryPeerConfig.model, modelAliases ?? [], resolvedModel)
+          : resolvedModel;
+
+        if (params.mode === "async") {
+          const bus = getBus(instanceSlug);
+
+          runPromptLoop({
+            db,
+            instanceSlug,
+            sessionId: targetSession.id,
+            userText: params.prompt,
+            agentConfig: targetAgentConfig,
+            resolvedModel: targetModel,
+            workDir,
+            abort: ctx.abort,
+            extraSystemPrompt,
+            ...(compactionConfig !== undefined ? { compactionConfig } : {}),
+            ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
+          })
+            .then((asyncResult) => {
+              bus.publish(SubagentCompleted, {
+                parentSessionId: ctx.sessionId,
+                subSessionId: targetSession.id,
+                result: {
+                  text: asyncResult.text,
+                  steps: asyncResult.steps,
+                  tokens: { input: asyncResult.tokens.input, output: asyncResult.tokens.output },
+                  model:
+                    primaryPeerConfig.model ??
+                    `${resolvedModel.providerId}/${resolvedModel.modelId}`,
+                },
+              });
+            })
+            .catch((err: unknown) => {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              bus.publish(SubagentCompleted, {
+                parentSessionId: ctx.sessionId,
+                subSessionId: targetSession.id,
+                result: {
+                  text: `[A2A error from '${primaryPeerConfig.id}': ${errMsg}]`,
+                  steps: 0,
+                  tokens: { input: 0, output: 0 },
+                  model:
+                    primaryPeerConfig.model ??
+                    `${resolvedModel.providerId}/${resolvedModel.modelId}`,
+                },
+              });
+            });
+
+          return {
+            title: params.description,
+            output: [
+              `task_id: ${targetSession.id}`,
+              `status: accepted`,
+              `Agent '${primaryPeerConfig.id}' is handling your request asynchronously. You will receive the result as a new message when it completes.`,
+            ].join("\n"),
+            truncated: false,
+          };
+        }
+
+        // Sync mode
+        const result = await runPromptLoop({
+          db,
+          instanceSlug,
+          sessionId: targetSession.id,
+          userText: params.prompt,
+          agentConfig: targetAgentConfig,
+          resolvedModel: targetModel,
+          workDir,
+          abort: ctx.abort,
+          extraSystemPrompt,
+          ...(compactionConfig !== undefined ? { compactionConfig } : {}),
+          ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
+        });
+
+        const tokensTotal = result.tokens.input + result.tokens.output;
+        const output = [
+          `task_id: ${targetSession.id}`,
+          `agent: ${primaryPeerConfig.id} (${primaryPeerConfig.name})`,
+          `steps_used: ${result.steps}`,
+          `tokens_used: ${tokensTotal}`,
+          `model: ${primaryPeerConfig.model ?? `${resolvedModel.providerId}/${resolvedModel.modelId}`}`,
+          "",
+          "<task_result>",
+          result.text,
+          "</task_result>",
+        ].join("\n");
+
+        return { title: params.description, output, truncated: false };
+      }
+
+      // 2. Resolve as a built-in or user-defined subagent
       const agent = getAgent(params.subagent_type);
       if (!agent) {
-        const available = listAgents({ mode: "subagent", includeHidden: false })
+        const availableSubagents = listAgents({ mode: "subagent", includeHidden: false })
           .map((a) => a.name)
+          .join(", ");
+        const availablePrimary = (runtimeAgentConfigs ?? [])
+          .filter((cfg) => cfg.id !== callerAgentConfig?.id)
+          .map((cfg) => cfg.id)
           .join(", ");
         throw new Error(
           `Unknown agent type: "${params.subagent_type}" is not a valid agent type.\n` +
-            `Available subagents: ${available}`,
+            `Available subagents: ${availableSubagents}\n` +
+            (availablePrimary ? `Available primary agents: ${availablePrimary}` : ""),
         );
       }
 
@@ -444,4 +609,39 @@ function createSubSession(
   void restrictedPermissions;
 
   return session.id;
+}
+
+// ---------------------------------------------------------------------------
+// Model resolution helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve a "provider/model" string (or named alias) to a ResolvedModel.
+ * Falls back to the caller's resolvedModel if resolution fails.
+ */
+function resolveAgentModel(
+  modelRef: string,
+  aliases: ModelAlias[],
+  fallback: ResolvedModel,
+): ResolvedModel {
+  try {
+    // Try alias resolution first
+    if (aliases.length > 0) {
+      const alias = aliases.find((a) => a.id === modelRef);
+      if (alias) {
+        return resolveModel(alias.provider, alias.model);
+      }
+    }
+    // Standard "provider/model" format
+    const slashIdx = modelRef.indexOf("/");
+    if (slashIdx === -1) return fallback;
+    const providerId = modelRef.slice(0, slashIdx);
+    const modelId = modelRef.slice(slashIdx + 1);
+    return resolveModel(providerId, modelId);
+  } catch {
+    // If model resolution fails (e.g. missing API key at task-build time),
+    // fall back to the caller's model silently — the actual key is resolved
+    // at prompt-loop time from process.env, so this is safe.
+    return fallback;
+  }
 }

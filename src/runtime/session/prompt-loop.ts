@@ -259,6 +259,8 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       pluginInput,
       agentKindForTools,
       runPromptLoop,
+      runtimeConfig?.agents,
+      runtimeConfig,
     );
 
     // 6. Stream the response

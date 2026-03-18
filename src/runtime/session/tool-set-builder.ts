@@ -78,6 +78,8 @@ export async function buildToolSet(
     steps: number;
     tokens: { input: number; output: number; cacheRead: number; cacheWrite: number };
   }>,
+  runtimeAgentConfigs?: import("../config/index.js").RuntimeAgentConfig[],
+  runtimeConfig?: RuntimeConfig,
 ): Promise<ToolSet> {
   const set: ToolSet = {};
   const bus = getBus(instanceSlug);
@@ -219,6 +221,8 @@ export async function buildToolSet(
         agentPermissions: callerAgentConfig.permissions,
         ...(compactionConfig !== undefined ? { compactionConfig } : {}),
         callerAgentConfig,
+        ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
+        ...(runtimeConfig?.models !== undefined ? { modelAliases: runtimeConfig.models } : {}),
         runPromptLoop: runPromptLoopFn,
       });
       const taskDef = await taskToolInfo.init();

@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.15] — 2026-03-18
+
+### Added
+
+- **A2A primary-to-primary** : le tool `task` peut maintenant déléguer à un agent *primary* (ex: `dev`) en plus des subagents built-in. L'agent cible utilise sa session permanente — son contexte et sa mémoire sont préservés entre les délégations. Le LLM voit les peer agents listés dans la description du tool avec leur `id` comme `subagent_type`.
+
+### Changed
+
+- `buildToolSet` / `createTaskTool` : ajout de `runtimeAgentConfigs` (agents primary du runtime) et `modelAliases` (résolution du modèle du peer). Le `runtimeConfig` complet est maintenant propagé depuis `runPromptLoop` jusqu'au task tool.
+- Description du tool `task` : les peer agents primaires apparaissent dans une section dédiée "User-defined primary agents".
+
+---
+
 ## [0.41.14] — 2026-03-18
 
 ### Fixed

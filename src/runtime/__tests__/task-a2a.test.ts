@@ -1108,3 +1108,212 @@ describe("checkA2APolicy", () => {
     ).rejects.toThrow("not allowed to spawn 'explore'");
   });
 });
+
+// ---------------------------------------------------------------------------
+// A2A primary-to-primary delegation
+// ---------------------------------------------------------------------------
+
+describe("createTaskTool — A2A primary-to-primary", () => {
+  const DEV_AGENT_CONFIG = {
+    id: "dev",
+    name: "Dev",
+    model: "anthropic/claude-sonnet-4-5",
+    permissions: [],
+    maxSteps: 20,
+    allowSubAgents: true,
+    toolProfile: "full" as const,
+    isDefault: false,
+  };
+
+  const MAIN_AGENT_CONFIG = {
+    id: "main",
+    name: "Main",
+    model: "anthropic/claude-sonnet-4-5",
+    permissions: [],
+    maxSteps: 20,
+    allowSubAgents: true,
+    toolProfile: "full" as const,
+    isDefault: true,
+  };
+
+  it("[positive] primary peer appears in task tool description", async () => {
+    // Arrange: runtimeAgentConfigs includes "dev" as a peer of "main"
+    const toolInfo = createTaskTool({
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      resolvedModel: makeResolvedModel(textStreamModel("ok")),
+      workDir: undefined,
+      callerAgentConfig: MAIN_AGENT_CONFIG,
+      runtimeAgentConfigs: [MAIN_AGENT_CONFIG, DEV_AGENT_CONFIG],
+      runPromptLoop: mockRunPromptLoop,
+    });
+    const def = await toolInfo.init();
+
+    // Assert: "dev" (id) and "Dev" (name) appear as a primary peer
+    expect(def.description).toContain("dev");
+    expect(def.description).toContain("Dev");
+    expect(def.description).toContain("peer");
+  });
+
+  it("[negative] calling agent does not appear in its own peer list", async () => {
+    // Arrange: main calls with runtimeAgentConfigs including itself
+    const toolInfo = createTaskTool({
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      resolvedModel: makeResolvedModel(textStreamModel("ok")),
+      workDir: undefined,
+      callerAgentConfig: MAIN_AGENT_CONFIG,
+      runtimeAgentConfigs: [MAIN_AGENT_CONFIG, DEV_AGENT_CONFIG],
+      runPromptLoop: mockRunPromptLoop,
+    });
+    const def = await toolInfo.init();
+
+    // Assert: "main" does NOT appear in the primary peer section
+    // (it appears in the description as "itself" context, but NOT as a delegatable peer)
+    // The primary peer list line format is "- main (Main): Primary agent ..."
+    expect(def.description).not.toMatch(/^- main \(Main\): Primary agent/m);
+  });
+
+  it("[positive] sync delegation to primary peer uses getOrCreatePermanentSession", async () => {
+    // Arrange
+    const callerSession = createSession(db, {
+      instanceSlug: INSTANCE_SLUG,
+      agentId: "main",
+      persistent: true,
+    });
+    const ctx = makeToolContext(db, callerSession.id);
+    const runPromptLoop = vi.fn().mockResolvedValue({
+      messageId: "msg-mock",
+      text: "dev response",
+      tokens: { input: 5, output: 3, cacheRead: 0, cacheWrite: 0 },
+      costUsd: 0,
+      steps: 2,
+    });
+
+    const toolInfo = createTaskTool({
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      resolvedModel: makeResolvedModel(textStreamModel("ok")),
+      workDir: undefined,
+      callerAgentConfig: MAIN_AGENT_CONFIG,
+      runtimeAgentConfigs: [MAIN_AGENT_CONFIG, DEV_AGENT_CONFIG],
+      runPromptLoop,
+    });
+    const def = await toolInfo.init();
+
+    // Act
+    const result = await def.execute(
+      {
+        description: "ask dev for help",
+        prompt: "What is your favourite fruit?",
+        subagent_type: "dev",
+        lifecycle: "run",
+        mode: "sync",
+      },
+      ctx,
+    );
+
+    // Assert: runPromptLoop was called with agentId "dev"
+    expect(runPromptLoop).toHaveBeenCalledOnce();
+    const call = runPromptLoop.mock.calls[0]![0] as {
+      agentConfig: { id: string };
+      userText: string;
+    };
+    expect(call.agentConfig.id).toBe("dev");
+    expect(call.userText).toBe("What is your favourite fruit?");
+
+    // Assert: output contains task_result and agent identifier
+    expect(result.output).toContain("<task_result>");
+    expect(result.output).toContain("dev response");
+    expect(result.output).toContain("agent: dev");
+  });
+
+  it("[positive] async delegation to primary peer publishes SubagentCompleted", async () => {
+    // Arrange
+    const callerSession = createSession(db, {
+      instanceSlug: INSTANCE_SLUG,
+      agentId: "main",
+      persistent: true,
+    });
+    const ctx = makeToolContext(db, callerSession.id);
+    const bus = getBus(INSTANCE_SLUG);
+
+    let capturedEvent: unknown;
+    bus.subscribe(SubagentCompleted, (payload) => {
+      capturedEvent = payload;
+    });
+
+    const runPromptLoop = vi.fn().mockResolvedValue({
+      messageId: "msg-async",
+      text: "async dev response",
+      tokens: { input: 3, output: 2, cacheRead: 0, cacheWrite: 0 },
+      costUsd: 0,
+      steps: 1,
+    });
+
+    const toolInfo = createTaskTool({
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      resolvedModel: makeResolvedModel(textStreamModel("ok")),
+      workDir: undefined,
+      callerAgentConfig: MAIN_AGENT_CONFIG,
+      runtimeAgentConfigs: [MAIN_AGENT_CONFIG, DEV_AGENT_CONFIG],
+      runPromptLoop,
+    });
+    const def = await toolInfo.init();
+
+    // Act
+    const result = await def.execute(
+      {
+        description: "async ask dev",
+        prompt: "Status update please",
+        subagent_type: "dev",
+        lifecycle: "run",
+        mode: "async",
+      },
+      ctx,
+    );
+
+    // Assert: immediate accepted response
+    expect(result.output).toContain("accepted");
+
+    // Wait for async to complete
+    await vi.waitFor(() => capturedEvent !== undefined, { timeout: 2000 });
+
+    const event = capturedEvent as {
+      parentSessionId: string;
+      result: { text: string };
+    };
+    expect(event.parentSessionId).toBe(callerSession.id);
+    expect(event.result.text).toBe("async dev response");
+  });
+
+  it("[negative] primary peer with agentToAgent.enabled=false does NOT appear in description", async () => {
+    // Arrange: "restricted" agent has A2A disabled
+    const restrictedAgent = {
+      id: "restricted",
+      name: "Restricted",
+      model: "anthropic/claude-sonnet-4-5",
+      permissions: [],
+      maxSteps: 20,
+      allowSubAgents: false,
+      toolProfile: "coding" as const,
+      isDefault: false,
+      agentToAgent: { enabled: false },
+    };
+
+    const toolInfo = createTaskTool({
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      resolvedModel: makeResolvedModel(textStreamModel("ok")),
+      workDir: undefined,
+      callerAgentConfig: MAIN_AGENT_CONFIG,
+      runtimeAgentConfigs: [MAIN_AGENT_CONFIG, restrictedAgent],
+      runPromptLoop: mockRunPromptLoop,
+    });
+    const def = await toolInfo.init();
+
+    // Assert: "restricted" does not appear in primary peer list
+    expect(def.description).not.toMatch(/- restricted \(Restricted\)/);
+  });
+});
