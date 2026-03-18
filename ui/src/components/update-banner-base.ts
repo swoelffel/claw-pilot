@@ -218,18 +218,29 @@ export class UpdateBannerBase extends LitElement {
    */
   @property({ type: Boolean }) dismissable = false;
 
-  /** État local de dismiss — reset automatiquement si status change. */
+  /** État local de dismiss — persisté dans sessionStorage par jobId. */
   @state() private _dismissed = false;
+
+  /** Clé sessionStorage du job courant pour persister le dismiss. */
+  private get _dismissKey(): string | null {
+    const jobId = this.status?.jobId;
+    return jobId ? `cp-update-dismissed-${jobId}` : null;
+  }
 
   override willUpdate(changed: Map<string, unknown>): void {
     // Reset le dismiss uniquement si le statut fonctionnel change (idle/running/done/error),
     // pas si le poller renvoie la même valeur (nouvel objet JS = même status.status).
     if (changed.has("status")) {
       const prev = changed.get("status") as UpdateStatus | null | undefined;
+      const prevJobId = prev?.jobId ?? null;
+      const nextJobId = this.status?.jobId ?? null;
       const prevStatus = prev?.status ?? null;
       const nextStatus = this.status?.status ?? null;
-      if (prevStatus !== nextStatus) {
-        this._dismissed = false;
+
+      if (prevJobId !== nextJobId || prevStatus !== nextStatus) {
+        // Nouveau job ou nouveau statut : vérifier si déjà dismissé en session
+        const key = this._dismissKey;
+        this._dismissed = key ? sessionStorage.getItem(key) === "1" : false;
       }
     }
   }
@@ -240,6 +251,8 @@ export class UpdateBannerBase extends LitElement {
 
   private _handleDismiss(): void {
     this._dismissed = true;
+    const key = this._dismissKey;
+    if (key) sessionStorage.setItem(key, "1");
     this.dispatchEvent(new CustomEvent("cp-update-dismiss", { bubbles: true, composed: true }));
   }
 

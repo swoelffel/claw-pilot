@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.13] — 2026-03-18
+
+### Fixed
+
+- **Bannière de mise à jour persistante** : après une mise à jour sur macOS (MACMINI-INT), le service ne redémarrait pas car `systemctl` n'est pas disponible — le job restait en état `done` indéfiniment. Correction : utilisation de `launchctl stop/start` sur macOS, `systemctl` sur Linux.
+- **Dismiss de la bannière ignoré** : fermer la bannière "Updated successfully" via le bouton × ne survivait pas aux rechargements de page (état purement en mémoire). Correction : le dismiss est désormais persisté dans `sessionStorage` avec la clé du job, ce qui le maintient entre les reloads de la même session.
+
+---
+
 ## [0.41.12] — 2026-03-18
 
 ### Fixed

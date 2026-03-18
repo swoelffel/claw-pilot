@@ -113,11 +113,14 @@ describe("SelfUpdater — successful update", () => {
     expect(checkoutCmd).toBeDefined();
   });
 
-  it("systemctl restart is called last", async () => {
+  it("restart service command is called last (systemctl or launchctl)", async () => {
     updater.run(undefined, undefined, "v0.11.0");
     await flush();
 
-    const restartCmd = conn.commands.find((c) => c.includes("systemctl") && c.includes("restart"));
+    // Sur Linux : systemctl --user restart ; sur macOS : launchctl stop/start
+    const restartCmd = conn.commands.find(
+      (c) => (c.includes("systemctl") && c.includes("restart")) || c.includes("launchctl"),
+    );
     expect(restartCmd).toBeDefined();
   });
 });

@@ -123,11 +123,14 @@ export class SelfUpdater {
         message: msg,
       };
 
-      // 5. systemctl restart — tue le process en cours, donc en dernier
-      // On ne verifie pas le code de retour : le process sera tue avant
-      this._exec("systemctl --user restart claw-pilot-dashboard.service", {
-        timeout: 10_000,
-      }).catch(() => {
+      // 5. Restart du service — tue le process en cours, donc en dernier.
+      // On ne verifie pas le code de retour : le process sera tue avant.
+      // Essaie systemctl (Linux) puis launchctl (macOS) en fallback.
+      const restartCmd =
+        process.platform === "darwin"
+          ? `launchctl stop io.claw-pilot.dashboard && sleep 2 && launchctl start io.claw-pilot.dashboard`
+          : "systemctl --user restart claw-pilot-dashboard.service";
+      this._exec(restartCmd, { timeout: 15_000 }).catch(() => {
         // Attendu : le process est tue par le restart
       });
     } catch (err) {
