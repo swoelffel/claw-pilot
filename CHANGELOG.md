@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.17] — 2026-03-18
+
+### Fixed
+
+- **Auto-update ne redémarre pas le service sur macOS** : la commande `launchctl stop … && sleep 2 && launchctl start …` s'exécutait dans le même shell — `stop` tuait le processus avant que `start` puisse tourner. Fix : le `launchctl start` est maintenant lancé dans un sous-shell décroché (`nohup sh -c 'sleep 3 && launchctl start …' &`) qui survit au kill du parent, puis `launchctl stop` est appelé en dernier.
+- **Cache GitHub pour le check de version** : `GET /api/self/update-status` appelait l'API GitHub à chaque requête UI (toutes les 60 s). Le résultat est maintenant mis en cache 5 minutes côté serveur. Le cache est invalidé lors du déclenchement d'un update.
+
+---
+
 ## [0.41.16] — 2026-03-18
 
 ### Fixed

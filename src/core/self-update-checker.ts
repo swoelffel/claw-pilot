@@ -13,12 +13,22 @@ export interface SelfUpdateStatus {
 
 export class SelfUpdateChecker {
   private _currentVersion: string | null = null;
+  // Cache le résultat du check GitHub pour éviter les appels répétés (TTL = 5 min)
+  private _cachedStatus: SelfUpdateStatus | null = null;
+  private _cacheExpiresAt = 0;
+  private static readonly _CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   check(): Promise<SelfUpdateStatus> {
     return this._check();
   }
 
   private async _check(): Promise<SelfUpdateStatus> {
+    // Retourner le cache si encore valide (sauf si un job est en cours — pas pertinent ici)
+    const now = Date.now();
+    if (this._cachedStatus && now < this._cacheExpiresAt) {
+      return this._cachedStatus;
+    }
+
     const [currentResult, latestResult] = await Promise.allSettled([
       Promise.resolve(this._getCurrentVersion()),
       this._getLatestRelease(),
@@ -31,7 +41,19 @@ export class SelfUpdateChecker {
     const latestTag = latest?.tag ?? null;
     const updateAvailable = latestVersion !== null && this._isNewer(latestVersion, currentVersion);
 
-    return { currentVersion, latestVersion, latestTag, updateAvailable };
+    const result: SelfUpdateStatus = { currentVersion, latestVersion, latestTag, updateAvailable };
+    // Mettre en cache seulement si le check GitHub a réussi
+    if (latestResult.status === "fulfilled") {
+      this._cachedStatus = result;
+      this._cacheExpiresAt = Date.now() + SelfUpdateChecker._CACHE_TTL_MS;
+    }
+    return result;
+  }
+
+  /** Invalide le cache (utilisé après un update pour forcer un re-check). */
+  invalidateCache(): void {
+    this._cachedStatus = null;
+    this._cacheExpiresAt = 0;
   }
 
   private _getCurrentVersion(): string {

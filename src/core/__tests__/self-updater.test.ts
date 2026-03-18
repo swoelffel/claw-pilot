@@ -15,7 +15,11 @@ function mockSuccessSequence(conn: MockConnection) {
   // test -w checks return 0 (writable) → no sudo needed
   conn.mockExec("test -w", { stdout: "", stderr: "", exitCode: 0 });
   conn.mockExec("pnpm --dir", { stdout: "", stderr: "", exitCode: 0 });
+  // Linux restart
   conn.mockExec("systemctl --user restart", { stdout: "", stderr: "", exitCode: 0 });
+  // macOS restart: nohup sh -c 'sleep 3 && launchctl start ...' & launchctl stop ...
+  conn.mockExec("nohup sh -c", { stdout: "", stderr: "", exitCode: 0 });
+  conn.mockExec("launchctl stop", { stdout: "", stderr: "", exitCode: 0 });
 }
 
 beforeEach(() => {
@@ -117,9 +121,13 @@ describe("SelfUpdater — successful update", () => {
     updater.run(undefined, undefined, "v0.11.0");
     await flush();
 
-    // Sur Linux : systemctl --user restart ; sur macOS : launchctl stop/start
+    // Sur Linux : systemctl --user restart
+    // Sur macOS : nohup sh -c 'sleep 3 && launchctl start ...' & launchctl stop ...
     const restartCmd = conn.commands.find(
-      (c) => (c.includes("systemctl") && c.includes("restart")) || c.includes("launchctl"),
+      (c) =>
+        (c.includes("systemctl") && c.includes("restart")) ||
+        c.includes("launchctl") ||
+        c.includes("nohup"),
     );
     expect(restartCmd).toBeDefined();
   });
@@ -213,6 +221,8 @@ describe("SelfUpdater — sudo fallback on EACCES", () => {
     // sudo commands succeed
     conn.mockExec("sudo -E env", { stdout: "", stderr: "", exitCode: 0 });
     conn.mockExec("systemctl --user restart", { stdout: "", stderr: "", exitCode: 0 });
+    conn.mockExec("nohup sh -c", { stdout: "", stderr: "", exitCode: 0 });
+    conn.mockExec("launchctl stop", { stdout: "", stderr: "", exitCode: 0 });
 
     updater.run();
     await flush();

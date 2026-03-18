@@ -155,4 +155,31 @@ describe("SelfUpdateChecker.check()", () => {
     expect(result.currentVersion).toBeTruthy();
     expect(typeof result.currentVersion).toBe("string");
   });
+
+  it("result is cached: second call does not call fetch again", async () => {
+    let fetchCount = 0;
+    vi.stubGlobal("fetch", async () => {
+      fetchCount++;
+      return { ok: true, json: async () => ({ tag_name: "v99.0.0" }) };
+    });
+
+    await checker.check();
+    await checker.check();
+
+    expect(fetchCount).toBe(1); // fetch called only once
+  });
+
+  it("invalidateCache() forces a fresh fetch on next check", async () => {
+    let fetchCount = 0;
+    vi.stubGlobal("fetch", async () => {
+      fetchCount++;
+      return { ok: true, json: async () => ({ tag_name: "v99.0.0" }) };
+    });
+
+    await checker.check();
+    checker.invalidateCache();
+    await checker.check();
+
+    expect(fetchCount).toBe(2); // fetch called twice after cache invalidation
+  });
 });

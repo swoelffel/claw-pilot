@@ -76,6 +76,8 @@ export function registerSystemRoutes(app: Hono, deps: RouteDeps) {
       status.latestVersion ?? undefined,
       status.latestTag ?? undefined,
     );
+    // Invalider le cache du checker pour que le prochain poll reflète l'état post-update
+    selfUpdateChecker.invalidateCache();
     return c.json({ ok: true, jobId: selfUpdater.getJob().jobId });
   });
 }
