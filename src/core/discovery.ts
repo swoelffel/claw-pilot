@@ -125,7 +125,7 @@ export class InstanceDiscovery {
         id: "main",
         name: "Main",
         model: defaultModel,
-        workspacePath: `${stateDir}/workspaces/workspace`,
+        workspacePath: `${stateDir}/workspaces/main`,
         isDefault: true,
       });
     }
@@ -145,9 +145,7 @@ export class InstanceDiscovery {
           ? explicitWorkspace
           : `${stateDir}/workspaces/${explicitWorkspace}`;
       } else {
-        workspacePath = isDefault
-          ? `${stateDir}/workspaces/workspace`
-          : `${stateDir}/workspaces/workspace-${agentId}`;
+        workspacePath = `${stateDir}/workspaces/${agentId}`;
       }
 
       agents.push({

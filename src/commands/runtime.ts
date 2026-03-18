@@ -566,12 +566,7 @@ function runtimeChatCommand(): Command {
         if (opts.once) {
           logger.info(`Session: ${session.id}`);
           process.stdout.write(chalk.green("Agent: "));
-          const agentWorkDir = resolveAgentWorkspacePath(
-            stateDir,
-            agentId,
-            undefined,
-            config.agents,
-          );
+          const agentWorkDir = resolveAgentWorkspacePath(stateDir, agentId, undefined);
           try {
             const result = await runPromptLoop({
               db,
@@ -627,7 +622,7 @@ function runtimeChatCommand(): Command {
         }
 
         // Resolve agent workspace directory once for the whole REPL session
-        const agentWorkDir = resolveAgentWorkspacePath(stateDir, agentId, undefined, config.agents);
+        const agentWorkDir = resolveAgentWorkspacePath(stateDir, agentId, undefined);
 
         // REPL loop
         const rl = readline.createInterface({

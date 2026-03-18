@@ -405,11 +405,8 @@ function readCurrentMemory(workspaceDir: string): string {
  * Returns undefined if no workspace directory exists.
  */
 function resolveWorkspaceDir(workDir: string, agentId: string): string | undefined {
-  const candidates = [path.join(workDir, `workspace-${agentId}`), path.join(workDir, "workspace")];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return undefined;
+  const wsDir = path.join(workDir, "workspaces", agentId);
+  return fs.existsSync(wsDir) ? wsDir : undefined;
 }
 
 function buildConversationText(

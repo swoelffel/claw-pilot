@@ -91,18 +91,9 @@ export function rebuildMemoryIndex(
   workDir: string,
   agentId: string,
 ): void {
-  // Resolve workspace directory (same logic as system-prompt.ts)
-  const candidates = [path.join(workDir, `workspace-${agentId}`), path.join(workDir, "workspace")];
-
-  let wsDir: string | undefined;
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      wsDir = candidate;
-      break;
-    }
-  }
-
-  if (!wsDir) return; // No workspace found — nothing to index
+  // Resolve workspace directory: workspaces/<agentId>
+  const wsDir = path.join(workDir, "workspaces", agentId);
+  if (!fs.existsSync(wsDir)) return; // No workspace found — nothing to index
 
   // Collect files to index
   const filesToIndex: Array<{ source: string; filePath: string }> = [];

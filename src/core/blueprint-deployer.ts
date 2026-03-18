@@ -36,12 +36,8 @@ export class BlueprintDeployer {
     for (const bpAgent of blueprintAgents) {
       const isDefault = bpAgent.is_default === 1;
 
-      // Workspace path:
-      //   main (isDefault) → stateDir/workspaces/workspace  (already created by Provisioner)
-      //   secondary agents → stateDir/workspaces/workspace-<agent_id>
-      const workspaceDir = isDefault
-        ? path.join(stateDir, "workspaces", "workspace")
-        : path.join(stateDir, "workspaces", `workspace-${bpAgent.agent_id}`);
+      // Workspace path: workspaces/<agent_id> for all agents
+      const workspaceDir = path.join(stateDir, "workspaces", bpAgent.agent_id);
 
       // Create workspace directory only for secondary agents
       // (main workspace already exists, created by Provisioner step 5)

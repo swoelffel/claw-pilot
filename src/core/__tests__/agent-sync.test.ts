@@ -154,8 +154,8 @@ describe("AgentSync.sync()", () => {
     const instance = seedInstance();
     conn.files.set(CONFIG_PATH, MINIMAL_CONFIG);
 
-    // With MINIMAL_CONFIG (empty agents array), synthetic main agent workspace is stateDir/workspaces/workspace
-    const workspacePath = `${STATE_DIR}/workspaces/workspace`;
+    // With MINIMAL_CONFIG (empty agents array), synthetic main agent workspace is stateDir/workspaces/main
+    const workspacePath = `${STATE_DIR}/workspaces/main`;
     conn.files.set(`${workspacePath}/SOUL.md`, "# Soul\nThis is the soul file.");
 
     const agentSync = new AgentSync(conn, registry);
@@ -176,8 +176,8 @@ describe("AgentSync.sync()", () => {
     const instance = seedInstance();
     conn.files.set(CONFIG_PATH, MINIMAL_CONFIG);
 
-    // With MINIMAL_CONFIG (empty agents array), synthetic main agent workspace is stateDir/workspaces/workspace
-    const workspacePath = `${STATE_DIR}/workspaces/workspace`;
+    // With MINIMAL_CONFIG (empty agents array), synthetic main agent workspace is stateDir/workspaces/main
+    const workspacePath = `${STATE_DIR}/workspaces/main`;
     conn.files.set(`${workspacePath}/AGENTS.md`, "# Agents");
     conn.files.set(`${workspacePath}/SOUL.md`, "# Soul");
     conn.files.set(`${workspacePath}/TOOLS.md`, "# Tools");

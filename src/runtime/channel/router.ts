@@ -123,7 +123,7 @@ export class ChannelRouter {
     // workspace field is not part of RuntimeAgentConfig (Zod schema) — it is resolved
     // at provisioning time and stored in DB. At runtime, we rely on agentId heuristics.
     const agentWorkDir = workDir
-      ? resolveAgentWorkspacePath(workDir, agentId, undefined, config.agents)
+      ? resolveAgentWorkspacePath(workDir, agentId, undefined)
       : undefined;
 
     const prev = sessionQueues.get(sessionId) ?? Promise.resolve();

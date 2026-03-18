@@ -151,9 +151,7 @@ async function _importTeamCore(
       const workspacePath =
         target.type === "blueprint"
           ? `blueprint://${target.blueprintId}/${agent.id}`
-          : agent.is_default
-            ? path.join(stateDir!, "workspaces", "workspace")
-            : path.join(stateDir!, "workspaces", `workspace-${agent.id}`);
+          : path.join(stateDir!, "workspaces", agent.id);
 
       const tagsJson = agent.meta?.tags ? JSON.stringify(agent.meta.tags) : null;
       let modelValue: string | null = null;
@@ -456,9 +454,7 @@ async function syncWorkspacesToDisk(
   let filesWritten = 0;
 
   for (const agent of team.agents) {
-    const workspacePath = agent.is_default
-      ? path.join(stateDir, "workspaces", "workspace")
-      : path.join(stateDir, "workspaces", `workspace-${agent.id}`);
+    const workspacePath = path.join(stateDir, "workspaces", agent.id);
 
     // Create workspace directory
     await conn.mkdir(workspacePath);

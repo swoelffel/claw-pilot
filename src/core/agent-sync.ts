@@ -113,7 +113,7 @@ export class AgentSync {
         agentId: "main",
         name: "Main",
         model: defaultModel,
-        workspacePath: `${stateDir}/workspaces/workspace`,
+        workspacePath: `${stateDir}/workspaces/main`,
         isDefault: true,
         // Include defaultModel in rawBlock so the config_hash changes when the model changes
         rawBlock: { defaultModel: defaultModel ?? null },
@@ -135,9 +135,7 @@ export class AgentSync {
           ? explicitWorkspace
           : `${stateDir}/workspaces/${explicitWorkspace}`;
       } else {
-        workspacePath = isDefault
-          ? `${stateDir}/workspaces/workspace`
-          : `${stateDir}/workspaces/workspace-${agentId}`;
+        workspacePath = `${stateDir}/workspaces/${agentId}`;
       }
 
       configAgents.push({

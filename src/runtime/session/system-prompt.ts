@@ -290,15 +290,11 @@ function archiveBootstrapContent(wsDir: string, bootstrapContent: string): void 
 
 /**
  * Resolve the workspace directory for an agent.
- * Checks workspace-<agentId>/ first, then workspace/ (OpenClaw-compatible layout).
- * Returns the first existing directory, or undefined if none found.
+ * Returns workspaces/<agentId> if it exists, undefined otherwise.
  */
 function resolveWorkspaceDir(workDir: string, agentId: string): string | undefined {
-  const candidates = [join(workDir, `workspace-${agentId}`), join(workDir, "workspace")];
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate;
-  }
-  return undefined;
+  const wsDir = join(workDir, "workspaces", agentId);
+  return existsSync(wsDir) ? wsDir : undefined;
 }
 
 /**
@@ -444,8 +440,8 @@ function discoverWorkspaceInstructions(
   bootstrapFiles?: readonly string[],
   skipMemory?: boolean,
 ): string | undefined {
-  // Candidate workspace directories in priority order
-  const candidates = [join(workDir, `workspace-${agentId}`), join(workDir, "workspace")];
+  // Candidate workspace directory: workspaces/<agentId>
+  const candidates = [join(workDir, "workspaces", agentId)];
 
   for (const wsDir of candidates) {
     if (!existsSync(wsDir)) continue;

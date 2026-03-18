@@ -155,8 +155,7 @@ export class Provisioner {
       logger.step("Creating workspaces...");
       const renderedFilesPerAgent = new Map<string, Array<{ filename: string; content: string }>>();
       for (const agent of answers.agents) {
-        const workspaceId =
-          agent.workspace ?? (agent.isDefault ? "workspace" : `workspace-${agent.id}`);
+        const workspaceId = agent.workspace ?? agent.id;
         const workspacePath = path.join(stateDir, "workspaces", workspaceId);
         await this.conn.mkdir(workspacePath);
         const rendered = await this.provisionWorkspaceFiles(workspacePath, {
@@ -196,8 +195,7 @@ export class Provisioner {
 
       // Register agents + persist workspace files in DB
       for (const agent of answers.agents) {
-        const workspaceId =
-          agent.workspace ?? (agent.isDefault ? "workspace" : `workspace-${agent.id}`);
+        const workspaceId = agent.workspace ?? agent.id;
         this.registry.createAgent(instance.id, {
           agentId: agent.id,
           name: agent.name,

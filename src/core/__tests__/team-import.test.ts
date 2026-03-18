@@ -352,7 +352,7 @@ describe("importInstanceTeam()", () => {
     await importInstanceTeam(db, registry, conn, instance, team, "/run/user/1000");
 
     // SOUL.md should be written to the main agent's workspace
-    const soulPath = path.join(STATE_DIR, "workspaces", "workspace", "SOUL.md");
+    const soulPath = path.join(STATE_DIR, "workspaces", "main", "SOUL.md");
     expect(conn.files.has(soulPath)).toBe(true);
     expect(conn.files.get(soulPath)).toBe("# Soul content");
   });
@@ -491,7 +491,7 @@ describe("gap-fill — missing workspace files seeded from templates", () => {
 
     await importInstanceTeam(db, registry, conn, instance, team, "/run/user/1000");
 
-    const workspaceDir = path.join(STATE_DIR, "workspaces", "workspace");
+    const workspaceDir = path.join(STATE_DIR, "workspaces", "main");
 
     // USER.md should have the YAML content
     expect(conn.files.get(path.join(workspaceDir, "USER.md"))).toBe("# Custom user");

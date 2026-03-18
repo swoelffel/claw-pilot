@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.7] — 2026-03-18
+
+### Fixed
+
+- **Workspace path convention** : standardisation sur `workspaces/<agentId>/` partout dans l'application. Avant, provisioner/sync/discovery utilisaient `workspaces/workspace/` (agent par défaut) et `workspaces/workspace-<id>/` (agents secondaires), tandis que le runtime (`resolveAgentWorkspacePath`, `discoverWorkspaceInstructions`, `resolveWorkspaceDir`, `compaction`, `memory/index`) utilisait des chemins incompatibles (`workspace-<agentId>/` plat dans stateDir ou `workspaces/<agentId>/`). Résultat : les fichiers `SOUL.md`, `USER.md`, `HEARTBEAT.md`, `memory/*.md` n'étaient jamais chargés dans le prompt système — les agents fonctionnaient sans aucun contexte workspace.
+- **`resolveAgentWorkspacePath`** : signature simplifiée (suppression du paramètre `agentsList` devenu inutile). Retourne toujours `workspaces/<agentId>` (ou le chemin explicite si fourni dans la config).
+
+---
+
 ## [0.41.6] — 2026-03-18
 
 ### Changed

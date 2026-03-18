@@ -50,7 +50,7 @@ export class AgentProvisioner {
 
     // 2. Determine workspace dir inside <stateDir>/workspaces/ (consistent with provisioner)
     const stateDir = path.dirname(instance.config_path);
-    const workspaceDir = path.join(stateDir, "workspaces", `workspace-${data.agentSlug}`);
+    const workspaceDir = path.join(stateDir, "workspaces", data.agentSlug);
 
     // 3. Create workspace directory + rich template files
     await this.conn.mkdir(workspaceDir);

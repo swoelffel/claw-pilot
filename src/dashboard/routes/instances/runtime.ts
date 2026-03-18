@@ -553,7 +553,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     }
 
     // Run prompt loop
-    const agentWorkDir = resolveAgentWorkspacePath(stateDir, agentId, undefined, config.agents);
+    const agentWorkDir = resolveAgentWorkspacePath(stateDir, agentId, undefined);
     try {
       const result = await runPromptLoop({
         db,
