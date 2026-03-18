@@ -448,6 +448,8 @@ export class InstanceChannels extends LitElement {
 
   private _syncFromConfig(): void {
     const tg = this.config?.channels?.telegram;
+    // A config reload means the backend state is fresh — clear the restart banner.
+    this._requiresRestart = false;
     if (tg) {
       this._enabled = tg.enabled;
       this._tokenMasked = tg.botTokenMasked;
@@ -556,10 +558,13 @@ export class InstanceChannels extends LitElement {
         this._requiresRestart = true;
       }
 
-      // 3. Reload config
+      // 3. Reload config and notify parent so it refreshes its own copy
       const fresh = await fetchInstanceConfig(this.instanceSlug);
       this.config = fresh;
       this._syncFromConfig();
+      this.dispatchEvent(
+        new CustomEvent("channels-config-saved", { bubbles: true, composed: true, detail: fresh }),
+      );
     } catch (err) {
       this._error = err instanceof Error ? err.message : "Save failed";
     } finally {
@@ -597,10 +602,13 @@ export class InstanceChannels extends LitElement {
         this._requiresRestart = true;
       }
 
-      // 3. Reload config
+      // 3. Reload config and notify parent so it refreshes its own copy
       const fresh = await fetchInstanceConfig(this.instanceSlug);
       this.config = fresh;
       this._syncFromConfig();
+      this.dispatchEvent(
+        new CustomEvent("channels-config-saved", { bubbles: true, composed: true, detail: fresh }),
+      );
     } catch (err) {
       this._error = err instanceof Error ? err.message : "Save failed";
     } finally {

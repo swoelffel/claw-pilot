@@ -738,9 +738,11 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
     }
 
     // Restart if needed and instance is running
+    let autoRestarted = false;
     if (requiresRestart && instance!.state === "running") {
       try {
         await lifecycle.restart(slug);
+        autoRestarted = true;
       } catch (err) {
         logger.warn(
           `[config] restart after config patch failed for ${slug}: ${err instanceof Error ? err.message : "unknown"}`,
@@ -749,7 +751,14 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
     }
 
     logger.info(`[config] PATCH /config slug=${slug} patch=${JSON.stringify(patch)}`);
-    return c.json({ ok: true, requiresRestart, hotReloaded: false, warnings: [] });
+    // If the backend already restarted the instance, inform the UI so it doesn't show
+    // a redundant "restart required" banner.
+    return c.json({
+      ok: true,
+      requiresRestart: requiresRestart && !autoRestarted,
+      hotReloaded: false,
+      warnings: [],
+    });
   });
 
   // PATCH /api/instances/:slug/config/telegram/token — write/remove bot token in .env

@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.16] — 2026-03-18
+
+### Fixed
+
+- **Telegram token ne s'enregistre pas** : après un save dans `cp-instance-channels`, le parent (`cp-instance-settings`) gardait son ancien `_config` et le repassait à l'enfant au prochain re-render (déclenché par le WS health_update), écrasant ainsi le token fraîchement sauvegardé. Fix : l'enfant émet un event `channels-config-saved` avec la config fraîche ; le parent met à jour son `_config` en conséquence.
+- **Boucle UX infinie (save → restart → save)** : deux causes combinées.
+  1. Le backend retournait `requiresRestart: true` même quand il avait déjà redémarré l'instance automatiquement. Fix : `requiresRestart` est maintenant `false` si le restart automatique a réussi.
+  2. `_syncFromConfig()` ne réinitialisait pas `_requiresRestart`, donc la bannière "Restart runtime" persistait après un reload de config. Fix : `_requiresRestart = false` au début de `_syncFromConfig()`.
+
+---
+
 ## [0.41.15] — 2026-03-18
 
 ### Added

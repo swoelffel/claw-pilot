@@ -971,6 +971,9 @@ export class InstanceSettings extends LitElement {
                   <cp-instance-channels
                     .instanceSlug=${this.slug}
                     .config=${this._config}
+                    @channels-config-saved=${(e: CustomEvent<InstanceConfig>) => {
+                      this._config = e.detail;
+                    }}
                   ></cp-instance-channels>
                 </div>
               `
