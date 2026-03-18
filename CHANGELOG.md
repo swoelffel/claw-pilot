@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.4] — 2026-03-18
+
+### Fixed
+
+- **Channels — Telegram** : le composant affichait "Telegram n'est pas configuré" même avec un bot configuré. Cause : `connectedCallback()` appelait `_syncFromConfig()` avant que Lit ne passe les props — `this.config` était `null` à ce moment. Corrigé en retirant l'appel dans `connectedCallback()` (l'initialisation se fait maintenant uniquement via `updated()`, après le premier rendu avec les props).
+
+---
+
 ## [0.41.3] — 2026-03-18
 
 ### Fixed

@@ -427,7 +427,8 @@ export class InstanceChannels extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    this._syncFromConfig();
+    // Note: config prop is not yet set at this point — _syncFromConfig() is called
+    // by updated() after the first render with props, so no call here.
   }
 
   override disconnectedCallback(): void {
