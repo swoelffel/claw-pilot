@@ -414,7 +414,7 @@ export class InstanceCard extends LitElement {
           class="perm-pill"
           @click=${(e: Event) => {
             e.stopPropagation();
-            this._navigate("instance-settings", { section: "runtime" });
+            this._navigate("pilot");
           }}
         >
           ⚠ PERM
@@ -447,6 +447,21 @@ export class InstanceCard extends LitElement {
 
         <div class="menu-separator"></div>
 
+        ${isRunning
+          ? html`
+              <button
+                class="menu-item"
+                @click=${(e: Event) => {
+                  e.stopPropagation();
+                  this._menuOpen = false;
+                  this._navigate("pilot");
+                }}
+              >
+                <span class="menu-icon">⚡</span>
+                Pilot
+              </button>
+            `
+          : nothing}
         ${isRunning || (inst.agentCount ?? 0) > 0
           ? html`
               <button

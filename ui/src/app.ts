@@ -21,6 +21,7 @@ import "./components/agents-builder.js";
 import "./components/blueprints-view.js";
 import "./components/blueprint-builder.js";
 import "./components/instance-settings.js";
+import "./components/runtime-pilot.js";
 import "./components/self-update-banner.js";
 import "./components/login-view.js";
 import "./components/permission-request-overlay.js";
@@ -586,6 +587,8 @@ export class CpApp extends LitElement {
         slug: detail.slug,
         ...(detail.section !== undefined && { initialSection: detail.section }),
       };
+    } else if (detail.view === "pilot" && detail.slug) {
+      this._route = { view: "pilot", slug: detail.slug };
     } else if (detail.view === "agents-builder" && detail.slug) {
       this._route = { view: "agents-builder", slug: detail.slug };
     } else if (detail.view === "blueprints") {
@@ -668,6 +671,37 @@ export class CpApp extends LitElement {
         ></cp-instance-settings>
       `;
     }
+    if (this._route.view === "pilot") {
+      const pilotSlug = this._route.slug;
+      return html`
+        <div
+          style="display:flex;flex-direction:column;height:calc(100vh - 56px - 48px);overflow:hidden;"
+        >
+          <div
+            style="display:flex;align-items:center;gap:12px;padding:0 24px;height:48px;background:var(--bg-surface);border-bottom:1px solid var(--bg-border);flex-shrink:0;"
+          >
+            <button
+              style="background:none;border:none;color:var(--text-muted);font-size:13px;cursor:pointer;padding:4px 0;font-family:inherit;display:flex;align-items:center;gap:6px;transition:color 0.15s;"
+              @click=${() => {
+                this._route = { view: "cluster" };
+              }}
+            >
+              ← ${msg("Back", { id: "settings-back" })}
+            </button>
+            <span style="color:var(--bg-border);font-size:14px;user-select:none;">/</span>
+            <span
+              style="font-size:13px;font-weight:600;color:var(--text-secondary);font-family:var(--font-mono);"
+              >${pilotSlug}</span
+            >
+            <span style="color:var(--bg-border);font-size:14px;user-select:none;">/</span>
+            <span style="font-size:13px;font-weight:600;color:var(--text-primary);">Pilot</span>
+          </div>
+          <div style="flex:1;overflow:hidden;">
+            <cp-runtime-pilot .slug=${pilotSlug}></cp-runtime-pilot>
+          </div>
+        </div>
+      `;
+    }
     return html``;
   }
 
@@ -695,7 +729,8 @@ export class CpApp extends LitElement {
             <button
               class="nav-tab ${this._route.view === "cluster" ||
               this._route.view === "agents-builder" ||
-              this._route.view === "instance-settings"
+              this._route.view === "instance-settings" ||
+              this._route.view === "pilot"
                 ? "active"
                 : ""}"
               @click=${() => {

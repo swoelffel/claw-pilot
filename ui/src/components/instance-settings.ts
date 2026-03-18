@@ -22,7 +22,6 @@ import { tokenStyles } from "../styles/tokens.js";
 import { badgeStyles, buttonStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
 import { instanceSettingsStyles } from "../styles/instance-settings.styles.js";
 import "./agent-detail-panel.js";
-import "./runtime-pilot.js";
 import "./instance-mcp.js";
 import "./instance-permissions.js";
 import "./instance-config.js";
@@ -358,7 +357,6 @@ export class InstanceSettings extends LitElement {
     const sections: Array<{ id: SidebarSection; label: string; badge?: number }> = [
       { id: "general", label: msg("General", { id: "settings-general" }) },
       { id: "agents", label: msg("Agents", { id: "settings-agents" }) },
-      { id: "runtime", label: msg("Pilot", { id: "settings-pilot" }) },
       { id: "channels" as const, label: msg("Channels", { id: "settings-channels" }) },
       {
         id: "mcp" as const,
@@ -662,39 +660,34 @@ export class InstanceSettings extends LitElement {
     `;
   }
 
-  private _renderRuntimeSection() {
-    return html`
-      <div class="section pilot-section">
-        <div
-          style="height: 100%; border: 1px solid var(--bg-border); border-radius: var(--radius-md); overflow: hidden;"
-        >
-          <cp-runtime-pilot .slug=${this.slug}></cp-runtime-pilot>
-        </div>
-      </div>
-    `;
-  }
-
   private _renderGeneralSection() {
     const c = this._config!;
     const currentDefaultModel = this._getDirty("general.defaultModel", c.general.defaultModel);
 
-    // Build model options grouped by provider (from configured providers + added ones)
+    // Build configured provider list (existing minus removed, plus newly added)
     const existingProviders = c.providers.filter((p) => !this._removedProviders.includes(p.id));
     const addedProviderIds = this._addedProviders.map((p) => p.id);
     const allConfiguredProviderIds = [...existingProviders.map((p) => p.id), ...addedProviderIds];
 
-    // Get models per provider from catalog
-    const modelGroups = allConfiguredProviderIds
-      .map((id) => {
-        const catalogEntry = this._providerCatalog.find((p) => p.id === id);
-        if (!catalogEntry || catalogEntry.models.length === 0) return null;
-        return { id, label: catalogEntry.label, models: catalogEntry.models };
-      })
-      .filter((g): g is { id: string; label: string; models: string[] } => g !== null);
+    // Determine the "selected provider" for the provider selector:
+    // - either the provider of the current defaultModel (if it's configured)
+    // - or the first configured provider
+    const currentProviderId = currentDefaultModel.split("/")[0] ?? "";
+    const selectedProviderId = allConfiguredProviderIds.includes(currentProviderId)
+      ? currentProviderId
+      : (allConfiguredProviderIds[0] ?? "");
 
-    // Check if current default model is in any group
-    const allModels = modelGroups.flatMap((g) => g.models);
-    const currentModelInList = allModels.includes(currentDefaultModel);
+    // Get models for the selected provider from the catalog
+    const selectedProviderCatalog = this._providerCatalog.find((p) => p.id === selectedProviderId);
+    const modelsForSelectedProvider = selectedProviderCatalog?.models ?? [];
+
+    // Check if the current model belongs to the selected provider's catalog
+    const currentModelInList = modelsForSelectedProvider.includes(currentDefaultModel);
+
+    // The model select value: either the dirty model or the current configured model
+    const modelSelectValue = currentDefaultModel;
+
+    const isProviderDirty = this._isDirty("general.defaultModel");
 
     return html`
       <div class="section">
@@ -716,32 +709,56 @@ export class InstanceSettings extends LitElement {
             <label class="field-label"> ${msg("Port", { id: "settings-port" })} </label>
             <div class="field-readonly">:${c.general.port}</div>
           </div>
+
+          ${allConfiguredProviderIds.length > 1
+            ? html`
+                <div class="field full-width">
+                  <label class="field-label">
+                    ${msg("Default provider", { id: "settings-default-provider" })}
+                  </label>
+                  <select
+                    class="field-input ${isProviderDirty ? "changed" : ""}"
+                    @change=${(e: Event) => {
+                      const newProviderId = (e.target as HTMLSelectElement).value;
+                      const catalog = this._providerCatalog.find((p) => p.id === newProviderId);
+                      // Pick the first model of the new provider (or keep current if same provider)
+                      const firstModel =
+                        catalog?.models[0] ?? catalog?.defaultModel ?? newProviderId;
+                      this._setDirty("general.defaultModel", firstModel);
+                    }}
+                  >
+                    ${allConfiguredProviderIds.map((id) => {
+                      const cat = this._providerCatalog.find((p) => p.id === id);
+                      const label = cat?.label ?? id;
+                      return html`
+                        <option value=${id} ?selected=${id === selectedProviderId}>${label}</option>
+                      `;
+                    })}
+                  </select>
+                </div>
+              `
+            : nothing}
+
           <div class="field full-width">
             <label class="field-label"
               >${msg("Default model", { id: "settings-default-model" })}</label
             >
             <select
-              class="field-input ${this._isDirty("general.defaultModel") ? "changed" : ""}"
+              class="field-input ${isProviderDirty ? "changed" : ""}"
               @change=${(e: Event) =>
                 this._setDirty("general.defaultModel", (e.target as HTMLSelectElement).value)}
             >
-              ${modelGroups.length > 0
-                ? modelGroups.map(
-                    (group) => html`
-                      <optgroup label=${group.label}>
-                        ${group.models.map(
-                          (m) => html`
-                            <option value=${m} ?selected=${m === currentDefaultModel}>${m}</option>
-                          `,
-                        )}
-                      </optgroup>
+              ${modelsForSelectedProvider.length > 0
+                ? modelsForSelectedProvider.map(
+                    (m) => html`
+                      <option value=${m} ?selected=${m === modelSelectValue}>${m}</option>
                     `,
                   )
-                : nothing}
-              ${!currentModelInList
-                ? html`
-                    <option value=${currentDefaultModel} selected>${currentDefaultModel}</option>
-                  `
+                : html`<option value="" disabled>
+                    ${msg("No models available", { id: "settings-no-models" })}
+                  </option>`}
+              ${modelsForSelectedProvider.length > 0 && !currentModelInList
+                ? html` <option value=${modelSelectValue} selected>${modelSelectValue}</option> `
                 : nothing}
             </select>
           </div>
@@ -948,7 +965,6 @@ export class InstanceSettings extends LitElement {
             : nothing}
           ${this._activeSection === "general" ? this._renderGeneralSection() : nothing}
           ${this._activeSection === "agents" ? this._renderAgentsSection() : nothing}
-          ${this._activeSection === "runtime" ? this._renderRuntimeSection() : nothing}
           ${this._activeSection === "channels"
             ? html`
                 <div class="section">

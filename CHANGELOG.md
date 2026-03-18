@@ -6,6 +6,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.6] — 2026-03-18
+
+### Changed
+
+- **Instance card** : ajout d'un bouton **"Pilot"** dans le menu popover de la carte instance (visible uniquement si l'instance est `running`), entre Start/Stop et Agents. Ouvre une vue standalone plein écran `/instances/:slug/pilot`.
+- **Vue Pilot** : nouvelle route dédiée `#/instances/:slug/pilot` avec header de navigation (← Back / slug / Pilot) et `cp-runtime-pilot` en plein écran. Plus de barre sidebar Settings autour.
+- **Settings — sidebar** : suppression de l'entrée "Pilot" de la sidebar. Le Pilot n'est plus une section des Settings.
+- **Badge ⚠ PERM** : navigue maintenant directement vers la vue Pilot (au lieu de Settings section runtime).
+
+---
+
+## [0.41.5] — 2026-03-18
+
+### Changed
+
+- **Settings — General** : ajout d'un sélecteur "Default provider" (visible quand plusieurs providers sont configurés sur l'instance). Changer de provider met à jour automatiquement le modèle par défaut vers le premier modèle de ce provider.
+- **Settings — General** : le sélecteur "Default model" est maintenant filtré par provider sélectionné (au lieu de montrer tous les modèles de tous les providers configurés en un seul groupe). Les modèles des providers non configurés ne sont pas proposés.
+- **Settings — Config / Models** : le champ "Internal model" est maintenant un `<select>` groupé par provider (identique au sélecteur de modèle dans General) quand des providers sont configurés. Inclut une option "— same as default model —" pour utiliser le modèle principal.
+
+---
+
 ## [0.41.4] — 2026-03-18
 
 ### Fixed
