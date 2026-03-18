@@ -313,7 +313,11 @@
     "spoofable",
     "secretkey",
     "cret",
-    "tkey"
+    "tkey",
+    "delegatable",
+    "favourite",
+    "dismissé",
+    "decroche"
   ],
   "ignorePaths": [
     "dist/",
