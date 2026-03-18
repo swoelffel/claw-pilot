@@ -53,6 +53,8 @@ export class CpApp extends LitElement {
 
       header {
         display: flex;
+        width: 100%;
+        box-sizing: border-box;
         align-items: center;
         justify-content: space-between;
         padding: 0 16px;
@@ -118,12 +120,17 @@ export class CpApp extends LitElement {
       }
 
       main {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
         min-height: calc(100vh - 56px - 48px);
         overflow-x: hidden;
       }
 
       footer {
         display: flex;
+        width: 100%;
+        box-sizing: border-box;
         align-items: center;
         justify-content: space-between;
         padding: 8px 16px;

@@ -13,10 +13,13 @@ export class CpLoginView extends LitElement {
     css`
       :host {
         display: flex;
+        width: 100%;
+        box-sizing: border-box;
         align-items: center;
         justify-content: center;
         min-height: 100vh;
         background: var(--bg-base);
+        overflow-x: hidden;
       }
 
       .card {

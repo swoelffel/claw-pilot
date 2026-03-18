@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.11] — 2026-03-18
+
+### Fixed
+
+- **Scroll horizontal persistant** : `header`, `footer`, `main` et `cp-login-view` manquaient de `width: 100%; box-sizing: border-box` — ils débordaient hors du host malgré `overflow-x: hidden` sur `:host`. Corrigé sur tous les éléments racines du shadow DOM de `cp-app` et sur `cp-login-view`.
+
+---
+
 ## [0.41.10] — 2026-03-18
 
 ### Fixed
