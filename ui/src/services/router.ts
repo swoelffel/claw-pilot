@@ -12,6 +12,8 @@ export type Route =
   | { view: "agents-builder"; slug: string }
   | { view: "blueprints" }
   | { view: "blueprint-builder"; blueprintId: number }
+  | { view: "agent-templates" }
+  | { view: "agent-template-detail"; templateId: string }
   | { view: "instance-settings"; slug: string; initialSection?: SidebarSection }
   | { view: "pilot"; slug: string };
 
@@ -30,6 +32,10 @@ export function routeToHash(route: Route): string {
       return "/blueprints";
     case "blueprint-builder":
       return `/blueprints/${route.blueprintId}/builder`;
+    case "agent-templates":
+      return "/agent-templates";
+    case "agent-template-detail":
+      return `/agent-templates/${route.templateId}`;
   }
 }
 
@@ -57,6 +63,13 @@ export function hashToRoute(hash: string): Route {
 
   // /blueprints
   if (path === "blueprints") return { view: "blueprints" };
+
+  // /agent-templates/:id
+  const atDetailMatch = path.match(/^agent-templates\/([a-zA-Z0-9_-]+)$/);
+  if (atDetailMatch) return { view: "agent-template-detail", templateId: atDetailMatch[1]! };
+
+  // /agent-templates
+  if (path === "agent-templates") return { view: "agent-templates" };
 
   return { view: "cluster" };
 }

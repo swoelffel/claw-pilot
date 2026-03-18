@@ -1790,6 +1790,38 @@ export class AgentDetailPanel extends LitElement {
                 </button>
               `
             : nothing}
+          ${this.context?.kind === "instance"
+            ? html`
+                <button
+                  class="panel-btn"
+                  aria-label=${msg("Save as template", { id: "adp-btn-save-template" })}
+                  title=${msg("Save as template", { id: "adp-btn-save-template" })}
+                  @click=${() =>
+                    this.dispatchEvent(
+                      new CustomEvent("agent-save-as-template", {
+                        detail: { agentId: a.agent_id, name: a.name },
+                        bubbles: true,
+                        composed: true,
+                      }),
+                    )}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
+                </button>
+              `
+            : nothing}
           ${!a.is_default
             ? html`
                 <button

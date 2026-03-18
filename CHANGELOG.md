@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.28] — 2026-03-18
+
+### Added
+
+- **Agent blueprints — dashboard UI** (Niveau 2, Phase 2) : interface complète pour la gestion des templates d'agent.
+  - **Page "Templates"** : galerie des agent blueprints avec cards (nom, description, catégorie, nombre de fichiers, date). Actions : clone, suppression, ouverture du détail.
+  - **Vue détail** : métadonnées du template + éditeur de fichiers workspace (onglets par fichier, textarea avec sauvegarde).
+  - **Navigation** : onglet "Templates" dans la barre de nav (hash routes `#/agent-templates` et `#/agent-templates/:id`).
+  - **"Save as template"** : bouton dans le detail panel d'un agent (contexte instance) pour créer un template depuis un agent existant.
+  - **Types + API** : `AgentBlueprintInfo`, `AgentBlueprintFileContent` + 10 fonctions API (`fetchAgentBlueprints`, `createAgentBlueprint`, `cloneAgentBlueprint`, `saveAgentAsBlueprint`, `createAgentFromTemplate`, etc.).
+  - **i18n** : traductions du nav tab et du bouton "Save as template" dans les 6 langues.
+
+---
+
 ## [0.41.27] — 2026-03-18
 
 ### Added

@@ -184,6 +184,10 @@ export const templates = {
   "adf-confirm-keep": "Continuar editando",
   "adf-confirm-discard-ok": "Descartar",
 
+  // agent templates (v0.41.28)
+  "nav-agent-templates": "Modelos",
+  "adp-btn-save-template": "Salvar como modelo",
+
   // blueprints (v0.3.0)
   "nav-instances": "Instâncias",
   "nav-blueprints": "Blueprints",

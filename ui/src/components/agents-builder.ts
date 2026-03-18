@@ -3,7 +3,13 @@ import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo, BuilderData } from "../types.js";
-import { syncAgents, fetchBuilderData, updateAgentPosition, exportInstanceTeam } from "../api.js";
+import {
+  syncAgents,
+  fetchBuilderData,
+  updateAgentPosition,
+  exportInstanceTeam,
+  saveAgentAsBlueprint,
+} from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import "./delete-agent-dialog.js";
 import { tokenStyles } from "../styles/tokens.js";
@@ -364,6 +370,26 @@ export class AgentsBuilder extends LitElement {
     void this._syncAndLoad();
   }
 
+  private async _saveAsTemplate(agentId: string, name: string): Promise<void> {
+    try {
+      await saveAgentAsBlueprint({
+        instanceSlug: this.slug,
+        agentId,
+        name: `${name} (template)`,
+      });
+      // Navigate to the agent templates page to see the new template
+      this.dispatchEvent(
+        new CustomEvent("navigate", {
+          detail: { view: "agent-templates" },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    } catch (err) {
+      this._error = userMessage(err);
+    }
+  }
+
   private _onDeleteRequested(agentId: string): void {
     const agent = this._data?.agents.find((a) => a.agent_id === agentId) ?? null;
     if (agent && !agent.is_default) {
@@ -598,6 +624,8 @@ export class AgentsBuilder extends LitElement {
                 }}
                 @agent-delete-requested=${(e: CustomEvent<{ agentId: string }>) =>
                   this._onDeleteRequested(e.detail.agentId)}
+                @agent-save-as-template=${(e: CustomEvent<{ agentId: string; name: string }>) =>
+                  void this._saveAsTemplate(e.detail.agentId, e.detail.name)}
                 @spawn-links-updated=${() => {
                   this._pendingAdditions = new Map();
                   void this._syncAndLoad();

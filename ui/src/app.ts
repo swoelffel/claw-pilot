@@ -20,6 +20,8 @@ import "./components/cluster-view.js";
 import "./components/agents-builder.js";
 import "./components/blueprints-view.js";
 import "./components/blueprint-builder.js";
+import "./components/agent-templates-view.js";
+import "./components/agent-template-detail.js";
 import "./components/instance-settings.js";
 import "./components/runtime-pilot.js";
 import "./components/self-update-banner.js";
@@ -420,6 +422,7 @@ export class CpApp extends LitElement {
   @state() private _route: Route = { view: "cluster" };
   @state() private _instances: InstanceInfo[] = [];
   @state() private _blueprintCount: number | null = null;
+  @state() private _agentTemplateCount: number | null = null;
   @state() private _wsConnected = false;
   @state() private _locale: SupportedLocale = getLocale() as SupportedLocale;
   @state() private _langOpen = false;
@@ -647,6 +650,7 @@ export class CpApp extends LitElement {
         slug?: string | null;
         view?: string;
         blueprintId?: number;
+        templateId?: string;
         section?: import("./types.js").SidebarSection;
       }>
     ).detail;
@@ -664,6 +668,10 @@ export class CpApp extends LitElement {
       this._route = { view: "blueprints" };
     } else if (detail.view === "blueprint-builder" && detail.blueprintId !== undefined) {
       this._route = { view: "blueprint-builder", blueprintId: detail.blueprintId };
+    } else if (detail.view === "agent-templates") {
+      this._route = { view: "agent-templates" };
+    } else if (detail.view === "agent-template-detail" && detail.templateId) {
+      this._route = { view: "agent-template-detail", templateId: detail.templateId };
     } else {
       this._route = { view: "cluster" };
     }
@@ -729,6 +737,24 @@ export class CpApp extends LitElement {
           .blueprintId=${this._route.blueprintId}
           @navigate=${this._navigate}
         ></cp-blueprint-builder>
+      `;
+    }
+    if (this._route.view === "agent-templates") {
+      return html`
+        <cp-agent-templates-view
+          @navigate=${this._navigate}
+          @agent-templates-loaded=${(e: Event) => {
+            this._agentTemplateCount = (e as CustomEvent<{ count: number }>).detail.count;
+          }}
+        ></cp-agent-templates-view>
+      `;
+    }
+    if (this._route.view === "agent-template-detail") {
+      return html`
+        <cp-agent-template-detail
+          .templateId=${this._route.templateId}
+          @navigate=${this._navigate}
+        ></cp-agent-template-detail>
       `;
     }
     if (this._route.view === "instance-settings") {
@@ -827,6 +853,20 @@ export class CpApp extends LitElement {
               ${msg("Blueprints", { id: "nav-blueprints" })}${this._blueprintCount !== null &&
               this._blueprintCount > 0
                 ? html`<span class="nav-badge">${this._blueprintCount}</span>`
+                : ""}
+            </button>
+            <button
+              class="nav-tab ${this._route.view === "agent-templates" ||
+              this._route.view === "agent-template-detail"
+                ? "active"
+                : ""}"
+              @click=${() => {
+                this._route = { view: "agent-templates" };
+              }}
+            >
+              ${msg("Templates", { id: "nav-agent-templates" })}${this._agentTemplateCount !==
+                null && this._agentTemplateCount > 0
+                ? html`<span class="nav-badge">${this._agentTemplateCount}</span>`
                 : ""}
             </button>
           </nav>

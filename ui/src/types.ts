@@ -527,3 +527,35 @@ export interface PilotBusEvent {
   payload: Record<string, unknown>;
   timestamp: string;
 }
+
+// ---------------------------------------------------------------------------
+// Agent Blueprints (standalone reusable agent templates)
+// ---------------------------------------------------------------------------
+
+export interface AgentBlueprintInfo {
+  id: string;
+  name: string;
+  description: string | null;
+  category: "user" | "tool" | "system";
+  config_json: string;
+  icon: string | null;
+  tags: string | null;
+  created_at: string;
+  updated_at: string;
+  file_count?: number;
+  files?: AgentBlueprintFileSummary[];
+}
+
+export interface AgentBlueprintFileSummary {
+  filename: string;
+  content_hash: string | null;
+  size: number;
+  updated_at: string | null;
+}
+
+export interface AgentBlueprintFileContent {
+  filename: string;
+  content: string;
+  content_hash: string | null;
+  updated_at: string | null;
+}

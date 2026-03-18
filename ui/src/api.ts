@@ -23,6 +23,8 @@ import type {
   RuntimeChatResponse,
   PilotMessage,
   SessionContext,
+  AgentBlueprintInfo,
+  AgentBlueprintFileContent,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 import { getToken } from "./services/auth-state.js";
@@ -551,4 +553,96 @@ export async function fetchSessionContext(
   sessionId: string,
 ): Promise<SessionContext> {
   return apiFetch<SessionContext>(`/instances/${slug}/runtime/sessions/${sessionId}/context`);
+}
+
+// ---------------------------------------------------------------------------
+// Agent Blueprints (standalone reusable agent templates)
+// ---------------------------------------------------------------------------
+
+export async function fetchAgentBlueprints(): Promise<AgentBlueprintInfo[]> {
+  return apiFetch<AgentBlueprintInfo[]>("/agent-blueprints");
+}
+
+export async function fetchAgentBlueprint(id: string): Promise<AgentBlueprintInfo> {
+  return apiFetch<AgentBlueprintInfo>(`/agent-blueprints/${id}`);
+}
+
+export async function createAgentBlueprint(data: {
+  name: string;
+  description?: string;
+  seedFiles?: boolean;
+}): Promise<AgentBlueprintInfo> {
+  return apiFetch<AgentBlueprintInfo>("/agent-blueprints", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateAgentBlueprint(
+  id: string,
+  data: Partial<{ name: string; description: string | null; configJson: string }>,
+): Promise<AgentBlueprintInfo> {
+  return apiFetch<AgentBlueprintInfo>(`/agent-blueprints/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteAgentBlueprint(id: string): Promise<void> {
+  await apiFetch(`/agent-blueprints/${id}`, { method: "DELETE" });
+}
+
+export async function cloneAgentBlueprint(id: string, name?: string): Promise<AgentBlueprintInfo> {
+  return apiFetch<AgentBlueprintInfo>(`/agent-blueprints/${id}/clone`, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function fetchAgentBlueprintFile(
+  blueprintId: string,
+  filename: string,
+): Promise<AgentBlueprintFileContent> {
+  return apiFetch<AgentBlueprintFileContent>(
+    `/agent-blueprints/${blueprintId}/files/${encodeURIComponent(filename)}`,
+  );
+}
+
+export async function updateAgentBlueprintFile(
+  blueprintId: string,
+  filename: string,
+  content: string,
+): Promise<AgentBlueprintFileContent> {
+  return apiFetch<AgentBlueprintFileContent>(
+    `/agent-blueprints/${blueprintId}/files/${encodeURIComponent(filename)}`,
+    { method: "PUT", body: JSON.stringify({ content }) },
+  );
+}
+
+export async function saveAgentAsBlueprint(data: {
+  instanceSlug: string;
+  agentId: string;
+  name: string;
+  description?: string;
+}): Promise<AgentBlueprintInfo> {
+  return apiFetch<AgentBlueprintInfo>("/agent-blueprints/from-agent", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function createAgentFromTemplate(
+  slug: string,
+  data: {
+    blueprintId: string;
+    agentSlug: string;
+    name?: string;
+    provider: string;
+    model: string;
+  },
+): Promise<BuilderData> {
+  return apiFetch<BuilderData>(`/instances/${slug}/agents/from-template`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
