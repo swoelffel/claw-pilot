@@ -137,7 +137,9 @@ export class PilotHeader extends LitElement {
         align-items: center;
         gap: 10px;
         margin-left: auto;
-        flex-shrink: 0;
+        flex-shrink: 1;
+        min-width: 0;
+        overflow: hidden;
       }
 
       .stat {
@@ -174,6 +176,21 @@ export class PilotHeader extends LitElement {
         background: var(--accent-subtle);
         color: var(--accent);
         border-color: var(--accent-border);
+      }
+
+      @media (max-width: 640px) {
+        .header {
+          padding: 6px 10px;
+          gap: 6px;
+        }
+
+        .model-name {
+          max-width: 100px;
+        }
+
+        .stat {
+          font-size: 10px;
+        }
       }
     `,
   ];

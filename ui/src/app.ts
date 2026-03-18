@@ -59,12 +59,15 @@ export class CpApp extends LitElement {
         position: sticky;
         top: 0;
         z-index: 100;
+        gap: 8px;
       }
 
       .header-left {
         display: flex;
         align-items: center;
         gap: 14px;
+        min-width: 0;
+        flex: 1;
       }
 
       .logo {
@@ -113,14 +116,15 @@ export class CpApp extends LitElement {
 
       main {
         min-height: calc(100vh - 56px - 48px);
+        overflow-x: hidden;
       }
 
       footer {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0 24px;
-        height: 48px;
+        padding: 8px 24px;
+        min-height: 48px;
         background: var(--bg-surface);
         border-top: 1px solid var(--bg-border);
         font-size: 12px;
@@ -270,6 +274,7 @@ export class CpApp extends LitElement {
         align-items: center;
         gap: 2px;
         margin-left: 8px;
+        flex-shrink: 0;
       }
 
       .nav-tab {
@@ -327,6 +332,7 @@ export class CpApp extends LitElement {
         cursor: pointer;
         padding: 4px 10px;
         font-family: inherit;
+        flex-shrink: 0;
         transition:
           border-color 0.15s,
           color 0.15s;
@@ -335,6 +341,53 @@ export class CpApp extends LitElement {
       .btn-logout:hover {
         border-color: var(--state-error);
         color: var(--state-error);
+      }
+
+      /* ── Responsive ───────────────────────────────────────────────────────── */
+
+      @media (max-width: 640px) {
+        header {
+          height: auto;
+          min-height: 56px;
+          padding: 8px 16px;
+          flex-wrap: wrap;
+          row-gap: 4px;
+        }
+
+        .header-left {
+          gap: 8px;
+        }
+
+        .nav-tabs {
+          margin-left: 0;
+        }
+
+        .nav-tab {
+          height: 40px;
+          padding: 0 8px;
+          font-size: 12px;
+        }
+
+        .logo {
+          font-size: 15px;
+        }
+
+        .ws-indicator {
+          display: none;
+        }
+
+        main {
+          min-height: calc(100vh - 104px - 48px);
+        }
+
+        footer {
+          padding: 8px 16px;
+        }
+
+        .footer-left,
+        .footer-right {
+          gap: 10px;
+        }
       }
 
       .auth-checking {
@@ -678,23 +731,30 @@ export class CpApp extends LitElement {
           style="display:flex;flex-direction:column;height:calc(100vh - 56px - 48px);overflow:hidden;"
         >
           <div
-            style="display:flex;align-items:center;gap:12px;padding:0 24px;height:48px;background:var(--bg-surface);border-bottom:1px solid var(--bg-border);flex-shrink:0;"
+            style="display:flex;align-items:center;gap:8px;padding:0 16px;min-height:48px;flex-wrap:wrap;background:var(--bg-surface);border-bottom:1px solid var(--bg-border);flex-shrink:0;"
           >
             <button
-              style="background:none;border:none;color:var(--text-muted);font-size:13px;cursor:pointer;padding:4px 0;font-family:inherit;display:flex;align-items:center;gap:6px;transition:color 0.15s;"
+              style="background:none;border:none;color:var(--text-muted);font-size:13px;cursor:pointer;padding:4px 0;font-family:inherit;display:flex;align-items:center;gap:6px;transition:color 0.15s;white-space:nowrap;flex-shrink:0;"
               @click=${() => {
                 this._route = { view: "cluster" };
               }}
             >
               ← ${msg("Back", { id: "settings-back" })}
             </button>
-            <span style="color:var(--bg-border);font-size:14px;user-select:none;">/</span>
+            <span style="color:var(--bg-border);font-size:14px;user-select:none;flex-shrink:0;"
+              >/</span
+            >
             <span
-              style="font-size:13px;font-weight:600;color:var(--text-secondary);font-family:var(--font-mono);"
+              style="font-size:13px;font-weight:600;color:var(--text-secondary);font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;"
+              title="${pilotSlug}"
               >${pilotSlug}</span
             >
-            <span style="color:var(--bg-border);font-size:14px;user-select:none;">/</span>
-            <span style="font-size:13px;font-weight:600;color:var(--text-primary);">Pilot</span>
+            <span style="color:var(--bg-border);font-size:14px;user-select:none;flex-shrink:0;"
+              >/</span
+            >
+            <span style="font-size:13px;font-weight:600;color:var(--text-primary);flex-shrink:0;"
+              >Pilot</span
+            >
           </div>
           <div style="flex:1;overflow:hidden;">
             <cp-runtime-pilot .slug=${pilotSlug}></cp-runtime-pilot>

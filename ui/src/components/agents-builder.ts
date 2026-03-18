@@ -40,6 +40,19 @@ export class AgentsBuilder extends LitElement {
         background: var(--bg-surface);
         border-bottom: 1px solid var(--bg-border);
         flex-shrink: 0;
+        flex-wrap: wrap;
+      }
+
+      @media (max-width: 640px) {
+        .builder-header {
+          padding: 10px 14px;
+          gap: 8px;
+        }
+
+        .btn-add-agent {
+          margin-left: 0;
+          width: 100%;
+        }
       }
 
       .btn-back {

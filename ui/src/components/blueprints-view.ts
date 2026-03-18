@@ -29,6 +29,23 @@ export class BlueprintsView extends LitElement {
         align-items: center;
         justify-content: space-between;
         margin-bottom: 20px;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      @media (max-width: 640px) {
+        :host {
+          padding: 16px;
+        }
+
+        .section-header {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .section-header button {
+          width: 100%;
+        }
       }
 
       .grid {

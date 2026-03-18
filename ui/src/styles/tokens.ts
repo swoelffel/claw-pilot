@@ -42,6 +42,9 @@ export const tokenStyles = css`
 
     --focus-ring: 0 0 0 2px rgba(79, 110, 247, 0.5);
 
+    /* Responsive breakpoints (for reference — used in @media queries) */
+    --bp-mobile: 640px;
+
     font-family: var(--font-ui);
   }
 

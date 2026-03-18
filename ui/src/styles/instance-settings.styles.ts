@@ -643,7 +643,7 @@ export const instanceSettingsStyles = css`
     position: fixed;
     top: 0;
     right: 0;
-    width: 420px;
+    width: min(420px, 100vw);
     height: 100vh;
     z-index: 101;
     box-shadow: -4px 0 24px rgba(0, 0, 0, 0.2);
@@ -652,6 +652,47 @@ export const instanceSettingsStyles = css`
 
   .agent-panel-drawer.expanded {
     width: 100vw;
+  }
+
+  /* ── Responsive ─────────────────────────────────────────────────────────── */
+
+  @media (max-width: 640px) {
+    .settings-layout {
+      flex-direction: column;
+      padding: 16px;
+      gap: 0;
+    }
+
+    .sidebar {
+      flex: none;
+      position: static;
+      width: 100%;
+      margin-bottom: 16px;
+    }
+
+    .sidebar-nav {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .sidebar-item {
+      width: auto;
+      padding: 6px 12px;
+      font-size: 12px;
+      border: 1px solid var(--bg-border);
+      border-radius: 20px;
+    }
+
+    .field-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .settings-header {
+      padding: 12px 16px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
   }
 
   .agent-panel-drawer cp-agent-detail-panel {

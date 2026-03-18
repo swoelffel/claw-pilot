@@ -6,6 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.8] — 2026-03-18
+
+### Changed
+
+- **UI responsive** : l'application s'adapte désormais aux fenêtres étroites (breakpoint 640 px).
+  - **Header** : `flex-wrap` sur les petits écrans, hauteur auto, indicateur WS masqué sous 640 px.
+  - **Footer** : hauteur fixe supprimée (`min-height` à la place) — le contenu peut passer sur 2 lignes sans être coupé.
+  - **Cluster / Blueprints** : le `.section-header` (titre + bouton "+ New Instance" / "+ New Blueprint") passe en colonne sous 640 px — le bouton n'est plus hors écran.
+  - **Settings** : la sidebar (180 px fixe) se transforme en barre de tabs horizontale sous 640 px. Le `.field-grid` passe de 2 colonnes à 1 colonne. Le drawer d'agent utilise `min(420px, 100vw)`.
+  - **Pilot header** : les stats de tokens/coût peuvent se réduire (`flex-shrink: 1`) sans déborder.
+  - **Agents Builder / Blueprint Builder** : le header d'outils passe en `flex-wrap` et le bouton "+ Add Agent" occupe toute la largeur sous 640 px.
+  - **Pilot breadcrumb** : le slug est tronqué avec `text-overflow: ellipsis` si trop long.
+
+---
+
 ## [0.41.7] — 2026-03-18
 
 ### Fixed
