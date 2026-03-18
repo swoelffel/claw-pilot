@@ -416,21 +416,21 @@ export function createDefaultRuntimeConfig(options: {
     defaultModel: options.defaultModel ?? "anthropic/claude-sonnet-4-5",
     agents: [
       {
-        id: "main",
-        name: "Main",
+        id: "pilot",
+        name: "Pilot",
         model: options.defaultModel ?? "anthropic/claude-sonnet-4-5",
         isDefault: true,
         toolProfile: "full",
         maxSteps: 20,
         allowSubAgents: true,
         // Default permissions: allow all tools, ask for .env reads, allow question tool.
-        // Matches the built-in BUILD_AGENT ruleset so Main has the same capabilities.
+        // Matches the built-in BUILD_AGENT ruleset so Pilot has the same capabilities.
         permissions: [
           ...DEFAULT_RULESET,
           { permission: "question", pattern: "**", action: "allow" as const },
         ],
         temperature: undefined,
-        // Main is always permanent — it is the default user-facing agent.
+        // Pilot is always permanent — it is the default user-facing agent.
         // Without this, mode "all" → kind "primary" → persistence "permanent" by
         // inference, but being explicit avoids any ambiguity.
         persistence: "permanent" as const,

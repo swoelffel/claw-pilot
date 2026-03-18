@@ -54,19 +54,19 @@ export async function promptAgents(): Promise<{
     message: "How do you want to configure agents?",
     choices: [
       { value: "custom", name: "Custom (define agents one by one)" },
-      { value: "minimal", name: "Minimal (main agent only)" },
+      { value: "minimal", name: "Minimal (pilot agent only)" },
     ],
   });
 
   if (mode === "minimal") {
     return {
       mode,
-      agents: [{ id: "main", name: "Main", isDefault: true }],
+      agents: [{ id: "pilot", name: "Pilot", isDefault: true }],
     };
   }
 
   // Custom mode: loop to add agents
-  const agents: AgentDefinition[] = [{ id: "main", name: "Main", isDefault: true }];
+  const agents: AgentDefinition[] = [{ id: "pilot", name: "Pilot", isDefault: true }];
   let addMore = true;
 
   while (addMore) {

@@ -40,13 +40,13 @@ export class BlueprintDeployer {
       const workspaceDir = path.join(stateDir, "workspaces", bpAgent.agent_id);
 
       // Create workspace directory only for secondary agents
-      // (main workspace already exists, created by Provisioner step 5)
+      // (pilot workspace already exists, created by Provisioner step 5)
       if (!isDefault) {
         await this.conn.mkdir(workspaceDir);
       }
 
       // Read files from DB and write to disk
-      // For main: overwrites the generic templates with blueprint content
+      // For pilot: overwrites the generic templates with blueprint content
       const files = this.registry.listAgentFiles(bpAgent.id);
       for (const file of files) {
         if (file.content) {

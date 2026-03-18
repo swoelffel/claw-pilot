@@ -523,7 +523,7 @@ Modal centré, overlay sombre avec `backdrop-filter: blur(4px)`. Largeur max `56
 │  [None ▼]                                        │
 │                                                  │
 │  ── Agent team ────────────────────────────────  │
-│  [Minimal (main only)]  [Custom agents]          │
+ │  [Minimal (pilot only)]  [Custom agents]         │
 │                                                  │
 │                          [Cancel]  [Create Instance] │
 └──────────────────────────────────────────────────┘
@@ -785,7 +785,7 @@ Panneau informatif + chat intégré. Pas de champs éditables (Save/Cancel non a
 │  ── Chat ──────────────────────────────────────────────────── │
 │  ┌─ cp-runtime-chat (480px hauteur) ────────────────────────┐ │
 │  │  [● Session title  $0.03 ▾]  [+ New] / [Permanent]      │ │
-│  │  main · web · 5 msg · 1.2k tok · $0.03  [Fork] [Archive]│ │
+ │  │  pilot · web · 5 msg · 1.2k tok · $0.03  [Fork] [Archive]│ │
 │  │  ─────────────────────────────────────────────────────── │ │
 │  │  (messages)                                              │ │
 │  │  ─────────────────────────────────────────────────────── │ │
@@ -1014,7 +1014,7 @@ Canvas libre avec cards d'agents positionnées et liens SVG. Hauteur = `100vh - 
 │   [Mary - Business A...]    [Oscar - DevSecOps]               │
 │                                                               │
 │                              ┌─ Agent Detail Panel ─────────┐ │
-│                              │  Main  main                  │ │
+ │                              │  Pilot  pilot                │ │
 │                              │  [Info] [AGENTS.md] [SOUL.md]│ │
 │                              │  ...                         │ │
 │                              └──────────────────────────────┘ │
@@ -1112,7 +1112,7 @@ Panneau latéral droit, `width: 420px`, hauteur 100% du canvas. S'étend à 100%
 
 ```
 ┌─ Panel Header ──────────────────────────────────────┐
-│  Main  main                    [🗑] [⊞] [✕]        │
+│  Pilot  pilot                  [🗑] [⊞] [✕]        │
 │  (role si défini)                                   │
 ├─ Tabs ──────────────────────────────────────────────┤
 │  [Info]  [AGENTS.md]  [SOUL.md]  [HEARTBEAT.md] ... │

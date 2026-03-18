@@ -543,7 +543,7 @@ describe("POST /api/blueprints", () => {
     expect(builderRes.status).toBe(200);
     const builder = await json(builderRes);
     expect(builder.agents).toHaveLength(1);
-    expect(builder.agents[0].agent_id).toBe("main");
+    expect(builder.agents[0].agent_id).toBe("pilot");
     expect(builder.agents[0].files.length).toBeGreaterThan(0);
   });
 
@@ -647,10 +647,10 @@ describe("POST /api/blueprints/:id/agents", () => {
     });
     expect(res.status).toBe(201);
     const body = await json(res);
-    // Should have main + researcher
+    // Should have pilot + researcher
     expect(body.agents).toHaveLength(2);
     const agentIds = body.agents.map((a: { agent_id: string }) => a.agent_id).sort();
-    expect(agentIds).toEqual(["main", "researcher"]);
+    expect(agentIds).toEqual(["pilot", "researcher"]);
   });
 });
 
@@ -667,7 +667,7 @@ describe("PUT /api/blueprints/:id/agents/:agentId/files/:filename", () => {
     });
     const { id } = await json(createRes);
 
-    const res = await ctx.app.request(`/api/blueprints/${id}/agents/main/files/SOUL.md`, {
+    const res = await ctx.app.request(`/api/blueprints/${id}/agents/pilot/files/SOUL.md`, {
       method: "PUT",
       headers: jsonHeaders(),
       body: JSON.stringify({ content: "x".repeat(1_048_577) }),
@@ -685,7 +685,7 @@ describe("PUT /api/blueprints/:id/agents/:agentId/files/:filename", () => {
     });
     const { id } = await json(createRes);
 
-    const res = await ctx.app.request(`/api/blueprints/${id}/agents/main/files/SOUL.md`, {
+    const res = await ctx.app.request(`/api/blueprints/${id}/agents/pilot/files/SOUL.md`, {
       method: "PUT",
       headers: jsonHeaders(),
       body: JSON.stringify({ content: "# Updated soul" }),

@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.23] — 2026-03-18
+
+### Changed
+
+- **Renommage de l'agent par défaut `main` → `pilot`** : l'agentId et le nom d'affichage de l'agent par défaut passent de `"main"` / `"Main"` à `"pilot"` / `"Pilot"`. Impacts : `createDefaultRuntimeConfig`, agent synthétique dans `discovery.ts` et `agent-sync.ts`, workspace path `workspaces/pilot`, fallback API création d'instance, seed blueprint, wizard CLI, dialog UI. Les instances existantes ne sont pas affectées (recréer pour bénéficier du nouveau nom).
+
+---
+
 ## [0.41.22] — 2026-03-18
 
 ### Fixed

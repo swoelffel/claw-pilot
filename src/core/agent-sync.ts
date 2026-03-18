@@ -107,13 +107,13 @@ export class AgentSync {
 
     const configAgents: ConfigAgent[] = [];
 
-    // If no agents in config, create a synthetic "main" agent
+    // If no agents in config, create a synthetic "pilot" agent
     if (agentsList.length === 0) {
       configAgents.push({
-        agentId: "main",
-        name: "Main",
+        agentId: "pilot",
+        name: "Pilot",
         model: defaultModel,
-        workspacePath: `${stateDir}/workspaces/main`,
+        workspacePath: `${stateDir}/workspaces/pilot`,
         isDefault: true,
         // Include defaultModel in rawBlock so the config_hash changes when the model changes
         rawBlock: { defaultModel: defaultModel ?? null },
@@ -126,7 +126,7 @@ export class AgentSync {
       const isDefault =
         (agent["isDefault"] as boolean | undefined) === true ||
         (agent["default"] as boolean | undefined) === true ||
-        agentId === "main";
+        agentId === "pilot";
 
       const explicitWorkspace = agent["workspace"] as string | undefined;
       let workspacePath: string;

@@ -380,7 +380,7 @@ export class CreateDialog extends DialogMixin(LitElement) {
   }
 
   private _buildAgents(): AgentDefinition[] {
-    return [{ id: "main", name: "Main", isDefault: true }];
+    return [{ id: "pilot", name: "Pilot", isDefault: true }];
   }
 
   private _isFormValid(): boolean {

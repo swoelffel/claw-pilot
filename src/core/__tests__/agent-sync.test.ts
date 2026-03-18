@@ -37,7 +37,7 @@ afterEach(() => {
 const STATE_DIR = "/opt/openclaw/.openclaw-test";
 const CONFIG_PATH = `${STATE_DIR}/runtime.json`;
 
-/** Minimal runtime.json with no agents (empty array → synthetic "main" agent) */
+/** Minimal runtime.json with no agents (empty array → synthetic "pilot" agent) */
 const MINIMAL_CONFIG = JSON.stringify({
   defaultModel: "claude-3-5-sonnet-20241022",
   agents: [],
@@ -106,8 +106,8 @@ describe("AgentSync.sync()", () => {
 
     const result = await agentSync.sync(instance);
 
-    // "main" agent config changed (model changed) → should be in agentsUpdated
-    expect(result.changes.agentsUpdated).toContain("main");
+    // "pilot" agent config changed (model changed) → should be in agentsUpdated
+    expect(result.changes.agentsUpdated).toContain("pilot");
     expect(result.changes.agentsAdded).toHaveLength(0);
   });
 
@@ -154,15 +154,15 @@ describe("AgentSync.sync()", () => {
     const instance = seedInstance();
     conn.files.set(CONFIG_PATH, MINIMAL_CONFIG);
 
-    // With MINIMAL_CONFIG (empty agents array), synthetic main agent workspace is stateDir/workspaces/main
-    const workspacePath = `${STATE_DIR}/workspaces/main`;
+    // With MINIMAL_CONFIG (empty agents array), synthetic pilot agent workspace is stateDir/workspaces/pilot
+    const workspacePath = `${STATE_DIR}/workspaces/pilot`;
     conn.files.set(`${workspacePath}/SOUL.md`, "# Soul\nThis is the soul file.");
 
     const agentSync = new AgentSync(conn, registry);
     const result = await agentSync.sync(instance);
 
-    // Find the main agent in the result
-    const mainAgent = result.agents.find((a) => a.agent_id === "main");
+    // Find the pilot agent in the result
+    const mainAgent = result.agents.find((a) => a.agent_id === "pilot");
     expect(mainAgent).toBeDefined();
 
     // SOUL.md should be in the files list
@@ -176,8 +176,8 @@ describe("AgentSync.sync()", () => {
     const instance = seedInstance();
     conn.files.set(CONFIG_PATH, MINIMAL_CONFIG);
 
-    // With MINIMAL_CONFIG (empty agents array), synthetic main agent workspace is stateDir/workspaces/main
-    const workspacePath = `${STATE_DIR}/workspaces/main`;
+    // With MINIMAL_CONFIG (empty agents array), synthetic pilot agent workspace is stateDir/workspaces/pilot
+    const workspacePath = `${STATE_DIR}/workspaces/pilot`;
     conn.files.set(`${workspacePath}/AGENTS.md`, "# Agents");
     conn.files.set(`${workspacePath}/SOUL.md`, "# Soul");
     conn.files.set(`${workspacePath}/TOOLS.md`, "# Tools");
@@ -185,7 +185,7 @@ describe("AgentSync.sync()", () => {
     const agentSync = new AgentSync(conn, registry);
     const result = await agentSync.sync(instance);
 
-    const mainAgent = result.agents.find((a) => a.agent_id === "main");
+    const mainAgent = result.agents.find((a) => a.agent_id === "pilot");
     expect(mainAgent).toBeDefined();
     expect(mainAgent!.files).toHaveLength(3);
 
@@ -222,13 +222,13 @@ describe("AgentSync.sync()", () => {
     const agentSync = new AgentSync(conn, registry);
     await agentSync.sync(instance);
 
-    // Set positions on the main agent (simulates blueprint deploy or user drag)
-    const mainAgent = registry.listAgents("test-inst").find((a) => a.agent_id === "main");
+    // Set positions on the pilot agent (simulates blueprint deploy or user drag)
+    const mainAgent = registry.listAgents("test-inst").find((a) => a.agent_id === "pilot");
     expect(mainAgent).toBeDefined();
     registry.updateAgentPosition(mainAgent!.id, 400, 300);
 
     // Verify position is set
-    const before = registry.getAgentByAgentId(instance.id, "main");
+    const before = registry.getAgentByAgentId(instance.id, "pilot");
     expect(before!.position_x).toBe(400);
     expect(before!.position_y).toBe(300);
 
@@ -240,10 +240,10 @@ describe("AgentSync.sync()", () => {
     conn.files.set(CONFIG_PATH, updatedConfig);
     const result = await agentSync.sync(instance);
 
-    expect(result.changes.agentsUpdated).toContain("main");
+    expect(result.changes.agentsUpdated).toContain("pilot");
 
     // Positions must be preserved after sync
-    const after = registry.getAgentByAgentId(instance.id, "main");
+    const after = registry.getAgentByAgentId(instance.id, "pilot");
     expect(after!.position_x).toBe(400);
     expect(after!.position_y).toBe(300);
   });

@@ -209,10 +209,10 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
     const agents: WizardAnswers["agents"] =
       rawAgents.length > 0
         ? (rawAgents as Array<{ id: string; name: string; model?: string; isDefault?: boolean }>)
-        : [{ id: "main", name: "Main", isDefault: true }];
+        : [{ id: "pilot", name: "Pilot", isDefault: true }];
 
-    if (!agents.some((a) => a.id === "main" || a.isDefault)) {
-      agents.unshift({ id: "main", name: "Main", isDefault: true });
+    if (!agents.some((a) => a.id === "pilot" || a.isDefault)) {
+      agents.unshift({ id: "pilot", name: "Pilot", isDefault: true });
     }
 
     const answers: WizardAnswers = {

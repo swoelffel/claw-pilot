@@ -59,22 +59,22 @@ async function seedBlueprintAgentFiles(
 }
 
 /**
- * Seed the default "main" agent into a newly created blueprint.
- * Mirrors the implicit "main" agent that claw-runtime creates on every fresh instance.
+ * Seed the default "pilot" agent into a newly created blueprint.
+ * Mirrors the implicit "pilot" agent that claw-runtime creates on every fresh instance.
  */
-async function seedBlueprintMainAgent(reg: Registry, blueprintId: number): Promise<void> {
-  // Create the main agent row
-  const mainAgent = reg.createBlueprintAgent(blueprintId, {
-    agentId: "main",
-    name: "Main",
+async function seedBlueprintPilotAgent(reg: Registry, blueprintId: number): Promise<void> {
+  // Create the pilot agent row
+  const pilotAgent = reg.createBlueprintAgent(blueprintId, {
+    agentId: "pilot",
+    name: "Pilot",
     isDefault: true,
   });
 
   // Centre it on the canvas
-  reg.updateBlueprintAgentPosition(mainAgent.id, 400, 300);
+  reg.updateBlueprintAgentPosition(pilotAgent.id, 400, 300);
 
   // Seed workspace files
-  await seedBlueprintAgentFiles(reg, mainAgent.id, "main", "Main");
+  await seedBlueprintAgentFiles(reg, pilotAgent.id, "pilot", "Pilot");
 }
 
 // Helper: build the full builder payload for a blueprint
@@ -139,7 +139,7 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
       });
 
       // Seed default "main" agent — every blueprint starts with one
-      await seedBlueprintMainAgent(registry, blueprint.id);
+      await seedBlueprintPilotAgent(registry, blueprint.id);
 
       return c.json(blueprint, 201);
     } catch (err: unknown) {

@@ -71,7 +71,7 @@ function seedRuntimeJsonWithAgent(agentId: string, extra: Record<string, unknown
       agents: [
         {
           id: agentId,
-          name: "Main",
+          name: "Pilot",
           isDefault: true,
           model: "anthropic/claude-haiku-4-5",
           toolProfile: "full",
@@ -99,10 +99,10 @@ describe("exportInstanceTeam()", () => {
     seedRuntimeJson();
 
     registry.createAgent(instance.id, {
-      agentId: "main",
-      name: "Main",
+      agentId: "pilot",
+      name: "Pilot",
       isDefault: true,
-      workspacePath: `${STATE_DIR}/workspaces/main`,
+      workspacePath: `${STATE_DIR}/workspaces/pilot`,
     });
 
     const team = await exportInstanceTeam(conn, registry, instance);
@@ -110,20 +110,20 @@ describe("exportInstanceTeam()", () => {
     expect(team.version).toBe("1");
     expect(team.source).toBe("t1");
     expect(team.agents).toHaveLength(1);
-    expect(team.agents[0]!.id).toBe("main");
-    expect(team.agents[0]!.name).toBe("Main");
+    expect(team.agents[0]!.id).toBe("pilot");
+    expect(team.agents[0]!.name).toBe("Pilot");
     expect(team.agents[0]!.is_default).toBe(true);
   });
 
   it("exports toolProfile from runtime.json agent entry", async () => {
     const instance = seedInstance("t2");
-    seedRuntimeJsonWithAgent("main");
+    seedRuntimeJsonWithAgent("pilot");
 
     registry.createAgent(instance.id, {
-      agentId: "main",
-      name: "Main",
+      agentId: "pilot",
+      name: "Pilot",
       isDefault: true,
-      workspacePath: `${STATE_DIR}/workspaces/main`,
+      workspacePath: `${STATE_DIR}/workspaces/pilot`,
     });
 
     const team = await exportInstanceTeam(conn, registry, instance);
@@ -133,13 +133,13 @@ describe("exportInstanceTeam()", () => {
 
   it("exports permissions array from runtime.json agent entry", async () => {
     const instance = seedInstance("t3");
-    seedRuntimeJsonWithAgent("main");
+    seedRuntimeJsonWithAgent("pilot");
 
     registry.createAgent(instance.id, {
-      agentId: "main",
-      name: "Main",
+      agentId: "pilot",
+      name: "Pilot",
       isDefault: true,
-      workspacePath: `${STATE_DIR}/workspaces/main`,
+      workspacePath: `${STATE_DIR}/workspaces/pilot`,
     });
 
     const team = await exportInstanceTeam(conn, registry, instance);
@@ -157,13 +157,13 @@ describe("exportInstanceTeam()", () => {
 
   it("exports heartbeat and humanDelay from runtime.json agent entry", async () => {
     const instance = seedInstance("t4");
-    seedRuntimeJsonWithAgent("main");
+    seedRuntimeJsonWithAgent("pilot");
 
     registry.createAgent(instance.id, {
-      agentId: "main",
-      name: "Main",
+      agentId: "pilot",
+      name: "Pilot",
       isDefault: true,
-      workspacePath: `${STATE_DIR}/workspaces/main`,
+      workspacePath: `${STATE_DIR}/workspaces/pilot`,
     });
 
     const team = await exportInstanceTeam(conn, registry, instance);
@@ -177,9 +177,9 @@ describe("exportInstanceTeam()", () => {
     seedRuntimeJson();
 
     // Seed files in MockConnection at workspace paths (AgentSync reads from there)
-    conn.files.set(`${STATE_DIR}/workspaces/main/SOUL.md`, "# Soul");
-    conn.files.set(`${STATE_DIR}/workspaces/main/AGENTS.md`, "# Agents");
-    conn.files.set(`${STATE_DIR}/workspaces/main/MEMORY.md`, "# Memory — should not be exported");
+    conn.files.set(`${STATE_DIR}/workspaces/pilot/SOUL.md`, "# Soul");
+    conn.files.set(`${STATE_DIR}/workspaces/pilot/AGENTS.md`, "# Agents");
+    conn.files.set(`${STATE_DIR}/workspaces/pilot/MEMORY.md`, "# Memory — should not be exported");
 
     const team = await exportInstanceTeam(conn, registry, instance);
 
@@ -194,10 +194,10 @@ describe("exportInstanceTeam()", () => {
     seedRuntimeJson({ defaultModel: "anthropic/claude-sonnet-4-5" });
 
     registry.createAgent(instance.id, {
-      agentId: "main",
-      name: "Main",
+      agentId: "pilot",
+      name: "Pilot",
       isDefault: true,
-      workspacePath: `${STATE_DIR}/workspaces/main`,
+      workspacePath: `${STATE_DIR}/workspaces/pilot`,
     });
 
     const team = await exportInstanceTeam(conn, registry, instance);
@@ -242,8 +242,8 @@ describe("exportBlueprintTeam()", () => {
   it("basic export — returns TeamFile with agents and source blueprint name", () => {
     const blueprint = registry.createBlueprint({ name: "My Team" });
     registry.createBlueprintAgent(blueprint.id, {
-      agentId: "main",
-      name: "Main",
+      agentId: "pilot",
+      name: "Pilot",
       isDefault: true,
       model: "anthropic/claude-haiku-4-5",
     });
@@ -253,14 +253,14 @@ describe("exportBlueprintTeam()", () => {
     expect(team.version).toBe("1");
     expect(team.source).toBe("My Team");
     expect(team.agents).toHaveLength(1);
-    expect(team.agents[0]!.id).toBe("main");
+    expect(team.agents[0]!.id).toBe("pilot");
   });
 
   it("exports defaults.model from the default agent's model", () => {
     const blueprint = registry.createBlueprint({ name: "My Team" });
     registry.createBlueprintAgent(blueprint.id, {
-      agentId: "main",
-      name: "Main",
+      agentId: "pilot",
+      name: "Pilot",
       isDefault: true,
       model: "anthropic/claude-sonnet-4-5",
     });
@@ -273,8 +273,8 @@ describe("exportBlueprintTeam()", () => {
   it("no defaults.model when default agent has no model", () => {
     const blueprint = registry.createBlueprint({ name: "My Team" });
     registry.createBlueprintAgent(blueprint.id, {
-      agentId: "main",
-      name: "Main",
+      agentId: "pilot",
+      name: "Pilot",
       isDefault: true,
     });
 
@@ -286,8 +286,8 @@ describe("exportBlueprintTeam()", () => {
   it("exports links", () => {
     const blueprint = registry.createBlueprint({ name: "My Team" });
     registry.createBlueprintAgent(blueprint.id, {
-      agentId: "main",
-      name: "Main",
+      agentId: "pilot",
+      name: "Pilot",
       isDefault: true,
     });
     registry.createBlueprintAgent(blueprint.id, {
@@ -296,13 +296,13 @@ describe("exportBlueprintTeam()", () => {
       isDefault: false,
     });
     registry.replaceBlueprintLinks(blueprint.id, [
-      { sourceAgentId: "main", targetAgentId: "dev", linkType: "a2a" },
+      { sourceAgentId: "pilot", targetAgentId: "dev", linkType: "a2a" },
     ]);
 
     const team = exportBlueprintTeam(registry, blueprint.id);
 
     expect(team.links).toHaveLength(1);
-    expect(team.links[0]!.source).toBe("main");
+    expect(team.links[0]!.source).toBe("pilot");
     expect(team.links[0]!.target).toBe("dev");
     expect(team.links[0]!.type).toBe("a2a");
   });
@@ -324,8 +324,8 @@ describe("serializeTeamYaml()", () => {
       source: "test",
       agents: [
         {
-          id: "main",
-          name: "Main",
+          id: "pilot",
+          name: "Pilot",
           is_default: true,
           config: { model: "anthropic/claude-haiku-4-5", toolProfile: "full" as const },
         },
@@ -349,8 +349,8 @@ describe("serializeTeamYaml()", () => {
       source: "test",
       agents: [
         {
-          id: "main",
-          name: "Main",
+          id: "pilot",
+          name: "Pilot",
           is_default: true,
           files: { "SOUL.md": "# Soul\n\nLine 2\n" },
         },

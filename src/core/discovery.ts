@@ -120,12 +120,12 @@ export class InstanceDiscovery {
     const defaultModel: string | null = normaliseModel(config["defaultModel"]);
 
     if (agentsList.length === 0) {
-      // Synthetic main agent
+      // Synthetic pilot agent
       agents.push({
-        id: "main",
-        name: "Main",
+        id: "pilot",
+        name: "Pilot",
         model: defaultModel,
-        workspacePath: `${stateDir}/workspaces/main`,
+        workspacePath: `${stateDir}/workspaces/pilot`,
         isDefault: true,
       });
     }
@@ -136,7 +136,7 @@ export class InstanceDiscovery {
       const isDefault =
         (agent["isDefault"] as boolean | undefined) === true ||
         (agent["default"] as boolean | undefined) === true ||
-        agentId === "main";
+        agentId === "pilot";
 
       const explicitWorkspace = agent["workspace"] as string | undefined;
       let workspacePath: string;

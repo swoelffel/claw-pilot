@@ -339,7 +339,7 @@ describe("createDefaultRuntimeConfig", () => {
     const config = createDefaultRuntimeConfig({});
     expect(config.version).toBe(1);
     expect(config.agents).toHaveLength(1);
-    expect(config.agents[0]!.id).toBe("main");
+    expect(config.agents[0]!.id).toBe("pilot");
     expect(config.agents[0]!.isDefault).toBe(true);
     expect(config.agents[0]!.toolProfile).toBe("full");
   });
