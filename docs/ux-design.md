@@ -65,7 +65,7 @@ Affiché à la place de toute l'application si l'utilisateur n'est pas authentif
 │              │                                           │     │
 │              │  (message d'erreur si échec)              │     │
 │              │                                           │     │
-│              │  v0.36.1                                  │     │
+│              │  v0.41.24                                 │     │
 │              └───────────────────────────────────────────┘     │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -101,6 +101,7 @@ Depuis v0.7.1, la navigation utilise des hash URLs (`#/...`). Le browser back/fo
 | `#/` | Vue Instances (accueil) | `cp-cluster-view` |
 | `#/instances/:slug/builder` | Constructeur d'agents | `cp-agents-builder` |
 | `#/instances/:slug/settings` | Settings instance | `cp-instance-settings` |
+| `#/instances/:slug/pilot` | Chat interactif + panneau contexte LLM | `cp-runtime-pilot` |
 | `#/blueprints` | Vue Blueprints | `cp-blueprints-view` |
 | `#/blueprints/:id/builder` | Blueprint Builder | `cp-blueprint-builder` |
 
@@ -130,7 +131,7 @@ Barre de navigation fixe en haut de page (`height: 56px`, `background: --bg-surf
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  ClawPilot  [v0.36.1]  ·  GitHub  ·  Issues    🌐 EN ▾  ·  © 2026 SWO — MIT License │
+│  ClawPilot  [v0.41.24]  ·  GitHub  ·  Issues    🌐 EN ▾  ·  © 2026 SWO — MIT License │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -667,6 +668,79 @@ Les deux listes sont fusionnées dans `_sessions`. La première session active e
 
 ---
 
+## Écran 2c — Runtime Pilot (`cp-runtime-pilot`)
+
+**Fichier source** : `ui/src/components/runtime-pilot.ts`
+
+> Remplace `cp-runtime-chat` depuis v0.37.0. 17 composants au total.
+
+Vue de chat avancée avec panneau de contexte LLM latéral. Accessible via le hash `#/instances/:slug/pilot`. Layout flex deux colonnes.
+
+```
+┌─ cp-runtime-pilot ────────────────────────────────────────────────┐
+│  ┌─ pilot-header ─────────────────────────────────────────────┐   │
+│  │  [Agent ▼]  Session title  $0.12  [🔒 Permanent] [Context]│   │
+│  └────────────────────────────────────────────────────────────┘   │
+│  ┌─ Messages ──────────────────┐  ┌─ pilot-context-panel ────┐   │
+│  │                             │  │  [Agents] [Tools]        │   │
+│  │  ┌─ user message ────────┐ │  │  [System] [Events]       │   │
+│  │  │  Mon message          │ │  │                          │   │
+│  │  └───────────────────────┘ │  │  ┌─ context-gauge ─────┐ │   │
+│  │  ┌─ assistant message ───┐ │  │  │  Token usage donut  │ │   │
+│  │  │  part-text            │ │  │  │  input / output     │ │   │
+│  │  │  part-tool (tool call)│ │  │  └─────────────────────┘ │   │
+│  │  │  part-reasoning       │ │  │                          │   │
+│  │  │  part-subtask         │ │  │  ┌─ context-tools ─────┐ │   │
+│  │  │  part-compaction      │ │  │  │  12 built-in tools  │ │   │
+│  │  └───────────────────────┘ │  │  │  3 MCP tools        │ │   │
+│  │                             │  │  └─────────────────────┘ │   │
+│  │  ┌─ pilot-input ─────────┐ │  │                          │   │
+│  │  │  [textarea]   [Send]  │ │  │  ┌─ context-agents ───┐ │   │
+│  │  └───────────────────────┘ │  │  │  Agent teammates    │ │   │
+│  └─────────────────────────────┘  │  └─────────────────────┘ │   │
+│                                    └──────────────────────────┘   │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+### Composants (17)
+
+| Composant | Fichier | Rôle |
+|---|---|---|
+| `cp-runtime-pilot` | `runtime-pilot.ts` | Conteneur principal — layout, session management, SSE |
+| `cp-pilot-header` | `pilot/pilot-header.ts` | Header — agent selector, session info, coût, bouton contexte |
+| `cp-pilot-messages` | `pilot/pilot-messages.ts` | Liste de messages scrollable |
+| `cp-pilot-message` | `pilot/pilot-message.ts` | Rendu d'un message (dispatche vers les renderers de parts) |
+| `cp-pilot-input` | `pilot/pilot-input.ts` | Textarea + bouton Send |
+| `cp-pilot-context-panel` | `pilot/pilot-context-panel.ts` | Panneau latéral droit — onglets contexte |
+| `cp-context-gauge` | `pilot/context/context-gauge.ts` | Jauge donut tokens (input/output/cache) |
+| `cp-context-tools` | `pilot/context/context-tools.ts` | Liste outils disponibles (built-in + MCP) |
+| `cp-context-agents` | `pilot/context/context-agents.ts` | Agents teammates + spawn links |
+| `cp-context-system` | `pilot/context/context-system.ts` | Fichiers system prompt (SOUL.md, IDENTITY.md, etc.) |
+| `cp-context-events` | `pilot/context/context-events.ts` | Log d'événements bus temps réel |
+| `cp-part-text` | `pilot/parts/part-text.ts` | Rendu texte Markdown (marked + DOMPurify) |
+| `cp-part-tool` | `pilot/parts/part-tool.ts` | Rendu tool-call + tool-result (collapsible) |
+| `cp-part-reasoning` | `pilot/parts/part-reasoning.ts` | Rendu extended thinking Anthropic |
+| `cp-part-subtask` | `pilot/parts/part-subtask.ts` | Rendu sous-agent (spawn info + résultat) |
+| `cp-part-compaction` | `pilot/parts/part-compaction.ts` | Résumé de compaction |
+| `cp-session-tree` | `session-tree.ts` | Arborescence des sessions (parent/enfant) |
+
+### Flux SSE élargi (17+ event types)
+
+Le SSE est ouvert via `GET /api/instances/:slug/runtime/chat/stream`. Événements :
+
+| Catégorie | Événements SSE | Comportement |
+|---|---|---|
+| Messages | `message.created`, `message.updated`, `message.part.delta` | Streaming texte, accumulation des parts |
+| Session | `session.created`, `session.updated`, `session.ended`, `session.status` | Gestion état idle/busy/retry |
+| Permission | `permission.asked`, `permission.replied` | Overlay permission |
+| Provider | `provider.auth_failed`, `provider.failover` | Alertes bus |
+| Subagent | `subagent.completed`, `agent.timeout` | Mise à jour part-subtask |
+| Heartbeat | `heartbeat.tick`, `heartbeat.alert` | Alertes bus |
+| Tool | `tool.doom_loop`, `llm.chunk_timeout` | Alertes bus |
+| Infra | `ping` | Keep-alive |
+
+---
+
 ## Écran 2b — Vue Settings Instance (`cp-instance-settings`)
 
 **Fichier source** : `ui/src/components/instance-settings.ts`
@@ -683,7 +757,6 @@ Vue de configuration complète d'une instance. Accessible via le bouton **Settin
 │  │  Agents    │  │  │  Display name  Port (readonly)      │ │  │
 │  │  Runtime   │  │  │  Default model (select grouped)     │ │  │
 │  │  Channels  │  │  │  Tools profile (select)             │ │  │
-│  │  Devices   │  │  │                                     │ │  │
 │  │  MCP  [3]  │  │  │  PROVIDERS                          │ │  │
 │  │  Permissions│ │  │  [Anthropic]  sk-ant-***  [Change]  │ │  │
 │  │  Config    │  │  │  [+ Add provider]                   │ │  │
@@ -731,7 +804,7 @@ Grid 2 colonnes.
 | **Display name** | Input texte | Éditable |
 | **Port** | Readonly | Non modifiable (`:XXXXX`) |
 | **Default model** | Select groupé par provider | Options groupées par provider configuré. Si le modèle courant n'est pas dans la liste, ajouté comme option isolée. |
-| **Tools profile** | Select | Options : `coding`, `minimal`, `full`, `none` |
+| **Tools profile** | Select | Options : `minimal`, `messaging`, `coding`, `full` |
 
 **Sous-section Providers** : liste des providers configurés. Chaque provider : card avec nom, ID monospace, env var, clé masquée + bouton **[Change]** (inline edit) ou **[Cancel]**. Bouton **[Remove]** disabled si le provider est utilisé par le default model. Bouton **[+ Add provider]** → select des providers disponibles (non encore configurés).
 
@@ -1450,7 +1523,7 @@ Le scan démarre automatiquement à l'ouverture (`connectedCallback`).
 │  ┌─────────────────────────────────────────────────┐  │
 │  │  [spinner]                                      │  │
 │  │  Scanning system...                             │  │
-│  │  Looking for OpenClaw instances                 │  │
+│  │  Looking for claw-runtime instances              │  │
 │  └─────────────────────────────────────────────────┘  │
 │                                                       │
 │  Phase results (instances trouvées) :                 │
@@ -1480,8 +1553,8 @@ Le scan démarre automatiquement à l'ouverture (`connectedCallback`).
 
 | Phase | Déclencheur | Rendu |
 |---|---|---|
-| **scanning** | Ouverture du dialog | Spinner centré + "Scanning system..." + sous-titre "Looking for OpenClaw instances" |
-| **results** | Scan terminé | Liste des instances trouvées (ou message "No OpenClaw instances found") + footer [Cancel] [Adopt all (N)] |
+| **scanning** | Ouverture du dialog | Spinner centré + "Scanning system..." + sous-titre "Looking for claw-runtime instances" |
+| **results** | Scan terminé | Liste des instances trouvées (ou message "No claw-runtime instances found") + footer [Cancel] [Adopt all (N)] |
 | **adopting** | Clic [Adopt all] | Spinner + "Registering instances..." |
 | **done** | Adoption réussie | Icône ✓ vert + "N instance(s) registered successfully." Auto-fermeture après 1,5s avec émission `instances-adopted` |
 | **error** | Erreur scan ou adoption | Bandeau rouge + [Close] + [Retry] |
@@ -1749,6 +1822,8 @@ Swatch sélectionné : bordure blanche + scale 1.1.
 
 ---
 
-*Mis à jour : 2026-03-16 - v0.28.5 : refonte Instance Card (badge ⚡ runtime, pill ⚠ PERM, menu simplifié), sidebar Settings étendue (8 panneaux : General/Agents/Runtime/Channels/Devices/MCP/Permissions/Config), ajout composants cp-instance-channels, cp-instance-mcp, cp-instance-permissions, cp-instance-config, cp-permission-request-overlay, cp-bus-alerts*
+*Mis à jour : 2026-03-16 - v0.28.5 : refonte Instance Card (badge ⚡ runtime, pill ⚠ PERM, menu simplifié), sidebar Settings étendue (7 panneaux : General/Agents/Runtime/Channels/MCP/Permissions/Config), ajout composants cp-instance-channels, cp-instance-mcp, cp-instance-permissions, cp-instance-config, cp-permission-request-overlay, cp-bus-alerts*
 
 *Mis à jour : 2026-03-17 - v0.37.0 : remplacement de cp-runtime-chat par cp-runtime-pilot (17 composants) — affichage des parts (tool calls, reasoning, subtasks, compaction), panneau contexte LLM latéral (jauge tokens, tools, agent info, system prompt, event log), SSE élargi à 17 event types*
+
+*Mis à jour : 2026-03-18 - v0.41.24 : documentation complète de cp-runtime-pilot (17 composants), correction branding OpenClaw → claw-runtime, ajout route hash #/instances/:slug/pilot, correction tools profile (minimal/messaging/coding/full), mise à jour versions*

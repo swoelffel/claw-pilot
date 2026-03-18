@@ -72,8 +72,9 @@ Pour chaque page ou composant, appliquer systématiquement :
 | Styling | **CSS custom properties** (design tokens dans `ui/src/styles/tokens.ts`) |
 | Composants | Lit `LitElement` — pas de bibliothèque externe de composants |
 | Animations | CSS transitions uniquement (pas de lib externe) |
-| Icônes | Emoji ou SVG inline — pas de lib d'icônes |
-| Polices | System font stack (`-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`) |
+| Icônes | Emoji ou SVG inline — pas de lib d'icônes externe |
+| Polices | `Geist, -apple-system, BlinkMacSystemFont, sans-serif` (primaire) · `Geist Mono, monospace` (code) |
+| Thème | **Dark theme uniquement** (`--bg-base: #0f1117`, `--bg-surface: #1a1d27`) |
 | i18n | `@lit/localize` — 6 langues (fr, en, de, es, it, pt) |
 
 ---
@@ -135,4 +136,4 @@ background: #ffffff;
 
 ---
 
-*Mis à jour : 2026-03-02 - Correction stack technique (Lit + CSS custom properties, pas React/Tailwind)*
+*Mis à jour : 2026-03-18 - Correction font stack (Geist), ajout dark theme, clarification icônes (emoji/SVG inline)*

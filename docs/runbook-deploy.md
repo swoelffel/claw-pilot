@@ -71,15 +71,20 @@ pnpm knip --reporter compact
 # 7. Imports circulaires
 pnpm check:circular
 
-# 8. Build final
-pnpm build
+# 8. Tests E2E (serveur HTTP reel, DB in-memory)
+pnpm test:e2e
+
+# 9. Build final (typecheck + build)
+pnpm build:safe
 ```
 
 ### Commande tout-en-un (equivalent CI)
 
 ```bash
-pnpm format:check && pnpm typecheck:all && pnpm lint:all && pnpm spellcheck && pnpm test:run --coverage && pnpm knip --reporter compact && pnpm check:circular && pnpm build
+pnpm format:check && pnpm typecheck:all && pnpm lint:all && pnpm spellcheck && pnpm test:run --coverage && pnpm test:e2e && pnpm knip --reporter compact && pnpm check:circular && pnpm build
 ```
+
+> **Note** : `pnpm build:safe` (typecheck:all + build) est une alternative plus sure que `pnpm build` seul.
 
 Si tout est vert localement, la CI GitHub doit passer.
 
@@ -245,3 +250,43 @@ SSH : ssh swoelffel@macmini.thiers
 - **MACMINI-INT : PATH nvm obligatoire**
   - En session SSH, exporter : `export PATH="/Users/swoelffel/.nvm/versions/node/v24.14.0/bin:$PATH"`
   - Sans cela, `pnpm` et `npm` ne seront pas trouves
+
+---
+
+## Rollback
+
+En cas de probleme apres deploiement :
+
+### Rollback rapide (MACMINI-INT)
+
+```bash
+ssh swoelffel@macmini.thiers '
+  cd /opt/claw-pilot
+  export PATH="/Users/swoelffel/.nvm/versions/node/v24.14.0/bin:$PATH"
+
+  # Identifier le dernier commit fonctionnel
+  git log --oneline -10
+
+  # Rollback vers un commit specifique
+  git checkout <commit-hash>
+  pnpm install --frozen-lockfile
+  pnpm build
+  launchctl restart io.claw-pilot.dashboard
+'
+```
+
+### Rollback branche (retour a main)
+
+```bash
+ssh swoelffel@macmini.thiers '
+  cd /opt/claw-pilot
+  export PATH="/Users/swoelffel/.nvm/versions/node/v24.14.0/bin:$PATH"
+  git checkout main
+  git pull
+  pnpm install --frozen-lockfile
+  pnpm build
+  launchctl restart io.claw-pilot.dashboard
+'
+```
+
+**Important** : les migrations DB sont irreversibles (additive-only). Un rollback de code ne rollback PAS le schema DB. Si une migration a ete ajoutee, le code roule doit etre compatible avec le schema plus recent.
