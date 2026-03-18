@@ -31,6 +31,7 @@ import { registerBlueprintRoutes } from "./routes/blueprints.js";
 import { registerTeamRoutes } from "./routes/teams.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerAuthRoutes } from "./routes/auth.js";
+import { registerAgentBlueprintRoutes } from "./routes/agent-blueprints.js";
 
 /** Result returned by buildDashboardApp — contains the wired Hono app and cleanup helpers. */
 export interface DashboardAppResult {
@@ -208,6 +209,7 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
 
   registerInstanceRoutes(app, deps);
   registerBlueprintRoutes(app, deps);
+  registerAgentBlueprintRoutes(app, deps);
   registerTeamRoutes(app, deps);
   registerSystemRoutes(app, deps);
 

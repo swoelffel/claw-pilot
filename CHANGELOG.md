@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.27] — 2026-03-18
+
+### Added
+
+- **Agent blueprints — backend** (Niveau 2, Phase 1) : infrastructure complète pour les templates d'agent réutilisables.
+  - **DB migration v16** : tables `agent_blueprints` (id TEXT PK, name, description, category, config_json, icon, tags) + `agent_blueprint_files` (workspace files par blueprint).
+  - **Repository** : `AgentBlueprintRepository` — CRUD blueprints + fichiers + clone (deep copy).
+  - **API** (11 routes) : `GET/POST /api/agent-blueprints`, `GET/PUT/DELETE .../\:id`, `POST .../\:id/clone`, `GET/PUT/DELETE .../\:id/files/\:filename`, `POST .../from-agent` (Save as template).
+  - **Create from template** : `POST /api/instances/\:slug/agents/from-template` — crée un agent dans une instance en copiant les fichiers workspace d'un blueprint.
+
+---
+
 ## [0.41.26] — 2026-03-18
 
 ### Added

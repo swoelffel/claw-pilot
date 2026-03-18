@@ -4,7 +4,7 @@ Guidance for Claude Code when working in this repository.
 
 ## What this project is
 
-`claw-pilot` v0.41.26 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, and permanent cross-channel sessions.
+`claw-pilot` v0.41.27 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, and permanent cross-channel sessions.
 
 All instances use the **claw-runtime** engine — a native Node.js engine (`src/runtime/`), managed via PID file daemon.
 
@@ -16,7 +16,7 @@ GitHub: https://github.com/swoelffel/claw-pilot
 - **Runtime**: Node.js >= 22.12.0, ESM, pnpm
 - **CLI**: Commander.js + @inquirer/prompts
 - **HTTP/WS**: Hono + ws
-- **DB**: better-sqlite3 (SQLite, WAL mode, schema v15)
+- **DB**: better-sqlite3 (SQLite, WAL mode, schema v16)
 - **UI**: Lit web components + Vite
 - **Build**: tsdown (CLI) + vite (UI)
 - **Tests**: Vitest
@@ -70,6 +70,8 @@ docs/main-doc.md    # Functional architecture — read this before major changes
 | `agent_files` | Workspace files per agent |
 | `agent_links` | Agent links (a2a / spawn) |
 | `blueprints` | Reusable team templates |
+| `agent_blueprints` | Standalone reusable agent templates (id TEXT PK, config_json, category) |
+| `agent_blueprint_files` | Workspace files per agent blueprint |
 | `rt_sessions` | claw-runtime sessions — permanent (one per agent, cross-channel) or ephemeral (per conversation). Key format: `<slug>:<agentId>` (permanent) or `<slug>:<agentId>:<channel>:<peerId>` (ephemeral) |
 | `rt_messages` | Messages per session |
 | `rt_parts` | Message parts (text, tool-call, tool-result) |

@@ -20,6 +20,7 @@ import { PortRepository } from "./repositories/port-repository.js";
 import { ConfigRepository } from "./repositories/config-repository.js";
 import { EventRepository } from "./repositories/event-repository.js";
 import { BlueprintRepository } from "./repositories/blueprint-repository.js";
+import { AgentBlueprintRepository } from "./repositories/agent-blueprint-repository.js";
 import type { InstanceRecord } from "./registry-types.js";
 
 // ---------------------------------------------------------------------------
@@ -36,6 +37,8 @@ export type {
   BlueprintRecord,
   BlueprintAgentRecord,
   BlueprintLinkRecord,
+  AgentBlueprintRecord,
+  AgentBlueprintFileRecord,
 } from "./registry-types.js";
 
 // ---------------------------------------------------------------------------
@@ -50,6 +53,7 @@ export class Registry {
   private configs: ConfigRepository;
   private events: EventRepository;
   private blueprints: BlueprintRepository;
+  private agentBlueprints: AgentBlueprintRepository;
 
   constructor(private db: Database.Database) {
     this.servers = new ServerRepository(db);
@@ -59,6 +63,7 @@ export class Registry {
     this.configs = new ConfigRepository(db);
     this.events = new EventRepository(db);
     this.blueprints = new BlueprintRepository(db);
+    this.agentBlueprints = new AgentBlueprintRepository(db);
   }
 
   /** Expose the underlying database handle for transaction-level operations. */
@@ -226,5 +231,42 @@ export class Registry {
   // --- Blueprint Builder Data ---
   getBlueprintBuilderData(blueprintId: number) {
     return this.blueprints.getBlueprintBuilderData(blueprintId);
+  }
+
+  // --- Agent Blueprints (standalone reusable agent templates) ---
+  listAgentBlueprints() {
+    return this.agentBlueprints.listAgentBlueprints();
+  }
+  getAgentBlueprint(id: string) {
+    return this.agentBlueprints.getAgentBlueprint(id);
+  }
+  createAgentBlueprint(data: Parameters<AgentBlueprintRepository["createAgentBlueprint"]>[0]) {
+    return this.agentBlueprints.createAgentBlueprint(data);
+  }
+  updateAgentBlueprint(
+    id: string,
+    fields: Parameters<AgentBlueprintRepository["updateAgentBlueprint"]>[1],
+  ) {
+    return this.agentBlueprints.updateAgentBlueprint(id, fields);
+  }
+  deleteAgentBlueprint(id: string) {
+    return this.agentBlueprints.deleteAgentBlueprint(id);
+  }
+  cloneAgentBlueprint(sourceId: string, newName?: string) {
+    return this.agentBlueprints.cloneAgentBlueprint(sourceId, newName);
+  }
+
+  // --- Agent Blueprint Files ---
+  listAgentBlueprintFiles(blueprintId: string) {
+    return this.agentBlueprints.listAgentBlueprintFiles(blueprintId);
+  }
+  getAgentBlueprintFile(blueprintId: string, filename: string) {
+    return this.agentBlueprints.getAgentBlueprintFile(blueprintId, filename);
+  }
+  upsertAgentBlueprintFile(blueprintId: string, filename: string, content: string) {
+    return this.agentBlueprints.upsertAgentBlueprintFile(blueprintId, filename, content);
+  }
+  deleteAgentBlueprintFile(blueprintId: string, filename: string) {
+    return this.agentBlueprints.deleteAgentBlueprintFile(blueprintId, filename);
   }
 }

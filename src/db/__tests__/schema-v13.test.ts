@@ -336,8 +336,8 @@ describe("migration v13 — idempotency", () => {
     // Arrange + Act
     const db = initDatabase(dbPath);
 
-    // Assert: v14 is the latest migration (composite index on rt_messages)
-    expect(schemaVersion(db)).toBe(15);
+    // Assert: v16 is the latest migration (agent_blueprints)
+    expect(schemaVersion(db)).toBe(16);
     db.close();
   });
 });

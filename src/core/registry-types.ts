@@ -106,3 +106,31 @@ export interface BlueprintLinkRecord {
   target_agent_id: string;
   link_type: "a2a" | "spawn";
 }
+
+// ---------------------------------------------------------------------------
+// Agent Blueprints (standalone reusable agent templates)
+// ---------------------------------------------------------------------------
+
+export interface AgentBlueprintRecord {
+  id: string;
+  name: string;
+  description: string | null;
+  category: "user" | "tool" | "system";
+  /** Serialized RuntimeAgentConfig (JSON string) */
+  config_json: string;
+  icon: string | null;
+  tags: string | null;
+  created_at: string;
+  updated_at: string;
+  /** Virtual column — computed via COUNT in list queries */
+  file_count?: number;
+}
+
+export interface AgentBlueprintFileRecord {
+  id: number;
+  agent_blueprint_id: string;
+  filename: string;
+  content: string;
+  content_hash: string | null;
+  updated_at: string | null;
+}

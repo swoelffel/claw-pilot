@@ -698,6 +698,46 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // v16: agent blueprints — standalone reusable agent templates.
+    //
+    // New tables (Option A architecture: dedicated tables, not polymorphic on agents):
+    //   agent_blueprints: stores the blueprint metadata + serialized RuntimeAgentConfig
+    //   agent_blueprint_files: workspace files per agent blueprint (SOUL.md, IDENTITY.md, etc.)
+    //
+    // Agent blueprints are independent of team blueprints (table `blueprints`) and of instances.
+    // A user can create an agent blueprint from scratch, clone one, or save an existing
+    // instance agent as a template. Agent blueprints can then be deployed to any instance.
+    version: 16,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS agent_blueprints (
+          id              TEXT PRIMARY KEY,
+          name            TEXT NOT NULL,
+          description     TEXT,
+          category        TEXT NOT NULL DEFAULT 'user' CHECK(category IN ('user','tool','system')),
+          config_json     TEXT NOT NULL DEFAULT '{}',
+          icon            TEXT,
+          tags            TEXT,
+          created_at      TEXT NOT NULL,
+          updated_at      TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_blueprint_files (
+          id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+          agent_blueprint_id    TEXT NOT NULL REFERENCES agent_blueprints(id) ON DELETE CASCADE,
+          filename              TEXT NOT NULL,
+          content               TEXT NOT NULL DEFAULT '',
+          content_hash          TEXT,
+          updated_at            TEXT,
+          UNIQUE(agent_blueprint_id, filename)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_agent_blueprint_files_bp
+          ON agent_blueprint_files(agent_blueprint_id);
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
