@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.25] — 2026-03-18
+
+### Added
+
+- **Heartbeat UI — champs `tz` et `model`** : l'onglet Heartbeat expose désormais le sélecteur de timezone (requis si `activeHours` est défini) et le modèle dédié pour les ticks. Le plumbing existait déjà (state, load, save) — seuls les inputs HTML manquaient.
+
+### Fixed
+
+- **`bootstrapFiles` câblé end-to-end** : la feature "Additional workspace files (globs)" dans l'onglet Config de l'agent card était une feature morte — le GET ne retournait pas le champ, le PATCH ne l'acceptait pas, le save UI ne l'envoyait pas. Renommage `workspaceGlobs` → `bootstrapFiles` en UI pour aligner sur le schéma backend, et câblage complet (GET response, PATCH schema + apply, UI save).
+
+---
+
 ## [0.41.24] — 2026-03-18
 
 ### Fixed

@@ -117,7 +117,7 @@ export class AgentDetailPanel extends LitElement {
   @state() private _cfgSessionTimeout = 300000;
   @state() private _cfgChunkTimeout = 120000;
   @state() private _cfgInstructionUrls: string[] = [];
-  @state() private _cfgWorkspaceGlobs: string[] = [];
+  @state() private _cfgBootstrapFiles: string[] = [];
   @state() private _cfgDirty = false;
   @state() private _cfgSaving = false;
   @state() private _cfgLoading = false;
@@ -211,7 +211,7 @@ export class AgentDetailPanel extends LitElement {
       this._cfgSessionTimeout = (cfg?.timeoutMs as number | undefined) ?? 300000;
       this._cfgChunkTimeout = (cfg?.chunkTimeoutMs as number | undefined) ?? 120000;
       this._cfgInstructionUrls = (cfg?.instructionUrls as string[] | undefined) ?? [];
-      this._cfgWorkspaceGlobs = (cfg?.workspaceGlobs as string[] | undefined) ?? [];
+      this._cfgBootstrapFiles = (cfg?.bootstrapFiles as string[] | undefined) ?? [];
       this._cfgDirty = false;
     } catch {
       // Silently fallback to defaults on error
@@ -236,6 +236,7 @@ export class AgentDetailPanel extends LitElement {
         timeoutMs: this._cfgSessionTimeout,
         chunkTimeoutMs: this._cfgChunkTimeout,
         instructionUrls: this._cfgInstructionUrls.filter(Boolean),
+        bootstrapFiles: this._cfgBootstrapFiles.filter(Boolean),
         ...(this._cfgTemperature !== null ? { temperature: this._cfgTemperature } : {}),
       };
       await patchInstanceConfig(this.context.slug, { agents: [agentPatch] });
@@ -455,11 +456,11 @@ export class AgentDetailPanel extends LitElement {
           + URL
         </button>
 
-        <!-- Workspace globs -->
+        <!-- Bootstrap files -->
         <div class="hb-label" style="margin-top:10px;margin-bottom:6px">
-          ${msg("Additional workspace files (globs)", { id: "cfg-workspace-globs" })}
+          ${msg("Additional workspace files (globs)", { id: "cfg-bootstrap-files" })}
         </div>
-        ${this._cfgWorkspaceGlobs.map(
+        ${this._cfgBootstrapFiles.map(
           (glob, i) => html`
             <div class="hb-field-row" style="margin-bottom:4px">
               <input
@@ -468,16 +469,16 @@ export class AgentDetailPanel extends LitElement {
                 .value=${glob}
                 placeholder="docs/**/*.md"
                 @change=${(e: Event) => {
-                  const next = [...this._cfgWorkspaceGlobs];
+                  const next = [...this._cfgBootstrapFiles];
                   next[i] = (e.target as HTMLInputElement).value;
-                  this._cfgWorkspaceGlobs = next;
+                  this._cfgBootstrapFiles = next;
                   this._cfgDirty = true;
                 }}
               />
               <button
                 class="btn-revoke"
                 @click=${() => {
-                  this._cfgWorkspaceGlobs = this._cfgWorkspaceGlobs.filter((_, j) => j !== i);
+                  this._cfgBootstrapFiles = this._cfgBootstrapFiles.filter((_, j) => j !== i);
                   this._cfgDirty = true;
                 }}
               >
@@ -489,7 +490,7 @@ export class AgentDetailPanel extends LitElement {
         <button
           class="btn-add-item"
           @click=${() => {
-            this._cfgWorkspaceGlobs = [...this._cfgWorkspaceGlobs, ""];
+            this._cfgBootstrapFiles = [...this._cfgBootstrapFiles, ""];
             this._cfgDirty = true;
           }}
         >
@@ -679,6 +680,23 @@ export class AgentDetailPanel extends LitElement {
                     />
                   </div>
                 </div>
+                ${this._hbHoursStart && this._hbHoursEnd
+                  ? html`
+                      <div class="hb-field">
+                        <label class="hb-label">${msg("Timezone", { id: "hb-timezone" })}</label>
+                        <input
+                          type="text"
+                          class="hb-input"
+                          placeholder="Europe/Paris"
+                          .value=${this._hbTimezone}
+                          @change=${(e: Event) => {
+                            this._hbTimezone = (e.target as HTMLInputElement).value;
+                            this._hbDirty = true;
+                          }}
+                        />
+                      </div>
+                    `
+                  : nothing}
               </div>
 
               <!-- LLM -->
@@ -696,6 +714,19 @@ export class AgentDetailPanel extends LitElement {
                     .value=${String(this._hbMaxChars)}
                     @change=${(e: Event) => {
                       this._hbMaxChars = parseInt((e.target as HTMLInputElement).value, 10) || 500;
+                      this._hbDirty = true;
+                    }}
+                  />
+                </div>
+                <div class="hb-field">
+                  <label class="hb-label">${msg("Model override", { id: "hb-model" })}</label>
+                  <input
+                    type="text"
+                    class="hb-input"
+                    placeholder="provider/model-id"
+                    .value=${this._hbModel}
+                    @change=${(e: Event) => {
+                      this._hbModel = (e.target as HTMLInputElement).value;
                       this._hbDirty = true;
                     }}
                   />

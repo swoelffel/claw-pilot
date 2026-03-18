@@ -59,6 +59,7 @@ interface InstanceConfig {
     promptMode: string;
     allowSubAgents: boolean;
     instructionUrls: string[];
+    bootstrapFiles: string[];
     heartbeat: {
       every?: string;
       model?: string;
@@ -194,6 +195,7 @@ const RuntimeConfigPatchSchema = z.object({
         timeoutMs: z.number().int().min(0).optional(),
         chunkTimeoutMs: z.number().int().min(0).optional(),
         instructionUrls: z.array(z.string().url()).optional(),
+        bootstrapFiles: z.array(z.string()).optional(),
         heartbeat: z
           .object({
             every: z.string().optional(),
@@ -242,6 +244,7 @@ function buildInstanceConfig(
     promptMode: a.promptMode ?? "full",
     allowSubAgents: a.allowSubAgents ?? true,
     instructionUrls: a.instructionUrls ?? [],
+    bootstrapFiles: a.bootstrapFiles ?? [],
     heartbeat: a.heartbeat?.every
       ? {
           every: a.heartbeat.every,
@@ -660,6 +663,8 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
             agent.chunkTimeoutMs = agentPatch.chunkTimeoutMs;
           if (agentPatch.instructionUrls !== undefined)
             agent.instructionUrls = agentPatch.instructionUrls;
+          if (agentPatch.bootstrapFiles !== undefined)
+            agent.bootstrapFiles = agentPatch.bootstrapFiles;
           if (agentPatch.heartbeat !== undefined) {
             if (agentPatch.heartbeat === null) {
               agent.heartbeat = undefined;

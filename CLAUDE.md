@@ -4,7 +4,7 @@ Guidance for Claude Code when working in this repository.
 
 ## What this project is
 
-`claw-pilot` v0.37.0 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, and permanent cross-channel sessions.
+`claw-pilot` v0.41.25 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, and permanent cross-channel sessions.
 
 All instances use the **claw-runtime** engine — a native Node.js engine (`src/runtime/`), managed via PID file daemon.
 
@@ -73,7 +73,11 @@ docs/main-doc.md    # Functional architecture — read this before major changes
 | `rt_sessions` | claw-runtime sessions — permanent (one per agent, cross-channel) or ephemeral (per conversation). Key format: `<slug>:<agentId>` (permanent) or `<slug>:<agentId>:<channel>:<peerId>` (ephemeral) |
 | `rt_messages` | Messages per session |
 | `rt_parts` | Message parts (text, tool-call, tool-result) |
+| `rt_permissions` | Persisted permission rules (allow/deny/ask per scope+pattern) |
+| `rt_auth_profiles` | API key rotation per provider (priority, cooldown, failure tracking) |
 | `rt_pairing_codes` | Device pairing codes (legacy, table retained for additive-only policy) |
+| `users` | Dashboard auth (admin/operator/viewer roles) |
+| `sessions` | Server-side dashboard sessions with TTL |
 
 Schema lives in `src/db/schema.ts`. Migrations run on DB open. **Always additive** — never DROP COLUMN/TABLE.
 
@@ -100,7 +104,7 @@ isRuntimeRunning(stateDir)    // boolean
 ```
 
 ### Port allocation
-Default range: **18789–18799** (11 instances max). Dashboard: **19000**. Always allocate via `src/core/port-allocator.ts`.
+Default range: **18789–18838** (50 ports, 10 instances at min step 5). Dashboard: **19000**. Always allocate via `src/core/port-allocator.ts`.
 
 ### Secrets
 Dashboard tokens are auto-generated (`src/core/secrets.ts`). API keys go in `.env` per instance (never in `runtime.json`). Never commit secrets.
@@ -135,7 +139,7 @@ Use conditional spread for optional fields: `...(val !== undefined ? { key: val 
 
 ## Test coverage
 
-892 tests passing (+ 102 e2e). Tests are under `src/core/__tests__/`, `src/db/__tests__/`, `src/runtime/__tests__/`, `src/runtime/session/__tests__/`, `src/dashboard/__tests__/`. Run with `pnpm test:run` before submitting changes.
+~900+ tests passing (+ ~100 e2e). Tests are under `src/core/__tests__/`, `src/db/__tests__/`, `src/runtime/__tests__/`, `src/runtime/session/__tests__/`, `src/runtime/heartbeat/__tests__/`, `src/dashboard/__tests__/`, `src/lib/__tests__/`, `src/commands/__tests__/`. Run with `pnpm test:run` before submitting changes.
 
 ## UI development
 
@@ -150,6 +154,9 @@ Reference docs:
 | `docs/ux-design.md` | All screens, components, visual behaviors |
 | `docs/design-rules.md` | Design system, anti-patterns, delivery checklist |
 | `docs/i18n.md` | i18n architecture, adding languages/features |
+| `docs/registry-db.md` | SQLite schema reference (all tables, columns, migrations) |
+| `docs/agents.md` | Agent architecture: kinds, modes, tools, permissions, UI panels |
+| `docs/runbook-deploy.md` | Deployment workflow, CI/CD validation, MACMINI-INT |
 
 ## What NOT to do
 
@@ -162,3 +169,4 @@ Reference docs:
 - Do not use `window.__CP_TOKEN__` — use `getToken()` / `setToken()` / `clearToken()` from `ui/src/services/auth-state.ts`
 - Do not add direct `readFileSync` calls in workspace hot paths — use `readWorkspaceFileCached()` from `src/runtime/session/workspace-cache.ts`
 - Do not write SQL aggregations inline in route handlers — add methods to the appropriate repository in `src/core/repositories/`
+- Do not add memory system reads without going through `readWorkspaceFileCached()` — the memory index (`memory-index.db`) is rebuilt from workspace files via FTS5
