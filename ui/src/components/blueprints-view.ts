@@ -21,7 +21,7 @@ export class BlueprintsView extends LitElement {
     css`
       :host {
         display: block;
-        padding: 24px;
+        padding: 16px;
       }
 
       .section-header {
@@ -35,7 +35,7 @@ export class BlueprintsView extends LitElement {
 
       @media (max-width: 640px) {
         :host {
-          padding: 16px;
+          padding: 12px;
         }
 
         .section-header {

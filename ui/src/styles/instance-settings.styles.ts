@@ -12,9 +12,7 @@ export const instanceSettingsStyles = css`
 
   .settings-layout {
     display: flex;
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 24px;
+    padding: 16px;
     gap: 32px;
   }
 
@@ -47,7 +45,7 @@ export const instanceSettingsStyles = css`
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 24px;
+    padding: 12px 16px;
     background: var(--bg-surface);
     border-bottom: 1px solid var(--bg-border);
   }
@@ -659,7 +657,7 @@ export const instanceSettingsStyles = css`
   @media (max-width: 640px) {
     .settings-layout {
       flex-direction: column;
-      padding: 16px;
+      padding: 12px;
       gap: 0;
     }
 
@@ -689,7 +687,7 @@ export const instanceSettingsStyles = css`
     }
 
     .settings-header {
-      padding: 12px 16px;
+      padding: 10px 12px;
       flex-wrap: wrap;
       gap: 8px;
     }

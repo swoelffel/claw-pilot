@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.9] — 2026-03-18
+
+### Changed
+
+- **UI full-width** : réduction des marges latérales pour mieux utiliser l'espace disponible.
+  - **Header / Footer** : padding latéral réduit de 24 px à 16 px (12 px sur mobile).
+  - **Cluster view / Blueprints view** : padding réduit de 24 px à 16 px (12 px sur mobile).
+  - **Settings** : suppression du `max-width: 1100px` — la vue Settings utilise désormais 100 % de la largeur. Padding réduit de 24 px à 16 px (12 px sur mobile).
+
+---
+
 ## [0.41.8] — 2026-03-18
 
 ### Changed

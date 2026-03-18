@@ -52,7 +52,7 @@ export class CpApp extends LitElement {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0 24px;
+        padding: 0 16px;
         height: 56px;
         background: var(--bg-surface);
         border-bottom: 1px solid var(--bg-border);
@@ -123,7 +123,7 @@ export class CpApp extends LitElement {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 8px 24px;
+        padding: 8px 16px;
         min-height: 48px;
         background: var(--bg-surface);
         border-top: 1px solid var(--bg-border);
@@ -349,7 +349,7 @@ export class CpApp extends LitElement {
         header {
           height: auto;
           min-height: 56px;
-          padding: 8px 16px;
+          padding: 8px 12px;
           flex-wrap: wrap;
           row-gap: 4px;
         }
@@ -381,7 +381,7 @@ export class CpApp extends LitElement {
         }
 
         footer {
-          padding: 8px 16px;
+          padding: 8px 12px;
         }
 
         .footer-left,
