@@ -1081,4 +1081,11 @@ export const agentDetailPanelStyles = css`
     color: var(--accent);
     border-color: var(--accent-border);
   }
+
+  .tab-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 0;
+  }
 `;

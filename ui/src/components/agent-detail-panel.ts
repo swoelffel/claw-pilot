@@ -21,13 +21,14 @@ import {
   updateBlueprintSpawnLinks,
   updateAgentMeta,
   patchInstanceConfig,
+  fetchInstanceConfig,
   fetchProviders,
   fetchInstanceSkills,
   updateBlueprintAgentMeta,
 } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
-import { sectionLabelStyles } from "../styles/shared.js";
+import { sectionLabelStyles, spinnerStyles } from "../styles/shared.js";
 import { agentDetailPanelStyles } from "../styles/agent-detail-panel.styles.js";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
@@ -46,7 +47,7 @@ const EDITABLE_FILES = new Set([
 @localized()
 @customElement("cp-agent-detail-panel")
 export class AgentDetailPanel extends LitElement {
-  static override styles = [tokenStyles, sectionLabelStyles, agentDetailPanelStyles];
+  static override styles = [tokenStyles, sectionLabelStyles, spinnerStyles, agentDetailPanelStyles];
 
   // ── Public properties ───────────────────────────────────────────────────
 
@@ -119,6 +120,7 @@ export class AgentDetailPanel extends LitElement {
   @state() private _cfgWorkspaceGlobs: string[] = [];
   @state() private _cfgDirty = false;
   @state() private _cfgSaving = false;
+  @state() private _cfgLoading = false;
 
   // ── Heartbeat tab state ──────────────────────────────────────────────────
 
@@ -133,6 +135,7 @@ export class AgentDetailPanel extends LitElement {
   @state() private _hbCustomPrompt = "";
   @state() private _hbDirty = false;
   @state() private _hbSaving = false;
+  @state() private _hbLoading = false;
   @state() private _hbTicks: Array<{
     sessionId: string;
     createdAt: string;
@@ -185,25 +188,36 @@ export class AgentDetailPanel extends LitElement {
 
   // ── Config tab methods ───────────────────────────────────────────────────
 
-  private _initConfigFromAgent(): void {
-    const cfg = (this.agent as unknown as Record<string, unknown>).config as
-      | Record<string, unknown>
-      | undefined;
-    this._cfgToolProfile =
-      (cfg?.toolProfile as typeof this._cfgToolProfile | undefined) ?? "coding";
-    this._cfgTemperature = (cfg?.temperature as number | undefined) ?? null;
-    this._cfgMaxSteps = (cfg?.maxSteps as number | undefined) ?? 20;
-    this._cfgPromptMode = (cfg?.promptMode as typeof this._cfgPromptMode | undefined) ?? "full";
-    const thinking = cfg?.thinking as Record<string, unknown> | undefined;
-    this._cfgThinkingEnabled = !!thinking?.enabled;
-    this._cfgBudgetTokens = (thinking?.budgetTokens as number | undefined) ?? 15000;
-    this._cfgAllowSubAgents = (cfg?.allowSubAgents as boolean | undefined) ?? true;
-    this._cfgAllowedAgents = (cfg?.allowedAgents as string[] | undefined) ?? [];
-    this._cfgSessionTimeout = (cfg?.sessionTimeoutMs as number | undefined) ?? 300000;
-    this._cfgChunkTimeout = (cfg?.chunkTimeoutMs as number | undefined) ?? 120000;
-    this._cfgInstructionUrls = (cfg?.instructionUrls as string[] | undefined) ?? [];
-    this._cfgWorkspaceGlobs = (cfg?.workspaceGlobs as string[] | undefined) ?? [];
+  private async _initConfigTab(): Promise<void> {
+    this._cfgLoading = true;
     this._cfgDirty = false;
+    try {
+      let cfg: Record<string, unknown> | undefined;
+      if (this.context.kind === "instance") {
+        const instanceConfig = await fetchInstanceConfig(this.context.slug);
+        const agentEntry = instanceConfig.agents.find((a) => a.id === this.agent.agent_id);
+        cfg = agentEntry as Record<string, unknown> | undefined;
+      }
+      this._cfgToolProfile =
+        (cfg?.toolProfile as typeof this._cfgToolProfile | undefined) ?? "coding";
+      this._cfgTemperature = (cfg?.temperature as number | undefined) ?? null;
+      this._cfgMaxSteps = (cfg?.maxSteps as number | undefined) ?? 20;
+      this._cfgPromptMode = (cfg?.promptMode as typeof this._cfgPromptMode | undefined) ?? "full";
+      const thinking = cfg?.thinking as Record<string, unknown> | undefined;
+      this._cfgThinkingEnabled = !!thinking?.enabled;
+      this._cfgBudgetTokens = (thinking?.budgetTokens as number | undefined) ?? 15000;
+      this._cfgAllowSubAgents = (cfg?.allowSubAgents as boolean | undefined) ?? true;
+      this._cfgAllowedAgents = (cfg?.allowedAgents as string[] | undefined) ?? [];
+      this._cfgSessionTimeout = (cfg?.timeoutMs as number | undefined) ?? 300000;
+      this._cfgChunkTimeout = (cfg?.chunkTimeoutMs as number | undefined) ?? 120000;
+      this._cfgInstructionUrls = (cfg?.instructionUrls as string[] | undefined) ?? [];
+      this._cfgWorkspaceGlobs = (cfg?.workspaceGlobs as string[] | undefined) ?? [];
+      this._cfgDirty = false;
+    } catch {
+      // Silently fallback to defaults on error
+    } finally {
+      this._cfgLoading = false;
+    }
   }
 
   private async _saveConfig(): Promise<void> {
@@ -236,6 +250,10 @@ export class AgentDetailPanel extends LitElement {
   private _renderConfigTab() {
     const TOOL_PROFILES = ["minimal", "messaging", "coding", "full"] as const;
     const PROMPT_MODES = ["full", "minimal"] as const;
+
+    if (this._cfgLoading) {
+      return html`<div class="tab-loading"><span class="spinner"></span></div>`;
+    }
 
     return html`
       <div class="hb-tab">
@@ -492,7 +510,7 @@ export class AgentDetailPanel extends LitElement {
                 <button
                   class="btn-cancel-spawn"
                   ?disabled=${this._cfgSaving}
-                  @click=${() => this._initConfigFromAgent()}
+                  @click=${() => void this._initConfigTab()}
                 >
                   ${msg("Cancel", { id: "cfg-cancel" })}
                 </button>
@@ -505,21 +523,32 @@ export class AgentDetailPanel extends LitElement {
 
   // ── Heartbeat methods ────────────────────────────────────────────────────
 
-  private _initHeartbeatFromAgent(): void {
-    const hb = (this.agent as unknown as Record<string, unknown>).heartbeat as
-      | Record<string, unknown>
-      | undefined;
-    this._hbEnabled = !!hb?.enabled;
-    this._hbInterval = (hb?.every as string | undefined) ?? "30m";
-    const ah = hb?.activeHours as Record<string, string> | undefined;
-    this._hbHoursStart = ah?.start ?? "";
-    this._hbHoursEnd = ah?.end ?? "";
-    this._hbTimezone = ah?.tz ?? "";
-    this._hbModel = (hb?.model as string | undefined) ?? "";
-    this._hbMaxChars = (hb?.ackMaxChars as number | undefined) ?? 500;
-    this._hbPromptMode = (hb?.prompt as string | undefined) ? "custom" : "file";
-    this._hbCustomPrompt = (hb?.prompt as string | undefined) ?? "";
+  private async _initHeartbeatTab(): Promise<void> {
+    this._hbLoading = true;
     this._hbDirty = false;
+    try {
+      let hb: Record<string, unknown> | undefined;
+      if (this.context.kind === "instance") {
+        const instanceConfig = await fetchInstanceConfig(this.context.slug);
+        const agentEntry = instanceConfig.agents.find((a) => a.id === this.agent.agent_id);
+        hb = agentEntry?.heartbeat as Record<string, unknown> | undefined;
+      }
+      this._hbEnabled = !!hb?.every; // heartbeat is enabled when `every` is set
+      this._hbInterval = (hb?.every as string | undefined) ?? "30m";
+      const ah = hb?.activeHours as Record<string, string> | undefined;
+      this._hbHoursStart = ah?.start ?? "";
+      this._hbHoursEnd = ah?.end ?? "";
+      this._hbTimezone = ah?.tz ?? "";
+      this._hbModel = (hb?.model as string | undefined) ?? "";
+      this._hbMaxChars = (hb?.ackMaxChars as number | undefined) ?? 500;
+      this._hbPromptMode = (hb?.prompt as string | undefined) ? "custom" : "file";
+      this._hbCustomPrompt = (hb?.prompt as string | undefined) ?? "";
+      this._hbDirty = false;
+    } catch {
+      // Silently fallback to defaults on error
+    } finally {
+      this._hbLoading = false;
+    }
   }
 
   private async _loadHeartbeatHistory(): Promise<void> {
@@ -584,6 +613,10 @@ export class AgentDetailPanel extends LitElement {
 
   private _renderHeartbeatTab() {
     const INTERVALS = ["5m", "10m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "24h"];
+
+    if (this._hbLoading) {
+      return html`<div class="tab-loading"><span class="spinner"></span></div>`;
+    }
 
     return html`
       <div class="hb-tab">
@@ -757,7 +790,7 @@ export class AgentDetailPanel extends LitElement {
                 <button
                   class="btn-cancel-spawn"
                   ?disabled=${this._hbSaving}
-                  @click=${() => this._initHeartbeatFromAgent()}
+                  @click=${() => void this._initHeartbeatTab()}
                 >
                   ${msg("Cancel", { id: "hb-cancel" })}
                 </button>
@@ -1811,24 +1844,28 @@ export class AgentDetailPanel extends LitElement {
         >
           ${msg("Info", { id: "adp-tab-info" })}
         </button>
-        <button
-          class="tab ${this._activeTab === "heartbeat" ? "active" : ""}"
-          @click=${() => {
-            this._initHeartbeatFromAgent();
-            this._selectTab("heartbeat");
-          }}
-        >
-          ${msg("Heartbeat", { id: "adp-tab-heartbeat" })}
-        </button>
-        <button
-          class="tab ${this._activeTab === "config" ? "active" : ""}"
-          @click=${() => {
-            this._initConfigFromAgent();
-            this._selectTab("config");
-          }}
-        >
-          ${msg("Config", { id: "adp-tab-config" })}
-        </button>
+        ${this.context.kind === "instance"
+          ? html`
+              <button
+                class="tab ${this._activeTab === "heartbeat" ? "active" : ""}"
+                @click=${() => {
+                  this._selectTab("heartbeat");
+                  void this._initHeartbeatTab();
+                }}
+              >
+                ${msg("Heartbeat", { id: "adp-tab-heartbeat" })}
+              </button>
+              <button
+                class="tab ${this._activeTab === "config" ? "active" : ""}"
+                @click=${() => {
+                  this._selectTab("config");
+                  void this._initConfigTab();
+                }}
+              >
+                ${msg("Config", { id: "adp-tab-config" })}
+              </button>
+            `
+          : nothing}
         ${fileTabs.map(
           (f) => html`
             <button
