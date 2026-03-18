@@ -27,7 +27,10 @@ import { initDatabase } from "../../../db/schema.js";
 import type Database from "better-sqlite3";
 import { createSession } from "../session.js";
 import { listMessages, getMessage } from "../message.js";
-import { listParts } from "../part.js";
+import { createAssistantMessage, createUserMessage } from "../message.js";
+import { listParts, createPart, updatePartState } from "../part.js";
+import { buildCoreMessages } from "../message-builder.js";
+import { listMessagesFromCompaction } from "../message.js";
 import { getBus, disposeBus } from "../../bus/index.js";
 import {
   SessionStatusChanged,
@@ -1152,6 +1155,256 @@ describe("runPromptLoop — ownerOnly filtering", () => {
     const toolNames = (firstCall.tools ?? []).map((t: { name: string }) => t.name);
     expect(toolNames).not.toContain("owner_tool");
     expect(toolNames).toContain("public_tool");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tool failure resilience
+// ---------------------------------------------------------------------------
+
+/**
+ * Regression tests for the "orphan tool_call" bug:
+ *
+ * When a tool's execute() throws, the Vercel AI SDK v6 emits a `tool-error`
+ * chunk instead of `tool-result`. Previously, the `onChunk` handler had no
+ * case for `tool-error`, leaving the Path-A part with state=null in the DB.
+ * On the next turn, buildCoreMessages would include that tool-call in the
+ * assistant message content but emit no matching tool-result, causing
+ * MissingToolResultsError and permanently breaking permanent sessions.
+ *
+ * Fix 1 (prompt-loop.ts): handle `tool-error` chunks → set part state="error".
+ * Fix 2 (message-builder.ts): emit synthetic tool-result for any non-completed
+ *   part (state=null or state="error") so the LLM context is always valid.
+ */
+describe("runPromptLoop — tool failure resilience", () => {
+  /** Finish chunk used in multi-step mocks */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const finishChunk = {
+    type: "finish" as const,
+    finishReason: { unified: "stop", raw: "stop" } as any,
+    usage: {
+      inputTokens: { total: 5, noCache: undefined, cacheRead: undefined, cacheWrite: undefined },
+      outputTokens: { total: 2, text: undefined, reasoning: undefined },
+    },
+  };
+
+  /**
+   * [positive] A tool that throws must not permanently break the session.
+   *
+   * The first turn invokes a tool that throws. The second turn (plain text)
+   * must succeed — demonstrating that the session history is well-formed even
+   * after a tool failure.
+   */
+  it("[positive] session remains usable after a tool throws on execute()", async () => {
+    // Arrange: a tool that always throws
+    const failingTool: Tool.Info = {
+      id: "failing_tool",
+      init: async () => ({
+        description: "A tool that always fails",
+        parameters: z.object({ input: z.string() }),
+        execute: async () => {
+          throw new Error("intentional tool failure");
+        },
+      }),
+    };
+    vi.mocked(getTools).mockResolvedValue([failingTool]);
+
+    const session = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
+
+    // Turn 1: LLM calls failing_tool → SDK emits tool-error chunk
+    let step = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => {
+        const current = step++;
+        if (current === 0) {
+          // Step 1: emit a tool-call (SDK will call execute(), which throws → tool-error chunk)
+          return {
+            stream: simulateReadableStream({
+              chunks: [
+                { type: "stream-start", warnings: [] },
+                {
+                  type: "tool-call",
+                  toolCallId: "call-fail-1",
+                  toolName: "failing_tool",
+                  input: JSON.stringify({ input: "test" }),
+                },
+                finishChunk,
+              ],
+              initialDelayInMs: 0,
+              chunkDelayInMs: 0,
+            }),
+            rawCall: { rawPrompt: null, rawSettings: {} },
+          };
+        }
+        // Step 2: text response after the tool error
+        return {
+          stream: simulateReadableStream({
+            chunks: [
+              { type: "stream-start", warnings: [] },
+              { type: "text-start", id: "t1" },
+              { type: "text-delta", id: "t1", delta: "Recovered successfully" },
+              { type: "text-end", id: "t1" },
+              finishChunk,
+            ],
+            initialDelayInMs: 0,
+            chunkDelayInMs: 0,
+          }),
+          rawCall: { rawPrompt: null, rawSettings: {} },
+        };
+      },
+    });
+
+    // Act: first turn — tool fails
+    await runPromptLoop({
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      sessionId: session.id,
+      userText: "use the failing tool",
+      agentConfig: makeAgentConfig({ maxSteps: 5 }),
+      resolvedModel: makeResolvedModel(model),
+      workDir: undefined,
+    });
+
+    // Assert: the Path-A part must have state="error" (not null)
+    const messages = listMessages(db, session.id);
+    const assistantMsg = messages.find((m) => m.role === "assistant");
+    expect(assistantMsg).toBeDefined();
+    const parts = listParts(db, assistantMsg!.id);
+    const toolCallPart = parts.find((p) => p.type === "tool_call");
+    expect(toolCallPart).toBeDefined();
+    expect(toolCallPart!.state).toBe("error");
+
+    // Act: second turn — plain text, must NOT throw MissingToolResultsError
+    const secondResult = await runPromptLoop({
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      sessionId: session.id,
+      userText: "how are you?",
+      agentConfig: makeAgentConfig({ maxSteps: 5 }),
+      resolvedModel: makeResolvedModel(model),
+      workDir: undefined,
+    });
+
+    expect(secondResult.text).toBe("Recovered successfully");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildCoreMessages — orphan tool-call resilience (defensive guard)
+// ---------------------------------------------------------------------------
+
+/**
+ * Tests for the defensive guard in buildCoreMessages (message-builder.ts):
+ * any tool-call with state≠"completed" must still emit a synthetic tool-result
+ * so the LLM context is always valid, even for sessions corrupted by a crash
+ * or an older runtime version without the tool-error handler.
+ */
+describe("buildCoreMessages — orphan tool-call resilience", () => {
+  /**
+   * [positive] A tool_call part with state=null (simulated crash / process kill)
+   * must produce a synthetic tool-result in the reconstructed messages.
+   */
+  it("[positive] tool_call state=null → synthetic tool-result emitted", () => {
+    const session = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
+
+    // Build an assistant message with an orphan tool_call (state=null, no content)
+    const assistantMsg = createAssistantMessage(db, {
+      sessionId: session.id,
+      agentId: "main",
+    });
+    createPart(db, {
+      messageId: assistantMsg.id,
+      type: "tool_call",
+      metadata: JSON.stringify({
+        toolCallId: "orphan-null-1",
+        toolName: "some_tool",
+        args: { input: "x" },
+      }),
+    });
+
+    // Reconstruct messages
+    const rawMessages = listMessagesFromCompaction(db, session.id);
+    const coreMessages = buildCoreMessages(db, rawMessages);
+
+    // Must have an assistant message with the tool-call
+    const assistantCoreMsg = coreMessages.find((m) => m.role === "assistant");
+    expect(assistantCoreMsg).toBeDefined();
+
+    // Must also have a tool message with a synthetic result (no MissingToolResultsError)
+    const toolMsg = coreMessages.find((m) => m.role === "tool");
+    expect(toolMsg).toBeDefined();
+    const toolContent = toolMsg!.content as Array<{ toolCallId: string; output: unknown }>;
+    const result = toolContent.find((r) => r.toolCallId === "orphan-null-1");
+    expect(result).toBeDefined();
+    // The synthetic message must mention the interruption
+    expect(JSON.stringify(result!.output)).toContain("interrupted");
+  });
+
+  /**
+   * [positive] A tool_call part with state="error" (captured error)
+   * must produce a tool-result containing the error message.
+   */
+  it("[positive] tool_call state=error → tool-result contains error message", () => {
+    const session = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
+
+    const assistantMsg = createAssistantMessage(db, {
+      sessionId: session.id,
+      agentId: "main",
+    });
+    const part = createPart(db, {
+      messageId: assistantMsg.id,
+      type: "tool_call",
+      metadata: JSON.stringify({
+        toolCallId: "error-call-1",
+        toolName: "some_tool",
+        args: {},
+      }),
+    });
+    updatePartState(db, part.id, "error", "[Tool error: intentional failure]");
+
+    const rawMessages = listMessagesFromCompaction(db, session.id);
+    const coreMessages = buildCoreMessages(db, rawMessages);
+
+    const toolMsg = coreMessages.find((m) => m.role === "tool");
+    expect(toolMsg).toBeDefined();
+    const toolContent = toolMsg!.content as Array<{ toolCallId: string; output: unknown }>;
+    const result = toolContent.find((r) => r.toolCallId === "error-call-1");
+    expect(result).toBeDefined();
+    expect(JSON.stringify(result!.output)).toContain("intentional failure");
+  });
+
+  /**
+   * [negative] A completed tool_call must still emit its actual content (not the
+   * synthetic fallback), ensuring we didn't break the happy path.
+   */
+  it("[negative] tool_call state=completed → actual content preserved", () => {
+    const session = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
+
+    const assistantMsg = createAssistantMessage(db, {
+      sessionId: session.id,
+      agentId: "main",
+    });
+    const part = createPart(db, {
+      messageId: assistantMsg.id,
+      type: "tool_call",
+      metadata: JSON.stringify({
+        toolCallId: "ok-call-1",
+        toolName: "some_tool",
+        args: {},
+      }),
+    });
+    updatePartState(db, part.id, "completed", "the real tool output");
+
+    const rawMessages = listMessagesFromCompaction(db, session.id);
+    const coreMessages = buildCoreMessages(db, rawMessages);
+
+    const toolMsg = coreMessages.find((m) => m.role === "tool");
+    expect(toolMsg).toBeDefined();
+    const toolContent = toolMsg!.content as Array<{ toolCallId: string; output: unknown }>;
+    const result = toolContent.find((r) => r.toolCallId === "ok-call-1");
+    expect(result).toBeDefined();
+    expect(JSON.stringify(result!.output)).toContain("the real tool output");
+    expect(JSON.stringify(result!.output)).not.toContain("interrupted");
   });
 });
 

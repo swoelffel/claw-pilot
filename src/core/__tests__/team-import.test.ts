@@ -190,7 +190,8 @@ describe("importBlueprintTeam()", () => {
     if ("dry_run" in result) {
       expect(result.summary.agents_to_import).toBe(2);
       expect(result.summary.links_to_import).toBe(1);
-      expect(result.summary.files_to_write).toBe(1);
+      // main has SOUL.md (1 YAML) + 5 gap-fills; helper has 0 YAML + 6 gap-fills = 12 total
+      expect(result.summary.files_to_write).toBe(12);
       expect(result.summary.agents_to_remove).toBe(0); // no existing agents
       expect(result.summary.current_agent_count).toBe(0);
     }
@@ -277,7 +278,8 @@ describe("importInstanceTeam()", () => {
     if ("dry_run" in result) {
       expect(result.summary.agents_to_import).toBe(2);
       expect(result.summary.links_to_import).toBe(1);
-      expect(result.summary.files_to_write).toBe(1);
+      // main has SOUL.md (1 YAML) + 5 gap-fills; helper has 0 YAML + 6 gap-fills = 12 total
+      expect(result.summary.files_to_write).toBe(12);
     }
 
     // No agents should have been written to DB

@@ -162,6 +162,8 @@ async function _importTeamCore(
             : JSON.stringify(agent.config.model);
       }
 
+      const createdAt = now();
+
       if (target.type === "blueprint") {
         // Serialize skills from config.skills (array) → JSON string for DB column.
         const skillsJson =
@@ -171,8 +173,8 @@ async function _importTeamCore(
 
         db.prepare(
           `INSERT INTO agents (blueprint_id, agent_id, name, model, workspace_path, is_default,
-           role, tags, notes, skills, position_x, position_y)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           role, tags, notes, skills, position_x, position_y, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).run(
           target.blueprintId,
           agent.id,
@@ -186,12 +188,13 @@ async function _importTeamCore(
           skillsJson,
           agent.meta?.position?.x ?? null,
           agent.meta?.position?.y ?? null,
+          createdAt,
         );
       } else {
         db.prepare(
           `INSERT INTO agents (instance_id, agent_id, name, model, workspace_path, is_default,
-           role, tags, notes, position_x, position_y)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           role, tags, notes, position_x, position_y, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).run(
           target.instanceId,
           agent.id,
@@ -204,6 +207,7 @@ async function _importTeamCore(
           agent.meta?.notes ?? null,
           agent.meta?.position?.x ?? null,
           agent.meta?.position?.y ?? null,
+          createdAt,
         );
       }
 
@@ -299,7 +303,15 @@ export async function importBlueprintTeam(
   const currentAgents = registry.listBlueprintAgents(blueprintId);
 
   if (dryRun) {
-    const filesToWrite = team.agents.reduce((sum, a) => sum + Object.keys(a.files ?? {}).length, 0);
+    // Include gap-fill: each agent gets EXPORTABLE_FILES minus what's already in the YAML
+    const filesToWrite = team.agents.reduce((sum, a) => {
+      const provided = Object.keys(a.files ?? {}).filter((f) =>
+        (constants.EXPORTABLE_FILES as readonly string[]).includes(f),
+      ).length;
+      return (
+        sum + Object.keys(a.files ?? {}).length + (constants.EXPORTABLE_FILES.length - provided)
+      );
+    }, 0);
     return {
       ok: true,
       dry_run: true,
@@ -339,7 +351,15 @@ export async function importInstanceTeam(
   const currentAgents = registry.listAgents(instance.slug);
 
   if (dryRun) {
-    const filesToWrite = team.agents.reduce((sum, a) => sum + Object.keys(a.files ?? {}).length, 0);
+    // Include gap-fill: each agent gets EXPORTABLE_FILES minus what's already in the YAML
+    const filesToWrite = team.agents.reduce((sum, a) => {
+      const provided = Object.keys(a.files ?? {}).filter((f) =>
+        (constants.EXPORTABLE_FILES as readonly string[]).includes(f),
+      ).length;
+      return (
+        sum + Object.keys(a.files ?? {}).length + (constants.EXPORTABLE_FILES.length - provided)
+      );
+    }, 0);
     return {
       ok: true,
       dry_run: true,
@@ -418,13 +438,32 @@ function mergeTeamIntoRuntimeConfig(config: Record<string, unknown>, team: TeamF
 
     // Spread config fields
     if (agent.config) {
-      const { model, permissions, subagents, tools, params, skills } = agent.config;
+      const {
+        model,
+        toolProfile,
+        permissions,
+        subagents,
+        tools,
+        params,
+        skills,
+        heartbeat,
+        humanDelay,
+        identity,
+        sandbox,
+        groupChat,
+      } = agent.config;
       if (model !== undefined) entry["model"] = model;
+      if (toolProfile !== undefined) entry["toolProfile"] = toolProfile;
       if (permissions !== undefined) entry["permissions"] = permissions;
       if (subagents !== undefined) entry["subagents"] = subagents;
       if (tools !== undefined) entry["tools"] = tools;
       if (params !== undefined) entry["params"] = params;
       if (skills !== undefined) entry["skills"] = skills;
+      if (heartbeat !== undefined) entry["heartbeat"] = heartbeat;
+      if (humanDelay !== undefined) entry["humanDelay"] = humanDelay;
+      if (identity !== undefined) entry["identity"] = identity;
+      if (sandbox !== undefined) entry["sandbox"] = sandbox;
+      if (groupChat !== undefined) entry["groupChat"] = groupChat;
     }
 
     // Inject subagents.allowAgents from spawn links

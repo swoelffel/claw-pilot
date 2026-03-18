@@ -1365,6 +1365,131 @@ describe("POST /api/instances/:slug/team/import", () => {
     const body = await json(res);
     expect(body.ok).toBe(false);
   });
+
+  it("returns 200 with import result on successful import", async () => {
+    seedInstance(ctx, "demo1", 18789);
+
+    const validTeam = `version: "1"
+exported_at: "2026-01-01T00:00:00Z"
+source: test
+agents:
+  - id: main
+    name: Main
+    is_default: true
+    config:
+      model: anthropic/claude-haiku-4-5
+      toolProfile: full
+      permissions:
+        - permission: "*"
+          pattern: "**"
+          action: allow
+    files:
+      SOUL.md: |
+        # Soul
+links: []
+`;
+
+    const res = await ctx.app.request("/api/instances/demo1/team/import", {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "text/yaml" },
+      body: validTeam,
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.ok).toBe(true);
+    expect(body.agents_imported).toBe(1);
+    expect(body.links_imported).toBe(0);
+    expect(typeof body.files_written).toBe("number");
+  });
+
+  it("returns dry_run summary with ?dry_run=true", async () => {
+    seedInstance(ctx, "demo1", 18789);
+
+    const validTeam = `version: "1"
+exported_at: "2026-01-01T00:00:00Z"
+source: test
+agents:
+  - id: main
+    name: Main
+    is_default: true
+links: []
+`;
+
+    const res = await ctx.app.request("/api/instances/demo1/team/import?dry_run=true", {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "text/yaml" },
+      body: validTeam,
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.ok).toBe(true);
+    expect(body.dry_run).toBe(true);
+    expect(body.summary).toBeDefined();
+    expect(body.summary.agents_to_import).toBe(1);
+  });
+});
+
+describe("GET /api/blueprints/:id/team/export", () => {
+  it("returns 404 for unknown blueprint", async () => {
+    const res = await ctx.app.request("/api/blueprints/9999/team/export", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns YAML content for a known blueprint", async () => {
+    const bp = ctx.registry.createBlueprint({ name: "Test Blueprint" });
+    ctx.registry.createBlueprintAgent(bp.id, {
+      agentId: "main",
+      name: "Main",
+      isDefault: true,
+      model: "anthropic/claude-haiku-4-5",
+    });
+
+    const res = await ctx.app.request(`/api/blueprints/${bp.id}/team/export`, {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("text/yaml");
+  });
+});
+
+describe("POST /api/blueprints/:id/team/import", () => {
+  it("returns 404 for unknown blueprint", async () => {
+    const res = await ctx.app.request("/api/blueprints/9999/team/import", {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "text/yaml" },
+      body: "version: 1\nagents: []\nlinks: []\n",
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 200 with import result on successful blueprint import", async () => {
+    const bp = ctx.registry.createBlueprint({ name: "Test Blueprint" });
+
+    const validTeam = `version: "1"
+exported_at: "2026-01-01T00:00:00Z"
+source: test
+agents:
+  - id: main
+    name: Main
+    is_default: true
+    config:
+      model: anthropic/claude-haiku-4-5
+      toolProfile: coding
+links: []
+`;
+
+    const res = await ctx.app.request(`/api/blueprints/${bp.id}/team/import`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "text/yaml" },
+      body: validTeam,
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.ok).toBe(true);
+    expect(body.agents_imported).toBe(1);
+  });
 });
 
 // ===========================================================================

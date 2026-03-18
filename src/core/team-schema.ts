@@ -45,10 +45,21 @@ const SubagentsConfigSchema = z
   })
   .passthrough(); // allow unknown subagent fields
 
+/** Permission rule — mirrors PermissionRuleSchema in runtime/config/index.ts */
+const PermissionRuleSchema = z.object({
+  permission: z.string().min(1),
+  pattern: z.string().min(1),
+  action: z.enum(["allow", "deny", "ask"]),
+});
+
 const AgentConfigSchema = z
   .object({
     model: AgentModelSchema.optional(),
     identity: IdentitySchema.optional(),
+    /** Tool profile controls which tools are available to the agent */
+    toolProfile: z.enum(["minimal", "coding", "messaging", "full"]).optional(),
+    /** Permission ruleset for this agent */
+    permissions: z.array(PermissionRuleSchema).optional(),
     subagents: SubagentsConfigSchema.optional(),
     heartbeat: z.record(z.string(), z.unknown()).optional(),
     sandbox: z.record(z.string(), z.unknown()).optional(),

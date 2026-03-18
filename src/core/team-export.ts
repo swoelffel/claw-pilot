@@ -20,11 +20,17 @@ import {
 /** Fields we extract per-agent from runtime.json agents[]. */
 const AGENT_CONFIG_KEYS = [
   "model",
+  "toolProfile",
   "permissions",
   "subagents",
   "tools",
   "params",
   "skills",
+  "heartbeat",
+  "humanDelay",
+  "identity",
+  "sandbox",
+  "groupChat",
 ] as const;
 
 function pick(
@@ -218,11 +224,26 @@ export function exportBlueprintTeam(registry: Registry, blueprintId: number): Te
     type: l.link_type,
   }));
 
-  // 4. Assemble TeamFile
+  // 4. Extract defaults.model from the default agent's model (if any)
+  const defaultAgent = agents.find((a) => a.is_default === 1);
+  let defaultModel: string | undefined;
+  if (defaultAgent?.model) {
+    try {
+      // model may be stored as JSON (complex model config) or bare string
+      defaultModel = JSON.parse(defaultAgent.model) as string;
+    } catch {
+      // intentionally ignored — model is a bare string
+      defaultModel = defaultAgent.model;
+    }
+  }
+  const defaults = defaultModel ? ({ model: defaultModel } as TeamFile["defaults"]) : undefined;
+
+  // 5. Assemble TeamFile
   const teamFile: TeamFile = {
     version: TEAM_FORMAT_VERSION,
     exported_at: new Date().toISOString(),
     source: blueprint.name,
+    ...(defaults ? { defaults } : {}),
     agents: teamAgents,
     links: teamLinks,
   };

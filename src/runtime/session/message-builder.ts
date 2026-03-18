@@ -280,20 +280,33 @@ export function buildCoreMessages(db: Database.Database, messages: MessageInfo[]
 
         const toolResults: ToolResultPart[] = [];
         for (const tcp of toolCallParts) {
-          if (tcp.metadata && tcp.state === "completed" && tcp.content) {
-            try {
-              const meta = JSON.parse(tcp.metadata) as { toolCallId?: string; toolName?: string };
-              if (meta.toolCallId && meta.toolName) {
-                toolResults.push({
-                  type: "tool-result",
-                  toolCallId: meta.toolCallId,
-                  toolName: meta.toolName,
-                  output: { type: "text", value: tcp.content },
-                });
-              }
-            } catch {
-              // Skip malformed metadata
+          if (!tcp.metadata) continue;
+          try {
+            const meta = JSON.parse(tcp.metadata) as { toolCallId?: string; toolName?: string };
+            if (!meta.toolCallId || !meta.toolName) continue;
+
+            // Always emit a tool-result for every tool-call included in the assistant
+            // message — even on error or unexpected termination (state null).
+            // Without this, MissingToolResultsError permanently breaks permanent sessions.
+            let output: string;
+            if (tcp.state === "completed" && tcp.content) {
+              output = tcp.content;
+            } else if (tcp.state === "error") {
+              // Captured error — content holds the error message set by the handler
+              output = tcp.content ?? "[Tool execution failed]";
+            } else {
+              // state null: process was killed or crashed before the tool finished
+              output = "[Tool execution was interrupted unexpectedly]";
             }
+
+            toolResults.push({
+              type: "tool-result",
+              toolCallId: meta.toolCallId,
+              toolName: meta.toolName,
+              output: { type: "text", value: output },
+            });
+          } catch {
+            // Skip malformed metadata
           }
         }
 

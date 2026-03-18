@@ -118,13 +118,13 @@ export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
     const id = Number(c.req.param("id"));
     if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
 
+    const blueprint = registry.getBlueprint(id);
+    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
+
     try {
       const team = exportBlueprintTeam(registry, id);
       const yaml = serializeTeamYaml(team);
-      const blueprint = registry.getBlueprint(id);
-      const filename = blueprint
-        ? `${blueprint.name.toLowerCase().replace(/\s+/g, "-")}-team.yaml`
-        : `blueprint-${id}-team.yaml`;
+      const filename = `${blueprint.name.toLowerCase().replace(/\s+/g, "-")}-team.yaml`;
       return new Response(yaml, {
         status: 200,
         headers: {

@@ -153,6 +153,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
   const chunkWatchdogTimer = setInterval(() => {
     const elapsed = Date.now() - lastChunkTime;
     if (elapsed > CHUNK_TIMEOUT_MS) {
+      clearInterval(chunkWatchdogTimer);
       bus.publish(LLMChunkTimeout, { sessionId, agentId: agentConfig.id, elapsedMs: elapsed });
       chunkWatchdogController.abort();
     }
@@ -323,8 +324,34 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       stopWhen: stepCountIs(agentConfig.maxSteps),
       abortSignal: fullAbort,
       ...(providerOptions !== undefined ? { providerOptions } : {}),
-      onStepFinish: () => {
+      onStepFinish: (step) => {
         completedSteps++;
+
+        // Close Path-A parts for any tool-errors in this step.
+        // onChunk does not receive tool-error chunks (excluded from StreamTextOnChunkCallback
+        // by the SDK), but StepResult.content includes them. Without this, Path-A parts
+        // stay state=null forever and cause MissingToolResultsError on the next turn of
+        // a permanent session.
+        for (const part of step.content) {
+          if (part.type !== "tool-error") continue;
+          const parts = listParts(db, assistantMsg.id);
+          const toolPart = parts.find((p) => {
+            if (p.type !== "tool_call" || !p.metadata) return false;
+            try {
+              const meta = JSON.parse(p.metadata) as { toolCallId?: string };
+              return meta.toolCallId === part.toolCallId;
+            } catch {
+              return false;
+            }
+          });
+          if (toolPart && toolPart.state == null) {
+            const errMsg =
+              part.error instanceof Error
+                ? part.error.message
+                : String(part.error ?? "unknown error");
+            updatePartState(db, toolPart.id, "error", `[Tool error: ${errMsg}]`);
+          }
+        }
       },
       onChunk: async ({ chunk }) => {
         lastChunkTime = Date.now();

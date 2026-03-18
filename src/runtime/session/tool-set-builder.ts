@@ -26,7 +26,7 @@ import type { RuntimeConfig, SubagentsConfig } from "../config/index.js";
 import type { McpRegistry } from "../mcp/registry.js";
 import type { PluginInput } from "../plugin/types.js";
 import { normalizeForProvider } from "../tool/normalize.js";
-import { createPart, updatePartState } from "./part.js";
+import { createPart, listParts, updatePartState } from "./part.js";
 import { getBus } from "../bus/index.js";
 import { DoomLoopDetected, MessageUpdated } from "../bus/events.js";
 import {
@@ -38,6 +38,39 @@ import { createMemorySearchTool } from "../memory/search-tool.js";
 import { rebuildMemoryIndex } from "../memory/index.js";
 import { createTaskTool } from "../tool/task.js";
 import { invalidateWorkspaceCache } from "./workspace-cache.js";
+
+// ---------------------------------------------------------------------------
+// Part helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Find the tool_call part created by onChunk Path-A (which has toolCallId).
+ * Falls back to creating a new part if not found (e.g. streaming edge cases).
+ */
+function getOrCreateToolCallPart(
+  db: import("better-sqlite3").Database,
+  messageId: string,
+  toolCallId: string,
+  toolName: string,
+  args: unknown,
+): ReturnType<typeof createPart> {
+  const existing = listParts(db, messageId).find((p) => {
+    if (p.type !== "tool_call" || !p.metadata) return false;
+    try {
+      const meta = JSON.parse(p.metadata) as { toolCallId?: string };
+      return meta.toolCallId === toolCallId;
+    } catch {
+      return false;
+    }
+  });
+  if (existing) return existing;
+  // Fallback: create with toolCallId so the part is properly identified
+  return createPart(db, {
+    messageId,
+    type: "tool_call",
+    metadata: JSON.stringify({ toolCallId, toolName, args }),
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Memory file detection
@@ -109,7 +142,7 @@ export async function buildToolSet(
     set[toolInfo.id] = aiTool({
       description: def.description,
       inputSchema: zodSchema(normalizedParams),
-      execute: async (args: unknown) => {
+      execute: async (args: unknown, options: { toolCallId: string }) => {
         const callHash = JSON.stringify(args);
         recentCalls.push({ tool: toolInfo.id, hash: callHash });
         if (recentCalls.length > 3) recentCalls.shift();
@@ -134,11 +167,9 @@ export async function buildToolSet(
           console.warn("[claw-runtime] plugin hook tool.beforeCall threw:", err);
         });
 
-        const part = createPart(db, {
-          messageId,
-          type: "tool_call",
-          metadata: JSON.stringify({ toolName: toolInfo.id, args }),
-        });
+        // Reuse the part created by onChunk Path-A (which has toolCallId).
+        // This prevents duplicate tool_call parts in the DB.
+        const part = getOrCreateToolCallPart(db, messageId, options.toolCallId, toolInfo.id, args);
 
         const callStart = Date.now();
         try {
@@ -146,9 +177,15 @@ export async function buildToolSet(
 
           const durationMs = Date.now() - callStart;
           updatePartState(db, part.id, "completed", result.output);
-          // Persist durationMs in metadata so the UI can display execution time
+          // Persist durationMs in metadata so the UI can display execution time.
+          // Keep toolCallId so message-builder can correlate tool_call ↔ tool_result.
           db.prepare("UPDATE rt_parts SET metadata = ?, updated_at = ? WHERE id = ?").run(
-            JSON.stringify({ toolName: toolInfo.id, args, durationMs }),
+            JSON.stringify({
+              toolCallId: options.toolCallId,
+              toolName: toolInfo.id,
+              args,
+              durationMs,
+            }),
             new Date().toISOString(),
             part.id,
           );
@@ -233,12 +270,8 @@ export async function buildToolSet(
       set["task"] = aiTool({
         description: taskDef.description,
         inputSchema: zodSchema(normalizedTaskParams),
-        execute: async (args: unknown) => {
-          const part = createPart(db, {
-            messageId,
-            type: "tool_call",
-            metadata: JSON.stringify({ toolName: "task", args }),
-          });
+        execute: async (args: unknown, options: { toolCallId: string }) => {
+          const part = getOrCreateToolCallPart(db, messageId, options.toolCallId, "task", args);
           try {
             const result = await taskDef.execute(args as never, ctx);
             updatePartState(db, part.id, "completed", result.output);
@@ -260,12 +293,14 @@ export async function buildToolSet(
     set["memory_search"] = aiTool({
       description: memoryDef.description,
       inputSchema: zodSchema(memoryDef.parameters),
-      execute: async (args: unknown) => {
-        const part = createPart(db, {
+      execute: async (args: unknown, options: { toolCallId: string }) => {
+        const part = getOrCreateToolCallPart(
+          db,
           messageId,
-          type: "tool_call",
-          metadata: JSON.stringify({ toolName: "memory_search", args }),
-        });
+          options.toolCallId,
+          "memory_search",
+          args,
+        );
         try {
           const result = await memoryDef.execute(args as never, ctx);
           updatePartState(db, part.id, "completed", result.output);
