@@ -36,11 +36,12 @@ export const GrepTool = Tool.define("grep", {
   async execute(params, ctx) {
     if (!params.pattern) throw new Error("pattern is required");
 
+    const instanceRoot = ctx.workDir ?? process.cwd();
     const searchPath = params.path
       ? path.isAbsolute(params.path)
         ? params.path
-        : path.resolve(process.cwd(), params.path)
-      : process.cwd();
+        : path.resolve(instanceRoot, params.path)
+      : instanceRoot;
 
     // Try ripgrep first
     const rgResult = await tryRipgrep(params.pattern, searchPath, params.include, ctx.abort);

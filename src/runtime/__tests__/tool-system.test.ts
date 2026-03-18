@@ -5,6 +5,9 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
+import * as os from "node:os";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { z } from "zod";
 import { Tool } from "../tool/tool.js";
 import { getBuiltinTools, getTools } from "../tool/registry.js";
@@ -439,5 +442,115 @@ describe("ownerOnly flag on built-in tools", () => {
   it("[negative] QuestionTool does NOT have ownerOnly", async () => {
     const def = await QuestionTool.init();
     expect(def.ownerOnly).toBeFalsy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ctx.workDir as search root for file tools
+// ---------------------------------------------------------------------------
+
+describe("ctx.workDir as search root", () => {
+  /**
+   * Objective: GlobTool and GrepTool must use ctx.workDir as their root directory
+   * when no explicit `path` param is given, instead of process.cwd().
+   * This ensures sub-agents launched from a daemon (where process.cwd() = "/") can
+   * still find files in the instance workspace.
+   */
+
+  it("[positive] GlobTool uses ctx.workDir as root when path param is omitted", async () => {
+    // Arrange: create a temp dir with a known file
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "claw-glob-test-"));
+    try {
+      await fs.writeFile(path.join(tmpDir, "TARGET.md"), "hello");
+
+      const def = await GlobTool.init();
+      const ctx: Tool.Context = {
+        sessionId: "s1",
+        messageId: "m1",
+        agentId: "main",
+        abort: new AbortController().signal,
+        workDir: tmpDir,
+        metadata: vi.fn(),
+      };
+
+      // Act
+      const result = await def.execute({ pattern: "*.md" }, ctx);
+
+      // Assert: found the file inside tmpDir, not searching from process.cwd()
+      expect(result.output).toContain("TARGET.md");
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("[positive] GlobTool uses ctx.workDir as root for relative path param", async () => {
+    // Arrange
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "claw-glob-rel-"));
+    try {
+      await fs.mkdir(path.join(tmpDir, "sub"), { recursive: true });
+      await fs.writeFile(path.join(tmpDir, "sub", "FOUND.md"), "content");
+
+      const def = await GlobTool.init();
+      const ctx: Tool.Context = {
+        sessionId: "s1",
+        messageId: "m1",
+        agentId: "main",
+        abort: new AbortController().signal,
+        workDir: tmpDir,
+        metadata: vi.fn(),
+      };
+
+      // Act: relative path resolved against workDir, not process.cwd()
+      const result = await def.execute({ pattern: "*.md", path: "sub" }, ctx);
+
+      // Assert
+      expect(result.output).toContain("FOUND.md");
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("[positive] GrepTool uses ctx.workDir as root when path param is omitted", async () => {
+    // Arrange
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "claw-grep-test-"));
+    try {
+      await fs.writeFile(path.join(tmpDir, "notes.txt"), "hello workDir magic");
+
+      const def = await GrepTool.init();
+      const ctx: Tool.Context = {
+        sessionId: "s1",
+        messageId: "m1",
+        agentId: "main",
+        abort: new AbortController().signal,
+        workDir: tmpDir,
+        metadata: vi.fn(),
+      };
+
+      // Act
+      const result = await def.execute({ pattern: "workDir magic" }, ctx);
+
+      // Assert
+      expect(result.output).toContain("notes.txt");
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("[fallback] GlobTool falls back to process.cwd() when ctx.workDir is undefined", async () => {
+    // Arrange: no workDir in ctx — must not throw, just use process.cwd()
+    const def = await GlobTool.init();
+    const ctx: Tool.Context = {
+      sessionId: "s1",
+      messageId: "m1",
+      agentId: "main",
+      abort: new AbortController().signal,
+      // workDir intentionally omitted
+      metadata: vi.fn(),
+    };
+
+    // Act — just ensure no exception thrown and result is a valid Tool.Result
+    const result = await def.execute({ pattern: "*.json" }, ctx);
+    expect(result).toHaveProperty("output");
+    expect(result).toHaveProperty("truncated");
   });
 });

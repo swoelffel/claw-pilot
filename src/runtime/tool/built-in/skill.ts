@@ -536,7 +536,7 @@ export const SkillTool = Tool.define("skill", {
         "The name of the skill from available_skills (e.g., 'web-artifacts-builder', 'docx', ...)",
       ),
   }),
-  async execute(params, _ctx) {
+  async execute(params, ctx) {
     // Sanitize skill name — only allow safe characters
     const skillName = params.name.replace(/[^a-zA-Z0-9_-]/g, "");
 
@@ -549,10 +549,8 @@ export const SkillTool = Tool.define("skill", {
     // Search across the 4-level hierarchy
     // Note: Tool.Context does not expose agentConfig, so we cannot filter by permissions here.
     // Permission filtering is done in listAvailableSkills() called from buildSkillsBlock().
-    const dirs = buildSkillDirs(
-      // workDir is not available in Tool.Context — use process.cwd() as fallback
-      process.cwd(),
-    );
+    const instanceRoot = ctx.workDir ?? process.cwd();
+    const dirs = buildSkillDirs(instanceRoot);
 
     for (const dir of dirs) {
       const skillFile = path.join(dir, skillName, "SKILL.md");
@@ -585,7 +583,7 @@ export const SkillTool = Tool.define("skill", {
     }
 
     // Skill not found — list available skills for a helpful error message
-    const available = await listAvailableSkills(process.cwd());
+    const available = await listAvailableSkills(instanceRoot);
     const hint =
       available.length > 0
         ? `\n\nAvailable skills: ${available.map((s) => s.name).join(", ")}`

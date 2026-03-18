@@ -21,10 +21,11 @@ export const WriteTool = Tool.define("write", {
       .describe("The absolute path to the file to write (must be absolute, not relative)"),
     content: z.string().describe("The content to write to the file"),
   }),
-  async execute(params) {
+  async execute(params, ctx) {
+    const instanceRoot = ctx.workDir ?? process.cwd();
     const filePath = path.isAbsolute(params.filePath)
       ? params.filePath
-      : path.resolve(process.cwd(), params.filePath);
+      : path.resolve(instanceRoot, params.filePath);
 
     // Ensure parent directory exists
     await fs.mkdir(path.dirname(filePath), { recursive: true });

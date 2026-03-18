@@ -33,9 +33,10 @@ export const MultiEditTool = Tool.define("multiedit", {
       title: `multiedit ${path.basename(params.filePath)} (${params.edits.length} edits)`,
     });
 
+    const instanceRoot = ctx.workDir ?? process.cwd();
     const filePath = path.isAbsolute(params.filePath)
       ? params.filePath
-      : path.resolve(process.cwd(), params.filePath);
+      : path.resolve(instanceRoot, params.filePath);
 
     let content: string;
     try {

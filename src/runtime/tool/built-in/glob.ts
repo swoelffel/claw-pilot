@@ -29,11 +29,12 @@ export const GlobTool = Tool.define("glob", {
       ),
   }),
   async execute(params, ctx) {
+    const instanceRoot = ctx.workDir ?? process.cwd();
     const searchDir = params.path
       ? path.isAbsolute(params.path)
         ? params.path
-        : path.resolve(process.cwd(), params.path)
-      : process.cwd();
+        : path.resolve(instanceRoot, params.path)
+      : instanceRoot;
 
     const files: Array<{ path: string; mtime: number }> = [];
     let truncated = false;

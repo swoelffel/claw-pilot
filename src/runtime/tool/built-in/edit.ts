@@ -27,14 +27,15 @@ export const EditTool = Tool.define("edit", {
       .optional()
       .describe("Replace all occurrences of oldString (default false)"),
   }),
-  async execute(params) {
+  async execute(params, ctx) {
     if (params.oldString === params.newString) {
       throw new Error("No changes to apply: oldString and newString are identical.");
     }
 
+    const instanceRoot = ctx.workDir ?? process.cwd();
     const filePath = path.isAbsolute(params.filePath)
       ? params.filePath
-      : path.resolve(process.cwd(), params.filePath);
+      : path.resolve(instanceRoot, params.filePath);
 
     let content: string;
     try {

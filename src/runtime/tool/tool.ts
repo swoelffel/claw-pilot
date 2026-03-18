@@ -24,6 +24,13 @@ export namespace Tool {
     abort: AbortSignal;
     /** True if the sender is an owner channel (web, telegram) — false for internal sub-agents */
     senderIsOwner?: boolean;
+    /**
+     * Instance state directory (e.g. ~/.claw-pilot/instances/<slug>/).
+     * Used as the working directory fallback for file tools (glob, grep, read, etc.)
+     * instead of process.cwd(). All agents in an instance share this root, which
+     * lets them collaborate on the same files.
+     */
+    workDir?: string;
     /** Callback to update the title/metadata of the in-progress tool part */
     metadata(input: { title?: string }): void;
   }

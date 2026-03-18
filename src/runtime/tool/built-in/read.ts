@@ -67,10 +67,11 @@ export const ReadTool = Tool.define("read", {
       .optional()
       .describe("The maximum number of lines to read (defaults to 2000)"),
   }),
-  async execute(params) {
+  async execute(params, ctx) {
+    const instanceRoot = ctx.workDir ?? process.cwd();
     const filePath = path.isAbsolute(params.filePath)
       ? params.filePath
-      : path.resolve(process.cwd(), params.filePath);
+      : path.resolve(instanceRoot, params.filePath);
 
     let stat: fsSync.Stats;
     try {

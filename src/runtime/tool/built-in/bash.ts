@@ -51,12 +51,12 @@ export const BashTool = Tool.define("bash", {
       .string()
       .optional()
       .describe(
-        "The working directory to run the command in. Defaults to process.cwd(). " +
+        "The working directory to run the command in. Defaults to the instance state directory. " +
           "Use this instead of 'cd' commands.",
       ),
   }),
   async execute(params, ctx) {
-    const cwd = params.workdir ?? process.cwd();
+    const cwd = params.workdir ?? ctx.workDir ?? process.cwd();
     const timeout = params.timeout ?? DEFAULT_TIMEOUT_MS;
 
     // Block sub-agents from accessing paths outside workDir
