@@ -14,6 +14,8 @@ pre-push:
   commands:
     test:
       run: pnpm test:run
+    spellcheck:
+      run: pnpm spellcheck
 
 commit-msg:
   commands:
