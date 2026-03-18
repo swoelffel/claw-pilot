@@ -42,6 +42,9 @@ export class CpApp extends LitElement {
     css`
       :host {
         display: block;
+        width: 100%;
+        max-width: 100vw;
+        overflow-x: hidden;
         min-height: 100vh;
         background: var(--bg-base);
         color: var(--text-primary);

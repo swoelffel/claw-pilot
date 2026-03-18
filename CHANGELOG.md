@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.10] — 2026-03-18
+
+### Fixed
+
+- **UI scroll horizontal/vertical** : le `<main>` affichait 2305 × 1109 px à cause de l'absence de `width: 100%` et `overflow-x: hidden` sur le host `<cp-app>`. Ajout de `width: 100%; max-width: 100vw; overflow-x: hidden` sur le `:host` de `app.ts` et `overflow-x: hidden` sur le `<body>` dans `index.html`.
+
+---
+
 ## [0.41.9] — 2026-03-18
 
 ### Changed
