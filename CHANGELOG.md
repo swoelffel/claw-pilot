@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.18] — 2026-03-18
+
+### Fixed
+
+- **Version courante toujours incorrecte dans la bannière de mise à jour** : `_getCurrentVersion()` utilisait `require("../package.json")` dont le résultat est mis en cache par Node à vie dans le process. Après un auto-update (sans restart), le process continuait à lire l'ancienne version depuis le cache de `require`. Fix : lecture directe avec `readFileSync` + `JSON.parse` — pas de cache Node, et `invalidateCache()` réinitialise aussi `_currentVersion` pour relire le fichier au prochain check.
+- **`system.ts` lisait `package.json` avec un chemin incorrect** : `../../../package.json` (3 niveaux) au lieu de `../package.json` (1 niveau depuis `dist/`). La version retournée par `GET /api/health` était "unknown" sur le serveur déployé.
+
+---
+
 ## [0.41.17] — 2026-03-18
 
 ### Fixed

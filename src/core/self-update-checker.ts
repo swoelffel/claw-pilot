@@ -1,8 +1,8 @@
 // src/core/self-update-checker.ts
-import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import * as path from "node:path";
 import { constants } from "../lib/constants.js";
-
-const require = createRequire(import.meta.url);
 
 export interface SelfUpdateStatus {
   currentVersion: string;
@@ -54,15 +54,22 @@ export class SelfUpdateChecker {
   invalidateCache(): void {
     this._cachedStatus = null;
     this._cacheExpiresAt = 0;
+    // Réinitialiser aussi la version courante pour relire package.json
+    // (nécessaire après un update où package.json a changé sur disque)
+    this._currentVersion = null;
   }
 
   private _getCurrentVersion(): string {
-    // Utilise le cache pour eviter de relire package.json a chaque appel
+    // Ne pas mettre en cache indéfiniment : package.json peut changer sur disque
+    // après un auto-update sans redémarrage du process. On utilise _currentVersion
+    // uniquement comme fallback entre deux checks (invalidateCache() le réinitialise).
     if (this._currentVersion) return this._currentVersion;
     try {
-      // Apres bundling, tous les chunks sont dans dist/ — un seul niveau remonte
-      // vers la racine du projet (meme pattern que src/index.ts).
-      const pkg = require("../package.json") as { version?: string };
+      // Lire package.json depuis le disque avec readFileSync (pas require() — évite le cache Node)
+      // import.meta.url pointe sur le chunk bundlé dans dist/, donc "../package.json" = racine
+      const thisFile = fileURLToPath(import.meta.url);
+      const pkgPath = path.resolve(path.dirname(thisFile), "../package.json");
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version?: string };
       this._currentVersion = pkg.version ?? "0.0.0";
       return this._currentVersion;
     } catch {

@@ -7,8 +7,9 @@ import type { RouteDeps } from "../route-deps.js";
 import { apiError } from "../route-deps.js";
 
 // Read version from package.json once at module load time
+// After bundling, all chunks are in dist/ — one level up is the project root
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const pkgPath = path.resolve(__dirname, "../../../package.json");
+const pkgPath = path.resolve(__dirname, "../package.json");
 let _version = "unknown";
 try {
   const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version?: string };
