@@ -317,7 +317,7 @@ export class AgentTemplateDetail extends LitElement {
       ${this._error ? html`<div class="error-banner">${this._error}</div>` : nothing}
 
       <div class="header">
-        <button class="back-btn" @click=${this._navigateBack}>&larr;</button>
+        <button class="back-btn" @click=${this._navigateBack}>←</button>
         <span class="title">${bp.name}</span>
         <span class="category-badge category-${bp.category}">${bp.category}</span>
       </div>
