@@ -22,6 +22,13 @@ export namespace Agent {
      * Defaults to "primary". Derived from mode if not set explicitly.
      */
     kind: z.enum(["primary", "subagent"]).default("primary"),
+    /**
+     * Classification of the agent for display and filtering purposes.
+     * - "user": created and configured by the user (Pilot, custom agents)
+     * - "tool": built-in utility agents available as tools for "user" agents (explore, general, build, plan)
+     * - "system": internal infrastructure agents, never invocable directly (compaction, title, summary)
+     */
+    category: z.enum(["user", "tool", "system"]).default("tool"),
     /** Whether this is a built-in agent (not user-defined) */
     native: z.boolean().optional(),
     /** Whether to hide from agent picker UI */
@@ -57,6 +64,7 @@ export namespace Agent {
     description: string | undefined;
     mode: Info["mode"];
     kind: Info["kind"];
+    category: Info["category"];
     hidden: boolean;
     native: boolean;
     color: string | undefined;
@@ -69,6 +77,7 @@ export namespace Agent {
       description: info.description,
       mode: info.mode,
       kind: info.kind,
+      category: info.category,
       hidden: info.hidden ?? false,
       native: info.native ?? false,
       color: info.color,

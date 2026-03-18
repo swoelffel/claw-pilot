@@ -206,7 +206,14 @@ function findOrCreateSession(
   const agentConfig = config.agents.find((a) => a.id === agentId);
   const isPermanent =
     resolveEffectivePersistence(
-      agentInfo ?? { kind: "primary", name: agentId, permission: [], mode: "all", options: {} },
+      agentInfo ?? {
+        kind: "primary",
+        category: "user",
+        name: agentId,
+        permission: [],
+        mode: "all",
+        options: {},
+      },
       agentConfig,
     ) === "permanent";
 

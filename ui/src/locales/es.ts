@@ -89,10 +89,17 @@ export const templates = {
   // agent-card-mini.ts
   "acm-badge-default": "Predeterminado",
   "acm-badge-sa": "Sub",
+  "acm-badge-system": "Sistema",
+  "acm-badge-tool": "Herramienta",
+  "acm-badge-user": "Agente",
   "acm-files": "archivos",
   "acm-tooltip-default":
     "Punto de entrada principal para conversaciones. Orquesta el equipo de agentes.",
   "acm-tooltip-sa": "Agente especializado, tareas delegadas por el orquestador.",
+  "acm-tooltip-system": "Agente de infraestructura interna (compactación, título, resumen).",
+  "acm-tooltip-tool":
+    "Agente utilitario integrado, disponible como herramienta para otros agentes.",
+  "acm-tooltip-user": "Agente creado por el usuario.",
 
   // create-agent-dialog.ts
   "cad-title": "Nuevo agente",

@@ -181,6 +181,7 @@ export async function buildSystemPrompt(ctx: SystemPromptContext): Promise<strin
       resolveEffectivePersistence(
         agentInfoForCtx ?? {
           kind: "primary",
+          category: "user",
           name: ctx.agentConfig.id,
           permission: [],
           mode: "all",

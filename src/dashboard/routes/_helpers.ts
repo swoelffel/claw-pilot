@@ -1,5 +1,24 @@
 // src/dashboard/routes/_helpers.ts
 import type { AgentFileRecord } from "../../core/registry.js";
+import { BUILTIN_AGENTS } from "../../runtime/agent/defaults.js";
+import type { Agent } from "../../runtime/agent/agent.js";
+
+// ---------------------------------------------------------------------------
+// Built-in category lookup (computed once at import time)
+// ---------------------------------------------------------------------------
+
+const BUILTIN_CATEGORY_MAP = new Map<string, Agent.Info["category"]>(
+  BUILTIN_AGENTS.map((a) => [a.name, a.category]),
+);
+
+/**
+ * Resolve the category for an agent by its agent_id.
+ * Built-in agents get their category from defaults.ts.
+ * User-defined agents default to "user".
+ */
+export function resolveAgentCategory(agentId: string): Agent.Info["category"] {
+  return BUILTIN_CATEGORY_MAP.get(agentId) ?? "user";
+}
 
 /**
  * Minimal agent shape required by buildAgentPayload.
@@ -28,6 +47,8 @@ export interface AgentPayloadItem {
   model: string | null;
   workspace_path: string | null;
   is_default: boolean;
+  /** Agent category: "user" | "tool" | "system" */
+  category: Agent.Info["category"];
   role: string | null;
   tags: string | null;
   notes: string | null;
@@ -61,6 +82,7 @@ export function buildAgentPayload(agent: AgentLike, files: AgentFileRecord[]): A
     model: agent.model ?? null,
     workspace_path: agent.workspace_path ?? null,
     is_default: agent.is_default === 1,
+    category: resolveAgentCategory(agent.agent_id),
     role: agent.role ?? null,
     tags: agent.tags ?? null,
     notes: agent.notes ?? null,

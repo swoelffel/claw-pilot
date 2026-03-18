@@ -167,15 +167,17 @@ function mergeAgentConfig(base: Agent.Info, cfg: RuntimeAgentConfig): Agent.Info
 
 /**
  * Create a new Agent.Info from a RuntimeAgentConfig (for user-defined agents).
- * User-defined agents default to mode "all" and kind "primary" (safe default).
+ * User-defined agents default to mode "all", kind "primary", category "user" (safe defaults).
  */
 function createFromConfig(cfg: RuntimeAgentConfig): Agent.Info {
   // User-defined agents have no mode in RuntimeAgentConfig — default to "all"
   // kind defaults to "primary" (safe default: visible agent = primary agent)
+  // category defaults to "user" (created and configured by the user)
   return Agent.Info.parse({
     name: cfg.name,
     mode: "all",
     kind: "primary",
+    category: "user",
     native: false,
     prompt: cfg.systemPrompt,
     temperature: cfg.temperature,

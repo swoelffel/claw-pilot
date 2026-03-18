@@ -1762,6 +1762,7 @@ export class AgentDetailPanel extends LitElement {
           <div class="agent-name-row">
             <span class="agent-name">${a.name}</span>
             <span class="agent-id-label">${a.agent_id}</span>
+            <span class="agent-category-badge category-${a.category}">${a.category}</span>
           </div>
           ${a.role ? html`<div class="agent-role-label">${a.role}</div>` : ""}
         </div>

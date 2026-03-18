@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.26] — 2026-03-18
+
+### Added
+
+- **Champ `category` dans `Agent.Info`** (Niveau 1.1) : formalise la classification implicite des agents built-in. Trois valeurs : `"user"` (Pilot, agents custom), `"tool"` (explore, general, build, plan), `"system"` (compaction, title, summary). Le champ est exposé dans l'API builder (`AgentPayloadItem.category`) et affiché dans le dashboard (badges "Tool", "System", "Agent" sur les cards mini + badge catégorie dans le detail panel). Traductions ajoutées dans les 6 langues.
+- **`Agent.Summary` étendu** : inclut désormais `category` dans le type Summary et la fonction `toSummary()`.
+- **Tests** : 5 nouveaux tests validant les catégories des agents built-in, des agents custom, et de `toSummary()`.
+
+---
+
 ## [0.41.25] — 2026-03-18
 
 ### Added

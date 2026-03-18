@@ -43,6 +43,24 @@ describe("BUILTIN_AGENTS", () => {
     expect(names).toContain("summary");
   });
 
+  it("tool agents have category 'tool'", () => {
+    const toolAgents = BUILTIN_AGENTS.filter((a) =>
+      ["build", "plan", "explore", "general"].includes(a.name),
+    );
+    for (const agent of toolAgents) {
+      expect(agent.category, `${agent.name} should be category "tool"`).toBe("tool");
+    }
+  });
+
+  it("system agents have category 'system'", () => {
+    const systemAgents = BUILTIN_AGENTS.filter((a) =>
+      ["compaction", "title", "summary"].includes(a.name),
+    );
+    for (const agent of systemAgents) {
+      expect(agent.category, `${agent.name} should be category "system"`).toBe("system");
+    }
+  });
+
   it("all agents have valid Agent.Info shape", () => {
     for (const agent of BUILTIN_AGENTS) {
       const result = Agent.Info.safeParse(agent);
@@ -228,6 +246,7 @@ describe("initAgentRegistry() with config overrides", () => {
     expect(agent?.name).toBe("Custom Agent");
     expect(agent?.native).toBe(false);
     expect(agent?.mode).toBe("all");
+    expect(agent?.category).toBe("user");
   });
 
   it("merges permissions: config permissions appended after base", () => {
@@ -266,8 +285,15 @@ describe("Agent.toSummary()", () => {
     expect(summary.name).toBe("build");
     expect(summary.mode).toBe("subagent");
     expect(summary.kind).toBe("subagent");
+    expect(summary.category).toBe("tool");
     expect(summary.native).toBe(true);
     expect(summary.hidden).toBe(true);
     expect(typeof summary.description).toBe("string");
+  });
+
+  it("includes category in summary for system agents", () => {
+    const agent = getAgent("compaction")!;
+    const summary = Agent.toSummary(agent);
+    expect(summary.category).toBe("system");
   });
 });

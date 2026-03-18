@@ -135,6 +135,8 @@ export interface AgentBuilderInfo {
   model: string | null;
   workspace_path: string;
   is_default: boolean;
+  /** Agent category: "user" (custom), "tool" (built-in utility), "system" (internal infrastructure) */
+  category: "user" | "tool" | "system";
   role: string | null;
   tags: string | null;
   notes: string | null;

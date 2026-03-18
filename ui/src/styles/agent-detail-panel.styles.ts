@@ -105,6 +105,35 @@ export const agentDetailPanelStyles = css`
     margin-bottom: 2px;
   }
 
+  .agent-category-badge {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-radius: 3px;
+    padding: 1px 5px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .agent-category-badge.category-user {
+    color: var(--accent);
+    background: var(--accent-subtle);
+    border: 1px solid var(--accent-border);
+  }
+
+  .agent-category-badge.category-tool {
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid var(--bg-border);
+  }
+
+  .agent-category-badge.category-system {
+    color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+    background: transparent;
+    border: 1px dashed var(--bg-border);
+  }
+
   .agent-meta-row {
     display: flex;
     align-items: center;

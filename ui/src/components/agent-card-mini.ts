@@ -135,6 +135,20 @@ export class AgentCardMini extends LitElement {
         cursor: help;
       }
 
+      .badge-system {
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+        background: transparent;
+        border: 1px dashed var(--bg-border);
+        border-radius: 3px;
+        padding: 1px 5px;
+        flex-shrink: 0;
+        cursor: help;
+      }
+
       .card-bottom {
         display: flex;
         align-items: center;
@@ -245,7 +259,7 @@ export class AgentCardMini extends LitElement {
           <span class="agent-id">${a.agent_id}</span>
           <span class="file-count">${a.files.length} ${msg("files", { id: "acm-files" })}</span>
         </div>
-        <!-- row 3 : badge (Default | Sub) + model -->
+        <!-- row 3 : badge (Default | Tool | System) + model -->
         <div class="card-bottom">
           ${a.is_default
             ? html`<span
@@ -255,13 +269,29 @@ export class AgentCardMini extends LitElement {
                 })}
                 >${msg("Default", { id: "acm-badge-default" })}</span
               >`
-            : html`<span
-                class="badge-sa"
-                title=${msg("Specialized agent, delegated tasks by the orchestrator.", {
-                  id: "acm-tooltip-sa",
-                })}
-                >${msg("Sub", { id: "acm-badge-sa" })}</span
-              >`}
+            : a.category === "system"
+              ? html`<span
+                  class="badge-system"
+                  title=${msg("Internal infrastructure agent (compaction, title, summary).", {
+                    id: "acm-tooltip-system",
+                  })}
+                  >${msg("System", { id: "acm-badge-system" })}</span
+                >`
+              : a.category === "tool"
+                ? html`<span
+                    class="badge-sa"
+                    title=${msg("Built-in utility agent available as a tool for other agents.", {
+                      id: "acm-tooltip-tool",
+                    })}
+                    >${msg("Tool", { id: "acm-badge-tool" })}</span
+                  >`
+                : html`<span
+                    class="badge-sa"
+                    title=${msg("User-created agent.", {
+                      id: "acm-tooltip-user",
+                    })}
+                    >${msg("Agent", { id: "acm-badge-user" })}</span
+                  >`}
           ${modelShort
             ? html`<span class="model-label" title=${model ?? ""}>${modelShort}</span>`
             : ""}
