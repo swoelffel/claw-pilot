@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.14] — 2026-03-18
+
+### Fixed
+
+- **A2A : l'agent main ne pouvait pas communiquer avec les autres agents** : le `toolProfile` par défaut de l'agent main était `"coding"`, qui n'inclut pas le tool `task` (le mécanisme réel de communication agent-to-agent). Correction : `toolProfile` passe à `"full"` par défaut pour l'agent main dans `createDefaultRuntimeConfig`.
+- **System prompt trompeur** : le bloc `<teammates>` indiquait d'utiliser `"the agentToAgent tool"` alors que le tool s'appelle `task`. Le LLM cherchait un tool inexistant. Correction : le message indique désormais `"the task tool"`.
+
+---
+
 ## [0.41.13] — 2026-03-18
 
 ### Fixed

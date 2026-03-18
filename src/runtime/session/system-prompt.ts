@@ -599,7 +599,7 @@ function buildTeammatesBlock(
   });
   return [
     "<teammates>",
-    "Available agents in this instance — use the agentToAgent tool to delegate:",
+    "Available agents in this instance — use the task tool to delegate:",
     ...lines,
     "</teammates>",
   ].join("\n");

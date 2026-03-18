@@ -420,7 +420,7 @@ export function createDefaultRuntimeConfig(options: {
         name: "Main",
         model: options.defaultModel ?? "anthropic/claude-sonnet-4-5",
         isDefault: true,
-        toolProfile: "coding",
+        toolProfile: "full",
         maxSteps: 20,
         allowSubAgents: true,
         // Default permissions: allow all tools, ask for .env reads, allow question tool.

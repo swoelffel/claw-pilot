@@ -341,7 +341,7 @@ describe("createDefaultRuntimeConfig", () => {
     expect(config.agents).toHaveLength(1);
     expect(config.agents[0]!.id).toBe("main");
     expect(config.agents[0]!.isDefault).toBe(true);
-    expect(config.agents[0]!.toolProfile).toBe("coding");
+    expect(config.agents[0]!.toolProfile).toBe("full");
   });
 
   it("uses provided defaultModel", () => {
