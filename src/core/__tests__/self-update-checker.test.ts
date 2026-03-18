@@ -182,4 +182,22 @@ describe("SelfUpdateChecker.check()", () => {
 
     expect(fetchCount).toBe(2); // fetch called twice after cache invalidation
   });
+
+  it("currentVersion is re-read even when GitHub result is cached", async () => {
+    // Simule le scénario: déploiement manuel sans restart du process
+    // Le cache GitHub est actif mais currentVersion doit refléter package.json à jour
+    vi.stubGlobal("fetch", async () => ({
+      ok: true,
+      json: async () => ({ tag_name: "v99.0.0" }),
+    }));
+
+    const result1 = await checker.check(); // peuple le cache GitHub
+    const result2 = await checker.check(); // utilise le cache GitHub
+
+    // currentVersion doit être identique et non-null dans les deux cas
+    expect(result1.currentVersion).toBe(result2.currentVersion);
+    expect(result1.currentVersion).toBeTruthy();
+    // updateAvailable est calculé avec la version fraîche à chaque fois
+    expect(result2.updateAvailable).toBe(true); // v99.0.0 > version courante
+  });
 });

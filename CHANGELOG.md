@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.19] — 2026-03-18
+
+### Fixed
+
+- **Version courante toujours obsolète dans la bannière (cause racine)** : le cache de 5 minutes sur `SelfUpdateChecker` stockait aussi `currentVersion` (version locale). Après un déploiement manuel, le cache retournait l'ancienne version locale pendant 5 minutes. Fix : seul le résultat GitHub (`latestVersion` + `latestTag`) est mis en cache. `currentVersion` est relue depuis `package.json` sur disque à chaque check — coût négligeable (~1 ms).
+
+---
+
 ## [0.41.18] — 2026-03-18
 
 ### Fixed

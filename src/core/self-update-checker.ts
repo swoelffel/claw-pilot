@@ -12,9 +12,10 @@ export interface SelfUpdateStatus {
 }
 
 export class SelfUpdateChecker {
-  private _currentVersion: string | null = null;
-  // Cache le résultat du check GitHub pour éviter les appels répétés (TTL = 5 min)
-  private _cachedStatus: SelfUpdateStatus | null = null;
+  // Cache uniquement le résultat GitHub (latestVersion + latestTag) — pas la version locale.
+  // La version locale est relue à chaque check depuis package.json sur disque, de façon
+  // à refléter immédiatement un déploiement manuel (sans restart du process).
+  private _cachedLatest: { version: string; tag: string } | null = null;
   private _cacheExpiresAt = 0;
   private static readonly _CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -23,55 +24,44 @@ export class SelfUpdateChecker {
   }
 
   private async _check(): Promise<SelfUpdateStatus> {
-    // Retourner le cache si encore valide (sauf si un job est en cours — pas pertinent ici)
+    // La version courante est toujours relue depuis le disque (pas de cache local)
+    const currentVersion = this._getCurrentVersion();
+
+    // Le résultat GitHub est mis en cache 5 min pour limiter les appels API
     const now = Date.now();
-    if (this._cachedStatus && now < this._cacheExpiresAt) {
-      return this._cachedStatus;
+    let latest = this._cachedLatest && now < this._cacheExpiresAt ? this._cachedLatest : null;
+
+    if (!latest) {
+      const latestResult = await this._getLatestRelease().catch(() => null);
+      if (latestResult) {
+        latest = latestResult;
+        this._cachedLatest = latestResult;
+        this._cacheExpiresAt = Date.now() + SelfUpdateChecker._CACHE_TTL_MS;
+      }
     }
-
-    const [currentResult, latestResult] = await Promise.allSettled([
-      Promise.resolve(this._getCurrentVersion()),
-      this._getLatestRelease(),
-    ]);
-
-    const currentVersion = currentResult.status === "fulfilled" ? currentResult.value : "0.0.0";
-    const latest = latestResult.status === "fulfilled" ? latestResult.value : null;
 
     const latestVersion = latest?.version ?? null;
     const latestTag = latest?.tag ?? null;
     const updateAvailable = latestVersion !== null && this._isNewer(latestVersion, currentVersion);
 
-    const result: SelfUpdateStatus = { currentVersion, latestVersion, latestTag, updateAvailable };
-    // Mettre en cache seulement si le check GitHub a réussi
-    if (latestResult.status === "fulfilled") {
-      this._cachedStatus = result;
-      this._cacheExpiresAt = Date.now() + SelfUpdateChecker._CACHE_TTL_MS;
-    }
-    return result;
+    return { currentVersion, latestVersion, latestTag, updateAvailable };
   }
 
-  /** Invalide le cache (utilisé après un update pour forcer un re-check). */
+  /** Invalide le cache GitHub (forcera un re-check au prochain appel). */
   invalidateCache(): void {
-    this._cachedStatus = null;
+    this._cachedLatest = null;
     this._cacheExpiresAt = 0;
-    // Réinitialiser aussi la version courante pour relire package.json
-    // (nécessaire après un update où package.json a changé sur disque)
-    this._currentVersion = null;
   }
 
   private _getCurrentVersion(): string {
-    // Ne pas mettre en cache indéfiniment : package.json peut changer sur disque
-    // après un auto-update sans redémarrage du process. On utilise _currentVersion
-    // uniquement comme fallback entre deux checks (invalidateCache() le réinitialise).
-    if (this._currentVersion) return this._currentVersion;
     try {
-      // Lire package.json depuis le disque avec readFileSync (pas require() — évite le cache Node)
-      // import.meta.url pointe sur le chunk bundlé dans dist/, donc "../package.json" = racine
+      // Lire package.json depuis le disque à chaque appel (pas de cache — le fichier peut
+      // changer après un déploiement manuel sans restart du process dashboard).
+      // import.meta.url pointe sur le chunk bundlé dans dist/, donc "../package.json" = racine.
       const thisFile = fileURLToPath(import.meta.url);
       const pkgPath = path.resolve(path.dirname(thisFile), "../package.json");
       const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version?: string };
-      this._currentVersion = pkg.version ?? "0.0.0";
-      return this._currentVersion;
+      return pkg.version ?? "0.0.0";
     } catch {
       // intentionally ignored — package.json unreadable at runtime, fall back to 0.0.0
       return "0.0.0";
