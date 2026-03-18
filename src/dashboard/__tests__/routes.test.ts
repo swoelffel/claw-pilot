@@ -96,6 +96,10 @@ class StubSelfUpdateChecker {
       updateAvailable: false,
     };
   }
+
+  invalidateCache(): void {
+    // no-op in tests
+  }
 }
 
 class StubSelfUpdater {
