@@ -6,6 +6,8 @@ import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
 import { buttonStyles, spinnerStyles } from "../styles/shared.js";
 import { getToken } from "../services/auth-state.js";
+import { fetchProviders } from "../api.js";
+import type { ProviderInfo } from "../types.js";
 
 type ConfigTab = "models" | "compaction" | "subagents";
 
@@ -240,11 +242,16 @@ export class InstanceConfig extends LitElement {
   @state() private _saving = false;
   @state() private _loading = false;
 
+  // Provider catalog + configured providers for model dropdowns
+  @state() private _providerCatalog: ProviderInfo[] = [];
+  @state() private _configuredProviderIds: string[] = [];
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   override updated(changed: Map<string, unknown>): void {
     if (changed.has("active") && this.active) {
       void this._load();
+      void this._loadProviderCatalog();
     }
   }
 
@@ -260,6 +267,7 @@ export class InstanceConfig extends LitElement {
       });
       if (!res.ok) return;
       const data = (await res.json()) as {
+        providers?: Array<{ id: string }>;
         agentDefaults?: {
           defaultInternalModel?: string;
           models?: Array<{ id: string; provider: string; model: string }>;
@@ -267,6 +275,7 @@ export class InstanceConfig extends LitElement {
           subagents?: { maxSpawnDepth?: number; maxChildrenPerSession?: number };
         };
       };
+      this._configuredProviderIds = (data.providers ?? []).map((p) => p.id);
       const ad = data.agentDefaults ?? {};
       this._internalModel = ad.defaultInternalModel ?? "";
       this._aliases = (ad.models ?? []).map((m) => ({
@@ -283,6 +292,15 @@ export class InstanceConfig extends LitElement {
       // Silently ignore
     } finally {
       this._loading = false;
+    }
+  }
+
+  private async _loadProviderCatalog(): Promise<void> {
+    try {
+      const data = await fetchProviders();
+      this._providerCatalog = data.providers;
+    } catch {
+      // Non-fatal
     }
   }
 
@@ -327,21 +345,65 @@ export class InstanceConfig extends LitElement {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   private _renderModels() {
+    // Build model groups from configured providers catalog
+    const modelGroups = this._configuredProviderIds
+      .map((id) => {
+        const cat = this._providerCatalog.find((p) => p.id === id);
+        if (!cat || cat.models.length === 0) return null;
+        return { id, label: cat.label, models: cat.models };
+      })
+      .filter((g): g is { id: string; label: string; models: string[] } => g !== null);
+
+    const allCatalogModels = modelGroups.flatMap((g) => g.models);
+    const internalModelInList = allCatalogModels.includes(this._internalModel);
+
     return html`
       <div class="field">
         <label class="field-label"
           >${msg("Internal model (compaction, summary)", { id: "cfg-internal-model" })}</label
         >
-        <input
-          type="text"
-          class="field-input"
-          placeholder="anthropic/claude-haiku-3-5"
-          .value=${this._internalModel}
-          @input=${(e: Event) => {
-            this._internalModel = (e.target as HTMLInputElement).value;
-            this._dirty = true;
-          }}
-        />
+        ${modelGroups.length > 0
+          ? html`
+              <select
+                class="field-input"
+                @change=${(e: Event) => {
+                  this._internalModel = (e.target as HTMLSelectElement).value;
+                  this._dirty = true;
+                }}
+              >
+                <option value="" ?selected=${!this._internalModel}>
+                  ${msg("— same as default model —", { id: "cfg-internal-model-same-as-default" })}
+                </option>
+                ${modelGroups.map(
+                  (group) => html`
+                    <optgroup label=${group.label}>
+                      ${group.models.map(
+                        (m) => html`
+                          <option value=${m} ?selected=${m === this._internalModel}>${m}</option>
+                        `,
+                      )}
+                    </optgroup>
+                  `,
+                )}
+                ${this._internalModel && !internalModelInList
+                  ? html`<option value=${this._internalModel} selected>
+                      ${this._internalModel}
+                    </option>`
+                  : nothing}
+              </select>
+            `
+          : html`
+              <input
+                type="text"
+                class="field-input"
+                placeholder="anthropic/claude-haiku-3-5"
+                .value=${this._internalModel}
+                @input=${(e: Event) => {
+                  this._internalModel = (e.target as HTMLInputElement).value;
+                  this._dirty = true;
+                }}
+              />
+            `}
       </div>
 
       <div class="field-label" style="margin-bottom:6px">

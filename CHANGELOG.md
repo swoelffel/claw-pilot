@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.5] — 2026-03-18
+
+### Changed
+
+- **Settings — General** : ajout d'un sélecteur "Default provider" (visible quand plusieurs providers sont configurés sur l'instance). Changer de provider met à jour automatiquement le modèle par défaut vers le premier modèle de ce provider.
+- **Settings — General** : le sélecteur "Default model" est maintenant filtré par provider sélectionné (au lieu de montrer tous les modèles de tous les providers configurés en un seul groupe). Les modèles des providers non configurés ne sont pas proposés.
+- **Settings — Config / Models** : le champ "Internal model" est maintenant un `<select>` groupé par provider (identique au sélecteur de modèle dans General) quand des providers sont configurés. Inclut une option "— same as default model —" pour utiliser le modèle principal.
+
+---
+
 ## [0.41.4] — 2026-03-18
 
 ### Fixed
