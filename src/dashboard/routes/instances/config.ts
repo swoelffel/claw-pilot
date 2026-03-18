@@ -37,22 +37,35 @@ interface InstanceConfig {
     displayName: string;
     defaultModel: string;
     port: number;
-    toolsProfile: string;
   };
   providers: ProviderEntry[];
   agentDefaults: {
-    workspace: string;
-    subagents: { maxConcurrent: number; archiveAfterMinutes: number };
-    compaction: { mode: string; reserveTokensFloor?: number };
-    contextPruning: { mode: string; ttl?: string };
-    heartbeat: { every?: string; model?: string; target?: string };
+    compaction: { mode: string; threshold: number; reservedTokens: number };
+    subagents: { maxSpawnDepth: number; maxChildrenPerSession: number; retentionHours: number };
+    heartbeat: { every?: string; model?: string };
+    defaultInternalModel: string;
+    models: Array<{ id: string; provider: string; model: string }>;
   };
   agents: Array<{
     id: string;
     name: string;
     model: string | null;
-    workspace: string;
-    identity: { name?: string; emoji?: string; avatar?: string } | null;
+    toolProfile: string;
+    maxSteps: number;
+    temperature: number | null;
+    thinking: { enabled: boolean; budgetTokens: number } | null;
+    timeoutMs: number;
+    chunkTimeoutMs: number;
+    promptMode: string;
+    allowSubAgents: boolean;
+    instructionUrls: string[];
+    heartbeat: {
+      every?: string;
+      model?: string;
+      ackMaxChars?: number;
+      prompt?: string;
+      activeHours?: { start: string; end: string; tz?: string };
+    } | null;
   }>;
   channels: {
     telegram: {
@@ -73,10 +86,6 @@ interface InstanceConfig {
   };
   gateway: {
     port: number;
-    bind: string;
-    authMode: string;
-    reloadMode: string;
-    reloadDebounceMs: number;
   };
 }
 
@@ -128,6 +137,82 @@ const RuntimeConfigPatchSchema = z.object({
         .optional(),
     })
     .optional(),
+  // agentDefaults: top-level runtime.json fields (compaction, subagents, models)
+  agentDefaults: z
+    .object({
+      compaction: z
+        .object({
+          mode: z.enum(["auto", "manual"]).optional(),
+          threshold: z.number().min(0.1).max(0.99).optional(),
+          reservedTokens: z.number().int().min(0).optional(),
+        })
+        .optional(),
+      subagents: z
+        .object({
+          maxSpawnDepth: z.number().int().min(0).max(20).optional(),
+          maxChildrenPerSession: z.number().int().min(1).max(50).optional(),
+          retentionHours: z.number().int().min(0).optional(),
+        })
+        .optional(),
+      heartbeat: z
+        .object({
+          every: z.string().optional(),
+          model: z.string().optional(),
+        })
+        .optional(),
+      defaultInternalModel: z.string().optional(),
+      models: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            provider: z.string().min(1),
+            model: z.string().min(1),
+          }),
+        )
+        .optional(),
+    })
+    .optional(),
+  // agents: per-agent config patches applied to runtime.json
+  agents: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        name: z.string().optional(),
+        model: z.string().nullable().optional(),
+        toolProfile: z.enum(["minimal", "messaging", "coding", "full"]).optional(),
+        maxSteps: z.number().int().min(1).max(200).optional(),
+        temperature: z.number().min(0).max(2).nullable().optional(),
+        promptMode: z.enum(["full", "minimal"]).optional(),
+        thinking: z
+          .object({
+            enabled: z.boolean(),
+            budgetTokens: z.number().int().min(1000).optional(),
+          })
+          .nullable()
+          .optional(),
+        allowSubAgents: z.boolean().optional(),
+        timeoutMs: z.number().int().min(0).optional(),
+        chunkTimeoutMs: z.number().int().min(0).optional(),
+        instructionUrls: z.array(z.string().url()).optional(),
+        heartbeat: z
+          .object({
+            every: z.string().optional(),
+            model: z.string().optional(),
+            ackMaxChars: z.number().int().min(0).optional(),
+            prompt: z.string().optional(),
+            activeHours: z
+              .object({
+                start: z.string(),
+                end: z.string(),
+                tz: z.string().optional(),
+              })
+              .optional(),
+          })
+          .nullable()
+          .optional(),
+      }),
+    )
+    .optional(),
 });
 
 type RuntimeConfigPatch = z.infer<typeof RuntimeConfigPatchSchema>;
@@ -141,16 +226,35 @@ function buildInstanceConfig(
   config: RuntimeConfig,
   stateDir: string,
 ): InstanceConfig {
-  // Extract toolsProfile from first agent or default to "coding"
-  const toolsProfile = config.agents[0]?.toolProfile ?? "coding";
-
   // Map runtime agents to UI format
   const agents = config.agents.map((a) => ({
     id: a.id,
     name: a.name,
     model: a.model ?? null,
-    workspace: "workspace", // claw-runtime doesn't track per-agent workspaces in config
-    identity: null,
+    toolProfile: a.toolProfile ?? "coding",
+    maxSteps: a.maxSteps ?? 20,
+    temperature: a.temperature ?? null,
+    thinking: a.thinking?.enabled
+      ? { enabled: true, budgetTokens: a.thinking.budgetTokens ?? 10000 }
+      : null,
+    timeoutMs: a.timeoutMs ?? 300000,
+    chunkTimeoutMs: a.chunkTimeoutMs ?? 120000,
+    promptMode: a.promptMode ?? "full",
+    allowSubAgents: a.allowSubAgents ?? true,
+    instructionUrls: a.instructionUrls ?? [],
+    heartbeat: a.heartbeat?.every
+      ? {
+          every: a.heartbeat.every,
+          ...(a.heartbeat.model !== undefined ? { model: a.heartbeat.model } : {}),
+          ...(a.heartbeat.ackMaxChars !== undefined
+            ? { ackMaxChars: a.heartbeat.ackMaxChars }
+            : {}),
+          ...(a.heartbeat.prompt !== undefined ? { prompt: a.heartbeat.prompt } : {}),
+          ...(a.heartbeat.activeHours !== undefined
+            ? { activeHours: a.heartbeat.activeHours }
+            : {}),
+        }
+      : null,
   }));
 
   // Read .env for providers and telegram
@@ -179,20 +283,34 @@ function buildInstanceConfig(
   const telegramRaw = readEnvVar(envPath, varName);
   const botTokenMasked = telegramRaw ? maskSecret(telegramRaw) : null;
 
+  // Map model aliases from RuntimeConfig format to UI format
+  const models = (config.models ?? []).map((m) => ({
+    id: m.id,
+    provider: m.provider,
+    model: m.model,
+  }));
+
   return {
     general: {
       displayName: instance.display_name ?? "",
       defaultModel: config.defaultModel,
       port: instance.port,
-      toolsProfile,
     },
     providers,
     agentDefaults: {
-      workspace: "workspace",
-      subagents: { maxConcurrent: 4, archiveAfterMinutes: 60 },
-      compaction: { mode: config.compaction.auto ? "auto" : "manual" },
-      contextPruning: { mode: "off" },
+      compaction: {
+        mode: config.compaction.auto ? "auto" : "manual",
+        threshold: config.compaction.threshold ?? 0.85,
+        reservedTokens: config.compaction.reservedTokens ?? 8000,
+      },
+      subagents: {
+        maxSpawnDepth: config.subagents.maxSpawnDepth ?? 3,
+        maxChildrenPerSession: config.subagents.maxChildrenPerSession ?? 5,
+        retentionHours: config.subagents.retentionHours ?? 72,
+      },
       heartbeat: {},
+      defaultInternalModel: config.defaultInternalModel ?? "",
+      models,
     },
     agents,
     channels: {
@@ -208,10 +326,6 @@ function buildInstanceConfig(
     },
     gateway: {
       port: instance.port,
-      bind: "loopback",
-      authMode: "token",
-      reloadMode: "hybrid",
-      reloadDebounceMs: 500,
     },
   };
 }
@@ -230,26 +344,19 @@ function buildInstanceConfigStub(instance: {
       displayName: instance.display_name ?? "",
       defaultModel: instance.default_model ?? "anthropic/claude-sonnet-4-5",
       port: instance.port,
-      toolsProfile: "coding",
     },
     providers: [],
     agentDefaults: {
-      workspace: "workspace",
-      subagents: { maxConcurrent: 4, archiveAfterMinutes: 60 },
-      compaction: { mode: "auto" },
-      contextPruning: { mode: "off" },
+      compaction: { mode: "auto", threshold: 0.85, reservedTokens: 8000 },
+      subagents: { maxSpawnDepth: 3, maxChildrenPerSession: 5, retentionHours: 72 },
       heartbeat: {},
+      defaultInternalModel: "",
+      models: [],
     },
     agents: [],
     channels: { telegram: null },
     plugins: { mem0: null },
-    gateway: {
-      port: instance.port,
-      bind: "loopback",
-      authMode: "token",
-      reloadMode: "hybrid",
-      reloadDebounceMs: 500,
-    },
+    gateway: { port: instance.port },
   };
 }
 
@@ -326,7 +433,7 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
       registry.updateInstance(slug, { displayName: patch.general.displayName });
     }
 
-    // Update default model in runtime.json
+    // Update default model in runtime.json + DB
     if (patch.general?.defaultModel !== undefined) {
       const stateDir = getRuntimeStateDir(slug);
       if (runtimeConfigExists(stateDir)) {
@@ -334,6 +441,8 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
           const config = loadRuntimeConfig(stateDir);
           config.defaultModel = patch.general.defaultModel;
           saveRuntimeConfig(stateDir, config);
+          // Keep DB in sync
+          registry.updateInstance(slug, { defaultModel: patch.general.defaultModel });
           requiresRestart = true;
         } catch (err) {
           logger.error(
@@ -451,6 +560,141 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
           500,
           "CONFIG_PATCH_FAILED",
           err instanceof Error ? err.message : "Failed to update providers",
+        );
+      }
+    }
+
+    // Update agentDefaults (compaction, subagents, models, defaultInternalModel) in runtime.json
+    if (patch.agentDefaults) {
+      const stateDir = getRuntimeStateDir(slug);
+      try {
+        let config: RuntimeConfig;
+        if (runtimeConfigExists(stateDir)) {
+          config = loadRuntimeConfig(stateDir);
+        } else {
+          config = createDefaultRuntimeConfig(
+            instance!.default_model != null ? { defaultModel: instance!.default_model } : {},
+          );
+        }
+        const ad = patch.agentDefaults;
+        if (ad.compaction) {
+          if (ad.compaction.mode !== undefined)
+            config.compaction.auto = ad.compaction.mode === "auto";
+          if (ad.compaction.threshold !== undefined)
+            config.compaction.threshold = ad.compaction.threshold;
+          if (ad.compaction.reservedTokens !== undefined)
+            config.compaction.reservedTokens = ad.compaction.reservedTokens;
+        }
+        if (ad.subagents) {
+          if (ad.subagents.maxSpawnDepth !== undefined)
+            config.subagents.maxSpawnDepth = ad.subagents.maxSpawnDepth;
+          if (ad.subagents.maxChildrenPerSession !== undefined)
+            config.subagents.maxChildrenPerSession = ad.subagents.maxChildrenPerSession;
+          if (ad.subagents.retentionHours !== undefined)
+            config.subagents.retentionHours = ad.subagents.retentionHours;
+        }
+        if (ad.defaultInternalModel !== undefined) {
+          config.defaultInternalModel = ad.defaultInternalModel || undefined;
+        }
+        if (ad.models !== undefined) {
+          config.models = ad.models.map((m) => ({
+            id: m.id,
+            provider: m.provider,
+            model: m.model,
+          }));
+        }
+        saveRuntimeConfig(stateDir, config);
+        requiresRestart = true;
+      } catch (err) {
+        logger.error(
+          `[config] PATCH agentDefaults error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return apiError(
+          c,
+          500,
+          "CONFIG_PATCH_FAILED",
+          err instanceof Error ? err.message : "Failed to update agentDefaults",
+        );
+      }
+    }
+
+    // Update per-agent config fields in runtime.json
+    if (patch.agents && patch.agents.length > 0) {
+      const stateDir = getRuntimeStateDir(slug);
+      try {
+        let config: RuntimeConfig;
+        if (runtimeConfigExists(stateDir)) {
+          config = loadRuntimeConfig(stateDir);
+        } else {
+          config = createDefaultRuntimeConfig(
+            instance!.default_model != null ? { defaultModel: instance!.default_model } : {},
+          );
+        }
+        for (const agentPatch of patch.agents) {
+          const agent = config.agents.find((a) => a.id === agentPatch.id);
+          if (!agent) continue;
+          if (agentPatch.name !== undefined) agent.name = agentPatch.name;
+          if (agentPatch.model !== undefined && agentPatch.model !== null)
+            agent.model = agentPatch.model;
+          if (agentPatch.toolProfile !== undefined) agent.toolProfile = agentPatch.toolProfile;
+          if (agentPatch.maxSteps !== undefined) agent.maxSteps = agentPatch.maxSteps;
+          if (agentPatch.temperature !== undefined)
+            agent.temperature = agentPatch.temperature ?? undefined;
+          if (agentPatch.promptMode !== undefined) agent.promptMode = agentPatch.promptMode;
+          if (agentPatch.thinking !== undefined) {
+            if (agentPatch.thinking === null) {
+              agent.thinking = undefined;
+            } else {
+              agent.thinking = {
+                enabled: agentPatch.thinking.enabled,
+                ...(agentPatch.thinking.budgetTokens !== undefined
+                  ? { budgetTokens: agentPatch.thinking.budgetTokens }
+                  : {}),
+              };
+            }
+          }
+          if (agentPatch.allowSubAgents !== undefined)
+            agent.allowSubAgents = agentPatch.allowSubAgents;
+          if (agentPatch.timeoutMs !== undefined) agent.timeoutMs = agentPatch.timeoutMs;
+          if (agentPatch.chunkTimeoutMs !== undefined)
+            agent.chunkTimeoutMs = agentPatch.chunkTimeoutMs;
+          if (agentPatch.instructionUrls !== undefined)
+            agent.instructionUrls = agentPatch.instructionUrls;
+          if (agentPatch.heartbeat !== undefined) {
+            if (agentPatch.heartbeat === null) {
+              agent.heartbeat = undefined;
+            } else {
+              // Cast to RuntimeAgentConfig heartbeat — runtime schema validates on load
+              agent.heartbeat = agentPatch.heartbeat as typeof agent.heartbeat;
+            }
+          }
+          // Sync name to DB if changed
+          if (agentPatch.name !== undefined) {
+            try {
+              const dbAgent = registry.getAgentByAgentId(instance!.id, agentPatch.id);
+              if (dbAgent)
+                registry.updateAgentMeta(dbAgent.id, {
+                  role: null,
+                  tags: null,
+                  notes: null,
+                  skills: null,
+                });
+            } catch {
+              // Non-critical — runtime.json is the source of truth for name
+            }
+          }
+        }
+        saveRuntimeConfig(stateDir, config);
+        requiresRestart = true;
+      } catch (err) {
+        logger.error(
+          `[config] PATCH agents error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return apiError(
+          c,
+          500,
+          "CONFIG_PATCH_FAILED",
+          err instanceof Error ? err.message : "Failed to update agents config",
         );
       }
     }

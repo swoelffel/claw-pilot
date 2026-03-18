@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.3] — 2026-03-18
+
+### Fixed
+
+- **Settings — General** : suppression du champ "Tools profile" (non persisté côté runtime). Le `defaultModel` est maintenant aussi synchronisé dans la DB SQLite en plus de `runtime.json`.
+- **Settings — Agents (defaults)** : la compaction mode est maintenant sauvegardée dans `runtime.json`. Suppression des champs factices (`workspace`, `maxConcurrent`, `archiveAfterMinutes`, heartbeat global) qui n'avaient aucun effet.
+- **Settings — Agents (panel d'édition)** : les onglets Config (toolProfile, maxSteps, temperature, thinking, timeoutMs…) et Heartbeat sauvegardent maintenant correctement dans `runtime.json` via `PATCH /config` au lieu de `PATCH /agents/:id/meta` qui les rejetait en 400.
+- **Settings — Config** : l'onglet Config (modèles internes, alias, compaction threshold, subagents) charge et sauvegarde maintenant correctement depuis/vers `runtime.json` via les bons champs (`agentDefaults.*`).
+- **API `PATCH /config`** : schéma Zod étendu pour accepter `agentDefaults` (compaction, subagents, models, defaultInternalModel) et `agents[]` (tous les champs de configuration par agent).
+
+---
+
 ## [0.41.2] — 2026-03-17
 
 ### Fixed

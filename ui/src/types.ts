@@ -269,22 +269,35 @@ export interface InstanceConfig {
     displayName: string;
     defaultModel: string;
     port: number;
-    toolsProfile: string;
   };
   providers: ProviderEntry[];
   agentDefaults: {
-    workspace: string;
-    subagents: { maxConcurrent: number; archiveAfterMinutes: number };
-    compaction: { mode: string; reserveTokensFloor?: number };
-    contextPruning: { mode: string; ttl?: string };
-    heartbeat: { every?: string; model?: string; target?: string };
+    compaction: { mode: string; threshold: number; reservedTokens: number };
+    subagents: { maxSpawnDepth: number; maxChildrenPerSession: number; retentionHours: number };
+    heartbeat: { every?: string; model?: string };
+    defaultInternalModel: string;
+    models: Array<{ id: string; provider: string; model: string }>;
   };
   agents: Array<{
     id: string;
     name: string;
     model: string | null;
-    workspace: string;
-    identity: { name?: string; emoji?: string; avatar?: string } | null;
+    toolProfile: string;
+    maxSteps: number;
+    temperature: number | null;
+    thinking: { enabled: boolean; budgetTokens: number } | null;
+    timeoutMs: number;
+    chunkTimeoutMs: number;
+    promptMode: string;
+    allowSubAgents: boolean;
+    instructionUrls: string[];
+    heartbeat: {
+      every?: string;
+      model?: string;
+      ackMaxChars?: number;
+      prompt?: string;
+      activeHours?: { start: string; end: string; tz?: string };
+    } | null;
   }>;
   channels: {
     telegram: {
@@ -305,10 +318,6 @@ export interface InstanceConfig {
   };
   gateway: {
     port: number;
-    bind: string;
-    authMode: string;
-    reloadMode: string;
-    reloadDebounceMs: number;
   };
 }
 

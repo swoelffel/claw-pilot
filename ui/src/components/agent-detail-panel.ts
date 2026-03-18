@@ -210,33 +210,21 @@ export class AgentDetailPanel extends LitElement {
     if (this.context.kind !== "instance") return;
     this._cfgSaving = true;
     try {
-      const token = getToken();
-      const config: Record<string, unknown> = {
+      const agentPatch: Record<string, unknown> = {
+        id: this.agent.agent_id,
         toolProfile: this._cfgToolProfile,
         maxSteps: this._cfgMaxSteps,
         promptMode: this._cfgPromptMode,
-        thinking: {
-          enabled: this._cfgThinkingEnabled,
-          ...(this._cfgThinkingEnabled ? { budgetTokens: this._cfgBudgetTokens } : {}),
-        },
+        thinking: this._cfgThinkingEnabled
+          ? { enabled: true, budgetTokens: this._cfgBudgetTokens }
+          : null,
         allowSubAgents: this._cfgAllowSubAgents,
-        sessionTimeoutMs: this._cfgSessionTimeout,
+        timeoutMs: this._cfgSessionTimeout,
         chunkTimeoutMs: this._cfgChunkTimeout,
         instructionUrls: this._cfgInstructionUrls.filter(Boolean),
-        workspaceGlobs: this._cfgWorkspaceGlobs.filter(Boolean),
         ...(this._cfgTemperature !== null ? { temperature: this._cfgTemperature } : {}),
-        ...(this._cfgAllowSubAgents && this._cfgAllowedAgents.length > 0
-          ? { allowedAgents: this._cfgAllowedAgents }
-          : {}),
       };
-      await fetch(`/api/instances/${this.context.slug}/agents/${this.agent.agent_id}/meta`, {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ config }),
-      });
+      await patchInstanceConfig(this.context.slug, { agents: [agentPatch] });
       this._cfgDirty = false;
     } catch {
       // Silently ignore
@@ -564,7 +552,6 @@ export class AgentDetailPanel extends LitElement {
     if (this.context.kind !== "instance") return;
     this._hbSaving = true;
     try {
-      const token = getToken();
       const heartbeat = this._hbEnabled
         ? {
             every: this._hbInterval,
@@ -584,13 +571,8 @@ export class AgentDetailPanel extends LitElement {
               : {}),
           }
         : null;
-      await fetch(`/api/instances/${this.context.slug}/agents/${this.agent.agent_id}/meta`, {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ heartbeat }),
+      await patchInstanceConfig(this.context.slug, {
+        agents: [{ id: this.agent.agent_id, heartbeat }],
       });
       this._hbDirty = false;
     } catch {

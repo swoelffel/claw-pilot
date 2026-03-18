@@ -164,8 +164,6 @@ export class InstanceSettings extends LitElement {
       general["displayName"] = this._dirty["general.displayName"];
     if (this._isDirty("general.defaultModel"))
       general["defaultModel"] = this._dirty["general.defaultModel"];
-    if (this._isDirty("general.toolsProfile"))
-      general["toolsProfile"] = this._dirty["general.toolsProfile"];
     if (Object.keys(general).length > 0) patch["general"] = general;
 
     // Providers section
@@ -194,21 +192,8 @@ export class InstanceSettings extends LitElement {
       patch["providers"] = providersPatch;
     }
 
-    // Agent defaults
+    // Agent defaults (compaction, subagents) — mapped to runtime.json top-level fields
     const agentDefaults: Record<string, unknown> = {};
-    if (this._isDirty("agentDefaults.workspace"))
-      agentDefaults["workspace"] = this._dirty["agentDefaults.workspace"];
-    if (
-      this._isDirty("agentDefaults.subagents.maxConcurrent") ||
-      this._isDirty("agentDefaults.subagents.archiveAfterMinutes")
-    ) {
-      const sub: Record<string, unknown> = {};
-      if (this._isDirty("agentDefaults.subagents.maxConcurrent"))
-        sub["maxConcurrent"] = this._dirty["agentDefaults.subagents.maxConcurrent"];
-      if (this._isDirty("agentDefaults.subagents.archiveAfterMinutes"))
-        sub["archiveAfterMinutes"] = this._dirty["agentDefaults.subagents.archiveAfterMinutes"];
-      agentDefaults["subagents"] = sub;
-    }
     if (
       this._isDirty("agentDefaults.compaction.mode") ||
       this._isDirty("agentDefaults.compaction.reserveTokensFloor")
@@ -217,33 +202,10 @@ export class InstanceSettings extends LitElement {
       if (this._isDirty("agentDefaults.compaction.mode"))
         comp["mode"] = this._dirty["agentDefaults.compaction.mode"];
       if (this._isDirty("agentDefaults.compaction.reserveTokensFloor"))
-        comp["reserveTokensFloor"] = this._dirty["agentDefaults.compaction.reserveTokensFloor"];
+        comp["reservedTokens"] = this._dirty["agentDefaults.compaction.reserveTokensFloor"];
       agentDefaults["compaction"] = comp;
     }
-    if (
-      this._isDirty("agentDefaults.heartbeat.every") ||
-      this._isDirty("agentDefaults.heartbeat.model") ||
-      this._isDirty("agentDefaults.heartbeat.target")
-    ) {
-      const hb: Record<string, unknown> = {};
-      if (this._isDirty("agentDefaults.heartbeat.every"))
-        hb["every"] = this._dirty["agentDefaults.heartbeat.every"];
-      if (this._isDirty("agentDefaults.heartbeat.model"))
-        hb["model"] = this._dirty["agentDefaults.heartbeat.model"];
-      if (this._isDirty("agentDefaults.heartbeat.target"))
-        hb["target"] = this._dirty["agentDefaults.heartbeat.target"];
-      agentDefaults["heartbeat"] = hb;
-    }
     if (Object.keys(agentDefaults).length > 0) patch["agentDefaults"] = agentDefaults;
-
-    // Gateway
-    if (this._isDirty("gateway.reloadMode") || this._isDirty("gateway.reloadDebounceMs")) {
-      const gw: Record<string, unknown> = {};
-      if (this._isDirty("gateway.reloadMode")) gw["reloadMode"] = this._dirty["gateway.reloadMode"];
-      if (this._isDirty("gateway.reloadDebounceMs"))
-        gw["reloadDebounceMs"] = this._dirty["gateway.reloadDebounceMs"];
-      patch["gateway"] = gw;
-    }
 
     return patch;
   }
@@ -783,28 +745,6 @@ export class InstanceSettings extends LitElement {
                 : nothing}
             </select>
           </div>
-          <div class="field">
-            <label class="field-label"
-              >${msg("Tools profile", { id: "settings-tools-profile" })}</label
-            >
-            <select
-              class="field-input ${this._isDirty("general.toolsProfile") ? "changed" : ""}"
-              @change=${(e: Event) =>
-                this._setDirty("general.toolsProfile", (e.target as HTMLSelectElement).value)}
-            >
-              ${["coding", "minimal", "full", "none"].map(
-                (p) => html`
-                  <option
-                    value=${p}
-                    ?selected=${p ===
-                    this._getDirty("general.toolsProfile", c.general.toolsProfile)}
-                  >
-                    ${p}
-                  </option>
-                `,
-              )}
-            </select>
-          </div>
         </div>
 
         ${this._renderProviders()}
@@ -816,89 +756,12 @@ export class InstanceSettings extends LitElement {
     const c = this._config!;
 
     // Build model groups from configured providers (same logic as General section)
-    const existingProviders = c.providers.filter((p) => !this._removedProviders.includes(p.id));
-    const addedProviderIds = this._addedProviders.map((p) => p.id);
-    const allConfiguredProviderIds = [...existingProviders.map((p) => p.id), ...addedProviderIds];
-    const heartbeatModelGroups = allConfiguredProviderIds
-      .map((id) => {
-        const catalogEntry = this._providerCatalog.find((p) => p.id === id);
-        if (!catalogEntry || catalogEntry.models.length === 0) return null;
-        return { id, label: catalogEntry.label, models: catalogEntry.models };
-      })
-      .filter((g): g is { id: string; label: string; models: string[] } => g !== null);
-
-    const currentHeartbeatModel = this._getDirty(
-      "agentDefaults.heartbeat.model",
-      c.agentDefaults.heartbeat.model ?? "",
-    );
-    const allHeartbeatModels = heartbeatModelGroups.flatMap((g) => g.models);
-    const heartbeatModelInList = allHeartbeatModels.includes(currentHeartbeatModel);
-
     return html`
       <div class="section">
         <div class="section-header">
           ${msg("Agents — Defaults", { id: "settings-agent-defaults" })}
         </div>
         <div class="field-grid">
-          <div class="field">
-            <label class="field-label"
-              >${msg("Default workspace", { id: "settings-workspace" })}</label
-            >
-            <input
-              class="field-input ${this._isDirty("agentDefaults.workspace") ? "changed" : ""}"
-              type="text"
-              .value=${this._getDirty("agentDefaults.workspace", c.agentDefaults.workspace)}
-              @input=${(e: Event) =>
-                this._setDirty("agentDefaults.workspace", (e.target as HTMLInputElement).value)}
-            />
-          </div>
-          <div class="field">
-            <label class="field-label"
-              >${msg("Max concurrent subagents", { id: "settings-max-concurrent" })}</label
-            >
-            <input
-              class="field-input ${this._isDirty("agentDefaults.subagents.maxConcurrent")
-                ? "changed"
-                : ""}"
-              type="number"
-              min="1"
-              max="20"
-              .value=${String(
-                this._getDirty(
-                  "agentDefaults.subagents.maxConcurrent",
-                  c.agentDefaults.subagents.maxConcurrent,
-                ),
-              )}
-              @input=${(e: Event) =>
-                this._setDirty(
-                  "agentDefaults.subagents.maxConcurrent",
-                  Number((e.target as HTMLInputElement).value),
-                )}
-            />
-          </div>
-          <div class="field">
-            <label class="field-label"
-              >${msg("Archive after (min)", { id: "settings-archive-after" })}</label
-            >
-            <input
-              class="field-input ${this._isDirty("agentDefaults.subagents.archiveAfterMinutes")
-                ? "changed"
-                : ""}"
-              type="number"
-              min="1"
-              .value=${String(
-                this._getDirty(
-                  "agentDefaults.subagents.archiveAfterMinutes",
-                  c.agentDefaults.subagents.archiveAfterMinutes,
-                ),
-              )}
-              @input=${(e: Event) =>
-                this._setDirty(
-                  "agentDefaults.subagents.archiveAfterMinutes",
-                  Number((e.target as HTMLInputElement).value),
-                )}
-            />
-          </div>
           <div class="field">
             <label class="field-label"
               >${msg("Compaction mode", { id: "settings-compaction-mode" })}</label
@@ -911,7 +774,7 @@ export class InstanceSettings extends LitElement {
                   (e.target as HTMLSelectElement).value,
                 )}
             >
-              ${["auto", "manual", "off"].map(
+              ${["auto", "manual"].map(
                 (m) => html`
                   <option
                     value=${m}
@@ -925,80 +788,6 @@ export class InstanceSettings extends LitElement {
                   </option>
                 `,
               )}
-            </select>
-          </div>
-          <div class="field">
-            <label class="field-label"
-              >${msg("Heartbeat interval", { id: "settings-heartbeat-every" })}</label
-            >
-            <input
-              class="field-input ${this._isDirty("agentDefaults.heartbeat.every")
-                ? "changed"
-                : ""} ${this._heartbeatEveryError ? "invalid" : ""}"
-              type="text"
-              placeholder="e.g. 30m, 1h"
-              .value=${this._getDirty(
-                "agentDefaults.heartbeat.every",
-                c.agentDefaults.heartbeat.every ?? "",
-              )}
-              @input=${(e: Event) => {
-                const raw = (e.target as HTMLInputElement).value;
-                const { error } = this._normalizeHeartbeatEvery(raw);
-                this._heartbeatEveryError = error;
-                this._setDirty("agentDefaults.heartbeat.every", raw);
-              }}
-              @blur=${(e: Event) => {
-                const raw = (e.target as HTMLInputElement).value;
-                const { value, error } = this._normalizeHeartbeatEvery(raw);
-                this._heartbeatEveryError = error;
-                if (!error && value !== raw) {
-                  // Auto-correct bare number → Xm
-                  (e.target as HTMLInputElement).value = value;
-                  this._setDirty("agentDefaults.heartbeat.every", value);
-                }
-              }}
-            />
-            ${this._heartbeatEveryError
-              ? html`<span class="field-error">${this._heartbeatEveryError}</span>`
-              : nothing}
-          </div>
-          <div class="field">
-            <label class="field-label"
-              >${msg("Heartbeat model", { id: "settings-heartbeat-model" })}</label
-            >
-            <select
-              class="field-input ${this._isDirty("agentDefaults.heartbeat.model") ? "changed" : ""}"
-              @change=${(e: Event) =>
-                this._setDirty(
-                  "agentDefaults.heartbeat.model",
-                  (e.target as HTMLSelectElement).value,
-                )}
-            >
-              <option value="" ?selected=${!currentHeartbeatModel}>
-                ${msg("— none —", { id: "settings-heartbeat-model-none" })}
-              </option>
-              ${heartbeatModelGroups.length > 0
-                ? heartbeatModelGroups.map(
-                    (group) => html`
-                      <optgroup label=${group.label}>
-                        ${group.models.map(
-                          (m) => html`
-                            <option value=${m} ?selected=${m === currentHeartbeatModel}>
-                              ${m}
-                            </option>
-                          `,
-                        )}
-                      </optgroup>
-                    `,
-                  )
-                : nothing}
-              ${currentHeartbeatModel && !heartbeatModelInList
-                ? html`
-                    <option value=${currentHeartbeatModel} selected>
-                      ${currentHeartbeatModel}
-                    </option>
-                  `
-                : nothing}
             </select>
           </div>
         </div>
@@ -1015,7 +804,6 @@ export class InstanceSettings extends LitElement {
                       <th>ID</th>
                       <th>${msg("Name", { id: "settings-agent-name" })}</th>
                       <th>${msg("Model", { id: "settings-agent-model" })}</th>
-                      <th>${msg("Workspace", { id: "settings-agent-workspace" })}</th>
                       <th>${msg("Actions", { id: "settings-agent-actions" })}</th>
                     </tr>
                   </thead>
@@ -1026,7 +814,6 @@ export class InstanceSettings extends LitElement {
                           <td class="mono">${agent.id}</td>
                           <td>${agent.name}</td>
                           <td class="mono">${agent.model ?? "—"}</td>
-                          <td class="mono">${agent.workspace}</td>
                           <td>
                             <button
                               class="btn-agent-edit"

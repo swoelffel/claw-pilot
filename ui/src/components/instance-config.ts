@@ -260,20 +260,24 @@ export class InstanceConfig extends LitElement {
       });
       if (!res.ok) return;
       const data = (await res.json()) as {
-        runtime?: {
+        agentDefaults?: {
           defaultInternalModel?: string;
-          models?: ModelAlias[];
+          models?: Array<{ id: string; provider: string; model: string }>;
           compaction?: { threshold?: number; reservedTokens?: number };
           subagents?: { maxSpawnDepth?: number; maxChildrenPerSession?: number };
         };
       };
-      const rt = data.runtime ?? {};
-      this._internalModel = rt.defaultInternalModel ?? "";
-      this._aliases = rt.models ?? [];
-      this._compactionThreshold = Math.round((rt.compaction?.threshold ?? 0.85) * 100);
-      this._compactionReserve = rt.compaction?.reservedTokens ?? 8000;
-      this._subagentsMaxDepth = rt.subagents?.maxSpawnDepth ?? 3;
-      this._subagentsMaxChildren = rt.subagents?.maxChildrenPerSession ?? 5;
+      const ad = data.agentDefaults ?? {};
+      this._internalModel = ad.defaultInternalModel ?? "";
+      this._aliases = (ad.models ?? []).map((m) => ({
+        id: m.id,
+        providerId: m.provider,
+        modelId: m.model,
+      }));
+      this._compactionThreshold = Math.round((ad.compaction?.threshold ?? 0.85) * 100);
+      this._compactionReserve = ad.compaction?.reservedTokens ?? 8000;
+      this._subagentsMaxDepth = ad.subagents?.maxSpawnDepth ?? 3;
+      this._subagentsMaxChildren = ad.subagents?.maxChildrenPerSession ?? 5;
       this._dirty = false;
     } catch {
       // Silently ignore
@@ -286,6 +290,7 @@ export class InstanceConfig extends LitElement {
     this._saving = true;
     try {
       const token = getToken();
+      const validAliases = this._aliases.filter((a) => a.id && a.providerId && a.modelId);
       await fetch(`/api/instances/${this.slug}/config`, {
         method: "PATCH",
         headers: {
@@ -293,9 +298,13 @@ export class InstanceConfig extends LitElement {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          runtime: {
+          agentDefaults: {
             ...(this._internalModel ? { defaultInternalModel: this._internalModel } : {}),
-            models: this._aliases.filter((a) => a.id && a.providerId && a.modelId),
+            models: validAliases.map((a) => ({
+              id: a.id,
+              provider: a.providerId,
+              model: a.modelId,
+            })),
             compaction: {
               threshold: this._compactionThreshold / 100,
               reservedTokens: this._compactionReserve,
