@@ -111,8 +111,3 @@ export function invalidateWorkspaceCache(filePath: string): void {
 export function clearWorkspaceCache(): void {
   _cache.clear();
 }
-
-/** Returns current cache size (for diagnostics/tests). */
-export function getWorkspaceCacheSize(): number {
-  return _cache.size;
-}

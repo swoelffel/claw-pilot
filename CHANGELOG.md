@@ -6,6 +6,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.22] — 2026-03-18
+
+### Fixed
+
+- **Dead code supprimé** : `getWorkspaceCacheSize()` était exportée depuis `workspace-cache.ts` mais jamais utilisée. Suppression pour corriger le check knip en CI.
+
+---
+
+## [0.41.21] — 2026-03-18
+
+### Fixed
+
+- **File tools utilisaient `process.cwd()` au lieu du workDir de l'instance** : glob, grep, read, edit, write, multiedit, bash et skill utilisaient `process.cwd()` comme répertoire racine. Quand le daemon claw-runtime est lancé depuis le dashboard, `process.cwd()` vaut `/` (racine du filesystem), causant des scans infinis. Fix : ajout du champ `workDir` dans `Tool.Context`, injecté depuis `prompt-loop.ts`. Tous les file tools utilisent désormais `ctx.workDir ?? process.cwd()`.
+
+---
+
+## [0.41.20] — 2026-03-18
+
+### Fixed
+
+- **Parties `tool_call` dupliquées et spam `chunk_timeout`** : `tool-set-builder` réutilise désormais la partie créée par `onChunk` (Path-A) via `getOrCreateToolCallPart()`, éliminant les doublons sans `toolCallId` qui causaient `MissingToolResultsError`. Le watchdog `chunk_timeout` est maintenant annulé dès le premier timeout pour éviter les événements répétés toutes les 5 s. Ajout de la gestion des `tool-error` chunks via `onStepFinish` avec émission d'un `tool-result` synthétique pour maintenir le contexte LLM valide entre les turns de session permanente. Propagation des champs `toolProfile`, `permissions`, `heartbeat`, `humanDelay`, `identity`, `sandbox`, `groupChat` dans team-export/import/schema.
+
+---
+
 ## [0.41.19] — 2026-03-18
 
 ### Fixed
