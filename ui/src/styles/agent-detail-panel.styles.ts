@@ -960,10 +960,32 @@ export const agentDetailPanelStyles = css`
     gap: 4px;
   }
 
+  /* Active hours block: two labelled time pickers + separator */
+  .hb-time-block {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .hb-time-field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .hb-time-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+  }
+
   .hb-time-sep {
     color: var(--text-muted);
     font-size: 12px;
     flex-shrink: 0;
+    padding-bottom: 6px;
   }
 
   .hb-radio-row {

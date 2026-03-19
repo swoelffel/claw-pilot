@@ -110,6 +110,7 @@ export class AgentDetailPanel extends LitElement {
   @state() private _hbCustomPrompt = "";
   @state() private _hbDirty = false;
   @state() private _hbSaving = false;
+  @state() private _hbError = "";
   @state() private _hbLoading = false;
   @state() private _hbTicks: Array<{
     sessionId: string;
@@ -543,6 +544,7 @@ export class AgentDetailPanel extends LitElement {
   private async _initHeartbeatTab(): Promise<void> {
     this._hbLoading = true;
     this._hbDirty = false;
+    this._hbError = "";
     try {
       let hb: Record<string, unknown> | undefined;
       if (this.context.kind === "instance") {
@@ -597,6 +599,7 @@ export class AgentDetailPanel extends LitElement {
   private async _saveHeartbeat(): Promise<void> {
     if (this.context.kind !== "instance") return;
     this._hbSaving = true;
+    this._hbError = "";
     try {
       const heartbeat = this._hbEnabled
         ? {
@@ -621,8 +624,8 @@ export class AgentDetailPanel extends LitElement {
         agents: [{ id: this.agent.agent_id, heartbeat }],
       });
       this._hbDirty = false;
-    } catch {
-      // Silently ignore
+    } catch (err) {
+      this._hbError = userMessage(err);
     } finally {
       this._hbSaving = false;
     }
@@ -672,9 +675,19 @@ export class AgentDetailPanel extends LitElement {
                     )}
                   </select>
                 </div>
-                <div class="hb-field">
-                  <label class="hb-label">${msg("Active hours", { id: "hb-active-hours" })}</label>
-                  <div class="hb-time-row">
+              </div>
+
+              <!-- Active hours — section autonome hors grille -->
+              <div class="hb-field" style="margin-top:8px">
+                <label class="hb-label">
+                  ${msg("Active hours", { id: "hb-active-hours" })}
+                  <span class="info-hint"
+                    >${msg("optional — leave empty for 24/7", { id: "hb-active-hours-hint" })}</span
+                  >
+                </label>
+                <div class="hb-time-block">
+                  <div class="hb-time-field">
+                    <span class="hb-time-label">${msg("From", { id: "hb-hours-from" })}</span>
                     <input
                       type="time"
                       class="hb-input"
@@ -684,7 +697,10 @@ export class AgentDetailPanel extends LitElement {
                         this._hbDirty = true;
                       }}
                     />
-                    <span class="hb-time-sep">–</span>
+                  </div>
+                  <span class="hb-time-sep">–</span>
+                  <div class="hb-time-field">
+                    <span class="hb-time-label">${msg("To", { id: "hb-hours-to" })}</span>
                     <input
                       type="time"
                       class="hb-input"
@@ -696,9 +712,9 @@ export class AgentDetailPanel extends LitElement {
                     />
                   </div>
                 </div>
-                ${this._hbHoursStart && this._hbHoursEnd
+                ${this._hbHoursStart || this._hbHoursEnd
                   ? html`
-                      <div class="hb-field">
+                      <div class="hb-field" style="margin-top:6px">
                         <label class="hb-label">${msg("Timezone", { id: "hb-timezone" })}</label>
                         <input
                           type="text"
@@ -824,6 +840,7 @@ export class AgentDetailPanel extends LitElement {
           : nothing}
 
         <!-- Save bar -->
+        ${this._hbError ? html`<div class="file-save-error">${this._hbError}</div>` : nothing}
         ${this._hbDirty
           ? html`
               <div class="hb-save-bar">
