@@ -136,7 +136,11 @@ export function createTaskTool(options: {
     .join("\n");
 
   const primaryList = primaryPeers
-    .map((cfg) => `- ${cfg.id} (${cfg.name}): Primary agent — use for peer-to-peer delegation.`)
+    .map((cfg) => {
+      const skills =
+        cfg.expertIn && cfg.expertIn.length > 0 ? ` [skills: ${cfg.expertIn.join(", ")}]` : "";
+      return `- ${cfg.id} (${cfg.name})${skills}: Primary agent — use for peer-to-peer delegation.`;
+    })
     .join("\n");
 
   const agentSection =
@@ -151,7 +155,8 @@ export function createTaskTool(options: {
     `When to use the Task tool:\n` +
     `- When you need to delegate a complex subtask to a specialized agent\n` +
     `- When parallel execution would speed up the work\n` +
-    `- When you want to communicate with a peer agent (use the agent's id as subagent_type)\n\n` +
+    `- When you want to communicate with a peer agent (use the agent's id as subagent_type)\n` +
+    `- When you want to route by skill: use a skill name as subagent_type (e.g. "code-review", "test-writing") — the runtime resolves the first primary agent that declares that skill in expertIn\n\n` +
     `When NOT to use the Task tool:\n` +
     `- For simple single-file operations — use the direct tools instead\n` +
     `- When you already have all the context needed to complete the task\n\n` +
@@ -212,9 +217,17 @@ export function createTaskTool(options: {
       }
 
       // 1. Try to resolve as a user-defined primary agent (A2A peer delegation)
-      const primaryPeerConfig = (runtimeAgentConfigs ?? []).find(
-        (cfg) => cfg.id === params.subagent_type,
-      );
+      //    Resolution order:
+      //    a) Exact match by agent ID (cfg.id)
+      //    b) Skill-based match: find first primary agent that declares this skill in expertIn
+      const primaryPeerConfig =
+        (runtimeAgentConfigs ?? []).find((cfg) => cfg.id === params.subagent_type) ??
+        (runtimeAgentConfigs ?? []).find(
+          (cfg) =>
+            cfg.id !== callerAgentConfig?.id &&
+            cfg.expertIn !== undefined &&
+            cfg.expertIn.includes(params.subagent_type),
+        );
 
       if (primaryPeerConfig) {
         // --- A2A primary-to-primary path ---
@@ -343,10 +356,19 @@ export function createTaskTool(options: {
           .filter((cfg) => cfg.id !== callerAgentConfig?.id)
           .map((cfg) => cfg.id)
           .join(", ");
+        // Collect all declared skills from primary agents for the error message
+        const declaredSkills = [
+          ...new Set(
+            (runtimeAgentConfigs ?? [])
+              .filter((cfg) => cfg.id !== callerAgentConfig?.id && cfg.expertIn?.length)
+              .flatMap((cfg) => cfg.expertIn ?? []),
+          ),
+        ].join(", ");
         throw new Error(
           `Unknown agent type: "${params.subagent_type}" is not a valid agent type.\n` +
             `Available subagents: ${availableSubagents}\n` +
-            (availablePrimary ? `Available primary agents: ${availablePrimary}` : ""),
+            (availablePrimary ? `Available primary agents: ${availablePrimary}\n` : "") +
+            (declaredSkills ? `Available skills for routing: ${declaredSkills}` : ""),
         );
       }
 

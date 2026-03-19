@@ -356,4 +356,11 @@ export const templates = {
   "channels-pairing-code-label": "Codice",
   "channels-add-btn": "Aggiungi",
   "channels-botfather-link": "BotFather ↗",
+
+  // agent-detail-panel.ts — Config tab — Skill routing (v0.41.30)
+  "cfg-skill-routing": "Routing per competenze",
+  "cfg-expert-in-label": "Competenze dichiarate da questo agente (expertIn)",
+  "cfg-skill-remove-aria": "Rimuovi competenza",
+  "cfg-expert-in-placeholder": "es: code-review, test-writing",
+  "cfg-expert-in-add": "Aggiungi competenza",
 };

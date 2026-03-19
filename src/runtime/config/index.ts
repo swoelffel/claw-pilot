@@ -152,6 +152,14 @@ const AgentConfigSchema = z.object({
    */
   skillUrls: z.array(z.string().url()).optional(),
   /**
+   * Skills this agent declares as its areas of expertise.
+   * Enables skill-based routing: another agent can call task({ skill: "code-review" })
+   * and the runtime will resolve the first primary agent that lists "code-review" here.
+   * Free-form strings — matched by exact case-sensitive comparison.
+   * Examples: ["code-review", "test-writing", "documentation", "planning"]
+   */
+  expertIn: z.array(z.string()).optional(),
+  /**
    * Extended thinking configuration (Anthropic only).
    * When enabled, the model uses a dedicated reasoning phase before responding.
    * Useful for complex planning and architecture tasks.

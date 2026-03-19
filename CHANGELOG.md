@@ -6,6 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.32] — 2026-03-19
+
+### Added
+
+- **Niveau 3 — Routing A2A par compétences** (`expertIn`) :
+  - Nouveau champ `expertIn: string[]` dans `AgentConfigSchema` (runtime.json) et `Agent.Info` (runtime registry). Permet à chaque agent primary de déclarer ses domaines de compétence (ex: `["code-review", "test-writing"]`).
+  - **Résolution par skill dans le `task` tool** : si `subagent_type` ne matche ni par ID d'agent ni par nom built-in, le moteur cherche le premier agent primary qui déclare cette skill dans `expertIn`. Exemple : `task({ subagent_type: "code-review", prompt: "..." })` → résout vers l'agent qui a `expertIn: ["code-review"]`.
+  - Les skills déclarées sont affichées dans la description du `task` tool (à côté du nom de l'agent) pour guider le LLM.
+  - L'error message en cas d'agent inconnu liste désormais les skills disponibles pour le routing.
+  - **UI — onglet Config** : nouveau champ "Skill routing" avec tag input pour éditer `expertIn`. Saisie libre par entrée ou virgule, avec suppression par tag. Sauvegardé via PATCH config.
+  - **API** : `expertIn` exposé dans `GET /api/instances/:slug/config` (champ `expertIn: string[]` par agent) et patchable via `PATCH /api/instances/:slug/config`.
+  - **i18n** : 5 nouvelles clés (`cfg-skill-routing`, `cfg-expert-in-label`, `cfg-skill-remove-aria`, `cfg-expert-in-placeholder`, `cfg-expert-in-add`) dans les 6 langues (en, fr, de, es, it, pt).
+
+---
+
 ## [0.41.31] — 2026-03-19
 
 ### Changed

@@ -293,6 +293,7 @@ export interface InstanceConfig {
     promptMode: string;
     allowSubAgents: boolean;
     instructionUrls: string[];
+    expertIn: string[];
     heartbeat: {
       every?: string;
       model?: string;

@@ -1117,4 +1117,42 @@ export const agentDetailPanelStyles = css`
     justify-content: center;
     padding: 48px 0;
   }
+
+  /* ── Skill tags (expertIn) ─────────────────────────────────────────────── */
+
+  .cfg-tags-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 28px;
+    margin-bottom: 4px;
+  }
+
+  .cfg-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background: var(--accent-bg, color-mix(in srgb, var(--accent) 12%, transparent));
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 500;
+    border: 1px solid var(--accent-border, color-mix(in srgb, var(--accent) 25%, transparent));
+  }
+
+  .cfg-tag-remove {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    padding: 0;
+    font-size: 10px;
+    line-height: 1;
+    opacity: 0.7;
+  }
+
+  .cfg-tag-remove:hover {
+    opacity: 1;
+  }
 `;

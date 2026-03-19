@@ -54,6 +54,13 @@ export namespace Agent {
     steps: z.number().int().positive().optional(),
     /** Arbitrary extra options (passed to provider) */
     options: z.record(z.string(), z.unknown()).default({}),
+    /**
+     * Skills this agent declares as its areas of expertise.
+     * Used for skill-based routing: task({ skill: "code-review" }) resolves to the first
+     * primary agent that includes "code-review" in its expertIn list.
+     * Free-form strings — resolved by exact match.
+     */
+    expertIn: z.array(z.string()).optional(),
   });
 
   export type Info = z.infer<typeof Info>;
@@ -68,6 +75,7 @@ export namespace Agent {
     hidden: boolean;
     native: boolean;
     color: string | undefined;
+    expertIn: string[] | undefined;
   }
 
   /** @public */
@@ -81,6 +89,7 @@ export namespace Agent {
       hidden: info.hidden ?? false,
       native: info.native ?? false,
       color: info.color,
+      expertIn: info.expertIn,
     };
   }
 }

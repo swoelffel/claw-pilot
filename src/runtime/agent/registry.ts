@@ -156,6 +156,8 @@ function mergeAgentConfig(base: Agent.Info, cfg: RuntimeAgentConfig): Agent.Info
   if (cfg.isDefault !== undefined) result.isDefault = cfg.isDefault;
   // model is always set in RuntimeAgentConfig (required field)
   result.model = cfg.model;
+  // expertIn: config overrides base (not merged — explicit declaration wins)
+  if (cfg.expertIn !== undefined) result.expertIn = cfg.expertIn;
 
   // Merge permissions: config permissions appended after base (last-match-wins)
   if (cfg.permissions.length > 0) {
@@ -186,5 +188,6 @@ function createFromConfig(cfg: RuntimeAgentConfig): Agent.Info {
     permission: cfg.permissions,
     options: {},
     ...(cfg.isDefault !== undefined ? { isDefault: cfg.isDefault } : {}),
+    ...(cfg.expertIn !== undefined ? { expertIn: cfg.expertIn } : {}),
   });
 }

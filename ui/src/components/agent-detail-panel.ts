@@ -104,6 +104,8 @@ export class AgentDetailPanel extends LitElement {
   @state() private _cfgChunkTimeout = 120000;
   @state() private _cfgInstructionUrls: string[] = [];
   @state() private _cfgBootstrapFiles: string[] = [];
+  @state() private _cfgExpertIn: string[] = [];
+  @state() private _cfgExpertInInput = "";
   @state() private _cfgDirty = false;
   @state() private _cfgSaving = false;
   @state() private _cfgLoading = false;
@@ -165,6 +167,8 @@ export class AgentDetailPanel extends LitElement {
       this._cfgChunkTimeout = (cfg?.chunkTimeoutMs as number | undefined) ?? 120000;
       this._cfgInstructionUrls = (cfg?.instructionUrls as string[] | undefined) ?? [];
       this._cfgBootstrapFiles = (cfg?.bootstrapFiles as string[] | undefined) ?? [];
+      this._cfgExpertIn = (cfg?.expertIn as string[] | undefined) ?? [];
+      this._cfgExpertInInput = "";
       this._cfgDirty = false;
     } catch {
       // Silently fallback to defaults on error
@@ -190,6 +194,7 @@ export class AgentDetailPanel extends LitElement {
         chunkTimeoutMs: this._cfgChunkTimeout,
         instructionUrls: this._cfgInstructionUrls.filter(Boolean),
         bootstrapFiles: this._cfgBootstrapFiles.filter(Boolean),
+        expertIn: this._cfgExpertIn.filter(Boolean),
         ...(this._cfgTemperature !== null ? { temperature: this._cfgTemperature } : {}),
       };
       await patchInstanceConfig(this.context.slug, { agents: [agentPatch] });
@@ -449,6 +454,69 @@ export class AgentDetailPanel extends LitElement {
         >
           + Glob
         </button>
+
+        <!-- Expert in (skill-based routing) -->
+        <div class="hb-section-title">${msg("Skill routing", { id: "cfg-skill-routing" })}</div>
+        <div class="hb-label" style="margin-bottom:6px">
+          ${msg("Skills declared by this agent (expertIn)", { id: "cfg-expert-in-label" })}
+        </div>
+        <div class="cfg-tags-list">
+          ${this._cfgExpertIn.map(
+            (skill) => html`
+              <span class="cfg-tag">
+                ${skill}
+                <button
+                  class="cfg-tag-remove"
+                  @click=${() => {
+                    this._cfgExpertIn = this._cfgExpertIn.filter((s) => s !== skill);
+                    this._cfgDirty = true;
+                  }}
+                  aria-label=${msg("Remove skill", { id: "cfg-skill-remove-aria" })}
+                >
+                  &#x2715;
+                </button>
+              </span>
+            `,
+          )}
+        </div>
+        <div class="hb-field-row" style="margin-top:6px">
+          <input
+            type="text"
+            class="hb-input"
+            placeholder=${msg("e.g. code-review, test-writing", {
+              id: "cfg-expert-in-placeholder",
+            })}
+            .value=${this._cfgExpertInInput}
+            @input=${(e: Event) => {
+              this._cfgExpertInInput = (e.target as HTMLInputElement).value;
+            }}
+            @keydown=${(e: KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === ",") {
+                e.preventDefault();
+                const val = this._cfgExpertInInput.trim().replace(/,$/, "");
+                if (val && !this._cfgExpertIn.includes(val)) {
+                  this._cfgExpertIn = [...this._cfgExpertIn, val];
+                  this._cfgDirty = true;
+                }
+                this._cfgExpertInInput = "";
+              }
+            }}
+          />
+          <button
+            class="btn-add-item"
+            style="white-space:nowrap"
+            @click=${() => {
+              const val = this._cfgExpertInInput.trim();
+              if (val && !this._cfgExpertIn.includes(val)) {
+                this._cfgExpertIn = [...this._cfgExpertIn, val];
+                this._cfgDirty = true;
+              }
+              this._cfgExpertInInput = "";
+            }}
+          >
+            + ${msg("Add skill", { id: "cfg-expert-in-add" })}
+          </button>
+        </div>
 
         <!-- Save bar -->
         ${this._cfgDirty
