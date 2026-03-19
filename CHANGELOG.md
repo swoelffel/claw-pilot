@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.41] — 2026-03-19
+
+### Fixed
+
+- **Agent Info tab — double-prefix bug on model save** : when saving the Provider/Model in the agent Info tab, the model was incorrectly stored as `"anthropic/anthropic/claude-sonnet-4-6"` instead of `"anthropic/claude-sonnet-4-6"`. Root cause: `_initInfoFields()` was splitting `rawModel` on `/` to initialize `_editModel` to the short form (`"claude-sonnet-4-6"`), but catalog option values use the full `"provider/model"` format — so on re-save the provider was prepended a second time. Fix: `_editModel` now stores the full `"provider/model"` string (matching catalog option values); `_saveInfo()` uses `_editModel` directly instead of re-concatenating `_editProvider + "/" + _editModel`.
+
+---
+
 ## [0.41.40] — 2026-03-19
 
 ### Changed

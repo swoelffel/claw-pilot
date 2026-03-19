@@ -910,8 +910,10 @@ export class AgentDetailPanel extends LitElement {
     this._editNotes = a.notes ?? "";
     const rawModel = this._resolveModel(a.model ?? "") ?? "";
     const slashIdx = rawModel.indexOf("/");
+    // _editProvider is used only to drive the provider <select>; _editModel holds the full
+    // "provider/model" string (as stored in the catalog) so the model <select> can match it.
     this._editProvider = slashIdx >= 0 ? rawModel.slice(0, slashIdx) : "";
-    this._editModel = slashIdx >= 0 ? rawModel.slice(slashIdx + 1) : rawModel;
+    this._editModel = rawModel; // keep full format — catalog options are also "provider/model"
     this._editSkills = a.skills;
     this._infoDirty = false;
     this._infoError = "";
@@ -971,9 +973,9 @@ export class AgentDetailPanel extends LitElement {
 
         // Config patch: name / model / skills
         const resolvedCurrentModel = this._resolveModel(a.model ?? "") ?? "";
-        // Build newModel only when both provider and model are selected
-        const newModel =
-          this._editProvider && this._editModel ? `${this._editProvider}/${this._editModel}` : "";
+        // _editModel already holds the full "provider/model" string — use it directly.
+        // Only count as a change when a valid model is selected (non-empty).
+        const newModel = this._editModel || "";
         const skillsChanged = JSON.stringify(this._editSkills) !== JSON.stringify(a.skills);
         const modelChanged = newModel !== resolvedCurrentModel && newModel !== "";
         const configChanged = this._editName !== (a.name ?? "") || modelChanged || skillsChanged;
