@@ -388,14 +388,7 @@ export class AgentsBuilder extends LitElement {
         agentId,
         name: `${name} (template)`,
       });
-      // Navigate to the agent templates page to see the new template
-      this.dispatchEvent(
-        new CustomEvent("navigate", {
-          detail: { view: "agent-templates" },
-          bubbles: true,
-          composed: true,
-        }),
-      );
+      // Saved silently — no redirect so the user stays in the builder
     } catch (err) {
       this._error = userMessage(err);
     }

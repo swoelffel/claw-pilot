@@ -1644,8 +1644,8 @@ export class AgentDetailPanel extends LitElement {
             ? html`
                 <button
                   class="panel-btn"
-                  aria-label=${msg("Save as template", { id: "adp-btn-save-template" })}
-                  title=${msg("Save as template", { id: "adp-btn-save-template" })}
+                  aria-label=${msg("Save", { id: "adp-btn-save-template" })}
+                  title=${msg("Save", { id: "adp-btn-save-template" })}
                   @click=${() =>
                     this.dispatchEvent(
                       new CustomEvent("agent-save-as-template", {

@@ -186,7 +186,7 @@ export const templates = {
 
   // agent templates (v0.41.28)
   "nav-agent-templates": "Modelos",
-  "adp-btn-save-template": "Salvar como modelo",
+  "adp-btn-save-template": "Salvar",
 
   // create-agent-template-dialog (v0.41.29)
   "catd-title": "Novo modelo de agente",
