@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.35] — 2026-03-19
+
+### Fixed
+
+- **UI — card Agent : redirections spurieuses après sauvegarde de fichier** : corriger un anti-pattern Lit introduit lors de la refacto `cp-agent-file-editor`. Les fonctions `loadFile`/`saveFile` étaient recréées à chaque `render()` (factory calls inline), ce qui provoquait des cycles `updated()` parasites dans le child component et, sous certaines conditions de scheduling, déclenchait un event `navigate` vers `/agent-templates` après chaque sauvegarde. Fix : mémoïsation des callbacks comme class fields stables, reconstruits uniquement quand `agent`, `context` ou `templateId` changent (`agent-detail-panel.ts`, `agent-template-detail.ts`).
+- **UI — perte d'édition en cours dans `cp-agent-file-editor`** : l'array `filenames` était recalculé inline dans `render()` de `agent-template-detail`, ce qui déclenchait le reset complet du cache et de l'état d'édition à chaque re-render du parent. Fix : `_filenames` est maintenant un class field stable, alimenté une seule fois après le fetch dans `_load()`.
+- **UI — `context` inline object dans les parents de `cp-agent-detail-panel`** : dans `agents-builder.ts`, `instance-settings.ts` et `blueprint-builder.ts`, le `PanelContext` était créé inline (`${{ kind: "instance", slug: this.slug }}`), provoquant des rebuilds inutiles des closures file-editor à chaque render du parent. Fix : `_panelContext` est maintenant un class field, reconstruit uniquement dans `updated()` quand `slug` ou `blueprintId` change.
+
+### Changed
+
+- **Suppression du fichier `IDENTITY.md`** dans les workspaces agents : remplacé définitivement par `BOOTSTRAP.md` (fichier d'onboarding). Mis à jour dans : `constants.ts`, `system-prompt.ts`, `runtime.ts` (route), templates workspace, dialog de création de templates, locales (6 langues), tests.
+
+---
+
 ## [0.41.34] — 2026-03-19
 
 ### Added
