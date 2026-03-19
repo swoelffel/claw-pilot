@@ -1,7 +1,7 @@
 // ui/src/components/agent-template-detail.ts
 //
 // Detail view for a single agent blueprint template.
-// Displays metadata + file list with file editing capability.
+// Displays metadata + file list with file editing capability via cp-agent-file-editor.
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
@@ -15,6 +15,7 @@ import {
 import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { sectionLabelStyles, errorBannerStyles, buttonStyles } from "../styles/shared.js";
+import "./agent-file-editor.js";
 
 @localized()
 @customElement("cp-agent-template-detail")
@@ -113,19 +114,6 @@ export class AgentTemplateDetail extends LitElement {
         word-break: break-word;
       }
 
-      .description-input {
-        width: 100%;
-        min-height: 60px;
-        background: var(--bg-input);
-        border: 1px solid var(--bg-border);
-        border-radius: var(--radius-sm);
-        color: var(--text-primary);
-        font-family: inherit;
-        font-size: 13px;
-        padding: 8px;
-        resize: vertical;
-      }
-
       .files-section {
         margin-top: 16px;
       }
@@ -137,87 +125,17 @@ export class AgentTemplateDetail extends LitElement {
         margin-bottom: 12px;
       }
 
-      .file-tabs {
-        display: flex;
-        gap: 2px;
-        border-bottom: 1px solid var(--bg-border);
-        margin-bottom: 12px;
-        flex-wrap: wrap;
-      }
-
-      .file-tab {
-        padding: 6px 12px;
-        font-size: 12px;
-        font-family: var(--font-mono);
-        color: var(--text-muted);
-        cursor: pointer;
-        border: none;
-        background: none;
-        border-bottom: 2px solid transparent;
-        transition:
-          color 0.15s,
-          border-color 0.15s;
-      }
-
-      .file-tab:hover {
-        color: var(--text-primary);
-      }
-
-      .file-tab.active {
-        color: var(--accent);
-        border-bottom-color: var(--accent);
-      }
-
-      .file-editor {
-        position: relative;
-      }
-
-      .file-textarea {
-        width: 100%;
-        min-height: 300px;
-        background: var(--bg-input);
-        border: 1px solid var(--bg-border);
-        border-radius: var(--radius-sm);
-        color: var(--text-primary);
-        font-family: var(--font-mono);
-        font-size: 12px;
-        padding: 12px;
-        resize: vertical;
-        line-height: 1.5;
-        tab-size: 2;
-      }
-
-      .file-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 8px;
-        margin-top: 8px;
-      }
-
-      .btn-save {
-        background: var(--accent);
-        color: var(--bg-base);
-        border: none;
-        border-radius: var(--radius-sm);
-        padding: 6px 16px;
-        font-size: 12px;
-        font-weight: 600;
-        cursor: pointer;
-      }
-
-      .btn-save:hover {
-        opacity: 0.9;
-      }
-
-      .btn-save:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
-
       .loading {
         text-align: center;
         padding: 48px;
         color: var(--text-muted);
+      }
+
+      .files-empty {
+        color: var(--text-muted);
+        font-size: 13px;
+        font-style: italic;
+        padding: 16px 0;
       }
     `,
   ];
@@ -227,11 +145,6 @@ export class AgentTemplateDetail extends LitElement {
   @state() private _blueprint: AgentBlueprintInfo | null = null;
   @state() private _loading = true;
   @state() private _error = "";
-  @state() private _activeFile = "";
-  @state() private _fileContent = "";
-  @state() private _fileOriginal = "";
-  @state() private _loadingFile = false;
-  @state() private _savingFile = false;
 
   override connectedCallback() {
     super.connectedCallback();
@@ -251,10 +164,7 @@ export class AgentTemplateDetail extends LitElement {
     this._error = "";
     try {
       this._blueprint = await fetchAgentBlueprint(this.templateId);
-      // Auto-select first file
-      if (this._blueprint.files && this._blueprint.files.length > 0) {
-        await this._selectFile(this._blueprint.files[0]!.filename);
-      }
+      // cp-agent-file-editor handles auto-selecting the first file when `files` prop changes
     } catch (err) {
       this._error = userMessage(err);
     } finally {
@@ -282,32 +192,17 @@ export class AgentTemplateDetail extends LitElement {
     );
   }
 
-  private async _selectFile(filename: string): Promise<void> {
-    if (this._activeFile === filename) return;
-    this._activeFile = filename;
-    this._loadingFile = true;
-    try {
+  private _buildLoadFile(): (filename: string) => Promise<string> {
+    return async (filename: string) => {
       const file = await fetchAgentBlueprintFile(this.templateId, filename);
-      this._fileContent = file.content;
-      this._fileOriginal = file.content;
-    } catch (err) {
-      this._error = userMessage(err);
-    } finally {
-      this._loadingFile = false;
-    }
+      return file.content;
+    };
   }
 
-  private async _saveFile(): Promise<void> {
-    if (!this._activeFile || this._fileContent === this._fileOriginal) return;
-    this._savingFile = true;
-    try {
-      await updateAgentBlueprintFile(this.templateId, this._activeFile, this._fileContent);
-      this._fileOriginal = this._fileContent;
-    } catch (err) {
-      this._error = userMessage(err);
-    } finally {
-      this._savingFile = false;
-    }
+  private _buildSaveFile(): (filename: string, content: string) => Promise<void> {
+    return async (filename: string, content: string) => {
+      await updateAgentBlueprintFile(this.templateId, filename, content);
+    };
   }
 
   private _navigateBack(): void {
@@ -331,7 +226,7 @@ export class AgentTemplateDetail extends LitElement {
 
     const bp = this._blueprint;
     const files: AgentBlueprintFileSummary[] = bp.files ?? [];
-    const hasChanges = this._fileContent !== this._fileOriginal;
+    const filenames = files.map((f) => f.filename);
 
     return html`
       ${this._error ? html`<div class="error-banner">${this._error}</div>` : nothing}
@@ -374,49 +269,15 @@ export class AgentTemplateDetail extends LitElement {
           ${msg("Workspace files", { id: "atd-files-title" })} (${files.length})
         </div>
 
-        ${files.length > 0
+        ${filenames.length > 0
           ? html`
-              <div class="file-tabs">
-                ${files.map(
-                  (f) => html`
-                    <button
-                      class="file-tab ${this._activeFile === f.filename ? "active" : ""}"
-                      @click=${() => void this._selectFile(f.filename)}
-                    >
-                      ${f.filename}
-                    </button>
-                  `,
-                )}
-              </div>
-
-              <div class="file-editor">
-                ${this._loadingFile
-                  ? html`<div class="loading">
-                      ${msg("Loading file...", { id: "atd-file-loading" })}
-                    </div>`
-                  : html`
-                      <textarea
-                        class="file-textarea"
-                        .value=${this._fileContent}
-                        @input=${(e: Event) => {
-                          this._fileContent = (e.target as HTMLTextAreaElement).value;
-                        }}
-                      ></textarea>
-                      <div class="file-actions">
-                        <button
-                          class="btn-save"
-                          ?disabled=${!hasChanges || this._savingFile}
-                          @click=${() => void this._saveFile()}
-                        >
-                          ${this._savingFile
-                            ? msg("Saving...", { id: "atd-file-saving" })
-                            : msg("Save", { id: "atd-file-save" })}
-                        </button>
-                      </div>
-                    `}
-              </div>
+              <cp-agent-file-editor
+                .files=${filenames}
+                .loadFile=${this._buildLoadFile()}
+                .saveFile=${this._buildSaveFile()}
+              ></cp-agent-file-editor>
             `
-          : html`<div class="loading">${msg("No files yet", { id: "atd-files-empty" })}</div>`}
+          : html`<div class="files-empty">${msg("No files yet", { id: "atd-files-empty" })}</div>`}
       </div>
     `;
   }

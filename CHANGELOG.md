@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.31] — 2026-03-19
+
+### Changed
+
+- **UI — édition de fichiers agents** : extraction du code d'édition de fichiers workspace en un composant réutilisable `cp-agent-file-editor`. Ce composant est maintenant utilisé dans les 3 surfaces d'édition : agents d'instance, agents de blueprint, et templates d'agent (`/agent-templates`). La page templates gagne ainsi le preview Markdown (Edit/Preview), le dirty tracking, le cache de fichiers et la confirmation avant de quitter sans sauvegarder (discard dialog), auparavant disponibles uniquement dans le panneau agent.
+
+---
+
 ## [0.41.30] — 2026-03-19
 
 ### Changed

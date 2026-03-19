@@ -5,7 +5,6 @@ import { localized, msg } from "@lit/localize";
 import type {
   AgentBuilderInfo,
   AgentLink,
-  AgentFileContent,
   PanelContext,
   AgentMetaPatch,
   ProvidersResponse,
@@ -30,9 +29,8 @@ import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { sectionLabelStyles, spinnerStyles } from "../styles/shared.js";
 import { agentDetailPanelStyles } from "../styles/agent-detail-panel.styles.js";
-import { marked } from "marked";
-import DOMPurify from "dompurify";
 import { getToken } from "../services/auth-state.js";
+import "./agent-file-editor.js";
 
 const EDITABLE_FILES = new Set([
   "AGENTS.md",
@@ -63,18 +61,6 @@ export class AgentDetailPanel extends LitElement {
 
   @state() private _activeTab = "info";
   @state() private _expanded = false;
-
-  // ── File tab state ───────────────────────────────────────────────────────
-
-  @state() private _fileCache = new Map<string, AgentFileContent>();
-  @state() private _loadingFile = false;
-  @state() private _editMode = false;
-  @state() private _editContent = "";
-  @state() private _editOriginal = "";
-  @state() private _editTab: "edit" | "preview" = "edit";
-  @state() private _fileSaving = false;
-  @state() private _discardDialogOpen = false;
-  @state() private _pendingTabSwitch: string | null = null;
 
   // ── Spawn links state ────────────────────────────────────────────────────
 
@@ -146,41 +132,8 @@ export class AgentDetailPanel extends LitElement {
 
   // ── Lifecycle ────────────────────────────────────────────────────────────
 
-  private async _loadFile(filename: string): Promise<void> {
-    if (this._fileCache.has(filename)) return;
-    this._loadingFile = true;
-    try {
-      let content: AgentFileContent;
-      if (this.context.kind === "blueprint") {
-        // Blueprint context: use blueprint-specific API
-        content = await fetchBlueprintAgentFile(
-          this.context.blueprintId,
-          this.agent.agent_id,
-          filename,
-        );
-      } else {
-        // Instance context: use instance-specific API
-        content = await fetchAgentFile(this.context.slug, this.agent.agent_id, filename);
-      }
-      this._fileCache = new Map(this._fileCache).set(filename, content);
-    } catch {
-      // Ignore — file may not be synced yet
-    } finally {
-      this._loadingFile = false;
-    }
-  }
-
   private _selectTab(tab: string): void {
-    if (this._editMode && this._editContent !== this._editOriginal) {
-      this._pendingTabSwitch = tab;
-      this._discardDialogOpen = true;
-      return;
-    }
-    this._editMode = false;
     this._activeTab = tab;
-    if (tab !== "info" && tab !== "heartbeat" && tab !== "config") {
-      void this._loadFile(tab);
-    }
     if (tab === "heartbeat") {
       void this._loadHeartbeatHistory();
     }
@@ -853,16 +806,10 @@ export class AgentDetailPanel extends LitElement {
   override updated(changed: Map<string, unknown>): void {
     if (changed.has("agent")) {
       this._activeTab = "info";
-      this._fileCache = new Map();
       this._pendingRemovals = new Set();
       this._pendingAdditions = new Set();
       this._dropdownOpen = false;
-      this._editMode = false;
-      this._editContent = "";
-      this._editOriginal = "";
       this._error = "";
-      this._discardDialogOpen = false;
-      this._pendingTabSwitch = null;
       this._fieldEditMode = false;
       this._fieldError = "";
     }
@@ -1360,85 +1307,40 @@ export class AgentDetailPanel extends LitElement {
     }
   }
 
-  // ── File tab edit mode ───────────────────────────────────────────────────
+  // ── File load helpers (callbacks for cp-agent-file-editor) ──────────────
 
-  private _enterEditMode(filename: string): void {
-    const cached = this._fileCache.get(filename);
-    if (!cached) return;
-    this._editOriginal = cached.content ?? "";
-    this._editContent = this._editOriginal;
-    this._editTab = "edit";
-    this._error = "";
-    this._editMode = true;
-  }
-
-  private _cancelEdit(): void {
-    if (this._editContent !== this._editOriginal) {
-      this._discardDialogOpen = true;
-    } else {
-      this._exitEditMode();
-    }
-  }
-
-  private _exitEditMode(): void {
-    this._editMode = false;
-    this._editContent = "";
-    this._editOriginal = "";
-    this._error = "";
-    this._discardDialogOpen = false;
-    this._pendingTabSwitch = null;
-  }
-
-  private _confirmDiscard(): void {
-    if (this._pendingTabSwitch) {
-      const target = this._pendingTabSwitch;
-      this._exitEditMode();
-      this._activeTab = target;
-      if (target !== "info") void this._loadFile(target);
-    } else {
-      this._exitEditMode();
-    }
-  }
-
-  private async _saveFile(filename: string): Promise<void> {
-    if (!this.agent || !this.context) return;
-    this._fileSaving = true;
-    this._error = "";
-    try {
-      let updated: AgentFileContent;
+  private _buildLoadFile(): (filename: string) => Promise<string> {
+    return async (filename: string) => {
       if (this.context.kind === "blueprint") {
-        // Blueprint context: use blueprint-specific file update API
-        updated = await updateBlueprintAgentFile(
+        const result = await fetchBlueprintAgentFile(
           this.context.blueprintId,
           this.agent.agent_id,
           filename,
-          this._editContent,
         );
+        return result.content ?? "";
       } else {
-        // Instance context: use instance-specific file update API
-        updated = await updateAgentFile(
-          this.context.slug,
+        const result = await fetchAgentFile(this.context.slug, this.agent.agent_id, filename);
+        return result.content ?? "";
+      }
+    };
+  }
+
+  private _buildSaveFile(): (filename: string, content: string) => Promise<void> {
+    return async (filename: string, content: string) => {
+      if (this.context.kind === "blueprint") {
+        await updateBlueprintAgentFile(
+          this.context.blueprintId,
           this.agent.agent_id,
           filename,
-          this._editContent,
+          content,
         );
+      } else {
+        await updateAgentFile(this.context.slug, this.agent.agent_id, filename, content);
       }
-      this._fileCache = new Map(this._fileCache).set(filename, updated);
-      this._exitEditMode();
-    } catch (err) {
-      this._error = userMessage(err);
-    } finally {
-      this._fileSaving = false;
-    }
+    };
   }
 
   // ── Render helpers ───────────────────────────────────────────────────────
-
-  private _renderMarkdown(content: string) {
-    const rawHtml = marked.parse(content) as string;
-    const clean = DOMPurify.sanitize(rawHtml);
-    return html`<div class="md-render" .innerHTML=${clean}></div>`;
-  }
 
   private _renderInfo() {
     if (this._fieldEditMode) return this._renderFieldEditForm();
@@ -1613,139 +1515,6 @@ export class AgentDetailPanel extends LitElement {
           `;
         })()}
       </div>
-    `;
-  }
-
-  private _renderFileTab(filename: string) {
-    const cached = this._fileCache.get(filename);
-    const isEditable = EDITABLE_FILES.has(filename);
-
-    if (this._loadingFile && !cached) {
-      return html`<p class="loading-text">
-        ${msg("Loading", { id: "adp-loading-file" })} ${filename}…
-      </p>`;
-    }
-
-    if (!cached) {
-      return html`<p class="loading-text">
-        ${msg("File not available.", { id: "adp-file-not-available" })}
-      </p>`;
-    }
-
-    if (this._editMode && isEditable) {
-      return html`
-        <div class="file-edit-header">
-          <span class="badge-editing">${msg("Editing", { id: "adf-badge-editing" })}</span>
-          <div class="editor-tabs">
-            <button
-              class="editor-tab ${this._editTab === "edit" ? "active" : ""}"
-              @click=${() => {
-                this._editTab = "edit";
-              }}
-            >
-              ${msg("Edit", { id: "adf-tab-edit" })}
-            </button>
-            <button
-              class="editor-tab ${this._editTab === "preview" ? "active" : ""}"
-              @click=${() => {
-                this._editTab = "preview";
-              }}
-            >
-              ${msg("Preview", { id: "adf-tab-preview" })}
-            </button>
-          </div>
-          <div class="editor-actions">
-            <button
-              class="btn-file-save"
-              ?disabled=${this._fileSaving}
-              @click=${() => void this._saveFile(filename)}
-            >
-              ${this._fileSaving
-                ? msg("Saving...", { id: "adf-btn-saving" })
-                : msg("Save", { id: "adf-btn-save" })}
-            </button>
-            <button
-              class="btn-file-cancel"
-              ?disabled=${this._fileSaving}
-              @click=${() => this._cancelEdit()}
-            >
-              ${msg("Cancel", { id: "adf-btn-cancel" })}
-            </button>
-          </div>
-        </div>
-        ${this._error ? html`<div class="file-save-error">${this._error}</div>` : nothing}
-        ${this._editTab === "edit"
-          ? html`<textarea
-              class="file-editor"
-              .value=${this._editContent}
-              @input=${(e: InputEvent) => {
-                this._editContent = (e.target as HTMLTextAreaElement).value;
-              }}
-            ></textarea>`
-          : this._renderMarkdown(this._editContent)}
-        ${this._discardDialogOpen
-          ? html`
-              <div class="discard-overlay">
-                <div class="discard-dialog">
-                  <h3 class="discard-title">
-                    ${msg("Discard changes?", { id: "adf-confirm-discard-title" })}
-                  </h3>
-                  <p class="discard-body">
-                    ${msg("Your changes will be lost.", { id: "adf-confirm-discard-body" })}
-                  </p>
-                  <div class="discard-actions">
-                    <button
-                      class="btn-keep-editing"
-                      @click=${() => {
-                        this._discardDialogOpen = false;
-                        this._pendingTabSwitch = null;
-                      }}
-                    >
-                      ${msg("Keep editing", { id: "adf-confirm-keep" })}
-                    </button>
-                    <button class="btn-discard" @click=${() => this._confirmDiscard()}>
-                      ${msg("Discard", { id: "adf-confirm-discard-ok" })}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            `
-          : nothing}
-      `;
-    }
-
-    // Consultation mode
-    return html`
-      <div class="file-badge">
-        <span class="${isEditable ? "badge-editable" : "badge-readonly"}">
-          ${isEditable
-            ? msg("editable", { id: "adp-badge-editable" })
-            : msg("read-only", { id: "adp-badge-readonly" })}
-        </span>
-        ${isEditable
-          ? html`
-              <button
-                class="btn-edit-file"
-                title=${msg("Edit", { id: "adf-btn-edit" })}
-                @click=${() => this._enterEditMode(filename)}
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                </svg>
-              </button>
-            `
-          : nothing}
-      </div>
-      ${this._renderMarkdown(cached.content ?? "")}
     `;
   }
 
@@ -1930,16 +1699,16 @@ export class AgentDetailPanel extends LitElement {
               </button>
             `
           : nothing}
-        ${fileTabs.map(
-          (f) => html`
-            <button
-              class="tab ${this._activeTab === f ? "active" : ""}"
-              @click=${() => this._selectTab(f)}
-            >
-              ${f}
-            </button>
-          `,
-        )}
+        ${fileTabs.length > 0
+          ? html`
+              <button
+                class="tab ${this._activeTab === "files" ? "active" : ""}"
+                @click=${() => this._selectTab("files")}
+              >
+                ${msg("Files", { id: "adp-tab-files" })}
+              </button>
+            `
+          : nothing}
       </div>
 
       <div
@@ -1953,7 +1722,14 @@ export class AgentDetailPanel extends LitElement {
             ? this._renderHeartbeatTab()
             : this._activeTab === "config"
               ? this._renderConfigTab()
-              : this._renderFileTab(this._activeTab)}
+              : html`
+                  <cp-agent-file-editor
+                    .files=${fileTabs}
+                    .loadFile=${this._buildLoadFile()}
+                    .saveFile=${this._buildSaveFile()}
+                    .editableFiles=${EDITABLE_FILES}
+                  ></cp-agent-file-editor>
+                `}
       </div>
 
       ${this._pendingRemovals.size > 0 || this._pendingAdditions.size > 0
