@@ -36,7 +36,6 @@ const EDITABLE_FILES = new Set([
   "AGENTS.md",
   "SOUL.md",
   "TOOLS.md",
-  "IDENTITY.md",
   "BOOTSTRAP.md",
   "USER.md",
   "HEARTBEAT.md",
@@ -131,6 +130,14 @@ export class AgentDetailPanel extends LitElement {
     responseText: string;
   }> = [];
   @state() private _hbLoadingHistory = false;
+
+  // ── File editor stable callbacks ─────────────────────────────────────────
+  // Must not be recreated inside render() — Lit uses === equality for prop diffing,
+  // so new function references on every render would trigger spurious updated() cycles
+  // in cp-agent-file-editor and could cause unwanted navigate events after save.
+
+  private _loadFileFn: ((filename: string) => Promise<string>) | null = null;
+  private _saveFileFn: ((filename: string, content: string) => Promise<void>) | null = null;
 
   // ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -880,6 +887,12 @@ export class AgentDetailPanel extends LitElement {
       this._error = "";
       this._fieldEditMode = false;
       this._fieldError = "";
+    }
+    // Rebuild stable function refs when agent or context changes so the closures
+    // always capture the current values without being recreated on every render().
+    if (changed.has("agent") || changed.has("context")) {
+      this._loadFileFn = this._buildLoadFile();
+      this._saveFileFn = this._buildSaveFile();
     }
   }
 
@@ -1793,8 +1806,8 @@ export class AgentDetailPanel extends LitElement {
               : html`
                   <cp-agent-file-editor
                     .files=${fileTabs}
-                    .loadFile=${this._buildLoadFile()}
-                    .saveFile=${this._buildSaveFile()}
+                    .loadFile=${this._loadFileFn}
+                    .saveFile=${this._saveFileFn}
                     .editableFiles=${EDITABLE_FILES}
                   ></cp-agent-file-editor>
                 `}

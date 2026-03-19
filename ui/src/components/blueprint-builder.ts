@@ -295,6 +295,17 @@ export class BlueprintBuilder extends LitElement {
 
   @property({ type: Number }) blueprintId = 0;
 
+  // Stable PanelContext object — rebuilt only when `blueprintId` changes so that
+  // cp-agent-detail-panel.updated() doesn't see a new `context` reference on every
+  // render and trigger unnecessary _buildLoadFile()/_buildSaveFile() rebuilds.
+  private _panelContext: PanelContext = { kind: "blueprint", blueprintId: 0 };
+
+  override updated(changed: Map<string, unknown>): void {
+    if (changed.has("blueprintId")) {
+      this._panelContext = { kind: "blueprint", blueprintId: this.blueprintId };
+    }
+  }
+
   @state() private _data: BlueprintBuilderData | null = null;
   @state() private _loading = true;
   @state() private _error = "";
@@ -669,7 +680,7 @@ export class BlueprintBuilder extends LitElement {
                 .agent=${this._selectedAgent}
                 .links=${this._data?.links ?? []}
                 .allAgents=${this._data?.agents ?? []}
-                .context=${{ kind: "blueprint", blueprintId: this.blueprintId } as PanelContext}
+                .context=${this._panelContext}
                 @panel-close=${() => {
                   this._selectedAgentId = null;
                 }}
@@ -705,7 +716,7 @@ export class BlueprintBuilder extends LitElement {
       ${this._showImportDialog
         ? html`
             <cp-import-team-dialog
-              .context=${{ kind: "blueprint", blueprintId: this.blueprintId }}
+              .context=${this._panelContext}
               @close-dialog=${() => {
                 this._showImportDialog = false;
               }}

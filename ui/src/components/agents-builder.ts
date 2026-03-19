@@ -222,6 +222,17 @@ export class AgentsBuilder extends LitElement {
 
   @property({ type: String }) slug = "";
 
+  // Stable PanelContext object — rebuilt only when `slug` changes so that
+  // cp-agent-detail-panel.updated() doesn't see a new `context` reference on every
+  // render and trigger unnecessary _buildLoadFile()/_buildSaveFile() rebuilds.
+  private _panelContext: { kind: "instance"; slug: string } = { kind: "instance", slug: "" };
+
+  override updated(changed: Map<string, unknown>): void {
+    if (changed.has("slug")) {
+      this._panelContext = { kind: "instance", slug: this.slug };
+    }
+  }
+
   @state() private _data: BuilderData | null = null;
   @state() private _syncing = false;
   @state() private _error = "";
@@ -616,7 +627,7 @@ export class AgentsBuilder extends LitElement {
                 .agent=${this._selectedAgent}
                 .links=${data?.links ?? []}
                 .allAgents=${data?.agents ?? []}
-                .context=${{ kind: "instance", slug: this.slug }}
+                .context=${this._panelContext}
                 @panel-close=${() => {
                   this._selectedAgentId = null;
                   this._pendingAdditions = new Map();
@@ -679,7 +690,7 @@ export class AgentsBuilder extends LitElement {
       ${this._showImportDialog
         ? html`
             <cp-import-team-dialog
-              .context=${{ kind: "instance", slug: this.slug }}
+              .context=${this._panelContext}
               @close-dialog=${() => {
                 this._showImportDialog = false;
               }}

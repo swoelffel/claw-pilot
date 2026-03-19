@@ -44,6 +44,17 @@ export class InstanceSettings extends LitElement {
   @property({ type: String }) slug = "";
   @property({ type: String }) initialSection: SidebarSection = "general";
 
+  // Stable PanelContext object — rebuilt only when `slug` changes so that
+  // cp-agent-detail-panel.updated() doesn't see a new `context` reference on every
+  // render and trigger unnecessary _buildLoadFile()/_buildSaveFile() rebuilds.
+  private _panelContext: PanelContext = { kind: "instance", slug: "" };
+
+  override updated(changed: Map<string, unknown>): void {
+    if (changed.has("slug")) {
+      this._panelContext = { kind: "instance", slug: this.slug };
+    }
+  }
+
   // ── Config state ─────────────────────────────────────────────────────────
 
   @state() private _config: InstanceConfig | null = null;
@@ -1025,7 +1036,7 @@ export class InstanceSettings extends LitElement {
                 .agent=${this._editingAgent}
                 .links=${this._editingAgentLinks}
                 .allAgents=${this._editingAgentAllAgents}
-                .context=${{ kind: "instance", slug: this.slug } as PanelContext}
+                .context=${this._panelContext}
                 @panel-close=${() => {
                   this._editingAgent = null;
                   this._panelExpanded = false;

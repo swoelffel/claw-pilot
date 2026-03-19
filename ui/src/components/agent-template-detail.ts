@@ -146,16 +146,33 @@ export class AgentTemplateDetail extends LitElement {
   @state() private _loading = true;
   @state() private _error = "";
 
+  // Stable references passed to cp-agent-file-editor.
+  // Must not be recreated inside render() — Lit uses === equality for prop diffing,
+  // so new references on every render would trigger spurious updated() cycles and
+  // could cause unwanted navigate events (redirect to /agent-templates after save).
+  private _loadFileFn: ((filename: string) => Promise<string>) | null = null;
+  private _saveFileFn: ((filename: string, content: string) => Promise<void>) | null = null;
+  // Stable filenames array — cp-agent-file-editor.updated() resets all edit state when
+  // `files` changes (cache wipe, edit mode off). A new array on every render would
+  // discard any in-progress edits whenever the parent re-renders.
+  private _filenames: string[] = [];
+
   override connectedCallback() {
     super.connectedCallback();
     if (this.templateId) {
       void this._load();
+      this._loadFileFn = this._buildLoadFile();
+      this._saveFileFn = this._buildSaveFile();
     }
   }
 
   override updated(changed: Map<string, unknown>) {
     if (changed.has("templateId") && this.templateId) {
       void this._load();
+      // Rebuild stable function refs when templateId changes so the closures
+      // always capture the current templateId without being recreated in render().
+      this._loadFileFn = this._buildLoadFile();
+      this._saveFileFn = this._buildSaveFile();
     }
   }
 
@@ -164,7 +181,10 @@ export class AgentTemplateDetail extends LitElement {
     this._error = "";
     try {
       this._blueprint = await fetchAgentBlueprint(this.templateId);
-      // cp-agent-file-editor handles auto-selecting the first file when `files` prop changes
+      // Rebuild the stable filenames array once after fetch — not inline in render() —
+      // so cp-agent-file-editor doesn't see a new `files` reference on every parent render
+      // (which would wipe its cache and discard any in-progress edits).
+      this._filenames = (this._blueprint.files ?? []).map((f) => f.filename);
     } catch (err) {
       this._error = userMessage(err);
     } finally {
@@ -226,7 +246,6 @@ export class AgentTemplateDetail extends LitElement {
 
     const bp = this._blueprint;
     const files: AgentBlueprintFileSummary[] = bp.files ?? [];
-    const filenames = files.map((f) => f.filename);
 
     return html`
       ${this._error ? html`<div class="error-banner">${this._error}</div>` : nothing}
@@ -269,12 +288,12 @@ export class AgentTemplateDetail extends LitElement {
           ${msg("Workspace files", { id: "atd-files-title" })} (${files.length})
         </div>
 
-        ${filenames.length > 0
+        ${this._filenames.length > 0
           ? html`
               <cp-agent-file-editor
-                .files=${filenames}
-                .loadFile=${this._buildLoadFile()}
-                .saveFile=${this._buildSaveFile()}
+                .files=${this._filenames}
+                .loadFile=${this._loadFileFn}
+                .saveFile=${this._saveFileFn}
               ></cp-agent-file-editor>
             `
           : html`<div class="files-empty">${msg("No files yet", { id: "atd-files-empty" })}</div>`}
