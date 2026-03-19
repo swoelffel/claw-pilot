@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.36] — 2026-03-19
+
+### Fixed
+
+- **UI — bouton "Sauver" dans la card Agent** : le bouton icône disquette dans l'en-tête de `cp-agent-detail-panel` (contexte instance) déclenchait une navigation vers `/agent-templates` après chaque clic, car il appelait `saveAgentAsBlueprint` suivi d'un `navigate: {view: "agent-templates"}`. Suppression de la navigation post-save — le template est créé silencieusement, l'utilisateur reste dans le builder.
+- **Renommage du bouton** : le label "Save as template" / "Sauver comme template" est remplacé par "Save" / "Sauver" dans les 6 langues, car la card est utilisée dans plusieurs contextes et le nom précédent était trompeur.
+
+---
+
 ## [0.41.35] — 2026-03-19
 
 ### Fixed
