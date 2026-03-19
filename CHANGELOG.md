@@ -6,6 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.38] — 2026-03-19
+
+### Fixed
+
+- **Heartbeat — erreurs de sauvegarde silencieuses** : le `catch` dans `_saveHeartbeat()` avalait toutes les erreurs réseau/validation sans aucun feedback. Ajout de `_hbError` state : l'erreur est maintenant affichée au-dessus de la save bar, et réinitialisée à chaque tentative de sauvegarde ou rechargement de l'onglet.
+
+### Changed
+
+- **Heartbeat — sélecteur Active hours redesigné** :
+  - Les deux champs `<input type="time">` ont maintenant des labels individuels **From** / **To** (plus de champs nus sans contexte)
+  - Le champ **Timezone** est désormais visible dès qu'une seule heure est saisie (au lieu d'attendre que les deux soient remplies) — évite la situation où le champ est introuvable
+  - La section Active hours est sortie de la grille 2 colonnes pour avoir sa propre section linéaire avec hint `(optional — leave empty for 24/7)`
+
+---
+
 ## [0.41.37] — 2026-03-19
 
 ### Changed
