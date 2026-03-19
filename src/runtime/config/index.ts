@@ -53,7 +53,7 @@ const HeartbeatConfigSchema = z.object({
     .object({
       start: z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:MM format"),
       end: z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:MM format"),
-      tz: z.string().min(1),
+      tz: z.string().min(1).optional(),
     })
     .optional(),
   /** Model override for heartbeat runs (e.g. a cheaper/faster model) */

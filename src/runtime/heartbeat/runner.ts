@@ -77,7 +77,19 @@ async function runHeartbeatTick(
   const bus = getBus(instanceSlug);
 
   // Check active hours restriction
-  if (!isWithinActiveHours(agent.heartbeat!.activeHours)) return;
+  const activeHours = agent.heartbeat!.activeHours;
+  if (
+    !isWithinActiveHours(
+      activeHours !== undefined
+        ? {
+            start: activeHours.start,
+            end: activeHours.end,
+            ...(activeHours.tz !== undefined ? { tz: activeHours.tz } : {}),
+          }
+        : undefined,
+    )
+  )
+    return;
 
   // Publish tick event
   bus.publish(HeartbeatTick, { agentId: agent.id, instanceSlug });

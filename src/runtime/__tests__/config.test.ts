@@ -286,7 +286,7 @@ describe("AgentConfigSchema — heartbeat", () => {
     expect(result.success).toBe(false);
   });
 
-  it("[negative] heartbeat.activeHours missing tz is rejected", () => {
+  it("[positive] heartbeat.activeHours without tz is accepted (tz is optional)", () => {
     const result = safeParseRuntimeConfig({
       version: 1,
       agents: [
@@ -298,7 +298,10 @@ describe("AgentConfigSchema — heartbeat", () => {
         },
       ],
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.agents[0]?.heartbeat?.activeHours?.tz).toBeUndefined();
+    }
   });
 });
 

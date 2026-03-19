@@ -14,7 +14,8 @@ export function userMessage(err: unknown): string {
         err.code === "YAML_PARSE_ERROR" ||
         err.code === "IMPORT_FAILED" ||
         err.code === "LIFECYCLE_FAILED" ||
-        err.code === "GATEWAY_UNHEALTHY") &&
+        err.code === "GATEWAY_UNHEALTHY" ||
+        err.code === "CONFIG_PATCH_FAILED") &&
       err.message
     ) {
       return err.message;

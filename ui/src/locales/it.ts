@@ -170,6 +170,7 @@ export const templates = {
   "adp-label-tags": "Tag",
   "adp-tags-hint": "CSV, es: hr, legal",
   "adp-model-placeholder": "selezionare modello",
+  "adp-model-required": "Seleziona un modello per il provider scelto.",
   "adp-info-save": "Salva",
   "adp-info-cancel": "Annulla",
   // agent-detail-panel.ts — skills

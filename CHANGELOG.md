@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.39] — 2026-03-19
+
+### Fixed
+
+- **Onglet Info — impossible de changer de Fournisseur/Modèle** : cause racine identifiée via les logs MACMINI-INT — le `runtime.json` d'un agent ayant `heartbeat.activeHours` sans champ `tz` échouait à la validation Zod (`tz` était `z.string().min(1)` obligatoire). Toute tentative de `PATCH /config` (changer Provider, Model, ou tout autre champ de l'onglet Info) déclenchait `loadRuntimeConfig()` → throw → `CONFIG_PATCH_FAILED` → "Une erreur inattendue s'est produite".
+  - **Fix Zod** : `tz` rendu optionnel (`z.string().min(1).optional()`) dans `HeartbeatConfigSchema` — rétrocompatible avec les `runtime.json` existants sans timezone
+  - **Fix `isWithinActiveHours()`** : signature élargie à `tz?: string`, fallback sur le fuseau système si absent
+  - **Fix UX** : message d'erreur "Une erreur inattendue" résolu — `CONFIG_PATCH_FAILED` est maintenant inclus dans les codes qui transmettent le message serveur brut (`error-messages.ts`)
+  - **Fix logique model** : changement de Provider sans resélectionner un Modèle ne déclenche plus un `model: null` silencieusement ignoré — validation côté UI bloque le Save avec message explicite ; le champ `model` n'est inclus dans le patch que si `provider + model` sont tous les deux sélectionnés
+  - **Chargement eager des providers** : `_initInfoFields()` déclenche maintenant `_loadProviders()` dès l'affichage de l'onglet (instance uniquement), au lieu d'attendre le premier focus sur le select
+
+---
+
 ## [0.41.38] — 2026-03-19
 
 ### Fixed

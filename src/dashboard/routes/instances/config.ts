@@ -257,7 +257,15 @@ function buildInstanceConfig(
             : {}),
           ...(a.heartbeat.prompt !== undefined ? { prompt: a.heartbeat.prompt } : {}),
           ...(a.heartbeat.activeHours !== undefined
-            ? { activeHours: a.heartbeat.activeHours }
+            ? {
+                activeHours: {
+                  start: a.heartbeat.activeHours.start,
+                  end: a.heartbeat.activeHours.end,
+                  ...(a.heartbeat.activeHours.tz !== undefined
+                    ? { tz: a.heartbeat.activeHours.tz }
+                    : {}),
+                },
+              }
             : {}),
         }
       : null,

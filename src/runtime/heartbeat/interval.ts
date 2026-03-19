@@ -17,17 +17,18 @@ export function parseInterval(every: string): number {
 
 /** Check if the current time is within the active hours window. */
 export function isWithinActiveHours(
-  activeHours: { start: string; end: string; tz: string } | undefined,
+  activeHours: { start: string; end: string; tz?: string } | undefined,
 ): boolean {
   if (!activeHours) return true;
 
   const now = new Date();
-  const formatter = new Intl.DateTimeFormat("en-GB", {
-    timeZone: activeHours.tz,
+  const tzOptions: Intl.DateTimeFormatOptions = {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-  });
+    ...(activeHours.tz ? { timeZone: activeHours.tz } : {}),
+  };
+  const formatter = new Intl.DateTimeFormat("en-GB", tzOptions);
   const current = formatter.format(now); // "HH:MM"
 
   const { start, end } = activeHours;

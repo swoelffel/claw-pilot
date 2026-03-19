@@ -915,6 +915,10 @@ export class AgentDetailPanel extends LitElement {
     this._editSkills = a.skills;
     this._infoDirty = false;
     this._infoError = "";
+    // Eager-load providers so the selects are populated immediately on instance panels
+    if (this.context?.kind === "instance") {
+      void this._loadProviders();
+    }
   }
 
   // ── Info tab ─────────────────────────────────────────────────────────────
@@ -949,6 +953,15 @@ export class AgentDetailPanel extends LitElement {
   private async _saveInfo(): Promise<void> {
     if (!this.agent || !this.context) return;
     const a = this.agent;
+
+    // Validation: if a provider is selected, a model must also be selected
+    if (this._editProvider && !this._editModel) {
+      this._infoError = msg("Please select a model for the chosen provider.", {
+        id: "adp-model-required",
+      });
+      return;
+    }
+
     this._infoSaving = true;
     this._infoError = "";
     try {
@@ -958,20 +971,22 @@ export class AgentDetailPanel extends LitElement {
 
         // Config patch: name / model / skills
         const resolvedCurrentModel = this._resolveModel(a.model ?? "") ?? "";
+        // Build newModel only when both provider and model are selected
         const newModel =
           this._editProvider && this._editModel ? `${this._editProvider}/${this._editModel}` : "";
         const skillsChanged = JSON.stringify(this._editSkills) !== JSON.stringify(a.skills);
-        const configChanged =
-          this._editName !== (a.name ?? "") || newModel !== resolvedCurrentModel || skillsChanged;
+        const modelChanged = newModel !== resolvedCurrentModel && newModel !== "";
+        const configChanged = this._editName !== (a.name ?? "") || modelChanged || skillsChanged;
         if (configChanged) {
           const agentPatch: {
             id: string;
             name?: string;
-            model?: string | null;
+            model?: string;
             skills?: string[] | null;
           } = { id: a.agent_id };
           if (this._editName !== (a.name ?? "")) agentPatch.name = this._editName;
-          if (newModel !== resolvedCurrentModel) agentPatch.model = newModel || null;
+          // Only include model in patch when a complete provider/model pair is selected
+          if (modelChanged) agentPatch.model = newModel;
           if (skillsChanged) agentPatch.skills = this._editSkills;
           promises.push(patchInstanceConfig(slug, { agents: [agentPatch] }));
         }
