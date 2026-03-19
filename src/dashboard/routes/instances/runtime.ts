@@ -296,7 +296,6 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
         "BOOTSTRAP.md",
         "AGENTS.md",
         "TOOLS.md",
-        "IDENTITY.md",
         "USER.md",
         "HEARTBEAT.md",
         "MEMORY.md",

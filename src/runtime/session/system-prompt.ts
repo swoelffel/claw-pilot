@@ -75,22 +75,14 @@ const DISCOVERY_FILES_FULL = [
   "BOOTSTRAP.md",
   "AGENTS.md",
   "TOOLS.md",
-  "IDENTITY.md",
   "USER.md",
-  "HEARTBEAT.md",
 ] as const;
 
 /**
- * Workspace files for agents with promptMode="minimal" (subagents).
- * Excludes HEARTBEAT.md — saves 2 000–5 000 tokens per subagent call.
+ * Workspace files for agents with promptMode="minimal".
+ * Same as full but without BOOTSTRAP.md (already archived or not needed).
  */
-const DISCOVERY_FILES_MINIMAL = [
-  "SOUL.md",
-  "AGENTS.md",
-  "TOOLS.md",
-  "IDENTITY.md",
-  "USER.md",
-] as const;
+const DISCOVERY_FILES_MINIMAL = ["SOUL.md", "AGENTS.md", "TOOLS.md", "USER.md"] as const;
 
 /**
  * Workspace files for agents with promptMode="subagent".

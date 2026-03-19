@@ -278,7 +278,7 @@ export class CreateAgentTemplateDialog extends LitElement {
                 </label>
               </div>
               <div class="checkbox-hint">
-                ${msg("Creates SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md, USER.md, HEARTBEAT.md", {
+                ${msg("Creates SOUL.md, AGENTS.md, TOOLS.md, BOOTSTRAP.md, USER.md, HEARTBEAT.md", {
                   id: "catd-seed-files-hint",
                 })}
               </div>

@@ -39,7 +39,6 @@ export const constants = {
     "AGENTS.md",
     "SOUL.md",
     "TOOLS.md",
-    "IDENTITY.md",
     "USER.md",
     "HEARTBEAT.md",
     "MEMORY.md",
@@ -51,7 +50,6 @@ export const constants = {
     "AGENTS.md",
     "SOUL.md",
     "TOOLS.md",
-    "IDENTITY.md",
     "BOOTSTRAP.md",
     "USER.md",
     "HEARTBEAT.md",
@@ -62,7 +60,6 @@ export const constants = {
     "AGENTS.md",
     "SOUL.md",
     "TOOLS.md",
-    "IDENTITY.md",
     "BOOTSTRAP.md",
     "USER.md",
     "HEARTBEAT.md",
@@ -70,14 +67,7 @@ export const constants = {
   ] as const,
 
   /** Files included in .team.yaml exports and expected during import. */
-  EXPORTABLE_FILES: [
-    "AGENTS.md",
-    "SOUL.md",
-    "TOOLS.md",
-    "IDENTITY.md",
-    "USER.md",
-    "HEARTBEAT.md",
-  ] as const,
+  EXPORTABLE_FILES: ["AGENTS.md", "SOUL.md", "TOOLS.md", "USER.md", "HEARTBEAT.md"] as const,
 
   // Legacy alias — kept for backward compat, prefer the specific lists above.
   WORKSPACE_FILES: ["AGENTS.md", "SOUL.md", "TOOLS.md", "USER.md", "MEMORY.md"],

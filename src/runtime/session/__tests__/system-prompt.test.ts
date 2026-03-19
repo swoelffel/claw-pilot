@@ -102,9 +102,9 @@ afterEach(() => {
 
 describe("resolveDiscoveryFiles — promptMode", () => {
   /**
-   * Objective: promptMode="minimal" must exclude HEARTBEAT.md from discovery.
-   * Positive test: workspace has HEARTBEAT.md + SOUL.md; with promptMode="minimal",
-   * only SOUL.md content appears in the prompt.
+   * Objective: HEARTBEAT.md is no longer in any discovery list (removed from default prompts).
+   * It should never appear in the system prompt regardless of promptMode, unless loaded
+   * explicitly via bootstrapFiles.
    */
   it("[positive] promptMode=minimal excludes HEARTBEAT.md from the system prompt", async () => {
     const workDir = "/workspace";
@@ -132,10 +132,11 @@ describe("resolveDiscoveryFiles — promptMode", () => {
   });
 
   /**
-   * Objective: promptMode="full" must include HEARTBEAT.md in discovery.
-   * Negative test (for the minimal case): with promptMode="full", HEARTBEAT.md IS present.
+   * Objective: promptMode="full" no longer includes HEARTBEAT.md in discovery.
+   * HEARTBEAT.md was removed from the default prompt templates to save tokens.
+   * It can still be loaded via bootstrapFiles config.
    */
-  it("[positive] promptMode=full includes HEARTBEAT.md in the system prompt", async () => {
+  it("[positive] promptMode=full excludes HEARTBEAT.md from the system prompt", async () => {
     const workDir = "/workspace";
     const wsDir = `${workDir}/workspaces/agent1`;
 
@@ -155,9 +156,9 @@ describe("resolveDiscoveryFiles — promptMode", () => {
     // Act
     const prompt = await buildSystemPrompt(ctx);
 
-    // Assert: both files present
+    // Assert: SOUL.md present, HEARTBEAT.md absent (no longer in discovery lists)
     expect(prompt).toContain("Soul content here.");
-    expect(prompt).toContain("Heartbeat content here.");
+    expect(prompt).not.toContain("Heartbeat content here.");
   });
 
   /**
@@ -184,16 +185,16 @@ describe("resolveDiscoveryFiles — promptMode", () => {
     // Act
     const prompt = await buildSystemPrompt(ctx);
 
-    // Assert: HEARTBEAT.md absent because toolProfile="minimal" → minimal mode
+    // Assert: HEARTBEAT.md absent
     expect(prompt).not.toContain("Heartbeat line.");
     expect(prompt).toContain("Soul line.");
   });
 
   /**
    * Objective: when promptMode is absent and toolProfile="coding", fallback to full mode.
-   * Negative test (for the minimal fallback): HEARTBEAT.md must be present.
+   * HEARTBEAT.md is no longer in the full discovery list — it must be absent.
    */
-  it("[negative] promptMode absent + toolProfile=coding → HEARTBEAT.md included (full mode)", async () => {
+  it("[positive] promptMode absent + toolProfile=coding → HEARTBEAT.md excluded (no longer in full)", async () => {
     const workDir = "/workspace";
     const wsDir = `${workDir}/workspaces/agent1`;
 
@@ -212,8 +213,8 @@ describe("resolveDiscoveryFiles — promptMode", () => {
     // Act
     const prompt = await buildSystemPrompt(ctx);
 
-    // Assert: HEARTBEAT.md present because toolProfile="coding" → full mode
-    expect(prompt).toContain("Heartbeat content.");
+    // Assert: HEARTBEAT.md absent (no longer in any discovery list)
+    expect(prompt).not.toContain("Heartbeat content.");
   });
 });
 
