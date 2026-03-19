@@ -2,15 +2,7 @@
 import { LitElement, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type {
-  AgentBuilderInfo,
-  AgentLink,
-  PanelContext,
-  AgentMetaPatch,
-  ProvidersResponse,
-  SkillInfo,
-  SkillsListResponse,
-} from "../types.js";
+import type { AgentBuilderInfo, AgentLink, PanelContext, AgentMetaPatch } from "../types.js";
 import {
   fetchAgentFile,
   updateSpawnLinks,
@@ -22,7 +14,6 @@ import {
   patchInstanceConfig,
   fetchInstanceConfig,
   fetchProviders,
-  fetchInstanceSkills,
   updateBlueprintAgentMeta,
 } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
@@ -69,25 +60,22 @@ export class AgentDetailPanel extends LitElement {
   @state() private _saving = false;
   @state() private _error = "";
 
-  // ── Agent field edit state ───────────────────────────────────────────────
+  // ── Info tab state (always-editable, save bar pattern) ──────────────────
 
-  @state() private _fieldEditMode = false;
-  @state() private _fieldSaving = false;
-  @state() private _fieldError = "";
   @state() private _editName = "";
   @state() private _editRole = "";
   @state() private _editTags = "";
   @state() private _editNotes = "";
   @state() private _editProvider = "";
   @state() private _editModel = "";
-  @state() private _providers: ProvidersResponse | null = null;
-  @state() private _loadingProviders = false;
-
-  // Skills state
+  // null = All skills, [] = None, [...] = custom list
   @state() private _editSkills: string[] | null = null;
-  @state() private _availableSkills: SkillInfo[] = [];
-  @state() private _skillsAvailable = false;
-  @state() private _loadingSkills = false;
+  // Providers list for the provider/model selects (lazy-loaded)
+  @state() private _providers: { id: string; label: string; models: string[] }[] | null = null;
+  @state() private _loadingProviders = false;
+  @state() private _infoDirty = false;
+  @state() private _infoSaving = false;
+  @state() private _infoError = "";
 
   // ── Config tab state ─────────────────────────────────────────────────────
 
@@ -877,7 +865,7 @@ export class AgentDetailPanel extends LitElement {
     );
   }
 
-  // Reset tab and pending state when agent changes
+  // Reset navigation + initialise Info form fields when agent changes
   override updated(changed: Map<string, unknown>): void {
     if (changed.has("agent")) {
       this._activeTab = "info";
@@ -885,8 +873,8 @@ export class AgentDetailPanel extends LitElement {
       this._pendingAdditions = new Set();
       this._dropdownOpen = false;
       this._error = "";
-      this._fieldEditMode = false;
-      this._fieldError = "";
+      // Initialise Info tab fields from the new agent
+      this._initInfoFields();
     }
     // Rebuild stable function refs when agent or context changes so the closures
     // always capture the current values without being recreated on every render().
@@ -896,7 +884,23 @@ export class AgentDetailPanel extends LitElement {
     }
   }
 
-  // ── Agent field edit ─────────────────────────────────────────────────────
+  /** Populate Info tab fields from the current agent prop (resets dirty state). */
+  private _initInfoFields(): void {
+    const a = this.agent;
+    this._editName = a.name ?? "";
+    this._editRole = a.role ?? "";
+    this._editTags = a.tags ?? "";
+    this._editNotes = a.notes ?? "";
+    const rawModel = this._resolveModel(a.model ?? "") ?? "";
+    const slashIdx = rawModel.indexOf("/");
+    this._editProvider = slashIdx >= 0 ? rawModel.slice(0, slashIdx) : "";
+    this._editModel = slashIdx >= 0 ? rawModel.slice(slashIdx + 1) : rawModel;
+    this._editSkills = a.skills;
+    this._infoDirty = false;
+    this._infoError = "";
+  }
+
+  // ── Info tab ─────────────────────────────────────────────────────────────
 
   private _resolveModel(raw: string | null): string | null {
     if (!raw) return null;
@@ -911,78 +915,37 @@ export class AgentDetailPanel extends LitElement {
     return raw;
   }
 
-  private async _enterFieldEditMode(): Promise<void> {
-    const a = this.agent;
-    this._editName = a.name ?? "";
-    this._editRole = a.role ?? "";
-    this._editTags = a.tags ?? "";
-    this._editNotes = a.notes ?? "";
-
-    // Résoudre provider/model depuis le champ model brut
-    const rawModel = this._resolveModel(a.model ?? "") ?? "";
-    const parts = rawModel.split("/");
-    this._editProvider = parts[0] ?? "";
-    this._editModel = parts.slice(1).join("/");
-
-    this._fieldEditMode = true;
-    this._fieldError = "";
-
-    // Initialiser l'état skills depuis l'agent courant
-    this._editSkills = this.agent.skills;
-
-    // Charger les skills disponibles si contexte instance
-    if (this.context.kind === "instance") {
-      this._loadingSkills = true;
-      try {
-        const res: SkillsListResponse = await fetchInstanceSkills(this.context.slug);
-        this._availableSkills = res.skills;
-        this._skillsAvailable = res.available;
-      } catch {
-        this._skillsAvailable = false;
-        this._availableSkills = [];
-      } finally {
-        this._loadingSkills = false;
-      }
-    }
-
-    // Charger les providers pour le select
-    if (!this._providers) {
-      this._loadingProviders = true;
-      try {
-        this._providers = await fetchProviders();
-      } catch {
-        // Non bloquant — le select sera vide
-      } finally {
-        this._loadingProviders = false;
-      }
+  /** Lazy-load providers for the provider/model selects. */
+  private async _loadProviders(): Promise<void> {
+    if (this._providers !== null || this._loadingProviders) return;
+    this._loadingProviders = true;
+    try {
+      const res = await fetchProviders();
+      this._providers = res.providers;
+    } catch {
+      this._providers = [];
+    } finally {
+      this._loadingProviders = false;
     }
   }
 
-  private _cancelFieldEdit(): void {
-    this._fieldEditMode = false;
-    this._fieldError = "";
-  }
-
-  private async _saveFields(): Promise<void> {
+  private async _saveInfo(): Promise<void> {
     if (!this.agent || !this.context) return;
     const a = this.agent;
-
-    this._fieldSaving = true;
-    this._fieldError = "";
-
+    this._infoSaving = true;
+    this._infoError = "";
     try {
       if (this.context.kind === "instance") {
         const slug = this.context.slug;
         const promises: Promise<unknown>[] = [];
 
-        // --- Config patch (name / model / skills) ---
+        // Config patch: name / model / skills
         const resolvedCurrentModel = this._resolveModel(a.model ?? "") ?? "";
         const newModel =
           this._editProvider && this._editModel ? `${this._editProvider}/${this._editModel}` : "";
         const skillsChanged = JSON.stringify(this._editSkills) !== JSON.stringify(a.skills);
         const configChanged =
           this._editName !== (a.name ?? "") || newModel !== resolvedCurrentModel || skillsChanged;
-
         if (configChanged) {
           const agentPatch: {
             id: string;
@@ -996,287 +959,36 @@ export class AgentDetailPanel extends LitElement {
           promises.push(patchInstanceConfig(slug, { agents: [agentPatch] }));
         }
 
-        // --- Meta patch (role / tags / notes) ---
+        // Meta patch: role / tags / notes
         const metaPatch: AgentMetaPatch = {};
         if (this._editRole !== (a.role ?? "")) metaPatch.role = this._editRole || null;
         if (this._editTags !== (a.tags ?? "")) metaPatch.tags = this._editTags || null;
         if (this._editNotes !== (a.notes ?? "")) metaPatch.notes = this._editNotes || null;
-
         if (Object.keys(metaPatch).length > 0) {
           promises.push(updateAgentMeta(slug, a.agent_id, metaPatch));
         }
 
-        if (promises.length === 0) {
-          this._fieldEditMode = false;
-          return;
-        }
-
         await Promise.all(promises);
       } else {
-        // Blueprint context — tout passe par updateBlueprintAgentMeta
+        // Blueprint context
         const skillsChanged = JSON.stringify(this._editSkills) !== JSON.stringify(a.skills);
         const metaPatch: AgentMetaPatch = {};
         if (this._editRole !== (a.role ?? "")) metaPatch.role = this._editRole || null;
         if (this._editTags !== (a.tags ?? "")) metaPatch.tags = this._editTags || null;
         if (this._editNotes !== (a.notes ?? "")) metaPatch.notes = this._editNotes || null;
         if (skillsChanged) metaPatch.skills = this._editSkills;
-
-        if (Object.keys(metaPatch).length === 0) {
-          this._fieldEditMode = false;
-          return;
+        if (Object.keys(metaPatch).length > 0) {
+          await updateBlueprintAgentMeta(this.context.blueprintId, a.agent_id, metaPatch);
         }
-
-        await updateBlueprintAgentMeta(this.context.blueprintId, a.agent_id, metaPatch);
       }
 
-      this._fieldEditMode = false;
-      this.dispatchEvent(
-        new CustomEvent("agent-meta-updated", {
-          bubbles: true,
-          composed: true,
-        }),
-      );
+      this._infoDirty = false;
+      this.dispatchEvent(new CustomEvent("agent-meta-updated", { bubbles: true, composed: true }));
     } catch (err) {
-      this._fieldError = userMessage(err);
+      this._infoError = userMessage(err);
     } finally {
-      this._fieldSaving = false;
+      this._infoSaving = false;
     }
-  }
-
-  private _renderFieldEditForm() {
-    const providers = this._providers?.providers ?? [];
-
-    return html`
-      <div class="info-row">
-        ${this._fieldError ? html`<div class="file-save-error">${this._fieldError}</div>` : nothing}
-
-        <div class="info-item">
-          <label class="info-label">${msg("Name", { id: "adp-edit-name" })}</label>
-          <input
-            class="field-edit-input"
-            type="text"
-            .value=${this._editName}
-            @input=${(e: Event) => {
-              this._editName = (e.target as HTMLInputElement).value;
-            }}
-          />
-        </div>
-
-        <div class="info-item">
-          <label class="info-label">${msg("Provider", { id: "adp-edit-provider" })}</label>
-          ${this._loadingProviders
-            ? html`<span class="loading-text"
-                >${msg("Loading...", { id: "adp-loading-providers" })}</span
-              >`
-            : html`
-                <select
-                  class="field-edit-input"
-                  @change=${(e: Event) => {
-                    this._editProvider = (e.target as HTMLSelectElement).value;
-                    this._editModel = "";
-                  }}
-                >
-                  <option value="">
-                    ${msg("— select provider —", { id: "adp-edit-provider-placeholder" })}
-                  </option>
-                  ${providers.map(
-                    (p) => html`
-                      <option value=${p.id} ?selected=${p.id === this._editProvider}>
-                        ${p.label}
-                      </option>
-                    `,
-                  )}
-                </select>
-              `}
-        </div>
-
-        <div class="info-item">
-          <label class="info-label">${msg("Model", { id: "adp-edit-model" })}</label>
-          ${(() => {
-            const provider = providers.find((p) => p.id === this._editProvider);
-            const models = provider?.models ?? [];
-            return html`
-              <select
-                class="field-edit-input"
-                @change=${(e: Event) => {
-                  this._editModel = (e.target as HTMLSelectElement).value;
-                }}
-              >
-                <option value="">
-                  ${msg("— select model —", { id: "adp-edit-model-placeholder" })}
-                </option>
-                ${models.map(
-                  (m) => html`
-                    <option value=${m} ?selected=${m === this._editModel}>${m}</option>
-                  `,
-                )}
-              </select>
-            `;
-          })()}
-        </div>
-
-        <div class="info-item">
-          <label class="info-label">${msg("Role", { id: "adp-edit-role" })}</label>
-          <input
-            class="field-edit-input"
-            type="text"
-            .value=${this._editRole}
-            @input=${(e: Event) => {
-              this._editRole = (e.target as HTMLInputElement).value;
-            }}
-          />
-        </div>
-
-        <div class="info-item">
-          <label class="info-label">
-            ${msg("Tags", { id: "adp-edit-tags" })}
-            <span class="info-hint"
-              >${msg("CSV, ex: rh, legal", { id: "adp-edit-tags-hint" })}</span
-            >
-          </label>
-          <input
-            class="field-edit-input"
-            type="text"
-            .value=${this._editTags}
-            @input=${(e: Event) => {
-              this._editTags = (e.target as HTMLInputElement).value;
-            }}
-          />
-        </div>
-
-        <div class="info-item">
-          <label class="info-label">${msg("Notes", { id: "adp-edit-notes" })}</label>
-          <textarea
-            class="field-edit-textarea"
-            rows="3"
-            .value=${this._editNotes}
-            @input=${(e: Event) => {
-              this._editNotes = (e.target as HTMLTextAreaElement).value;
-            }}
-          ></textarea>
-        </div>
-
-        <div class="info-item">
-          <label class="info-label">${msg("Skills", { id: "adp-label-skills" })}</label>
-          <div class="skills-toggle">
-            <button
-              class="skills-toggle-btn ${this._editSkills === null ? "active" : ""}"
-              @click=${() => {
-                this._editSkills = null;
-              }}
-            >
-              ${msg("All", { id: "adp-skills-all" })}
-            </button>
-            <button
-              class="skills-toggle-btn ${Array.isArray(this._editSkills) &&
-              this._editSkills.length === 0
-                ? "active"
-                : ""}"
-              @click=${() => {
-                this._editSkills = [];
-              }}
-            >
-              ${msg("None", { id: "adp-skills-none" })}
-            </button>
-            <button
-              class="skills-toggle-btn ${Array.isArray(this._editSkills) &&
-              this._editSkills.length > 0
-                ? "active"
-                : ""}"
-              @click=${() => {
-                if (!Array.isArray(this._editSkills) || this._editSkills.length === 0)
-                  this._editSkills = [];
-              }}
-            >
-              ${msg("Custom", { id: "adp-skills-custom" })}
-            </button>
-          </div>
-          ${Array.isArray(this._editSkills)
-            ? this._skillsAvailable && this._availableSkills.length > 0
-              ? html`
-                  ${this._loadingSkills
-                    ? html`<span class="loading-text"
-                        >${msg("Loading skills…", { id: "adp-skills-loading" })}</span
-                      >`
-                    : html`
-                        <div class="skills-grid">
-                          ${this._availableSkills.map((skill) => {
-                            const checked = (this._editSkills ?? []).includes(skill.name);
-                            return html`
-                              <label
-                                class="skills-grid-label ${skill.eligible ? "" : "ineligible"}"
-                              >
-                                <input
-                                  type="checkbox"
-                                  .checked=${checked}
-                                  ?disabled=${!skill.eligible}
-                                  @change=${(e: Event) => {
-                                    const cb = e.target as HTMLInputElement;
-                                    const current = [...(this._editSkills ?? [])];
-                                    if (cb.checked) {
-                                      if (!current.includes(skill.name)) current.push(skill.name);
-                                    } else {
-                                      const idx = current.indexOf(skill.name);
-                                      if (idx !== -1) current.splice(idx, 1);
-                                    }
-                                    this._editSkills = current;
-                                  }}
-                                />
-                                ${skill.emoji ? html`<span>${skill.emoji}</span>` : nothing}
-                                <span>${skill.name}</span>
-                              </label>
-                            `;
-                          })}
-                        </div>
-                      `}
-                `
-              : html`
-                  <input
-                    class="field-edit-input"
-                    type="text"
-                    placeholder=${msg("Comma-separated skill names", {
-                      id: "adp-edit-skills-hint",
-                    })}
-                    .value=${(this._editSkills ?? []).join(", ")}
-                    @input=${(e: Event) => {
-                      const val = (e.target as HTMLInputElement).value;
-                      this._editSkills = val
-                        .split(",")
-                        .map((s) => s.trim())
-                        .filter((s) => s.length > 0);
-                    }}
-                  />
-                  ${this.context.kind === "instance"
-                    ? html`<span class="info-hint"
-                        >${msg("Instance offline — enter skill names manually", {
-                          id: "adp-skills-unavailable",
-                        })}</span
-                      >`
-                    : nothing}
-                `
-            : nothing}
-        </div>
-
-        <div class="field-edit-actions">
-          <button
-            class="btn-file-save"
-            ?disabled=${this._fieldSaving}
-            @click=${() => void this._saveFields()}
-          >
-            ${this._fieldSaving
-              ? msg("Saving...", { id: "adp-edit-saving" })
-              : msg("Save", { id: "adp-edit-save" })}
-          </button>
-          <button
-            class="btn-file-cancel"
-            ?disabled=${this._fieldSaving}
-            @click=${() => this._cancelFieldEdit()}
-          >
-            ${msg("Cancel", { id: "adp-edit-cancel" })}
-          </button>
-        </div>
-      </div>
-    `;
   }
 
   // ── Spawn links management ───────────────────────────────────────────────
@@ -1424,8 +1136,11 @@ export class AgentDetailPanel extends LitElement {
   // ── Render helpers ───────────────────────────────────────────────────────
 
   private _renderInfo() {
-    if (this._fieldEditMode) return this._renderFieldEditForm();
     const a = this.agent;
+    const providers = this._providers ?? [];
+    const selectedProvider = providers.find((p) => p.id === this._editProvider);
+    const availableModels = selectedProvider?.models ?? [];
+
     const spawnLinks = this.links.filter(
       (l) => l.link_type === "spawn" && l.source_agent_id === a.agent_id,
     );
@@ -1433,20 +1148,193 @@ export class AgentDetailPanel extends LitElement {
       (l) => l.link_type === "spawn" && l.target_agent_id === a.agent_id,
     );
 
+    // Mark dirty helper
+    const dirty = () => {
+      this._infoDirty = true;
+    };
+
     return html`
       <div class="info-row">
-        ${a.model
+        ${this._infoError ? html`<div class="file-save-error">${this._infoError}</div>` : nothing}
+
+        <!-- Name -->
+        <div class="info-item">
+          <label class="info-label">${msg("Name", { id: "adp-label-name" })}</label>
+          <input
+            class="field-edit-input"
+            type="text"
+            .value=${this._editName}
+            @input=${(e: Event) => {
+              this._editName = (e.target as HTMLInputElement).value;
+              dirty();
+            }}
+          />
+        </div>
+
+        <!-- Provider + Model (instance only) -->
+        ${this.context?.kind === "instance"
           ? html`
               <div class="info-item">
-                <span class="info-label">${msg("Model", { id: "adp-label-model" })}</span>
-                <span class="info-value">${this._resolveModel(a.model)}</span>
+                <label class="info-label">${msg("Provider", { id: "adp-label-provider" })}</label>
+                ${this._loadingProviders
+                  ? html`<span class="loading-text"
+                      >${msg("Loading...", { id: "adp-loading-providers" })}</span
+                    >`
+                  : html`
+                      <select
+                        class="field-edit-input"
+                        @focus=${() => void this._loadProviders()}
+                        @change=${(e: Event) => {
+                          this._editProvider = (e.target as HTMLSelectElement).value;
+                          this._editModel = "";
+                          dirty();
+                        }}
+                      >
+                        <option value="">
+                          — ${msg("select provider", { id: "adp-provider-placeholder" })} —
+                        </option>
+                        ${providers.map(
+                          (p) =>
+                            html`<option value=${p.id} ?selected=${p.id === this._editProvider}>
+                              ${p.label}
+                            </option>`,
+                        )}
+                      </select>
+                    `}
+              </div>
+              <div class="info-item">
+                <label class="info-label">${msg("Model", { id: "adp-label-model" })}</label>
+                <select
+                  class="field-edit-input"
+                  @change=${(e: Event) => {
+                    this._editModel = (e.target as HTMLSelectElement).value;
+                    dirty();
+                  }}
+                >
+                  <option value="">
+                    — ${msg("select model", { id: "adp-model-placeholder" })} —
+                  </option>
+                  ${availableModels.map(
+                    (m) =>
+                      html`<option value=${m} ?selected=${m === this._editModel}>${m}</option>`,
+                  )}
+                </select>
               </div>
             `
-          : ""}
+          : nothing}
+
+        <!-- Role -->
+        <div class="info-item">
+          <label class="info-label">${msg("Role", { id: "adp-label-role" })}</label>
+          <input
+            class="field-edit-input"
+            type="text"
+            .value=${this._editRole}
+            @input=${(e: Event) => {
+              this._editRole = (e.target as HTMLInputElement).value;
+              dirty();
+            }}
+          />
+        </div>
+
+        <!-- Tags -->
+        <div class="info-item">
+          <label class="info-label">
+            ${msg("Tags", { id: "adp-label-tags" })}
+            <span class="info-hint">${msg("CSV, ex: rh, legal", { id: "adp-tags-hint" })}</span>
+          </label>
+          <input
+            class="field-edit-input"
+            type="text"
+            .value=${this._editTags}
+            @input=${(e: Event) => {
+              this._editTags = (e.target as HTMLInputElement).value;
+              dirty();
+            }}
+          />
+        </div>
+
+        <!-- Notes -->
+        <div class="info-item">
+          <label class="info-label">${msg("Notes", { id: "adp-label-notes" })}</label>
+          <textarea
+            class="field-edit-textarea"
+            rows="3"
+            .value=${this._editNotes}
+            @input=${(e: Event) => {
+              this._editNotes = (e.target as HTMLTextAreaElement).value;
+              dirty();
+            }}
+          ></textarea>
+        </div>
+
+        <!-- Skills -->
+        <div class="info-item">
+          <label class="info-label">${msg("Skills", { id: "adp-label-skills" })}</label>
+          <div class="skills-toggle">
+            <button
+              class="skills-toggle-btn ${this._editSkills === null ? "active" : ""}"
+              @click=${() => {
+                this._editSkills = null;
+                dirty();
+              }}
+            >
+              ${msg("All", { id: "adp-skills-all" })}
+            </button>
+            <button
+              class="skills-toggle-btn ${Array.isArray(this._editSkills) &&
+              this._editSkills.length === 0
+                ? "active"
+                : ""}"
+              @click=${() => {
+                this._editSkills = [];
+                dirty();
+              }}
+            >
+              ${msg("None", { id: "adp-skills-none" })}
+            </button>
+            <button
+              class="skills-toggle-btn ${Array.isArray(this._editSkills) &&
+              this._editSkills.length > 0
+                ? "active"
+                : ""}"
+              @click=${() => {
+                if (!Array.isArray(this._editSkills) || this._editSkills.length === 0) {
+                  this._editSkills = [];
+                  dirty();
+                }
+              }}
+            >
+              ${msg("Custom", { id: "adp-skills-custom" })}
+            </button>
+          </div>
+          ${Array.isArray(this._editSkills)
+            ? html`
+                <input
+                  class="field-edit-input"
+                  type="text"
+                  placeholder=${msg("Comma-separated skill names", { id: "adp-skills-hint" })}
+                  .value=${this._editSkills.join(", ")}
+                  @input=${(e: Event) => {
+                    const val = (e.target as HTMLInputElement).value;
+                    this._editSkills = val
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter((s) => s.length > 0);
+                    dirty();
+                  }}
+                />
+              `
+            : nothing}
+        </div>
+
+        <!-- Workspace (read-only) -->
         <div class="info-item">
           <span class="info-label">${msg("Workspace", { id: "adp-label-workspace" })}</span>
           <span class="info-value">${a.workspace_path}</span>
         </div>
+
+        <!-- Last sync (instance only, read-only) -->
         ${a.synced_at && this.context?.kind !== "blueprint"
           ? html`
               <div class="info-item">
@@ -1454,11 +1342,11 @@ export class AgentDetailPanel extends LitElement {
                 <span class="info-value">${a.synced_at}</span>
               </div>
             `
-          : ""}
+          : nothing}
+
+        <!-- Delegates to (spawn links) -->
         ${(() => {
-          // Agents already linked as spawn targets (from saved state)
           const linkedIds = new Set(spawnLinks.map((l) => l.target_agent_id));
-          // Available agents: all agents except self, already linked, and pending additions
           const availableAgents = this.allAgents.filter(
             (ag) =>
               ag.agent_id !== a.agent_id &&
@@ -1467,7 +1355,7 @@ export class AgentDetailPanel extends LitElement {
           );
           const hasSpawnSection =
             spawnLinks.length > 0 || this._pendingAdditions.size > 0 || availableAgents.length > 0;
-          if (!hasSpawnSection) return "";
+          if (!hasSpawnSection) return nothing;
           return html`
             <div class="info-item">
               <span class="info-label">${msg("Delegates to", { id: "adp-label-can-spawn" })}</span>
@@ -1519,25 +1407,26 @@ export class AgentDetailPanel extends LitElement {
                           ? html`
                               <div class="spawn-dropdown">
                                 ${availableAgents.map(
-                                  (ag) => html`
-                                    <button
+                                  (ag) =>
+                                    html`<button
                                       class="spawn-dropdown-item"
                                       @click=${() => this._addSpawnLink(ag.agent_id)}
                                     >
                                       ${ag.agent_id}
-                                    </button>
-                                  `,
+                                    </button>`,
                                 )}
                               </div>
                             `
-                          : ""}
+                          : nothing}
                       </div>
                     `
-                  : ""}
+                  : nothing}
               </div>
             </div>
           `;
         })()}
+
+        <!-- Delegated by -->
         ${receivedSpawn.length > 0
           ? html`
               <div class="info-item">
@@ -1551,50 +1440,29 @@ export class AgentDetailPanel extends LitElement {
                 </div>
               </div>
             `
-          : ""}
-        ${a.notes
+          : nothing}
+
+        <!-- Info save bar -->
+        ${this._infoDirty
           ? html`
-              <div class="info-item">
-                <span class="info-label">${msg("Notes", { id: "adp-label-notes" })}</span>
-                <p class="notes-text">${a.notes}</p>
+              <div class="hb-save-bar">
+                <button
+                  class="btn-save-spawn"
+                  ?disabled=${this._infoSaving}
+                  @click=${() => void this._saveInfo()}
+                >
+                  ${this._infoSaving ? "…" : msg("Save", { id: "adp-info-save" })}
+                </button>
+                <button
+                  class="btn-cancel-spawn"
+                  ?disabled=${this._infoSaving}
+                  @click=${() => this._initInfoFields()}
+                >
+                  ${msg("Cancel", { id: "adp-info-cancel" })}
+                </button>
               </div>
             `
-          : ""}
-        ${(() => {
-          const skills = a.skills;
-          if (skills === null) {
-            return html`
-              <div class="info-item">
-                <span class="info-label">${msg("Skills", { id: "adp-label-skills" })}</span>
-                <div class="skills-badges">
-                  <span class="skill-badge muted"
-                    >${msg("All skills", { id: "adp-skills-all" })}</span
-                  >
-                </div>
-              </div>
-            `;
-          }
-          if (skills.length === 0) {
-            return html`
-              <div class="info-item">
-                <span class="info-label">${msg("Skills", { id: "adp-label-skills" })}</span>
-                <div class="skills-badges">
-                  <span class="skill-badge muted"
-                    >${msg("No skills", { id: "adp-skills-none" })}</span
-                  >
-                </div>
-              </div>
-            `;
-          }
-          return html`
-            <div class="info-item">
-              <span class="info-label">${msg("Skills", { id: "adp-label-skills" })}</span>
-              <div class="skills-badges">
-                ${skills.map((s) => html`<span class="skill-badge">${s}</span>`)}
-              </div>
-            </div>
-          `;
-        })()}
+          : nothing}
       </div>
     `;
   }
@@ -1617,61 +1485,6 @@ export class AgentDetailPanel extends LitElement {
           ${a.role ? html`<div class="agent-role-label">${a.role}</div>` : ""}
         </div>
         <div class="panel-controls">
-          ${this.context?.kind === "instance"
-            ? html`
-                <button
-                  class="panel-btn"
-                  aria-label=${msg("Edit agent", { id: "adp-btn-edit-agent" })}
-                  title=${msg("Edit agent", { id: "adp-btn-edit-agent" })}
-                  @click=${() => void this._enterFieldEditMode()}
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                  </svg>
-                </button>
-              `
-            : nothing}
-          ${this.context?.kind === "instance"
-            ? html`
-                <button
-                  class="panel-btn"
-                  aria-label=${msg("Save", { id: "adp-btn-save-template" })}
-                  title=${msg("Save", { id: "adp-btn-save-template" })}
-                  @click=${() =>
-                    this.dispatchEvent(
-                      new CustomEvent("agent-save-as-template", {
-                        detail: { agentId: a.agent_id, name: a.name },
-                        bubbles: true,
-                        composed: true,
-                      }),
-                    )}
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                    <polyline points="17 21 17 13 7 13 7 21" />
-                    <polyline points="7 3 7 8 15 8" />
-                  </svg>
-                </button>
-              `
-            : nothing}
           ${!a.is_default
             ? html`
                 <button

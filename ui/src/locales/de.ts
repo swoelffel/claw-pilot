@@ -161,14 +161,23 @@ export const templates = {
   "adp-btn-cancel-spawn": "Abbrechen",
   "adp-btn-add-spawn": "Delegierten hinzufügen",
 
+  // agent-detail-panel.ts — Info tab fields
+  "adp-label-name": "Name",
+  "adp-label-provider": "Anbieter",
+  "adp-provider-placeholder": "Anbieter auswählen",
+  "adp-loading-providers": "Laden...",
+  "adp-label-role": "Rolle",
+  "adp-label-tags": "Tags",
+  "adp-tags-hint": "CSV, z.B.: hr, legal",
+  "adp-model-placeholder": "Modell auswählen",
+  "adp-info-save": "Speichern",
+  "adp-info-cancel": "Abbrechen",
   // agent-detail-panel.ts — skills
   "adp-label-skills": "Skills",
   "adp-skills-all": "Alle",
   "adp-skills-none": "Keine",
   "adp-skills-custom": "Benutzerdefiniert",
-  "adp-edit-skills-hint": "Skill-Namen, kommagetrennt",
-  "adp-skills-loading": "Skills werden geladen…",
-  "adp-skills-unavailable": "Instanz offline — Skill-Namen manuell eingeben",
+  "adp-skills-hint": "Skill-Namen, kommagetrennt",
 
   // agent-detail-panel.ts — file editor
   "adf-btn-edit": "Bearbeiten",
@@ -185,7 +194,6 @@ export const templates = {
 
   // agent templates (v0.41.28)
   "nav-agent-templates": "Vorlagen",
-  "adp-btn-save-template": "Speichern",
 
   // create-agent-template-dialog (v0.41.29)
   "catd-title": "Neue Agenten-Vorlage",

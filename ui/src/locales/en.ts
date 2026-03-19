@@ -161,14 +161,23 @@ export const templates = {
   "adp-btn-cancel-spawn": "Cancel",
   "adp-btn-add-spawn": "Add delegate",
 
+  // agent-detail-panel.ts — Info tab fields
+  "adp-label-name": "Name",
+  "adp-label-provider": "Provider",
+  "adp-provider-placeholder": "select provider",
+  "adp-loading-providers": "Loading...",
+  "adp-label-role": "Role",
+  "adp-label-tags": "Tags",
+  "adp-tags-hint": "CSV, ex: rh, legal",
+  "adp-model-placeholder": "select model",
+  "adp-info-save": "Save",
+  "adp-info-cancel": "Cancel",
   // agent-detail-panel.ts — skills
   "adp-label-skills": "Skills",
   "adp-skills-all": "All",
   "adp-skills-none": "None",
   "adp-skills-custom": "Custom",
-  "adp-edit-skills-hint": "Comma-separated skill names",
-  "adp-skills-loading": "Loading skills…",
-  "adp-skills-unavailable": "Instance offline — enter skill names manually",
+  "adp-skills-hint": "Comma-separated skill names",
 
   // agent-detail-panel.ts — file editor
   "adf-btn-edit": "Edit",
@@ -185,7 +194,6 @@ export const templates = {
 
   // agent templates (v0.41.28)
   "nav-agent-templates": "Templates",
-  "adp-btn-save-template": "Save",
 
   // create-agent-template-dialog (v0.41.29)
   "catd-title": "New Agent Template",

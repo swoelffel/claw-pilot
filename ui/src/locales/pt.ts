@@ -162,14 +162,23 @@ export const templates = {
   "adp-btn-cancel-spawn": "Cancelar",
   "adp-btn-add-spawn": "Adicionar delegado",
 
+  // agent-detail-panel.ts — Info tab fields
+  "adp-label-name": "Nome",
+  "adp-label-provider": "Fornecedor",
+  "adp-provider-placeholder": "selecionar fornecedor",
+  "adp-loading-providers": "A carregar...",
+  "adp-label-role": "Papel",
+  "adp-label-tags": "Tags",
+  "adp-tags-hint": "CSV, ex: rh, legal",
+  "adp-model-placeholder": "selecionar modelo",
+  "adp-info-save": "Salvar",
+  "adp-info-cancel": "Cancelar",
   // agent-detail-panel.ts — skills
   "adp-label-skills": "Skills",
   "adp-skills-all": "Todas",
   "adp-skills-none": "Nenhuma",
   "adp-skills-custom": "Personalizado",
-  "adp-edit-skills-hint": "Nomes de skills separados por vírgulas",
-  "adp-skills-loading": "A carregar skills…",
-  "adp-skills-unavailable": "Instância offline — introduza os nomes manualmente",
+  "adp-skills-hint": "Nomes de skills separados por vírgulas",
 
   // agent-detail-panel.ts — file editor
   "adf-btn-edit": "Editar",
@@ -186,7 +195,6 @@ export const templates = {
 
   // agent templates (v0.41.28)
   "nav-agent-templates": "Modelos",
-  "adp-btn-save-template": "Salvar",
 
   // create-agent-template-dialog (v0.41.29)
   "catd-title": "Novo modelo de agente",

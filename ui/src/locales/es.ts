@@ -162,14 +162,23 @@ export const templates = {
   "adp-btn-cancel-spawn": "Cancelar",
   "adp-btn-add-spawn": "Agregar delegado",
 
+  // agent-detail-panel.ts — Info tab fields
+  "adp-label-name": "Nombre",
+  "adp-label-provider": "Proveedor",
+  "adp-provider-placeholder": "seleccionar proveedor",
+  "adp-loading-providers": "Cargando...",
+  "adp-label-role": "Rol",
+  "adp-label-tags": "Etiquetas",
+  "adp-tags-hint": "CSV, ej: rh, legal",
+  "adp-model-placeholder": "seleccionar modelo",
+  "adp-info-save": "Guardar",
+  "adp-info-cancel": "Cancelar",
   // agent-detail-panel.ts — skills
   "adp-label-skills": "Skills",
   "adp-skills-all": "Todas",
   "adp-skills-none": "Ninguna",
   "adp-skills-custom": "Personalizado",
-  "adp-edit-skills-hint": "Nombres de skills separados por comas",
-  "adp-skills-loading": "Cargando skills…",
-  "adp-skills-unavailable": "Instancia sin conexión — introduzca los nombres manualmente",
+  "adp-skills-hint": "Nombres de skills separados por comas",
 
   // agent-detail-panel.ts — file editor
   "adf-btn-edit": "Editar",
@@ -186,7 +195,6 @@ export const templates = {
 
   // agent templates (v0.41.28)
   "nav-agent-templates": "Plantillas",
-  "adp-btn-save-template": "Guardar",
 
   // create-agent-template-dialog (v0.41.29)
   "catd-title": "Nueva plantilla de agente",
