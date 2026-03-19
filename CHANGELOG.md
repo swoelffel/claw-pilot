@@ -6,6 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.37] — 2026-03-19
+
+### Changed
+
+- **UX card Agent — onglet Info en édition directe** : suppression du mode view/edit toggle de l'onglet Info. L'onglet est maintenant toujours en mode éditable (comme Config et Heartbeat), avec une save bar conditionnelle qui n'apparaît que quand un champ est modifié. Les champs Name, Provider/Model (instance uniquement), Role, Tags, Notes, Skills sont directement éditables ; Workspace et Last sync restent en lecture seule.
+- **Suppression des 2 boutons en header de la card Agent** : les boutons "Edit agent" (crayon) et "Save" (disquette/save-as-template) sont retirés. L'header ne contient plus que Delete, Expand et Close.
+- **Chargement lazy des providers** : le select Provider charge la liste API au premier focus, sans bloquer le mount du composant.
+
+### Technical
+
+- `agent-detail-panel.ts` : −475 lignes / +336 → bilan net −139 lignes. Suppression de `_fieldEditMode`, `_fieldSaving`, `_fieldError`, `_availableSkills`, `_skillsAvailable`, `_loadingSkills` (6 `@state`). Remplacement de `_enterFieldEditMode`, `_cancelFieldEdit`, `_saveFields`, `_renderFieldEditForm` (4 méthodes ~450 lignes) par `_loadProviders` + `_saveInfo` + `_initInfoFields` (3 méthodes ~80 lignes). Suppression des imports `fetchInstanceSkills`, `SkillInfo`, `SkillsListResponse`, `ProvidersResponse`.
+- Locales (×6) : suppression des keys obsolètes (`adp-skills-loading`, `adp-skills-unavailable`, `adp-btn-save-template`), ajout des keys Info tab (`adp-label-name`, `adp-label-provider`, `adp-label-role`, `adp-label-tags`, `adp-tags-hint`, `adp-model-placeholder`, `adp-provider-placeholder`, `adp-skills-hint`, `adp-info-save`, `adp-info-cancel`).
+
+---
+
 ## [0.41.36] — 2026-03-19
 
 ### Fixed
