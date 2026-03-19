@@ -120,6 +120,11 @@ export interface SystemPromptContext {
   /** Agents configured in this runtime instance (for teammates block) */
   runtimeAgents?: Array<{ id: string; name: string }>;
   /**
+   * Full runtime agent configs — used to enrich the teammates block with
+   * declared expertise (expertIn) for skill-based routing hints.
+   */
+  runtimeAgentConfigs?: RuntimeAgentConfig[];
+  /**
    * Extra content appended after BEHAVIOR_BLOCK (high effective priority).
    * Used by the Task tool to inject subagent context (parent agent, task, depth).
    */
@@ -164,7 +169,9 @@ export async function buildSystemPrompt(ctx: SystemPromptContext): Promise<strin
 
   // 1.5. Teammates block (injected after instructions, before env)
   if (ctx.runtimeAgents && ctx.runtimeAgents.length > 1) {
-    sections.push(buildTeammatesBlock(ctx.runtimeAgents, ctx.agentConfig.id));
+    sections.push(
+      buildTeammatesBlock(ctx.runtimeAgents, ctx.agentConfig.id, ctx.runtimeAgentConfigs),
+    );
   }
 
   // 2. Environment block
@@ -589,18 +596,39 @@ function readSystemPromptFile(filePath: string, workDir: string): string | undef
 /**
  * Build the <teammates> block listing all agents in the instance.
  * The current agent is marked with [you].
+ * If runtimeAgentConfigs is provided, agents with declared expertIn skills
+ * are annotated with [skills: ...] to guide skill-based routing.
  */
 function buildTeammatesBlock(
   agents: Array<{ id: string; name: string }>,
   currentAgentId: string,
+  runtimeAgentConfigs?: RuntimeAgentConfig[],
 ): string {
+  // Build a lookup map: agentId → expertIn
+  const skillsById = new Map<string, string[]>();
+  if (runtimeAgentConfigs) {
+    for (const cfg of runtimeAgentConfigs) {
+      if (cfg.expertIn && cfg.expertIn.length > 0) {
+        skillsById.set(cfg.id, cfg.expertIn);
+      }
+    }
+  }
+
   const lines = agents.map((a) => {
     const marker = a.id === currentAgentId ? " [you]" : "";
-    return `- ${a.id} (${a.name})${marker}`;
+    const skills = skillsById.get(a.id);
+    const skillsMarker = skills ? ` [skills: ${skills.join(", ")}]` : "";
+    return `- ${a.id} (${a.name})${skillsMarker}${marker}`;
   });
+
+  const hasAnySkills = skillsById.size > 0;
+  const routingHint = hasAnySkills
+    ? '\nTo route by skill, use the skill name as subagent_type in the task tool (e.g. task({ subagent_type: "code-review", ... })).'
+    : "";
+
   return [
     "<teammates>",
-    "Available agents in this instance — use the task tool to delegate:",
+    `Available agents in this instance — use the task tool to delegate:${routingHint}`,
     ...lines,
     "</teammates>",
   ].join("\n");

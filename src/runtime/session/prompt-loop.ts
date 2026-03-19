@@ -197,6 +197,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       workDir,
       ...(agentWorkDir !== undefined ? { agentWorkDir } : {}),
       ...(runtimeAgents !== undefined ? { runtimeAgents } : {}),
+      ...(runtimeConfig?.agents !== undefined ? { runtimeAgentConfigs: runtimeConfig.agents } : {}),
       ...(extraSystemPrompt !== undefined ? { extraSystemPrompt } : {}),
       db,
       sessionId,

@@ -1246,3 +1246,114 @@ describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
     expect(historyCall).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// teammates block — skill routing hints
+// ---------------------------------------------------------------------------
+
+describe("buildSystemPrompt — teammates block with expertIn skills", () => {
+  it("omits teammates block when only one agent is present", async () => {
+    const ctx = makeCtx({
+      runtimeAgents: [{ id: "pilot", name: "Pilot" }],
+      runtimeAgentConfigs: [makeAgentConfig({ id: "pilot", expertIn: ["code-review"] })],
+    });
+    const result = await buildSystemPrompt(ctx);
+    expect(result).not.toContain("<teammates>");
+  });
+
+  it("includes teammates block when multiple agents are present", async () => {
+    const ctx = makeCtx({
+      runtimeAgents: [
+        { id: "pilot", name: "Pilot" },
+        { id: "dev", name: "Dev" },
+      ],
+    });
+    const result = await buildSystemPrompt(ctx);
+    expect(result).toContain("<teammates>");
+    expect(result).toContain("- pilot (Pilot)");
+    expect(result).toContain("- dev (Dev)");
+  });
+
+  it("marks current agent with [you]", async () => {
+    const ctx = makeCtx({
+      agentConfig: makeAgentConfig({ id: "pilot" }),
+      runtimeAgents: [
+        { id: "pilot", name: "Pilot" },
+        { id: "dev", name: "Dev" },
+      ],
+    });
+    const result = await buildSystemPrompt(ctx);
+    expect(result).toContain("- pilot (Pilot) [you]");
+    expect(result).toContain("- dev (Dev)");
+    expect(result).not.toContain("- dev (Dev) [you]");
+  });
+
+  it("annotates agents with their declared skills when runtimeAgentConfigs provided", async () => {
+    const ctx = makeCtx({
+      agentConfig: makeAgentConfig({ id: "pilot" }),
+      runtimeAgents: [
+        { id: "pilot", name: "Pilot" },
+        { id: "dev", name: "Dev" },
+        { id: "doc", name: "Doc" },
+      ],
+      runtimeAgentConfigs: [
+        makeAgentConfig({ id: "pilot" }),
+        makeAgentConfig({ id: "dev", expertIn: ["code-review", "test-writing"] }),
+        makeAgentConfig({ id: "doc", expertIn: ["documentation"] }),
+      ],
+    });
+    const result = await buildSystemPrompt(ctx);
+    // dev should show its skills
+    expect(result).toContain("- dev (Dev) [skills: code-review, test-writing]");
+    // doc should show its skill
+    expect(result).toContain("- doc (Doc) [skills: documentation]");
+    // pilot has no expertIn — no skills marker
+    expect(result).toContain("- pilot (Pilot) [you]");
+    expect(result).not.toContain("- pilot (Pilot) [skills:");
+  });
+
+  it("includes skill routing hint when at least one agent has expertIn", async () => {
+    const ctx = makeCtx({
+      agentConfig: makeAgentConfig({ id: "pilot" }),
+      runtimeAgents: [
+        { id: "pilot", name: "Pilot" },
+        { id: "dev", name: "Dev" },
+      ],
+      runtimeAgentConfigs: [
+        makeAgentConfig({ id: "pilot" }),
+        makeAgentConfig({ id: "dev", expertIn: ["test-writing"] }),
+      ],
+    });
+    const result = await buildSystemPrompt(ctx);
+    expect(result).toContain("route by skill");
+    expect(result).toContain("subagent_type");
+  });
+
+  it("omits skill routing hint when no agent has expertIn", async () => {
+    const ctx = makeCtx({
+      agentConfig: makeAgentConfig({ id: "pilot" }),
+      runtimeAgents: [
+        { id: "pilot", name: "Pilot" },
+        { id: "dev", name: "Dev" },
+      ],
+      runtimeAgentConfigs: [makeAgentConfig({ id: "pilot" }), makeAgentConfig({ id: "dev" })],
+    });
+    const result = await buildSystemPrompt(ctx);
+    expect(result).toContain("<teammates>");
+    expect(result).not.toContain("route by skill");
+  });
+
+  it("handles missing runtimeAgentConfigs gracefully (no skills annotations)", async () => {
+    const ctx = makeCtx({
+      runtimeAgents: [
+        { id: "pilot", name: "Pilot" },
+        { id: "dev", name: "Dev" },
+      ],
+      // runtimeAgentConfigs intentionally omitted
+    });
+    const result = await buildSystemPrompt(ctx);
+    expect(result).toContain("<teammates>");
+    expect(result).not.toContain("[skills:");
+    expect(result).not.toContain("route by skill");
+  });
+});

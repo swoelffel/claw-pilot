@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.33] — 2026-03-19
+
+### Added
+
+- **Niveau 3+ — Skills visibles dans le bloc `<teammates>`** : le system prompt des agents injecte désormais les compétences déclarées (`expertIn`) de chaque agent dans le bloc `<teammates>`. Le LLM voit directement qui sait faire quoi au moment de raisonner, sans attendre d'appeler le `task` tool.
+  - Format : `- dev-agent (Dev) [skills: code-review, test-writing]`
+  - Hint de routing ajouté quand au moins un agent déclare des skills : `"To route by skill, use the skill name as subagent_type in the task tool (e.g. task({ subagent_type: "code-review", ... }))."`
+  - `runtimeAgentConfigs` maintenant passé à `buildSystemPrompt()` depuis `prompt-loop.ts`
+  - 6 nouveaux tests unitaires couvrant les cas : skills affichés, hint présent/absent, marker [you], runtimeAgentConfigs absent (rétrocompat)
+
+---
+
 ## [0.41.32] — 2026-03-19
 
 ### Added
