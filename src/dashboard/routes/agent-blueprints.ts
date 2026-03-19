@@ -24,6 +24,7 @@ import type { RouteDeps } from "../route-deps.js";
 import { apiError } from "../route-deps.js";
 import { constants } from "../../lib/constants.js";
 import { logger } from "../../lib/logger.js";
+import { loadWorkspaceTemplate } from "../../lib/workspace-templates.js";
 
 // ---------------------------------------------------------------------------
 // Zod schemas for request validation
@@ -91,10 +92,16 @@ export function registerAgentBlueprintRoutes(app: Hono, deps: RouteDeps): void {
       ...(tags !== undefined ? { tags } : {}),
     });
 
-    // Seed default files if requested
+    // Seed default files if requested — use workspace templates as initial content
     if (seedFiles) {
       for (const filename of constants.EXPORTABLE_FILES) {
-        registry.upsertAgentBlueprintFile(blueprint.id, filename, "");
+        const content = await loadWorkspaceTemplate(filename, {
+          agentId: blueprint.id,
+          agentName: blueprint.name,
+          instanceSlug: "blueprint",
+          instanceName: "Blueprint",
+        });
+        registry.upsertAgentBlueprintFile(blueprint.id, filename, content);
       }
     }
 

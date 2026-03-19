@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.30] — 2026-03-19
+
+### Changed
+
+- **Agent templates — création** : les fichiers workspace (SOUL.md, HEARTBEAT.md, AGENTS.md, TOOLS.md, USER.md, IDENTITY.md) sont désormais pré-remplis avec les templates par défaut de l'application à la création d'un template d'agent, au lieu d'être vides. Les placeholders (`{{agentName}}`, `{{agentId}}`, etc.) sont substitués avec le nom et l'ID du template.
+
+---
+
 ## [0.41.29] — 2026-03-19
 
 ### Added

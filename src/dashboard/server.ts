@@ -236,6 +236,9 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   // SPA root
   app.get("/", async (c) => {
     try {
+      // no-cache: browser must revalidate index.html on every load so that
+      // hashed asset filenames in the new bundle are always picked up after a deploy.
+      c.header("Cache-Control", "no-cache");
       return c.html(await serveIndex());
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -270,6 +273,7 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   // SPA fallback for all other routes
   app.get("*", async (c) => {
     try {
+      c.header("Cache-Control", "no-cache");
       return c.html(await serveIndex());
     } catch {
       return c.redirect("/");
