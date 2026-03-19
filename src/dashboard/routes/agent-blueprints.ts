@@ -13,12 +13,17 @@
 //   PUT    /api/agent-blueprints/:id/files/:filename  — write file
 //   DELETE /api/agent-blueprints/:id/files/:filename  — delete file
 //   POST   /api/agent-blueprints/from-agent    — create from instance agent ("Save as template")
+//   GET    /api/agent-blueprints/:id/export    — export as YAML
+//   POST   /api/agent-blueprints/import        — import from YAML
 
 import { z } from "zod";
+import { stringify } from "yaml";
+import { parse as parseYaml } from "yaml";
 import type { Hono } from "hono";
 import type { RouteDeps } from "../route-deps.js";
 import { apiError } from "../route-deps.js";
 import { constants } from "../../lib/constants.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Zod schemas for request validation
@@ -271,6 +276,107 @@ export function registerAgentBlueprintRoutes(app: Hono, deps: RouteDeps): void {
       {
         ...blueprint,
         files: files.map((f) => ({
+          filename: f.filename,
+          content_hash: f.content_hash,
+          size: f.content.length,
+          updated_at: f.updated_at,
+        })),
+      },
+      201,
+    );
+  });
+
+  // --- GET /api/agent-blueprints/:id/export — export as YAML ---
+  app.get("/api/agent-blueprints/:id/export", (c) => {
+    const id = c.req.param("id");
+    const blueprint = registry.getAgentBlueprint(id);
+    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
+
+    const files = registry.listAgentBlueprintFiles(id);
+    const filesMap: Record<string, string> = {};
+    for (const f of files) {
+      if (f.content) filesMap[f.filename] = f.content;
+    }
+
+    const doc = {
+      version: "1",
+      name: blueprint.name,
+      ...(blueprint.description ? { description: blueprint.description } : {}),
+      category: blueprint.category,
+      ...(blueprint.icon ? { icon: blueprint.icon } : {}),
+      ...(blueprint.tags ? { tags: blueprint.tags } : {}),
+      ...(Object.keys(filesMap).length > 0 ? { files: filesMap } : {}),
+    };
+
+    const yaml = stringify(doc, { lineWidth: 0 });
+    const filename = `${blueprint.name.toLowerCase().replace(/\s+/g, "-")}-template.yaml`;
+    return new Response(yaml, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/yaml; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+      },
+    });
+  });
+
+  // --- POST /api/agent-blueprints/import — import from YAML ---
+  app.post("/api/agent-blueprints/import", async (c) => {
+    let yamlContent: string;
+    try {
+      yamlContent = await c.req.text();
+    } catch {
+      return apiError(c, 400, "INVALID_BODY", "Cannot read request body");
+    }
+
+    // 1. Parse YAML
+    let raw: unknown;
+    try {
+      raw = parseYaml(yamlContent);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Invalid YAML";
+      logger.error(`[agent-blueprint-import] YAML parse error: ${msg}`);
+      return apiError(c, 400, "YAML_PARSE_ERROR", msg);
+    }
+
+    // 2. Validate structure
+    const ImportSchema = z.object({
+      version: z.string().optional(),
+      name: z.string().min(1).max(100),
+      description: z.string().max(500).optional(),
+      category: z.enum(["user", "tool", "system"]).optional(),
+      icon: z.string().max(10).optional(),
+      tags: z.string().optional(),
+      files: z.record(z.string(), z.string()).optional(),
+    });
+
+    const parsed = ImportSchema.safeParse(raw);
+    if (!parsed.success) {
+      return apiError(c, 400, "VALIDATION_ERROR", parsed.error.message);
+    }
+
+    const { name, description, category, icon, tags, files } = parsed.data;
+
+    // 3. Create blueprint
+    const blueprint = registry.createAgentBlueprint({
+      name,
+      ...(description !== undefined ? { description } : {}),
+      ...(category !== undefined ? { category } : {}),
+      ...(icon !== undefined ? { icon } : {}),
+      ...(tags !== undefined ? { tags } : {}),
+    });
+
+    // 4. Create files from YAML
+    if (files) {
+      for (const [filename, content] of Object.entries(files)) {
+        registry.upsertAgentBlueprintFile(blueprint.id, filename, content);
+      }
+    }
+
+    const createdFiles = registry.listAgentBlueprintFiles(blueprint.id);
+    return c.json(
+      {
+        ...blueprint,
+        files: createdFiles.map((f) => ({
           filename: f.filename,
           content_hash: f.content_hash,
           size: f.content.length,

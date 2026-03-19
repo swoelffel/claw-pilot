@@ -8,9 +8,9 @@ import { localized, msg } from "@lit/localize";
 import type { AgentBlueprintInfo, AgentBlueprintFileSummary } from "../types.js";
 import {
   fetchAgentBlueprint,
-  updateAgentBlueprint,
   fetchAgentBlueprintFile,
   updateAgentBlueprintFile,
+  exportAgentBlueprint,
 } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
@@ -262,6 +262,26 @@ export class AgentTemplateDetail extends LitElement {
     }
   }
 
+  private async _onExport(): Promise<void> {
+    if (!this._blueprint) return;
+    try {
+      await exportAgentBlueprint(this._blueprint.id);
+    } catch (err) {
+      this._error = userMessage(err);
+    }
+  }
+
+  private _onUseTemplate(): void {
+    if (!this._blueprint) return;
+    this.dispatchEvent(
+      new CustomEvent("use-template", {
+        detail: { templateId: this._blueprint.id, templateName: this._blueprint.name },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
   private async _selectFile(filename: string): Promise<void> {
     if (this._activeFile === filename) return;
     this._activeFile = filename;
@@ -320,6 +340,12 @@ export class AgentTemplateDetail extends LitElement {
         <button class="back-btn" @click=${this._navigateBack}>←</button>
         <span class="title">${bp.name}</span>
         <span class="category-badge category-${bp.category}">${bp.category}</span>
+        <button class="btn btn-ghost" @click=${this._onExport}>
+          ${msg("Export", { id: "atd-btn-export" })}
+        </button>
+        <button class="btn btn-primary" @click=${this._onUseTemplate}>
+          ${msg("Use template", { id: "atd-btn-use-template" })}
+        </button>
       </div>
 
       <div class="meta-section">

@@ -187,6 +187,35 @@ export const templates = {
   "nav-agent-templates": "Modelli",
   "adp-btn-save-template": "Salva come modello",
 
+  // create-agent-template-dialog (v0.41.29)
+  "catd-title": "Nuovo modello agente",
+  "catd-name": "Nome",
+  "catd-name-placeholder": "es. Code Reviewer, QA Engineer",
+  "catd-description": "Descrizione",
+  "catd-description-placeholder": "A cosa serve questo modello di agente...",
+  "catd-category": "Categoria",
+  "catd-cat-user": "Utente",
+  "catd-cat-tool": "Strumento",
+  "catd-cat-system": "Sistema",
+  "catd-seed-files": "Crea file workspace predefiniti",
+  "catd-seed-files-hint": "Crea SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md, USER.md, HEARTBEAT.md",
+  "catd-btn-cancel": "Annulla",
+  "catd-btn-creating": "Creazione...",
+  "catd-btn-create": "Crea",
+
+  // use-template flow (v0.41.29)
+  "atv-btn-use": "Usa",
+  "atd-btn-use-template": "Usa modello",
+  "cad-title-template": "Nuovo agente da modello",
+  "cad-section-instance": "Istanza destinazione",
+  "cad-loading-instances": "Caricamento istanze...",
+  "cad-no-instances": "Nessuna istanza attiva trovata",
+  "cad-label-instance": "Istanza",
+
+  // import/export (v0.41.29)
+  "atv-btn-import": "Importa YAML",
+  "atd-btn-export": "Esporta",
+
   // blueprints (v0.3.0)
   "nav-instances": "Istanze",
   "nav-blueprints": "Blueprint",

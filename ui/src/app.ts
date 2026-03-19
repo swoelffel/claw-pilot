@@ -28,6 +28,7 @@ import "./components/self-update-banner.js";
 import "./components/login-view.js";
 import "./components/permission-request-overlay.js";
 import "./components/bus-alerts.js";
+import "./components/create-agent-dialog.js";
 
 // Initialize locale — resolved before first render via localeReady promise
 export const localeReady = initLocale();
@@ -428,6 +429,10 @@ export class CpApp extends LitElement {
   @state() private _langOpen = false;
   @state() private _selfUpdateStatus: SelfUpdateStatus | null = null;
 
+  // --- "Use template" dialog state ---
+  @state() private _useTemplateId = "";
+  @state() private _useTemplateName = "";
+
   private _langWrapperRef: Ref<HTMLElement> = createRef();
   private _onDocClick = (e: MouseEvent) => {
     const wrapper = this._langWrapperRef.value;
@@ -697,6 +702,26 @@ export class CpApp extends LitElement {
     void this._updatePoller?.triggerUpdate();
   }
 
+  // --- "Use template" flow ---
+
+  private _onUseTemplate(e: Event): void {
+    const { templateId, templateName } = (
+      e as CustomEvent<{ templateId: string; templateName: string }>
+    ).detail;
+    this._useTemplateId = templateId;
+    this._useTemplateName = templateName;
+  }
+
+  private _onTemplateAgentCreated(e: Event): void {
+    const builderData = (e as CustomEvent).detail;
+    this._useTemplateId = "";
+    this._useTemplateName = "";
+    // Navigate to the instance's agents builder view
+    if (builderData?.instance?.slug) {
+      this._route = { view: "agents-builder", slug: builderData.instance.slug };
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -743,6 +768,7 @@ export class CpApp extends LitElement {
       return html`
         <cp-agent-templates-view
           @navigate=${this._navigate}
+          @use-template=${this._onUseTemplate}
           @agent-templates-loaded=${(e: Event) => {
             this._agentTemplateCount = (e as CustomEvent<{ count: number }>).detail.count;
           }}
@@ -754,6 +780,7 @@ export class CpApp extends LitElement {
         <cp-agent-template-detail
           .templateId=${this._route.templateId}
           @navigate=${this._navigate}
+          @use-template=${this._onUseTemplate}
         ></cp-agent-template-detail>
       `;
     }
@@ -901,6 +928,18 @@ export class CpApp extends LitElement {
         : nothing}
 
       <cp-bus-alerts></cp-bus-alerts>
+
+      ${this._useTemplateId
+        ? html`<cp-create-agent-dialog
+            .templateId=${this._useTemplateId}
+            .templateName=${this._useTemplateName}
+            @agent-created=${this._onTemplateAgentCreated}
+            @close-dialog=${() => {
+              this._useTemplateId = "";
+              this._useTemplateName = "";
+            }}
+          ></cp-create-agent-dialog>`
+        : nothing}
 
       <footer>
         <div class="footer-left">

@@ -570,6 +570,7 @@ export async function fetchAgentBlueprint(id: string): Promise<AgentBlueprintInf
 export async function createAgentBlueprint(data: {
   name: string;
   description?: string;
+  category?: "user" | "tool" | "system";
   seedFiles?: boolean;
 }): Promise<AgentBlueprintInfo> {
   return apiFetch<AgentBlueprintInfo>("/agent-blueprints", {
@@ -645,4 +646,45 @@ export async function createAgentFromTemplate(
     method: "POST",
     body: JSON.stringify(data),
   });
+}
+
+/** Export an agent blueprint as a YAML file — triggers browser download. */
+export async function exportAgentBlueprint(id: string): Promise<void> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`/api/agent-blueprints/${id}/export`, { headers });
+  if (!res.ok) throw new ApiError(res.status, "EXPORT_FAILED", `Export failed: ${res.statusText}`);
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = /filename="?([^"]+)"?/.exec(disposition);
+  const filename = match?.[1] ?? "template.yaml";
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Import an agent blueprint from YAML content. */
+export async function importAgentBlueprint(yamlContent: string): Promise<AgentBlueprintInfo> {
+  const token = getToken();
+  const res = await fetch("/api/agent-blueprints/import", {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/yaml",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: yamlContent,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const msg =
+      body && typeof body === "object" && "message" in body
+        ? (body as { message: string }).message
+        : res.statusText;
+    throw new ApiError(res.status, "IMPORT_FAILED", msg);
+  }
+  return (await res.json()) as AgentBlueprintInfo;
 }

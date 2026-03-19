@@ -188,6 +188,35 @@ export const templates = {
   "nav-agent-templates": "Plantillas",
   "adp-btn-save-template": "Guardar como plantilla",
 
+  // create-agent-template-dialog (v0.41.29)
+  "catd-title": "Nueva plantilla de agente",
+  "catd-name": "Nombre",
+  "catd-name-placeholder": "ej. Code Reviewer, QA Engineer",
+  "catd-description": "Descripción",
+  "catd-description-placeholder": "Para qué sirve esta plantilla de agente...",
+  "catd-category": "Categoría",
+  "catd-cat-user": "Usuario",
+  "catd-cat-tool": "Herramienta",
+  "catd-cat-system": "Sistema",
+  "catd-seed-files": "Crear archivos de workspace por defecto",
+  "catd-seed-files-hint": "Crea SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md, USER.md, HEARTBEAT.md",
+  "catd-btn-cancel": "Cancelar",
+  "catd-btn-creating": "Creando...",
+  "catd-btn-create": "Crear",
+
+  // use-template flow (v0.41.29)
+  "atv-btn-use": "Usar",
+  "atd-btn-use-template": "Usar plantilla",
+  "cad-title-template": "Nuevo agente desde plantilla",
+  "cad-section-instance": "Instancia destino",
+  "cad-loading-instances": "Cargando instancias...",
+  "cad-no-instances": "No se encontraron instancias activas",
+  "cad-label-instance": "Instancia",
+
+  // import/export (v0.41.29)
+  "atv-btn-import": "Importar YAML",
+  "atd-btn-export": "Exportar",
+
   // blueprints (v0.3.0)
   "nav-instances": "Instancias",
   "nav-blueprints": "Blueprints",

@@ -7,11 +7,12 @@ import {
   fetchAgentBlueprints,
   deleteAgentBlueprint,
   cloneAgentBlueprint,
-  createAgentBlueprint,
+  importAgentBlueprint,
 } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { sectionLabelStyles, errorBannerStyles, buttonStyles } from "../styles/shared.js";
+import "./create-agent-template-dialog.js";
 
 @localized()
 @customElement("cp-agent-templates-view")
@@ -302,6 +303,48 @@ export class AgentTemplatesView extends LitElement {
     this._navigateToDetail(templateId);
   }
 
+  private _onUseTemplate(e: Event, bp: AgentBlueprintInfo): void {
+    e.stopPropagation();
+    this.dispatchEvent(
+      new CustomEvent("use-template", {
+        detail: { templateId: bp.id, templateName: bp.name },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private _onImportClick(): void {
+    const input = this.shadowRoot?.querySelector('input[type="file"]') as HTMLInputElement | null;
+    if (input) input.click();
+  }
+
+  private async _onImportFile(e: Event): Promise<void> {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const content = await file.text();
+      const bp = await importAgentBlueprint(content);
+      this._blueprints = [...this._blueprints, bp];
+      this._emitCount();
+      this._navigateToDetail(bp.id);
+    } catch (err) {
+      this._error = userMessage(err);
+    } finally {
+      // Reset the file input so the same file can be imported again
+      input.value = "";
+    }
+  }
+
+  private _onTemplateCreated(e: CustomEvent<AgentBlueprintInfo>): void {
+    this._showCreateDialog = false;
+    this._blueprints = [...this._blueprints, e.detail];
+    this._emitCount();
+    // Navigate to the new template's detail page
+    this._navigateToDetail(e.detail.id);
+  }
+
   private _formatDate(iso: string): string {
     try {
       const d = new Date(iso);
@@ -334,14 +377,25 @@ export class AgentTemplatesView extends LitElement {
             ? msg("agent templates", { id: "atv-count-many" })
             : msg("agent template", { id: "atv-count-one" })}
         </div>
-        <button
-          class="btn btn-primary"
-          @click=${() => {
-            this._showCreateDialog = true;
-          }}
-        >
-          ${msg("+ New template", { id: "atv-btn-create" })}
-        </button>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-ghost" @click=${this._onImportClick}>
+            ${msg("Import YAML", { id: "atv-btn-import" })}
+          </button>
+          <input
+            type="file"
+            accept=".yaml,.yml"
+            style="display: none;"
+            @change=${this._onImportFile}
+          />
+          <button
+            class="btn btn-primary"
+            @click=${() => {
+              this._showCreateDialog = true;
+            }}
+          >
+            ${msg("+ New template", { id: "atv-btn-create" })}
+          </button>
+        </div>
       </div>
 
       ${this._blueprints.length === 0
@@ -357,6 +411,14 @@ export class AgentTemplatesView extends LitElement {
             </div>
           `
         : html` <div class="grid">${this._blueprints.map((bp) => this._renderCard(bp))}</div> `}
+      ${this._showCreateDialog
+        ? html`<cp-create-agent-template-dialog
+            @agent-template-created=${this._onTemplateCreated}
+            @close-dialog=${() => {
+              this._showCreateDialog = false;
+            }}
+          ></cp-create-agent-template-dialog>`
+        : nothing}
     `;
   }
 
@@ -383,6 +445,13 @@ export class AgentTemplatesView extends LitElement {
         </div>
 
         <div class="card-actions">
+          <button
+            class="btn-card"
+            @click=${(e: Event) => this._onUseTemplate(e, bp)}
+            title=${msg("Use", { id: "atv-btn-use" })}
+          >
+            ${msg("Use", { id: "atv-btn-use" })}
+          </button>
           <button
             class="btn-card"
             @click=${(e: Event) => this._onClone(e, bp)}

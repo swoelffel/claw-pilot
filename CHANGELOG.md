@@ -6,6 +6,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.29] — 2026-03-19
+
+### Added
+
+- **Agent templates — create dialog** (Niveau 2 V2) : dialog "New Agent Template" pour créer un template from scratch (nom, description, catégorie, fichiers workspace par défaut). Bouton "+ New template" dans la galerie désormais fonctionnel.
+- **Agent templates — "Use template" flow** (Niveau 2 V2) : bouton "Use" sur les cards de la galerie et "Use template" dans la vue détail. Ouvre le dialog de création d'agent avec sélecteur d'instance cible, pré-rempli avec le nom du template. Appelle `POST /agents/from-template` avec copie des fichiers workspace.
+- **Agent templates — import/export YAML** (Niveau 2 V2) :
+  - Export : `GET /api/agent-blueprints/:id/export` retourne un fichier YAML avec métadonnées + fichiers workspace. Bouton "Export" dans la vue détail.
+  - Import : `POST /api/agent-blueprints/import` accepte du YAML et crée un template. Bouton "Import YAML" avec file picker dans la galerie.
+- **API** : `createAgentBlueprint()` accepte désormais le champ `category`. Nouvelles fonctions `exportAgentBlueprint()` et `importAgentBlueprint()`.
+- **i18n** : traductions du dialog de création, du flow "Use template", et de l'import/export dans les 6 langues (en, fr, de, es, it, pt).
+
+### Fixed
+
+- Nettoyage des imports inutilisés dans `agent-templates-view.ts` et `agent-template-detail.ts` (0 warnings oxlint UI).
+
+---
+
 ## [0.41.28] — 2026-03-18
 
 ### Added

@@ -3,6 +3,7 @@
   "language": "en,fr",
   "import": ["@cspell/dict-fr-fr/cspell-ext.json"],
   "words": [
+    "catd",
     "claw",
     "openai",
     "openrouter",

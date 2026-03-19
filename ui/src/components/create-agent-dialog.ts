@@ -2,8 +2,14 @@
 import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { BuilderData, CreateAgentRequest, ProviderInfo, ProvidersResponse } from "../types.js";
-import { fetchProviders, createAgent } from "../api.js";
+import type {
+  BuilderData,
+  CreateAgentRequest,
+  InstanceInfo,
+  ProviderInfo,
+  ProvidersResponse,
+} from "../types.js";
+import { fetchProviders, fetchInstances, createAgent, createAgentFromTemplate } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { DialogMixin } from "../lib/dialog-mixin.js";
 import { tokenStyles } from "../styles/tokens.js";
@@ -170,8 +176,13 @@ export class CreateAgentDialog extends DialogMixin(LitElement) {
     `,
   ];
 
+  /** Instance slug — required for normal mode, optional in template mode (user picks one). */
   @property({ type: String }) slug = "";
   @property({ type: Array }) existingAgentIds: string[] = [];
+
+  /** Template mode: when set, the dialog creates from a blueprint instead of from scratch. */
+  @property({ type: String }) templateId = "";
+  @property({ type: String }) templateName = "";
 
   @state() private _agentSlug = "";
   @state() private _slugError = "";
@@ -185,9 +196,26 @@ export class CreateAgentDialog extends DialogMixin(LitElement) {
   @state() private _submitting = false;
   @state() private _submitError = "";
 
+  // --- template mode state ---
+  @state() private _instances: InstanceInfo[] = [];
+  @state() private _selectedInstanceSlug = "";
+  @state() private _instancesLoading = false;
+
   override connectedCallback(): void {
     super.connectedCallback();
     void this._loadProviders();
+    if (this._isTemplateMode()) {
+      void this._loadInstances();
+      // Pre-fill name from template
+      if (this.templateName && !this._name) {
+        this._name = this.templateName;
+        this._autoName = this.templateName;
+      }
+    }
+  }
+
+  private _isTemplateMode(): boolean {
+    return this.templateId.length > 0;
   }
 
   private async _loadProviders(): Promise<void> {
@@ -212,6 +240,22 @@ export class CreateAgentDialog extends DialogMixin(LitElement) {
       this._model = "anthropic/claude-sonnet-4-6";
     } finally {
       this._providersLoading = false;
+    }
+  }
+
+  private async _loadInstances(): Promise<void> {
+    this._instancesLoading = true;
+    try {
+      const all = await fetchInstances();
+      // Only show running instances — you can't create agents in stopped ones
+      this._instances = all.filter((i) => i.state === "running");
+      if (this._instances.length > 0 && !this._selectedInstanceSlug) {
+        this._selectedInstanceSlug = this._instances[0]!.slug;
+      }
+    } catch {
+      this._instances = [];
+    } finally {
+      this._instancesLoading = false;
     }
   }
 
@@ -253,6 +297,7 @@ export class CreateAgentDialog extends DialogMixin(LitElement) {
     if (!this._name.trim()) return false;
     if (!this._model) return false;
     if (!this._selectedProvider) return false;
+    if (this._isTemplateMode() && !this._selectedInstanceSlug) return false;
     return true;
   }
 
@@ -265,16 +310,32 @@ export class CreateAgentDialog extends DialogMixin(LitElement) {
     this._submitting = true;
     this._submitError = "";
 
-    const request: CreateAgentRequest = {
-      agentSlug: this._agentSlug,
-      name: this._name.trim(),
-      role: this._role.trim(),
-      provider: this._selectedProvider?.id ?? "anthropic",
-      model: this._model.includes("/") ? this._model.split("/")[1]! : this._model,
-    };
+    const provider = this._selectedProvider?.id ?? "anthropic";
+    const model = this._model.includes("/") ? this._model.split("/")[1]! : this._model;
 
     try {
-      const builderData = await createAgent(this.slug, request);
+      let builderData: BuilderData;
+
+      if (this._isTemplateMode()) {
+        const targetSlug = this._selectedInstanceSlug || this.slug;
+        builderData = await createAgentFromTemplate(targetSlug, {
+          blueprintId: this.templateId,
+          agentSlug: this._agentSlug,
+          name: this._name.trim(),
+          provider,
+          model,
+        });
+      } else {
+        const request: CreateAgentRequest = {
+          agentSlug: this._agentSlug,
+          name: this._name.trim(),
+          role: this._role.trim(),
+          provider,
+          model,
+        };
+        builderData = await createAgent(this.slug, request);
+      }
+
       this.dispatchEvent(
         new CustomEvent("agent-created", {
           detail: builderData,
@@ -302,9 +363,60 @@ export class CreateAgentDialog extends DialogMixin(LitElement) {
     `;
   }
 
+  private _renderInstancePicker() {
+    if (!this._isTemplateMode()) return "";
+    if (this._instancesLoading) {
+      return html`
+        <div class="section">
+          <div class="section-label">${msg("Target instance", { id: "cad-section-instance" })}</div>
+          <span class="field-hint"
+            >${msg("Loading instances...", { id: "cad-loading-instances" })}</span
+          >
+        </div>
+        <hr class="divider" />
+      `;
+    }
+    if (this._instances.length === 0) {
+      return html`
+        <div class="section">
+          <div class="section-label">${msg("Target instance", { id: "cad-section-instance" })}</div>
+          <span class="field-error"
+            >${msg("No running instances found", { id: "cad-no-instances" })}</span
+          >
+        </div>
+        <hr class="divider" />
+      `;
+    }
+    return html`
+      <div class="section">
+        <div class="section-label">${msg("Target instance", { id: "cad-section-instance" })}</div>
+        <div class="field">
+          <label for="target-instance">${msg("Instance", { id: "cad-label-instance" })}</label>
+          <select
+            id="target-instance"
+            @change=${(e: Event) => {
+              this._selectedInstanceSlug = (e.target as HTMLSelectElement).value;
+            }}
+          >
+            ${this._instances.map(
+              (inst) => html`
+                <option value=${inst.slug} ?selected=${this._selectedInstanceSlug === inst.slug}>
+                  ${inst.display_name ?? inst.slug}
+                </option>
+              `,
+            )}
+          </select>
+        </div>
+      </div>
+      <hr class="divider" />
+    `;
+  }
+
   private _renderForm() {
     return html`
       <div class="dialog-body">
+        ${this._renderInstancePicker()}
+
         <!-- Identity -->
         <div class="section">
           <div class="section-label">${msg("Identity", { id: "cad-section-identity" })}</div>
@@ -426,7 +538,11 @@ export class CreateAgentDialog extends DialogMixin(LitElement) {
       >
         <div class="dialog">
           <div class="dialog-header">
-            <span class="dialog-title">${msg("New agent", { id: "cad-title" })}</span>
+            <span class="dialog-title"
+              >${this._isTemplateMode()
+                ? msg("New agent from template", { id: "cad-title-template" })
+                : msg("New agent", { id: "cad-title" })}</span
+            >
             <button
               class="close-btn"
               aria-label="Close"
