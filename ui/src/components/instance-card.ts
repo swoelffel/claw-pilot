@@ -171,19 +171,22 @@ export class InstanceCard extends LitElement {
         font-family: var(--font-mono);
       }
 
-      .runtime-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 3px;
-        background: rgba(99, 102, 241, 0.12);
-        color: #818cf8;
-        border: 1px solid rgba(99, 102, 241, 0.3);
-        border-radius: var(--radius-sm);
-        padding: 1px 6px;
-        font-size: 10px;
-        font-family: var(--font-mono);
-        font-weight: 600;
-        letter-spacing: 0.02em;
+      /* ── Spinner (transitioning states) ─────────────────── */
+
+      @keyframes cp-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .spinner {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border: 1.5px solid currentColor;
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: cp-spin 0.7s linear infinite;
         flex-shrink: 0;
       }
 
@@ -313,6 +316,7 @@ export class InstanceCard extends LitElement {
   @state() private _loading = false;
   @state() private _error = "";
   @state() private _menuOpen = false;
+  @state() private _transitioning: "starting" | "stopping" | null = null;
 
   private _onDocClick = (e: MouseEvent) => {
     if (!this.shadowRoot?.contains(e.target as Node)) {
@@ -330,10 +334,15 @@ export class InstanceCard extends LitElement {
     document.removeEventListener("click", this._onDocClick);
   }
 
-  private async _action(e: Event, fn: (slug: string) => Promise<void>): Promise<void> {
+  private async _action(
+    e: Event,
+    fn: (slug: string) => Promise<void>,
+    transition?: "starting" | "stopping",
+  ): Promise<void> {
     e.stopPropagation();
     this._menuOpen = false;
     this._loading = true;
+    this._transitioning = transition ?? null;
     this._error = "";
     try {
       await fn(this.instance.slug);
@@ -341,10 +350,18 @@ export class InstanceCard extends LitElement {
       this._error = userMessage(err);
     } finally {
       this._loading = false;
+      this._transitioning = null;
     }
   }
 
   private _stateClass(): string {
+    if (this._transitioning) return this._transitioning;
+    return this.instance.state ?? "unknown";
+  }
+
+  private _stateLabel(): string {
+    if (this._transitioning === "starting") return msg("Starting", { id: "state-starting" });
+    if (this._transitioning === "stopping") return msg("Stopping", { id: "state-stopping" });
     return this.instance.state ?? "unknown";
   }
 
@@ -439,7 +456,12 @@ export class InstanceCard extends LitElement {
         <button
           class="menu-item ${isRunning ? "stop" : "start"}"
           ?disabled=${this._loading}
-          @click=${(e: Event) => this._action(e, isRunning ? stopInstance : startInstance)}
+          @click=${(e: Event) =>
+            this._action(
+              e,
+              isRunning ? stopInstance : startInstance,
+              isRunning ? "stopping" : "starting",
+            )}
         >
           <span class="menu-icon">${isRunning ? "■" : "▶"}</span>
           ${isRunning ? msg("Stop", { id: "btn-stop" }) : msg("Start", { id: "btn-start" })}
@@ -495,7 +517,7 @@ export class InstanceCard extends LitElement {
               <button
                 class="menu-item"
                 ?disabled=${this._loading}
-                @click=${(e: Event) => this._action(e, restartInstance)}
+                @click=${(e: Event) => this._action(e, restartInstance, "starting")}
               >
                 <span class="menu-icon">↺</span>
                 ${msg("Restart", { id: "btn-restart" })}
@@ -542,10 +564,11 @@ export class InstanceCard extends LitElement {
             ${showSlug ? html`<div class="slug">${inst.slug}</div>` : nothing}
           </div>
           <div class="card-header-right">
-            <span class="runtime-badge">⚡ runtime</span>
             <span class="badge ${stateClass}">
-              <span class="state-dot"></span>
-              ${stateClass}
+              ${this._transitioning
+                ? html`<span class="spinner"></span>`
+                : html`<span class="state-dot"></span>`}
+              ${this._stateLabel()}
             </span>
             <div class="menu-anchor">
               <button

@@ -34,6 +34,12 @@ export const badgeStyles = css`
     color: var(--state-warning);
     border: 1px solid rgba(245, 158, 11, 0.25);
   }
+  .badge.starting,
+  .badge.stopping {
+    background: rgba(245, 158, 11, 0.08);
+    color: var(--state-warning);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+  }
   .state-dot {
     width: 6px;
     height: 6px;

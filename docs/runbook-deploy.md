@@ -1,53 +1,53 @@
-# Runbook — Deploiement claw-pilot
+# Runbook — claw-pilot Deployment
 
 ## Workflow — GitHub Flow
 
-Chaque feature = une branche dedicee. MACMINI-INT sert de serveur d'integration.
-Exception : les hotfix (corrections urgentes) peuvent aller directement sur main.
+Each feature = dedicated branch. MACMINI-INT serves as integration server.
+Exception: hotfixes (urgent fixes) can go directly to main.
 
 ```
-feature branch locale
+local feature branch
        |
        v
 dev + typecheck + build local
        |
        v
-VALIDATION CI/CD LOCALE OBLIGATOIRE  <-- voir section ci-dessous
+MANDATORY LOCAL CI/CD VALIDATION  <-- see section below
        |
        v
 push origin feature/xxx
        |
        v
-CI/CD GitHub passe (vert)  <-- verifier avant de continuer
+GitHub CI/CD passes (green)  <-- verify before continuing
        |
        v
-deploiement MACMINI-INT sur la branche feature
+deploy MACMINI-INT on feature branch
        |
        v
-tests manuels sur MACMINI-INT
+manual testing on MACMINI-INT
        |
     OK |                    KO
        v                     |
-PR GitHub -> merge main      +-- fix -> re-validation locale -> re-push
+GitHub PR -> merge main      +-- fix -> re-validate local -> re-push
        |
        v
-deploiement VM01 sur main  (retest rapide obligatoire si autres commits sur main)
+deploy VM01 on main  (quick retest mandatory if other commits on main)
 
 
---- HOTFIX (correction urgente) ---
+--- HOTFIX (urgent fix) ---
 
-fix local sur main -> VALIDATION CI/CD LOCALE -> push origin main -> deploiement MACMINI-INT
+local fix on main -> LOCAL CI/CD VALIDATION -> push origin main -> deploy MACMINI-INT
 ```
 
 ---
 
-## VALIDATION CI/CD LOCALE (obligatoire avant tout push)
+## LOCAL CI/CD VALIDATION (mandatory before any push)
 
-**Ces commandes reproduisent exactement ce que fait la CI GitHub.**
-Ne pas pusher si l'une d'elles echoue.
+**These commands exactly reproduce what GitHub CI does.**
+Do not push if any of them fail.
 
 ```bash
-# Depuis claw-pilot/
+# From claw-pilot/
 cd claw-pilot
 
 # 1. Format
@@ -59,163 +59,163 @@ pnpm typecheck:all
 # 3. Lint
 pnpm lint:all
 
-# 4. Orthographe
+# 4. Spell check
 pnpm spellcheck
 
-# 5. Tests avec coverage  <-- LE PLUS IMPORTANT : doit passer sans erreur de threshold
+# 5. Tests with coverage  <-- MOST IMPORTANT: must pass without threshold errors
 pnpm test:run --coverage
 
 # 6. Dead code
 pnpm knip --reporter compact
 
-# 7. Imports circulaires
+# 7. Circular imports
 pnpm check:circular
 
-# 8. Tests E2E (serveur HTTP reel, DB in-memory)
+# 8. E2E tests (real HTTP server, in-memory DB)
 pnpm test:e2e
 
-# 9. Build final (typecheck + build)
+# 9. Final build (typecheck + build)
 pnpm build:safe
 ```
 
-### Commande tout-en-un (equivalent CI)
+### All-in-one command (equivalent to CI)
 
 ```bash
 pnpm format:check && pnpm typecheck:all && pnpm lint:all && pnpm spellcheck && pnpm test:run --coverage && pnpm test:e2e && pnpm knip --reporter compact && pnpm check:circular && pnpm build
 ```
 
-> **Note** : `pnpm build:safe` (typecheck:all + build) est une alternative plus sure que `pnpm build` seul.
+> **Note**: `pnpm build:safe` (typecheck:all + build) is a safer alternative than `pnpm build` alone.
 
-Si tout est vert localement, la CI GitHub doit passer.
+If everything is green locally, GitHub CI should pass.
 
 ---
 
-## Pieges CI/CD connus
+## Known CI/CD pitfalls
 
-### Coverage sous le seuil (cause la plus frequente)
+### Coverage below threshold (most common cause)
 
-**Symptome CI :**
+**CI symptom:**
 ```
 ERROR: Coverage for lines (X%) does not meet global threshold (Y%)
 Process completed with exit code 1.
 ```
 
-**Cause :** Du nouveau code a ete ajoute sans tests correspondants, faisant chuter le
-pourcentage de couverture sous le seuil defini dans `vitest.config.ts`.
+**Cause:** New code was added without corresponding tests, causing coverage percentage
+to fall below the threshold defined in `vitest.config.ts`.
 
-**Detection locale :**
+**Local detection:**
 ```bash
 pnpm test:run --coverage
-# Chercher les lignes "ERROR: Coverage for..."
+# Look for "ERROR: Coverage for..." lines
 ```
 
-**Correction :**
-- Option 1 (preferable) : ajouter des tests pour le nouveau code
-- Option 2 (acceptable si le code est difficile a tester — I/O, LLM, filesystem) :
-  abaisser le seuil dans `vitest.config.ts` avec un commentaire explicatif
+**Fix:**
+- Option 1 (preferred): add tests for the new code
+- Option 2 (acceptable if code is hard to test — I/O, LLM, filesystem):
+  lower the threshold in `vitest.config.ts` with an explanatory comment
 
 ```typescript
 // vitest.config.ts
 thresholds: {
-  // Lowered after <commit-ref> (<raison courte>)
-  lines: 48,      // <-- ajuster a la valeur reelle - 1
+  // Lowered after <commit-ref> (<short reason>)
+  lines: 48,      // <-- adjust to actual value - 1
   statements: 48,
   functions: 76,
   branches: 72,
 },
 ```
 
-### Actions GitHub avec version inexistante
+### GitHub Actions with non-existent version
 
-**Symptome CI :**
+**CI symptom:**
 ```
 Unable to find version `vX.Y`. Unable to resolve action `actions/checkout@vX.Y`
 ```
 
-**Cause :** Les tags GitHub Actions de type `@vX.Y` n'existent pas — seuls les
-tags majeurs (`@v4`) ou patchs exacts (`@v4.2.2`) sont valides.
+**Cause:** GitHub Actions tags of type `@vX.Y` don't exist — only major tags (`@v4`)
+or exact patches (`@v4.2.2`) are valid.
 
-**Correction :** Epingler sur SHA digest avec commentaire de version :
+**Fix:** Pin to SHA digest with version comment:
 ```yaml
 - uses: actions/checkout@<SHA-40-chars> # vX.Y.Z
 ```
 
-**Prevention :** Dependabot est configure (`.github/dependabot.yml`) pour proposer
-automatiquement des mises a jour chaque lundi.
+**Prevention:** Dependabot is configured (`.github/dependabot.yml`) to automatically
+propose updates every Monday.
 
-### Actions GitHub avec Node.js 20 deprecie
+### GitHub Actions with deprecated Node.js 20
 
-**Symptome CI :**
+**CI symptom:**
 ```
 Node.js 20 actions are deprecated. Actions will be forced to run with Node.js 24...
 ```
 
-**Cause :** Les actions utilisees sont basees sur node20. GitHub forcera node24
-a partir du 2 juin 2026.
+**Cause:** The actions used are based on node20. GitHub will force node24
+starting June 2, 2026.
 
-**Correction :** Migrer vers les versions majeures suivantes qui embarquent node24 :
-- `actions/checkout` : v6+
-- `actions/setup-node` : v6+
-- `actions/upload-artifact` : v7+
+**Fix:** Migrate to the following major versions that include node24:
+- `actions/checkout`: v6+
+- `actions/setup-node`: v6+
+- `actions/upload-artifact`: v7+
 
-Verifier le runtime d'une action :
+Check an action's runtime:
 ```bash
 gh api "repos/<owner>/<action>/contents/action.yml?ref=<tag>" --jq '.content' | base64 -d | grep "using:"
 ```
 
-### Security audit echoue
+### Security audit fails
 
-**Symptome CI :**
+**CI symptom:**
 ```
 X vulnerabilities found — high severity
 ```
 
-**Detection locale :**
+**Local detection:**
 ```bash
 pnpm audit --audit-level=high
 ```
 
-**Correction :** Mettre a jour le package vulnerabe ou ajouter une exception documentee.
+**Fix:** Update the vulnerable package or add a documented exception.
 
 ---
 
-## Deploiement sur MACMINI-INT (integration)
+## Deployment to MACMINI-INT (integration)
 
 ### Prerequisites
 
-- Node.js et pnpm installes sur MACMINI-INT
-- Service launchd configure : `io.claw-pilot.dashboard`
+- Node.js and pnpm installed on MACMINI-INT
+- launchd service configured: `io.claw-pilot.dashboard`
 
 ### Feature branch
 
 ```bash
-# 1. Pousser la branche depuis local
-git push origin feature/ma-feature
+# 1. Push branch from local
+git push origin feature/my-feature
 
-# 2. Deployer sur MACMINI-INT
+# 2. Deploy to MACMINI-INT
 ssh swoelffel@macmini.thiers '
   cd /opt/claw-pilot
   git fetch origin
-  git checkout feature/ma-feature
+  git checkout feature/my-feature
   git pull
 
-  # Build avec PATH complet (nvm)
+  # Build with full PATH (nvm)
   export PATH="/Users/swoelffel/.nvm/versions/node/v24.14.0/bin:$PATH"
   pnpm install --frozen-lockfile
   pnpm build
 
-  # REDEMARRER LE DASHBOARD (OBLIGATOIRE apres chaque build)
+  # RESTART DASHBOARD (MANDATORY after each build)
   launchctl restart io.claw-pilot.dashboard
 '
 
-# 3. Verifier
+# 3. Verify
 ssh swoelffel@macmini.thiers '
   export PATH="/Users/swoelffel/.nvm/versions/node/v24.14.0/bin:$PATH"
   curl -s http://localhost:19000 | head -5
 '
 ```
 
-### Retour sur main (apres merge PR)
+### Return to main (after PR merge)
 
 ```bash
 ssh swoelffel@macmini.thiers '
@@ -231,43 +231,43 @@ ssh swoelffel@macmini.thiers '
 '
 ```
 
-### Acces dashboard integration
+### Integration dashboard access
 
 ```
-URL : http://macmini.thiers:19000
-SSH : ssh swoelffel@macmini.thiers
+URL: http://macmini.thiers:19000
+SSH: ssh swoelffel@macmini.thiers
 ```
 
 ---
 
-## Pieges de deploiement connus
+## Known deployment pitfalls
 
-- **MACMINI-INT : toujours redemarrer le dashboard apres build**
-  - Le service launchd ne recharge pas automatiquement le code compile
-  - Apres `pnpm build`, faire : `launchctl restart io.claw-pilot.dashboard`
-  - Verifier avec : `curl http://localhost:19000 | head -5`
+- **MACMINI-INT: always restart dashboard after build**
+  - The launchd service does not automatically reload compiled code
+  - After `pnpm build`, run: `launchctl restart io.claw-pilot.dashboard`
+  - Verify with: `curl http://localhost:19000 | head -5`
 
-- **MACMINI-INT : PATH nvm obligatoire**
-  - En session SSH, exporter : `export PATH="/Users/swoelffel/.nvm/versions/node/v24.14.0/bin:$PATH"`
-  - Sans cela, `pnpm` et `npm` ne seront pas trouves
+- **MACMINI-INT: nvm PATH required**
+  - In SSH session, export: `export PATH="/Users/swoelffel/.nvm/versions/node/v24.14.0/bin:$PATH"`
+  - Without this, `pnpm` and `npm` won't be found
 
 ---
 
 ## Rollback
 
-En cas de probleme apres deploiement :
+In case of problems after deployment:
 
-### Rollback rapide (MACMINI-INT)
+### Quick rollback (MACMINI-INT)
 
 ```bash
 ssh swoelffel@macmini.thiers '
   cd /opt/claw-pilot
   export PATH="/Users/swoelffel/.nvm/versions/node/v24.14.0/bin:$PATH"
 
-  # Identifier le dernier commit fonctionnel
+  # Identify last working commit
   git log --oneline -10
 
-  # Rollback vers un commit specifique
+  # Rollback to specific commit
   git checkout <commit-hash>
   pnpm install --frozen-lockfile
   pnpm build
@@ -275,7 +275,7 @@ ssh swoelffel@macmini.thiers '
 '
 ```
 
-### Rollback branche (retour a main)
+### Branch rollback (return to main)
 
 ```bash
 ssh swoelffel@macmini.thiers '
@@ -289,4 +289,6 @@ ssh swoelffel@macmini.thiers '
 '
 ```
 
-**Important** : les migrations DB sont irreversibles (additive-only). Un rollback de code ne rollback PAS le schema DB. Si une migration a ete ajoutee, le code roule doit etre compatible avec le schema plus recent.
+**Important**: DB migrations are irreversible (additive-only). A code rollback does NOT
+rollback the DB schema. If a migration was added, the running code must be compatible
+with the newer schema.

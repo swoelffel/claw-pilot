@@ -27,6 +27,8 @@ export const templates = {
   "btn-open-ui": "UI",
   "btn-settings": "Configurações",
   "action-failed": "Ação falhou",
+  "state-starting": "Iniciando",
+  "state-stopping": "Parando",
 
   // instance-detail.ts
   "btn-back": "← Voltar",

@@ -1,49 +1,49 @@
 # UX Design — claw-pilot
 
-Référence visuelle et comportementale de tous les écrans et composants de l'application.
-Sert de base d'échange pour les évolutions d'interface.
+Visual and behavioral reference for all screens and components of the application.
+Serves as the foundation for interface evolution discussions.
 
-> **Composants source** : `ui/src/components/`  
-> **Styles partagés** : `ui/src/styles/tokens.ts` + `ui/src/styles/shared.ts`  
-> **Stack** : Lit web components, dark theme, CSS custom properties  
-> **Captures de référence** : `screen1.png` (Constructeur d'agents), `screen2.png` (Vue Instances)
+> **Source components**: `ui/src/components/`  
+> **Shared styles**: `ui/src/styles/tokens.ts` + `ui/src/styles/shared.ts`  
+> **Stack**: Lit web components, dark theme, CSS custom properties  
+> **Reference screenshots**: `screen1.png` (Agent Builder), `screen2.png` (Instances View)
 
 ---
 
-## Tokens de style globaux
+## Global style tokens
 
-| Token | Valeur | Usage |
+| Token | Value | Usage |
 |---|---|---|
-| `--bg-base` | `#0f1117` | Fond de page |
+| `--bg-base` | `#0f1117` | Page background |
 | `--bg-surface` | `#1a1d27` | Cards, panels, dialogs |
-| `--bg-hover` | `#1e2130` | Hover sur items |
-| `--bg-border` | `#2a2d3a` | Bordures |
-| `--text-primary` | `#e2e8f0` | Titres, valeurs importantes |
-| `--text-secondary` | `#94a3b8` | Corps de texte |
-| `--text-muted` | `#64748b` | Labels, métadonnées |
-| `--font-ui` | `Geist`, `-apple-system`, `sans-serif` | Police principale |
-| `--font-mono` | `Geist Mono`, `monospace` | Valeurs techniques |
-| `--accent` | `#4f6ef7` | Bleu principal (CTA, sélection) |
-| `--accent-hover` | `#6b85f8` | Bleu hover |
-| `--accent-subtle` | `rgba(79,110,247,0.08)` | Fond accent léger |
-| `--accent-border` | `rgba(79,110,247,0.25)` | Bordure accent |
-| `--state-running` | `#10b981` | Running, succès |
-| `--state-stopped` | `#64748b` | Arrêté |
-| `--state-error` | `#ef4444` | Erreur, danger |
-| `--state-warning` | `#f59e0b` | Ambre — avertissement |
+| `--bg-hover` | `#1e2130` | Hover on items |
+| `--bg-border` | `#2a2d3a` | Borders |
+| `--text-primary` | `#e2e8f0` | Headings, important values |
+| `--text-secondary` | `#94a3b8` | Body text |
+| `--text-muted` | `#64748b` | Labels, metadata |
+| `--font-ui` | `Geist`, `-apple-system`, `sans-serif` | Primary font |
+| `--font-mono` | `Geist Mono`, `monospace` | Technical values |
+| `--accent` | `#4f6ef7` | Primary blue (CTA, selection) |
+| `--accent-hover` | `#6b85f8` | Blue hover |
+| `--accent-subtle` | `rgba(79,110,247,0.08)` | Light accent background |
+| `--accent-border` | `rgba(79,110,247,0.25)` | Accent border |
+| `--state-running` | `#10b981` | Running, success |
+| `--state-stopped` | `#64748b` | Stopped |
+| `--state-error` | `#ef4444` | Error, danger |
+| `--state-warning` | `#f59e0b` | Amber — warning |
 | `--state-info` | `#0ea5e9` | Cyan — info |
 | `--focus-ring` | `0 0 0 2px rgba(79,110,247,0.5)` | Focus outline |
-| `--radius-sm` | `4px` | Badges, petits éléments |
-| `--radius-md` | `8px` | Boutons, inputs |
+| `--radius-sm` | `4px` | Badges, small elements |
+| `--radius-md` | `8px` | Buttons, inputs |
 | `--radius-lg` | `12px` | Cards, dialogs |
 
 ---
 
-## Écran 0 — Login (`cp-login-view`)
+## Screen 0 — Login (`cp-login-view`)
 
-**Fichier source** : `ui/src/components/login-view.ts`
+**Source file**: `ui/src/components/login-view.ts`
 
-Affiché à la place de toute l'application si l'utilisateur n'est pas authentifié (ou si la session a expiré). Centré verticalement et horizontalement sur `min-height: 100vh`.
+Displayed instead of the entire application if the user is not authenticated (or session expired). Centered vertically and horizontally on `min-height: 100vh`.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -71,63 +71,66 @@ Affiché à la place de toute l'application si l'utilisateur n'est pas authentif
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Éléments
+### Elements
 
-| Élément | Description |
+| Element | Description |
 |---|---|
-| **Titre** | "Claw**Pilot**" — span accent sur "Pilot", `font-size: --text-xl`, `font-weight: 700`, centré |
-| **Bandeau session expirée** | Fond ambre `rgba(245,158,11,0.1)`, bordure ambre. Visible si prop `sessionExpired = true`. Message : "Your session has expired. Please sign in again." |
-| **Username** | Input texte, pré-rempli avec `"admin"` |
-| **Password** | Input password, autofocus à l'ouverture |
-| **[Sign in]** | Bouton plein `--accent`, largeur 100%, `min-height: 44px`. Affiche "…" pendant la soumission. |
-| **Erreur** | Texte rouge centré sous le bouton. Messages : "Invalid credentials" (401), "Too many attempts. Please wait a moment." (429), "An error occurred. Please try again." (autres). |
-| **Version** | `v{APP_VERSION}` monospace muted, centré, `font-size: 11px` |
+| **Title** | "Claw**Pilot**" — accent span on "Pilot", `font-size: --text-xl`, `font-weight: 700`, centered |
+| **Session expired banner** | Amber background `rgba(245,158,11,0.1)`, amber border. Visible if prop `sessionExpired = true`. Message: "Your session has expired. Please sign in again." |
+| **Username** | Text input, pre-filled with `"admin"` |
+| **Password** | Password input, autofocus on open |
+| **[Sign in]** | Full button `--accent`, width 100%, `min-height: 44px`. Shows "…" during submission. |
+| **Error** | Red text centered below button. Messages: "Invalid credentials" (401), "Too many attempts. Please wait a moment." (429), "An error occurred. Please try again." (others). |
+| **Version** | `v{APP_VERSION}` monospace muted, centered, `font-size: 11px` |
 
-### Comportements
+### Behaviors
 
-- `Enter` dans n'importe quel champ → soumet le formulaire
-- Pendant la soumission : bouton disabled
-- Succès : émet `authenticated { token }` → `cp-app` stocke le token et initialise l'app
-- La card a `background: --bg-surface`, `border: 1px solid --bg-border`, `border-radius: 8px`, `padding: 32px`
+- `Enter` in any field → submit form
+- During submission: button disabled
+- Success: emits `authenticated { token }` → `cp-app` stores token and initializes app
+- Card has `background: --bg-surface`, `border: 1px solid --bg-border`, `border-radius: 8px`, `padding: 32px`
 
 ---
 
-## Routing hash-based
+## Hash-based routing
 
-Depuis v0.7.1, la navigation utilise des hash URLs (`#/...`). Le browser back/forward et le refresh de page fonctionnent correctement.
+Since v0.7.1, navigation uses hash URLs (`#/...`). Browser back/forward and page refresh work correctly.
 
-| Hash URL | Vue rendue | Composant |
+| Hash URL | Rendered view | Component |
 |---|---|---|
-| `#/` | Vue Instances (accueil) | `cp-cluster-view` |
-| `#/instances/:slug/builder` | Constructeur d'agents | `cp-agents-builder` |
-| `#/instances/:slug/settings` | Settings instance | `cp-instance-settings` |
-| `#/instances/:slug/pilot` | Chat interactif + panneau contexte LLM | `cp-runtime-pilot` |
-| `#/blueprints` | Vue Blueprints | `cp-blueprints-view` |
-| `#/blueprints/:id/builder` | Blueprint Builder | `cp-blueprint-builder` |
+| `#/` or `#/instances` | Instances view (home) | `cp-cluster-view` |
+| `#/instances/:slug/builder` | Agent builder | `cp-agents-builder` |
+| `#/instances/:slug/settings` | Instance settings | `cp-instance-settings` |
+| `#/instances/:slug/pilot` | Interactive chat + LLM context panel | `cp-runtime-pilot` |
+| `#/blueprints` | Blueprints view | `cp-blueprints-view` |
+| `#/blueprints/:id/builder` | Blueprint builder | `cp-blueprint-builder` |
+| `#/agent-templates` | Agent templates (reusable agent blueprints) | `cp-agent-templates-view` |
+| `#/agent-templates/:id` | Agent template detail + file editing | `cp-agent-template-detail` |
 
-La navigation entre vues émet des événements `navigate { view, slug?, blueprintId? }` capturés par `app.ts`, qui met à jour le hash URL et rend le composant correspondant.
+Navigation between views emits `navigate { view, slug?, blueprintId?, templateId? }` events captured by `app.ts`, which updates the hash URL and renders the corresponding component.
 
 ---
 
-## Navigation globale (`app.ts`)
+## Global navigation (`app.ts`)
 
-Barre de navigation fixe en haut de page (`height: 56px`, `background: --bg-surface`).
+Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`).
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  ClawPilot   Instances [2]   Blueprints [3]   ● Live  [Sign out]│
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│  ClawPilot   Instances [2]   Blueprints [3]   Templates [5]  ● Live  [Sign out]│
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-| Élément | Description |
+| Element | Description |
 |---|---|
-| **Logo** | "Claw**Pilot**" (span accent sur "Pilot") — clic → vue Instances |
-| **Instances** | Onglet actif si vue cluster, agents-builder ou instance-settings. Badge numérique si `instanceCount > 0`. |
-| **Blueprints** | Onglet actif si vue blueprints ou blueprint-builder. Badge numérique si `blueprintCount !== null && blueprintCount > 0`. |
-| **Indicateur WS** | Point vert (`--state-running`) + "Live" si connecté ; point rouge (`--state-error`) + "Offline" si déconnecté. |
-| **Sign out** | Bouton outline gris, hover rouge (`--state-error`). Appelle `POST /api/auth/logout` puis réinitialise l'état local. |
+| **Logo** | "Claw**Pilot**" (accent span on "Pilot") — click → Instances view |
+| **Instances** | Active tab if cluster view, agents-builder, or instance-settings. Numeric badge if `instanceCount > 0`. |
+| **Blueprints** | Active tab if blueprints or blueprint-builder view. Numeric badge if `blueprintCount !== null && blueprintCount > 0`. |
+| **Templates** | Active tab if agent-templates or agent-template-detail view. Numeric badge if `agentTemplateCount !== null && agentTemplateCount > 0`. Links to `#/agent-templates`. |
+| **WS indicator** | Green dot (`--state-running`) + "Live" if connected; red dot (`--state-error`) + "Offline" if disconnected. |
+| **Sign out** | Gray outline button, red hover (`--state-error`). Calls `POST /api/auth/logout` then resets local state. |
 
-**Footer** (`height: 48px`, `background: --bg-surface`) :
+**Footer** (`height: 48px`, `background: --bg-surface`):
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -135,98 +138,98 @@ Barre de navigation fixe en haut de page (`height: 56px`, `background: --bg-surf
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-| Élément | Description |
+| Element | Description |
 |---|---|
-| **ClawPilot** | Marque avec span accent, `font-weight: 600` |
-| **[vX.Y.Z]** | Badge version monospace accent (`--accent-subtle`, `--accent-border`) |
-| **GitHub** | Lien `https://github.com/swoelffel/claw-pilot`, `target="_blank"` |
-| **Issues** | Lien `https://github.com/swoelffel/claw-pilot/issues`, `target="_blank"` |
-| **Sélecteur de langue** | Bouton `🌐 XX ▾` — ouvre un dropdown vers le haut avec les 6 langues disponibles. Clic extérieur ferme le dropdown. |
-| **© année SWO** | Texte muted avec "MIT License" |
+| **ClawPilot** | Brand with accent span, `font-weight: 600` |
+| **[vX.Y.Z]** | Accent monospace version badge (`--accent-subtle`, `--accent-border`) |
+| **GitHub** | Link `https://github.com/swoelffel/claw-pilot`, `target="_blank"` |
+| **Issues** | Link `https://github.com/swoelffel/claw-pilot/issues`, `target="_blank"` |
+| **Language selector** | Button `🌐 XX ▾` — opens dropdown above with 6 available languages. Outside click closes dropdown. |
+| **© year SWO** | Muted text with "MIT License" |
 
-### Bannière update claw-pilot (`cp-self-update-banner`)
+### claw-pilot update banner (`cp-self-update-banner`)
 
-Composant `<cp-self-update-banner>` affiché **en haut du `<main>`**, au-dessus de toutes les vues (cluster, blueprints, settings…). Wrapper léger autour de `<cp-update-banner-base>`.
+Component `<cp-self-update-banner>` displayed **at top of `<main>`**, above all views (cluster, blueprints, settings…). Light wrapper around `<cp-update-banner-base>`.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  [nav header]                                                   │
 ├─────────────────────────────────────────────────────────────────┤
-│  ┌─ Bannière update claw-pilot (conditionnelle) ──────────────┐ │
+│  ┌─ claw-pilot update banner (conditional) ──────────────────┐ │
 │  │  ↑ claw-pilot update available  v0.12.0   [Update claw-pilot]│ │
 │  └─────────────────────────────────────────────────────────────┘ │
-│  [contenu de la vue active]                                     │
+│  [active view content]                                          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-| État | Style | Contenu |
+| State | Style | Content |
 |---|---|---|
-| **idle + updateAvailable** | Ambre (`--state-warning`) | "claw-pilot update available vX.Y.Z" + version courante + bouton **[Update claw-pilot]** |
+| **idle + updateAvailable** | Amber (`--state-warning`) | "claw-pilot update available vX.Y.Z" + current version + **[Update claw-pilot]** button |
 | **running** | Cyan (`--state-info`) | Spinner + "Updating claw-pilot…" + "This may take several minutes (git + build)" |
-| **done** | Vert (`--state-running`) | "claw-pilot updated → vX.Y.Z" + "Dashboard service restarted" + bouton **[×]** (dismiss) |
-| **error** | Rouge (`--state-error`) | "claw-pilot update failed" + message d'erreur + bouton **[Retry]** |
+| **done** | Green (`--state-running`) | "claw-pilot updated → vX.Y.Z" + "Dashboard service restarted" + **[×]** button (dismiss) |
+| **error** | Red (`--state-error`) | "claw-pilot update failed" + error message + **[Retry]** button |
 
-**Polling** : check immédiat au démarrage + toutes les 60s. Accéléré à 3s pendant `status === "running"`.
+**Polling**: immediate check on startup + every 60s. Accelerated to 3s during `status === "running"`.
 
-**Post-done** : `location.reload()` automatique après 2s (charge le nouveau bundle JS). Si le reload n'arrive pas (restart lent, problème réseau), le bouton **×** permet de fermer manuellement le bandeau.
+**Post-done**: automatic `location.reload()` after 2s (loads new JS bundle). If reload doesn't happen (slow restart, network issue), **×** button allows manual banner close.
 
-**Événement** : le bouton Update/Retry émet `cp-update-action` (bubbles + composed) → capturé par `cp-app` via `@cp-update-action` sur `<main>`.
+**Event**: Update/Retry button emits `cp-update-action` (bubbles + composed) → captured by `cp-app` via `@cp-update-action` on `<main>`.
 
-**Source de version** : GitHub Releases API (`/repos/swoelffel/claw-pilot/releases/latest`). Comparaison semver standard.
+**Version source**: GitHub Releases API (`/repos/swoelffel/claw-pilot/releases/latest`). Standard semver comparison.
 
 ---
 
-## Composant partagé : Bannière de mise à jour (`cp-update-banner-base`)
+## Shared Component: Update Banner (`cp-update-banner-base`)
 
-**Fichier source** : `ui/src/components/update-banner-base.ts`
+**Source file**: `ui/src/components/update-banner-base.ts`
 
-Composant Lit de base factorisant le CSS et la structure HTML du bandeau de mise à jour claw-pilot. Non utilisé directement — instancié via le wrapper `cp-self-update-banner`.
+Base Lit component factoring CSS and HTML structure for the claw-pilot update banner. Not used directly — instantiated via the `cp-self-update-banner` wrapper.
 
 ### Props
 
 | Prop | Type | Description |
 |---|---|---|
-| `status` | `SelfUpdateStatus \| null` | Statut de mise à jour passé par le wrapper |
-| `productName` | `string` | Nom du produit affiché dans les messages (ex: `"claw-pilot"`) |
-| `buttonLabel` | `string` | Label du bouton d'action (état idle+updateAvailable) |
-| `runningSubtitle` | `string` | Sous-titre affiché pendant l'état running |
-| `doneSubtitle` | `string` | Sous-titre affiché après succès (état done) |
-| `dismissable` | `boolean` | Si `true`, affiche un bouton × sur l'état done |
+| `status` | `SelfUpdateStatus \| null` | Update status passed by the wrapper |
+| `productName` | `string` | Product name displayed in messages (e.g., `"claw-pilot"`) |
+| `buttonLabel` | `string` | Action button label (idle+updateAvailable state) |
+| `runningSubtitle` | `string` | Subtitle displayed during running state |
+| `doneSubtitle` | `string` | Subtitle displayed after success (done state) |
+| `dismissable` | `boolean` | If `true`, displays × button on done state |
 
-### Événements émis
+### Emitted Events
 
-| Événement | Condition | Description |
+| Event | Condition | Description |
 |---|---|---|
-| `cp-update-action` | Clic Update ou Retry | Bubbles + composed. Capturé par le wrapper qui le re-émet. |
-| `cp-update-dismiss` | Clic × (si dismissable) | Bubbles + composed. Dismiss local (état `_dismissed`). |
+| `cp-update-action` | Update or Retry click | Bubbles + composed. Captured by wrapper which re-emits. |
+| `cp-update-dismiss` | × click (if dismissable) | Bubbles + composed. Local dismiss (state `_dismissed`). |
 
-### Comportement dismiss
+### Dismiss Behavior
 
-- L'état `_dismissed` est local au composant (propriété `@state`).
-- Il se reset automatiquement si `status` change (nouveau cycle de mise à jour).
-- Le dismiss est purement visuel — aucun appel API.
+- The `_dismissed` state is local to the component (property `@state`).
+- It automatically resets if `status` changes (new update cycle).
+- Dismiss is purely visual — no API calls.
 
-### Design system
+### Design System
 
-Mêmes tokens que le reste de l'application :
+Same tokens as the rest of the application:
 
-| État | Couleur | Token |
+| State | Color | Token |
 |---|---|---|
-| warning (update dispo) | Ambre | `--state-warning` (#f59e0b) |
-| info (en cours) | Cyan | `--state-info` (#0ea5e9) |
-| success (done) | Vert | `--state-running` (#10b981) |
-| error | Rouge | `--state-error` (#ef4444) |
+| warning (update available) | Amber | `--state-warning` (#f59e0b) |
+| info (in progress) | Cyan | `--state-info` (#0ea5e9) |
+| success (done) | Green | `--state-running` (#10b981) |
+| error | Red | `--state-error` (#ef4444) |
 
-Spinner : `border: 2px solid currentColor`, `border-top-color: transparent`, `animation: spin 0.7s linear infinite`.  
-Tags de version : `font-family: var(--font-mono)`, `font-size: 12px`, `font-weight: 600`.
+Spinner: `border: 2px solid currentColor`, `border-top-color: transparent`, `animation: spin 0.7s linear infinite`.  
+Version tags: `font-family: var(--font-mono)`, `font-size: 12px`, `font-weight: 600`.
 
 ---
 
-## Écran 1 — Vue Instances (`cp-cluster-view`)
+## Screen 1 — Instances View (`cp-cluster-view`)
 
-**Fichier source** : `ui/src/components/cluster-view.ts`
+**Source file**: `ui/src/components/cluster-view.ts`
 
-Page d'accueil. Grille de cards d'instances. `padding: 24px`.
+Home page. Grid of instance cards. `padding: 24px`.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -238,16 +241,16 @@ Page d'accueil. Grille de cards d'instances. `padding: 24px`.
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### États
+### States
 
-| État | Rendu |
+| State | Rendering |
 |---|---|
-| **Chargement** | Texte centré "Loading instances..." (early return — header non affiché) |
-| **Erreur** | Bandeau d'erreur rouge en haut, grille vide |
-| **Vide** | Icône + "No instances found" centré + bouton **[Discover instances]** |
-| **Normal** | Header "N instances" + grille `auto-fill minmax(300px, 1fr)`, gap 16px |
+| **Loading** | Centered text "Loading instances..." (early return — header not shown) |
+| **Error** | Red error banner at top, empty grid |
+| **Empty** | Icon + "No instances found" centered + **[Discover instances]** button |
+| **Normal** | Header "N instances" + grid `auto-fill minmax(300px, 1fr)`, gap 16px |
 
-**État vide — détail :**
+**Empty state — detail:**
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -260,136 +263,136 @@ Page d'accueil. Grille de cards d'instances. `padding: 24px`.
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-Le bouton **[Discover instances]** (`btn btn-secondary`) ouvre le dialog `cp-discover-dialog` qui scanne le système à la recherche d'instances claw-runtime existantes et propose de les adopter.
+The **[Discover instances]** button (`btn btn-secondary`) opens the `cp-discover-dialog` which scans the system for existing claw-runtime instances and offers to adopt them.
 
 ### Interactions
 
-- **Clic sur une card** → navigation vers la Vue Détail de l'instance
-- **Bouton "+ New Instance"** → ouvre le Dialog de création (`cp-create-dialog`)
-- Après création : ferme le dialog + recharge la liste
+- **Click on a card** → navigate to Instance Detail view
+- **"+ New Instance" button** → open creation dialog (`cp-create-dialog`)
+- After creation: close dialog + reload list
 
 ---
 
-## Composant : Instance Card (`cp-instance-card`)
+## Component: Instance Card (`cp-instance-card`)
 
-**Fichier source** : `ui/src/components/instance-card.ts`
+**Source file**: `ui/src/components/instance-card.ts`
 
 ```
-┌────────────────────────────────────────────────┐
-│  Mon instance    ⚡ runtime  ● running  [···]  │  ← header
+┌────────────────────────────────────────────┐
+│  My instance    ⚡ runtime  ● running  [···]  │  ← header
 │  default                                       │
-├────────────────────────────────────────────────┤
+├────────────────────────────────────────────┤
 │  ◉ Gateway  ✈ @my_bot  ⬡ 11 agents  ⚠ PERM   │  ← status bar
-├────────────────────────────────────────────────┤
-│  anthropic/claude-sonnet-4-5                   │  ← modèle
+├────────────────────────────────────────────┤
+│  anthropic/claude-sonnet-4-5                   │  ← model
 │  :18789                                        │  ← port
 │                                                │
-│  (message d'erreur si échec)                   │  ← erreur conditionnelle
-└────────────────────────────────────────────────┘
+│  (error message if failure)                    │  ← conditional error
+└────────────────────────────────────────────┘
 ```
 
-### Hiérarchie typographique
+### Typography Hierarchy
 
-| Élément | Taille | Poids | Couleur |
+| Element | Size | Weight | Color |
 |---|---|---|---|
-| `display_name` (ou slug si absent) | 16px | 700 | `--text-primary` |
-| `slug` (si display_name défini) | 11px | 400 | `--text-muted`, monospace |
-| Modèle | 13px | 400 | `--text-secondary`, monospace |
+| `display_name` (or slug if absent) | 16px | 700 | `--text-primary` |
+| `slug` (if display_name defined) | 11px | 400 | `--text-muted`, monospace |
+| Model | 13px | 400 | `--text-secondary`, monospace |
 | Port | 11px | 400 | `--text-muted`, monospace |
 
 ### Zone 1 — Header
 
 Flex row `justify-content: space-between`, `gap: 10px`.
 
-**Côté gauche :**
+**Left side:**
 
-| Élément | Description |
+| Element | Description |
 |---|---|
-| **display_name** | `font-size: 16px`, `font-weight: 700`, `--text-primary`. Si `display_name` est null, affiche le slug à la place. |
-| **slug** *(conditionnel)* | `font-size: 11px`, `--text-muted`, monospace, `margin-top: 2px`. Affiché uniquement si `display_name` est défini. |
+| **display_name** | `font-size: 16px`, `font-weight: 700`, `--text-primary`. If `display_name` is null, displays slug instead. |
+| **slug** *(conditional)* | `font-size: 11px`, `--text-muted`, monospace, `margin-top: 2px`. Displayed only if `display_name` is defined. |
 
-**Côté droit** (`card-header-right`, flex row `gap: 8px`) :
+**Right side** (`card-header-right`, flex row `gap: 8px`):
 
-| Élément | Description |
+| Element | Description |
 |---|---|
-| **Badge `⚡ runtime`** | Pill violet indigo `rgba(99,102,241,0.12)` / `#818cf8`. Toujours affiché. Indique le moteur claw-runtime. |
-| **Badge état** | Pill coloré avec point lumineux + label texte de l'état. |
-| **Bouton `···`** | Bouton menu 28×28px. Ouvre le popover d'actions au clic. Classe `open` quand actif. |
+| **`⚡ runtime` badge** | Pill indigo violet `rgba(99,102,241,0.12)` / `#818cf8`. Always displayed. Indicates claw-runtime engine. |
+| **State badge** | Colored pill with glowing dot + state text label. |
+| **`···` button** | 28×28px menu button. Opens action popover on click. `open` class when active. |
 
-**États du badge :**
+**Badge states:**
 
-| État | Couleur |
+| State | Color |
 |---|---|
-| `running` | Vert `--state-running` |
-| `stopped` | Gris `--state-stopped` |
-| `error` | Rouge `--state-error` |
-| `unknown` | Gris |
+| `running` | Green `--state-running` |
+| `stopped` | Gray `--state-stopped` |
+| `error` | Red `--state-error` |
+| `unknown` | Gray |
 
 ### Zone 2 — Status bar
 
-Flex row, `gap: 10px`, `flex-wrap: wrap`, séparée du header et du meta par des bordures `--bg-border`. Masquée si aucun indicateur à afficher (`items.length === 0`).
+Flex row, `gap: 10px`, `flex-wrap: wrap`, separated from header and meta by `--bg-border` borders. Hidden if no indicators to display (`items.length === 0`).
 
-| Indicateur | Condition | Style |
+| Indicator | Condition | Style |
 |---|---|---|
-| `◉ Gateway` | `state === "running"` ET `gateway === "healthy"` | Vert `--state-running` |
-| `◎ Gateway KO` | `state === "running"` ET `gateway === "unhealthy"` | Rouge `--state-error` |
-| `✈ @bot` | `telegram_bot` défini ET `telegram !== "disconnected"` | Pill bleu `#0088cc` |
-| `✈ @bot ⚠` | `telegram_bot` défini ET `telegram === "disconnected"` | Pill ambre `--state-warning` |
-| `⬡ N agent(s)` | `agentCount > 0` | Texte `--text-muted` |
+| `◉ Gateway` | `state === "running"` AND `gateway === "healthy"` | Green `--state-running` |
+| `◎ Gateway Error` | `state === "running"` AND `gateway === "unhealthy"` | Red `--state-error` |
+| `✈ @bot` | `telegram_bot` defined AND `telegram !== "disconnected"` | Pill blue `#0088cc` |
+| `✈ @bot ⚠` | `telegram_bot` defined AND `telegram === "disconnected"` | Pill amber `--state-warning` |
+| `⬡ N agent(s)` | `agentCount > 0` | Text `--text-muted` |
 | ~~`⚠ N device(s)`~~ | *(removed in v0.34.0 — device pairing no longer supported)* | — |
-| `⚠ PERM` | `pendingPermissions > 0` | Pill rouge cliquable → `navigate { view: "instance-settings", section: "runtime" }`. `font-weight: 700`. |
+| `⚠ PERM` | `pendingPermissions > 0` | Clickable red pill → `navigate { view: "instance-settings", section: "runtime" }`. `font-weight: 700`. |
 
 ### Zone 3 — Meta
 
-Colonne flex, `gap: 4px`.
+Flex column, `gap: 4px`.
 
-| Champ | Condition | Style |
+| Field | Condition | Style |
 |---|---|---|
-| **Modèle** | Si `default_model` défini. Résolution intelligente : si JSON `{"primary":"..."}`, extrait la clé `primary`. | `font-size: 13px`, `--text-secondary`, monospace |
-| **Port** | Toujours. | `font-size: 11px`, `--text-muted`, monospace |
+| **Model** | If `default_model` defined. Smart resolution: if JSON `{"primary":"..."}`, extracts `primary` key. | `font-size: 13px`, `--text-secondary`, monospace |
+| **Port** | Always. | `font-size: 11px`, `--text-muted`, monospace |
 
-### Zone 4 — Erreur *(conditionnelle)*
+### Zone 4 — Error *(conditional)*
 
-`font-size: 11px`, `--state-error`, `margin-top: 8px`. Affiché si une action start/stop/restart échoue. Message résolu via `userMessage()`.
+`font-size: 11px`, `--state-error`, `margin-top: 8px`. Displayed if a start/stop/restart action fails. Message resolved via `userMessage()`.
 
 ### Menu popover `···`
 
-Ouvert au clic sur le bouton `···`. Fermé au clic extérieur (listener `document click`). Position `absolute`, `top: calc(100% + 4px)`, `right: 0`, `z-index: 100`, `min-width: 164px`, `box-shadow: 0 4px 20px rgba(0,0,0,0.45)`.
+Opened on `···` button click. Closed on outside click (listener `document click`). Position `absolute`, `top: calc(100% + 4px)`, `right: 0`, `z-index: 100`, `min-width: 164px`, `box-shadow: 0 4px 20px rgba(0,0,0,0.45)`.
 
 ```
 ┌─────────────────────┐
-│  ■  Stop            │  ← rouge si running / ▶ Start vert si stopped
+│  ■  Stop            │  ← red if running / ▶ Start green if stopped
 │  ─────────────────  │
-│  ⬡  Agents          │  ← visible si running OU agentCount > 0
-│  ⚙  Settings        │  ← toujours
-│  ↺  Restart         │  ← visible si state === "running"
+│  ⬡  Agents          │  ← visible if running OR agentCount > 0
+│  ⚙  Settings        │  ← always
+│  ↺  Restart         │  ← visible if state === "running"
 │  ─────────────────  │
-│  ✕  Delete          │  ← danger, séparé
+│  ✕  Delete          │  ← danger, separated
 └─────────────────────┘
 ```
 
-| Item | Condition | Style | Comportement |
+| Item | Condition | Style | Behavior |
 |---|---|---|---|
-| **■ Stop / ▶ Start** | Toujours | Rouge `.stop` si running, vert `.start` si stopped | Appel API `stopInstance` / `startInstance`. Disabled pendant `_loading`. |
-| **⬡ Agents** | `state === "running"` OU `agentCount > 0` | Normal | Émet `navigate { view: "agents-builder", slug }` |
-| **⚙ Settings** | Toujours | Normal | Émet `navigate { view: "instance-settings", slug }` |
-| **↺ Restart** | `state === "running"` | Normal | Appel API `restartInstance(slug)` |
-| **✕ Delete** | Toujours | Rouge `.danger` | Émet `request-delete { slug }` (confirmation gérée par le parent) |
+| **■ Stop / ▶ Start** | Always | Red `.stop` if running, green `.start` if stopped | Call `stopInstance` / `startInstance` API. Disabled during `_loading`. |
+| **⬡ Agents** | `state === "running"` OR `agentCount > 0` | Normal | Emit `navigate { view: "agents-builder", slug }` |
+| **⚙ Settings** | Always | Normal | Emit `navigate { view: "instance-settings", slug }` |
+| **↺ Restart** | `state === "running"` | Normal | Call `restartInstance(slug)` API |
+| **✕ Delete** | Always | Red `.danger` | Emit `request-delete { slug }` (confirmation handled by parent) |
 
-Tous les items : `stopPropagation()` + `_menuOpen = false` avant action.
+All items: `stopPropagation()` + `_menuOpen = false` before action.
 
-### Comportements
+### Behaviors
 
-- **Clic `···`** : `stopPropagation()` + toggle `_menuOpen`
-- **Clic extérieur** : ferme le popover via listener `document click` (ajouté dans `connectedCallback`, retiré dans `disconnectedCallback`)
-- **Clic pill devices** : `stopPropagation()` + `navigate { view: "instance-settings", section: "devices" }`
-- **Clic pill PERM** : `stopPropagation()` + `navigate { view: "instance-settings", section: "runtime" }`
+- **`···` click**: `stopPropagation()` + toggle `_menuOpen`
+- **Outside click**: close popover via `document click` listener (added in `connectedCallback`, removed in `disconnectedCallback`)
+- **Devices pill click**: `stopPropagation()` + `navigate { view: "instance-settings", section: "devices" }`
+- **PERM pill click**: `stopPropagation()` + `navigate { view: "instance-settings", section: "runtime" }`
 
-### Données temps réel (WebSocket)
+### Real-time Data (WebSocket)
 
-Le handler `health_update` dans `app.ts` propage les champs suivants vers `InstanceInfo` à chaque tick :
+The `health_update` handler in `app.ts` broadcasts the following fields to `InstanceInfo` on each tick:
 
-| Champ | Type |
+| Field | Type |
 |---|---|
 | `gateway` | `"healthy" \| "unhealthy" \| "unknown"` |
 | `state` | `"running" \| "stopped" \| "error" \| "unknown"` |
@@ -400,11 +403,11 @@ Le handler `health_update` dans `app.ts` propage les champs suivants vers `Insta
 
 ---
 
-## Écran 2 — Vue Détail Instance (`cp-instance-detail`)
+## Screen 2 — Instance Detail View (`cp-instance-detail`)
 
-**Fichier source** : `ui/src/components/instance-detail.ts`
+**Source file**: `ui/src/components/instance-detail.ts`
 
-Vue complète d'une instance. Largeur max `1100px`, centrée.
+Full view of an instance. Max width `1100px`, centered.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -412,7 +415,7 @@ Vue complète d'une instance. Largeur max `1100px`, centrée.
 │                                                                 │
 │  default                                    ● RUNNING          │
 │                                                                 │
-│  [Arrêter]  [Redémarrer]  [⎋ Open UI]  [Delete]               │
+│  [Stop]  [Restart]  [⎋ Open UI]  [Delete]                     │
 │                                                                 │
 │  ┌─ Instance Info ──────────────────────────────────────────┐  │
 │  │  PORT  SYSTEMD UNIT  TELEGRAM  MODEL  CONFIG  STATE DIR  │  │
@@ -428,80 +431,80 @@ Vue complète d'une instance. Largeur max `1100px`, centrée.
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Bouton ← Back
+### Back Button ← 
 
-Outline gris, hover violet `#6c63ff`. Émet `navigate { slug: null }` → retour à la vue Instances.
+Gray outline, violet hover `#6c63ff`. Emit `navigate { slug: null }` → return to Instances view.
 
-### Header détail
+### Detail Header
 
-- **Titre** : slug en `font-size: 28px`, `font-weight: 700`
-- **Sous-titre** : display_name si défini, `font-size: 14px`, `--text-secondary`
-- **Badge état** : pill avec point, même logique que la card mais plus grand (`border-radius: 20px`)
+- **Title**: slug at `font-size: 28px`, `font-weight: 700`
+- **Subtitle**: display_name if defined, `font-size: 14px`, `--text-secondary`
+- **State badge**: pill with dot, same logic as card but larger (`border-radius: 20px`)
 
-### Barre d'actions
+### Action Bar
 
-Boutons affichés selon l'état de l'instance :
+Buttons displayed based on instance state:
 
-| Bouton | Visible si | Style |
+| Button | Visible if | Style |
 |---|---|---|
-| **Démarrer** | `stopped`, `error`, `unknown` | Vert outline |
-| **Arrêter** | `running` | Rouge outline |
-| **Redémarrer** | `running`, `error`, `unknown` | Violet outline `#6c63ff` |
-| **⎋ Open UI** | `running` | Ambre outline. URL = nginx_domain si défini, sinon `localhost:port` |
-| **Delete** | Toujours | Rouge discret, `margin-left: auto` (poussé à droite) |
+| **Start** | `stopped`, `error`, `unknown` | Green outline |
+| **Stop** | `running` | Red outline |
+| **Restart** | `running`, `error`, `unknown` | Violet outline `#6c63ff` |
+| **⎋ Open UI** | `running` | Amber outline. URL = nginx_domain if defined, else `localhost:port` |
+| **Delete** | Always | Subtle red, `margin-left: auto` (pushed right) |
 
-Tous disabled pendant `_actionLoading` ou `_deleting`.
+All disabled during `_actionLoading` or `_deleting`.
 
-### Confirmation de suppression (inline)
+### Deletion Confirmation (inline)
 
-Apparaît sous la barre d'actions quand "Delete" est cliqué.
+Appears below action bar when "Delete" is clicked.
 
 ```
 ┌─ Permanently destroy "default"? ─────────────────────────────┐
 │  This will stop the service, remove all files...              │
-│  [input: tapez le slug]  [Destroy]  [Cancel]                  │
+│  [input: type the slug]  [Destroy]  [Cancel]                 │
 └───────────────────────────────────────────────────────────────┘
 ```
 
-- Fond rouge très transparent, bordure rouge
-- Input monospace, focus rouge
-- Bouton **Destroy** disabled tant que l'input ≠ slug exact
-- Bouton **Destroy** devient "Deleting…" pendant l'opération
-- `Enter` dans l'input → confirme | `Escape` → annule
+- Very transparent red background, red border
+- Input monospace, red focus
+- **Destroy** button disabled while input ≠ exact slug
+- **Destroy** button shows "Deleting…" during operation
+- `Enter` in input → confirms | `Escape` → cancels
 
-### Section Instance Info
+### Instance Info Section
 
-Grid `auto-fill minmax(200px, 1fr)`. Chaque item : label uppercase muted + valeur monospace.
+Grid `auto-fill minmax(200px, 1fr)`. Each item: uppercase muted label + monospace value.
 
-Champs : Port, Systemd Unit, Telegram Bot *(si défini)*, Default Model *(si défini)*, Config Path, State Dir, Created.
+Fields: Port, Systemd Unit, Telegram Bot *(if defined)*, Default Model *(if defined)*, Config Path, State Dir, Created.
 
-### Section Agents
+### Agents Section
 
-Tableau avec colonnes : ID | Name | Model | Workspace.  
-Badge `default` violet sur l'agent par défaut.  
-Si vide : texte centré "No agents registered".
+Table with columns: ID | Name | Model | Workspace.  
+`default` badge violet on default agent.  
+If empty: centered text "No agents registered".
 
-### Section Recent Conversations
+### Recent Conversations Section
 
-Liste des 10 dernières conversations. Chaque entrée sur une ligne :
+List of last 10 conversations. Each entry on one line:
 
 ```
-HH:MM:SS   ● from-agent → to-agent   message tronqué
+HH:MM:SS   ● from-agent → to-agent   truncated message
 ```
 
-- **Heure** : monospace, `--text-muted`
-- **Point de statut** : ambre (`running`), vert (`done`), rouge (`failed`)
-- **from** : violet `#6c63ff`, monospace
-- **to** : vert `#10b981`, monospace
-- **Message** : tronqué avec ellipsis
+- **Time**: monospace, `--text-muted`
+- **Status dot**: amber (`running`), green (`done`), red (`failed`)
+- **from**: violet `#6c63ff`, monospace
+- **to**: green `#10b981`, monospace
+- **Message**: truncated with ellipsis
 
 ---
 
-## Dialog : Nouvelle Instance (`cp-create-dialog`)
+## Dialog: New Instance (`cp-create-dialog`)
 
-**Fichier source** : `ui/src/components/create-dialog.ts`
+**Source file**: `ui/src/components/create-dialog.ts`
 
-Modal centré, overlay sombre avec `backdrop-filter: blur(4px)`. Largeur max `560px`.
+Centered modal, dark overlay with `backdrop-filter: blur(4px)`. Max width `560px`.
 
 ```
 ┌─ New Instance ──────────────────────────── [✕] ┐
@@ -532,59 +535,59 @@ Modal centré, overlay sombre avec `backdrop-filter: blur(4px)`. Largeur max `56
 
 ### Sections
 
-| Section | Champs |
+| Section | Fields |
 |---|---|
-| **Identity** | Slug * (validation temps réel), Display name (auto-rempli depuis slug) |
-| **Configuration** | Gateway port * (auto-suggéré via API) |
-| **Provider** | AI Provider (select), Default model (select), API Key * (si provider requiresKey) |
-| **Team Blueprint** | Select optionnel parmi les blueprints existants |
-| **Agent team** | Toggle Minimal / Custom. En mode Custom : liste d'agents (id + nom) + bouton "+ Add agent" |
+| **Identity** | Slug * (real-time validation), Display name (auto-filled from slug) |
+| **Configuration** | Gateway port * (auto-suggested via API) |
+| **Provider** | AI Provider (select), Default model (select), API Key * (if provider requiresKey) |
+| **Team Blueprint** | Optional select from existing blueprints |
+| **Agent team** | Toggle Minimal / Custom. In Custom mode: agent list (id + name) + "+ Add agent" button |
 
-### Validation du slug
+### Slug Validation
 
-- Auto-lowercase, caractères `[a-z0-9-]` uniquement
-- Erreur inline si vide / format invalide / longueur hors 2-30
-- Auto-remplit le Display name (capitalisé, tirets → espaces) tant que l'utilisateur ne l'a pas modifié manuellement
+- Auto-lowercase, characters `[a-z0-9-]` only
+- Inline error if empty / invalid format / length outside 2-30
+- Auto-fills Display name (capitalized, dashes → spaces) while user hasn't manually edited it
 
-### État de soumission
+### Submission State
 
-Pendant le provisioning : le formulaire est remplacé par un spinner + message "Provisioning instance **slug**..." (+ "Deploying blueprint agents..." si blueprint sélectionné).
+During provisioning: form replaced by spinner + message "Provisioning instance **slug**..." (+ "Deploying blueprint agents..." if blueprint selected).
 
-### Fermeture
+### Closing
 
-- Bouton ✕ (disabled pendant soumission)
-- Clic sur l'overlay
-- Bouton Cancel
+- ✕ button (disabled during submission)
+- Click on overlay
+- Cancel button
 
 ---
 
-## Composant : Runtime Chat (`cp-runtime-chat`)
+## Component: Runtime Chat (`cp-runtime-chat`)
 
-**Fichier source** : `ui/src/components/runtime-chat.ts`
+**Source file**: `ui/src/components/runtime-chat.ts`
 
-Composant de chat temps réel avec un agent claw-runtime via SSE. Intégré dans la section **Runtime** des Settings instance. Layout flex colonne, hauteur 100% de son conteneur. Fond `--bg-surface`.
+Real-time chat component with a claw-runtime agent via SSE. Integrated in **Runtime** section of Instance Settings. Flex column layout, 100% height of container. Background `--bg-surface`.
 
 ```
 ┌─ cp-runtime-chat ─────────────────────────────────────────────┐
 │  [Agent ▼]  🔒 Permanent                     [···]            │  ← header (permanent agent)
-│  — ou —                                                       │
+│  — or —                                                       │
 │  [Agent ▼]  [Session selector ▼]  [+ New]                     │  ← header (ephemeral agent)
 ├───────────────────────────────────────────────────────────────┤
 │                                                               │
-│  (zone messages — flex: 1, overflow-y: auto)                  │  ← messages
+│  (message zone — flex: 1, overflow-y: auto)                   │  ← messages
 │                                                               │
-│  ┌─ message user ──────────────────────────────────────────┐  │
-│  │  Mon message                                            │  │
+│  ┌─ user message ──────────────────────────────────────────┐  │
+│  │  My message                                             │  │
 │  └─────────────────────────────────────────────────────────┘  │
-│  ┌─ message assistant ─────────────────────────────────────┐  │
-│  │  Réponse de l'agent                                     │  │
+│  ┌─ assistant message ─────────────────────────────────────┐  │
+│  │  Agent response                                         │  │
 │  └─────────────────────────────────────────────────────────┘  │
-│  [spinner]  Agent is thinking…                                │  ← état sending/streaming
+│  [spinner]  Agent is thinking…                                │  ← sending/streaming state
 │                                                               │
 ├───────────────────────────────────────────────────────────────┤
 │  [textarea…]                                    [Send]        │  ← input
 ├───────────────────────────────────────────────────────────────┤
-│  (bandeau d'erreur si connexion perdue)                       │  ← erreur conditionnelle
+│  (error banner if connection lost)                            │  ← conditional error
 └───────────────────────────────────────────────────────────────┘
 ```
 
@@ -592,99 +595,99 @@ Composant de chat temps réel avec un agent claw-runtime via SSE. Intégré dans
 
 Flex row, `padding: 10px 12px`, `border-bottom: 1px solid --bg-border`, `gap: 8px`.
 
-| Élément | Description |
+| Element | Description |
 |---|---|
-| **Agent selector** | `<select>` affiché si l'instance a plusieurs agents. Sélection de l'agent courant. |
-| **Badge 🔒 Permanent** | Affiché si l'agent courant est permanent (`persistent === true`). Texte muted. |
-| **Session selector** | `<select>` flex:1. Option "New session" + sessions existantes. **Masqué pour les agents permanents** (une seule session). |
-| **[+ New]** | `btn btn-ghost`, `font-size: 12px`. Crée une nouvelle session. **Masqué pour les agents permanents**. |
-| **[···]** | Menu dropdown avec actions. L'option "New session" est **masquée pour les agents permanents**. |
+| **Agent selector** | `<select>` displayed if instance has multiple agents. Selects current agent. |
+| **🔒 Permanent badge** | Displayed if current agent is permanent (`persistent === true`). Muted text. |
+| **Session selector** | `<select>` flex:1. "New session" option + existing sessions. **Hidden for permanent agents** (single session). |
+| **[+ New]** | `btn btn-ghost`, `font-size: 12px`. Creates new session. **Hidden for permanent agents**. |
+| **[···]** | Dropdown menu with actions. "New session" option is **hidden for permanent agents**. |
 
-### Zone messages
+### Message Zone
 
-- Fond transparent, `padding: 16px`, `gap: 12px`
-- **État vide** : "Start a conversation with the agent" centré, `--text-muted`. Affiché si `messages.length === 0` ET pas de streaming ET `status === "idle"`.
-- **Message user** : `background: --bg-hover`, aligné à droite (`align-self: flex-end`), `max-width: 85%`, `border-radius: --radius-md`
-- **Message assistant** : fond transparent, `border: 1px solid --bg-border`, aligné à gauche (`align-self: flex-start`)
-- **Message streaming** : même style assistant + curseur `▋` clignotant + `opacity: 0.85`
-- **Spinner "thinking"** : affiché si `status === "sending"` ou `status === "streaming"` sans texte accumulé. Spinner 16px + "Agent is thinking…"
+- Transparent background, `padding: 16px`, `gap: 12px`
+- **Empty state**: "Start a conversation with the agent" centered, `--text-muted`. Displayed if `messages.length === 0` AND no streaming AND `status === "idle"`.
+- **User message**: `background: --bg-hover`, right-aligned (`align-self: flex-end`), `max-width: 85%`, `border-radius: --radius-md`
+- **Assistant message**: transparent background, `border: 1px solid --bg-border`, left-aligned (`align-self: flex-start`)
+- **Streaming message**: same assistant style + blinking `▋` cursor + `opacity: 0.85`
+- **"Thinking" spinner**: displayed if `status === "sending"` or `status === "streaming"` without accumulated text. 16px spinner + "Agent is thinking…"
 
 ### Input
 
 - `<textarea>` flex:1, `rows="2"`, `resize: none`, `background: --bg-hover`
-- Placeholder : "Message… (Enter to send, Shift+Enter for newline)"
-- `Enter` (sans Shift) → envoie le message
-- `Shift+Enter` → saut de ligne
-- Disabled si `status !== "idle"`
-- **[Send]** : `btn btn-primary`, disabled si textarea vide ou status ≠ idle
+- Placeholder: "Message… (Enter to send, Shift+Enter for newline)"
+- `Enter` (without Shift) → send message
+- `Shift+Enter` → newline
+- Disabled if `status !== "idle"`
+- **[Send]**: `btn btn-primary`, disabled if textarea empty or status ≠ idle
 
-### Flux SSE
+### SSE Stream
 
-Ouvert via `EventSource` sur `GET /api/instances/:slug/runtime/sessions/:id/stream` (URL construite par `getRuntimeChatStreamUrl()`).
+Opened via `EventSource` on `GET /api/instances/:slug/runtime/sessions/:id/stream` (URL built by `getRuntimeChatStreamUrl()`).
 
-| Événement SSE | Comportement |
+| SSE Event | Behavior |
 |---|---|
-| `message.part.delta` | Accumule `_streamingText` += `payload.delta`, status → streaming |
-| `message.created` (assistant) | Réinitialise `_streamingText = ""`, status → streaming |
-| `message.updated` | Vide `_streamingText = ""`, status → idle |
+| `message.part.delta` | Accumulate `_streamingText` += `payload.delta`, status → streaming |
+| `message.created` (assistant) | Reset `_streamingText = ""`, status → streaming |
+| `message.updated` | Clear `_streamingText = ""`, status → idle |
 | `session.status` (`busy`) | status → streaming |
-| `session.status` (`idle`) | status → idle **seulement si** on est en streaming sans texte accumulé (évite de couper un stream en cours) |
-| `session.ended` | status → idle, vide `_streamingText` |
-| `ping` | Ignoré (keep-alive) |
-| Erreur SSE | status → error, message "Connection to runtime lost. Please refresh.", ferme le stream |
+| `session.status` (`idle`) | status → idle **only if** streaming without accumulated text (avoids cutting current stream) |
+| `session.ended` | status → idle, clear `_streamingText` |
+| `ping` | Ignored (keep-alive) |
+| SSE error | status → error, message "Connection to runtime lost. Please refresh.", close stream |
 
-### Premier message (nouvelle session)
+### First Message (new session)
 
-Le premier message d'une nouvelle session est envoyé via `POST /api/instances/:slug/runtime/chat`. La réponse HTTP (`RuntimeChatResponse`) contient : `sessionId`, `messageId`, `text`, `tokens` (`{ input, output }`), `costUsd`, `steps`. Le stream SSE est ouvert **après** réception de la réponse. La liste des sessions est rechargée pour inclure la nouvelle session dans le dropdown.
+First message of new session sent via `POST /api/instances/:slug/runtime/chat`. HTTP response (`RuntimeChatResponse`) contains: `sessionId`, `messageId`, `text`, `tokens` (`{ input, output }`), `costUsd`, `steps`. SSE stream opened **after** response received. Sessions list reloaded to include new session in dropdown.
 
-### Chargement initial
+### Initial Loading
 
-Au `connectedCallback`, le composant charge en parallèle :
-- Les sessions actives via `fetchRuntimeSessions(slug)`
-- Les sessions archivées via `GET /api/instances/:slug/runtime/sessions?state=archived&limit=20`
+On `connectedCallback`, component loads in parallel:
+- Active sessions via `fetchRuntimeSessions(slug)`
+- Archived sessions via `GET /api/instances/:slug/runtime/sessions?state=archived&limit=20`
 
-Les deux listes sont fusionnées dans `_sessions`. La première session active est auto-sélectionnée.
+Both lists merged into `_sessions`. First active session auto-selected.
 
 ### Props
 
 | Prop | Type | Description |
 |---|---|---|
-| `slug` | `string` | Slug de l'instance |
+| `slug` | `string` | Instance slug |
 
-### État interne
+### Internal State
 
 | State | Type | Description |
 |---|---|---|
-| `_sessions` | `RuntimeSession[]` | Sessions actives + archivées fusionnées |
-| `_sessionId` | `string \| null` | ID session sélectionnée (`null` = nouvelle session) |
-| `_messages` | `ChatMessage[]` | Messages affichés (`{ role, text, id? }`) |
-| `_streamingText` | `string` | Texte en cours d'accumulation SSE |
-| `_status` | `"idle" \| "loading" \| "sending" \| "streaming" \| "error"` | État du composant |
-| `_error` | `string` | Message d'erreur affiché dans le bandeau |
-| `_inputText` | `string` | Contenu du textarea |
-| `_sessionsLoading` | `boolean` | Chargement initial des sessions |
-| `_dropdownOpen` | `boolean` | Dropdown session ouvert/fermé |
-| `_archivedExpanded` | `boolean` | Groupe archivé déplié dans le dropdown |
+| `_sessions` | `RuntimeSession[]` | Active + archived sessions merged |
+| `_sessionId` | `string \| null` | Selected session ID (`null` = new session) |
+| `_messages` | `ChatMessage[]` | Displayed messages (`{ role, text, id? }`) |
+| `_streamingText` | `string` | Text being accumulated from SSE |
+| `_status` | `"idle" \| "loading" \| "sending" \| "streaming" \| "error"` | Component state |
+| `_error` | `string` | Error message displayed in banner |
+| `_inputText` | `string` | Textarea content |
+| `_sessionsLoading` | `boolean` | Initial session loading |
+| `_dropdownOpen` | `boolean` | Session dropdown open/closed |
+| `_archivedExpanded` | `boolean` | Archived group expanded in dropdown |
 
 ---
 
-## Écran 2c — Runtime Pilot (`cp-runtime-pilot`)
+## Screen 2c — Runtime Pilot (`cp-runtime-pilot`)
 
-**Fichier source** : `ui/src/components/runtime-pilot.ts`
+**Source file**: `ui/src/components/runtime-pilot.ts`
 
-> Remplace `cp-runtime-chat` depuis v0.37.0. 17 composants au total.
+> Replaces `cp-runtime-chat` since v0.37.0. 17 components total.
 
-Vue de chat avancée avec panneau de contexte LLM latéral. Accessible via le hash `#/instances/:slug/pilot`. Layout flex deux colonnes.
+Advanced chat view with LLM context panel on side. Accessible via hash `#/instances/:slug/pilot`. Flex two-column layout.
 
 ```
 ┌─ cp-runtime-pilot ────────────────────────────────────────────────┐
 │  ┌─ pilot-header ─────────────────────────────────────────────┐   │
 │  │  [Agent ▼]  Session title  $0.12  [🔒 Permanent] [Context]│   │
 │  └────────────────────────────────────────────────────────────┘   │
-│  ┌─ Messages ──────────────────┐  ┌─ pilot-context-panel ────┐   │
+│  ┌─ Messages ──────────────────────────┐  ┌─ pilot-context-panel ────┐   │
 │  │                             │  │  [Agents] [Tools]        │   │
 │  │  ┌─ user message ────────┐ │  │  [System] [Events]       │   │
-│  │  │  Mon message          │ │  │                          │   │
+│  │  │  My message           │ │  │                          │   │
 │  │  └───────────────────────┘ │  │  ┌─ context-gauge ─────┐ │   │
 │  │  ┌─ assistant message ───┐ │  │  │  Token usage donut  │ │   │
 │  │  │  part-text            │ │  │  │  input / output     │ │   │
@@ -702,57 +705,57 @@ Vue de chat avancée avec panneau de contexte LLM latéral. Accessible via le ha
 └───────────────────────────────────────────────────────────────────┘
 ```
 
-### Composants (17)
+### Components (17)
 
-| Composant | Fichier | Rôle |
+| Component | File | Role |
 |---|---|---|
-| `cp-runtime-pilot` | `runtime-pilot.ts` | Conteneur principal — layout, session management, SSE |
-| `cp-pilot-header` | `pilot/pilot-header.ts` | Header — agent selector, session info, coût, bouton contexte |
-| `cp-pilot-messages` | `pilot/pilot-messages.ts` | Liste de messages scrollable |
-| `cp-pilot-message` | `pilot/pilot-message.ts` | Rendu d'un message (dispatche vers les renderers de parts) |
-| `cp-pilot-input` | `pilot/pilot-input.ts` | Textarea + bouton Send |
-| `cp-pilot-context-panel` | `pilot/pilot-context-panel.ts` | Panneau latéral droit — onglets contexte |
-| `cp-context-gauge` | `pilot/context/context-gauge.ts` | Jauge donut tokens (input/output/cache) |
-| `cp-context-tools` | `pilot/context/context-tools.ts` | Liste outils disponibles (built-in + MCP) |
-| `cp-context-agents` | `pilot/context/context-agents.ts` | Agents teammates + spawn links |
-| `cp-context-system` | `pilot/context/context-system.ts` | Fichiers system prompt (SOUL.md, IDENTITY.md, etc.) |
-| `cp-context-events` | `pilot/context/context-events.ts` | Log d'événements bus temps réel |
-| `cp-part-text` | `pilot/parts/part-text.ts` | Rendu texte Markdown (marked + DOMPurify) |
-| `cp-part-tool` | `pilot/parts/part-tool.ts` | Rendu tool-call + tool-result (collapsible) |
-| `cp-part-reasoning` | `pilot/parts/part-reasoning.ts` | Rendu extended thinking Anthropic |
-| `cp-part-subtask` | `pilot/parts/part-subtask.ts` | Rendu sous-agent (spawn info + résultat) |
-| `cp-part-compaction` | `pilot/parts/part-compaction.ts` | Résumé de compaction |
-| `cp-session-tree` | `session-tree.ts` | Arborescence des sessions (parent/enfant) |
+| `cp-runtime-pilot` | `runtime-pilot.ts` | Main container — layout, session management, SSE |
+| `cp-pilot-header` | `pilot/pilot-header.ts` | Header — agent selector, session info, cost, context button |
+| `cp-pilot-messages` | `pilot/pilot-messages.ts` | Scrollable message list |
+| `cp-pilot-message` | `pilot/pilot-message.ts` | Message rendering (dispatches to part renderers) |
+| `cp-pilot-input` | `pilot/pilot-input.ts` | Textarea + Send button |
+| `cp-pilot-context-panel` | `pilot/pilot-context-panel.ts` | Right side panel — context tabs |
+| `cp-context-gauge` | `pilot/context/context-gauge.ts` | Donut gauge for tokens (input/output/cache) |
+| `cp-context-tools` | `pilot/context/context-tools.ts` | Available tools list (built-in + MCP) |
+| `cp-context-agents` | `pilot/context/context-agents.ts` | Agent teammates + spawn links |
+| `cp-context-system` | `pilot/context/context-system.ts` | System prompt files (SOUL.md, IDENTITY.md, etc.) |
+| `cp-context-events` | `pilot/context/context-events.ts` | Real-time bus event log |
+| `cp-part-text` | `pilot/parts/part-text.ts` | Markdown text rendering (marked + DOMPurify) |
+| `cp-part-tool` | `pilot/parts/part-tool.ts` | Tool-call + tool-result rendering (collapsible) |
+| `cp-part-reasoning` | `pilot/parts/part-reasoning.ts` | Anthropic extended thinking rendering |
+| `cp-part-subtask` | `pilot/parts/part-subtask.ts` | Subagent rendering (spawn info + result) |
+| `cp-part-compaction` | `pilot/parts/part-compaction.ts` | Compaction summary |
+| `cp-session-tree` | `session-tree.ts` | Session hierarchy (parent/child) |
 
-### Flux SSE élargi (17+ event types)
+### Extended SSE Stream (17+ event types)
 
-Le SSE est ouvert via `GET /api/instances/:slug/runtime/chat/stream`. Événements :
+SSE opened via `GET /api/instances/:slug/runtime/chat/stream`. Events:
 
-| Catégorie | Événements SSE | Comportement |
+| Category | SSE Events | Behavior |
 |---|---|---|
-| Messages | `message.created`, `message.updated`, `message.part.delta` | Streaming texte, accumulation des parts |
-| Session | `session.created`, `session.updated`, `session.ended`, `session.status` | Gestion état idle/busy/retry |
-| Permission | `permission.asked`, `permission.replied` | Overlay permission |
-| Provider | `provider.auth_failed`, `provider.failover` | Alertes bus |
-| Subagent | `subagent.completed`, `agent.timeout` | Mise à jour part-subtask |
-| Heartbeat | `heartbeat.tick`, `heartbeat.alert` | Alertes bus |
-| Tool | `tool.doom_loop`, `llm.chunk_timeout` | Alertes bus |
+| Messages | `message.created`, `message.updated`, `message.part.delta` | Text streaming, part accumulation |
+| Session | `session.created`, `session.updated`, `session.ended`, `session.status` | Manage idle/busy/retry state |
+| Permission | `permission.asked`, `permission.replied` | Permission overlay |
+| Provider | `provider.auth_failed`, `provider.failover` | Bus alerts |
+| Subagent | `subagent.completed`, `agent.timeout` | part-subtask update |
+| Heartbeat | `heartbeat.tick`, `heartbeat.alert` | Bus alerts |
+| Tool | `tool.doom_loop`, `llm.chunk_timeout` | Bus alerts |
 | Infra | `ping` | Keep-alive |
 
 ---
 
-## Écran 2b — Vue Settings Instance (`cp-instance-settings`)
+## Screen 2b — Instance Settings View (`cp-instance-settings`)
 
-**Fichier source** : `ui/src/components/instance-settings.ts`
+**Source file**: `ui/src/components/instance-settings.ts`
 
-Vue de configuration complète d'une instance. Accessible via le bouton **Settings** de la card. Layout deux colonnes : sidebar fixe + zone de contenu par panneau (une section à la fois).
+Full configuration view of an instance. Accessible via the **Settings** button on the card. Two-column layout: fixed sidebar + content zone per panel (one section at a time).
 
 ```
 ┌─ Header bar ──────────────────────────────────────────────────┐
 │  ← Back   default — Settings          [Cancel]  [Save]        │
 └───────────────────────────────────────────────────────────────┘
 ┌─ Layout ──────────────────────────────────────────────────────┐
-│  ┌─ Sidebar ──┐  ┌─ Content (panneau actif) ───────────────┐  │
+│  ┌─ Sidebar ──┐  ┌─ Content (active panel) ───────────────┐  │
 │  │  General   │  │  ┌─ GENERAL ──────────────────────────┐ │  │
 │  │  Agents    │  │  │  Display name  Port (readonly)      │ │  │
 │  │  Runtime   │  │  │  Default model (select grouped)     │ │  │
@@ -765,87 +768,87 @@ Vue de configuration complète d'une instance. Accessible via le bouton **Settin
 └───────────────────────────────────────────────────────────────┘
 ```
 
-### Principe de navigation par panneau
+### Panel Navigation Principle
 
-Clic sur un item de la sidebar → **remplace** le contenu par le panneau correspondant (pas de scroll). Une seule section visible à la fois. Section active par défaut : **General** (ou `initialSection` passé en prop).
+Click on sidebar item → **replaces** content with corresponding panel (no scroll). Single section visible at a time. Default active section: **General** (or `initialSection` passed as prop).
 
-### Header bar
+### Header Bar
 
-Toujours visible. Fond `--bg-surface`, bordure basse.
+Always visible. Background `--bg-surface`, bottom border.
 
-| Élément | Description |
+| Element | Description |
 |---|---|
-| **← Back** | Outline gris, hover accent. Émet `navigate { slug: null }` → retour vue Instances. |
-| **Titre** | "**slug** — Settings" (`font-size: 16px`, `font-weight: 700` sur le slug). |
-| **[Cancel]** | Visible si `_hasChanges`. Annule toutes les modifications dirty. |
-| **[Save]** | Visible si `_hasChanges`. Disabled si erreur de validation ou `_saving`. Appelle `PATCH /api/instances/:slug/config`. |
+| **← Back** | Gray outline, accent hover. Emit `navigate { slug: null }` → return to Instances view. |
+| **Title** | "**slug** — Settings" (`font-size: 16px`, `font-weight: 700` on slug). |
+| **[Cancel]** | Visible if `_hasChanges`. Cancels all dirty modifications. |
+| **[Save]** | Visible if `_hasChanges`. Disabled if validation error or `_saving`. Calls `PATCH /api/instances/:slug/config`. |
 
 ### Sidebar
 
-Navigation par 7 panneaux : **General**, **Agents**, **Runtime**, **Channels**, **MCP**, **Permissions**, **Config**. *(Devices panel removed in v0.34.0)* Item actif : fond `--accent-subtle`, couleur `--accent`, `font-weight: 600`. Clic → `_activeSection = section` (swap immédiat du contenu).
+Navigation through 7 panels: **General**, **Agents**, **Runtime**, **Channels**, **MCP**, **Permissions**, **Config**. *(Devices panel removed in v0.34.0)* Active item: `--accent-subtle` background, `--accent` color, `font-weight: 600`. Click → `_activeSection = section` (immediate content swap).
 
-**Badges numériques** sur les items de la sidebar :
+**Numeric badges** on sidebar items:
 
 | Item | Badge | Condition |
 |---|---|---|
-| **MCP** | Numérique accent | Nombre de serveurs MCP connectés (`_mcpConnectedCount > 0`) |
-| **Permissions** | Numérique accent | Nombre de demandes de permission en attente (`_pendingPermissionsCount > 0`) |
+| **MCP** | Accent numeric | Number of connected MCP servers (`_mcpConnectedCount > 0`) |
+| **Permissions** | Accent numeric | Number of pending permission requests (`_pendingPermissionsCount > 0`) |
 
-### Champs modifiés
+### Modified Fields
 
-Les champs modifiés affichent une bordure `--accent` (classe `changed`). Les champs readonly ont un fond `--bg-surface`.
+Modified fields display `--accent` border (class `changed`). Read-only fields have `--bg-surface` background.
 
-### Section General
+### General Section
 
-Grid 2 colonnes.
+2-column grid.
 
-| Champ | Type | Comportement |
+| Field | Type | Behavior |
 |---|---|---|
-| **Display name** | Input texte | Éditable |
-| **Port** | Readonly | Non modifiable (`:XXXXX`) |
-| **Default model** | Select groupé par provider | Options groupées par provider configuré. Si le modèle courant n'est pas dans la liste, ajouté comme option isolée. |
-| **Tools profile** | Select | Options : `minimal`, `messaging`, `coding`, `full` |
+| **Display name** | Text input | Editable |
+| **Port** | Read-only | Not modifiable (`:XXXXX`) |
+| **Default model** | Select grouped by provider | Options grouped by configured provider. If current model not in list, added as isolated option. |
+| **Tools profile** | Select | Options: `minimal`, `messaging`, `coding`, `full` |
 
-**Sous-section Providers** : liste des providers configurés. Chaque provider : card avec nom, ID monospace, env var, clé masquée + bouton **[Change]** (inline edit) ou **[Cancel]**. Bouton **[Remove]** disabled si le provider est utilisé par le default model. Bouton **[+ Add provider]** → select des providers disponibles (non encore configurés).
+**Providers subsection**: list of configured providers. Each provider: card with name, monospace ID, env var, masked key + **[Change]** button (inline edit) or **[Cancel]**. **[Remove]** button disabled if provider used by default model. **[+ Add provider]** button → select available providers (not yet configured).
 
-### Section Agents
+### Agents Section
 
-**Defaults** (grid 2 colonnes) :
+**Defaults** (2-column grid):
 
-| Champ | Type |
+| Field | Type |
 |---|---|
-| Default workspace | Input texte |
-| Max concurrent subagents | Input number (1–20) |
-| Archive after (min) | Input number |
-| Compaction mode | Select : `auto`, `manual`, `off` |
-| Heartbeat interval | Input texte. Validation : format `30m`, `1h`, `1h30m`. Bare number auto-corrigé → `Xm` au blur. Erreur inline si format invalide. |
-| Heartbeat model | Select groupé par provider (+ option "— none —") |
+| Default workspace | Text input |
+| Max concurrent subagents | Number input (1–20) |
+| Archive after (min) | Number input |
+| Compaction mode | Select: `auto`, `manual`, `off` |
+| Heartbeat interval | Text input. Validation: format `30m`, `1h`, `1h30m`. Bare number auto-corrected → `Xm` on blur. Inline error if invalid format. |
+| Heartbeat model | Select grouped by provider (+ "— none —" option) |
 
-**Agents — List** : tableau des agents (ID, Name, Model, Workspace, **Actions**). Affiché si `agents.length > 0`.
+**Agents — List**: agent table (ID, Name, Model, Workspace, **Actions**). Displayed if `agents.length > 0`.
 
-La colonne **Actions** contient un bouton ✏ (icône crayon SVG) par agent. Clic → charge les données de l'agent via l'API et ouvre le `cp-agent-detail-panel` en **drawer latéral** :
+**Actions** column contains ✏ button (pencil icon SVG) per agent. Click → load agent data via API and open `cp-agent-detail-panel` in **side drawer**:
 
 ```
-┌─ Backdrop semi-transparent ────────────────────────────────────┐
-│                              ┌─ Drawer (420px fixe droite) ──┐ │
+┌─ Semi-transparent backdrop ────────────────────────────────────┐
+│                              ┌─ Drawer (420px fixed right) ──┐ │
 │                              │  cp-agent-detail-panel        │ │
-│                              │  (même composant que canvas)  │ │
+│                              │  (same component as canvas)   │ │
 │                              └───────────────────────────────┘ │
 └────────────────────────────────────────────────────────────────┘
 ```
 
-| Élément | Description |
+| Element | Description |
 |---|---|
-| **Backdrop** | `position: fixed; inset: 0; background: rgba(0,0,0,0.35)`. Clic → ferme le drawer. |
-| **Drawer** | `position: fixed; top: 0; right: 0; width: 420px; height: 100vh`. Passe à `width: 100vw` si le panel est en mode expanded. |
-| **Panel** | `cp-agent-detail-panel` avec contexte `{ kind: "instance", slug }`. Même comportement que dans le canvas (onglets Info + fichiers, spawn links, édition). |
-| **Fermeture** | Événement `panel-close` du panel OU clic sur le backdrop. |
-| **Expand** | Événement `panel-expand-changed` → le drawer passe en plein écran. |
-| **Mise à jour** | Événement `agent-meta-updated` → recharge le panel ET la config de l'instance. |
+| **Backdrop** | `position: fixed; inset: 0; background: rgba(0,0,0,0.35)`. Click → close drawer. |
+| **Drawer** | `position: fixed; top: 0; right: 0; width: 420px; height: 100vh`. Changes to `width: 100vw` if panel in expanded mode. |
+| **Panel** | `cp-agent-detail-panel` with context `{ kind: "instance", slug }`. Same behavior as on canvas (Info + files tabs, spawn links, editing). |
+| **Closing** | Event `panel-close` from panel OR backdrop click. |
+| **Expand** | Event `panel-expand-changed` → drawer goes fullscreen. |
+| **Update** | Event `agent-meta-updated` → reload panel AND instance config. |
 
-### Section Runtime
+### Runtime Section
 
-Panneau informatif + chat intégré. Pas de champs éditables (Save/Cancel non affichés quand active).
+Informational panel + integrated chat. No editable fields (Save/Cancel not shown when active).
 
 ```
 ┌─ Runtime ─────────────────────────────────────────────────────┐
@@ -856,7 +859,7 @@ Panneau informatif + chat intégré. Pas de champs éditables (Save/Cancel non a
 │  Config file runtime.json                                     │
 │                                                               │
 │  ── Chat ──────────────────────────────────────────────────── │
-│  ┌─ cp-runtime-chat (480px hauteur) ────────────────────────┐ │
+│  ┌─ cp-runtime-chat (480px height) ────────────────────────┐ │
 │  │  [● Session title  $0.03 ▾]  [+ New] / [Permanent]      │ │
  │  │  pilot · web · 5 msg · 1.2k tok · $0.03  [Fork] [Archive]│ │
 │  │  ─────────────────────────────────────────────────────── │ │
@@ -867,39 +870,39 @@ Panneau informatif + chat intégré. Pas de champs éditables (Save/Cancel non a
 └───────────────────────────────────────────────────────────────┘
 ```
 
-| Élément | Description |
+| Element | Description |
 |---|---|
-| **Engine** | Valeur fixe `claw-runtime`, monospace |
-| **Config file** | Valeur fixe `runtime.json`, monospace muted |
-| **Chat** | Composant `cp-runtime-chat` intégré dans un conteneur `height: 480px`, `border: 1px solid --bg-border`, `border-radius: --radius-md` |
+| **Engine** | Fixed value `claw-runtime`, monospace |
+| **Config file** | Fixed value `runtime.json`, monospace muted |
+| **Chat** | `cp-runtime-chat` component integrated in container `height: 480px`, `border: 1px solid --bg-border`, `border-radius: --radius-md` |
 
-### Toast de confirmation
+### Confirmation Toast
 
-Apparaît en bas à droite (`position: fixed`, `bottom: 80px`, `right: 24px`) pendant 4s après sauvegarde.
+Appears bottom-right (`position: fixed`, `bottom: 80px`, `right: 24px`) for 4s after saving.
 
-| Type | Couleur | Message |
+| Type | Color | Message |
 |---|---|---|
-| **success** | Vert | "Configuration saved — hot-reload applied" |
-| **warning** | Ambre | "Configuration saved — instance restarted (raison)" |
-| **error** | Rouge | Message d'erreur |
+| **success** | Green | "Configuration saved — hot-reload applied" |
+| **warning** | Amber | "Configuration saved — instance restarted (reason)" |
+| **error** | Red | Error message |
 
-**Avertissement port changé** : si le port a changé, un bandeau `⚠` s'affiche sous le header : "Port changed — browser pairing will be lost after restart. Go to the Devices tab to approve the new request."
+**Port changed warning**: if port changed, `⚠` banner displays under header: "Port changed — browser pairing will be lost after restart. Go to the Devices tab to approve the new request."
 
-### Section Channels (`cp-instance-channels`)
+### Channels Section (`cp-instance-channels`)
 
-**Fichier source** : `ui/src/components/instance-channels.ts`
+**Source file**: `ui/src/components/instance-channels.ts`
 
-Panneau autonome — pas de Save/Cancel global (sauvegarde inline par canal). Affiche une card par canal de communication.
+Standalone panel — no global Save/Cancel (inline save per channel). Displays one card per communication channel.
 
-**Machine à états Telegram (3 états) :**
+**Telegram State Machine (3 states):**
 
-| État | Condition | Rendu |
+| State | Condition | Rendering |
 |---|---|---|
-| **A — unconfigured** | `channels.telegram === null` OU `enabled=false` sans token | "Telegram is not configured" + bouton **[Configure Telegram]** |
-| **B — init-form** | Clic sur [Configure Telegram] | Formulaire d'initialisation inline |
-| **C — configured** | `enabled=true` OU token présent | Formulaire d'édition complet |
+| **A — unconfigured** | `channels.telegram === null` OR `enabled=false` without token | "Telegram is not configured" + **[Configure Telegram]** button |
+| **B — init-form** | Click on [Configure Telegram] | Inline initialization form |
+| **C — configured** | `enabled=true` OR token present | Full edit form |
 
-**État A — Non configuré :**
+**State A — Unconfigured:**
 
 ```
 ┌─ ✈ Telegram Bot ─────────────────────── ○ Inactive ─┐
@@ -908,7 +911,7 @@ Panneau autonome — pas de Save/Cancel global (sauvegarde inline par canal). Af
 └──────────────────────────────────────────────────────┘
 ```
 
-**État B — Formulaire d'initialisation :**
+**State B — Initialization Form:**
 
 ```
 ┌─ ✈ Telegram Bot ─────────────────────────────────────┐
@@ -919,7 +922,7 @@ Panneau autonome — pas de Save/Cancel global (sauvegarde inline par canal). Af
 └──────────────────────────────────────────────────────┘
 ```
 
-**État C — Configuré :**
+**State C — Configured:**
 
 ```
 ┌─ ✈ Telegram Bot [N] ─────────────── ● Configured ───┐
@@ -932,35 +935,35 @@ Panneau autonome — pas de Save/Cancel global (sauvegarde inline par canal). Af
 │  @username  Code: 1234-5678  2m ago  [Approve] [Reject]│
 │  Approved senders: 3                                 │
 │                                                      │
-│  [Bannière restart si requiresRestart]               │
+│  [Restart banner if requiresRestart]                 │
 │                              [Cancel]  [Save]        │
 └──────────────────────────────────────────────────────┘
 ```
 
-| Champ | Valeurs |
+| Field | Values |
 |---|---|
 | **DM policy** | `pairing` (code approval) / `open` (allow all) / `allowlist` / `disabled` |
 | **Group policy** | `open` (allow all groups) / `allowlist` / `disabled` |
 
-**Badge pending** : nombre rouge sur le titre "Telegram Bot" si des demandes de pairing sont en attente.
+**Pending badge**: red number on "Telegram Bot" title if pairing requests pending.
 
-**Status badge** : `● Configured` (vert) si enabled + token présent ; `◎ No token` (ambre) si enabled sans token ; `○ Inactive` (gris) si disabled.
+**Status badge**: `● Configured` (green) if enabled + token present; `◎ No token` (amber) if enabled without token; `○ Inactive` (gray) if disabled.
 
-**Bannière restart** : fond ambre, message "Changes require a runtime restart to take effect." + bouton **[Restart runtime]**.
+**Restart banner**: amber background, message "Changes require a runtime restart to take effect." + **[Restart runtime]** button.
 
-**Pairing requests** : visible uniquement si `dmPolicy === "pairing"`. Polling toutes les 10s si des demandes sont en attente. Boutons **[Approve]** et **[Reject]** par demande.
+**Pairing requests**: visible only if `dmPolicy === "pairing"`. Polling every 10s if requests pending. **[Approve]** and **[Reject]** buttons per request.
 
-**Canaux "Coming soon"** : WhatsApp et Slack affichés en cards grises `opacity: 0.55` avec badge "COMING SOON".
+**"Coming soon" channels**: WhatsApp and Slack displayed in gray cards `opacity: 0.55` with "COMING SOON" badge.
 
 ### ~~Section Devices~~ *(removed in v0.34.0)*
 
 Device pairing has been removed. The `cp-instance-devices` component and sidebar panel are no longer rendered. The `rt_pairing_codes` table is retained in the DB (additive-only policy).
 
-### Section MCP (`cp-instance-mcp`)
+### MCP Section (`cp-instance-mcp`)
 
-**Fichier source** : `ui/src/components/instance-mcp.ts`
+**Source file**: `ui/src/components/instance-mcp.ts`
 
-Panneau autonome — pas de Save/Cancel. Affiche les serveurs MCP connectés à l'instance claw-runtime.
+Standalone panel — no Save/Cancel. Displays MCP servers connected to the claw-runtime instance.
 
 ```
 ┌─ MCP ─────────────────────────────────────────────────┐
@@ -981,24 +984,24 @@ Panneau autonome — pas de Save/Cancel. Affiche les serveurs MCP connectés à 
 └───────────────────────────────────────────────────────┘
 ```
 
-| Élément | Description |
+| Element | Description |
 |---|---|
-| **Groupe CONNECTED** | Titre vert + badge count vert. Serveurs avec `connected: true`. |
-| **Groupe DISCONNECTED** | Titre gris + badge count gris. Serveurs avec `connected: false`. |
-| **Ligne serveur** | Point vert/gris + nom + badge type (`stdio`/`http`) + count outils + bouton **[Tools ▾]** si outils disponibles |
-| **Expand outils** | Grid 2 colonnes, fond `--bg-hover`, noms monospace |
-| **Erreur serveur** | `⚠ message` rouge sous la ligne si `lastError` défini |
-| **[↻ Refresh]** | Recharge manuellement |
+| **CONNECTED group** | Green title + green count badge. Servers with `connected: true`. |
+| **DISCONNECTED group** | Gray title + gray count badge. Servers with `connected: false`. |
+| **Server line** | Green/gray dot + name + type badge (`stdio`/`http`) + tool count + **[Tools ▾]** button if tools available |
+| **Expand tools** | 2-column grid, `--bg-hover` background, monospace names |
+| **Server error** | Red `⚠ message` below line if `lastError` defined |
+| **[↻ Refresh]** | Manual reload |
 
-**Polling** : toutes les 30s quand le panneau est actif.
+**Polling**: every 30s when panel is active.
 
-**Badge sidebar** : nombre de serveurs connectés (`mcp-connected-count-changed` event).
+**Sidebar badge**: number of connected servers (`mcp-connected-count-changed` event).
 
-### Section Permissions (`cp-instance-permissions`)
+### Permissions Section (`cp-instance-permissions`)
 
-**Fichier source** : `ui/src/components/instance-permissions.ts`
+**Source file**: `ui/src/components/instance-permissions.ts`
 
-Panneau autonome — pas de Save/Cancel. Affiche les règles de permission persistées et les demandes en attente.
+Standalone panel — no Save/Cancel. Displays persisted permission rules and pending requests.
 
 ```
 ┌─ PERMISSIONS ─────────────────────────────────────────┐
@@ -1019,60 +1022,60 @@ Panneau autonome — pas de Save/Cancel. Affiche les règles de permission persi
 └───────────────────────────────────────────────────────┘
 ```
 
-| Élément | Description |
+| Element | Description |
 |---|---|
-| **Pending requests** | Fond ambre transparent, bordure ambre. Visible si `action === "ask"`. Bouton **[Handle]** → émet `open-permission-overlay` pour ouvrir l'overlay global. |
-| **Persistent rules** | Règles `allow`/`deny`. Badge action coloré (vert/rouge). Colonnes : action, permission, pattern, scope, âge relatif, bouton **[✕]** (revoke). |
-| **Revoke** | Appel `DELETE /api/instances/:slug/runtime/permissions/:id`. Spinner inline pendant l'opération. |
-| **[↻ Refresh]** | Recharge manuellement |
+| **Pending requests** | Transparent amber background, amber border. Visible if `action === "ask"`. **[Handle]** button → emit `open-permission-overlay` to open global overlay. |
+| **Persistent rules** | `allow`/`deny` rules. Colored action badge (green/red). Columns: action, permission, pattern, scope, relative age, **[✕]** button (revoke). |
+| **Revoke** | Call `DELETE /api/instances/:slug/runtime/permissions/:id`. Inline spinner during operation. |
+| **[↻ Refresh]** | Manual reload |
 
-**Badge sidebar** : nombre de demandes en attente (`_pendingPermissionsCount`).
+**Sidebar badge**: number of pending requests (`_pendingPermissionsCount`).
 
-### Section Config (`cp-instance-config`)
+### Config Section (`cp-instance-config`)
 
-**Fichier source** : `ui/src/components/instance-config.ts`
+**Source file**: `ui/src/components/instance-config.ts`
 
-Panneau de configuration avancée du runtime. Sous-navigation par onglets. Save/Cancel propres au panneau (indépendants du Save global).
+Advanced runtime configuration panel. Sub-navigation via tabs. Save/Cancel specific to panel (independent of global Save).
 
 ```
 ┌─ CONFIG ──────────────────────────────────────────────┐
 │  [Models]  [Compaction]  [Sub-agents]                 │
 │  ─────────────────────────────────────────────────── │
-│  (contenu selon onglet actif)                         │
+│  (content by active tab)                              │
 │                                                       │
-│  [Save]  [Cancel]  ← visible si dirty                 │
+│  [Save]  [Cancel]  ← visible if dirty                 │
 └───────────────────────────────────────────────────────┘
 ```
 
-**Onglet Models :**
+**Models Tab:**
 
-| Champ | Description |
+| Field | Description |
 |---|---|
-| **Internal model** | Input texte. Modèle utilisé pour la compaction et les résumés (ex: `anthropic/claude-haiku-3-5`). |
-| **Model aliases** | Liste d'alias (id → provider + model). Chaque alias : 3 inputs inline (alias, provider, model) + bouton **[✕]**. Bouton **[+ Add alias]** en bas. |
+| **Internal model** | Text input. Model used for compaction and summaries (e.g., `anthropic/claude-haiku-3-5`). |
+| **Model aliases** | Alias list (id → provider + model). Each alias: 3 inline inputs (alias, provider, model) + **[✕]** button. **[+ Add alias]** button at bottom. |
 
-**Onglet Compaction :**
+**Compaction Tab:**
 
-| Champ | Description |
+| Field | Description |
 |---|---|
-| **Threshold** | Slider 50–99%. Pourcentage de la fenêtre de contexte avant déclenchement. |
-| **Reserved tokens** | Input number 1000–32000. Tokens réservés pour le résumé. |
+| **Threshold** | Slider 50–99%. Context window percentage before triggering. |
+| **Reserved tokens** | Number input 1000–32000. Tokens reserved for summary. |
 
-**Onglet Sub-agents :**
+**Sub-agents Tab:**
 
-| Champ | Description |
+| Field | Description |
 |---|---|
-| **Max spawn depth** | Slider 0–10. Profondeur maximale d'imbrication des sous-agents. |
-| **Max active children per session** | Slider 1–20. Nombre max de sous-agents actifs simultanément par session. |
+| **Max spawn depth** | Slider 0–10. Maximum subagent nesting depth. |
+| **Max active children per session** | Slider 1–20. Maximum subagents active simultaneously per session. |
 
 ---
 
-## Écran 3 — Constructeur d'agents (`cp-agents-builder`)
+## Screen 3 — Agent Builder (`cp-agents-builder`)
 
-**Fichier source** : `ui/src/components/agents-builder.ts`  
-**Capture de référence** : `screen1.png`
+**Source file**: `ui/src/components/agents-builder.ts`  
+**Reference screenshot**: `screen1.png`
 
-Canvas libre avec cards d'agents positionnées et liens SVG. Hauteur = `100vh - 56px (nav) - 48px (sous-nav)`.
+Free canvas with positioned agent cards and SVG links. Height = `100vh - 56px (nav) - 48px (subnav)`.
 
 ```
 ┌─ Header ──────────────────────────────────────────────────────┐
@@ -1096,165 +1099,165 @@ Canvas libre avec cards d'agents positionnées et liens SVG. Hauteur = `100vh - 
 
 ### Header
 
-| Élément | Description |
+| Element | Description |
 |---|---|
-| **← Back** | Retour à la vue Instances. Outline gris, hover accent. |
-| **Agents Builder** | Titre fixe |
-| **slug** | Nom de l'instance en monospace muted |
-| **Badge état** | État de l'instance (running/stopped/...) |
-| **+ New agent** | Ouvre le dialog de création d'agent (`cp-create-agent-dialog`). Vert outline au hover. Poussé à droite (`margin-left: auto`). |
-| **↓ Export** | Exporte l'équipe en `.team.yaml` (téléchargement direct). Outline gris. |
-| **↑ Import** | Ouvre le dialog d'import d'équipe (`cp-import-team-dialog`). Outline gris. |
-| **↻ Sync** | Resynchronise les agents depuis le disque. Accent outline. Disabled pendant sync. |
+| **← Back** | Return to Instances view. Gray outline, accent hover. |
+| **Agents Builder** | Fixed title |
+| **slug** | Instance name in monospace muted |
+| **State badge** | Instance state (running/stopped/...) |
+| **+ New agent** | Opens agent creation dialog (`cp-create-agent-dialog`). Green outline on hover. Pushed right (`margin-left: auto`). |
+| **↓ Export** | Exports team as `.team.yaml` (direct download). Gray outline. |
+| **↑ Import** | Opens team import dialog (`cp-import-team-dialog`). Gray outline. |
+| **↻ Sync** | Resynchronizes agents from disk. Accent outline. Disabled during sync. |
 
 ### Canvas
 
-- Fond `--bg-base`, position `absolute inset: 0`
-- Cards positionnées en `position: absolute`, centrées sur leur point (`transform: translate(-50%, -50%)`)
-- Liens SVG en overlay (`pointer-events: none`)
-- **Drag & drop** : `pointerdown/move/up` sur le canvas. Seuil de 5px pour distinguer clic (sélection) de drag (déplacement). Position persistée en DB après drag.
-- **Clic court** : sélectionne/désélectionne l'agent → ouvre/ferme le panneau détail
+- Background `--bg-base`, position `absolute inset: 0`
+- Cards positioned in `position: absolute`, centered on their point (`transform: translate(-50%, -50%)`)
+- SVG links in overlay (`pointer-events: none`)
+- **Drag & drop**: `pointerdown/move/up` on canvas. 5px threshold to distinguish click (selection) from drag (movement). Position persisted in DB after drag.
+- **Short click**: select/deselect agent → open/close detail panel
 
-### États du canvas
+### Canvas States
 
-| État | Rendu |
+| State | Rendering |
 |---|---|
-| **Syncing** | Overlay semi-transparent + spinner centré |
-| **Erreur** | Bandeau d'erreur centré en haut |
-| **Vide** | "No agents found" + "Click Sync to refresh from disk" centré |
-| **Normal** | Cards + liens SVG |
+| **Syncing** | Semi-transparent overlay + centered spinner |
+| **Error** | Centered error banner at top |
+| **Empty** | "No agents found" + "Click Sync to refresh from disk" centered |
+| **Normal** | Cards + SVG links |
 
-### Liens SVG (`cp-agent-links-svg`)
+### SVG Links (`cp-agent-links-svg`)
 
-**Fichier source** : `ui/src/components/agent-links-svg.ts`
+**Source file**: `ui/src/components/agent-links-svg.ts`
 
-SVG plein canvas, `pointer-events: none`. Dessine les liens de type `spawn` entre agents.
+Full-canvas SVG, `pointer-events: none`. Draws `spawn` type links between agents.
 
-| Type de lien | Style |
+| Link Type | Style |
 |---|---|
-| **Spawn normal** | Tirets gris `#666`, flèche grise |
-| **Spawn pending-remove** | Tirets rouges `#ef4444`, flèche rouge |
-| **Spawn pending-add** | Tirets verts `#10b981`, flèche verte |
+| **Normal spawn** | Gray dashes `#666`, gray arrow |
+| **Pending-remove spawn** | Red dashes `#ef4444`, red arrow |
+| **Pending-add spawn** | Green dashes `#10b981`, green arrow |
 
-Les liens A2A ne sont pas dessinés en SVG — ils sont indiqués par la bordure accent des cards.
+A2A links are not drawn in SVG — indicated by accent border on cards.
 
 ---
 
-## Composant : Agent Card Mini (`cp-agent-card-mini`)
+## Component: Agent Card Mini (`cp-agent-card-mini`)
 
-**Fichier source** : `ui/src/components/agent-card-mini.ts`
+**Source file**: `ui/src/components/agent-card-mini.ts`
 
-Card compacte positionnée sur le canvas. Largeur 130-160px (180px pour l'agent default).
+Compact card positioned on canvas. Width 130-160px (180px for default agent).
 
 ```
 ┌─────────────────────────────┐
-│  Bob - Scrum Master      ✕  │  ← row 1 : nom + bouton delete
-│  sm              7 fichiers │  ← row 2 : agent_id + file count
-│  [A2A]  claude-haku-4-5     │  ← row 3 : badge + modèle
+│  Bob - Scrum Master      ✕  │  ← row 1: name + delete button
+│  sm              7 files    │  ← row 2: agent_id + file count
+│  [A2A]  claude-haku-4-5     │  ← row 3: badge + model
 └─────────────────────────────┘
 ```
 
 ### Badges (row 3)
 
-| Badge | Couleur | Condition | Tooltip |
+| Badge | Color | Condition | Tooltip |
 |---|---|---|---|
-| **Default** | Accent bleu | `is_default === true` | "Main entry point for conversations..." |
-| **A2A** | Accent bleu | Connecté en mode A2A | "Connected in Agent-to-Agent mode..." |
-| **SA** | Gris outline | Ni default ni A2A | "SubAgent: specialized agent..." |
+| **Default** | Blue accent | `is_default === true` | "Main entry point for conversations..." |
+| **A2A** | Blue accent | Connected in A2A mode | "Connected in Agent-to-Agent mode..." |
+| **SA** | Gray outline | Neither default nor A2A | "SubAgent: specialized agent..." |
 
-### États visuels
+### Visual States
 
-| État | Style |
+| State | Style |
 |---|---|
-| **Normal** | Bordure `--bg-border` |
-| **A2A** | Bordure `--accent-border` |
-| **Sélectionné** | Bordure `--accent` + glow `--accent-border` |
-| **Nouveau** (2s) | Bordure verte épaisse + animation pulse qui s'estompe |
+| **Normal** | `--bg-border` border |
+| **A2A** | `--accent-border` border |
+| **Selected** | `--accent` border + `--accent-border` glow |
+| **New** (2s) | Thick green border + fading pulse animation |
 
-### Bouton delete (✕)
+### Delete Button (✕)
 
-Visible uniquement si `deletable === true` (non-default). Opacity 0.45 → 1 au hover, couleur rouge. `stopPropagation()` → émet `agent-delete-requested`.
+Visible only if `deletable === true` (non-default). Opacity 0.45 → 1 on hover, red color. `stopPropagation()` → emit `agent-delete-requested`.
 
 ---
 
-## Composant : Agent Detail Panel (`cp-agent-detail-panel`)
+## Component: Agent Detail Panel (`cp-agent-detail-panel`)
 
-**Fichier source** : `ui/src/components/agent-detail-panel.ts`
+**Source file**: `ui/src/components/agent-detail-panel.ts`
 
-Panneau latéral droit, `width: 420px`, hauteur 100% du canvas. S'étend à 100% en mode expanded.
+Right side panel, `width: 420px`, canvas height 100%. Expands to 100% in expanded mode.
 
 ```
 ┌─ Panel Header ──────────────────────────────────────┐
 │  Pilot  pilot                  [🗑] [⊞] [✕]        │
-│  (role si défini)                                   │
+│  (role if defined)                                  │
 ├─ Tabs ──────────────────────────────────────────────┤
 │  [Info]  [AGENTS.md]  [SOUL.md]  [HEARTBEAT.md] ... │
 ├─ Body ──────────────────────────────────────────────┤
-│  (contenu selon onglet actif)                       │
-├─ Save Bar (conditionnelle) ─────────────────────────┤
+│  (content by active tab)                            │
+├─ Save Bar (conditional) ────────────────────────────┤
 │  [Save]  N changes pending  [Cancel]                │
 └─────────────────────────────────────────────────────┘
 ```
 
 ### Header
 
-- **Nom** : `font-size: 16px`, `font-weight: 700`
-- **agent_id** : monospace muted à côté du nom
-- **Role** *(optionnel)* : italique muted sous le nom
-- **🗑 Delete** : visible si non-default. Hover rouge. Émet `agent-delete-requested`.
-- **⊞/⊟ Expand** : bascule entre 420px et 100% de largeur
-- **✕ Close** : émet `panel-close`
+- **Name**: `font-size: 16px`, `font-weight: 700`
+- **agent_id**: monospace muted next to name
+- **Role** *(optional)*: italic muted under name
+- **🗑 Delete**: visible if non-default. Red hover. Emit `agent-delete-requested`.
+- **⊞/⊟ Expand**: toggle between 420px and 100% width
+- **✕ Close**: emit `panel-close`
 
-### Onglets
+### Tabs
 
-- **Info** : toujours présent
-- **Fichiers** : un onglet par fichier dans `agent.files` (AGENTS.md, SOUL.md, TOOLS.md, IDENTITY.md, HEARTBEAT.md, MEMORY.md...)
+- **Info**: always present
+- **Files**: one tab per file in `agent.files` (AGENTS.md, SOUL.md, TOOLS.md, IDENTITY.md, HEARTBEAT.md, MEMORY.md...)
 
-### Onglet Info
+### Info Tab
 
-Affiche en colonne :
+Displays in column:
 
-| Champ | Condition |
+| Field | Condition |
 |---|---|
-| **Model** | Si défini |
-| **Workspace** | Toujours |
-| **Last sync** | Si défini ET contexte instance (pas blueprint) |
-| **A2A links** | Si liens A2A existent. Badges `↔ peer-id` accent. |
-| **Can spawn** | Si liens spawn sortants OU agents disponibles. Badges éditables avec ✕ (supprimer) et ＋ (ajouter via dropdown). |
-| **Spawned by** | Si liens spawn entrants. Badges `← source-id`. |
-| **Notes** | Si `agent.notes` défini |
+| **Model** | If defined |
+| **Workspace** | Always |
+| **Last sync** | If defined AND instance context (not blueprint) |
+| **A2A links** | If A2A links exist. `↔ peer-id` accent badges. |
+| **Can spawn** | If outgoing spawn links OR available agents. Editable badges with ✕ (remove) and ＋ (add via dropdown). |
+| **Spawned by** | If incoming spawn links. `← source-id` badges. |
+| **Notes** | If `agent.notes` defined |
 
-### Gestion des spawn links (inline)
+### Spawn Link Management (inline)
 
-- **Supprimer** : clic ✕ sur un badge → pending-removal (barré, rouge). Clic ↩ → annule.
-- **Ajouter** : clic ＋ → dropdown des agents disponibles → sélection → pending-add (vert).
-- **Save bar** : apparaît dès qu'il y a des changements pending. Bouton Save → appel API → rechargement. Bouton Cancel → annule tous les changements.
+- **Remove**: click ✕ on badge → pending-removal (strikethrough, red). Click ↩ → cancel.
+- **Add**: click ＋ → dropdown of available agents → select → pending-add (green).
+- **Save bar**: appears once pending changes exist. Save button → API call → reload. Cancel button → discard all changes.
 
-### Onglets fichiers
+### File Tabs
 
-**Mode consultation :**
-- Badge `editable` (vert) ou `read-only` (gris)
-- Bouton ✏ si éditable → passe en mode édition
-- Contenu rendu en Markdown (marked + DOMPurify)
+**View mode:**
+- `editable` (green) or `read-only` (gray) badge
+- ✏ button if editable → switches to edit mode
+- Content rendered as Markdown (marked + DOMPurify)
 
-**Mode édition :**
-- Badge `EDITING` accent
-- Onglets `Edit` / `Preview`
-- Textarea monospace redimensionnable
-- Boutons `Save` / `Cancel`
-- Si Cancel avec modifications non sauvegardées → dialog de confirmation "Discard changes?"
-- Même comportement si changement d'onglet avec modifications en cours
+**Edit mode:**
+- `EDITING` accent badge
+- `Edit` / `Preview` tabs
+- Resizable monospace textarea
+- `Save` / `Cancel` buttons
+- If Cancel with unsaved edits → "Discard changes?" confirmation dialog
+- Same behavior if switching tabs with edits in progress
 
-**Fichiers éditables** : AGENTS.md, SOUL.md, TOOLS.md, IDENTITY.md, USER.md, HEARTBEAT.md  
-**Fichiers read-only** : tous les autres (MEMORY.md, etc.)
+**Editable files**: AGENTS.md, SOUL.md, TOOLS.md, IDENTITY.md, USER.md, HEARTBEAT.md  
+**Read-only files**: all others (MEMORY.md, etc.)
 
 ---
 
-## Dialog : Nouvel Agent (`cp-create-agent-dialog`)
+## Dialog: New Agent (`cp-create-agent-dialog`)
 
-**Fichier source** : `ui/src/components/create-agent-dialog.ts`
+**Source file**: `ui/src/components/create-agent-dialog.ts`
 
-Modal centré, largeur max `480px`. Même structure que le dialog de création d'instance.
+Centered modal, max width `480px`. Same structure as instance creation dialog.
 
 ```
 ┌─ New agent ─────────────────────────── [✕] ┐
@@ -1275,21 +1278,21 @@ Modal centré, largeur max `480px`. Même structure que le dialog de création d
 
 ### Validation
 
-- Agent ID : auto-lowercase, `[a-z0-9-]`, 2-30 chars, pas déjà utilisé dans l'instance
-- Display name : auto-rempli depuis l'ID (kebab-case → Title Case) tant que non modifié manuellement
-- Bouton Create disabled si formulaire invalide ou providers en chargement
+- Agent ID: auto-lowercase, `[a-z0-9-]`, 2-30 chars, not already used in instance
+- Display name: auto-filled from ID (kebab-case → Title Case) while user hasn't manually edited
+- Create button disabled if form invalid or providers loading
 
-### État de soumission
+### Submission State
 
 Spinner + "Creating agent **slug**..."
 
 ---
 
-## Dialog : Supprimer un Agent (`cp-delete-agent-dialog`)
+## Dialog: Delete Agent (`cp-delete-agent-dialog`)
 
-**Fichier source** : `ui/src/components/delete-agent-dialog.ts`
+**Source file**: `ui/src/components/delete-agent-dialog.ts`
 
-Modal centré, largeur max `440px`. Confirmation destructive.
+Centered modal, max width `440px`. Destructive confirmation.
 
 ```
 ┌─ Delete agent ──────────────────────── [✕] ┐
@@ -1307,17 +1310,17 @@ Modal centré, largeur max `440px`. Confirmation destructive.
 └──────────────────────────────────────────────┘
 ```
 
-- Bouton **Delete** rouge plein, disabled tant que l'input ≠ `agent.agent_id`
-- `Enter` dans l'input → confirme
-- Pendant suppression : spinner + "Deleting agent... **slug**"
+- **Delete** button solid red, disabled while input ≠ `agent.agent_id`
+- `Enter` in input → confirms
+- During deletion: spinner + "Deleting agent... **slug**"
 
 ---
 
-## Dialog : Supprimer une Instance (`cp-delete-instance-dialog`)
+## Dialog: Delete Instance (`cp-delete-instance-dialog`)
 
-**Fichier source** : `ui/src/components/delete-instance-dialog.ts`
+**Source file**: `ui/src/components/delete-instance-dialog.ts`
 
-Modal centré, overlay sombre avec `backdrop-filter: blur(4px)`. Largeur max `440px`. Déclenché par le bouton ✕ de la card instance (événement `request-delete` capturé par `cluster-view`).
+Centered modal, dark overlay with `backdrop-filter: blur(4px)`. Max width `440px`. Triggered by ✕ button on instance card (event `request-delete` captured by `cluster-view`).
 
 ```
 ┌─ Delete instance ───────────────────── [✕] ┐
@@ -1327,7 +1330,7 @@ Modal centré, overlay sombre avec `backdrop-filter: blur(4px)`. Largeur max `44
 │  │  service, remove all files...          │  │
 │  └────────────────────────────────────────┘  │
 │                                              │
-│  Mon instance — default                      │
+│  My instance — default                       │
 │                                              │
 │  Type the instance slug to confirm           │
 │  [default                              ]     │
@@ -1336,18 +1339,18 @@ Modal centré, overlay sombre avec `backdrop-filter: blur(4px)`. Largeur max `44
 └──────────────────────────────────────────────┘
 ```
 
-- Bouton **Destroy** rouge plein, disabled tant que l'input ≠ slug exact
-- `Enter` dans l'input → confirme
-- Pendant suppression : spinner + "Destroying instance... **slug**"
-- Après suppression : émet `instance-deleted { slug }` → `cluster-view` recharge la liste
+- **Destroy** button solid red, disabled while input ≠ exact slug
+- `Enter` in input → confirms
+- During deletion: spinner + "Destroying instance... **slug**"
+- After deletion: emit `instance-deleted { slug }` → `cluster-view` reloads list
 
 ---
 
-## Dialog : Import d'équipe (`cp-import-team-dialog`)
+## Dialog: Team Import (`cp-import-team-dialog`)
 
-**Fichier source** : `ui/src/components/import-team-dialog.ts`
+**Source file**: `ui/src/components/import-team-dialog.ts`
 
-Modal centré, overlay sombre avec `backdrop-filter: blur(4px)`. Largeur max `500px`. Accessible depuis le bouton **↑ Import** du header Agents Builder et Blueprint Builder.
+Centered modal, dark overlay with `backdrop-filter: blur(4px)`. Max width `500px`. Accessible from **↑ Import** button in Agent Builder and Blueprint Builder headers.
 
 ```
 ┌─ Import Agent Team ─────────────────── [✕] ┐
@@ -1357,7 +1360,7 @@ Modal centré, overlay sombre avec `backdrop-filter: blur(4px)`. Largeur max `50
 │  │  or click to browse                    │  │
 │  └────────────────────────────────────────┘  │
 │                                              │
-│  (après sélection d'un fichier valide)       │
+│  (after selecting valid file)                │
 │  File     my-team.team.yaml                  │
 │  Agents   8 (current: 3)                     │
 │  Links    12                                 │
@@ -1372,26 +1375,26 @@ Modal centré, overlay sombre avec `backdrop-filter: blur(4px)`. Largeur max `50
 └──────────────────────────────────────────────┘
 ```
 
-### Comportement
+### Behavior
 
-| Étape | Description |
+| Step | Description |
 |---|---|
-| **Drop / Browse** | Zone drag & drop ou clic pour ouvrir le sélecteur de fichier (`.yaml`, `.yml`). Bordure accent + fond léger au hover/dragover. |
-| **Dry-run auto** | Dès qu'un fichier est sélectionné, appel API automatique en mode dry-run → affiche le résumé (agents, liens, fichiers à importer). |
-| **Résumé** | Nombre d'agents à importer, count actuel, liens, fichiers workspace. |
-| **Warning** | Bandeau ambre : "This will replace all existing agents, files, and links. This action cannot be undone." |
-| **Import** | Bouton disabled tant que le dry-run n'a pas réussi. Pendant l'import : spinner inline. |
-| **Succès** | Émet `team-imported` → le parent recharge les données du canvas. |
+| **Drop / Browse** | Drag & drop zone or click to open file selector (`.yaml`, `.yml`). Accent border + light background on hover/dragover. |
+| **Auto dry-run** | Once file selected, automatic API call in dry-run mode → display summary (agents, links, files to import). |
+| **Summary** | Number of agents to import, current count, links, workspace files. |
+| **Warning** | Amber banner: "This will replace all existing agents, files, and links. This action cannot be undone." |
+| **Import** | Button disabled until dry-run succeeds. During import: inline spinner. |
+| **Success** | Emit `team-imported` → parent reloads canvas data. |
 
-**Contexte polymorphe** : fonctionne pour une instance (`kind: "instance"`) ou un blueprint (`kind: "blueprint"`). Les routes API appelées diffèrent selon le contexte.
+**Polymorphic context**: works for instance (`kind: "instance"`) or blueprint (`kind: "blueprint"`). Called API routes differ by context.
 
 ---
 
-## Écran 4 — Vue Blueprints (`cp-blueprints-view`)
+## Screen 4 — Blueprints View (`cp-blueprints-view`)
 
-**Fichier source** : `ui/src/components/blueprints-view.ts`
+**Source file**: `ui/src/components/blueprints-view.ts`
 
-Structure identique à la Vue Instances : early return pendant le chargement, header avec count dynamique + bouton, grille de cards.
+Structure identical to Instances view: early return during loading, header with dynamic count + button, card grid.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -1403,130 +1406,130 @@ Structure identique à la Vue Instances : early return pendant le chargement, he
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### États
+### States
 
-| État | Rendu |
+| State | Rendering |
 |---|---|
-| **Chargement** | "Loading blueprints..." centré (early return — header non affiché) |
-| **Erreur** | Bandeau d'erreur rouge avant le header |
-| **Vide** | Header "0 blueprints" + icône 📋 + "No blueprints yet" + hint |
-| **Normal** | Header "N blueprints" + grille `auto-fill minmax(300px, 1fr)`, gap 16px |
+| **Loading** | "Loading blueprints..." centered (early return — header not shown) |
+| **Error** | Red error banner before header |
+| **Empty** | Header "0 blueprints" + 📋 icon + "No blueprints yet" + hint |
+| **Normal** | Header "N blueprints" + grid `auto-fill minmax(300px, 1fr)`, gap 16px |
 
 ### Interactions
 
-- **Clic sur une card** → navigation vers le Blueprint Builder
-- **Bouton "+ New Blueprint"** → ouvre le Dialog de création de blueprint
-- **Suppression** : gérée inline dans la card (confirmation)
+- **Click on a card** → navigate to Blueprint Builder
+- **"+ New Blueprint" button** → open blueprint creation dialog
+- **Deletion**: handled inline in card (confirmation)
 
 ---
 
-## Composant : Blueprint Card (`cp-blueprint-card`)
+## Component: Blueprint Card (`cp-blueprint-card`)
 
-**Fichier source** : `ui/src/components/blueprint-card.ts`
+**Source file**: `ui/src/components/blueprint-card.ts`
 
 ```
 ┌─────────────────────────────────────┐
-│ ▌ 🎯 HR Team              [Delete] │  ← header (barre couleur + icône + nom)
+│ ▌ 🎯 HR Team              [Delete] │  ← header (color bar + icon + name)
 │                                     │
-│  Description du blueprint...        │  ← description (2 lignes max)
+│  Description du blueprint...        │  ← description (2 lines max)
 │                                     │
 │  3 agents   [hr]  [legal]           │  ← meta (count + tags)
 │                                     │
-│  ┌─ Delete blueprint "HR Team"? ──┐ │  ← confirmation inline (conditionnelle)
+│  ┌─ Delete blueprint "HR Team"? ──┐ │  ← inline confirmation (conditional)
 │  │  [Delete]  [Cancel]            │ │
 │  └────────────────────────────────┘ │
 └─────────────────────────────────────┘
 ```
 
-### Éléments
+### Elements
 
-| Élément | Description |
+| Element | Description |
 |---|---|
-| **Barre couleur** | Bande verticale gauche 3px avec la couleur du blueprint (si définie) |
-| **Icône** | Emoji ou texte, `font-size: 20px` (si défini) |
-| **Nom** | `font-size: 16px`, `font-weight: 700` |
-| **Bouton Delete** | Outline transparent → rouge au hover. `stopPropagation()`. |
-| **Description** | 2 lignes max avec ellipsis |
-| **Agent count** | "N agents" ou "No agents" |
-| **Tags** | Pills accent arrondies (`border-radius: 20px`) |
+| **Color bar** | Left 3px vertical band with blueprint color (if defined) |
+| **Icon** | Emoji or text, `font-size: 20px` (if defined) |
+| **Name** | `font-size: 16px`, `font-weight: 700` |
+| **Delete button** | Transparent outline → red on hover. `stopPropagation()`. |
+| **Description** | 2 lines max with ellipsis |
+| **Agent count** | "N agents" or "No agents" |
+| **Tags** | Accent pills rounded (`border-radius: 20px`) |
 
-### Confirmation de suppression
+### Deletion Confirmation
 
-Apparaît inline sous la meta quand Delete est cliqué. Fond rouge transparent.  
-Bouton **Delete** rouge plein → émet `blueprint-delete`. Bouton **Cancel** → masque la confirmation.  
-Clic sur la card ignoré si la zone delete/confirm est cliquée.
+Appears inline below meta when Delete clicked. Transparent red background.  
+**Delete** button solid red → emit `blueprint-delete`. **Cancel** button → hide confirmation.  
+Card click ignored if delete/confirm area clicked.
 
 ### Hover
 
-Bordure `--accent-border` + glow `0 0 0 1px --accent-border`.
+`--accent-border` border + glow `0 0 0 1px --accent-border`.
 
 ---
 
-## Écran 5 — Blueprint Builder (`cp-blueprint-builder`)
+## Screen 5 — Blueprint Builder (`cp-blueprint-builder`)
 
-**Fichier source** : `ui/src/components/blueprint-builder.ts`
+**Source file**: `ui/src/components/blueprint-builder.ts`
 
-Même structure visuelle que le Constructeur d'agents (canvas + panel), mais pour les blueprints (pas d'instance live).
+Same visual structure as Agent Builder (canvas + panel), but for blueprints (no live instance).
 
 ```
 ┌─ Header ──────────────────────────────────────────────────────┐
 │  ← Back to Blueprints   HR Team  🎯          [+ New agent]   │
 └───────────────────────────────────────────────────────────────┘
 ┌─ Canvas ──────────────────────────────────────────────────────┐
-│  (même canvas que agents-builder)                             │
+│  (same canvas as agents-builder)                              │
 │                              ┌─ Agent Detail Panel ─────────┐ │
-│                              │  (même panel, contexte BP)   │ │
+│                              │  (same panel, BP context)    │ │
 │                              └──────────────────────────────┘ │
 └───────────────────────────────────────────────────────────────┘
 ```
 
-### Différences vs Constructeur d'agents
+### Differences vs Agent Builder
 
-| Aspect | Agents Builder | Blueprint Builder |
+| Aspect | Agent Builder | Blueprint Builder |
 |---|---|---|
-| Contexte panel | `{ kind: "instance", slug }` | `{ kind: "blueprint", blueprintId }` |
-| Bouton Sync | Présent | Absent |
-| Dialog création agent | `cp-create-agent-dialog` (complet) | Dialog inline simplifié (ID + Nom + Modèle) |
-| Suppression agent | Via `cp-delete-agent-dialog` | Directe (pas de confirmation dialog) |
-| Last sync dans panel | Affiché | Masqué |
+| Panel context | `{ kind: "instance", slug }` | `{ kind: "blueprint", blueprintId }` |
+| Sync button | Present | Absent |
+| Agent creation dialog | `cp-create-agent-dialog` (full) | Inline simplified dialog (ID + Name + Model) |
+| Agent deletion | Via `cp-delete-agent-dialog` | Direct (no confirmation dialog) |
+| Last sync in panel | Displayed | Hidden |
 | Spawn links API | `/api/instances/:slug/agents/:id/spawn-links` | `/api/blueprints/:id/agents/:id/spawn-links` |
 
-### Dialog de création d'agent (inline dans blueprint-builder)
+### Agent Creation Dialog (inline in blueprint-builder)
 
-Dialog simplifié sans provider/API key :
+Simplified dialog without provider/API key:
 
 ```
 ┌─ New agent ─────────────────────────────────────┐
 │  Agent ID *  [researcher              ]          │
 │  Name *      [Research Agent          ]          │
-│  Model       [claude-opus-4-5         ] (optionnel) │
+│  Model       [claude-opus-4-5         ] (optional) │
 │                          [Cancel]  [Create]      │
 └──────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Dialog : Découverte d'instances (`cp-discover-dialog`)
+## Dialog: Instance Discovery (`cp-discover-dialog`)
 
-**Fichier source** : `ui/src/components/discover-dialog.ts`
+**Source file**: `ui/src/components/discover-dialog.ts`
 
-Modal centré, overlay sombre avec `backdrop-filter: blur(4px)`. Largeur max `520px`. Déclenché par le bouton **[Discover instances]** de la vue Instances (état vide). Implémente `DialogMixin`.
+Centered modal, dark overlay with `backdrop-filter: blur(4px)`. Max width `520px`. Triggered by **[Discover instances]** button in Instances view (empty state). Implements `DialogMixin`.
 
-Le scan démarre automatiquement à l'ouverture (`connectedCallback`).
+Scan starts automatically on open (`connectedCallback`).
 
 ### Phases
 
 ```
 ┌─ Discover instances ──────────────────────────── [✕] ┐
 │                                                       │
-│  Phase scanning :                                     │
+│  Phase scanning:                                      │
 │  ┌─────────────────────────────────────────────────┐  │
 │  │  [spinner]                                      │  │
 │  │  Scanning system...                             │  │
 │  │  Looking for claw-runtime instances              │  │
 │  └─────────────────────────────────────────────────┘  │
 │                                                       │
-│  Phase results (instances trouvées) :                 │
+│  Phase results (instances found):                     │
 │  Found 2 instance(s) on this system:                  │
 │  ┌─ Instance card ───────────────────────────────┐    │
 │  │  default                    ● running         │    │
@@ -1538,60 +1541,60 @@ Le scan démarre automatiquement à l'ouverture (`connectedCallback`).
 │  └───────────────────────────────────────────────┘    │
 │                                [Cancel]  [Adopt all (2)]│
 │                                                       │
-│  Phase adopting :                                     │
+│  Phase adopting:                                      │
 │  [spinner]  Registering instances...                  │
 │                                                       │
-│  Phase done :                                         │
+│  Phase done:                                          │
 │  ✓  2 instance(s) registered successfully.            │
 │                                                       │
-│  Phase error :                                        │
-│  [bandeau rouge]  [Close]  [Retry]                    │
+│  Phase error:                                         │
+│  [red banner]  [Close]  [Retry]                       │
 └───────────────────────────────────────────────────────┘
 ```
 
-### Phases détail
+### Phase Details
 
-| Phase | Déclencheur | Rendu |
+| Phase | Trigger | Rendering |
 |---|---|---|
-| **scanning** | Ouverture du dialog | Spinner centré + "Scanning system..." + sous-titre "Looking for claw-runtime instances" |
-| **results** | Scan terminé | Liste des instances trouvées (ou message "No claw-runtime instances found") + footer [Cancel] [Adopt all (N)] |
-| **adopting** | Clic [Adopt all] | Spinner + "Registering instances..." |
-| **done** | Adoption réussie | Icône ✓ vert + "N instance(s) registered successfully." Auto-fermeture après 1,5s avec émission `instances-adopted` |
-| **error** | Erreur scan ou adoption | Bandeau rouge + [Close] + [Retry] |
+| **scanning** | Dialog open | Centered spinner + "Scanning system..." + subtitle "Looking for claw-runtime instances" |
+| **results** | Scan complete | List of found instances (or message "No claw-runtime instances found") + footer [Cancel] [Adopt all (N)] |
+| **adopting** | Click [Adopt all] | Spinner + "Registering instances..." |
+| **done** | Adoption succeeded | Green ✓ icon + "N instance(s) registered successfully." Auto-close after 1.5s with `instances-adopted` emission |
+| **error** | Scan or adoption error | Red banner + [Close] + [Retry] |
 
-### Instance card (dans la liste results)
+### Instance Card (in results list)
 
-Fond `--bg-base`, bordure `--bg-border`, `border-radius: --radius-md`.
+Background `--bg-base`, border `--bg-border`, `border-radius: --radius-md`.
 
-| Élément | Description |
+| Element | Description |
 |---|---|
 | **Slug** | `font-weight: 700`, `font-size: 14px` |
-| **Badge état** | Pill vert "● running" si `gatewayHealthy`, gris "○ stopped" sinon |
+| **State badge** | Green pill "● running" if `gatewayHealthy`, gray "○ stopped" otherwise |
 | **Port** | Monospace muted `:XXXXX` |
-| **Telegram** | Pill bleu `#0088cc` si `telegramBot` défini |
-| **Model** | Monospace muted si `defaultModel` défini |
-| **Agent count** | "N agents" si `agentCount > 0` |
+| **Telegram** | Blue pill `#0088cc` if `telegramBot` defined |
+| **Model** | Monospace muted if `defaultModel` defined |
+| **Agent count** | "N agents" if `agentCount > 0` |
 
-### Comportements
+### Behaviors
 
-- **Fermeture** : bouton ✕ (disabled pendant phase `adopting`) ou clic overlay (idem)
-- **Retry** : relance le scan depuis la phase `scanning`
-- **Adopt all** : adopte toutes les instances trouvées en une seule action
-- **Après adoption** : émet `instances-adopted { count }` → `cluster-view` ferme le dialog et recharge la liste
+- **Close**: ✕ button (disabled during `adopting` phase) or overlay click (same)
+- **Retry**: restart scan from `scanning` phase
+- **Adopt all**: adopt all found instances in single action
+- **After adoption**: emit `instances-adopted { count }` → `cluster-view` closes dialog and reloads list
 
-### Accessibilité
+### Accessibility
 
-`role="dialog"`, `aria-modal="true"`, `aria-labelledby`. Implémente `DialogMixin` (focus trap, Escape).
+`role="dialog"`, `aria-modal="true"`, `aria-labelledby`. Implements `DialogMixin` (focus trap, Escape).
 
 ---
 
-## ~~Composant : Devices (`cp-instance-devices`)~~ *(removed in v0.34.0)*
+## ~~Component: Devices (`cp-instance-devices`)~~ *(removed in v0.34.0)*
 
 > **DEPRECATED** — Device pairing was removed in v0.34.0. This component is no longer rendered. The documentation below is retained for historical reference only.
 
-**Fichier source** : `ui/src/components/instance-devices.ts`
+**Source file**: `ui/src/components/instance-devices.ts`
 
-Composant autonome affiché dans le panneau **Devices** des Settings instance. Gère le pairing des appareils (Control UI, CLI) avec l'instance OpenClaw.
+Standalone component displayed in **Devices** panel of Instance Settings. Manages device pairing (Control UI, CLI) with the OpenClaw instance.
 
 ```
 ┌─ DEVICES ───────────────────────────────────────────────────────┐
@@ -1612,67 +1615,67 @@ Composant autonome affiché dans le panneau **Devices** des Settings instance. G
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-### Section Pending
+### Pending Section
 
-Fond ambre transparent (`rgba(245,158,11,0.08)`), bordure ambre. Visible uniquement si `devices.pending.length > 0`.
+Transparent amber background (`rgba(245,158,11,0.08)`), amber border. Visible only if `devices.pending.length > 0`.
 
-| Élément | Description |
+| Element | Description |
 |---|---|
-| **Header "PENDING (N)"** | Label ambre uppercase + bouton **[Approve all]** si N > 1 |
-| **Ligne device** | Platform (monospace) + clientId + âge relatif + bouton **[Approve]** |
-| **[Approve]** | Vert outline. Spinner inline pendant l'approbation. Disabled pendant l'opération. |
-| **[Approve all]** | Approuve tous les devices en séquence. Spinner inline. |
+| **"PENDING (N)" header** | Amber uppercase label + **[Approve all]** button if N > 1 |
+| **Device line** | Platform (monospace) + clientId + relative age + **[Approve]** button |
+| **[Approve]** | Green outline. Inline spinner during approval. Disabled during operation. |
+| **[Approve all]** | Approve all devices sequentially. Inline spinner. |
 
-**Polling** : si des demandes sont en attente, polling automatique toutes les 5s. Arrêté quand la liste pending est vide.
+**Polling**: if requests pending, automatic polling every 5s. Stops when pending list empty.
 
-### Section Paired
+### Paired Section
 
-Bordure `--bg-border`, `border-radius: --radius-md`, overflow hidden.
+Border `--bg-border`, `border-radius: --radius-md`, overflow hidden.
 
-| Élément | Description |
+| Element | Description |
 |---|---|
-| **Titre "PAIRED (N)"** | Label uppercase muted |
-| **Ligne device** | Platform (monospace) + clientId + role + âge relatif (basé sur `lastUsedAtMs` ou `approvedAtMs`) + action |
-| **Action — CLI** | Badge `[cli]` gris monospace (non révocable) |
-| **Action — Autres** | Bouton **[✕]** 24×24px, muted → rouge au hover. Clic → confirmation inline. |
-| **Confirmation inline** | "Revoke?" + **[Confirm]** rouge + **[Cancel]** gris. Remplace le bouton ✕. |
-| **État vide** | "No paired devices." |
+| **"PAIRED (N)" title** | Uppercase muted label |
+| **Device line** | Platform (monospace) + clientId + role + relative age (based on `lastUsedAtMs` or `approvedAtMs`) + action |
+| **Action — CLI** | Gray monospace `[cli]` badge (non-revocable) |
+| **Action — Others** | **[✕]** button 24×24px, muted → red on hover. Click → inline confirmation. |
+| **Inline confirmation** | "Revoke?" + **[Confirm]** red + **[Cancel]** gray. Replaces ✕ button. |
+| **Empty state** | "No paired devices." |
 
-### Âge relatif
+### Relative Age
 
-Calculé depuis `lastUsedAtMs` (max des tokens) ou `approvedAtMs` : "just now" / "Xm ago" / "Xh ago" / "Xd ago".
+Calculated from `lastUsedAtMs` (max of tokens) or `approvedAtMs`: "just now" / "Xm ago" / "Xh ago" / "Xd ago".
 
 ### Footer
 
-Bouton **[↻ Refresh]** (outline gris) + message d'erreur inline si une opération échoue.
+**[↻ Refresh]** button (gray outline) + inline error message if operation fails.
 
 ### Props
 
 | Prop | Type | Description |
 |---|---|---|
-| `slug` | `string` | Slug de l'instance |
-| `active` | `boolean` | Si `false`, le composant ne charge pas et arrête le polling |
+| `slug` | `string` | Instance slug |
+| `active` | `boolean` | If `false`, component doesn't load and stops polling |
 
-### Événements émis
+### Emitted Events
 
-| Événement | Payload | Description |
+| Event | Payload | Description |
 |---|---|---|
-| `pending-count-changed` | `number` | Émis après chaque chargement — nombre de demandes en attente. Utilisé par `instance-settings` pour mettre à jour le badge sidebar. |
+| `pending-count-changed` | `number` | Emitted after each load — number of pending requests. Used by `instance-settings` to update sidebar badge. |
 
 ---
 
-## Composant global : Overlay de permission (`cp-permission-request-overlay`)
+## Global Component: Permission Overlay (`cp-permission-request-overlay`)
 
-**Fichier source** : `ui/src/components/permission-request-overlay.ts`
+**Source file**: `ui/src/components/permission-request-overlay.ts`
 
-Overlay fixe coin bas-droit (`bottom: 24px`, `right: 24px`, `z-index: 9999`, `width: 480px`). Affiché automatiquement quand un agent claw-runtime émet un événement `permission.asked` via le stream SSE. Géré par `cp-app` (ou le composant parent qui surveille l'instance active).
+Fixed overlay bottom-right corner (`bottom: 24px`, `right: 24px`, `z-index: 9999`, `width: 480px`). Automatically displayed when a claw-runtime agent emits `permission.asked` event via SSE stream. Managed by `cp-app` (or parent component monitoring active instance).
 
 ```
 ┌─ 🔐 Permission Request ──────────────────────── [✕] ─┐
 │                                                       │
-│  Description de la demande (si fournie)               │
+│  Request description (if provided)                    │
 │                                                       │
-│  ┌─ Détails ────────────────────────────────────────┐ │
+│  ┌─ Details ────────────────────────────────────────┐ │
 │  │  Permission  Bash                                │ │
 │  │  Pattern     /tmp/**                             │ │
 │  └──────────────────────────────────────────────────┘ │
@@ -1685,101 +1688,101 @@ Overlay fixe coin bas-droit (`bottom: 24px`, `right: 24px`, `z-index: 9999`, `wi
 └───────────────────────────────────────────────────────┘
 ```
 
-### Comportement
+### Behavior
 
-| Élément | Description |
+| Element | Description |
 |---|---|
-| **Header** | Fond rouge transparent `rgba(239,68,68,0.06)`. Titre rouge `--state-error` + icône 🔐. Badge count si plusieurs demandes en file. Bouton **[✕]** dismiss. |
-| **Description** | Texte libre fourni par l'agent (optionnel). |
-| **Détails** | Fond `--bg-hover`, bordure `--bg-border`. Lignes : Permission (monospace) + Pattern (monospace). |
-| **Countdown** | Barre de progression rouge qui se vide en 60s. Auto-dismiss à 0. |
-| **Toggle persist** | "This time only" (défaut) / "Always (for this agent)". Contrôle si la règle est persistée. |
-| **[Deny]** | Rouge outline. Envoie `decision: "deny"` immédiatement. |
-| **[Deny with feedback]** | Rouge outline transparent. Premier clic → affiche textarea commentaire. Deuxième clic → envoie avec commentaire. |
-| **[Approve]** | Vert outline. Envoie `decision: "allow"`. |
-| **[Dismiss]** | Gris, `margin-left: auto`. Retire la demande de la file sans répondre. |
+| **Header** | Transparent red background `rgba(239,68,68,0.06)`. Red title `--state-error` + 🔐 icon. Count badge if multiple requests queued. **[✕]** dismiss button. |
+| **Description** | Free text provided by agent (optional). |
+| **Details** | `--bg-hover` background, `--bg-border` border. Lines: Permission (monospace) + Pattern (monospace). |
+| **Countdown** | Red progress bar emptying over 60s. Auto-dismiss at 0. |
+| **Persist toggle** | "This time only" (default) / "Always (for this agent)". Controls if rule persisted. |
+| **[Deny]** | Red outline. Send `decision: "deny"` immediately. |
+| **[Deny with feedback]** | Transparent red outline. First click → show comment textarea. Second click → send with comment. |
+| **[Approve]** | Green outline. Send `decision: "allow"`. |
+| **[Dismiss]** | Gray, `margin-left: auto`. Remove request from queue without responding. |
 
-### File FIFO
+### FIFO Queue
 
-Les demandes s'accumulent en file. Une seule est affichée à la fois. Après réponse ou dismiss, la suivante s'affiche et le countdown repart à 60s.
+Requests accumulate in queue. Only one displayed at a time. After response or dismiss, next displays and countdown restarts at 60s.
 
-### Source SSE
+### SSE Source
 
-Écoute `GET /api/instances/:slug/runtime/chat/stream`. Événement `permission.asked` → ajoute à la file.
+Listen to `GET /api/instances/:slug/runtime/chat/stream`. Event `permission.asked` → add to queue.
 
-### API de réponse
+### Response API
 
-`POST /api/instances/:slug/runtime/permission/reply` avec `{ permissionId, decision, persist, comment? }`.
+`POST /api/instances/:slug/runtime/permission/reply` with `{ permissionId, decision, persist, comment? }`.
 
 ---
 
-## Composant global : Bus Alerts (`cp-bus-alerts`)
+## Global Component: Bus Alerts (`cp-bus-alerts`)
 
-**Fichier source** : `ui/src/components/bus-alerts.ts`
+**Source file**: `ui/src/components/bus-alerts.ts`
 
-Toasts d'alertes live positionnés en bas-droit (`bottom: 100px`, `right: 24px`, `z-index: 9998`). Affichés au-dessus du footer, en-dessous de l'overlay de permission. Maximum 3 toasts simultanés (FIFO — le plus ancien est retiré si dépassé).
+Live alert toasts positioned bottom-right (`bottom: 100px`, `right: 24px`, `z-index: 9998`). Displayed above footer, below permission overlay. Maximum 3 simultaneous toasts (FIFO — oldest removed if exceeded).
 
 ```
-                              ┌─ Toast (360px) ──────────────────┐
-                              │ ⚠  Doom loop detected            │
-                              │    Agent: researcher             │
-                              │                              [✕] │
-                              └──────────────────────────────────┘
-                              ┌─ Toast ──────────────────────────┐
-                              │ ♥  Heartbeat alert               │
-                              │    Message de l'agent...  [View] │
-                              │                              [✕] │
-                              └──────────────────────────────────┘
+                               ┌─ Toast (360px) ──────────────────┐
+                               │ ⚠  Doom loop detected            │
+                               │    Agent: researcher             │
+                               │                              [✕] │
+                               └──────────────────────────────────┘
+                               ┌─ Toast ──────────────────────────┐
+                               │ ♥  Heartbeat alert               │
+                               │    Agent message...  [View]      │
+                               │                              [✕] │
+                               └──────────────────────────────────┘
 ```
 
-### Types d'alertes
+### Alert Types
 
-| Type d'événement | Variante | Icône | Titre | Persistant |
+| Event Type | Variant | Icon | Title | Persistent |
 |---|---|---|---|---|
-| `tool.doom_loop` | warning | ⚠ | "Doom loop detected" | Oui |
-| `heartbeat.alert` | warning | ♥ | "Heartbeat alert" | Oui |
-| `provider.failover` | info | ↺ | "Provider failover" | Non (8s) |
-| `provider.auth_failed` | error | ✕ | "Provider auth failed" | Oui |
-| `llm.chunk_timeout` | warning | ⏱ | "LLM chunk timeout" | Non (8s) |
-| `agent.timeout` | error | ⏱ | "Agent timeout" | Oui |
+| `tool.doom_loop` | warning | ⚠ | "Doom loop detected" | Yes |
+| `heartbeat.alert` | warning | ♥ | "Heartbeat alert" | Yes |
+| `provider.failover` | info | ↺ | "Provider failover" | No (8s) |
+| `provider.auth_failed` | error | ✕ | "Provider auth failed" | Yes |
+| `llm.chunk_timeout` | warning | ⏱ | "LLM chunk timeout" | No (8s) |
+| `agent.timeout` | error | ⏱ | "Agent timeout" | Yes |
 
 ### Design
 
-| Élément | Description |
+| Element | Description |
 |---|---|
-| **Bordure gauche** | 3px colorée selon variante (ambre/rouge/cyan) |
-| **Icône** | Colorée selon variante |
-| **Titre** | `font-size: 12px`, `font-weight: 700`, `--text-primary` |
-| **Corps** | `font-size: 11px`, `--text-secondary`, tronqué avec ellipsis |
-| **[View]** | Bouton ambre outline. Visible uniquement pour `heartbeat.alert`. Émet `navigate-to-session { sessionId, slug }`. |
-| **[✕]** | Bouton dismiss muted → primary au hover. |
-| **Animation** | `slide-in` : translateX(20px) → 0, opacity 0 → 1, 0.2s ease-out. |
+| **Left border** | 3px colored by variant (amber/red/cyan) |
+| **Icon** | Colored by variant |
+| **Title** | `font-size: 12px`, `font-weight: 700`, `--text-primary` |
+| **Body** | `font-size: 11px`, `--text-secondary`, truncated with ellipsis |
+| **[View]** | Amber outline button. Visible only for `heartbeat.alert`. Emit `navigate-to-session { sessionId, slug }`. |
+| **[✕]** | Dismiss button muted → primary on hover. |
+| **Animation** | `slide-in`: translateX(20px) → 0, opacity 0 → 1, 0.2s ease-out. |
 
-### API publique
+### Public API
 
-`addAlert(event: { type, payload, slug? })` — appelé depuis `app.ts` lors de la réception de messages WebSocket bus.
+`addAlert(event: { type, payload, slug? })` — called from `app.ts` on receiving bus WebSocket messages.
 
 ---
 
-## Accessibilité des dialogs
+## Dialog Accessibility
 
-Depuis v0.7.1, tous les dialogs modaux implémentent `DialogMixin` :
+Since v0.7.1, all modal dialogs implement `DialogMixin`:
 
-| Comportement | Détail |
+| Behavior | Detail |
 |---|---|
-| **Focus trap** | Le focus reste dans le dialog tant qu'il est ouvert (Tab / Shift+Tab cyclent dans le dialog) |
-| **Escape** | Ferme le dialog (sauf pendant une opération en cours) |
-| **aria-modal** | `aria-modal="true"` sur l'élément racine du dialog |
+| **Focus trap** | Focus remains in dialog while open (Tab / Shift+Tab cycle in dialog) |
+| **Escape** | Close dialog (except during operation in progress) |
+| **aria-modal** | `aria-modal="true"` on dialog root element |
 
-Dialogs concernés : `cp-create-dialog`, `cp-delete-instance-dialog`, `cp-create-agent-dialog`, `cp-delete-agent-dialog`, `cp-import-team-dialog`.
+Dialogs covered: `cp-create-dialog`, `cp-delete-instance-dialog`, `cp-create-agent-dialog`, `cp-delete-agent-dialog`, `cp-import-team-dialog`.
 
 ---
 
-## Dialog : Nouveau Blueprint (`cp-create-blueprint-dialog`)
+## Dialog: New Blueprint (`cp-create-blueprint-dialog`)
 
-**Fichier source** : `ui/src/components/create-blueprint-dialog.ts`
+**Source file**: `ui/src/components/create-blueprint-dialog.ts`
 
-Modal centré, largeur `480px`.
+Centered modal, width `480px`.
 
 ```
 ┌─ New Blueprint ──────────────────────────────────┐
@@ -1804,26 +1807,135 @@ Modal centré, largeur `480px`.
 └──────────────────────────────────────────────────┘
 ```
 
-### Champs
+### Fields
 
-| Champ | Obligatoire | Description |
+| Field | Required | Description |
 |---|---|---|
-| **Name** | Oui | Texte libre. Bouton Create disabled si vide. |
-| **Description** | Non | Textarea redimensionnable |
-| **Icon** | Non | Emoji ou texte libre |
-| **Tags** | Non | Chaîne CSV (ex: "hr, legal") |
-| **Color** | Non | Sélecteur de 8 couleurs preset + option "aucune" (✕). Swatches circulaires 28px. |
+| **Name** | Yes | Free text. Create button disabled if empty. |
+| **Description** | No | Resizable textarea |
+| **Icon** | No | Emoji or free text |
+| **Tags** | No | CSV string (e.g., "hr, legal") |
+| **Color** | No | Selector for 8 preset colors + "none" option (✕). Circular swatches 28px. |
 
-### Couleurs preset
+### Preset Colors
 
-`#4f6ef7` (bleu), `#10b981` (vert), `#f59e0b` (ambre), `#ef4444` (rouge), `#8b5cf6` (violet), `#06b6d4` (cyan), `#f97316` (orange), `#ec4899` (rose).
+`#4f6ef7` (blue), `#10b981` (green), `#f59e0b` (amber), `#ef4444` (red), `#8b5cf6` (violet), `#06b6d4` (cyan), `#f97316` (orange), `#ec4899` (pink).
 
-Swatch sélectionné : bordure blanche + scale 1.1.
+Selected swatch: white border + scale 1.1.
 
 ---
 
-*Mis à jour : 2026-03-16 - v0.28.5 : refonte Instance Card (badge ⚡ runtime, pill ⚠ PERM, menu simplifié), sidebar Settings étendue (7 panneaux : General/Agents/Runtime/Channels/MCP/Permissions/Config), ajout composants cp-instance-channels, cp-instance-mcp, cp-instance-permissions, cp-instance-config, cp-permission-request-overlay, cp-bus-alerts*
+## Screen — Agent Templates (`cp-agent-templates-view`)
 
-*Mis à jour : 2026-03-17 - v0.37.0 : remplacement de cp-runtime-chat par cp-runtime-pilot (17 composants) — affichage des parts (tool calls, reasoning, subtasks, compaction), panneau contexte LLM latéral (jauge tokens, tools, agent info, system prompt, event log), SSE élargi à 17 event types*
+**Source file**: `ui/src/components/agent-templates-view.ts`  
+**Route**: `#/agent-templates`
 
-*Mis à jour : 2026-03-18 - v0.41.24 : documentation complète de cp-runtime-pilot (17 composants), correction branding OpenClaw → claw-runtime, ajout route hash #/instances/:slug/pilot, correction tools profile (minimal/messaging/coding/full), mise à jour versions*
+Gallery view for standalone reusable agent blueprints (`agent_blueprints` table). Independent of team blueprints and instances.
+
+```
+┌─ Templates ──────────────────────────────────────────────────────┐
+│  Agent Templates                    [Import YAML]  [+ New Template] │
+│                                                                  │
+│  ┌──────────────────┐  ┌──────────────────┐                     │
+│  │ 🤖 My Agent      │  │ 🛠 Tool Agent     │                     │
+│  │ [user]           │  │ [tool]            │                     │
+│  │ Description...   │  │ Description...    │                     │
+│  │ [View] [Clone]   │  │ [View] [Clone]    │                     │
+│  │         [Delete] │  │         [Delete]  │                     │
+│  └──────────────────┘  └──────────────────┘                     │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Elements
+
+| Element | Description |
+|---|---|
+| **Header** | Title "Agent Templates" + action buttons |
+| **[Import YAML]** | Opens file picker → imports agent blueprint from YAML file |
+| **[+ New Template]** | Opens `cp-create-agent-template-dialog` modal |
+| **Template cards** | Grid (min 280px per card). Each card: icon, name, category badge (user/tool/system), description truncated to 2 lines, [View], [Clone], [Delete] |
+| **[View]** | Navigates to `#/agent-templates/:id` |
+| **[Clone]** | Duplicates blueprint → navigates to clone detail |
+| **[Delete]** | Confirmation → deletes blueprint |
+| **Empty state** | Icon + "No templates yet" + hint |
+
+---
+
+## Screen — Agent Template Detail (`cp-agent-template-detail`)
+
+**Source file**: `ui/src/components/agent-template-detail.ts`  
+**Route**: `#/agent-templates/:id`
+
+Detail view for a single agent blueprint template with metadata display and file editing.
+
+```
+┌─ Agent Template Detail ──────────────────────────────────────────┐
+│  [← Back]  🤖 My Agent  [user]              [Export YAML]       │
+│                                                                  │
+│  Description: ...                                                │
+│  Category: user                                                  │
+│                                                                  │
+│  ┌─ Files ────────────────────────────────────────────────────┐  │
+│  │ SOUL.md  [Edit]                                            │  │
+│  │ IDENTITY.md  [Edit]                                        │  │
+│  │ AGENTS.md  [Edit]                                          │  │
+│  └────────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  [File editor: cp-agent-file-editor]                             │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Elements
+
+| Element | Description |
+|---|---|
+| **[← Back]** | Navigates to `#/agent-templates` |
+| **Title** | Icon + name + category badge |
+| **[Export YAML]** | Downloads blueprint as YAML file |
+| **Description** | Read-only metadata display |
+| **Files list** | Lists workspace files for this blueprint; click [Edit] to open `cp-agent-file-editor` |
+| **`cp-agent-file-editor`** | Inline textarea editor for workspace files (SOUL.md, IDENTITY.md, etc.) with [Save] and [Cancel] |
+
+---
+
+## Dialog — Create Agent Template (`cp-create-agent-template-dialog`)
+
+**Source file**: `ui/src/components/create-agent-template-dialog.ts`
+
+Modal for creating a new standalone agent blueprint.
+
+```
+┌─ New Agent Template ─────────────────────────────────────────────┐
+│                                                                  │
+│  Name *                                                          │
+│  [Agent name                                          ]          │
+│                                                                  │
+│  Description                                                     │
+│  [What this agent does...                             ]          │
+│                                                                  │
+│  Category                                                        │
+│  ( user  ) ( tool  ) ( system )                                  │
+│                                                                  │
+│  Seed default workspace files                                    │
+│  [☑] Create SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md           │
+│                                                                  │
+│                              [Cancel]  [Create Template]         │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+| Field | Required | Description |
+|---|---|---|
+| **Name** | Yes | Free text, 1–100 chars. Create button disabled if empty. |
+| **Description** | No | Textarea, up to 500 chars |
+| **Category** | No | Radio: `user` (default) · `tool` · `system` |
+| **Seed files** | No | If checked, creates default workspace files (SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md) |
+
+---
+
+*Updated: 2026-03-16 - v0.28.5: Instance Card redesign (⚡ runtime badge, ⚠ PERM pill, simplified menu), expanded Settings sidebar (7 panels: General/Agents/Runtime/Channels/MCP/Permissions/Config), added components cp-instance-channels, cp-instance-mcp, cp-instance-permissions, cp-instance-config, cp-permission-request-overlay, cp-bus-alerts*
+
+*Updated: 2026-03-17 - v0.37.0: replaced cp-runtime-chat with cp-runtime-pilot (17 components) — part display (tool calls, reasoning, subtasks, compaction), side LLM context panel (token gauge, tools, agent info, system prompt, event log), SSE expanded to 17 event types*
+
+*Updated: 2026-03-18 - v0.41.24: complete documentation of cp-runtime-pilot (17 components), branding fix OpenClaw → claw-runtime, added hash route #/instances/:slug/pilot, tools profile correction (minimal/messaging/coding/full), version updates*
+
+*Updated: 2026-03-19 - v0.41.39: added Agent Templates section (cp-agent-templates-view, cp-agent-template-detail, cp-create-agent-template-dialog, cp-agent-file-editor), new nav tab Templates, new hash routes #/agent-templates and #/agent-templates/:id*

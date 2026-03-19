@@ -1,57 +1,57 @@
-# Agents — Architecture et référence
+# Agents — Architecture and Reference
 
-> **Version** : 0.41.24
-> **Références** : `src/runtime/agent/` · `src/runtime/tool/registry.ts` · `src/runtime/permission/` · `src/core/discovery.ts` · `src/core/agent-sync.ts` · `ui/src/components/agent-detail-panel.ts`
+> **Version**: 0.41.24
+> **References**: `src/runtime/agent/` · `src/runtime/tool/registry.ts` · `src/runtime/permission/` · `src/core/discovery.ts` · `src/core/agent-sync.ts` · `ui/src/components/agent-detail-panel.ts`
 
 ---
 
-## Vue d'ensemble
+## Overview
 
-Un **agent** dans ClawPilot est une identité LLM associée à un workspace de fichiers, un jeu d'outils, un ensemble de permissions et un cycle de vie de session. Plusieurs agents coexistent au sein d'une même instance claw-runtime et peuvent collaborer via des mécanismes de spawn ou de délégation A2A.
+An **agent** in ClawPilot is an LLM identity associated with a file workspace, a set of tools, a set of permissions, and a session lifecycle. Multiple agents coexist within the same claw-runtime instance and can collaborate via spawn or A2A delegation mechanisms.
 
-Chaque agent est décrit par deux axes orthogonaux :
+Each agent is described by two orthogonal axes:
 
-| Axe | Champ | Valeurs |
+| Axis | Field | Values |
 |---|---|---|
-| Rôle fonctionnel | `kind` | `"primary"` · `"subagent"` |
-| Visibilité/disponibilité | `mode` | `"primary"` · `"subagent"` · `"all"` |
+| Functional role | `kind` | `"primary"` · `"subagent"` |
+| Visibility/availability | `mode` | `"primary"` · `"subagent"` · `"all"` |
 
 ---
 
-## Les deux kinds d'agents
+## The two kinds of agents
 
-### `kind: "primary"` — Agent user-facing
+### `kind: "primary"` — User-facing agent
 
-- Session **permanente** partagée entre tous les canaux (web, Telegram, CLI)
-- Clé de session : `<slug>:<agentId>` (sans channel ni peerId)
-- Workspace complet sur disque : `<stateDir>/workspaces/<agentId>/`
-- Peut spawner des sous-agents via le tool `task` (si `toolProfile: "full"`)
-- Visible et accessible par l'utilisateur
-- promptMode par défaut : `"full"` (tous les fichiers workspace injectés)
+- **Permanent** session shared across all channels (web, Telegram, CLI)
+- Session key: `<slug>:<agentId>` (no channel or peerId)
+- Full workspace on disk: `<stateDir>/workspaces/<agentId>/`
+- Can spawn subagents via the `task` tool (if `toolProfile: "full"`)
+- Visible and accessible to the user
+- Default promptMode: `"full"` (all workspace files injected)
 
-### `kind: "subagent"` — Agent outil éphémère
+### `kind: "subagent"` — Ephemeral tool agent
 
-- Session **éphémère**, scoped par `parentSessionId`
-- Spawné dynamiquement par un agent primary via le tool `task`
-- Ne peut **jamais** re-spawner (le tool `task` lui est toujours retiré, peu importe le `toolProfile`)
-- Contexte minimal — promptMode `"subagent"` (AGENTS.md + TOOLS.md uniquement)
-- Archivé après complétion de la tâche
+- **Ephemeral** session, scoped by `parentSessionId`
+- Dynamically spawned by a primary agent via the `task` tool
+- Can **never** re-spawn (the `task` tool is always removed, regardless of `toolProfile`)
+- Minimal context — promptMode `"subagent"` (AGENTS.md + TOOLS.md only)
+- Archived after task completion
 
 ---
 
-## Les deux modes de disponibilité
+## The two availability modes
 
 | `mode` | Accessible via |
 |---|---|
-| `"primary"` | Canaux user-facing uniquement |
-| `"subagent"` | Tool `task` uniquement |
-| `"all"` | Les deux — défaut pour les agents user-defined |
+| `"primary"` | User-facing channels only |
+| `"subagent"` | `task` tool only |
+| `"all"` | Both — default for user-defined agents |
 
 ---
 
-## L'agent Pilot — agent par défaut user-defined
+## The Pilot agent — default user-defined agent
 
-Le **Pilot** est l'agent créé automatiquement lors du provisioning d'une nouvelle instance par `createDefaultRuntimeConfig()`.
+The **Pilot** is the agent automatically created when provisioning a new instance via `createDefaultRuntimeConfig()`.
 
 ```json
 {
@@ -74,70 +74,70 @@ Le **Pilot** est l'agent créé automatiquement lors du provisioning d'une nouve
 }
 ```
 
-**Agent Pilot synthétique** : si une instance ne déclare aucun agent dans son `runtime.json`, `discovery.ts` et `agent-sync.ts` génèrent automatiquement un agent Pilot virtuel (sans écrire dans le fichier). Condition : `agentId === "pilot"` est toujours considéré `isDefault: true`.
+**Synthetic Pilot agent**: if an instance declares no agents in its `runtime.json`, `discovery.ts` and `agent-sync.ts` automatically generate a virtual Pilot agent (without writing to the file). Convention: `agentId === "pilot"` is always treated as `isDefault: true`.
 
 ---
 
-## Agents built-in (natifs)
+## Built-in agents (native)
 
-Les agents built-in sont définis dans `src/runtime/agent/defaults.ts`. Ils ont tous `native: true` et `kind: "subagent"`.
+Built-in agents are defined in `src/runtime/agent/defaults.ts`. They all have `native: true` and `kind: "subagent"`.
 
-### Agents visibles (affichés dans le `task` tool)
+### Visible agents (displayed in the `task` tool)
 
 | Agent | `name` | Description |
 |---|---|---|
-| **Explore** | `"explore"` | Spécialiste de recherche dans les codebases. Utilise Glob, Grep et Read. Supporte les niveaux de profondeur : `"quick"`, `"medium"`, `"very thorough"`. Read-only. |
-| **General** | `"general"` | Agent généraliste pour la recherche et l'exécution multi-étapes en parallèle. |
+| **Explore** | `"explore"` | Codebase search specialist. Uses Glob, Grep, and Read. Supports depth levels: `"quick"`, `"medium"`, `"very thorough"`. Read-only. |
+| **General** | `"general"` | General-purpose agent for search and multi-step parallel execution. |
 
-### Agents techniques (hidden — non affichés dans le picker UI)
+### Technical agents (hidden — not shown in the picker UI)
 
-| Agent | `name` | Rôle |
+| Agent | `name` | Role |
 |---|---|---|
-| **Build** | `"build"` | Codage technique. Exécute des outils selon les permissions configurées. Utilise les workspace files (SOUL.md, IDENTITY.md) comme prompt. |
-| **Plan** | `"plan"` | Planification read-only. Lit le codebase, produit des plans sans éditer de fichiers. Utilise les workspace files comme prompt. |
+| **Build** | `"build"` | Technical coding. Executes tools according to configured permissions. Uses workspace files (SOUL.md, IDENTITY.md) as prompt. |
+| **Plan** | `"plan"` | Read-only planning. Reads the codebase, produces plans without editing files. Uses workspace files as prompt. |
 
-### Agents internes (hidden — infrastructure système)
+### Internal agents (hidden — system infrastructure)
 
-| Agent | `name` | Rôle | Température |
+| Agent | `name` | Role | Temperature |
 |---|---|---|---|
-| **Compaction** | `"compaction"` | Résumé structuré de conversation pour la compaction de contexte (5 sections : Active Goals, Key Constraints, Current State, Open Items, Working Context). | — |
-| **Title** | `"title"` | Génère un titre court (≤ 50 caractères) pour la conversation, dans la langue de la conversation. | 0.5 |
-| **Summary** | `"summary"` | Résumé style PR description de ce qui a été fait (2-3 phrases, à la première personne). | — |
+| **Compaction** | `"compaction"` | Structured conversation summary for context compaction (5 sections: Active Goals, Key Constraints, Current State, Open Items, Working Context). | — |
+| **Title** | `"title"` | Generates a short title (≤ 50 characters) for the conversation in the conversation language. | 0.5 |
+| **Summary** | `"summary"` | PR description-style summary of what was done (2-3 sentences, first person). | — |
 
-> **Note** : `build` et `plan` n'ont pas de prompt inline — ils chargent leurs workspace files (SOUL.md, IDENTITY.md) depuis `<stateDir>/workspaces/<agentId>/`. Les agents `compaction`, `title`, `summary`, `explore` et `general` ont des prompts inline non modifiables par l'utilisateur.
+> **Note**: `build` and `plan` have no inline prompt — they load their workspace files (SOUL.md, IDENTITY.md) from `<stateDir>/workspaces/<agentId>/`. The agents `compaction`, `title`, `summary`, `explore`, and `general` have inline prompts that are not editable by the user.
 
 ---
 
 ## Tool profiles
 
-Le `toolProfile` d'un agent détermine l'ensemble des outils disponibles. Défini dans `src/runtime/tool/registry.ts`.
+An agent's `toolProfile` determines the set of available tools. Defined in `src/runtime/tool/registry.ts`.
 
-| Profile | Outils disponibles | Usage typique |
+| Profile | Available tools | Typical usage |
 |---|---|---|
-| `minimal` | `question` | Agents conversationnels purs, sans accès aux fichiers |
-| `messaging` | `question`, `webfetch` | Agents de communication ou de veille web |
-| `coding` | `read`, `write`, `edit`, `multiedit`, `bash`, `glob`, `grep`, `webfetch`, `question`, `todowrite`, `todoread`, `skill` | Agents de développement (défaut pour les built-in) |
-| `full` | Tout `coding` + `task` | Orchestrateurs — peuvent spawner des sous-agents |
+| `minimal` | `question` | Pure conversational agents, no file access |
+| `messaging` | `question`, `webfetch` | Communication or web monitoring agents |
+| `coding` | `read`, `write`, `edit`, `multiedit`, `bash`, `glob`, `grep`, `webfetch`, `question`, `todowrite`, `todoread`, `skill` | Development agents (default for built-ins) |
+| `full` | All `coding` + `task` | Orchestrators — can spawn subagents |
 
-**Règle absolue** : le tool `task` est **toujours retiré** pour les agents `kind: "subagent"`, quelle que soit la valeur du `toolProfile`. Un sous-agent ne peut jamais en spawner d'autres.
+**Absolute rule**: the `task` tool is **always removed** for agents with `kind: "subagent"`, regardless of the `toolProfile` value. A subagent can never spawn other agents.
 
 ---
 
-## Permissions et rulesets
+## Permissions and rulesets
 
-Les permissions contrôlent quelles opérations un agent peut effectuer. La règle d'évaluation est **last-match-wins** — si aucune règle ne correspond, l'action par défaut est `"ask"`.
+Permissions control which operations an agent can perform. The evaluation rule is **last-match-wins** — if no rule matches, the default action is `"ask"`.
 
-### Rulesets prédéfinis
+### Predefined rulesets
 
-**`DEFAULT_RULESET`** — utilisé pour le Pilot et les agents `build` et `general` :
+**`DEFAULT_RULESET`** — used for Pilot and `build` and `general` agents:
 ```
-*       **             allow   (tout autorisé par défaut)
-read    *.env          ask     (fichiers .env : demander)
+*       **             allow   (everything allowed by default)
+read    *.env          ask     (.env files: ask)
 read    *.env.*        ask
-read    *.env.example  allow   (exemples : autoriser)
+read    *.env.example  allow   (examples: allow)
 ```
 
-**`EXPLORE_AGENT_RULESET`** — read-only avec bash sous condition :
+**`EXPLORE_AGENT_RULESET`** — read-only with conditional bash:
 ```
 read    **   allow
 glob    **   allow
@@ -148,7 +148,7 @@ edit    **   deny
 task    **   deny
 ```
 
-**`PLAN_AGENT_RULESET`** — read-only, pas d'exécution :
+**`PLAN_AGENT_RULESET`** — read-only, no execution:
 ```
 read    **   allow
 glob    **   allow
@@ -158,104 +158,104 @@ edit    **   deny
 bash    **   ask
 ```
 
-**`INTERNAL_AGENT_RULESET`** — aucun outil (compaction, title, summary) :
+**`INTERNAL_AGENT_RULESET`** — no tools (compaction, title, summary):
 ```
 *       **   deny
 ```
 
-### Structure d'une règle de permission
+### Permission rule structure
 
 ```typescript
 {
   permission: string;   // "read" | "write" | "edit" | "bash" | "glob" | "grep" | "task" | "*"
-  pattern:    string;   // glob pattern (ex: "**", "*.env", "src/**/*.ts")
+  pattern:    string;   // glob pattern (e.g., "**", "*.env", "src/**/*.ts")
   action:     "allow" | "deny" | "ask";
 }
 ```
 
 ---
 
-## Persistance de session
+## Session persistence
 
-La persistance est résolue par `resolveEffectivePersistence()` selon l'ordre de priorité suivant :
+Persistence is resolved by `resolveEffectivePersistence()` according to the following priority order:
 
-| Priorité | Règle |
+| Priority | Rule |
 |---|---|
-| 1 | Valeur explicite `persistence` dans `runtime.json` (override absolu) |
-| 2 | Inférée depuis `kind` : `"primary"` → `"permanent"`, `"subagent"` → `"ephemeral"` |
-| 3 | Défaut sécurisé : `"ephemeral"` |
+| 1 | Explicit `persistence` value in `runtime.json` (absolute override) |
+| 2 | Inferred from `kind`: `"primary"` → `"permanent"`, `"subagent"` → `"ephemeral"` |
+| 3 | Secure default: `"ephemeral"` |
 
-| Valeur | Comportement |
+| Value | Behavior |
 |---|---|
-| `"permanent"` | Une session par agent, partagée cross-canal. Clé : `<slug>:<agentId>` |
-| `"ephemeral"` | Une session par tâche/conversation. Clé : `<slug>:<agentId>:<channel>:<peerId>` |
+| `"permanent"` | One session per agent, shared cross-channel. Key: `<slug>:<agentId>` |
+| `"ephemeral"` | One session per task/conversation. Key: `<slug>:<agentId>:<channel>:<peerId>` |
 
 ---
 
-## promptMode — injection du workspace
+## promptMode — workspace injection
 
-Le `promptMode` contrôle quels fichiers workspace sont chargés dans le system prompt. Il est inféré automatiquement depuis `kind` si non spécifié.
+The `promptMode` controls which workspace files are loaded into the system prompt. It is automatically inferred from `kind` if not specified.
 
-| Mode | Fichiers chargés |
+| Mode | Files loaded |
 |---|---|
 | `"full"` | SOUL, BOOTSTRAP, AGENTS, TOOLS, IDENTITY, USER, HEARTBEAT + `memory/*.md` |
-| `"minimal"` | SOUL, AGENTS, TOOLS, IDENTITY, USER (sans HEARTBEAT ni memory) |
-| `"subagent"` | AGENTS.md et TOOLS.md uniquement |
+| `"minimal"` | SOUL, AGENTS, TOOLS, IDENTITY, USER (no HEARTBEAT or memory) |
+| `"subagent"` | AGENTS.md and TOOLS.md only |
 
 ---
 
-## Liens entre agents
+## Links between agents
 
-Les agents peuvent être reliés via deux types de liens (`AgentLinkRecord`) :
+Agents can be linked via two types of links (`AgentLinkRecord`):
 
-| `link_type` | Sémantique | Direction |
+| `link_type` | Semantic | Direction |
 |---|---|---|
-| `"spawn"` | L'agent source peut spawner la cible via le tool `task` | Hiérarchique (parent → enfant) |
-| `"a2a"` | Délégation peer-to-peer entre agents primary | Bidirectionnel ou directionnel |
+| `"spawn"` | Source agent can spawn target via the `task` tool | Hierarchical (parent → child) |
+| `"a2a"` | Peer-to-peer delegation between primary agents | Bidirectional or directional |
 
-Les liens `spawn` sont extraits automatiquement depuis `agents[].subagents.allowAgents[]` dans `runtime.json` lors de la synchronisation (`agent-sync.ts`). Les liens `a2a` sont déclarés explicitement.
+`spawn` links are automatically extracted from `agents[].subagents.allowAgents[]` in `runtime.json` during synchronization (`agent-sync.ts`). `a2a` links are declared explicitly.
 
-La politique A2A est également contrôlée par `agentToAgent.allowList` dans la config de l'agent source.
+A2A policy is also controlled by `agentToAgent.allowList` in the source agent's config.
 
 ---
 
 ## Blueprint agent vs Instance agent
 
-| Type | Table DB | Lié à | Rôle |
+| Type | DB table | Linked to | Role |
 |---|---|---|---|
-| **Blueprint agent** | `agents` (`blueprint_id != null`, `instance_id = null`) | Un blueprint | Template réutilisable. Les fichiers workspace sont stockés dans la DB (`agent_files`). |
-| **Instance agent** | `agents` (`instance_id != null`, `blueprint_id = null`) | Une instance active | Agent concret avec workspace physique sur disque. Synchronisé depuis `runtime.json` par `AgentSync`. |
+| **Blueprint agent** | `agents` (`blueprint_id != null`, `instance_id = null`) | A blueprint | Reusable template. Workspace files are stored in the DB (`agent_files`). |
+| **Instance agent** | `agents` (`instance_id != null`, `blueprint_id = null`) | An active instance | Concrete agent with physical workspace on disk. Synchronized from `runtime.json` by `AgentSync`. |
 
-Le `BlueprintDeployer` matérialise les blueprint agents en instance agents : il copie les fichiers workspace depuis la DB vers le disque et met à jour `runtime.json`.
+The `BlueprintDeployer` materializes blueprint agents into instance agents: it copies workspace files from the DB to disk and updates `runtime.json`.
 
 ---
 
-## Cycle de vie d'un agent
+## Agent lifecycle
 
 ```
-Provisioning d'une nouvelle instance
-  └─> createDefaultRuntimeConfig()        → runtime.json avec agent Pilot par défaut
+Provisioning a new instance
+  └─> createDefaultRuntimeConfig()        → runtime.json with default Pilot agent
 
 InstanceDiscovery.scan()
-  └─> parse runtime.json agents[]         → si vide → synthetic Pilot agent
+  └─> parse runtime.json agents[]         → if empty → synthetic Pilot agent
   └─> adopt()                             → registry.createAgent() + AgentSync.sync()
 
-AgentSync.sync() (à chaque démarrage d'instance)
-  └─> 1. Lit runtime.json
-  └─> 2. Construit la liste des agents attendus (avec fallback synthetic pilot)
-  └─> 3. Réconcilie avec la DB (add/update/remove selon config_hash SHA-256)
-  └─> 4. Synce les workspace files (DISCOVERABLE_FILES)
-  └─> 5. Extrait et remplace les liens agent-to-agent (replaceAgentLinks())
+AgentSync.sync() (on each instance startup)
+  └─> 1. Read runtime.json
+  └─> 2. Build expected agent list (with synthetic pilot fallback)
+  └─> 3. Reconcile with DB (add/update/remove based on config_hash SHA-256)
+  └─> 4. Sync workspace files (DISCOVERABLE_FILES)
+  └─> 5. Extract and replace agent-to-agent links (replaceAgentLinks())
 
-AgentProvisioner.createAgent()            → ajout d'un agent à une instance existante
+AgentProvisioner.createAgent()            → add an agent to an existing instance
   └─> mkdir workspaces/<agentId>/
   └─> write template files
        - primary : SOUL, BOOTSTRAP, AGENTS, TOOLS, IDENTITY, USER, HEARTBEAT + memory/*.md
-       - subagent : AGENTS.md + TOOLS.md uniquement
+       - subagent : AGENTS.md + TOOLS.md only
   └─> update runtime.json agents[]
   └─> registry.upsertAgent()
 
-BlueprintDeployer.deploy()                → déployer un blueprint sur une instance
+BlueprintDeployer.deploy()                → deploy a blueprint to an instance
   └─> copy workspace files from DB
   └─> update runtime.json agents[]
   └─> registry.upsertAgent()
@@ -263,131 +263,131 @@ BlueprintDeployer.deploy()                → déployer un blueprint sur une ins
 
 ---
 
-## Card Agent — Onglets de configuration (Dashboard UI)
+## Agent Card — Configuration Tabs (Dashboard UI)
 
-Le composant `cp-agent-detail-panel` (`ui/src/components/agent-detail-panel.ts`) expose la configuration d'un agent via trois onglets.
+The `cp-agent-detail-panel` component (`ui/src/components/agent-detail-panel.ts`) exposes agent configuration via three tabs.
 
 ---
 
-### Onglet Info
+### Info Tab
 
-Affiche les métadonnées de l'agent et les liens de délégation. Les champs suivants sont éditables via le formulaire (icône crayon) sur les instances uniquement.
+Displays agent metadata and delegation links. The following fields are editable via the form (pencil icon) on instances only.
 
-| Champ UI | Stockage | Clé | Notes |
+| UI Field | Storage | Key | Notes |
 |---|---|---|---|
-| **Name** | `runtime.json` | `agents[].name` | Nom affiché dans l'UI |
-| **Provider / Model** | `runtime.json` | `agents[].model` | Sélection en deux temps : provider → modèle. Stocké au format `"provider/model"` |
-| **Role** | DB uniquement | `agents.role` | Libre, non synchronisé vers `runtime.json` |
-| **Tags** | DB uniquement | `agents.tags` | CSV, non synchronisé vers `runtime.json` |
-| **Notes** | DB uniquement | `agents.notes` | Texte libre, non synchronisé vers `runtime.json` |
-| **Skills** | DB + `runtime.json` | `agents.skills` / `agents[].skills` | `null` = tous les skills disponibles ; `[]` = aucun ; array = liste explicite. Sur instance running : toggle All/None/Custom + checkboxes |
-| **Delegates to** | DB (`agent_links`) | `link_type: "spawn"`, `source_agent_id` | Badges + dropdown pour ajouter/retirer des cibles de spawn |
-| **Delegated by** | DB (`agent_links`) | `link_type: "spawn"`, `target_agent_id` | Lecture seule — agents qui peuvent spawner cet agent |
+| **Name** | `runtime.json` | `agents[].name` | Display name in UI |
+| **Provider / Model** | `runtime.json` | `agents[].model` | Two-step selection: provider → model. Stored as `"provider/model"` |
+| **Role** | DB only | `agents.role` | Free-form, not synced to `runtime.json` |
+| **Tags** | DB only | `agents.tags` | CSV, not synced to `runtime.json` |
+| **Notes** | DB only | `agents.notes` | Free-form text, not synced to `runtime.json` |
+| **Skills** | DB + `runtime.json` | `agents.skills` / `agents[].skills` | `null` = all available skills; `[]` = none; array = explicit list. On running instance: toggle All/None/Custom + checkboxes |
+| **Delegates to** | DB (`agent_links`) | `link_type: "spawn"`, `source_agent_id` | Badges + dropdown to add/remove spawn targets |
+| **Delegated by** | DB (`agent_links`) | `link_type: "spawn"`, `target_agent_id` | Read-only — agents that can spawn this agent |
 
-> **Role, Tags, Notes** sont des champs purement UI (table `agents` en DB). Ils ne sont pas écrits dans `runtime.json` et ne sont pas lus par le moteur claw-runtime.
+> **Role, Tags, Notes** are purely UI fields (table `agents` in DB). They are not written to `runtime.json` and are not read by the claw-runtime engine.
 
 ---
 
-### Onglet Heartbeat
+### Heartbeat Tab
 
-Configure les tâches autonomes périodiques de l'agent. Tout le bloc est absent de `runtime.json` si le heartbeat est désactivé (`null`).
+Configures periodic autonomous tasks for the agent. The entire block is absent from `runtime.json` if heartbeat is disabled (`null`).
 
-| Champ UI | Label | Clé `runtime.json` | Type | Valeurs / Contraintes |
+| UI Field | Label | `runtime.json` key | Type | Values / Constraints |
 |---|---|---|---|---|
-| **Enable heartbeat** | "Enable heartbeat" | présence de `heartbeat` | toggle | Si désactivé → `heartbeat: null` dans le JSON |
+| **Enable heartbeat** | "Enable heartbeat" | presence of `heartbeat` | toggle | If disabled → `heartbeat: null` in JSON |
 | **Interval** | "Interval" | `heartbeat.every` | `string` (enum) | `"5m"`, `"10m"`, `"15m"`, `"30m"`, `"1h"`, `"2h"`, `"4h"`, `"6h"`, `"12h"`, `"24h"` |
-| **Active hours start** | "Active hours" | `heartbeat.activeHours.start` | `string` HH:MM | Format 24h. Nécessite aussi `end` et `tz` |
-| **Active hours end** | "Active hours" | `heartbeat.activeHours.end` | `string` HH:MM | Format 24h |
-| **Max response chars** | "Max response chars" | `heartbeat.ackMaxChars` | `number` | min 100, max 5000. Défaut : `500` |
-| **Prompt source** | "Use HEARTBEAT.md" / "Custom prompt" | présence de `heartbeat.prompt` | radio | `"file"` → pas de champ `prompt` dans le JSON ; `"custom"` → `heartbeat.prompt` = texte |
-| **Custom prompt** | — | `heartbeat.prompt` | `string` | Affiché uniquement si prompt source = "Custom prompt" |
-| **Tick history** | "Tick history" | lecture seule via API | — | 20 derniers ticks. Instance uniquement, read-only |
+| **Active hours start** | "Active hours" | `heartbeat.activeHours.start` | `string` HH:MM | 24h format. Also requires `end` and `tz` |
+| **Active hours end** | "Active hours" | `heartbeat.activeHours.end` | `string` HH:MM | 24h format |
+| **Max response chars** | "Max response chars" | `heartbeat.ackMaxChars` | `number` | min 100, max 5000. Default: `500` |
+| **Prompt source** | "Use HEARTBEAT.md" / "Custom prompt" | presence of `heartbeat.prompt` | radio | `"file"` → no `prompt` field in JSON; `"custom"` → `heartbeat.prompt` = text |
+| **Custom prompt** | — | `heartbeat.prompt` | `string` | Displayed only if prompt source = "Custom prompt" |
+| **Tick history** | "Tick history" | read-only via API | — | Last 20 ticks. Instance only, read-only |
 
-**Champs fantômes (gérés en backend uniquement, non exposés dans l'UI) :**
+**Ghost fields (backend-only, not exposed in UI):**
 
-| Champ | Clé `runtime.json` | Notes |
+| Field | `runtime.json` key | Notes |
 |---|---|---|
-| Timezone | `heartbeat.activeHours.tz` | Chargé et préservé à la sauvegarde, mais **aucun champ UI**. Requis par le schéma si `activeHours` est défini. Doit être configuré manuellement dans `runtime.json`. |
-| Model | `heartbeat.model` | Modèle dédié pour les ticks heartbeat. Chargé et préservé, mais **non éditable via l'UI**. |
+| Timezone | `heartbeat.activeHours.tz` | Loaded and preserved on save, but **no UI field**. Required by schema if `activeHours` is set. Must be configured manually in `runtime.json`. |
+| Model | `heartbeat.model` | Dedicated model for heartbeat ticks. Loaded and preserved, but **not editable via UI**. |
 
 ---
 
-### Onglet Config
+### Config Tab
 
-Configure le comportement LLM et les timeouts de l'agent. Tous ces champs sont écrits dans `runtime.json`.
+Configures LLM behavior and timeouts for the agent. All these fields are written to `runtime.json`.
 
-#### Section LLM
+#### LLM Section
 
-| Champ UI | Label | Clé `runtime.json` | Type | Valeurs / Contraintes |
+| UI Field | Label | `runtime.json` key | Type | Values / Constraints |
 |---|---|---|---|---|
-| **Tool profile** | "Tool profile" | `agents[].toolProfile` | `string` (enum) | `"minimal"`, `"messaging"`, `"coding"`, `"full"`. Défaut : `"coding"` |
-| **Prompt mode** | "Prompt mode" | `agents[].promptMode` | `string` (enum) | `"full"`, `"minimal"` (UI). Le schéma backend accepte aussi `"subagent"`, non exposé dans l'UI |
-| **Max steps** | "Max steps" | `agents[].maxSteps` | `number` entier | min 1, max 100. Défaut : `20` |
-| **Temperature** | "Temperature" | `agents[].temperature` | `number` | min 0, max 2, step 0.1. Laisser vide = modèle par défaut |
+| **Tool profile** | "Tool profile" | `agents[].toolProfile` | `string` (enum) | `"minimal"`, `"messaging"`, `"coding"`, `"full"`. Default: `"coding"` |
+| **Prompt mode** | "Prompt mode" | `agents[].promptMode` | `string` (enum) | `"full"`, `"minimal"` (UI). Backend schema also accepts `"subagent"`, not exposed in UI |
+| **Max steps** | "Max steps" | `agents[].maxSteps` | `number` integer | min 1, max 100. Default: `20` |
+| **Temperature** | "Temperature" | `agents[].temperature` | `number` | min 0, max 2, step 0.1. Leave empty = model default |
 
-#### Section Extended thinking (Anthropic)
+#### Extended thinking section (Anthropic)
 
-| Champ UI | Label | Clé `runtime.json` | Type | Valeurs / Contraintes |
+| UI Field | Label | `runtime.json` key | Type | Values / Constraints |
 |---|---|---|---|---|
 | **Enable** | "Enable" | `agents[].thinking.enabled` | `boolean` | toggle |
-| **Budget tokens** | "Budget tokens" | `agents[].thinking.budgetTokens` | `number` entier | min 1000, max 100000. Défaut : `15000`. Affiché uniquement si thinking activé |
+| **Budget tokens** | "Budget tokens" | `agents[].thinking.budgetTokens` | `number` integer | min 1000, max 100000. Default: `15000`. Displayed only if thinking enabled |
 
-#### Section Spawn
+#### Spawn Section
 
-| Champ UI | Label | Clé `runtime.json` | Type | Notes |
+| UI Field | Label | `runtime.json` key | Type | Notes |
 |---|---|---|---|---|
-| **Allow sub-agents** | "Allow sub-agents" | `agents[].allowSubAgents` | `boolean` | Défaut : `true`. Contrôle globalement la capacité à spawner |
+| **Allow sub-agents** | "Allow sub-agents" | `agents[].allowSubAgents` | `boolean` | Default: `true`. Globally controls spawning capability |
 
-#### Section Timeouts
+#### Timeouts Section
 
-| Champ UI | Label | Clé `runtime.json` | Type | Valeurs / Contraintes |
+| UI Field | Label | `runtime.json` key | Type | Values / Constraints |
 |---|---|---|---|---|
-| **Session timeout** | "Session timeout (ms)" | `agents[].timeoutMs` | `number` entier | min 1000. Défaut : `300000` (5 min). Timeout global de la session |
-| **LLM inter-chunk timeout** | "LLM inter-chunk timeout (ms)" | `agents[].chunkTimeoutMs` | `number` entier | min 5000. Défaut : `120000` (2 min). Timeout entre deux chunks LLM consécutifs |
+| **Session timeout** | "Session timeout (ms)" | `agents[].timeoutMs` | `number` integer | min 1000. Default: `300000` (5 min). Global session timeout |
+| **LLM inter-chunk timeout** | "LLM inter-chunk timeout (ms)" | `agents[].chunkTimeoutMs` | `number` integer | min 5000. Default: `120000` (2 min). Timeout between consecutive LLM chunks |
 
-#### Section Instructions
+#### Instructions Section
 
-| Champ UI | Label | Clé `runtime.json` | Type | Notes |
+| UI Field | Label | `runtime.json` key | Type | Notes |
 |---|---|---|---|---|
-| **Remote instruction URLs** | "Remote instruction URLs" | `agents[].instructionUrls` | `string[]` | URLs fetchées au démarrage de session et ajoutées au system prompt. Bouton `+ URL` pour en ajouter |
-| **Additional workspace files (globs)** | "Additional workspace files (globs)" | `agents[].bootstrapFiles` | `string[]` | Glob patterns. Les fichiers correspondants sont injectés dans le system prompt en plus des workspace files standards. Bouton `+ Glob` pour en ajouter |
+| **Remote instruction URLs** | "Remote instruction URLs" | `agents[].instructionUrls` | `string[]` | URLs fetched at session startup and added to system prompt. `+ URL` button to add more |
+| **Additional workspace files (globs)** | "Additional workspace files (globs)" | `agents[].bootstrapFiles` | `string[]` | Glob patterns. Matching files are injected into the system prompt in addition to standard workspace files. `+ Glob` button to add more |
 
-> **Note sur `bootstrapFiles`** : côté UI ce champ est nommé `workspaceGlobs` en interne. Le mapping vers `bootstrapFiles` (nom du schéma backend) est effectué lors de la sauvegarde.
+> **Note on `bootstrapFiles`**: in the UI this field is named `workspaceGlobs` internally. Mapping to `bootstrapFiles` (backend schema name) is done on save.
 
 ---
 
-## Référence rapide des champs `runtime.json`
+## Quick reference for `runtime.json` fields
 
-Champs de configuration d'un agent dans `runtime.json` (type `RuntimeAgentConfig`) :
+Agent configuration fields in `runtime.json` (type `RuntimeAgentConfig`):
 
-| Champ | Type | Défaut | Description |
+| Field | Type | Default | Description |
 |---|---|---|---|
-| `id` | `string` | requis | Identifiant unique de l'agent |
-| `name` | `string` | requis | Nom affiché |
-| `model` | `string` | requis | Format `"provider/model"` ou alias |
-| `isDefault` | `boolean` | `false` | Agent par défaut pour les nouvelles sessions |
-| `toolProfile` | `"minimal"\|"coding"\|"messaging"\|"full"` | `"coding"` | Jeu d'outils disponibles |
-| `permissions` | `PermissionRule[]` | `[]` | Ruleset de permissions |
-| `persistence` | `"permanent"\|"ephemeral"` | inféré | Override de persistance de session |
-| `promptMode` | `"full"\|"minimal"\|"subagent"` | inféré | Fichiers workspace injectés (`"subagent"` non exposé dans l'UI) |
-| `maxSteps` | `number` (1–100) | `20` | Nombre maximum de tool-call steps |
-| `temperature` | `number` (0–2) | — | Température LLM |
-| `systemPrompt` | `string` | — | Override du system prompt inline |
-| `systemPromptFile` | `string` | — | Chemin vers un fichier de system prompt |
-| `allowSubAgents` | `boolean` | `true` | Autorise le spawn de sous-agents |
-| `agentToAgent` | `{ enabled, allowList }` | — | Politique de délégation A2A |
-| `thinking.enabled` | `boolean` | `false` | Active l'extended thinking (Anthropic) |
-| `thinking.budgetTokens` | `number` (1000–100000) | `15000` | Budget de tokens de réflexion |
-| `bootstrapFiles` | `string[]` | — | Glob patterns injectés dans le prompt (nommé `workspaceGlobs` dans l'UI) |
-| `instructionUrls` | `string[]` | — | URLs fetchées et ajoutées au prompt |
-| `skillUrls` | `string[]` | — | Index JSON de skills distants |
-| `timeoutMs` | `number` | `300000` | Timeout global par session (5 min) |
-| `chunkTimeoutMs` | `number` | `120000` | Timeout entre chunks LLM (2 min) |
-| `inheritWorkspace` | `boolean` | — | Sous-agents héritent du workDir parent |
-| `heartbeat.every` | `string` (enum) | — | Intervalle : `"5m"` à `"24h"` |
-| `heartbeat.activeHours.start` | `string` HH:MM | — | Début de la plage horaire active |
-| `heartbeat.activeHours.end` | `string` HH:MM | — | Fin de la plage horaire active |
-| `heartbeat.activeHours.tz` | `string` | — | Timezone IANA (ex: `"Europe/Paris"`). **Requis** si `activeHours` est défini. Non éditable via l'UI |
-| `heartbeat.ackMaxChars` | `number` (100–5000) | `500` | Longueur max de la réponse de tick |
-| `heartbeat.prompt` | `string` | — | Prompt personnalisé pour les ticks. Absent = utilise HEARTBEAT.md |
-| `heartbeat.model` | `string` | — | Modèle dédié pour les ticks. Non éditable via l'UI |
+| `id` | `string` | required | Unique agent identifier |
+| `name` | `string` | required | Display name |
+| `model` | `string` | required | Format `"provider/model"` or alias |
+| `isDefault` | `boolean` | `false` | Default agent for new sessions |
+| `toolProfile` | `"minimal"\|"coding"\|"messaging"\|"full"` | `"coding"` | Set of available tools |
+| `permissions` | `PermissionRule[]` | `[]` | Permission ruleset |
+| `persistence` | `"permanent"\|"ephemeral"` | inferred | Session persistence override |
+| `promptMode` | `"full"\|"minimal"\|"subagent"` | inferred | Workspace files injected (`"subagent"` not exposed in UI) |
+| `maxSteps` | `number` (1–100) | `20` | Maximum number of tool-call steps |
+| `temperature` | `number` (0–2) | — | LLM temperature |
+| `systemPrompt` | `string` | — | Inline system prompt override |
+| `systemPromptFile` | `string` | — | Path to system prompt file |
+| `allowSubAgents` | `boolean` | `true` | Allows subagent spawning |
+| `agentToAgent` | `{ enabled, allowList }` | — | A2A delegation policy |
+| `thinking.enabled` | `boolean` | `false` | Enables extended thinking (Anthropic) |
+| `thinking.budgetTokens` | `number` (1000–100000) | `15000` | Thinking token budget |
+| `bootstrapFiles` | `string[]` | — | Glob patterns injected in prompt (named `workspaceGlobs` in UI) |
+| `instructionUrls` | `string[]` | — | URLs fetched and added to prompt |
+| `skillUrls` | `string[]` | — | Remote skill JSON index |
+| `timeoutMs` | `number` | `300000` | Global session timeout (5 min) |
+| `chunkTimeoutMs` | `number` | `120000` | Timeout between LLM chunks (2 min) |
+| `inheritWorkspace` | `boolean` | — | Subagents inherit parent workDir |
+| `heartbeat.every` | `string` (enum) | — | Interval: `"5m"` to `"24h"` |
+| `heartbeat.activeHours.start` | `string` HH:MM | — | Start of active hours |
+| `heartbeat.activeHours.end` | `string` HH:MM | — | End of active hours |
+| `heartbeat.activeHours.tz` | `string` | — | IANA timezone (e.g., `"Europe/Paris"`). **Required** if `activeHours` is set. Not editable via UI |
+| `heartbeat.ackMaxChars` | `number` (100–5000) | `500` | Max length of tick response |
+| `heartbeat.prompt` | `string` | — | Custom prompt for ticks. Absent = uses HEARTBEAT.md |
+| `heartbeat.model` | `string` | — | Dedicated model for ticks. Not editable via UI |

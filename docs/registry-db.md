@@ -1,7 +1,7 @@
 # claw-pilot — Registry Database (`registry.db`)
 
 SQLite database at `~/.claw-pilot/registry.db`. WAL mode, foreign keys enforced.  
-Current schema version: **15**. Source of truth: `src/db/schema.ts`.
+Current schema version: **16**. Source of truth: `src/db/schema.ts`.
 
 ---
 
@@ -20,6 +20,8 @@ servers ──< instances ──< agents ──< agent_files
 
 blueprints ──< agents ──< agent_files
            └──< agent_links
+
+agent_blueprints ──< agent_blueprint_files
 
 users ──< sessions
 
@@ -305,6 +307,38 @@ Index: `idx_rt_auth_profiles_provider ON (instance_slug, provider_id)`.
 
 Indexes: `idx_rt_pairing_codes_instance`, `idx_rt_pairing_codes_expires`.
 
+### `agent_blueprints` (v16)
+
+Standalone reusable agent templates, independent of team blueprints and instances. Can be created from scratch, cloned, or saved from an existing instance agent.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | TEXT | PRIMARY KEY |
+| `name` | TEXT | NOT NULL |
+| `description` | TEXT | |
+| `category` | TEXT | NOT NULL DEFAULT 'user' CHECK(IN user,tool,system) |
+| `config_json` | TEXT | NOT NULL DEFAULT '{}' |
+| `icon` | TEXT | |
+| `tags` | TEXT | |
+| `created_at` | TEXT | NOT NULL |
+| `updated_at` | TEXT | NOT NULL |
+
+### `agent_blueprint_files` (v16)
+
+Workspace files per agent blueprint (SOUL.md, IDENTITY.md, AGENTS.md, etc.).
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `agent_blueprint_id` | TEXT | NOT NULL REFERENCES agent_blueprints(id) ON DELETE CASCADE |
+| `filename` | TEXT | NOT NULL |
+| `content` | TEXT | NOT NULL DEFAULT '' |
+| `content_hash` | TEXT | |
+| `updated_at` | TEXT | |
+
+UNIQUE: `(agent_blueprint_id, filename)`.
+Index: `idx_agent_blueprint_files_bp ON (agent_blueprint_id)`.
+
 ---
 
 ## Migration history
@@ -326,12 +360,13 @@ Indexes: `idx_rt_pairing_codes_instance`, `idx_rt_pairing_codes_expires`.
 | 13 | Added `persistent` flag to `rt_sessions` (permanent sessions). Added `created_at` to `agents`. |
 | 14 | Index `idx_rt_messages_session_role` on `(session_id, role)`. **PLAN-16**: archives duplicate permanent sessions (keeps oldest per agent), recalculates permanent keys to `<slug>:<agentId>` (removes peerId). |
 | 15 | Relocated instance state directories from `~/.runtime-<slug>/` to `~/.claw-pilot/instances/<slug>/`. Recalculates `state_dir` and `config_path`. |
+| 16 | Added `agent_blueprints` and `agent_blueprint_files` tables for standalone reusable agent templates (independent of team blueprints and instances). |
 
 ---
 
 ## Key access patterns
 
-All DB access goes through `src/core/registry.ts` facade (8 repositories) — never raw SQL in commands or routes.
+All DB access goes through `src/core/registry.ts` facade (9 repositories) — never raw SQL in commands or routes.
 
 ### Instance operations
 
@@ -366,6 +401,17 @@ All DB access goes through `src/core/registry.ts` facade (8 repositories) — ne
 | Blueprint links | `BlueprintRepository` | `listBlueprintLinks()`, `replaceBlueprintLinks()` |
 | Builder payload | `BlueprintRepository` | `getBlueprintBuilderData(blueprintId)` |
 
+### Agent blueprint operations
+
+| Operation | Repository | Method |
+|-----------|-----------|--------|
+| List agent blueprints | `AgentBlueprintRepository` | `listAgentBlueprints()` |
+| Get agent blueprint | `AgentBlueprintRepository` | `getAgentBlueprint(id)` |
+| Create agent blueprint | `AgentBlueprintRepository` | `createAgentBlueprint(data)` |
+| Update agent blueprint | `AgentBlueprintRepository` | `updateAgentBlueprint(id, fields)` |
+| Delete agent blueprint | `AgentBlueprintRepository` | `deleteAgentBlueprint(id)` |
+| Get/write blueprint file | `AgentBlueprintRepository` | `getAgentBlueprintFile()` / `upsertAgentBlueprintFile()` |
+
 ### Other operations
 
 | Operation | Repository | Method |
@@ -378,4 +424,4 @@ All DB access goes through `src/core/registry.ts` facade (8 repositories) — ne
 
 ---
 
-*Mis à jour : 2026-03-18 — v0.41.24 : ajout colonnes complètes pour toutes les tables, 8 repositories détaillés, access patterns exhaustifs*
+*Updated: 2026-03-19 — v0.41.39: schema v16 (agent_blueprints, agent_blueprint_files), 9 repositories, migration history complete*
