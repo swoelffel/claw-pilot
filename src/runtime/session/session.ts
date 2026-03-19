@@ -10,6 +10,7 @@ import { nanoid } from "nanoid";
 import type { SessionId, InstanceSlug, AgentId, MessageId } from "../types.js";
 import { listMessages } from "./message.js";
 import { listParts, createPart } from "./part.js";
+import { clearCachedSystemPrompt } from "./system-prompt-cache.js";
 
 export interface SessionInfo {
   id: SessionId;
@@ -310,6 +311,7 @@ export function archiveSession(
   db.prepare(
     "UPDATE rt_sessions SET state = 'archived', updated_at = ? WHERE id = ? AND state = 'active'",
   ).run(now, id);
+  clearCachedSystemPrompt(id);
 }
 
 export function forkSession(
