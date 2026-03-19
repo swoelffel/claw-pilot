@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.34] — 2026-03-19
+
+### Added
+
+- **Visionneur de system prompt en temps réel** dans l'onglet CONTEXT du panel /pilot :
+  - Le system prompt construit (le prompt réel envoyé au LLM) est affiché sous la barre de consommation de tokens dans l'onglet CONTEXT.
+  - **Sections collapsibles** : le prompt est parsé en blocs XML (`<agent_identity>`, `<instructions>`, `<teammates>`, `<env>`, `<behavior>`, `<session_context>`, `<available_skills>`) — chaque section est un accordion indépendant avec icône, label, compteur de caractères et bouton Copier.
+  - **Mise à jour temps réel** via bus event `session.system_prompt` émis dans `prompt-loop.ts` après chaque reconstruction du prompt. Le frontend écoute l'event SSE et patche `_context.systemPrompt` sans rechargement complet.
+  - **Cache en mémoire** (`system-prompt-cache.ts`) : le dernier prompt construit par session est mémorisé et servi par l'endpoint `GET .../sessions/:id/context` (champ `systemPrompt` + `systemPromptBuiltAt`).
+  - État vide informatif ("Disponible après le premier message") tant qu'aucun appel LLM n'a eu lieu pour la session.
+  - i18n : 6 clés ajoutées en 6 langues (en/fr/de/es/it/pt).
+
+---
+
 ## [0.41.33] — 2026-03-19
 
 ### Added

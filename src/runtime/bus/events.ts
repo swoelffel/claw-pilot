@@ -203,6 +203,15 @@ export const LLMChunkTimeout = defineEvent<
 >("llm.chunk_timeout");
 
 // ---------------------------------------------------------------------------
+// Session system prompt event
+// ---------------------------------------------------------------------------
+
+export const SessionSystemPromptBuilt = defineEvent<
+  "session.system_prompt",
+  { sessionId: SessionId; agentId: AgentId; systemPrompt: string; builtAt: string }
+>("session.system_prompt");
+
+// ---------------------------------------------------------------------------
 // Channel events
 // ---------------------------------------------------------------------------
 
@@ -229,6 +238,7 @@ export type AnyEventDef =
   | typeof SessionUpdated
   | typeof SessionEnded
   | typeof SessionStatusChanged
+  | typeof SessionSystemPromptBuilt
   | typeof MessageCreated
   | typeof MessageUpdated
   | typeof MessagePartDelta

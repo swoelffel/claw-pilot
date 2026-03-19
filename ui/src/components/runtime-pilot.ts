@@ -468,6 +468,22 @@ export class RuntimePilot extends LitElement {
         break;
       }
 
+      // ── System prompt real-time update ──────────────────────────────────
+      case "session.system_prompt": {
+        if (eventSessionId && eventSessionId !== this._activeSessionId) break;
+        const systemPrompt = p.systemPrompt as string | undefined;
+        const builtAt = p.builtAt as string | undefined;
+        if (systemPrompt !== undefined && this._context) {
+          // Patch _context in place to avoid a full reload
+          this._context = {
+            ...this._context,
+            systemPrompt: systemPrompt,
+            ...(builtAt !== undefined ? { systemPromptBuiltAt: builtAt } : {}),
+          };
+        }
+        break;
+      }
+
       // ── Context refresh triggers ─────────────────────────────────────────
       case "mcp.tools.changed":
         void this._loadContext();

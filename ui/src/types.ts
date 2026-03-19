@@ -507,6 +507,10 @@ export interface SessionContext {
     lastError?: string;
   }>;
   systemPromptFiles: string[];
+  /** Built system prompt — populated from in-memory cache after first LLM call. Null before first call. */
+  systemPrompt: string | null;
+  /** ISO 8601 timestamp of when the system prompt was last built. */
+  systemPromptBuiltAt: string | null;
   teammates: Array<{
     id: string;
     name: string;

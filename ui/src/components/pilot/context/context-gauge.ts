@@ -1,9 +1,11 @@
 // ui/src/components/pilot/context/context-gauge.ts
 // Token usage bar: used / context window, with compaction threshold marker.
-import { LitElement, html, css } from "lit";
+// Also renders the system prompt viewer below the gauge.
+import { LitElement, html, nothing, css } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../../../styles/tokens.js";
+import "./context-prompt.js";
 
 function formatK(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -108,6 +110,8 @@ export class PilotContextGauge extends LitElement {
   @property({ type: Number }) used = 0;
   @property({ type: Number }) total = 200_000;
   @property({ type: Number }) threshold = 0.85;
+  @property({ type: String }) systemPrompt: string | null = null;
+  @property({ type: String }) builtAt: string | null = null;
 
   override render() {
     const pct = this.total > 0 ? Math.min(this.used / this.total, 1) : 0;
@@ -139,6 +143,15 @@ export class PilotContextGauge extends LitElement {
           <span>⊡ ${thresholdPct.toFixed(0)}%</span>
         </div>
       </div>
+
+      ${this.systemPrompt !== undefined
+        ? html`
+            <cp-pilot-context-prompt
+              .systemPrompt=${this.systemPrompt}
+              .builtAt=${this.builtAt}
+            ></cp-pilot-context-prompt>
+          `
+        : nothing}
     `;
   }
 }

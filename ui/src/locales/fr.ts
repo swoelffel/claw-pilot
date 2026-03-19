@@ -364,4 +364,12 @@ export const templates = {
   "cfg-skill-remove-aria": "Supprimer la compétence",
   "cfg-expert-in-placeholder": "ex : code-review, test-writing",
   "cfg-expert-in-add": "Ajouter une compétence",
+
+  // context-prompt.ts — System prompt viewer (v0.41.34)
+  "ctx-prompt-title": "Prompt système",
+  "ctx-prompt-empty": "Disponible après le premier message",
+  "ctx-prompt-no-sections": "Aucune section détectée",
+  "ctx-prompt-extra-label": "Contenu supplémentaire",
+  "ctx-prompt-copy": "Copier",
+  "ctx-prompt-copied": "Copié !",
 };

@@ -32,6 +32,7 @@ import { createPart, updatePartState, listParts } from "./part.js";
 import { getBus } from "../bus/index.js";
 import {
   SessionStatusChanged,
+  SessionSystemPromptBuilt,
   MessageCreated,
   MessageUpdated,
   MessagePartDelta,
@@ -39,6 +40,7 @@ import {
   LLMChunkTimeout,
   PermissionReplied,
 } from "../bus/events.js";
+import { cacheSystemPrompt } from "./system-prompt-cache.js";
 import { buildCoreMessages, applyCaching } from "./message-builder.js";
 import { normalizeTokenUsage } from "./usage-tracker.js";
 import { buildToolSet } from "./tool-set-builder.js";
@@ -202,6 +204,15 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       db,
       sessionId,
       ...(runtimeConfig !== undefined ? { runtimeConfig } : {}),
+    });
+
+    // 2b. Cache system prompt and notify observers (dashboard context panel)
+    cacheSystemPrompt(sessionId, systemPrompt);
+    bus.publish(SessionSystemPromptBuilt, {
+      sessionId,
+      agentId: agentConfig.id,
+      systemPrompt,
+      builtAt: new Date().toISOString(),
     });
 
     // 3. Load message history (batch SQL — no N+1)

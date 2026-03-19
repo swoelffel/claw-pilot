@@ -205,6 +205,8 @@ export class PilotContextPanel extends LitElement {
             .used=${ctx?.tokenUsage.estimated ?? 0}
             .total=${ctx?.tokenUsage.contextWindow ?? 200_000}
             .threshold=${ctx?.tokenUsage.compactionThreshold ?? 0.85}
+            .systemPrompt=${ctx?.systemPrompt ?? null}
+            .builtAt=${ctx?.systemPromptBuiltAt ?? null}
           ></cp-pilot-context-gauge>
         `;
 

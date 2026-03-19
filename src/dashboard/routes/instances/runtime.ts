@@ -26,6 +26,7 @@ import {
   getBus,
   MODEL_CATALOG,
   countMessagesSinceLastCompaction,
+  getCachedSystemPrompt,
   type RuntimeAgentConfig,
 } from "../../../runtime/index.js";
 import { resolveAgentWorkspacePath } from "../../../core/agent-workspace.js";
@@ -372,6 +373,9 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       ...(r.label ? { label: r.label } : {}),
     }));
 
+    // System prompt — served from in-memory cache if available (populated by prompt-loop)
+    const cachedPromptEntry = getCachedSystemPrompt(sessionId);
+
     return c.json({
       agent: {
         id: agentId,
@@ -407,6 +411,8 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       tools: [...builtinTools, ...mcpTools],
       mcpServers,
       systemPromptFiles: workspaceFiles,
+      systemPrompt: cachedPromptEntry?.systemPrompt ?? null,
+      systemPromptBuiltAt: cachedPromptEntry?.builtAt ?? null,
       teammates,
       sessionTree,
     });
@@ -613,6 +619,8 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
           "session.ended",
           "session.created",
           "session.updated",
+          // System prompt (context panel real-time update)
+          "session.system_prompt",
           // Permissions
           "permission.asked",
           "permission.replied",
