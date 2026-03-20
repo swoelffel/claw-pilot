@@ -15,6 +15,7 @@ export class Monitor {
   private interval: NodeJS.Timeout | null = null;
   private clients: Set<WebSocket> = new Set();
   private previousState = "";
+  private _transitioning = new Map<string, "starting" | "stopping">();
 
   /**
    * Optional callback that returns the number of connected MCP clients for a given slug.
@@ -103,16 +104,51 @@ export class Monitor {
   }
 
   /**
-   * Enrich a HealthStatus with pendingPermissions, heartbeat and mcp counts.
+   * Enrich a HealthStatus with pendingPermissions, heartbeat, mcp counts and transitioning state.
    */
   private enrichStatus(status: HealthStatus): HealthStatus {
+    const transitioning = this._transitioning.get(status.slug);
     return {
       ...status,
       pendingPermissions: this.countPendingPermissions(status.slug),
       heartbeatAgents: this.countHeartbeatAgents(status.slug),
       heartbeatAlerts: this.countHeartbeatAlerts(status.slug),
       mcpConnected: this._getMcpConnectedCount(status.slug),
+      ...(transitioning !== undefined ? { transitioning } : {}),
     };
+  }
+
+  /**
+   * Set the transitioning state for a slug and broadcast immediately.
+   * Called by lifecycle routes before a start/stop operation.
+   */
+  setTransitioning(slug: string, state: "starting" | "stopping"): void {
+    this._transitioning.set(slug, state);
+    void this._broadcastNow();
+  }
+
+  /**
+   * Clear the transitioning state for a slug and broadcast immediately.
+   * Called by lifecycle routes in the finally block after a start/stop operation.
+   */
+  clearTransitioning(slug: string): void {
+    this._transitioning.delete(slug);
+    void this._broadcastNow();
+  }
+
+  /** Trigger an immediate health check and broadcast the result to all connected clients. */
+  private async _broadcastNow(): Promise<void> {
+    if (this.clients.size === 0) return;
+    try {
+      const statuses = await this.health.checkAll();
+      const enriched = statuses.map((s) => this.enrichStatus(s));
+      const msg = { type: "health_update" as const, payload: { instances: enriched } };
+      const serialized = JSON.stringify(msg);
+      this.previousState = serialized;
+      this.broadcast(msg);
+    } catch {
+      // Expected: health check can fail transiently
+    }
   }
 
   start(): void {

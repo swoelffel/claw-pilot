@@ -11,6 +11,8 @@ export interface HealthStatus {
   port: number;
   /** Derived instance state — single source of truth, computed in HealthChecker.check() */
   state: InstanceState;
+  /** Transient lifecycle transition set by the dashboard server, not derived from PID. */
+  transitioning?: "starting" | "stopping";
   pid?: number;
   agentCount?: number;
   telegram?: "connected" | "disconnected" | "not_configured";

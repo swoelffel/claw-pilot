@@ -617,18 +617,23 @@ export class CpApp extends LitElement {
           const newAgentCount = update.agentCount ?? inst.agentCount;
           const newPendingPermissions = update.pendingPermissions ?? inst.pendingPermissions;
           const newTelegram = update.telegram ?? inst.telegram;
+          const newTransitioning = update.transitioning;
           if (
             inst.gateway === update.gateway &&
             inst.state === newState &&
             inst.agentCount === newAgentCount &&
             inst.pendingPermissions === newPendingPermissions &&
-            inst.telegram === newTelegram
+            inst.telegram === newTelegram &&
+            inst.transitioning === newTransitioning
           ) {
             return inst;
           }
           changed = true;
+          // Strip transitioning from inst before spreading so we can cleanly set or omit it.
+          const { transitioning: _prev, ...instWithoutTransitioning } = inst;
+          void _prev;
           return {
-            ...inst,
+            ...instWithoutTransitioning,
             gateway: update.gateway,
             state: newState,
             ...(newAgentCount !== undefined && { agentCount: newAgentCount }),
@@ -636,6 +641,7 @@ export class CpApp extends LitElement {
               pendingPermissions: newPendingPermissions,
             }),
             ...(newTelegram !== undefined && { telegram: newTelegram }),
+            ...(newTransitioning !== undefined ? { transitioning: newTransitioning } : {}),
           };
         });
         if (changed) {

@@ -68,6 +68,7 @@ async function createTestApp(): Promise<TestCtx> {
     // The following are not used by auth routes — cast to satisfy the type
     tokenCache: null as unknown as RouteDeps["tokenCache"],
     lifecycle: null as unknown as RouteDeps["lifecycle"],
+    monitor: null as unknown as RouteDeps["monitor"],
     health: null as unknown as RouteDeps["health"],
     selfUpdateChecker: null as unknown as RouteDeps["selfUpdateChecker"],
     selfUpdater: null as unknown as RouteDeps["selfUpdater"],

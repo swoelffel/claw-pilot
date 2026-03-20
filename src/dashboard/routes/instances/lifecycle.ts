@@ -11,7 +11,7 @@ import { PortAllocator } from "../../../core/port-allocator.js";
 import { ClawPilotError, InstanceNotFoundError } from "../../../lib/errors.js";
 
 export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
-  const { registry, conn, health, lifecycle, tokenCache, xdgRuntimeDir } = deps;
+  const { registry, conn, health, lifecycle, monitor, tokenCache, xdgRuntimeDir } = deps;
 
   app.get("/api/instances", async (c) => {
     const statuses = await health.checkAll();
@@ -54,6 +54,7 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
 
   app.post("/api/instances/:slug/start", async (c) => {
     const slug = c.req.param("slug");
+    monitor.setTransitioning(slug, "starting");
     try {
       await lifecycle.start(slug);
       return c.json({ ok: true });
@@ -67,11 +68,14 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
         "LIFECYCLE_FAILED",
         err instanceof Error ? err.message : "Start failed",
       );
+    } finally {
+      monitor.clearTransitioning(slug);
     }
   });
 
   app.post("/api/instances/:slug/stop", async (c) => {
     const slug = c.req.param("slug");
+    monitor.setTransitioning(slug, "stopping");
     try {
       await lifecycle.stop(slug);
       return c.json({ ok: true });
@@ -85,11 +89,14 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
         "LIFECYCLE_FAILED",
         err instanceof Error ? err.message : "Stop failed",
       );
+    } finally {
+      monitor.clearTransitioning(slug);
     }
   });
 
   app.post("/api/instances/:slug/restart", async (c) => {
     const slug = c.req.param("slug");
+    monitor.setTransitioning(slug, "starting");
     try {
       await lifecycle.restart(slug);
       return c.json({ ok: true });
@@ -103,6 +110,8 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
         "LIFECYCLE_FAILED",
         err instanceof Error ? err.message : "Restart failed",
       );
+    } finally {
+      monitor.clearTransitioning(slug);
     }
   });
 

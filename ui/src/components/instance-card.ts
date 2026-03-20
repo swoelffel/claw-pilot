@@ -316,7 +316,6 @@ export class InstanceCard extends LitElement {
   @state() private _loading = false;
   @state() private _error = "";
   @state() private _menuOpen = false;
-  @state() private _transitioning: "starting" | "stopping" | null = null;
 
   private _onDocClick = (e: MouseEvent) => {
     if (!this.shadowRoot?.contains(e.target as Node)) {
@@ -334,15 +333,10 @@ export class InstanceCard extends LitElement {
     document.removeEventListener("click", this._onDocClick);
   }
 
-  private async _action(
-    e: Event,
-    fn: (slug: string) => Promise<void>,
-    transition?: "starting" | "stopping",
-  ): Promise<void> {
+  private async _action(e: Event, fn: (slug: string) => Promise<void>): Promise<void> {
     e.stopPropagation();
     this._menuOpen = false;
     this._loading = true;
-    this._transitioning = transition ?? null;
     this._error = "";
     try {
       await fn(this.instance.slug);
@@ -350,18 +344,19 @@ export class InstanceCard extends LitElement {
       this._error = userMessage(err);
     } finally {
       this._loading = false;
-      this._transitioning = null;
     }
   }
 
   private _stateClass(): string {
-    if (this._transitioning) return this._transitioning;
+    if (this.instance.transitioning) return this.instance.transitioning;
     return this.instance.state ?? "unknown";
   }
 
   private _stateLabel(): string {
-    if (this._transitioning === "starting") return msg("Starting", { id: "state-starting" });
-    if (this._transitioning === "stopping") return msg("Stopping", { id: "state-stopping" });
+    if (this.instance.transitioning === "starting")
+      return msg("Starting", { id: "state-starting" });
+    if (this.instance.transitioning === "stopping")
+      return msg("Stopping", { id: "state-stopping" });
     return this.instance.state ?? "unknown";
   }
 
@@ -456,12 +451,7 @@ export class InstanceCard extends LitElement {
         <button
           class="menu-item ${isRunning ? "stop" : "start"}"
           ?disabled=${this._loading}
-          @click=${(e: Event) =>
-            this._action(
-              e,
-              isRunning ? stopInstance : startInstance,
-              isRunning ? "stopping" : "starting",
-            )}
+          @click=${(e: Event) => this._action(e, isRunning ? stopInstance : startInstance)}
         >
           <span class="menu-icon">${isRunning ? "■" : "▶"}</span>
           ${isRunning ? msg("Stop", { id: "btn-stop" }) : msg("Start", { id: "btn-start" })}
@@ -517,7 +507,7 @@ export class InstanceCard extends LitElement {
               <button
                 class="menu-item"
                 ?disabled=${this._loading}
-                @click=${(e: Event) => this._action(e, restartInstance, "starting")}
+                @click=${(e: Event) => this._action(e, restartInstance)}
               >
                 <span class="menu-icon">↺</span>
                 ${msg("Restart", { id: "btn-restart" })}
@@ -565,7 +555,7 @@ export class InstanceCard extends LitElement {
           </div>
           <div class="card-header-right">
             <span class="badge ${stateClass}">
-              ${this._transitioning
+              ${this.instance.transitioning
                 ? html`<span class="spinner"></span>`
                 : html`<span class="state-dot"></span>`}
               ${this._stateLabel()}

@@ -27,6 +27,8 @@ export interface InstanceInfo {
   agentCount?: number;
   pendingPermissions?: number;
   telegram?: "connected" | "disconnected" | "not_configured";
+  /** Transient lifecycle transition — set by server during start/stop, cleared on completion. */
+  transitioning?: "starting" | "stopping";
   // gateway token for zero-friction Control UI login
   gatewayToken?: string | null;
 }
@@ -62,6 +64,8 @@ export interface HealthUpdate {
       heartbeatAgents?: number;
       /** Number of heartbeat alerts in the last 24h */
       heartbeatAlerts?: number;
+      /** Transient lifecycle transition — set by server during start/stop, cleared on completion. */
+      transitioning?: "starting" | "stopping";
     }>;
   };
 }

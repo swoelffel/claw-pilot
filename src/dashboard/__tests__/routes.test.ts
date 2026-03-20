@@ -159,6 +159,10 @@ function createTestApp(): TestContext {
     startedAt: Date.now(),
     health: new StubHealthChecker(registry) as unknown as RouteDeps["health"],
     lifecycle: lifecycle as unknown as RouteDeps["lifecycle"],
+    monitor: {
+      setTransitioning: () => {},
+      clearTransitioning: () => {},
+    } as unknown as RouteDeps["monitor"],
     selfUpdateChecker: new StubSelfUpdateChecker() as unknown as RouteDeps["selfUpdateChecker"],
     selfUpdater: new StubSelfUpdater() as unknown as RouteDeps["selfUpdater"],
     tokenCache,

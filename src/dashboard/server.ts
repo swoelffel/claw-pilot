@@ -167,6 +167,7 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
     conn,
     health,
     lifecycle,
+    monitor,
     selfUpdateChecker,
     selfUpdater,
     tokenCache,
