@@ -496,8 +496,15 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       );
     }
 
-    // Load instance env vars for API key resolution
+    // Load instance env vars for API key resolution.
+    // Inject into process.env so downstream resolveModel calls (e.g. A2A model resolution
+    // inside the task tool) can also find them — mirrors what the runtime daemon does at startup.
     const instanceEnv = readEnvFileSync(stateDir);
+    for (const [key, value] of Object.entries(instanceEnv)) {
+      if (process.env[key] === undefined) {
+        process.env[key] = value;
+      }
+    }
 
     let resolvedModelObj;
     try {
@@ -570,6 +577,9 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
         workDir: stateDir,
         agentWorkDir,
         runtimeAgents: config.agents.map((a) => ({ id: a.id, name: a.name })),
+        runtimeConfig: config,
+        compactionConfig: config.compaction,
+        subagentsConfig: config.subagents,
       });
 
       return c.json({

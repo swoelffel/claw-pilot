@@ -335,7 +335,7 @@ Flex row, `gap: 10px`, `flex-wrap: wrap`, separated from header and meta by `--b
 | Indicator | Condition | Style |
 |---|---|---|
 | `◉ Gateway` | `state === "running"` AND `gateway === "healthy"` | Green `--state-running` |
-| `◎ Gateway Error` | `state === "running"` AND `gateway === "unhealthy"` | Red `--state-error` |
+| `◎ Gateway KO` | `state === "running"` AND `gateway === "unhealthy"` | Red `--state-error` |
 | `✈ @bot` | `telegram_bot` defined AND `telegram !== "disconnected"` | Pill blue `#0088cc` |
 | `✈ @bot ⚠` | `telegram_bot` defined AND `telegram === "disconnected"` | Pill amber `--state-warning` |
 | `⬡ N agent(s)` | `agentCount > 0` | Text `--text-muted` |
@@ -403,100 +403,9 @@ The `health_update` handler in `app.ts` broadcasts the following fields to `Inst
 
 ---
 
-## Screen 2 — Instance Detail View (`cp-instance-detail`)
+## ~~Screen 2 — Instance Detail View (`cp-instance-detail`)~~ *(removed)*
 
-**Source file**: `ui/src/components/instance-detail.ts`
-
-Full view of an instance. Max width `1100px`, centered.
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  ← Back                                                         │
-│                                                                 │
-│  default                                    ● RUNNING          │
-│                                                                 │
-│  [Stop]  [Restart]  [⎋ Open UI]  [Delete]                     │
-│                                                                 │
-│  ┌─ Instance Info ──────────────────────────────────────────┐  │
-│  │  PORT  SYSTEMD UNIT  TELEGRAM  MODEL  CONFIG  STATE DIR  │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│                                                                 │
-│  ┌─ Agents (11) ────────────────────────────────────────────┐  │
-│  │  ID | Name | Model | Workspace                           │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│                                                                 │
-│  ┌─ Recent Conversations ───────────────────────────────────┐  │
-│  │  HH:MM:SS  from → to  message                            │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Back Button ← 
-
-Gray outline, violet hover `#6c63ff`. Emit `navigate { slug: null }` → return to Instances view.
-
-### Detail Header
-
-- **Title**: slug at `font-size: 28px`, `font-weight: 700`
-- **Subtitle**: display_name if defined, `font-size: 14px`, `--text-secondary`
-- **State badge**: pill with dot, same logic as card but larger (`border-radius: 20px`)
-
-### Action Bar
-
-Buttons displayed based on instance state:
-
-| Button | Visible if | Style |
-|---|---|---|
-| **Start** | `stopped`, `error`, `unknown` | Green outline |
-| **Stop** | `running` | Red outline |
-| **Restart** | `running`, `error`, `unknown` | Violet outline `#6c63ff` |
-| **⎋ Open UI** | `running` | Amber outline. URL = nginx_domain if defined, else `localhost:port` |
-| **Delete** | Always | Subtle red, `margin-left: auto` (pushed right) |
-
-All disabled during `_actionLoading` or `_deleting`.
-
-### Deletion Confirmation (inline)
-
-Appears below action bar when "Delete" is clicked.
-
-```
-┌─ Permanently destroy "default"? ─────────────────────────────┐
-│  This will stop the service, remove all files...              │
-│  [input: type the slug]  [Destroy]  [Cancel]                 │
-└───────────────────────────────────────────────────────────────┘
-```
-
-- Very transparent red background, red border
-- Input monospace, red focus
-- **Destroy** button disabled while input ≠ exact slug
-- **Destroy** button shows "Deleting…" during operation
-- `Enter` in input → confirms | `Escape` → cancels
-
-### Instance Info Section
-
-Grid `auto-fill minmax(200px, 1fr)`. Each item: uppercase muted label + monospace value.
-
-Fields: Port, Systemd Unit, Telegram Bot *(if defined)*, Default Model *(if defined)*, Config Path, State Dir, Created.
-
-### Agents Section
-
-Table with columns: ID | Name | Model | Workspace.  
-`default` badge violet on default agent.  
-If empty: centered text "No agents registered".
-
-### Recent Conversations Section
-
-List of last 10 conversations. Each entry on one line:
-
-```
-HH:MM:SS   ● from-agent → to-agent   truncated message
-```
-
-- **Time**: monospace, `--text-muted`
-- **Status dot**: amber (`running`), green (`done`), red (`failed`)
-- **from**: violet `#6c63ff`, monospace
-- **to**: green `#10b981`, monospace
-- **Message**: truncated with ellipsis
+> **Removed** — `cp-instance-detail` no longer exists. Instance navigation goes directly from the cluster view card menu (`···`) to Agent Builder (`#/instances/:slug/builder`), Settings (`#/instances/:slug/settings`), or Runtime Pilot (`#/instances/:slug/pilot`). There is no intermediate instance detail screen.
 
 ---
 
@@ -563,111 +472,11 @@ During provisioning: form replaced by spinner + message "Provisioning instance *
 
 ## Component: Runtime Chat (`cp-runtime-chat`)
 
-**Source file**: `ui/src/components/runtime-chat.ts`
+> **Deprecated since v0.37.0** — replaced by `cp-runtime-pilot`. See [Screen 2c — Runtime Pilot](#screen-2c--runtime-pilot-cp-runtime-pilot).
 
-Real-time chat component with a claw-runtime agent via SSE. Integrated in **Runtime** section of Instance Settings. Flex column layout, 100% height of container. Background `--bg-surface`.
+**Source file**: `ui/src/components/runtime-chat.ts` *(legacy, no longer actively maintained)*
 
-```
-┌─ cp-runtime-chat ─────────────────────────────────────────────┐
-│  [Agent ▼]  🔒 Permanent                     [···]            │  ← header (permanent agent)
-│  — or —                                                       │
-│  [Agent ▼]  [Session selector ▼]  [+ New]                     │  ← header (ephemeral agent)
-├───────────────────────────────────────────────────────────────┤
-│                                                               │
-│  (message zone — flex: 1, overflow-y: auto)                   │  ← messages
-│                                                               │
-│  ┌─ user message ──────────────────────────────────────────┐  │
-│  │  My message                                             │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│  ┌─ assistant message ─────────────────────────────────────┐  │
-│  │  Agent response                                         │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│  [spinner]  Agent is thinking…                                │  ← sending/streaming state
-│                                                               │
-├───────────────────────────────────────────────────────────────┤
-│  [textarea…]                                    [Send]        │  ← input
-├───────────────────────────────────────────────────────────────┤
-│  (error banner if connection lost)                            │  ← conditional error
-└───────────────────────────────────────────────────────────────┘
-```
-
-### Header
-
-Flex row, `padding: 10px 12px`, `border-bottom: 1px solid --bg-border`, `gap: 8px`.
-
-| Element | Description |
-|---|---|
-| **Agent selector** | `<select>` displayed if instance has multiple agents. Selects current agent. |
-| **🔒 Permanent badge** | Displayed if current agent is permanent (`persistent === true`). Muted text. |
-| **Session selector** | `<select>` flex:1. "New session" option + existing sessions. **Hidden for permanent agents** (single session). |
-| **[+ New]** | `btn btn-ghost`, `font-size: 12px`. Creates new session. **Hidden for permanent agents**. |
-| **[···]** | Dropdown menu with actions. "New session" option is **hidden for permanent agents**. |
-
-### Message Zone
-
-- Transparent background, `padding: 16px`, `gap: 12px`
-- **Empty state**: "Start a conversation with the agent" centered, `--text-muted`. Displayed if `messages.length === 0` AND no streaming AND `status === "idle"`.
-- **User message**: `background: --bg-hover`, right-aligned (`align-self: flex-end`), `max-width: 85%`, `border-radius: --radius-md`
-- **Assistant message**: transparent background, `border: 1px solid --bg-border`, left-aligned (`align-self: flex-start`)
-- **Streaming message**: same assistant style + blinking `▋` cursor + `opacity: 0.85`
-- **"Thinking" spinner**: displayed if `status === "sending"` or `status === "streaming"` without accumulated text. 16px spinner + "Agent is thinking…"
-
-### Input
-
-- `<textarea>` flex:1, `rows="2"`, `resize: none`, `background: --bg-hover`
-- Placeholder: "Message… (Enter to send, Shift+Enter for newline)"
-- `Enter` (without Shift) → send message
-- `Shift+Enter` → newline
-- Disabled if `status !== "idle"`
-- **[Send]**: `btn btn-primary`, disabled if textarea empty or status ≠ idle
-
-### SSE Stream
-
-Opened via `EventSource` on `GET /api/instances/:slug/runtime/sessions/:id/stream` (URL built by `getRuntimeChatStreamUrl()`).
-
-| SSE Event | Behavior |
-|---|---|
-| `message.part.delta` | Accumulate `_streamingText` += `payload.delta`, status → streaming |
-| `message.created` (assistant) | Reset `_streamingText = ""`, status → streaming |
-| `message.updated` | Clear `_streamingText = ""`, status → idle |
-| `session.status` (`busy`) | status → streaming |
-| `session.status` (`idle`) | status → idle **only if** streaming without accumulated text (avoids cutting current stream) |
-| `session.ended` | status → idle, clear `_streamingText` |
-| `ping` | Ignored (keep-alive) |
-| SSE error | status → error, message "Connection to runtime lost. Please refresh.", close stream |
-
-### First Message (new session)
-
-First message of new session sent via `POST /api/instances/:slug/runtime/chat`. HTTP response (`RuntimeChatResponse`) contains: `sessionId`, `messageId`, `text`, `tokens` (`{ input, output }`), `costUsd`, `steps`. SSE stream opened **after** response received. Sessions list reloaded to include new session in dropdown.
-
-### Initial Loading
-
-On `connectedCallback`, component loads in parallel:
-- Active sessions via `fetchRuntimeSessions(slug)`
-- Archived sessions via `GET /api/instances/:slug/runtime/sessions?state=archived&limit=20`
-
-Both lists merged into `_sessions`. First active session auto-selected.
-
-### Props
-
-| Prop | Type | Description |
-|---|---|---|
-| `slug` | `string` | Instance slug |
-
-### Internal State
-
-| State | Type | Description |
-|---|---|---|
-| `_sessions` | `RuntimeSession[]` | Active + archived sessions merged |
-| `_sessionId` | `string \| null` | Selected session ID (`null` = new session) |
-| `_messages` | `ChatMessage[]` | Displayed messages (`{ role, text, id? }`) |
-| `_streamingText` | `string` | Text being accumulated from SSE |
-| `_status` | `"idle" \| "loading" \| "sending" \| "streaming" \| "error"` | Component state |
-| `_error` | `string` | Error message displayed in banner |
-| `_inputText` | `string` | Textarea content |
-| `_sessionsLoading` | `boolean` | Initial session loading |
-| `_dropdownOpen` | `boolean` | Session dropdown open/closed |
-| `_archivedExpanded` | `boolean` | Archived group expanded in dropdown |
+Simple SSE chat component, superseded by `cp-runtime-pilot` which adds part rendering (tool calls, reasoning, subtasks, compaction), a side LLM context panel, and 17 SSE event types. The old component remains in the codebase for reference only.
 
 ---
 
@@ -675,51 +484,118 @@ Both lists merged into `_sessions`. First active session auto-selected.
 
 **Source file**: `ui/src/components/runtime-pilot.ts`
 
-> Replaces `cp-runtime-chat` since v0.37.0. 17 components total.
+> Replaces `cp-runtime-chat` since v0.37.0. 18 components total.
 
-Advanced chat view with LLM context panel on side. Accessible via hash `#/instances/:slug/pilot`. Flex two-column layout.
+Advanced chat view with LLM context panel on side. Accessible via hash `#/instances/:slug/pilot`. Full-height flex column layout (no scroll on `<main>`).
 
 ```
 ┌─ cp-runtime-pilot ────────────────────────────────────────────────┐
-│  ┌─ pilot-header ─────────────────────────────────────────────┐   │
-│  │  [Agent ▼]  Session title  $0.12  [🔒 Permanent] [Context]│   │
+│  ┌─ nav-bar ──────────────────────────────────────────────────┐   │
+│  │  ← Back  /  cpteam  /  Pilot  Lead Marketing  Lead Tech   │   │
 │  └────────────────────────────────────────────────────────────┘   │
-│  ┌─ Messages ──────────────────────────┐  ┌─ pilot-context-panel ────┐   │
-│  │                             │  │  [Agents] [Tools]        │   │
-│  │  ┌─ user message ────────┐ │  │  [System] [Events]       │   │
-│  │  │  My message           │ │  │                          │   │
-│  │  └───────────────────────┘ │  │  ┌─ context-gauge ─────┐ │   │
-│  │  ┌─ assistant message ───┐ │  │  │  Token usage donut  │ │   │
-│  │  │  part-text            │ │  │  │  input / output     │ │   │
-│  │  │  part-tool (tool call)│ │  │  └─────────────────────┘ │   │
-│  │  │  part-reasoning       │ │  │                          │   │
-│  │  │  part-subtask         │ │  │  ┌─ context-tools ─────┐ │   │
-│  │  │  part-compaction      │ │  │  │  12 built-in tools  │ │   │
-│  │  └───────────────────────┘ │  │  │  3 MCP tools        │ │   │
-│  │                             │  │  └─────────────────────┘ │   │
-│  │  ┌─ pilot-input ─────────┐ │  │                          │   │
-│  │  │  [textarea]   [Send]  │ │  │  ┌─ context-agents ───┐ │   │
-│  │  └───────────────────────┘ │  │  │  Agent teammates    │ │   │
-│  └─────────────────────────────┘  │  └─────────────────────┘ │   │
-│                                    └──────────────────────────┘   │
+│  ┌─ pilot-header ─────────────────────────────────────────────┐   │
+│  │  ● pilot  ·  sonnet-4-5  ·  ● idle  12 msgs  45.2k  $0.12  [⊞]│   │
+│  └────────────────────────────────────────────────────────────┘   │
+│  ┌─ Messages ──────────────────────────┐  ┌─ pilot-context-panel ─┐│
+│  │                             │  │  ◈  ⚙  ⬡  ☰  ⚡          ││
+│  │  ┌─ user message ────────┐ │  │                          ││
+│  │  │  My message           │ │  │  ┌─ active section ────┐ ││
+│  │  └───────────────────────┘ │  │  │  (gauge / tools /   │ ││
+│  │  ┌─ assistant message ───┐ │  │  │   agents / system / │ ││
+│  │  │  part-text            │ │  │  │   events)           │ ││
+│  │  │  part-tool (tool call)│ │  │  └─────────────────────┘ ││
+│  │  │  part-reasoning       │ │  │                          ││
+│  │  │  part-subtask         │ │  │                          ││
+│  │  │  part-compaction      │ │  └──────────────────────────┘│
+│  │  └───────────────────────┘ │                               │
+│  │  ┌─ pilot-input ─────────┐ │                               │
+│  │  │  [textarea]   [Send]  │ │                               │
+│  │  └───────────────────────┘ │                               │
+│  └─────────────────────────────┘                               │
 └───────────────────────────────────────────────────────────────────┘
 ```
 
-### Components (17)
+### Nav Bar
+
+Single line at the top of `cp-runtime-pilot`. CSS class `.nav-bar`, `min-height: 48px`, `background: --bg-surface`, bottom border. Structure:
+
+```
+← Back  /  cpteam  /  Pilot  Lead Marketing  Lead Tech  Lead Product
+```
+
+| Element | CSS class | Description |
+|---|---|---|
+| **← Back** | `.nav-back` | Ghost button, muted text → hover primary. Dispatches `back` custom event (`bubbles`, `composed`) captured by `app.ts` → return to cluster view. |
+| **Separators** | `.nav-sep` | `/` in `--bg-border` color, non-selectable |
+| **Slug** | `.nav-slug` | Monospace, `font-weight: 600`, max-width `160px` with ellipsis |
+| **Agent tabs** | `.agent-tabs > .agent-tab` | Visible only if `_permanentSessions.length > 1`. Compact pills `font-size: 12px`, monospace. Active tab: `.active` → `--bg-hover` background + `--bg-border` border + `font-weight: 600`. Clicking a tab calls `_switchSession(sessionId)`. |
+
+**Agent tab sort order**: default agent (`agentIsDefault = true`) first, then by `updatedAt` descending. This ensures the primary/pilot agent is always the first tab.
+
+**Back navigation** in `app.ts`:
+```typescript
+<cp-runtime-pilot
+  .slug=${pilotSlug}
+  style="height:100%;"
+  @back=${() => { this._route = { view: "cluster" }; }}
+></cp-runtime-pilot>
+```
+
+### Pilot Header (`cp-pilot-header`)
+
+Below the nav bar. `min-height: 44px`, bottom border.
+
+```
+● pilot  ·  sonnet-4-5  ·  ● idle  ·  12 msgs  45.2k tok  $0.12  [⊞]
+```
+
+| Element | Description |
+|---|---|
+| **● dot** | Colored dot — `--accent` by default, overridable via `agentColor` prop |
+| **Agent name** | `agentName` prop, monospace, `font-weight: 700` |
+| **Model** | Short model name (after last `/`): `"anthropic/claude-sonnet-4-5"` → `"sonnet-4-5"`, monospace `--text-muted` |
+| **Status pill** | `.status-pill.{status}` — states: `idle`, `loading`, `sending`, `streaming`, `error`. `sending`/`streaming`/`loading` have pulsing dot. |
+| **Stats** | Cumulative counts (hidden if zero): `N msgs`, `N.Nk tok`, `$N.NN` |
+| **⊞ panel toggle** | Ghost button, active when panel open. Emits `toggle-panel` custom event. |
+
+### Permanent Session Detection
+
+On mount, `_detectPermanentSession()` calls `GET /api/instances/:slug/runtime/sessions` and filters `persistent=true AND state="active"`. Results are sorted:
+1. `agentIsDefault = true` first
+2. Then by `updatedAt` descending
+
+The first session in the sorted list becomes `_activeSessionId`. The full sorted list populates `_permanentSessions` (drives agent tabs visibility).
+
+### Context Panel (`cp-pilot-context-panel`)
+
+Retractable right panel. Toggled by the `⊞` button in the pilot header. Five icon+label tabs:
+
+| Tab id | Icon | Label | Content component |
+|---|---|---|---|
+| `gauge` | `◈` | Context | `cp-pilot-context-gauge` — token donut + system prompt viewer |
+| `tools` | `⚙` | Tools | `cp-pilot-context-tools` — available tools list (built-in + MCP) |
+| `agents` | `⬡` | Agents | `cp-pilot-context-agents` — teammates + spawn links |
+| `system` | `☰` | System | `cp-pilot-context-system` — system prompt source files |
+| `events` | `⚡` | Events | `cp-pilot-context-events` — real-time bus event log |
+
+Default active section: `gauge`.
+
+### Components (18)
 
 | Component | File | Role |
 |---|---|---|
-| `cp-runtime-pilot` | `runtime-pilot.ts` | Main container — layout, session management, SSE |
-| `cp-pilot-header` | `pilot/pilot-header.ts` | Header — agent selector, session info, cost, context button |
+| `cp-runtime-pilot` | `runtime-pilot.ts` | Main container — nav bar, session management, SSE, layout |
+| `cp-pilot-header` | `pilot/pilot-header.ts` | Session header — active agent name + model, status pill, stats, panel toggle |
 | `cp-pilot-messages` | `pilot/pilot-messages.ts` | Scrollable message list |
 | `cp-pilot-message` | `pilot/pilot-message.ts` | Message rendering (dispatches to part renderers) |
 | `cp-pilot-input` | `pilot/pilot-input.ts` | Textarea + Send button |
-| `cp-pilot-context-panel` | `pilot/pilot-context-panel.ts` | Right side panel — context tabs |
-| `cp-context-gauge` | `pilot/context/context-gauge.ts` | Donut gauge for tokens (input/output/cache) |
-| `cp-context-tools` | `pilot/context/context-tools.ts` | Available tools list (built-in + MCP) |
-| `cp-context-agents` | `pilot/context/context-agents.ts` | Agent teammates + spawn links |
-| `cp-context-system` | `pilot/context/context-system.ts` | System prompt files (SOUL.md, IDENTITY.md, etc.) |
-| `cp-context-events` | `pilot/context/context-events.ts` | Real-time bus event log |
+| `cp-pilot-context-panel` | `pilot/pilot-context-panel.ts` | Right side panel — icon tab bar + section switcher |
+| `cp-pilot-context-gauge` | `pilot/context/context-gauge.ts` | Token usage donut gauge + embedded system prompt viewer |
+| `cp-pilot-context-prompt` | `pilot/context/context-prompt.ts` | System prompt viewer — parses prompt into collapsible sections (embedded in gauge tab) |
+| `cp-pilot-context-tools` | `pilot/context/context-tools.ts` | Available tools list (built-in + MCP) |
+| `cp-pilot-context-agents` | `pilot/context/context-agents.ts` | Agent teammates + spawn links |
+| `cp-pilot-context-system` | `pilot/context/context-system.ts` | System prompt source files (SOUL.md, IDENTITY.md, etc.) |
+| `cp-pilot-context-events` | `pilot/context/context-events.ts` | Real-time bus event log |
 | `cp-part-text` | `pilot/parts/part-text.ts` | Markdown text rendering (marked + DOMPurify) |
 | `cp-part-tool` | `pilot/parts/part-tool.ts` | Tool-call + tool-result rendering (collapsible) |
 | `cp-part-reasoning` | `pilot/parts/part-reasoning.ts` | Anthropic extended thinking rendering |
@@ -848,7 +724,7 @@ Modified fields display `--accent` border (class `changed`). Read-only fields ha
 
 ### Runtime Section
 
-Informational panel + integrated chat. No editable fields (Save/Cancel not shown when active).
+Informational panel + link to the Pilot view. No editable fields (Save/Cancel not shown when active).
 
 ```
 ┌─ Runtime ─────────────────────────────────────────────────────┐
@@ -858,15 +734,8 @@ Informational panel + integrated chat. No editable fields (Save/Cancel not shown
 │  Engine      claw-runtime                                     │
 │  Config file runtime.json                                     │
 │                                                               │
-│  ── Chat ──────────────────────────────────────────────────── │
-│  ┌─ cp-runtime-chat (480px height) ────────────────────────┐ │
-│  │  [● Session title  $0.03 ▾]  [+ New] / [Permanent]      │ │
- │  │  pilot · web · 5 msg · 1.2k tok · $0.03  [Fork] [Archive]│ │
-│  │  ─────────────────────────────────────────────────────── │ │
-│  │  (messages)                                              │ │
-│  │  ─────────────────────────────────────────────────────── │ │
-│  │  [textarea…]  [Send]                                     │ │
-│  └──────────────────────────────────────────────────────────┘ │
+│  ── Pilot ─────────────────────────────────────────────────── │
+│  [Open Pilot ↗]                                               │  ← navigates to #/instances/:slug/pilot
 └───────────────────────────────────────────────────────────────┘
 ```
 
@@ -874,7 +743,7 @@ Informational panel + integrated chat. No editable fields (Save/Cancel not shown
 |---|---|
 | **Engine** | Fixed value `claw-runtime`, monospace |
 | **Config file** | Fixed value `runtime.json`, monospace muted |
-| **Chat** | `cp-runtime-chat` component integrated in container `height: 480px`, `border: 1px solid --bg-border`, `border-radius: --radius-md` |
+| **Open Pilot** | `btn btn-primary` — navigates to `#/instances/:slug/pilot` (`cp-runtime-pilot`). Replaced the embedded `cp-runtime-chat` since v0.37.0. |
 
 ### Confirmation Toast
 
@@ -1191,11 +1060,11 @@ Right side panel, `width: 420px`, canvas height 100%. Expands to 100% in expande
 │  Pilot  pilot                  [🗑] [⊞] [✕]        │
 │  (role if defined)                                  │
 ├─ Tabs ──────────────────────────────────────────────┤
-│  [Info]  [AGENTS.md]  [SOUL.md]  [HEARTBEAT.md] ... │
+│  [Info]  [Heartbeat]  [Config]  [Files]           │
 ├─ Body ──────────────────────────────────────────────┤
 │  (content by active tab)                            │
 ├─ Save Bar (conditional) ────────────────────────────┤
-│  [Save]  N changes pending  [Cancel]                │
+│  [Save]  [Cancel]                                   │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -1203,7 +1072,8 @@ Right side panel, `width: 420px`, canvas height 100%. Expands to 100% in expande
 
 - **Name**: `font-size: 16px`, `font-weight: 700`
 - **agent_id**: monospace muted next to name
-- **Role** *(optional)*: italic muted under name
+- **Category badge**: `.agent-category-badge.category-{category}` — values: `user`, `tool`, `system`
+- **Role** *(optional)*: muted text on second line (below name row)
 - **🗑 Delete**: visible if non-default. Red hover. Emit `agent-delete-requested`.
 - **⊞/⊟ Expand**: toggle between 420px and 100% width
 - **✕ Close**: emit `panel-close`
@@ -1211,29 +1081,65 @@ Right side panel, `width: 420px`, canvas height 100%. Expands to 100% in expande
 ### Tabs
 
 - **Info**: always present
-- **Files**: one tab per file in `agent.files` (AGENTS.md, SOUL.md, TOOLS.md, IDENTITY.md, HEARTBEAT.md, MEMORY.md...)
+- **Heartbeat**: instance context only (not in blueprint builder)
+- **Config**: instance context only (not in blueprint builder)
+- **Files**: shown if `agent.files.length > 0`. Single tab delegating to `cp-agent-file-editor`.
 
 ### Info Tab
 
-Displays in column:
+All fields are always editable (save bar appears on first change):
 
-| Field | Condition |
-|---|---|
-| **Model** | If defined |
-| **Workspace** | Always |
-| **Last sync** | If defined AND instance context (not blueprint) |
-| **A2A links** | If A2A links exist. `↔ peer-id` accent badges. |
-| **Can spawn** | If outgoing spawn links OR available agents. Editable badges with ✕ (remove) and ＋ (add via dropdown). |
-| **Spawned by** | If incoming spawn links. `← source-id` badges. |
-| **Notes** | If `agent.notes` defined |
+| Field | Condition | Input type |
+|---|---|---|
+| **Name** | Always | text input |
+| **Provider** | Instance context only | select (lazy-loaded) |
+| **Model** | Instance context only | select (filtered by provider) |
+| **Role** | Always | text input |
+| **Tags** | Always | text input (CSV, e.g. `rh, legal`) |
+| **Notes** | Always | textarea |
+| **Skills** | Always | toggle All / Custom + comma-separated text if Custom |
+| **Workspace** | Always | read-only |
+| **Last sync** | If defined AND instance context | read-only |
+| **Delegates to** | If outgoing spawn links OR available agents | editable spawn badges |
+| **Delegated by** | If incoming spawn links | read-only badges |
 
 ### Spawn Link Management (inline)
 
 - **Remove**: click ✕ on badge → pending-removal (strikethrough, red). Click ↩ → cancel.
 - **Add**: click ＋ → dropdown of available agents → select → pending-add (green).
-- **Save bar**: appears once pending changes exist. Save button → API call → reload. Cancel button → discard all changes.
+- **Save bar**: appears when any Info field or spawn link is dirty. [Save] / [Cancel].
+
+### Heartbeat Tab *(instance only)*
+
+- **Enable heartbeat** toggle. No further fields shown when disabled.
+- When enabled:
+  - **Scheduling**: Interval select (`5m` … `24h`)
+  - **Active hours**: optional From/To time inputs. Empty = 24/7.
+  - **Timezone**: text input (optional)
+  - **Model override**: optional `provider/model` text input
+  - **Max ack chars**: number input
+  - **Custom prompt**: textarea (optional)
+  - **History**: last 20 heartbeat ticks with timestamp + result excerpt
+- [Save] / [Reset] buttons.
+
+### Config Tab *(instance only)*
+
+Full per-agent runtime config override. Sections:
+
+| Section | Fields |
+|---|---|
+| **LLM** | Tool profile, Prompt mode, Max steps, Temperature, Extended thinking toggle + budget tokens |
+| **Spawn** | Allow sub-agents toggle |
+| **Timeouts** | Session timeout (ms), LLM inter-chunk timeout (ms) |
+| **Instructions** | Remote instruction URLs (multi-entry) |
+| **Workspace files** | Additional workspace file globs (multi-entry) |
+| **Skills (expertIn)** | Skill names declared by this agent (multi-entry) |
+
+[Save] / [Reset] buttons.
 
 ### File Tabs
+
+`cp-agent-file-editor` renders all workspace files under a single "Files" tab.
 
 **View mode:**
 - `editable` (green) or `read-only` (gray) badge
@@ -1248,7 +1154,7 @@ Displays in column:
 - If Cancel with unsaved edits → "Discard changes?" confirmation dialog
 - Same behavior if switching tabs with edits in progress
 
-**Editable files**: AGENTS.md, SOUL.md, TOOLS.md, IDENTITY.md, USER.md, HEARTBEAT.md  
+**Editable files**: AGENTS.md, SOUL.md, TOOLS.md, BOOTSTRAP.md, USER.md, HEARTBEAT.md
 **Read-only files**: all others (MEMORY.md, etc.)
 
 ---
@@ -1939,3 +1845,5 @@ Modal for creating a new standalone agent blueprint.
 *Updated: 2026-03-18 - v0.41.24: complete documentation of cp-runtime-pilot (17 components), branding fix OpenClaw → claw-runtime, added hash route #/instances/:slug/pilot, tools profile correction (minimal/messaging/coding/full), version updates*
 
 *Updated: 2026-03-19 - v0.41.39: added Agent Templates section (cp-agent-templates-view, cp-agent-template-detail, cp-create-agent-template-dialog, cp-agent-file-editor), new nav tab Templates, new hash routes #/agent-templates and #/agent-templates/:id*
+
+*Updated: 2026-03-20 - doc cleanup: cp-runtime-chat marked deprecated (replaced since v0.37.0), Runtime section in Instance Settings updated to reference cp-runtime-pilot / Open Pilot button instead of embedded cp-runtime-chat*
