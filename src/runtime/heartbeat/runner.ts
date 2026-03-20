@@ -122,20 +122,19 @@ async function runHeartbeatTick(
     "Read HEARTBEAT.md if it exists and execute the tasks defined for this interval. " +
       "If nothing to do, reply exactly: HEARTBEAT_OK";
 
-  // Resolve model (use heartbeat.model override if specified)
-  let resolvedModel: ResolvedModel;
-  if (agent.heartbeat!.model) {
-    const slashIdx = agent.heartbeat!.model.indexOf("/");
-    const providerId = agent.heartbeat!.model.slice(0, slashIdx);
-    const modelId = agent.heartbeat!.model.slice(slashIdx + 1);
-    // Use the same resolveModel but with a temporary agent config override
-    resolvedModel = resolveModel({ ...agent, model: `${providerId}/${modelId}` });
-  } else {
-    resolvedModel = resolveModel(agent);
-  }
-
   const heartbeatStart = Date.now();
   try {
+    // Resolve model (use heartbeat.model override if specified)
+    let resolvedModel: ResolvedModel;
+    if (agent.heartbeat!.model) {
+      const slashIdx = agent.heartbeat!.model.indexOf("/");
+      const providerId = agent.heartbeat!.model.slice(0, slashIdx);
+      const modelId = agent.heartbeat!.model.slice(slashIdx + 1);
+      // Use the same resolveModel but with a temporary agent config override
+      resolvedModel = resolveModel({ ...agent, model: `${providerId}/${modelId}` });
+    } else {
+      resolvedModel = resolveModel(agent);
+    }
     const result = await runPromptLoop({
       db,
       instanceSlug,
