@@ -1,6 +1,6 @@
-# CLAUDE.md — claw-pilot
+# CLAUDE.md
 
-Guidance for Claude Code when working in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What this project is
 
@@ -34,6 +34,12 @@ pnpm typecheck     # tsc --noEmit
 pnpm lint          # oxlint src/
 ```
 
+Run a single test file or case:
+```sh
+pnpm vitest run src/dashboard/__tests__/routes.test.ts
+pnpm vitest run -t "POST /api/instances/:slug/start"
+```
+
 ## Architecture
 
 ```
@@ -42,7 +48,7 @@ src/
   commands/         # CLI commands — thin wrappers over core/
   core/             # All business logic
   dashboard/        # HTTP server (Hono) + WebSocket monitor
-  db/               # SQLite schema + migrations (schema.ts) — current version: 15
+  db/               # SQLite schema + migrations (schema.ts) — current version: 16
   lib/              # Shared utilities (logger, constants, errors, platform, poll, xdg, shell...)
   runtime/          # claw-runtime engine (bus, provider, session, tool, agent, plugin, mcp, channel, engine)
   server/           # ServerConnection interface + LocalConnection impl
@@ -122,6 +128,12 @@ Breaking changes vs v5:
 
 ### exactOptionalPropertyTypes
 Use conditional spread for optional fields: `...(val !== undefined ? { key: val } : {})`
+
+### RouteDeps and Monitor
+`RouteDeps` (`src/dashboard/route-deps.ts`) is passed to every route module. It includes `monitor: Monitor`. Tests that construct a `RouteDeps` stub must include `monitor: { setTransitioning: () => {}, clearTransitioning: () => {} } as unknown as RouteDeps["monitor"]` or any compatible stub.
+
+### Server-driven instance transitioning
+STARTING/STOPPING state on instance cards is tracked in `Monitor._transitioning` (in-memory `Map<slug, "starting"|"stopping">`), **not** in the DB (which only holds `running|stopped|error|unknown`). Lifecycle routes call `monitor.setTransitioning(slug, state)` before the operation and `monitor.clearTransitioning(slug)` in `finally`. `Monitor._broadcastNow()` sends an immediate `health_update` WS broadcast including `transitioning` in the payload. The UI reads `instance.transitioning` from that broadcast.
 
 ### Permanent sessions (PLAN-16)
 - Primary agents (`kind: "primary"`) get a single permanent session shared across all channels (Telegram, web, CLI)
