@@ -404,6 +404,7 @@ export interface RuntimeSession {
   instanceSlug: string;
   agentId: string;
   agentName?: string;
+  agentIsDefault?: boolean;
   channel: string;
   state: "active" | "archived";
   title: string | null;

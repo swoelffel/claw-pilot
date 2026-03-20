@@ -228,7 +228,10 @@ export class RuntimePilot extends LitElement {
       const sessions: RuntimeSession[] = await fetchRuntimeSessions(this.slug);
       const sorted = sessions
         .filter((s) => s.persistent && s.state === "active")
-        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+        .sort((a, b) => {
+          if (a.agentIsDefault !== b.agentIsDefault) return a.agentIsDefault ? -1 : 1;
+          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+        });
       this._permanentSessions = sorted;
       return sorted[0]?.id;
     } catch {

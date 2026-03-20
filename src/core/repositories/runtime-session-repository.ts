@@ -27,6 +27,7 @@ export interface EnrichedSessionRow {
   message_count: number;
   total_tokens: number;
   agent_name: string | null;
+  agent_is_default: number | null;
 }
 
 export interface EnrichedSession {
@@ -47,6 +48,7 @@ export interface EnrichedSession {
   metadata: string | undefined;
   persistent: boolean;
   agentName?: string;
+  agentIsDefault?: boolean;
   // Aggregated fields
   totalCostUsd: number;
   messageCount: number;
@@ -80,7 +82,8 @@ export function listEnrichedSessions(
       COALESCE(SUM(m.cost_usd), 0) as total_cost_usd,
       COUNT(m.id) as message_count,
       COALESCE(SUM(COALESCE(m.tokens_in, 0) + COALESCE(m.tokens_out, 0)), 0) as total_tokens,
-      a.name as agent_name
+      a.name as agent_name,
+      a.is_default as agent_is_default
     FROM rt_sessions s
     LEFT JOIN rt_messages m ON m.session_id = s.id
     LEFT JOIN instances i ON i.slug = s.instance_slug
@@ -150,6 +153,7 @@ export function listEnrichedSessions(
     metadata: row.metadata ?? undefined,
     persistent: row.persistent === 1,
     ...(row.agent_name != null ? { agentName: row.agent_name } : {}),
+    ...(row.agent_is_default != null ? { agentIsDefault: row.agent_is_default === 1 } : {}),
     totalCostUsd: row.total_cost_usd ?? 0,
     messageCount: row.message_count ?? 0,
     totalTokens: row.total_tokens ?? 0,
