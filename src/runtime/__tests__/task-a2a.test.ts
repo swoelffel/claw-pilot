@@ -145,6 +145,7 @@ function makeRuntimeConfig(): RuntimeConfig {
     subagents: { maxSpawnDepth: 3, maxChildrenPerSession: 5, retentionHours: 72 },
     mcpEnabled: false,
     mcpServers: [],
+    log: { level: "info" as const, format: "text" as const, maxSizeMb: 10, maxFiles: 3 },
   };
 }
 
