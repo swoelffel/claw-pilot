@@ -103,7 +103,7 @@ export class ClawRuntime {
           getOrCreatePermanentSession(this.db, {
             instanceSlug: this.instanceSlug,
             agentId: agentConfig.id,
-            channel: "internal",
+            channel: "web",
           });
         }
       }
