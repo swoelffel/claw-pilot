@@ -15,6 +15,36 @@ export const MODEL_CATALOG: ModelInfo[] = [
   // Anthropic
   // ---------------------------------------------------------------------------
   {
+    id: "claude-opus-4-6",
+    providerId: "anthropic",
+    name: "Claude Opus 4.6",
+    api: "anthropic-messages",
+    capabilities: {
+      streaming: true,
+      toolCalling: true,
+      vision: true,
+      reasoning: true,
+      contextWindow: 200_000,
+      maxOutputTokens: 32_000,
+    },
+    cost: { inputPerMillion: 15, outputPerMillion: 75 },
+  },
+  {
+    id: "claude-sonnet-4-6",
+    providerId: "anthropic",
+    name: "Claude Sonnet 4.6",
+    api: "anthropic-messages",
+    capabilities: {
+      streaming: true,
+      toolCalling: true,
+      vision: true,
+      reasoning: true,
+      contextWindow: 200_000,
+      maxOutputTokens: 16_000,
+    },
+    cost: { inputPerMillion: 3, outputPerMillion: 15 },
+  },
+  {
     id: "claude-opus-4-5",
     providerId: "anthropic",
     name: "Claude Opus 4.5",

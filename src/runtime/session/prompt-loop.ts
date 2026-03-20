@@ -467,7 +467,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
     let compactedThisTurn = false;
     if (effectiveCompaction.auto && tokensIn + tokensOut > 0) {
       const modelInfo = findModel(resolvedModel.providerId, resolvedModel.modelId);
-      const contextWindow = modelInfo?.capabilities.contextWindow ?? 100_000;
+      const contextWindow = modelInfo?.capabilities.contextWindow ?? 200_000;
       const currentTokens = tokensIn + tokensOut;
       if (
         shouldCompact({
@@ -496,7 +496,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       const messagesSince = countMessagesSinceLastCompaction(db, sessionId);
       if (messagesSince >= periodicCount) {
         const modelInfo = findModel(resolvedModel.providerId, resolvedModel.modelId);
-        const contextWindow = modelInfo?.capabilities.contextWindow ?? 100_000;
+        const contextWindow = modelInfo?.capabilities.contextWindow ?? 200_000;
         await compact({
           db,
           instanceSlug,

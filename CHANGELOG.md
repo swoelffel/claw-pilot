@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.42] — 2026-03-19
+
+### Fixed
+
+- **Anthropic Opus/Sonnet 4.6 missing in runtime** : `claude-opus-4-6` (and `claude-sonnet-4-6`) were absent from the runtime model catalog. `findModel()` returned `null`, so `prompt-loop` fell back to a 100k context window while the UI used 200k. Result: auto-compaction never triggered for Pilot sessions. Added both models with 200k context windows and aligned the runtime fallback to 200k when a model is unknown.
+
+---
+
 ## [0.41.41] — 2026-03-19
 
 ### Fixed
