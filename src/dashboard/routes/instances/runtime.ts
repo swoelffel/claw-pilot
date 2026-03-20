@@ -217,12 +217,12 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       )
       .get(sessionId) as { created_at: string } | undefined;
 
-    // Token usage estimate: sum of recent messages tokens
+    // Token usage estimate: last turn's tokens_in + tokens_out (mirrors shouldCompact logic)
     const tokenSumRow = db
       .prepare(
-        "SELECT COALESCE(SUM(COALESCE(tokens_in, 0) + COALESCE(tokens_out, 0)), 0) as total FROM rt_messages WHERE session_id = ?",
+        "SELECT COALESCE(tokens_in, 0) + COALESCE(tokens_out, 0) as total FROM rt_messages WHERE session_id = ? AND role = 'assistant' AND tokens_in IS NOT NULL ORDER BY created_at DESC LIMIT 1",
       )
-      .get(sessionId) as { total: number };
+      .get(sessionId) as { total: number } | undefined;
 
     // Build tools list (builtin from toolProfile + placeholder for MCP)
     const toolProfile = agentCfg?.toolProfile ?? "coding";
@@ -398,7 +398,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
         },
       },
       tokenUsage: {
-        estimated: tokenSumRow.total,
+        estimated: tokenSumRow?.total ?? 0,
         contextWindow: catalogEntry?.capabilities.contextWindow ?? 200_000,
         compactionThreshold: config.compaction?.threshold ?? 0.85,
       },
