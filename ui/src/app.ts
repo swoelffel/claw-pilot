@@ -802,37 +802,13 @@ export class CpApp extends LitElement {
     if (this._route.view === "pilot") {
       const pilotSlug = this._route.slug;
       return html`
-        <div style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
-          <div
-            style="display:flex;align-items:center;gap:8px;padding:0 16px;min-height:48px;flex-wrap:wrap;background:var(--bg-surface);border-bottom:1px solid var(--bg-border);flex-shrink:0;"
-          >
-            <button
-              style="background:none;border:none;color:var(--text-muted);font-size:13px;cursor:pointer;padding:4px 0;font-family:inherit;display:flex;align-items:center;gap:6px;transition:color 0.15s;white-space:nowrap;flex-shrink:0;"
-              @click=${() => {
-                this._route = { view: "cluster" };
-              }}
-            >
-              ← ${msg("Back", { id: "settings-back" })}
-            </button>
-            <span style="color:var(--bg-border);font-size:14px;user-select:none;flex-shrink:0;"
-              >/</span
-            >
-            <span
-              style="font-size:13px;font-weight:600;color:var(--text-secondary);font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;"
-              title="${pilotSlug}"
-              >${pilotSlug}</span
-            >
-            <span style="color:var(--bg-border);font-size:14px;user-select:none;flex-shrink:0;"
-              >/</span
-            >
-            <span style="font-size:13px;font-weight:600;color:var(--text-primary);flex-shrink:0;"
-              >Pilot</span
-            >
-          </div>
-          <div style="flex:1;overflow:hidden;">
-            <cp-runtime-pilot .slug=${pilotSlug}></cp-runtime-pilot>
-          </div>
-        </div>
+        <cp-runtime-pilot
+          .slug=${pilotSlug}
+          style="height:100%;"
+          @back=${() => {
+            this._route = { view: "cluster" };
+          }}
+        ></cp-runtime-pilot>
       `;
     }
     return html``;

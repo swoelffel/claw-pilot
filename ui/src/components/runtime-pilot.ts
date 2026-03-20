@@ -8,7 +8,7 @@
 // - Quasi real-time: SSE + polling fallback + visibilitychange refresh + SSE auto-reconnect
 import { LitElement, html, nothing, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { localized } from "@lit/localize";
+import { localized, msg } from "@lit/localize";
 import type { PilotMessage, SessionContext, PilotBusEvent, RuntimeSession } from "../types.js";
 import {
   postRuntimeChat,
@@ -76,12 +76,62 @@ export class RuntimePilot extends LitElement {
         flex-shrink: 0;
       }
 
-      /* Agent selector tab strip */
+      /* Top navigation bar: back button + slug + agent tabs */
+      .nav-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 16px;
+        min-height: 48px;
+        flex-shrink: 0;
+        background: var(--bg-surface);
+        border-bottom: 1px solid var(--bg-border);
+        overflow-x: auto;
+      }
+
+      .nav-back {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        font-size: 13px;
+        cursor: pointer;
+        padding: 4px 0;
+        font-family: inherit;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: color 0.15s;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      .nav-back:hover {
+        color: var(--text-primary);
+      }
+
+      .nav-sep {
+        color: var(--bg-border);
+        font-size: 14px;
+        user-select: none;
+        flex-shrink: 0;
+      }
+
+      .nav-slug {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        font-family: var(--font-mono);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 160px;
+        flex-shrink: 0;
+      }
+
+      /* Agent tabs — inline in the nav bar */
       .agent-tabs {
         display: flex;
         gap: 4px;
-        padding: 6px 12px;
-        border-bottom: 1px solid var(--bg-border);
         flex-shrink: 0;
         overflow-x: auto;
       }
@@ -623,22 +673,38 @@ export class RuntimePilot extends LitElement {
     return this._messages.reduce((sum, m) => sum + (m.costUsd ?? 0), 0);
   }
 
-  // ── Agent selector ────────────────────────────────────────────────────────
+  // ── Nav bar (back + slug + agent tabs) ───────────────────────────────────
 
-  private _renderAgentSelector() {
-    if (this._permanentSessions.length <= 1) return nothing;
+  private _renderNavBar() {
     return html`
-      <div class="agent-tabs">
-        ${this._permanentSessions.map(
-          (s) => html`
-            <button
-              class="agent-tab ${s.id === this._activeSessionId ? "active" : ""}"
-              @click=${() => this._switchSession(s.id)}
-            >
-              ${s.agentName ?? s.agentId}
-            </button>
-          `,
-        )}
+      <div class="nav-bar">
+        <button
+          class="nav-back"
+          @click=${() =>
+            this.dispatchEvent(new CustomEvent("back", { bubbles: true, composed: true }))}
+        >
+          ← ${msg("Back", { id: "settings-back" })}
+        </button>
+        <span class="nav-sep">/</span>
+        <span class="nav-slug" title="${this.slug}">${this.slug}</span>
+
+        ${this._permanentSessions.length > 1
+          ? html`
+              <span class="nav-sep">/</span>
+              <div class="agent-tabs">
+                ${this._permanentSessions.map(
+                  (s) => html`
+                    <button
+                      class="agent-tab ${s.id === this._activeSessionId ? "active" : ""}"
+                      @click=${() => this._switchSession(s.id)}
+                    >
+                      ${s.agentName ?? s.agentId}
+                    </button>
+                  `,
+                )}
+              </div>
+            `
+          : nothing}
       </div>
     `;
   }
@@ -652,7 +718,7 @@ export class RuntimePilot extends LitElement {
     const model = this._context?.agent.model ?? "";
 
     return html`
-      ${this._renderAgentSelector()}
+      ${this._renderNavBar()}
       <cp-pilot-header
         .agentId=${agentId}
         .agentName=${agentName}
