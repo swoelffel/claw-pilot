@@ -4,7 +4,7 @@ Guidance for Claude Code when working in this repository.
 
 ## What this project is
 
-`claw-pilot` v0.41.42 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, and permanent cross-channel sessions.
+`claw-pilot` v0.41.45 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, and permanent cross-channel sessions.
 
 All instances use the **claw-runtime** engine — a native Node.js engine (`src/runtime/`), managed via PID file daemon.
 
