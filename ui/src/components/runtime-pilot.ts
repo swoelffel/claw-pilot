@@ -75,6 +75,40 @@ export class RuntimePilot extends LitElement {
         margin: 0 12px 8px;
         flex-shrink: 0;
       }
+
+      /* Agent selector tab strip */
+      .agent-tabs {
+        display: flex;
+        gap: 4px;
+        padding: 6px 12px;
+        border-bottom: 1px solid var(--bg-border);
+        flex-shrink: 0;
+        overflow-x: auto;
+      }
+
+      .agent-tab {
+        padding: 3px 10px;
+        border-radius: var(--radius-sm);
+        font-size: 12px;
+        font-family: var(--font-mono);
+        cursor: pointer;
+        border: 1px solid transparent;
+        background: none;
+        color: var(--text-muted);
+        white-space: nowrap;
+        transition: color 0.1s;
+      }
+
+      .agent-tab.active {
+        background: var(--bg-hover);
+        border-color: var(--bg-border);
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+
+      .agent-tab:hover:not(.active) {
+        color: var(--text-secondary);
+      }
     `,
   ];
 
@@ -98,6 +132,7 @@ export class RuntimePilot extends LitElement {
   @state() private _context: SessionContext | null = null;
   @state() private _panelOpen = true;
   @state() private _events: PilotBusEvent[] = [];
+  @state() private _permanentSessions: RuntimeSession[] = [];
   @state() private _subagentResults: Record<
     string,
     { text?: string; steps?: number; tokens?: { input: number; output: number }; model?: string }
@@ -191,14 +226,20 @@ export class RuntimePilot extends LitElement {
   private async _detectPermanentSession(): Promise<string | undefined> {
     try {
       const sessions: RuntimeSession[] = await fetchRuntimeSessions(this.slug);
-      // Prefer persistent sessions (permanent agents), most recently updated first
       const sorted = sessions
         .filter((s) => s.persistent && s.state === "active")
         .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      this._permanentSessions = sorted;
       return sorted[0]?.id;
     } catch {
       return undefined;
     }
+  }
+
+  private _switchSession(sessionId: string): void {
+    if (sessionId === this._activeSessionId) return;
+    this.sessionId = sessionId;
+    // updated() will re-run _init() when sessionId changes
   }
 
   // ── Message loading (with pagination) ────────────────────────────────────
@@ -579,6 +620,26 @@ export class RuntimePilot extends LitElement {
     return this._messages.reduce((sum, m) => sum + (m.costUsd ?? 0), 0);
   }
 
+  // ── Agent selector ────────────────────────────────────────────────────────
+
+  private _renderAgentSelector() {
+    if (this._permanentSessions.length <= 1) return nothing;
+    return html`
+      <div class="agent-tabs">
+        ${this._permanentSessions.map(
+          (s) => html`
+            <button
+              class="agent-tab ${s.id === this._activeSessionId ? "active" : ""}"
+              @click=${() => this._switchSession(s.id)}
+            >
+              ${s.agentName ?? s.agentId}
+            </button>
+          `,
+        )}
+      </div>
+    `;
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   override render() {
@@ -588,6 +649,7 @@ export class RuntimePilot extends LitElement {
     const model = this._context?.agent.model ?? "";
 
     return html`
+      ${this._renderAgentSelector()}
       <cp-pilot-header
         .agentId=${agentId}
         .agentName=${agentName}

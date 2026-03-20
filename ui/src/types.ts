@@ -403,6 +403,7 @@ export interface RuntimeSession {
   id: string;
   instanceSlug: string;
   agentId: string;
+  agentName?: string;
   channel: string;
   state: "active" | "archived";
   title: string | null;
