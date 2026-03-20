@@ -25,7 +25,8 @@ import {
   RuntimeStateChanged,
   RuntimeError,
 } from "../bus/events.js";
-import { initAgentRegistry } from "../agent/registry.js";
+import { initAgentRegistry, resolveEffectivePersistence, getAgent } from "../agent/registry.js";
+import { getOrCreatePermanentSession } from "../session/session.js";
 import { McpRegistry } from "../mcp/registry.js";
 import { ChannelRouter, registerSubagentCompletedHandler } from "../channel/router.js";
 import { createChannels } from "./channel-factory.js";
@@ -80,6 +81,31 @@ export class ClawRuntime {
     try {
       // 1. Init agent registry (loads built-in agents + config agents)
       initAgentRegistry(this.config.agents);
+
+      // 1b. Pre-create permanent sessions for all permanent agents
+      //     Ensures they appear in the session tree before any A2A delegation.
+      for (const agentConfig of this.config.agents) {
+        const agentInfo = getAgent(agentConfig.id);
+        const isPermanent =
+          resolveEffectivePersistence(
+            agentInfo ?? {
+              kind: "primary",
+              category: "user",
+              name: agentConfig.id,
+              permission: [],
+              mode: "all",
+              options: {},
+            },
+            agentConfig,
+          ) === "permanent";
+        if (isPermanent) {
+          getOrCreatePermanentSession(this.db, {
+            instanceSlug: this.instanceSlug,
+            agentId: agentConfig.id,
+            channel: "internal",
+          });
+        }
+      }
 
       // 2. Init MCP if enabled
       if (this.config.mcpEnabled && this.config.mcpServers.length > 0) {
