@@ -23,6 +23,7 @@ import { HeartbeatTick, HeartbeatAlert } from "../bus/events.js";
 import { createSession, listSessions } from "../session/session.js";
 import { runPromptLoop } from "../session/prompt-loop.js";
 import { parseInterval, isWithinActiveHours } from "./interval.js";
+import { logger } from "../../lib/logger.js";
 
 const HEARTBEAT_CHANNEL = "internal";
 const HEARTBEAT_PEER_PREFIX = "heartbeat:";
@@ -93,6 +94,11 @@ async function runHeartbeatTick(
 
   // Publish tick event
   bus.publish(HeartbeatTick, { agentId: agent.id, instanceSlug });
+  logger.debug("heartbeat_tick", {
+    event: "heartbeat_tick",
+    slug: instanceSlug,
+    agentId: agent.id,
+  });
 
   // Find or create the dedicated heartbeat session for this agent
   const peerId = `${HEARTBEAT_PEER_PREFIX}${agent.id}`;
@@ -128,6 +134,7 @@ async function runHeartbeatTick(
     resolvedModel = resolveModel(agent);
   }
 
+  const heartbeatStart = Date.now();
   try {
     const result = await runPromptLoop({
       db,
@@ -141,11 +148,26 @@ async function runHeartbeatTick(
 
     const ackMaxChars = agent.heartbeat!.ackMaxChars ?? 500;
     const text = result.text.trim();
+    const durationMs = Date.now() - heartbeatStart;
 
     // Silent if HEARTBEAT_OK
-    if (text === "HEARTBEAT_OK" || text.startsWith("HEARTBEAT_OK")) return;
+    if (text === "HEARTBEAT_OK" || text.startsWith("HEARTBEAT_OK")) {
+      logger.info("heartbeat_ok", {
+        event: "heartbeat_ok",
+        slug: instanceSlug,
+        agentId: agent.id,
+        durationMs,
+      });
+      return;
+    }
 
     // Alert: agent has something to report
+    logger.info("heartbeat_alert", {
+      event: "heartbeat_alert",
+      slug: instanceSlug,
+      agentId: agent.id,
+      durationMs,
+    });
     bus.publish(HeartbeatAlert, {
       agentId: agent.id,
       instanceSlug,
@@ -153,6 +175,13 @@ async function runHeartbeatTick(
     });
   } catch (err) {
     // Don't crash the runner — publish an alert instead
+    logger.error("heartbeat_error", {
+      event: "heartbeat_error",
+      slug: instanceSlug,
+      agentId: agent.id,
+      error: err instanceof Error ? err.message : String(err),
+      durationMs: Date.now() - heartbeatStart,
+    });
     bus.publish(HeartbeatAlert, {
       agentId: agent.id,
       instanceSlug,

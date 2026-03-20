@@ -33,6 +33,7 @@ import { wirePluginsToBus } from "./plugin-wiring.js";
 import { startHeartbeatRunner } from "../heartbeat/runner.js";
 import { getRegisteredHooks } from "../plugin/hooks.js";
 import { cleanupEphemeralSessions } from "../session/cleanup.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // ClawRuntime
@@ -122,6 +123,7 @@ export class ClawRuntime {
       }
 
       this._setState("running");
+      logger.info("runtime_started", { event: "runtime_started", slug: this.instanceSlug });
 
       // 5. Initial cleanup on startup (catch-up after prolonged stop)
       this._runCleanup();
@@ -206,6 +208,7 @@ export class ClawRuntime {
     }
 
     this._setState("stopped");
+    logger.info("runtime_stopped", { event: "runtime_stopped", slug: this.instanceSlug });
 
     const bus = getBus(this.instanceSlug);
     const stopReason = errors.length > 0 ? errors.join("; ") : undefined;
@@ -317,14 +320,21 @@ export class ClawRuntime {
       try {
         const result = cleanupEphemeralSessions(this.db, this.instanceSlug, retentionHours);
         if (result.sessionsDeleted > 0) {
-          console.info(
-            `[cleanup] Deleted ${result.sessionsDeleted} ephemeral sessions, ` +
-              `${result.messagesDeleted} messages, ${result.partsDeleted} parts ` +
-              `(${result.durationMs}ms)`,
-          );
+          logger.info("session_cleanup", {
+            event: "session_cleanup",
+            slug: this.instanceSlug,
+            sessionsDeleted: result.sessionsDeleted,
+            messagesDeleted: result.messagesDeleted,
+            partsDeleted: result.partsDeleted,
+            durationMs: result.durationMs,
+          });
         }
       } catch (err) {
-        console.error("[cleanup] Error during ephemeral session cleanup:", err);
+        logger.error("session_cleanup_error", {
+          event: "session_cleanup_error",
+          slug: this.instanceSlug,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     });
   }

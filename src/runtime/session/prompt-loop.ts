@@ -51,6 +51,7 @@ import type { McpRegistry } from "../mcp/registry.js";
 import { getAgent } from "../agent/registry.js";
 import { triggerMessageSending } from "../plugin/hooks.js";
 import type { PluginInput } from "../plugin/types.js";
+import { logger } from "../../lib/logger.js";
 
 const _moduleRequire = createRequire(import.meta.url);
 
@@ -329,6 +330,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       console.warn("[claw-runtime] plugin hook message.sending threw:", err);
     });
 
+    const llmCallStart = Date.now();
     const streamResult = streamText({
       model: resolvedModel.languageModel,
       system: cachedSystem,
@@ -447,6 +449,22 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
     loopTokensIn = tokensIn;
     loopTokensOut = tokensOut;
     loopCostUsd = costUsd;
+
+    // Log structured LLM call summary
+    logger.info("llm_call", {
+      event: "llm_call",
+      slug: instanceSlug,
+      agentId: agentConfig.id,
+      sessionId,
+      model: `${resolvedModel.providerId}/${resolvedModel.modelId}`,
+      tokensIn,
+      tokensOut,
+      ...(cacheRead > 0 ? { cacheRead } : {}),
+      ...(cacheWrite > 0 ? { cacheWrite } : {}),
+      costUsd: Math.round(costUsd * 1_000_000) / 1_000_000,
+      durationMs: Date.now() - llmCallStart,
+      steps: stepCount,
+    });
 
     // 8. Update assistant message
     updateMessageMetadata(db, assistantMsg.id, {

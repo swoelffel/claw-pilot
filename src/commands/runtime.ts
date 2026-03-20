@@ -5,7 +5,8 @@ import * as readline from "node:readline";
 import { spawn } from "node:child_process";
 import { Command } from "commander";
 import chalk from "chalk";
-import { logger } from "../lib/logger.js";
+import { logger, configureLogger } from "../lib/logger.js";
+import { rotateLogs } from "../lib/log-rotate.js";
 import {
   getRuntimeStateDir,
   getDbPath,
@@ -247,7 +248,6 @@ function runtimeStartCommand(): Command {
       let config;
       if (opts.ensureConfig) {
         config = ensureRuntimeConfig(stateDir);
-        logger.info(`Config loaded from ${stateDir}/runtime.json`);
       } else {
         if (!runtimeConfigExists(stateDir)) {
           logger.error(`No runtime.json found for instance "${slug}".`);
@@ -260,6 +260,17 @@ function runtimeStartCommand(): Command {
           logger.error(`Invalid runtime.json: ${err instanceof Error ? err.message : String(err)}`);
           process.exit(1);
         }
+      }
+
+      // Apply log config before any further logging
+      configureLogger({ level: config.log.level, format: config.log.format });
+
+      // Rotate log file if needed (before writing anything)
+      const logFile = `${stateDir}/logs/runtime.log`;
+      rotateLogs(logFile, config.log.maxSizeMb, config.log.maxFiles);
+
+      if (opts.ensureConfig) {
+        logger.info(`Config loaded from ${stateDir}/runtime.json`);
       }
 
       // Open DB

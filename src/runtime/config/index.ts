@@ -277,6 +277,24 @@ const SubagentsConfigSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Log config schema
+// ---------------------------------------------------------------------------
+
+/** Logging configuration for the runtime process */
+const LogConfigSchema = z.object({
+  /** Minimum log level to emit. Messages below this level are silently dropped. */
+  level: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  /** Output format. "text" = colored human-readable, "json" = JSON Lines (one object per line). */
+  format: z.enum(["text", "json"]).default("text"),
+  /** Rotate runtime.log when it exceeds this size (MB). */
+  maxSizeMb: z.number().int().min(1).max(500).default(10),
+  /** Number of rotated files to keep (runtime.log.1 … runtime.log.N). */
+  maxFiles: z.number().int().min(1).max(10).default(3),
+});
+
+export type LogConfig = z.infer<typeof LogConfigSchema>;
+
+// ---------------------------------------------------------------------------
 // Root config schema
 // ---------------------------------------------------------------------------
 
@@ -340,6 +358,14 @@ export const RuntimeConfigSchema = z.object({
     maxSpawnDepth: 3,
     maxChildrenPerSession: 5,
     retentionHours: 72,
+  })),
+
+  /** Logging configuration */
+  log: LogConfigSchema.default(() => ({
+    level: "info" as const,
+    format: "text" as const,
+    maxSizeMb: 10,
+    maxFiles: 3,
   })),
 
   /** Whether to enable MCP tool integration */
