@@ -33,16 +33,6 @@ export interface InstanceInfo {
   gatewayToken?: string | null;
 }
 
-export interface AgentInfo {
-  id: number;
-  instance_id: number;
-  agent_id: string;
-  name: string;
-  model: string | null;
-  workspace_path: string;
-  is_default: number;
-}
-
 export interface HealthUpdate {
   type: "health_update";
   payload: {
@@ -108,21 +98,6 @@ export interface CreateInstanceRequest {
   blueprintId?: number;
 }
 
-export interface ConversationEntry {
-  /** Unix timestamp in ms */
-  timestamp: number;
-  /** Display name of the sender (agent name or channel id) */
-  from: string;
-  /** Display name of the receiver (agent label or session key) */
-  to: string;
-  /** Task or message text */
-  message: string;
-  /** "agent-agent" for subagent dispatches, "agent-human" for channel replies */
-  type: "agent-agent" | "agent-human";
-  /** Current status of the dispatch */
-  status?: "running" | "done" | "failed";
-}
-
 // Agents Builder types
 
 export interface AgentFileSummary {
@@ -159,20 +134,6 @@ export interface AgentMetaPatch {
 }
 
 // Skills types
-
-export interface SkillInfo {
-  name: string;
-  description: string;
-  emoji?: string;
-  source: string;
-  eligible: boolean;
-  disabled: boolean;
-}
-
-export interface SkillsListResponse {
-  available: boolean;
-  skills: SkillInfo[];
-}
 
 export interface AgentLink {
   source_agent_id: string;
