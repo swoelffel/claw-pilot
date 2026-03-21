@@ -55,6 +55,7 @@ Since v0.7.1, navigation uses hash URLs (`#/...`). Browser back/forward and page
 | `#/blueprints/:id/builder` | Blueprint builder | `cp-blueprint-builder` |
 | `#/agent-templates` | Agent templates (reusable agent blueprints) | `cp-agent-templates-view` |
 | `#/agent-templates/:id` | Agent template detail + file editing | `cp-agent-template-detail` |
+| `#/profile` | User profile settings | `cp-profile-settings` |
 
 Navigation between views emits `navigate { view, slug?, blueprintId?, templateId? }` events captured by `app.ts`, which updates the hash URL and renders the corresponding component.
 
@@ -65,9 +66,9 @@ Navigation between views emits `navigate { view, slug?, blueprintId?, templateId
 Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`).
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│  ClawPilot   Instances [2]   Blueprints [3]   Templates [5]  ● Live  [Sign out]│
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│  ClawPilot   Instances [2]   Blueprints [3]   Templates [5]   👤  ● Live  [Sign out]│
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 | Element | Description |
@@ -76,6 +77,7 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 | **Instances** | Active tab if cluster view, agents-builder, or instance-settings. Numeric badge if `instanceCount > 0`. |
 | **Blueprints** | Active tab if blueprints or blueprint-builder view. Numeric badge if `blueprintCount !== null && blueprintCount > 0`. |
 | **Templates** | Active tab if agent-templates or agent-template-detail view. Numeric badge if `agentTemplateCount !== null && agentTemplateCount > 0`. Links to `#/agent-templates`. |
+| **Profile** | 👤 emoji button, transparent border default, accent border on hover, accent fill when `#/profile` is active. Click → `#/profile`. |
 | **WS indicator** | Green dot (`--state-running`) + "Live" if connected; red dot (`--state-error`) + "Offline" if disconnected. |
 | **Sign out** | Gray outline button, red hover (`--state-error`). Calls `POST /api/auth/logout` then resets local state. |
 
@@ -111,6 +113,7 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 | 5 | Blueprint Builder | `cp-blueprint-builder` | `#/blueprints/:id/builder` | agent-card-mini, agent-detail-panel, agent-links-svg | [screen-blueprint-builder.md](ux-screens/screen-blueprint-builder.md) |
 | — | Agent Templates | `cp-agent-templates-view` | `#/agent-templates` | — | [screen-agent-templates.md](ux-screens/screen-agent-templates.md) |
 | — | Agent Template Detail | `cp-agent-template-detail` | `#/agent-templates/:id` | agent-file-editor | [screen-agent-template-detail.md](ux-screens/screen-agent-template-detail.md) |
+| — | Profile Settings | `cp-profile-settings` | `#/profile` | — (standalone) | [screen-profile-settings.md](ux-screens/screen-profile-settings.md) |
 
 ---
 
@@ -161,3 +164,5 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 *Updated: 2026-03-20 - doc cleanup: cp-runtime-chat marked deprecated*
 
 *Updated: 2026-03-21 - restructuration: éclatement en ux-screens/ (9 fichiers) et ux-components/ (20 fichiers), suppression des sections deprecated*
+
+*Updated: 2026-03-21 - v0.44.0: added Profile Settings screen (cp-profile-settings), 👤 button in header, #/profile route*
