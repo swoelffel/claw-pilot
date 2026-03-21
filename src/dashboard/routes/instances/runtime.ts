@@ -1,5 +1,5 @@
 // src/dashboard/routes/instances/runtime.ts
-// Routes: GET runtime/status, GET runtime/sessions, POST runtime/chat, GET runtime/chat/stream
+// Routes: GET runtime/status, GET runtime/sessions, DELETE runtime/sessions, POST runtime/chat, GET runtime/chat/stream
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Hono } from "hono";
@@ -30,7 +30,10 @@ import {
   type RuntimeAgentConfig,
 } from "../../../runtime/index.js";
 import { resolveAgentWorkspacePath } from "../../../core/agent-workspace.js";
-import { listEnrichedSessions } from "../../../core/repositories/runtime-session-repository.js";
+import {
+  listEnrichedSessions,
+  purgeArchivedSessions,
+} from "../../../core/repositories/runtime-session-repository.js";
 
 export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, db } = deps;
@@ -90,6 +93,29 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     });
 
     return c.json({ sessions });
+  });
+
+  // ---------------------------------------------------------------------------
+  // DELETE /api/instances/:slug/runtime/sessions?state=archived
+  // Purge all archived ephemeral sessions for an instance (persistent sessions untouched).
+  // ---------------------------------------------------------------------------
+  app.delete("/api/instances/:slug/runtime/sessions", (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
+
+    const stateParam = c.req.query("state");
+    if (stateParam !== "archived") {
+      return apiError(c, 400, "INVALID_PARAM", "Only state=archived is supported");
+    }
+
+    try {
+      const result = purgeArchivedSessions(db, slug);
+      return c.json({ ok: true, ...result });
+    } catch (err) {
+      return apiError(c, 500, "PURGE_FAILED", err instanceof Error ? err.message : "Purge failed");
+    }
   });
 
   // ---------------------------------------------------------------------------
@@ -712,7 +738,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     }
 
     interface HeartbeatRow {
-      sessionId: string;
+      messageId: string;
       createdAt: string;
       agentId: string;
       responseText: string | null;
@@ -721,22 +747,24 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
 
     let rows: HeartbeatRow[] = [];
     try {
-      // Le texte de la réponse est dans rt_parts (type='text'), pas dans rt_messages
+      // Each heartbeat tick produces one assistant message inside a single reused session.
+      // Query messages (not sessions) to get per-tick timestamps.
       rows = db
         .prepare(
           `SELECT
-            s.id as sessionId,
-            s.created_at as createdAt,
+            m.id as messageId,
+            m.created_at as createdAt,
             s.agent_id as agentId,
             p.content as responseText,
             m.tokens_out as tokensOut
-          FROM rt_sessions s
-          LEFT JOIN rt_messages m ON m.session_id = s.id AND m.role = 'assistant'
+          FROM rt_messages m
+          JOIN rt_sessions s ON s.id = m.session_id
           LEFT JOIN rt_parts p ON p.message_id = m.id AND p.type = 'text'
           WHERE s.instance_slug = ?
             AND s.agent_id = ?
             AND s.channel = 'internal'
-          ORDER BY s.created_at DESC
+            AND m.role = 'assistant'
+          ORDER BY m.created_at DESC
           LIMIT ?`,
         )
         .all(slug, agentId, limit) as HeartbeatRow[];
@@ -745,7 +773,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     }
 
     const ticks = rows.map((row) => ({
-      sessionId: row.sessionId,
+      messageId: row.messageId,
       createdAt: row.createdAt,
       agentId: row.agentId,
       responseText: row.responseText ?? "",

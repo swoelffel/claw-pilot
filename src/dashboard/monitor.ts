@@ -88,13 +88,15 @@ export class Monitor {
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const row = this.db
         .prepare(
-          `SELECT COUNT(DISTINCT s.id) AS cnt
-           FROM rt_sessions s
-           JOIN rt_messages m ON m.session_id = s.id AND m.role = 'assistant'
+          `SELECT COUNT(DISTINCT m.id) AS cnt
+           FROM rt_messages m
+           JOIN rt_sessions s ON s.id = m.session_id
+           JOIN rt_parts p ON p.message_id = m.id AND p.type = 'text'
            WHERE s.instance_slug = ?
              AND s.channel = 'internal'
-             AND s.created_at > ?
-             AND (m.content LIKE '%HEARTBEAT_ALERT%' OR m.content LIKE '%alert%')`,
+             AND m.role = 'assistant'
+             AND m.created_at > ?
+             AND (p.content LIKE '%HEARTBEAT_ALERT%' OR p.content LIKE '%alert%')`,
         )
         .get(slug, since) as { cnt: number } | undefined;
       return row?.cnt ?? 0;

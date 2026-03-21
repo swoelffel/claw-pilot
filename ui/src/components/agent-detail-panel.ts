@@ -113,7 +113,7 @@ export class AgentDetailPanel extends LitElement {
   @state() private _hbError = "";
   @state() private _hbLoading = false;
   @state() private _hbTicks: Array<{
-    sessionId: string;
+    messageId: string;
     createdAt: string;
     status: "ok" | "alert";
     responseText: string;
@@ -582,7 +582,7 @@ export class AgentDetailPanel extends LitElement {
       if (!res.ok) return;
       const data = (await res.json()) as {
         ticks: Array<{
-          sessionId: string;
+          messageId: string;
           createdAt: string;
           status: "ok" | "alert";
           responseText: string;
@@ -829,9 +829,7 @@ export class AgentDetailPanel extends LitElement {
                     <span class="hb-tick-status ${tick.status}">
                       ${tick.status === "ok" ? "✓" : "⚠"}
                     </span>
-                    <span class="hb-tick-time"
-                      >${new Date(tick.createdAt).toLocaleTimeString()}</span
-                    >
+                    <span class="hb-tick-time">${new Date(tick.createdAt).toLocaleString()}</span>
                     <span class="hb-tick-text">${tick.responseText.slice(0, 80)}</span>
                   </div>
                 `,

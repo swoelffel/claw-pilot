@@ -2067,21 +2067,17 @@ describe("GET /api/instances/:slug/runtime/heartbeat/history", () => {
   });
 
   it("returns ticks with status 'ok' or 'alert' based on response content", async () => {
-    // Objective: positive — verifies the route maps rt_sessions rows to ticks
-    // and correctly assigns status='alert' when the assistant message part contains
-    // an alert keyword, and status='ok' otherwise.
+    // Objective: positive — verifies the route returns one tick per assistant
+    // message (not per session) with correct per-tick timestamps, and correctly
+    // assigns status='alert' when the text part contains an alert keyword.
     //
-    // The route JOINs rt_messages on session_id + role='assistant' and reads
-    // m.content. Since rt_messages has no 'content' column (text lives in
-    // rt_parts), the SQL query throws and the catch block returns { ticks: [] }.
-    // This test therefore verifies the graceful-degradation path: the route
-    // returns a valid 200 with an empty ticks array rather than a 500.
+    // In production the heartbeat runner reuses a single session for all ticks
+    // of an agent, so we insert one session with two assistant messages.
     // Arrange
     seedInstance(ctx, "demo1", 18789);
 
-    // Insert two heartbeat sessions
-    const sessionOkId = "sess-hb-ok-001";
-    const sessionAlertId = "sess-hb-alert-002";
+    // Insert one heartbeat session (reused across ticks, as in production)
+    const sessionId = "sess-hb-001";
 
     ctx.db
       .prepare(
@@ -2090,34 +2086,17 @@ describe("GET /api/instances/:slug/runtime/heartbeat/history", () => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
-        sessionOkId,
+        sessionId,
         "demo1",
         "main",
         "internal",
-        "archived",
-        "demo1:main:internal:unknown",
-        "2026-03-15T10:00:00Z",
-        "2026-03-15T10:00:00Z",
+        "active",
+        "demo1:main:internal:heartbeat:main",
+        "2026-03-15T09:00:00Z",
+        "2026-03-15T09:00:00Z",
       );
 
-    ctx.db
-      .prepare(
-        `INSERT INTO rt_sessions
-           (id, instance_slug, agent_id, channel, state, session_key, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        sessionAlertId,
-        "demo1",
-        "main",
-        "internal",
-        "archived",
-        "demo1:main:internal:unknown2",
-        "2026-03-15T11:00:00Z",
-        "2026-03-15T11:00:00Z",
-      );
-
-    // Insert assistant messages (no content column in rt_messages — text is in rt_parts)
+    // Insert two assistant messages at different times (one ok, one alert)
     const msgOkId = "msg-ok-001";
     const msgAlertId = "msg-alert-002";
 
@@ -2126,16 +2105,16 @@ describe("GET /api/instances/:slug/runtime/heartbeat/history", () => {
         `INSERT INTO rt_messages (id, session_id, role, tokens_out, created_at)
          VALUES (?, ?, ?, ?, ?)`,
       )
-      .run(msgOkId, sessionOkId, "assistant", 42, "2026-03-15T10:00:05Z");
+      .run(msgOkId, sessionId, "assistant", 42, "2026-03-15T10:00:05Z");
 
     ctx.db
       .prepare(
         `INSERT INTO rt_messages (id, session_id, role, tokens_out, created_at)
          VALUES (?, ?, ?, ?, ?)`,
       )
-      .run(msgAlertId, sessionAlertId, "assistant", 18, "2026-03-15T11:00:05Z");
+      .run(msgAlertId, sessionId, "assistant", 18, "2026-03-15T11:00:05Z");
 
-    // Insert text content in rt_parts (the actual storage for message text)
+    // Insert text content in rt_parts
     ctx.db
       .prepare(
         `INSERT INTO rt_parts (id, message_id, type, content, sort_order, created_at, updated_at)
@@ -2172,15 +2151,83 @@ describe("GET /api/instances/:slug/runtime/heartbeat/history", () => {
       { headers: authHeaders() },
     );
 
-    // Assert — route now joins rt_parts for text content (bug fixed)
+    // Assert
     expect(res.status).toBe(200);
     const body = await json(res);
     expect(Array.isArray(body.ticks)).toBe(true);
     expect(body.ticks).toHaveLength(2);
-    // First tick (most recent) should be "alert"
-    const alertTick = body.ticks.find((t: { status: string }) => t.status === "alert");
-    const okTick = body.ticks.find((t: { status: string }) => t.status === "ok");
-    expect(alertTick).toBeDefined();
-    expect(okTick).toBeDefined();
+
+    // Ticks are ordered by m.created_at DESC — alert (11:00) first, ok (10:00) second
+    expect(body.ticks[0].status).toBe("alert");
+    expect(body.ticks[0].messageId).toBe(msgAlertId);
+    expect(body.ticks[0].createdAt).toBe("2026-03-15T11:00:05Z");
+    expect(body.ticks[1].status).toBe("ok");
+    expect(body.ticks[1].messageId).toBe(msgOkId);
+    expect(body.ticks[1].createdAt).toBe("2026-03-15T10:00:05Z");
+  });
+
+  it("returns per-tick timestamps, not session creation date", async () => {
+    // Objective: regression — ensures tick timestamps come from rt_messages.created_at
+    // (per-tick) and not from rt_sessions.created_at (session creation).
+    // Arrange
+    seedInstance(ctx, "demo1", 18789);
+
+    const sessionId = "sess-hb-ts-001";
+    const sessionCreatedAt = "2026-03-10T08:00:00Z"; // session created days ago
+
+    ctx.db
+      .prepare(
+        `INSERT INTO rt_sessions
+           (id, instance_slug, agent_id, channel, state, session_key, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        sessionId,
+        "demo1",
+        "main",
+        "internal",
+        "active",
+        "demo1:main:internal:heartbeat:main",
+        sessionCreatedAt,
+        sessionCreatedAt,
+      );
+
+    // Insert 3 messages at distinct times, all different from session creation
+    const tickTimes = ["2026-03-15T10:00:00Z", "2026-03-15T10:05:00Z", "2026-03-15T10:10:00Z"];
+    for (let i = 0; i < tickTimes.length; i++) {
+      const msgId = `msg-ts-${i}`;
+      ctx.db
+        .prepare(
+          `INSERT INTO rt_messages (id, session_id, role, tokens_out, created_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(msgId, sessionId, "assistant", 8, tickTimes[i]);
+
+      ctx.db
+        .prepare(
+          `INSERT INTO rt_parts (id, message_id, type, content, sort_order, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(`part-ts-${i}`, msgId, "text", "HEARTBEAT_OK", 0, tickTimes[i], tickTimes[i]);
+    }
+
+    // Act
+    const res = await ctx.app.request(
+      "/api/instances/demo1/runtime/heartbeat/history?agentId=main&limit=10",
+      { headers: authHeaders() },
+    );
+
+    // Assert — timestamps must be per-message, NOT the session creation date
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.ticks).toHaveLength(3);
+    // Ordered DESC: most recent first
+    expect(body.ticks[0].createdAt).toBe("2026-03-15T10:10:00Z");
+    expect(body.ticks[1].createdAt).toBe("2026-03-15T10:05:00Z");
+    expect(body.ticks[2].createdAt).toBe("2026-03-15T10:00:00Z");
+    // None should match the session creation date
+    for (const tick of body.ticks) {
+      expect(tick.createdAt).not.toBe(sessionCreatedAt);
+    }
   });
 });
