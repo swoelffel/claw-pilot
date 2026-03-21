@@ -32,6 +32,9 @@ import {
   type RuntimeMcpServerConfig,
 } from "../runtime/index.js";
 import { resolveAgentWorkspacePath } from "../core/agent-workspace.js";
+import { UserProfileRepository } from "../core/repositories/user-profile-repository.js";
+import { CommunityProfileResolver } from "../runtime/profile/community-resolver.js";
+import { getDataDir } from "../lib/platform.js";
 
 // ---------------------------------------------------------------------------
 // runtime config init <slug>
@@ -276,7 +279,28 @@ function runtimeStartCommand(): Command {
       // Open DB
       const db = initDatabase(getDbPath());
 
-      const runtime = new ClawRuntime(config, db, slug, stateDir);
+      // Load user-level .env (shared across instances) — if it exists
+      const userEnvDir = getDataDir();
+      loadEnvFile(userEnvDir);
+
+      // Merge user profile providers/models into instance config (profile = fallback base)
+      const profileResolver = new CommunityProfileResolver(new UserProfileRepository(db));
+      const profile = profileResolver.getActiveProfile();
+      if (profile) {
+        const userProviders = profileResolver.getProviders();
+        const userAliases = profileResolver.getModelAliases();
+        if (userProviders.length > 0 || userAliases.length > 0 || profile.defaultModel) {
+          const { mergeProviderConfig } = await import("../runtime/provider/config-merge.js");
+          config = mergeProviderConfig(
+            config,
+            userProviders,
+            userAliases,
+            profile.defaultModel ?? undefined,
+          );
+        }
+      }
+
+      const runtime = new ClawRuntime(config, db, slug, stateDir, profileResolver);
 
       // Write PID file so lifecycle/health can detect us
       const pidPath = getRuntimePidPath(stateDir);

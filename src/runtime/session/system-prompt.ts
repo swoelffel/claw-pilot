@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { resolve, join, dirname } from "node:path";
 import type Database from "better-sqlite3";
 import type { RuntimeAgentConfig, RuntimeConfig } from "../config/index.js";
+import type { UserProfile } from "../profile/types.js";
 import type { InstanceSlug } from "../types.js";
 import { listAvailableSkills } from "../tool/built-in/skill.js";
 import { readWorkspaceState, writeWorkspaceState } from "../../core/workspace-state.js";
@@ -92,6 +93,45 @@ const DISCOVERY_FILES_MINIMAL = ["SOUL.md", "AGENTS.md", "TOOLS.md", "USER.md"] 
  */
 const DISCOVERY_FILES_SUBAGENT = ["AGENTS.md", "TOOLS.md"] as const;
 
+// ---------------------------------------------------------------------------
+// User profile block (dynamic injection replacing static USER.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the <user_profile> block injected into the system prompt.
+ * Replaces the static USER.md file with dynamic data from the database.
+ * Returns undefined if the profile has no meaningful content to inject.
+ */
+function buildUserProfileBlock(profile: UserProfile): string | undefined {
+  const lines: string[] = ["<user_profile>"];
+
+  if (profile.displayName) {
+    lines.push(`Name: ${profile.displayName}`);
+  }
+  if (profile.language) {
+    lines.push(`Language: ${profile.language}`);
+  }
+  if (profile.timezone) {
+    lines.push(`Timezone: ${profile.timezone}`);
+  }
+  if (profile.communicationStyle) {
+    lines.push(`Communication style: ${profile.communicationStyle}`);
+  }
+
+  if (profile.customInstructions) {
+    lines.push("");
+    lines.push("## User Instructions");
+    lines.push(profile.customInstructions);
+  }
+
+  lines.push("</user_profile>");
+
+  // Only return if we have meaningful content beyond the tags
+  if (lines.length <= 2) return undefined;
+
+  return lines.join("\n");
+}
+
 const BEHAVIOR_BLOCK = `<behavior>
   - Respond in the same language as the user's message
   - Be concise — avoid unnecessary preamble or repetition
@@ -128,6 +168,8 @@ export interface SystemPromptContext {
   sessionId?: string;
   /** Full runtime config — used to resolve agent persistence */
   runtimeConfig?: RuntimeConfig;
+  /** User profile data for dynamic injection (replaces static USER.md) */
+  userProfile?: UserProfile;
 }
 
 /**
@@ -374,6 +416,7 @@ async function resolveInstructions(ctx: SystemPromptContext): Promise<string | u
       discoveryFiles,
       agentConfig.bootstrapFiles,
       skipMemory,
+      ctx.userProfile,
     );
     if (discovered) {
       const extra = await fetchInstructionUrls(agentConfig);
@@ -440,6 +483,7 @@ function discoverWorkspaceInstructions(
   discoveryFiles: readonly string[],
   bootstrapFiles?: readonly string[],
   skipMemory?: boolean,
+  userProfile?: UserProfile,
 ): string | undefined {
   // Candidate workspace directory: workspaces/<agentId>
   const candidates = [join(workDir, "workspaces", agentId)];
@@ -455,6 +499,29 @@ function discoverWorkspaceInstructions(
       // BOOTSTRAP.md one-shot: only inject on the first session, then mark as done.
       // If bootstrapDone is already true, skip BOOTSTRAP.md entirely.
       if (filename === "BOOTSTRAP.md" && wsState.bootstrapDone) {
+        continue;
+      }
+
+      // USER.md: replace with dynamic profile block if available
+      if (filename === "USER.md" && userProfile) {
+        const profileBlock = buildUserProfileBlock(userProfile);
+        if (profileBlock) {
+          parts.push(profileBlock);
+        }
+        // Also read USER.md from disk — append if it has non-stub content (backward compat)
+        const filePath = join(wsDir, filename);
+        const rawContent = readWorkspaceFileCached(filePath);
+        if (rawContent !== undefined) {
+          const raw = rawContent.trim();
+          const isStub =
+            !raw ||
+            raw === `# ${agentId}` ||
+            raw.split("\n").length <= 1 ||
+            raw.includes("_No preferences configured yet._");
+          if (!isStub) {
+            parts.push(raw);
+          }
+        }
         continue;
       }
 

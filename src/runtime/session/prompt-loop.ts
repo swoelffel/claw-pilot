@@ -78,6 +78,8 @@ export interface PromptLoopInput {
   mcpRegistry?: McpRegistry;
   internalResolvedModel?: ResolvedModel;
   runtimeConfig?: RuntimeConfig;
+  /** User profile for dynamic injection into system prompt */
+  userProfile?: import("../profile/types.js").UserProfile;
 }
 
 export interface PromptLoopResult {
@@ -128,6 +130,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
     mcpRegistry,
     internalResolvedModel,
     runtimeConfig,
+    userProfile,
   } = input;
 
   if (input.abort?.aborted) throw new Error("Aborted");
@@ -205,6 +208,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       db,
       sessionId,
       ...(runtimeConfig !== undefined ? { runtimeConfig } : {}),
+      ...(userProfile !== undefined ? { userProfile } : {}),
     });
 
     // 2b. Cache system prompt and notify observers (dashboard context panel)

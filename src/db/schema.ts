@@ -738,6 +738,91 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v17: user profiles — single source of truth for user preferences, providers, and model aliases.
+    //
+    // user_profiles: 1:1 with users table. Stores preferences injected into agent prompts
+    //   (language, timezone, communication style, custom instructions) and user-level defaults
+    //   (default model, avatar, UI preferences).
+    //
+    // user_providers: user-level provider configs shared across all instances.
+    //   Instance-level providers (in runtime.json) override user-level by provider_id.
+    //   API keys are stored in ~/.claw-pilot/.env, referenced by env var name (never in DB).
+    //
+    // user_model_aliases: user-level model aliases shared across all instances.
+    //   Instance-level aliases (in runtime.json) override user-level by alias_id.
+    //
+    // Single-user (Community edition): one admin user, one profile row.
+    // Multi-user (Enterprise edition): one profile per user, swappable resolver module.
+    version: 17,
+    up(db) {
+      // Defensive: check if users table exists (it's created in v6).
+      // In partial-schema test environments, it may not exist.
+      const hasUsersTable = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+        .get();
+
+      if (!hasUsersTable) {
+        // No users table → skip user profile tables entirely.
+        // They will be created on next initDatabase() after v6 runs.
+        return;
+      }
+
+      db.exec(`
+        -- User profile (1:1 with users, single-user: always 1 row)
+        CREATE TABLE IF NOT EXISTS user_profiles (
+          id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id              INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+          display_name         TEXT,
+          language             TEXT NOT NULL DEFAULT 'fr',
+          timezone             TEXT,
+          communication_style  TEXT NOT NULL DEFAULT 'concise'
+            CHECK(communication_style IN ('concise', 'detailed', 'technical')),
+          custom_instructions  TEXT,
+          default_model        TEXT,
+          avatar_url           TEXT,
+          ui_preferences       TEXT,
+          created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- User-level provider configs (shared across instances)
+        CREATE TABLE IF NOT EXISTS user_providers (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          provider_id     TEXT NOT NULL,
+          api_key_env_var TEXT NOT NULL,
+          base_url        TEXT,
+          priority        INTEGER NOT NULL DEFAULT 0,
+          headers         TEXT,
+          created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(user_id, provider_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_user_providers_user
+          ON user_providers(user_id);
+
+        -- User-level model aliases (shared across instances)
+        CREATE TABLE IF NOT EXISTS user_model_aliases (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          alias_id        TEXT NOT NULL,
+          provider        TEXT NOT NULL,
+          model           TEXT NOT NULL,
+          context_window  INTEGER,
+          UNIQUE(user_id, alias_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_user_model_aliases_user
+          ON user_model_aliases(user_id);
+
+        -- Backfill: auto-create profile for existing admin user(s)
+        INSERT OR IGNORE INTO user_profiles (user_id, language)
+          SELECT id, 'fr' FROM users WHERE role = 'admin';
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

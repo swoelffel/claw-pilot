@@ -34,6 +34,7 @@ export { createChannels } from "./engine/index.js";
 export { wirePluginsToBus } from "./engine/index.js";
 export {
   loadRuntimeConfig,
+  loadMergedConfig,
   saveRuntimeConfig,
   ensureRuntimeConfig,
   runtimeConfigExists,

@@ -134,3 +134,45 @@ export interface AgentBlueprintFileRecord {
   content_hash: string | null;
   updated_at: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// User Profiles
+// ---------------------------------------------------------------------------
+
+export interface UserProfileRecord {
+  id: number;
+  user_id: number;
+  display_name: string | null;
+  language: string;
+  timezone: string | null;
+  communication_style: "concise" | "detailed" | "technical";
+  custom_instructions: string | null;
+  default_model: string | null;
+  avatar_url: string | null;
+  /** JSON blob stored as TEXT in SQLite */
+  ui_preferences: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserProviderRecord {
+  id: number;
+  user_id: number;
+  provider_id: string;
+  api_key_env_var: string;
+  base_url: string | null;
+  priority: number;
+  /** JSON blob stored as TEXT in SQLite */
+  headers: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserModelAliasRecord {
+  id: number;
+  user_id: number;
+  alias_id: string;
+  provider: string;
+  model: string;
+  context_window: number | null;
+}

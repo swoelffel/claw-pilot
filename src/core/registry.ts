@@ -21,6 +21,7 @@ import { ConfigRepository } from "./repositories/config-repository.js";
 import { EventRepository } from "./repositories/event-repository.js";
 import { BlueprintRepository } from "./repositories/blueprint-repository.js";
 import { AgentBlueprintRepository } from "./repositories/agent-blueprint-repository.js";
+import { UserProfileRepository } from "./repositories/user-profile-repository.js";
 import type { InstanceRecord } from "./registry-types.js";
 
 // ---------------------------------------------------------------------------
@@ -39,6 +40,9 @@ export type {
   BlueprintLinkRecord,
   AgentBlueprintRecord,
   AgentBlueprintFileRecord,
+  UserProfileRecord,
+  UserProviderRecord,
+  UserModelAliasRecord,
 } from "./registry-types.js";
 
 // ---------------------------------------------------------------------------
@@ -54,6 +58,7 @@ export class Registry {
   private events: EventRepository;
   private blueprints: BlueprintRepository;
   private agentBlueprints: AgentBlueprintRepository;
+  private _userProfiles: UserProfileRepository;
 
   constructor(private db: Database.Database) {
     this.servers = new ServerRepository(db);
@@ -64,6 +69,7 @@ export class Registry {
     this.events = new EventRepository(db);
     this.blueprints = new BlueprintRepository(db);
     this.agentBlueprints = new AgentBlueprintRepository(db);
+    this._userProfiles = new UserProfileRepository(db);
   }
 
   /** Expose the underlying database handle for transaction-level operations. */
@@ -268,5 +274,42 @@ export class Registry {
   }
   deleteAgentBlueprintFile(blueprintId: string, filename: string) {
     return this.agentBlueprints.deleteAgentBlueprintFile(blueprintId, filename);
+  }
+
+  // --- User Profiles ---
+
+  /** Expose the UserProfileRepository for ProfileResolver construction */
+  get userProfiles(): UserProfileRepository {
+    return this._userProfiles;
+  }
+
+  getUserProfile(userId: number) {
+    return this._userProfiles.getProfile(userId);
+  }
+  getAdminProfile() {
+    return this._userProfiles.getAdminProfile();
+  }
+  upsertUserProfile(userId: number, data: Parameters<UserProfileRepository["upsertProfile"]>[1]) {
+    return this._userProfiles.upsertProfile(userId, data);
+  }
+
+  getUserProviders(userId: number) {
+    return this._userProfiles.getProviders(userId);
+  }
+  upsertUserProvider(userId: number, data: Parameters<UserProfileRepository["upsertProvider"]>[1]) {
+    return this._userProfiles.upsertProvider(userId, data);
+  }
+  removeUserProvider(userId: number, providerId: string) {
+    return this._userProfiles.removeProvider(userId, providerId);
+  }
+
+  getUserModelAliases(userId: number) {
+    return this._userProfiles.getModelAliases(userId);
+  }
+  setUserModelAliases(
+    userId: number,
+    aliases: Parameters<UserProfileRepository["setModelAliases"]>[1],
+  ) {
+    return this._userProfiles.setModelAliases(userId, aliases);
   }
 }

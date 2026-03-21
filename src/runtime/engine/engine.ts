@@ -36,6 +36,7 @@ import { startHeartbeatRunner } from "../heartbeat/runner.js";
 import { getRegisteredHooks } from "../plugin/hooks.js";
 import { cleanupEphemeralSessions } from "../session/cleanup.js";
 import { logger, type Logger } from "../../lib/logger.js";
+import type { ProfileResolver } from "../profile/types.js";
 
 // ---------------------------------------------------------------------------
 // ClawRuntime
@@ -57,6 +58,7 @@ export class ClawRuntime {
     private readonly db: Database.Database,
     private readonly instanceSlug: InstanceSlug,
     private readonly workDir: string | undefined = undefined,
+    private readonly profileResolver: ProfileResolver | undefined = undefined,
   ) {
     this.log = logger.child({ slug: instanceSlug });
   }
@@ -325,6 +327,7 @@ export class ClawRuntime {
           message,
           ...(this.workDir !== undefined ? { workDir: this.workDir } : {}),
           ...(this._mcpRegistry !== undefined ? { mcpRegistry: this._mcpRegistry } : {}),
+          ...(this.profileResolver !== undefined ? { profileResolver: this.profileResolver } : {}),
         });
 
         // Send response back through the originating channel

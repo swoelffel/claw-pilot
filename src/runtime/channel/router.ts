@@ -15,6 +15,7 @@ import type Database from "better-sqlite3";
 import type { InboundMessage, OutboundMessage, InstanceSlug } from "../types.js";
 import type { RuntimeConfig } from "../config/index.js";
 import type { McpRegistry } from "../mcp/registry.js";
+import type { ProfileResolver } from "../profile/types.js";
 import {
   createSession,
   getSession,
@@ -54,6 +55,8 @@ export interface RouterInput {
   abort?: AbortSignal;
   /** MCP registry — forwarded to runPromptLoop to inject MCP tools */
   mcpRegistry?: McpRegistry;
+  /** Profile resolver — used to inject user profile into system prompt */
+  profileResolver?: ProfileResolver;
 }
 
 export interface RouterResult {
@@ -126,6 +129,9 @@ export class ChannelRouter {
       ? resolveAgentWorkspacePath(workDir, agentId, undefined)
       : undefined;
 
+    // Resolve user profile for dynamic prompt injection (if profileResolver provided)
+    const userProfile = input.profileResolver?.getActiveProfile();
+
     const prev = sessionQueues.get(sessionId) ?? Promise.resolve();
     const next: Promise<PromptLoopResult> = prev.then(() =>
       runPromptLoop({
@@ -144,6 +150,7 @@ export class ChannelRouter {
         ...(input.abort !== undefined ? { abort: input.abort } : {}),
         ...(mcpRegistry !== undefined ? { mcpRegistry } : {}),
         ...(internalResolvedModel !== undefined ? { internalResolvedModel } : {}),
+        ...(userProfile !== undefined ? { userProfile } : {}),
       }),
     );
     sessionQueues.set(sessionId, next);
