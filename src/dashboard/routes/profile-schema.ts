@@ -29,13 +29,3 @@ export const ApiKeyWriteSchema = z.object({
   /** The actual API key value to write to ~/.claw-pilot/.env */
   apiKey: z.string().min(1),
 });
-
-/** PUT /api/profile/models — replace all model aliases */
-export const UserModelAliasesSchema = z.array(
-  z.object({
-    aliasId: z.string().min(1),
-    provider: z.string().min(1),
-    model: z.string().min(1),
-    contextWindow: z.number().int().min(1).optional().nullable(),
-  }),
-);

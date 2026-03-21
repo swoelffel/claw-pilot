@@ -5,7 +5,6 @@
 
 import type { Hono, Context } from "hono";
 import { getCookie } from "hono/cookie";
-import * as path from "node:path";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { constants } from "../../lib/constants.js";
@@ -15,14 +14,13 @@ import {
   UserProfilePatchSchema,
   UserProviderUpsertSchema,
   ApiKeyWriteSchema,
-  UserModelAliasesSchema,
 } from "./profile-schema.js";
-import { loadRuntimeConfig } from "../../runtime/engine/config-loader.js";
-import { PROVIDER_ENV_VARS } from "../../lib/providers.js";
+import { join } from "node:path";
+import { discoverModels } from "../../runtime/provider/model-discovery.js";
 
 /** Resolve the user-level .env path (~/.claw-pilot/.env) */
 function getUserEnvPath(): string {
-  return path.join(getDataDir(), ".env");
+  return join(getDataDir(), ".env");
 }
 
 /**
@@ -261,41 +259,10 @@ export function registerProfileRoutes(app: Hono, deps: RouteDeps): void {
   });
 
   // -----------------------------------------------------------------------
-  // GET /api/profile/models — list user-level model aliases
+  // POST /api/profile/providers/:providerId/models — discover available models
   // -----------------------------------------------------------------------
-  app.get("/api/profile/models", (c) => {
-    const userId = getSessionUserId(c, deps);
-    const targetUserId = userId ?? registry.getAdminProfile()?.user_id;
-    if (!targetUserId) {
-      return c.json({ models: [] });
-    }
-
-    const aliases = registry.getUserModelAliases(targetUserId);
-    return c.json({
-      models: aliases.map((a) => ({
-        aliasId: a.alias_id,
-        provider: a.provider,
-        model: a.model,
-        contextWindow: a.context_window,
-      })),
-    });
-  });
-
-  // -----------------------------------------------------------------------
-  // PUT /api/profile/models — replace all model aliases
-  // -----------------------------------------------------------------------
-  app.put("/api/profile/models", async (c) => {
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return apiError(c, 400, "INVALID_BODY", "Invalid JSON body");
-    }
-
-    const parsed = UserModelAliasesSchema.safeParse(body);
-    if (!parsed.success) {
-      return apiError(c, 400, "VALIDATION_ERROR", parsed.error.message);
-    }
+  app.post("/api/profile/providers/:providerId/models", async (c) => {
+    const providerId = c.req.param("providerId");
 
     const userId = getSessionUserId(c, deps);
     const targetUserId = userId ?? registry.getAdminProfile()?.user_id;
@@ -303,106 +270,28 @@ export function registerProfileRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 404, "NO_USER", "No user found");
     }
 
-    registry.setUserModelAliases(
-      targetUserId,
-      parsed.data.map((a) => ({
-        alias_id: a.aliasId,
-        provider: a.provider,
-        model: a.model,
-        context_window: a.contextWindow ?? null,
-      })),
-    );
-
-    return c.json({ ok: true });
-  });
-
-  // -----------------------------------------------------------------------
-  // POST /api/profile/import-providers/:slug — import providers from an instance
-  // -----------------------------------------------------------------------
-  app.post("/api/profile/import-providers/:slug", async (c) => {
-    const slug = c.req.param("slug");
-
-    const userId = getSessionUserId(c, deps);
-    const targetUserId = userId ?? registry.getAdminProfile()?.user_id;
-    if (!targetUserId) {
-      return apiError(c, 404, "NO_USER", "No user found");
-    }
-
-    // Load the instance to get its state_dir
-    const instance = registry.getInstance(slug);
-    if (!instance) {
-      return apiError(c, 404, "INSTANCE_NOT_FOUND", `Instance "${slug}" not found`);
-    }
-
-    // Load the instance's runtime.json
-    let config;
-    try {
-      config = loadRuntimeConfig(instance.state_dir);
-    } catch {
-      return apiError(c, 400, "CONFIG_LOAD_ERROR", `Failed to load runtime.json for "${slug}"`);
-    }
-
-    let importedProviders = 0;
-    let importedAliases = 0;
-    let importedKeys = 0;
-
-    const userEnvPath = getUserEnvPath();
-    const instanceEnvPath = path.join(instance.state_dir, ".env");
-
-    // 1. Import providers
-    for (const provider of config.providers) {
-      // Determine the env var name — from the first auth profile, or from PROVIDER_ENV_VARS
-      const envVar =
-        provider.authProfiles[0]?.apiKeyEnvVar ??
-        PROVIDER_ENV_VARS[provider.id] ??
-        `${provider.id.toUpperCase()}_API_KEY`;
-
-      registry.upsertUserProvider(targetUserId, {
-        provider_id: provider.id,
-        api_key_env_var: envVar,
-        base_url: provider.baseUrl ?? null,
-        priority: provider.authProfiles[0]?.priority ?? 0,
-        headers: provider.headers ? JSON.stringify(provider.headers) : null,
-      });
-      importedProviders++;
-
-      // Copy the API key from instance .env to user .env (if it exists)
-      const keyValue = readEnvVar(instanceEnvPath, envVar);
-      if (keyValue) {
-        await writeEnvVar(userEnvPath, envVar, keyValue);
-        importedKeys++;
-      }
-    }
-
-    // 2. Import model aliases
-    if (config.models.length > 0) {
-      registry.setUserModelAliases(
-        targetUserId,
-        config.models.map((a) => ({
-          alias_id: a.id,
-          provider: a.provider,
-          model: a.model,
-          context_window: a.contextWindow ?? null,
-        })),
+    // Find the provider to get the env var name and base URL
+    const providers = registry.getUserProviders(targetUserId);
+    const provider = providers.find((p) => p.provider_id === providerId);
+    if (!provider) {
+      return apiError(
+        c,
+        404,
+        "PROVIDER_NOT_FOUND",
+        `Provider "${providerId}" not found in profile`,
       );
-      importedAliases = config.models.length;
     }
 
-    // 3. Import default model
-    if (config.defaultModel) {
-      registry.upsertUserProfile(targetUserId, {
-        default_model: config.defaultModel,
-      });
-    }
+    // Read the API key from the user-level .env
+    const envPath = getUserEnvPath();
+    const apiKey = readEnvVar(envPath, provider.api_key_env_var) ?? "";
 
-    return c.json({
-      ok: true,
-      imported: {
-        providers: importedProviders,
-        modelAliases: importedAliases,
-        apiKeys: importedKeys,
-        defaultModel: config.defaultModel ?? null,
-      },
-    });
+    try {
+      const models = await discoverModels(providerId, apiKey, provider.base_url);
+      return c.json({ models });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return c.json({ models: [], error: msg }, 200);
+    }
   });
 }

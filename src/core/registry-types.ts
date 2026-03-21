@@ -167,12 +167,3 @@ export interface UserProviderRecord {
   created_at: string;
   updated_at: string;
 }
-
-export interface UserModelAliasRecord {
-  id: number;
-  user_id: number;
-  alias_id: string;
-  provider: string;
-  model: string;
-  context_window: number | null;
-}

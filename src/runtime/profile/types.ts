@@ -1,7 +1,7 @@
 // src/runtime/profile/types.ts
 //
-// User profile abstraction — single source of truth for user preferences,
-// provider configs, and model aliases.
+// User profile abstraction — single source of truth for user preferences
+// and provider configs.
 //
 // Community edition: single-user (admin) backed by SQLite.
 // Enterprise edition: swappable module with RBAC + SSO support.
@@ -40,20 +40,12 @@ export interface UserProviderConfig {
   headers: Record<string, string> | null;
 }
 
-/** Model alias at the user level (shared across instances) */
-export interface UserModelAlias {
-  aliasId: string;
-  provider: string;
-  model: string;
-  contextWindow: number | null;
-}
-
 // ---------------------------------------------------------------------------
 // ProfileResolver interface
 // ---------------------------------------------------------------------------
 
 /**
- * Abstraction for resolving user profile, providers, and model aliases.
+ * Abstraction for resolving user profile and providers.
  *
  * Community impl (`CommunityProfileResolver`) uses SQLite via `UserProfileRepository`.
  * Enterprise impl can swap in RBAC + SSO + external DB by implementing this interface.
@@ -68,9 +60,6 @@ export interface ProfileResolver {
   /** List user-level provider configs */
   getProviders(userId?: number): UserProviderConfig[];
 
-  /** List user-level model aliases */
-  getModelAliases(userId?: number): UserModelAlias[];
-
   /** Update profile fields (partial update, returns full profile) */
   updateProfile(data: Partial<Omit<UserProfile, "userId">>, userId?: number): UserProfile;
 
@@ -79,7 +68,4 @@ export interface ProfileResolver {
 
   /** Remove a provider config */
   removeProvider(providerId: string, userId?: number): void;
-
-  /** Replace all model aliases */
-  setModelAliases(aliases: UserModelAlias[], userId?: number): void;
 }

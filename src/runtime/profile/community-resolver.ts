@@ -4,13 +4,9 @@
 // Single-user mode: all operations target the admin user's profile.
 // Enterprise edition replaces this module with RBAC + SSO support.
 
-import type { ProfileResolver, UserProfile, UserProviderConfig, UserModelAlias } from "./types.js";
+import type { ProfileResolver, UserProfile, UserProviderConfig } from "./types.js";
 import type { UserProfileRepository } from "../../core/repositories/user-profile-repository.js";
-import type {
-  UserProfileRecord,
-  UserProviderRecord,
-  UserModelAliasRecord,
-} from "../../core/registry-types.js";
+import type { UserProfileRecord, UserProviderRecord } from "../../core/registry-types.js";
 
 // ---------------------------------------------------------------------------
 // Record → Domain mapping helpers
@@ -58,15 +54,6 @@ function toProviderConfig(record: UserProviderRecord): UserProviderConfig {
   };
 }
 
-function toModelAlias(record: UserModelAliasRecord): UserModelAlias {
-  return {
-    aliasId: record.alias_id,
-    provider: record.provider,
-    model: record.model,
-    contextWindow: record.context_window,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // CommunityProfileResolver
 // ---------------------------------------------------------------------------
@@ -99,12 +86,6 @@ export class CommunityProfileResolver implements ProfileResolver {
     const uid = this.resolveUserId(userId);
     if (uid === undefined) return [];
     return this.repo.getProviders(uid).map(toProviderConfig);
-  }
-
-  getModelAliases(userId?: number): UserModelAlias[] {
-    const uid = this.resolveUserId(userId);
-    if (uid === undefined) return [];
-    return this.repo.getModelAliases(uid).map(toModelAlias);
   }
 
   updateProfile(data: Partial<Omit<UserProfile, "userId">>, userId?: number): UserProfile {
@@ -149,22 +130,5 @@ export class CommunityProfileResolver implements ProfileResolver {
     const uid = this.resolveUserId(userId);
     if (uid === undefined) return;
     this.repo.removeProvider(uid, providerId);
-  }
-
-  setModelAliases(aliases: UserModelAlias[], userId?: number): void {
-    const uid = this.resolveUserId(userId);
-    if (uid === undefined) {
-      throw new Error("No user found to set model aliases for");
-    }
-
-    this.repo.setModelAliases(
-      uid,
-      aliases.map((a) => ({
-        alias_id: a.aliasId,
-        provider: a.provider,
-        model: a.model,
-        context_window: a.contextWindow,
-      })),
-    );
   }
 }

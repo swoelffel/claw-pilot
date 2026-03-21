@@ -1,13 +1,9 @@
 // src/core/repositories/user-profile-repository.ts
 //
-// CRUD operations for user_profiles, user_providers, and user_model_aliases tables.
+// CRUD operations for user_profiles and user_providers tables.
 
 import type Database from "better-sqlite3";
-import type {
-  UserProfileRecord,
-  UserProviderRecord,
-  UserModelAliasRecord,
-} from "../registry-types.js";
+import type { UserProfileRecord, UserProviderRecord } from "../registry-types.js";
 
 // ---------------------------------------------------------------------------
 // Input types for upsert operations
@@ -32,13 +28,6 @@ export interface UserProviderUpsertData {
   priority?: number;
   /** Raw JSON string for headers */
   headers?: string | null;
-}
-
-export interface UserModelAliasInput {
-  alias_id: string;
-  provider: string;
-  model: string;
-  context_window?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -148,35 +137,5 @@ export class UserProfileRepository {
     this.db
       .prepare("DELETE FROM user_providers WHERE user_id = ? AND provider_id = ?")
       .run(userId, providerId);
-  }
-
-  // --- Model Aliases ---
-
-  getModelAliases(userId: number): UserModelAliasRecord[] {
-    return this.db
-      .prepare("SELECT * FROM user_model_aliases WHERE user_id = ? ORDER BY alias_id ASC")
-      .all(userId) as UserModelAliasRecord[];
-  }
-
-  /** Replace all model aliases for a user (transactional) */
-  setModelAliases(userId: number, aliases: UserModelAliasInput[]): void {
-    this.db.transaction(() => {
-      this.db.prepare("DELETE FROM user_model_aliases WHERE user_id = ?").run(userId);
-
-      const insert = this.db.prepare(
-        `INSERT INTO user_model_aliases (user_id, alias_id, provider, model, context_window)
-         VALUES (?, ?, ?, ?, ?)`,
-      );
-
-      for (const alias of aliases) {
-        insert.run(
-          userId,
-          alias.alias_id,
-          alias.provider,
-          alias.model,
-          alias.context_window ?? null,
-        );
-      }
-    })();
   }
 }

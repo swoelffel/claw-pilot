@@ -823,6 +823,18 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v18: remove user_model_aliases table.
+    // Model aliases at the user level are replaced by dynamic model discovery
+    // from provider APIs. Instance-level aliases (in runtime.json) remain.
+    version: 18,
+    up(db) {
+      db.exec(`
+        DROP TABLE IF EXISTS user_model_aliases;
+        DROP INDEX IF EXISTS idx_user_model_aliases_user;
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

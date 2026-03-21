@@ -16,18 +16,9 @@ import {
   upsertProfileProvider,
   deleteProfileProvider,
   patchProfileProviderKey,
-  fetchProfileModels,
-  replaceProfileModels,
-  importProvidersFromInstance,
-  fetchInstances,
+  discoverProviderModels,
 } from "../api.js";
-import type {
-  ProfileSection,
-  UserProfile,
-  UserProvider,
-  UserModelAlias,
-  InstanceInfo,
-} from "../types.js";
+import type { ProfileSection, UserProfile, UserProvider, DiscoveredModel } from "../types.js";
 
 // Known providers for the "Add provider" dropdown
 const KNOWN_PROVIDERS = [
@@ -54,8 +45,6 @@ export class ProfileSettings extends LitElement {
   // --- State ---
   @state() private _profile: UserProfile | null = null;
   @state() private _providers: UserProvider[] = [];
-  @state() private _models: UserModelAlias[] = [];
-  @state() private _instances: InstanceInfo[] = [];
   @state() private _loading = true;
   @state() private _saving = false;
   @state() private _error = "";
@@ -72,20 +61,10 @@ export class ProfileSettings extends LitElement {
   @state() private _newProviderKey = "";
   @state() private _newProviderBaseUrl = "";
 
-  // Model alias editing state
-  @state() private _addingAlias = false;
-  @state() private _newAliasId = "";
-  @state() private _newAliasProvider = "";
-  @state() private _newAliasModel = "";
-
-  // Import state
-  @state() private _importSlug = "";
-  @state() private _importing = false;
-  @state() private _importResult: {
-    providers: number;
-    modelAliases: number;
-    apiKeys: number;
-  } | null = null;
+  // Dynamic model discovery state
+  @state() private _discoveredModels: Map<string, DiscoveredModel[]> = new Map();
+  @state() private _discoveryErrors: Map<string, string> = new Map();
+  @state() private _discoveringProviders: Set<string> = new Set();
 
   // --- Lifecycle ---
 
@@ -98,20 +77,56 @@ export class ProfileSettings extends LitElement {
     this._loading = true;
     this._error = "";
     try {
-      const [profileRes, providersRes, modelsRes, instancesRes] = await Promise.all([
+      const [profileRes, providersRes] = await Promise.all([
         fetchProfile(),
         fetchProfileProviders(),
-        fetchProfileModels(),
-        fetchInstances(),
       ]);
       this._profile = profileRes.profile;
       this._providers = providersRes.providers;
-      this._models = modelsRes.models;
-      this._instances = instancesRes;
+
+      // Auto-discover models for providers that have an API key
+      void this._discoverAllModels();
     } catch (err) {
       this._error = err instanceof Error ? err.message : String(err);
     } finally {
       this._loading = false;
+    }
+  }
+
+  /** Discover models for all providers that have an API key set */
+  private async _discoverAllModels(): Promise<void> {
+    const providersWithKey = this._providers.filter((p) => p.hasApiKey);
+    await Promise.allSettled(providersWithKey.map((p) => this._discoverModelsFor(p.providerId)));
+  }
+
+  private async _discoverModelsFor(providerId: string): Promise<void> {
+    this._discoveringProviders = new Set([...this._discoveringProviders, providerId]);
+    this.requestUpdate();
+
+    try {
+      const res = await discoverProviderModels(providerId);
+      const newModels = new Map(this._discoveredModels);
+      const newErrors = new Map(this._discoveryErrors);
+
+      if (res.error) {
+        newErrors.set(providerId, res.error);
+        newModels.delete(providerId);
+      } else {
+        newModels.set(providerId, res.models);
+        newErrors.delete(providerId);
+      }
+
+      this._discoveredModels = newModels;
+      this._discoveryErrors = newErrors;
+    } catch (err) {
+      const newErrors = new Map(this._discoveryErrors);
+      newErrors.set(providerId, err instanceof Error ? err.message : String(err));
+      this._discoveryErrors = newErrors;
+    } finally {
+      const updated = new Set(this._discoveringProviders);
+      updated.delete(providerId);
+      this._discoveringProviders = updated;
+      this.requestUpdate();
     }
   }
 
@@ -146,7 +161,6 @@ export class ProfileSettings extends LitElement {
     try {
       await patchProfile(this._dirty as Record<string, string | null>);
       this._dirty = {};
-      // Reload profile
       const res = await fetchProfile();
       this._profile = res.profile;
       this._showToast(msg("Profile saved", { id: "profile-saved" }));
@@ -167,6 +181,16 @@ export class ProfileSettings extends LitElement {
     this.dispatchEvent(
       new CustomEvent("navigate", { detail: { view: "cluster" }, bubbles: true, composed: true }),
     );
+  }
+
+  // --- All discovered models (aggregated) ---
+
+  private get _allModels(): Array<{ providerId: string; models: DiscoveredModel[] }> {
+    const result: Array<{ providerId: string; models: DiscoveredModel[] }> = [];
+    for (const [providerId, models] of this._discoveredModels) {
+      if (models.length > 0) result.push({ providerId, models });
+    }
+    return result;
   }
 
   // --- Render ---
@@ -217,15 +241,9 @@ export class ProfileSettings extends LitElement {
               this._providers.length,
             )}
             ${this._renderSidebarItem(
-              "models",
-              msg("Models", { id: "profile-models" }),
-              this._models.length,
-            )}
-            ${this._renderSidebarItem(
               "instructions",
               msg("Instructions", { id: "profile-instructions" }),
             )}
-            ${this._renderSidebarItem("import", msg("Import", { id: "profile-import" }))}
           </div>
         </nav>
 
@@ -260,12 +278,8 @@ export class ProfileSettings extends LitElement {
         return this._renderGeneralSection();
       case "providers":
         return this._renderProvidersSection();
-      case "models":
-        return this._renderModelsSection();
       case "instructions":
         return this._renderInstructionsSection();
-      case "import":
-        return this._renderImportSection();
     }
   }
 
@@ -275,6 +289,8 @@ export class ProfileSettings extends LitElement {
 
   private _renderGeneralSection() {
     const p = this._profile;
+    const currentModel = this._getDirty("defaultModel", p?.defaultModel ?? "") as string;
+
     return html`
       <div class="section">
         <div class="section-header">${msg("General", { id: "profile-general" })}</div>
@@ -365,18 +381,47 @@ export class ProfileSettings extends LitElement {
             </div>
           </div>
 
-          <div class="field">
+          <div class="field full-width">
             <label class="field-label"
               >${msg("Default model", { id: "profile-default-model" })}</label
             >
-            <input
-              class="field-input mono ${"defaultModel" in this._dirty ? "changed" : ""}"
-              type="text"
-              placeholder="anthropic/claude-sonnet-4-5"
-              .value=${this._getDirty("defaultModel", p?.defaultModel ?? "")}
-              @input=${(e: Event) =>
-                this._setDirty("defaultModel", (e.target as HTMLInputElement).value || null)}
-            />
+            <div class="avatar-row">
+              <select
+                class="field-input ${"defaultModel" in this._dirty ? "changed" : ""}"
+                .value=${currentModel}
+                @change=${(e: Event) =>
+                  this._setDirty("defaultModel", (e.target as HTMLSelectElement).value || null)}
+                style="flex:1"
+              >
+                <option value="">
+                  ${msg("Select default model...", { id: "profile-select-model" })}
+                </option>
+                ${this._allModels.map(
+                  (group) => html`
+                    <optgroup label=${group.providerId}>
+                      ${group.models.map(
+                        (m) => html`
+                          <option value="${group.providerId}/${m.id}">${m.name || m.id}</option>
+                        `,
+                      )}
+                    </optgroup>
+                  `,
+                )}
+                ${currentModel &&
+                !this._allModels.some((g) =>
+                  g.models.some((m) => `${g.providerId}/${m.id}` === currentModel),
+                )
+                  ? html`<option value=${currentModel} selected>${currentModel}</option>`
+                  : nothing}
+              </select>
+              <button
+                class="btn btn-ghost"
+                @click=${() => void this._discoverAllModels()}
+                title=${msg("Refresh", { id: "profile-refresh-models" })}
+              >
+                ↻
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -420,14 +465,35 @@ export class ProfileSettings extends LitElement {
   }
 
   private _renderProviderCard(p: UserProvider) {
+    const modelCount = this._discoveredModels.get(p.providerId)?.length;
+    const discoveryError = this._discoveryErrors.get(p.providerId);
+    const isDiscovering = this._discoveringProviders.has(p.providerId);
+
     return html`
       <div class="provider-card">
         <div class="provider-header">
           <div class="provider-header-left">
             <span class="provider-name">${p.providerId}</span>
             <span class="provider-id">${p.apiKeyEnvVar}</span>
+            ${modelCount !== undefined
+              ? html`<span class="key-status set"
+                  >${modelCount} ${msg("models", { id: "profile-models-available" })}</span
+                >`
+              : nothing}
+            ${discoveryError
+              ? html`<span class="key-status missing"
+                  >${msg("Connection failed", { id: "profile-models-error" })}</span
+                >`
+              : nothing}
           </div>
           <div class="provider-actions">
+            <button
+              class="btn-change-key"
+              ?disabled=${isDiscovering}
+              @click=${() => void this._discoverModelsFor(p.providerId)}
+            >
+              ${isDiscovering ? "..." : msg("Test", { id: "profile-test-provider" })}
+            </button>
             <button class="btn-change-key" @click=${() => this._startEditKey(p.providerId)}>
               ${msg("Change key", { id: "profile-change-key" })}
             </button>
@@ -563,6 +629,8 @@ export class ProfileSettings extends LitElement {
       this._editKeyValue = "";
       const res = await fetchProfileProviders();
       this._providers = res.providers;
+      // Auto-discover models for the updated provider
+      void this._discoverModelsFor(providerId);
       this._showToast(msg("Profile saved", { id: "profile-saved" }));
     } catch (err) {
       this._showToast(err instanceof Error ? err.message : String(err), "error");
@@ -574,6 +642,10 @@ export class ProfileSettings extends LitElement {
       await deleteProfileProvider(providerId);
       const res = await fetchProfileProviders();
       this._providers = res.providers;
+      // Remove discovered models for this provider
+      const newModels = new Map(this._discoveredModels);
+      newModels.delete(providerId);
+      this._discoveredModels = newModels;
       this._showToast(msg("Profile saved", { id: "profile-saved" }));
     } catch (err) {
       this._showToast(err instanceof Error ? err.message : String(err), "error");
@@ -591,6 +663,7 @@ export class ProfileSettings extends LitElement {
         await patchProfileProviderKey(this._newProviderId, this._newProviderKey);
       }
 
+      const addedProviderId = this._newProviderId;
       this._addingProvider = false;
       this._newProviderId = "";
       this._newProviderEnvVar = "";
@@ -599,157 +672,8 @@ export class ProfileSettings extends LitElement {
 
       const res = await fetchProfileProviders();
       this._providers = res.providers;
-      this._showToast(msg("Profile saved", { id: "profile-saved" }));
-    } catch (err) {
-      this._showToast(err instanceof Error ? err.message : String(err), "error");
-    }
-  }
-
-  // -----------------------------------------------------------------------
-  // Models section
-  // -----------------------------------------------------------------------
-
-  private _renderModelsSection() {
-    return html`
-      <div class="section">
-        <div class="section-header">${msg("Models", { id: "profile-models" })}</div>
-
-        ${this._models.length === 0 && !this._addingAlias
-          ? html`<div class="empty-state">
-              ${msg("No model aliases configured.", { id: "profile-no-models" })}
-            </div>`
-          : nothing}
-        ${this._models.length > 0
-          ? html`
-              <table class="model-table">
-                <thead>
-                  <tr>
-                    <th>${msg("Alias", { id: "profile-alias-id" })}</th>
-                    <th>${msg("Provider", { id: "profile-model-provider" })}</th>
-                    <th>${msg("Model", { id: "profile-model-name" })}</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${this._models.map(
-                    (m) => html`
-                      <tr>
-                        <td>${m.aliasId}</td>
-                        <td>${m.provider}</td>
-                        <td>${m.model}</td>
-                        <td>
-                          <button
-                            class="btn-remove-provider"
-                            @click=${() => this._removeModelAlias(m.aliasId)}
-                          >
-                            ${msg("Remove", { id: "profile-remove-alias" })}
-                          </button>
-                        </td>
-                      </tr>
-                    `,
-                  )}
-                </tbody>
-              </table>
-            `
-          : nothing}
-        ${this._addingAlias ? this._renderAddAliasForm() : nothing}
-
-        <div style="margin-top: 12px">
-          <button
-            class="btn btn-ghost"
-            @click=${() => {
-              this._addingAlias = !this._addingAlias;
-              this._newAliasId = "";
-              this._newAliasProvider = "";
-              this._newAliasModel = "";
-            }}
-          >
-            ${this._addingAlias ? "−" : "+"} ${msg("Add alias", { id: "profile-add-alias" })}
-          </button>
-        </div>
-      </div>
-    `;
-  }
-
-  private _renderAddAliasForm() {
-    return html`
-      <div class="add-form">
-        <div class="field-grid">
-          <div class="field">
-            <label class="field-label">${msg("Alias", { id: "profile-alias-id" })}</label>
-            <input
-              class="field-input"
-              placeholder="fast"
-              .value=${this._newAliasId}
-              @input=${(e: Event) => {
-                this._newAliasId = (e.target as HTMLInputElement).value;
-              }}
-            />
-          </div>
-          <div class="field">
-            <label class="field-label">${msg("Provider", { id: "profile-model-provider" })}</label>
-            <input
-              class="field-input"
-              placeholder="anthropic"
-              .value=${this._newAliasProvider}
-              @input=${(e: Event) => {
-                this._newAliasProvider = (e.target as HTMLInputElement).value;
-              }}
-            />
-          </div>
-          <div class="field full-width">
-            <label class="field-label">${msg("Model", { id: "profile-model-name" })}</label>
-            <input
-              class="field-input mono"
-              placeholder="claude-haiku-3-5"
-              .value=${this._newAliasModel}
-              @input=${(e: Event) => {
-                this._newAliasModel = (e.target as HTMLInputElement).value;
-              }}
-            />
-          </div>
-        </div>
-        <div class="add-form-actions">
-          <button
-            class="btn btn-primary"
-            ?disabled=${!this._newAliasId || !this._newAliasProvider || !this._newAliasModel}
-            @click=${this._addModelAlias}
-          >
-            ${msg("Add alias", { id: "profile-add-alias" })}
-          </button>
-        </div>
-      </div>
-    `;
-  }
-
-  private async _addModelAlias(): Promise<void> {
-    const newAlias: UserModelAlias = {
-      aliasId: this._newAliasId,
-      provider: this._newAliasProvider,
-      model: this._newAliasModel,
-      contextWindow: null,
-    };
-    const updated = [...this._models, newAlias];
-    try {
-      await replaceProfileModels(updated);
-      const res = await fetchProfileModels();
-      this._models = res.models;
-      this._addingAlias = false;
-      this._newAliasId = "";
-      this._newAliasProvider = "";
-      this._newAliasModel = "";
-      this._showToast(msg("Profile saved", { id: "profile-saved" }));
-    } catch (err) {
-      this._showToast(err instanceof Error ? err.message : String(err), "error");
-    }
-  }
-
-  private async _removeModelAlias(aliasId: string): Promise<void> {
-    const updated = this._models.filter((m) => m.aliasId !== aliasId);
-    try {
-      await replaceProfileModels(updated);
-      const res = await fetchProfileModels();
-      this._models = res.models;
+      // Auto-discover models for the new provider
+      void this._discoverModelsFor(addedProviderId);
       this._showToast(msg("Profile saved", { id: "profile-saved" }));
     } catch (err) {
       this._showToast(err instanceof Error ? err.message : String(err), "error");
@@ -784,84 +708,6 @@ export class ProfileSettings extends LitElement {
         </div>
       </div>
     `;
-  }
-
-  // -----------------------------------------------------------------------
-  // Import section
-  // -----------------------------------------------------------------------
-
-  private _renderImportSection() {
-    return html`
-      <div class="section">
-        <div class="section-header">${msg("Import", { id: "profile-import" })}</div>
-        <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 16px">
-          ${msg("Import from instance", { id: "profile-import-from" })}
-        </p>
-        <div class="import-row">
-          <select
-            class="field-input"
-            .value=${this._importSlug}
-            @change=${(e: Event) => {
-              this._importSlug = (e.target as HTMLSelectElement).value;
-              this._importResult = null;
-            }}
-          >
-            <option value="">
-              ${msg("Select instance...", { id: "profile-select-instance" })}
-            </option>
-            ${this._instances.map(
-              (inst) =>
-                html`<option value=${inst.slug}>
-                  ${inst.display_name || inst.slug} (${inst.slug})
-                </option>`,
-            )}
-          </select>
-          <button
-            class="btn btn-primary"
-            ?disabled=${!this._importSlug || this._importing}
-            @click=${this._doImport}
-          >
-            ${this._importing
-              ? msg("Importing...", { id: "profile-importing" })
-              : msg("Import", { id: "profile-import-btn" })}
-          </button>
-        </div>
-
-        ${this._importResult
-          ? html`
-              <div class="import-result">
-                ✓ ${msg("Import successful", { id: "profile-import-success" })} —
-                ${this._importResult.providers} providers, ${this._importResult.modelAliases}
-                aliases, ${this._importResult.apiKeys} keys
-              </div>
-            `
-          : nothing}
-      </div>
-    `;
-  }
-
-  private async _doImport(): Promise<void> {
-    this._importing = true;
-    this._importResult = null;
-    try {
-      const res = await importProvidersFromInstance(this._importSlug);
-      this._importResult = res.imported;
-      // Reload providers and models
-      const [providersRes, modelsRes] = await Promise.all([
-        fetchProfileProviders(),
-        fetchProfileModels(),
-      ]);
-      this._providers = providersRes.providers;
-      this._models = modelsRes.models;
-      // Reload profile too (defaultModel may have changed)
-      const profileRes = await fetchProfile();
-      this._profile = profileRes.profile;
-      this._showToast(msg("Import successful", { id: "profile-import-success" }));
-    } catch (err) {
-      this._showToast(err instanceof Error ? err.message : String(err), "error");
-    } finally {
-      this._importing = false;
-    }
   }
 }
 

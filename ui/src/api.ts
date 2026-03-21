@@ -24,7 +24,7 @@ import type {
   AgentBlueprintFileContent,
   UserProfile,
   UserProvider,
-  UserModelAlias,
+  DiscoveredModel,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 import { getToken } from "./services/auth-state.js";
@@ -707,25 +707,11 @@ export async function patchProfileProviderKey(
   );
 }
 
-export async function fetchProfileModels(): Promise<{ models: UserModelAlias[] }> {
-  return apiFetch<{ models: UserModelAlias[] }>("/profile/models");
-}
-
-export async function replaceProfileModels(models: UserModelAlias[]): Promise<{ ok: boolean }> {
-  return apiFetch<{ ok: boolean }>("/profile/models", {
-    method: "PUT",
-    body: JSON.stringify(models),
-  });
-}
-
-export async function importProvidersFromInstance(slug: string): Promise<{
-  ok: boolean;
-  imported: {
-    providers: number;
-    modelAliases: number;
-    apiKeys: number;
-    defaultModel: string | null;
-  };
-}> {
-  return apiFetch(`/profile/import-providers/${encodeURIComponent(slug)}`, { method: "POST" });
+export async function discoverProviderModels(
+  providerId: string,
+): Promise<{ models: DiscoveredModel[]; error?: string }> {
+  return apiFetch<{ models: DiscoveredModel[]; error?: string }>(
+    `/profile/providers/${encodeURIComponent(providerId)}/models`,
+    { method: "POST" },
+  );
 }

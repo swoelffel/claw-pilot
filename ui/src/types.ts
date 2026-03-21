@@ -536,7 +536,7 @@ export interface AgentBlueprintFileContent {
 // User Profile
 // ---------------------------------------------------------------------------
 
-export type ProfileSection = "general" | "providers" | "models" | "instructions" | "import";
+export type ProfileSection = "general" | "providers" | "instructions";
 
 export interface UserProfile {
   userId: number;
@@ -562,9 +562,8 @@ export interface UserProvider {
   apiKeyMasked: string | null;
 }
 
-export interface UserModelAlias {
-  aliasId: string;
-  provider: string;
-  model: string;
-  contextWindow: number | null;
+export interface DiscoveredModel {
+  id: string;
+  name: string;
+  providerId: string;
 }

@@ -119,12 +119,11 @@ export function loadMergedConfig(
   if (!profile) return config;
 
   const userProviders = profileResolver.getProviders();
-  const userAliases = profileResolver.getModelAliases();
 
   // Only merge if there is something to merge
-  if (userProviders.length === 0 && userAliases.length === 0 && !profile.defaultModel) {
+  if (userProviders.length === 0 && !profile.defaultModel) {
     return config;
   }
 
-  return mergeProviderConfig(config, userProviders, userAliases, profile.defaultModel ?? undefined);
+  return mergeProviderConfig(config, userProviders, profile.defaultModel ?? undefined);
 }

@@ -325,8 +325,8 @@ describe("migration v13 — idempotency", () => {
     // Arrange + Act
     const db = initDatabase(dbPath);
 
-    // Assert: v17 is the latest migration (user_profiles)
-    expect(schemaVersion(db)).toBe(17);
+    // Assert: v18 is the latest migration (drop user_model_aliases)
+    expect(schemaVersion(db)).toBe(18);
     db.close();
   });
 });

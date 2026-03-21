@@ -42,7 +42,6 @@ export type {
   AgentBlueprintFileRecord,
   UserProfileRecord,
   UserProviderRecord,
-  UserModelAliasRecord,
 } from "./registry-types.js";
 
 // ---------------------------------------------------------------------------
@@ -301,15 +300,5 @@ export class Registry {
   }
   removeUserProvider(userId: number, providerId: string) {
     return this._userProfiles.removeProvider(userId, providerId);
-  }
-
-  getUserModelAliases(userId: number) {
-    return this._userProfiles.getModelAliases(userId);
-  }
-  setUserModelAliases(
-    userId: number,
-    aliases: Parameters<UserProfileRepository["setModelAliases"]>[1],
-  ) {
-    return this._userProfiles.setModelAliases(userId, aliases);
   }
 }

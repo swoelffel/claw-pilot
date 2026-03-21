@@ -87,17 +87,6 @@ describe("CommunityProfileResolver", () => {
     expect(resolver.getProviders()).toHaveLength(0);
   });
 
-  it("setModelAliases and getModelAliases work correctly", () => {
-    resolver.setModelAliases([
-      { aliasId: "fast", provider: "anthropic", model: "claude-haiku-3-5", contextWindow: null },
-    ]);
-
-    const aliases = resolver.getModelAliases();
-    expect(aliases).toHaveLength(1);
-    expect(aliases[0]!.aliasId).toBe("fast");
-    expect(aliases[0]!.provider).toBe("anthropic");
-  });
-
   it("handles JSON uiPreferences roundtrip", () => {
     const prefs = { theme: "dark", fontSize: 14 };
     resolver.updateProfile({ uiPreferences: prefs });
@@ -129,7 +118,6 @@ describe("CommunityProfileResolver", () => {
 
     expect(freshResolver.getActiveProfile()).toBeUndefined();
     expect(freshResolver.getProviders()).toEqual([]);
-    expect(freshResolver.getModelAliases()).toEqual([]);
 
     freshDb.close();
   });

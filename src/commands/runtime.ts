@@ -288,15 +288,9 @@ function runtimeStartCommand(): Command {
       const profile = profileResolver.getActiveProfile();
       if (profile) {
         const userProviders = profileResolver.getProviders();
-        const userAliases = profileResolver.getModelAliases();
-        if (userProviders.length > 0 || userAliases.length > 0 || profile.defaultModel) {
+        if (userProviders.length > 0 || profile.defaultModel) {
           const { mergeProviderConfig } = await import("../runtime/provider/config-merge.js");
-          config = mergeProviderConfig(
-            config,
-            userProviders,
-            userAliases,
-            profile.defaultModel ?? undefined,
-          );
+          config = mergeProviderConfig(config, userProviders, profile.defaultModel ?? undefined);
         }
       }
 
