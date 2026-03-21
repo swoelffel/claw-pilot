@@ -1,18 +1,14 @@
 {
-  "entry": ["src/index.ts"],
-  "project": ["src/**/*.ts"],
-  "ignore": ["src/**/__tests__/**"],
+  "entry": ["src/index.ts", "ui/src/app.ts"],
+  "project": ["src/**/*.ts", "ui/src/**/*.ts"],
+  "ignore": ["src/**/__tests__/**", "ui/src/locales/**"],
   "ignoreFiles": [
     "src/e2e/helpers/mock-llm-server.ts",
     "src/runtime/provider/index.ts"
   ],
   "ignoreDependencies": [
-    "@lit/localize",
-    "dompurify",
-    "marked",
     "ora",
-    "@types/dompurify",
-    "lit"
+    "@types/dompurify"
   ],
   "ignoreExportsUsedInFile": true,
   "tags": ["-public"]

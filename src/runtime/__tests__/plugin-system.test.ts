@@ -50,6 +50,7 @@ import {
 } from "../bus/events.js";
 import { getTools } from "../tool/registry.js";
 import { Tool } from "../tool/tool.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -463,7 +464,7 @@ describe("getTools() with pluginInput — plugin tools", () => {
    */
   it("[negative] error in hook.tools → warns and continues (non-fatal)", async () => {
     // Arrange
-    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const loggerSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
     registerHooks({
       tools: () => {
@@ -477,12 +478,9 @@ describe("getTools() with pluginInput — plugin tools", () => {
     // Assert: built-in tools still returned, warning emitted
     expect(tools.length).toBeGreaterThan(0);
     expect(tools.find((t) => t.id === "read")).toBeDefined();
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Plugin hook tools threw"),
-      expect.any(Error),
-    );
+    expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining("Plugin hook tools threw"));
 
-    consoleSpy.mockRestore();
+    loggerSpy.mockRestore();
   });
 
   /**

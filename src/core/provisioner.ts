@@ -9,13 +9,12 @@ import type { WizardAnswers } from "./config-generator.js";
 import { generateEnv, PROVIDER_ENV_VARS } from "./config-generator.js";
 import { PROVIDER_CATALOG } from "../lib/provider-catalog.js";
 import { generateGatewayToken } from "./secrets.js";
-import { Lifecycle } from "./lifecycle.js";
 import { constants } from "../lib/constants.js";
 import { getInstancesDir, getRuntimeStateDir } from "../lib/platform.js";
 import { InstanceAlreadyExistsError, ClawPilotError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
 import { shellEscape } from "../lib/shell.js";
-import { resolveXdgRuntimeDir } from "../lib/xdg.js";
+
 import { BlueprintDeployer } from "./blueprint-deployer.js";
 import { ensureRuntimeConfig } from "../runtime/engine/config-loader.js";
 
@@ -109,9 +108,6 @@ export class Provisioner {
     const envPath = path.join(stateDir, ".env");
     const logsDir = path.join(stateDir, "logs");
 
-    // Resolve current user UID for XDG_RUNTIME_DIR
-    const xdgRuntimeDir = await resolveXdgRuntimeDir(this.conn);
-
     // Track what has been created so we can roll back on failure
     let stateDirCreated = false;
     let instanceRegistered = false;
@@ -170,8 +166,6 @@ export class Provisioner {
 
       // Step 6: claw-runtime — no service file needed
       logger.step("claw-runtime — skipping service file (use 'claw-pilot runtime start')...");
-
-      const lifecycle = new Lifecycle(this.conn, this.registry, xdgRuntimeDir);
 
       // Register in registry BEFORE start (lifecycle.start needs registry entry)
       const instance = this.registry.createInstance({

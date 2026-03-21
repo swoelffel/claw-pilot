@@ -11,7 +11,11 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import type { Tool as MCPToolDef } from "@modelcontextprotocol/sdk/types.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import {
+  ToolListChangedNotificationSchema,
+  type Tool as MCPToolDef,
+} from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { RuntimeMcpServerConfig } from "../config/index.js";
 import { Tool } from "../tool/tool.js";
@@ -237,8 +241,7 @@ export class McpClient {
     for (const transport of transports) {
       try {
         const client = new Client({ name: "claw-runtime", version: "1" });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await withTimeout(client.connect(transport as any), timeout);
+        await withTimeout(client.connect(transport as Transport), timeout);
         this._client = client;
         return { status: "connected" };
       } catch (err) {
@@ -260,15 +263,7 @@ export class McpClient {
   private _registerToolListChangedHandler(): void {
     if (!this._client) return;
     try {
-      // The MCP SDK's setNotificationHandler accepts a Zod schema as first arg.
-      // We use a dynamic require to avoid a hard import-time dependency on the schema object.
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const sdkTypes = require("@modelcontextprotocol/sdk/types.js") as Record<string, unknown>;
-      const schema = sdkTypes["ToolListChangedNotificationSchema"];
-      if (!schema) return; // SDK version doesn't expose this schema — skip
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      this._client.setNotificationHandler(schema as any, async () => {
+      this._client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
         if (!this._client || this._status.status !== "connected") return;
         try {
           const result = await this._client.listTools();

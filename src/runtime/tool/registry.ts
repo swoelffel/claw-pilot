@@ -23,6 +23,7 @@ import {
 } from "./built-in/index.js";
 import type { McpRegistry } from "../mcp/index.js";
 import { getRegisteredHooks } from "../plugin/hooks.js";
+import { logger } from "../../lib/logger.js";
 import type { PluginInput } from "../plugin/types.js";
 
 // ---------------------------------------------------------------------------
@@ -146,13 +147,11 @@ export async function getTools(options?: ToolRegistryOptions): Promise<Tool.Info
             if (!tools.find((t) => t.id === tool.id)) {
               tools.push(tool);
             } else {
-              console.warn(
-                `[claw-runtime] Plugin tool '${tool.id}' conflicts with existing tool — skipped`,
-              );
+              logger.warn(`Plugin tool '${tool.id}' conflicts with existing tool — skipped`);
             }
           }
         } catch (err) {
-          console.warn("[claw-runtime] Plugin hook tools threw:", err);
+          logger.warn(`Plugin hook tools threw: ${err}`);
         }
       }
     }
@@ -235,7 +234,7 @@ async function loadCustomTools(dir: string): Promise<Tool.Info[]> {
         }
       }
     } catch (err) {
-      console.warn(`[claw-runtime] Failed to load custom tool from ${filePath}:`, err);
+      logger.warn(`Failed to load custom tool from ${filePath}: ${err}`);
     }
   }
 

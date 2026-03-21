@@ -11,6 +11,7 @@ import type { SessionId, InstanceSlug, AgentId, MessageId } from "../types.js";
 import { listMessages } from "./message.js";
 import { listParts, createPart } from "./part.js";
 import { clearCachedSystemPrompt } from "./system-prompt-cache.js";
+import { logger } from "../../lib/logger.js";
 
 export interface SessionInfo {
   id: SessionId;
@@ -300,8 +301,8 @@ export function archiveSession(
   // without knowing if the session is permanent. Permanent sessions are never
   // children of subagents, so this case should not occur in practice.
   if (session.persistent && !options?.force) {
-    console.warn(
-      `[session] Attempted to archive permanent session ${id} — ignored. ` +
+    logger.warn(
+      `Attempted to archive permanent session ${id} — ignored. ` +
         `Use force: true for admin cleanup.`,
     );
     return;

@@ -172,4 +172,83 @@ describe("logger", () => {
       spy.mockRestore();
     });
   });
+
+  describe("child logger", () => {
+    it("merges parent context into JSON output", () => {
+      configureLogger({ level: "info", format: "json" });
+      const lines: string[] = [];
+      const spy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+        lines.push(String(chunk));
+        return true;
+      });
+
+      const child = logger.child({ slug: "demo", agentId: "main" });
+      child.info("hello");
+
+      spy.mockRestore();
+      expect(lines).toHaveLength(1);
+      const parsed = JSON.parse(lines[0]!) as Record<string, unknown>;
+      expect(parsed.msg).toBe("hello");
+      expect(parsed.slug).toBe("demo");
+      expect(parsed.agentId).toBe("main");
+    });
+
+    it("merges call-site ctx on top of parent context in JSON", () => {
+      configureLogger({ level: "info", format: "json" });
+      const lines: string[] = [];
+      const spy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+        lines.push(String(chunk));
+        return true;
+      });
+
+      const child = logger.child({ slug: "demo" });
+      child.info("event", { extra: 42 });
+
+      spy.mockRestore();
+      const parsed = JSON.parse(lines[0]!) as Record<string, unknown>;
+      expect(parsed.slug).toBe("demo");
+      expect(parsed.extra).toBe(42);
+    });
+
+    it("prepends [key=val] prefix in text mode", () => {
+      configureLogger({ level: "info", format: "text" });
+      const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const child = logger.child({ slug: "demo" });
+      child.info("hello");
+
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining("[slug=demo]"));
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining("hello"));
+      spy.mockRestore();
+    });
+
+    it("supports nested child loggers", () => {
+      configureLogger({ level: "info", format: "json" });
+      const lines: string[] = [];
+      const spy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+        lines.push(String(chunk));
+        return true;
+      });
+
+      const child = logger.child({ slug: "demo" }).child({ agentId: "plan" });
+      child.warn("nested");
+
+      spy.mockRestore();
+      const parsed = JSON.parse(lines[0]!) as Record<string, unknown>;
+      expect(parsed.slug).toBe("demo");
+      expect(parsed.agentId).toBe("plan");
+      expect(parsed.msg).toBe("nested");
+    });
+
+    it("respects level filtering", () => {
+      configureLogger({ level: "warn", format: "text" });
+      const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const child = logger.child({ slug: "demo" });
+      child.info("should be hidden");
+
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+    });
+  });
 });

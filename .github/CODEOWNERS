@@ -1,0 +1,18 @@
+# CODEOWNERS — require review for critical paths
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Database schema & migrations — breaking changes affect all instances
+src/db/schema.ts @swoelffel
+
+# ServerConnection interface — SSH impl depends on this contract
+src/server/connection.ts @swoelffel
+
+# Runtime engine core — session management, agent lifecycle
+src/runtime/engine/ @swoelffel
+
+# CI/CD pipeline
+.github/workflows/ @swoelffel
+
+# Build & dependency configuration
+package.json @swoelffel
+tsconfig.json @swoelffel

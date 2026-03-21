@@ -15,6 +15,7 @@ import type { InstanceSlug } from "../types.js";
 import { listAvailableSkills } from "../tool/built-in/skill.js";
 import { readWorkspaceState, writeWorkspaceState } from "../../core/workspace-state.js";
 import { getAgent, resolveEffectivePersistence } from "../agent/registry.js";
+import { logger } from "../../lib/logger.js";
 
 // Read claw-pilot version from package.json once at module load time
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -346,8 +347,8 @@ async function resolveInstructions(ctx: SystemPromptContext): Promise<string | u
   // 2. File-based system prompt
   if (agentConfig.systemPromptFile) {
     if (!workDir) {
-      console.warn(
-        `[claw-runtime] systemPromptFile is set but workDir is undefined for agent "${agentConfig.id}" — using default instructions`,
+      logger.warn(
+        `systemPromptFile is set but workDir is undefined for agent "${agentConfig.id}" — using default instructions`,
       );
       return DEFAULT_INSTRUCTIONS;
     }
@@ -402,7 +403,7 @@ async function fetchInstructionUrls(agentConfig: RuntimeAgentConfig): Promise<st
       }
     } catch {
       // Silently ignore — a missing URL must not block session startup
-      console.debug(`[system-prompt] Failed to fetch instructionUrl: ${url}`);
+      logger.debug(`Failed to fetch instructionUrl: ${url}`);
     }
   }
 
@@ -580,7 +581,7 @@ function readSystemPromptFile(filePath: string, workDir: string): string | undef
     // Use cached read — systemPromptFile rarely changes during runtime
     return readWorkspaceFileCached(absPath);
   } catch {
-    console.warn(`[claw-runtime] Could not read systemPromptFile: ${filePath}`);
+    logger.warn(`Could not read systemPromptFile: ${filePath}`);
     return undefined;
   }
 }

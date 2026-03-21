@@ -66,9 +66,13 @@ export type UpdateHandler = (update: TelegramUpdate) => Promise<void>;
 
 export class TelegramPoller {
   private offset = 0;
-  private running = false;
+  private _running = false;
   private abortController: AbortController | undefined;
   private readonly options: Required<PollerOptions>;
+
+  get isRunning(): boolean {
+    return this._running;
+  }
 
   constructor(options: PollerOptions) {
     this.options = {
@@ -84,8 +88,8 @@ export class TelegramPoller {
    * Returns immediately — polling runs in the background.
    */
   start(handler: UpdateHandler): void {
-    if (this.running) return;
-    this.running = true;
+    if (this._running) return;
+    this._running = true;
     this.abortController = new AbortController();
     void this.pollLoop(handler);
   }
@@ -94,7 +98,7 @@ export class TelegramPoller {
    * Stop polling gracefully.
    */
   stop(): void {
-    this.running = false;
+    this._running = false;
     this.abortController?.abort();
   }
 
@@ -105,7 +109,7 @@ export class TelegramPoller {
   private async pollLoop(handler: UpdateHandler): Promise<void> {
     let backoffMs = this.options.intervalMs;
 
-    while (this.running) {
+    while (this._running) {
       try {
         const updates = await this.getUpdates();
 
@@ -118,8 +122,8 @@ export class TelegramPoller {
           }
           backoffMs = this.options.intervalMs; // reset backoff on success
         }
-      } catch (err) {
-        if (!this.running) break;
+      } catch {
+        if (!this._running) break;
         // Exponential backoff, cap at 30s
         backoffMs = Math.min(backoffMs * 2, 30_000);
         await sleep(backoffMs);

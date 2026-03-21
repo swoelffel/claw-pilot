@@ -25,6 +25,7 @@ import type { Tool } from "../tool/tool.js";
 import type { RuntimeConfig, SubagentsConfig } from "../config/index.js";
 import type { McpRegistry } from "../mcp/registry.js";
 import type { PluginInput } from "../plugin/types.js";
+import { logger } from "../../lib/logger.js";
 import { normalizeForProvider } from "../tool/normalize.js";
 import { createPart, listParts, updatePartState } from "./part.js";
 import { getBus } from "../bus/index.js";
@@ -129,7 +130,7 @@ export async function buildToolSet(
           try {
             def = await hook["tool.definition"](def, pluginInput);
           } catch (err) {
-            console.warn("[claw-runtime] Plugin hook tool.definition threw:", err);
+            logger.warn(`Plugin hook tool.definition threw: ${err}`);
           }
         }
       }
@@ -164,7 +165,7 @@ export async function buildToolSet(
           toolName: toolInfo.id,
           args,
         }).catch((err) => {
-          console.warn("[claw-runtime] plugin hook tool.beforeCall threw:", err);
+          logger.warn(`Plugin hook tool.beforeCall threw: ${err}`);
         });
 
         // Reuse the part created by onChunk Path-A (which has toolCallId).
@@ -200,7 +201,7 @@ export async function buildToolSet(
             output: result.output,
             durationMs,
           }).catch((err) => {
-            console.warn("[claw-runtime] plugin hook tool.afterCall threw:", err);
+            logger.warn(`Plugin hook tool.afterCall threw: ${err}`);
           });
 
           // Invalidate workspace cache for write/edit operations

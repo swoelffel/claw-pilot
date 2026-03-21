@@ -3,7 +3,7 @@
 
 import { stringify } from "yaml";
 import type { ServerConnection } from "../server/connection.js";
-import type { Registry, InstanceRecord, AgentRecord } from "./registry.js";
+import type { Registry, InstanceRecord, AgentRecord, BlueprintAgentRecord } from "./registry.js";
 import { AgentSync } from "./agent-sync.js";
 import {
   EXPORTABLE_FILES,
@@ -76,7 +76,7 @@ function extractAgentConfig(
 // ---------------------------------------------------------------------------
 
 function buildTeamAgent(
-  agent: AgentRecord,
+  agent: AgentRecord | BlueprintAgentRecord,
   files: Array<{ filename: string; content: string | null }>,
   config?: Record<string, unknown>,
 ): TeamAgent {
@@ -203,17 +203,17 @@ export function exportBlueprintTeam(registry: Registry, blueprintId: number): Te
     }
 
     // Inject skills from DB column if present (blueprints store skills as JSON string)
-    const agentSkills = (agent as unknown as { skills?: string | null }).skills;
+    const agentSkills = agent.skills;
     if (agentSkills) {
       try {
         const skills = JSON.parse(agentSkills) as string[];
-        config = { ...(config ?? {}), skills };
+        config = { ...config, skills };
       } catch {
         // intentionally ignored — invalid JSON in skills column, skip
       }
     }
 
-    teamAgents.push(buildTeamAgent(agent as unknown as AgentRecord, files, config));
+    teamAgents.push(buildTeamAgent(agent, files, config));
   }
 
   // 3. Load links

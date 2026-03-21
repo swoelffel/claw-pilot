@@ -25,6 +25,7 @@ import {
   triggerAgentBeforeStart,
   triggerAgentEnd,
 } from "../plugin/hooks.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // wirePluginsToBus
@@ -50,7 +51,7 @@ export function wirePluginsToBus(instanceSlug: InstanceSlug): Array<() => void> 
         role: payload.role,
         text: "", // text not available in the event payload — plugins can query DB if needed
       }).catch((err) => {
-        console.warn("[claw-runtime] plugin hook message.received threw:", err);
+        logger.warn(`Plugin hook message.received threw: ${err}`);
       });
     }),
   );
@@ -62,7 +63,7 @@ export function wirePluginsToBus(instanceSlug: InstanceSlug): Array<() => void> 
         instanceSlug,
         sessionId: payload.sessionId,
       }).catch((err) => {
-        console.warn("[claw-runtime] plugin hook session.start threw:", err);
+        logger.warn(`Plugin hook session.start threw: ${err}`);
       });
     }),
   );
@@ -74,7 +75,7 @@ export function wirePluginsToBus(instanceSlug: InstanceSlug): Array<() => void> 
         instanceSlug,
         sessionId: payload.sessionId,
       }).catch((err) => {
-        console.warn("[claw-runtime] plugin hook session.end threw:", err);
+        logger.warn(`Plugin hook session.end threw: ${err}`);
       });
     }),
   );
@@ -90,7 +91,7 @@ export function wirePluginsToBus(instanceSlug: InstanceSlug): Array<() => void> 
           agentName: payload.agentId ?? "",
           model: "",
         }).catch((err) => {
-          console.warn("[claw-runtime] plugin hook agent.beforeStart threw:", err);
+          logger.warn(`Plugin hook agent.beforeStart threw: ${err}`);
         });
       }
       if (payload.status === "idle") {
@@ -102,7 +103,7 @@ export function wirePluginsToBus(instanceSlug: InstanceSlug): Array<() => void> 
           tokensOut: payload.tokensOut ?? 0,
           costUsd: payload.costUsd ?? 0,
         }).catch((err) => {
-          console.warn("[claw-runtime] plugin hook agent.end threw:", err);
+          logger.warn(`Plugin hook agent.end threw: ${err}`);
         });
       }
     }),

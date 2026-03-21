@@ -13,6 +13,7 @@
 
 import type { InstanceSlug } from "../types.js";
 import type { EventDef, AnyEvent } from "./events.js";
+import { logger } from "../../lib/logger.js";
 
 export type { EventDef, AnyEvent };
 export * from "./events.js";
@@ -26,11 +27,6 @@ type Unsubscribe = () => void;
 type Handler<P> = (payload: P) => void;
 
 type WildcardHandler = (event: AnyEvent) => void;
-
-interface Subscription {
-  type: string;
-  handler: Handler<unknown>;
-}
 
 // ---------------------------------------------------------------------------
 // Bus class
@@ -64,7 +60,7 @@ export class Bus {
           handler(payload);
         } catch (err) {
           // Handlers must not throw — log and continue
-          console.error(`[Bus:${this._slug}] Handler error for "${def.type}":`, err);
+          logger.error(`[Bus:${this._slug}] Handler error for "${def.type}": ${err}`);
         }
       }
     }
@@ -76,7 +72,7 @@ export class Bus {
         try {
           handler(event);
         } catch (err) {
-          console.error(`[Bus:${this._slug}] Wildcard handler error:`, err);
+          logger.error(`[Bus:${this._slug}] Wildcard handler error: ${err}`);
         }
       }
     }

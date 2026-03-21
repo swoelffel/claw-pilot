@@ -424,4 +424,4 @@ All DB access goes through `src/core/registry.ts` facade (9 repositories) — ne
 
 ---
 
-*Updated: 2026-03-19 — v0.41.39: schema v16 (agent_blueprints, agent_blueprint_files), 9 repositories, migration history complete*
+*Updated: 2026-03-21 — v0.42.0: schema v16, 9 repositories, migration history complete*

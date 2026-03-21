@@ -292,8 +292,6 @@ const LogConfigSchema = z.object({
   maxFiles: z.number().int().min(1).max(10).default(3),
 });
 
-export type LogConfig = z.infer<typeof LogConfigSchema>;
-
 // ---------------------------------------------------------------------------
 // Root config schema
 // ---------------------------------------------------------------------------

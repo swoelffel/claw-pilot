@@ -6,65 +6,118 @@ on:
   pull_request:
     branches: [main]
 
-jobs:
-  ci:
-    name: Quality · Test · Build
-    runs-on: ubuntu-latest
+# ── Shared setup anchor (YAML merge key) ─────────────────────────────────────
+# GitHub Actions doesn't support YAML anchors, so we use a reusable setup
+# pattern: each job repeats checkout + pnpm + node + install.
 
+jobs:
+  # ── Job 1: Quality checks (fast feedback ~1 min) ──────────────────────────
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
         with:
           version: latest
-
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: "22"
           cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # ── Sécurité ──────────────────────────────────────────────────────────
       - name: Security audit
         run: pnpm audit --audit-level=high
-
-      # ── Formatage ─────────────────────────────────────────────────────────
+      - name: Security audit (production only)
+        run: pnpm audit --audit-level=high --prod
       - name: Format check
         run: pnpm format:check
-
-      # ── Typage ────────────────────────────────────────────────────────────
       - name: Typecheck (CLI + UI)
         run: pnpm typecheck:all
-
-      # ── Lint ──────────────────────────────────────────────────────────────
       - name: Lint (CLI + UI)
         run: pnpm lint:all
-
-      # ── Orthographe ───────────────────────────────────────────────────────
       - name: Spell check
         run: pnpm spellcheck
 
-      # ── Tests ─────────────────────────────────────────────────────────────
+  # ── Job 2: Unit tests + coverage (parallel with quality) ───────────────────
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        with:
+          version: latest
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+
       - name: Test with coverage
         run: pnpm test:run --coverage
-
       - name: Upload coverage report
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: always()
         with:
           name: coverage-report
           path: coverage/
           retention-days: 7
 
-      # ── Dead code (bloquant — knip est propre) ────────────────────────────
+  # ── Job 3: Static analysis (parallel with quality + test) ──────────────────
+  analysis:
+    name: Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        with:
+          version: latest
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+
       - name: Dead code check
         run: pnpm knip --reporter compact
-
-      # ── Imports circulaires (bloquant — 0 cycles depuis Sprint 2) ───────────
       - name: Circular dependency check
         run: pnpm check:circular
 
-      # ── Build ─────────────────────────────────────────────────────────────
-      - name: Build
+  # ── Job 4: E2E tests (parallel, non-blocking) ─────────────────────────────
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        with:
+          version: latest
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+
+      - name: E2E tests
+        run: pnpm test:e2e
+
+  # ── Job 5: Build (depends on quality + test passing) ───────────────────────
+  build:
+    name: Build
+    needs: [quality, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        with:
+          version: latest
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build (CLI + UI)
         run: pnpm build

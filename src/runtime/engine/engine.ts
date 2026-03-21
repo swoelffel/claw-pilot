@@ -35,7 +35,7 @@ import { wirePluginsToBus } from "./plugin-wiring.js";
 import { startHeartbeatRunner } from "../heartbeat/runner.js";
 import { getRegisteredHooks } from "../plugin/hooks.js";
 import { cleanupEphemeralSessions } from "../session/cleanup.js";
-import { logger } from "../../lib/logger.js";
+import { logger, type Logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // ClawRuntime
@@ -50,13 +50,16 @@ export class ClawRuntime {
   private _stopHeartbeat: (() => void) | undefined;
   private _cleanupTimer: ReturnType<typeof setInterval> | undefined;
   private _error: string | undefined;
+  readonly log: Logger;
 
   constructor(
     private readonly config: RuntimeConfig,
     private readonly db: Database.Database,
     private readonly instanceSlug: InstanceSlug,
     private readonly workDir: string | undefined = undefined,
-  ) {}
+  ) {
+    this.log = logger.child({ slug: instanceSlug });
+  }
 
   // -------------------------------------------------------------------------
   // Public API
@@ -153,7 +156,7 @@ export class ClawRuntime {
       }
 
       this._setState("running");
-      logger.info("runtime_started", { event: "runtime_started", slug: this.instanceSlug });
+      this.log.info("runtime_started", { event: "runtime_started" });
 
       // 5. Initial cleanup on startup (catch-up after prolonged stop)
       this._runCleanup();
@@ -238,7 +241,7 @@ export class ClawRuntime {
     }
 
     this._setState("stopped");
-    logger.info("runtime_stopped", { event: "runtime_stopped", slug: this.instanceSlug });
+    this.log.info("runtime_stopped", { event: "runtime_stopped" });
 
     const bus = getBus(this.instanceSlug);
     const stopReason = errors.length > 0 ? errors.join("; ") : undefined;
@@ -302,7 +305,7 @@ export class ClawRuntime {
         try {
           hook.routes(app);
         } catch (err) {
-          console.warn("[claw-runtime] Plugin hook routes threw:", err);
+          this.log.warn(`Plugin hook routes threw: ${err}`);
         }
       }
     }
@@ -350,9 +353,8 @@ export class ClawRuntime {
       try {
         const result = cleanupEphemeralSessions(this.db, this.instanceSlug, retentionHours);
         if (result.sessionsDeleted > 0) {
-          logger.info("session_cleanup", {
+          this.log.info("session_cleanup", {
             event: "session_cleanup",
-            slug: this.instanceSlug,
             sessionsDeleted: result.sessionsDeleted,
             messagesDeleted: result.messagesDeleted,
             partsDeleted: result.partsDeleted,
@@ -360,9 +362,8 @@ export class ClawRuntime {
           });
         }
       } catch (err) {
-        logger.error("session_cleanup_error", {
+        this.log.error("session_cleanup_error", {
           event: "session_cleanup_error",
-          slug: this.instanceSlug,
           error: err instanceof Error ? err.message : String(err),
         });
       }

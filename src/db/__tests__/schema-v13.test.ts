@@ -69,17 +69,6 @@ function seedServerAndInstance(db: Database.Database, slug: string): void {
   ).run(server.id, slug, 19002, "/tmp/cfg.json", "/tmp/state", "test.service");
 }
 
-/** Seed an agent row (requires an instance to exist). */
-function seedAgent(db: Database.Database, instanceSlug: string, agentId: string): void {
-  const instance = db.prepare("SELECT id FROM instances WHERE slug = ?").get(instanceSlug) as {
-    id: number;
-  };
-  db.prepare(
-    `INSERT OR IGNORE INTO agents (instance_id, agent_id, name, workspace_path)
-       VALUES (?, ?, ?, ?)`,
-  ).run(instance.id, agentId, "Test Agent", "/workspace/test");
-}
-
 // ---------------------------------------------------------------------------
 // Suite — Migration v13: rt_sessions.persistent column
 // ---------------------------------------------------------------------------

@@ -135,7 +135,7 @@ function seedBlueprint(opts: {
 
 describe("BlueprintDeployer.deploy()", () => {
   it("main agent — files are written to workspaces/main/ (overwriting generic templates)", async () => {
-    const { instanceId } = seedInstance();
+    seedInstance();
     const instance = registry.getInstance("test-inst")!;
 
     const bpId = seedBlueprint({
@@ -460,7 +460,7 @@ describe("BlueprintDeployer.deploy()", () => {
   });
 
   it("agents are registered in DB with correct workspace paths", async () => {
-    const { instanceId } = seedInstance();
+    seedInstance();
     const instance = registry.getInstance("test-inst")!;
 
     const bpId = seedBlueprint({

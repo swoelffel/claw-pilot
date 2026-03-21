@@ -14,6 +14,7 @@ import type {
   MessageContext,
   SessionContext,
 } from "./types.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Hook registry (module-level, per instance)
@@ -104,7 +105,7 @@ async function runHooks<K extends VoidHookKey>(
     try {
       await fn(ctx);
     } catch (err) {
-      console.warn(`[claw-runtime] Plugin hook "${hookName}" threw an error:`, err);
+      logger.warn(`Plugin hook "${hookName}" threw an error: ${err}`);
     }
   }
 }

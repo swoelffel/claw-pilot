@@ -73,10 +73,97 @@ function emit(level: LogLevel, msg: string, ctx?: Record<string, unknown>): void
 }
 
 // ---------------------------------------------------------------------------
-// Public logger API
+// Logger interface (shared between root and child loggers)
 // ---------------------------------------------------------------------------
 
-export const logger = {
+export interface Logger {
+  debug(msg: string, ctx?: Record<string, unknown>): void;
+  info(msg: string, ctx?: Record<string, unknown>): void;
+  warn(msg: string, ctx?: Record<string, unknown>): void;
+  error(msg: string, ctx?: Record<string, unknown>): void;
+  step(msg: string): void;
+  dim(msg: string): void;
+  success(msg: string): void;
+  fail(msg: string): void;
+  /** Create a scoped logger. In JSON mode, ctx fields are merged into every entry.
+   *  In text mode, a `[key=val]` prefix is prepended to messages. */
+  child(ctx: Record<string, unknown>): Logger;
+}
+
+// ---------------------------------------------------------------------------
+// Child logger factory
+// ---------------------------------------------------------------------------
+
+function createChildLogger(parentCtx: Record<string, unknown>): Logger {
+  const prefix = Object.entries(parentCtx)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(" ");
+  const textPrefix = prefix ? `[${prefix}] ` : "";
+
+  function childEmit(level: LogLevel, msg: string, extra?: Record<string, unknown>): void {
+    if (_format === "json") {
+      emit(level, msg, { ...parentCtx, ...extra });
+    } else {
+      emit(level, `${textPrefix}${msg}`, extra);
+    }
+  }
+
+  return {
+    debug(msg, ctx?) {
+      childEmit("debug", msg, ctx);
+    },
+    info(msg, ctx?) {
+      childEmit("info", msg, ctx);
+    },
+    warn(msg, ctx?) {
+      childEmit("warn", msg, ctx);
+    },
+    error(msg, ctx?) {
+      childEmit("error", msg, ctx);
+    },
+    step(msg) {
+      if (!shouldLog("info")) return;
+      if (_format === "json") {
+        emitJson("info", msg, parentCtx);
+      } else {
+        console.log(`${chalk.cyan("  →")} ${textPrefix}${msg}`);
+      }
+    },
+    dim(msg) {
+      if (!shouldLog("debug")) return;
+      if (_format === "json") {
+        emitJson("debug", msg, parentCtx);
+      } else {
+        console.log(chalk.dim(`    ${textPrefix}${msg}`));
+      }
+    },
+    success(msg) {
+      if (!shouldLog("info")) return;
+      if (_format === "json") {
+        emitJson("info", msg, parentCtx);
+      } else {
+        console.log(`${chalk.green("  ✓")} ${textPrefix}${msg}`);
+      }
+    },
+    fail(msg) {
+      if (!shouldLog("error")) return;
+      if (_format === "json") {
+        emitJson("error", msg, parentCtx);
+      } else {
+        console.log(`${chalk.red("  ✗")} ${textPrefix}${msg}`);
+      }
+    },
+    child(ctx) {
+      return createChildLogger({ ...parentCtx, ...ctx });
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Public root logger
+// ---------------------------------------------------------------------------
+
+export const logger: Logger = {
   // --- Levelled methods (accept optional structured context) ---
 
   debug(msg: string, ctx?: Record<string, unknown>): void {
@@ -135,5 +222,9 @@ export const logger = {
     } else {
       console.log(`${chalk.red("  ✗")} ${msg}`);
     }
+  },
+
+  child(ctx: Record<string, unknown>): Logger {
+    return createChildLogger(ctx);
   },
 };

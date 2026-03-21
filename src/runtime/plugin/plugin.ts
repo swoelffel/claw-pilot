@@ -10,6 +10,7 @@
 
 import type { Plugin, PluginDescriptor, PluginInput } from "./types.js";
 import { registerHooks, clearHooks } from "./hooks.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Plugin registry
@@ -40,7 +41,7 @@ export async function initPlugins(input: PluginInput): Promise<void> {
       const hooks = await descriptor.plugin(input);
       registerHooks(hooks);
     } catch (err) {
-      console.warn(`[claw-runtime] Failed to initialize plugin "${descriptor.name}":`, err);
+      logger.warn(`Failed to initialize plugin "${descriptor.name}": ${err}`);
     }
   }
 

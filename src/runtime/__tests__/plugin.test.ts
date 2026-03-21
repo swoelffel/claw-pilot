@@ -20,6 +20,7 @@ import {
   triggerSessionEnd,
 } from "../plugin/index.js";
 import type { PluginInput } from "../plugin/index.js";
+import { logger } from "../../lib/logger.js";
 
 const TEST_INPUT: PluginInput = {
   instanceSlug: "test-instance",
@@ -165,7 +166,7 @@ describe("registerHooks() + trigger functions", () => {
   });
 
   it("does not throw when a hook throws — logs warning instead", async () => {
-    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const loggerSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
     registerHooks({
       "session.start": () => {
         throw new Error("Hook error");
@@ -177,11 +178,8 @@ describe("registerHooks() + trigger functions", () => {
       triggerSessionStart({ instanceSlug: "test", sessionId: "s1" }),
     ).resolves.toBeUndefined();
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("session.start"),
-      expect.any(Error),
-    );
-    consoleSpy.mockRestore();
+    expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining("session.start"));
+    loggerSpy.mockRestore();
   });
 });
 
@@ -229,7 +227,7 @@ describe("registerPlugin() + initPlugins()", () => {
   });
 
   it("handles plugin init errors gracefully", async () => {
-    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const loggerSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
     registerPlugin("broken-plugin", () => {
       throw new Error("Init failed");
@@ -238,11 +236,8 @@ describe("registerPlugin() + initPlugins()", () => {
     // Should not throw
     await expect(initPlugins(TEST_INPUT)).resolves.toBeUndefined();
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("broken-plugin"),
-      expect.any(Error),
-    );
-    consoleSpy.mockRestore();
+    expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining("broken-plugin"));
+    loggerSpy.mockRestore();
   });
 
   it("resetPlugins() clears all plugins and hooks", async () => {

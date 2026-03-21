@@ -1,10 +1,8 @@
 import type {
   InstanceInfo,
-  AgentInfo,
   CreateInstanceRequest,
   CreateAgentRequest,
   ProvidersResponse,
-  ConversationEntry,
   SyncResult,
   BuilderData,
   AgentFileContent,
@@ -18,7 +16,6 @@ import type {
   AgentMetaPatch,
   DiscoverResult,
   AdoptResult,
-  SkillsListResponse,
   RuntimeSession,
   RuntimeChatResponse,
   PilotMessage,
@@ -87,18 +84,6 @@ export async function fetchInstances(): Promise<InstanceInfo[]> {
   return apiFetch<InstanceInfo[]>("/instances");
 }
 
-export async function fetchInstance(
-  slug: string,
-): Promise<{ instance: InstanceInfo; status: unknown; gatewayToken: string | null }> {
-  return apiFetch<{ instance: InstanceInfo; status: unknown; gatewayToken: string | null }>(
-    `/instances/${slug}`,
-  );
-}
-
-export async function fetchAgents(slug: string): Promise<AgentInfo[]> {
-  return apiFetch<AgentInfo[]>(`/instances/${slug}/agents`);
-}
-
 export async function startInstance(slug: string): Promise<void> {
   await apiFetch(`/instances/${slug}/start`, { method: "POST" });
 }
@@ -129,13 +114,6 @@ export async function createInstance(data: CreateInstanceRequest): Promise<unkno
 
 export async function deleteInstance(slug: string): Promise<void> {
   await apiFetch(`/instances/${slug}`, { method: "DELETE" });
-}
-
-export async function fetchConversations(slug: string, limit = 10): Promise<ConversationEntry[]> {
-  const data = await apiFetch<{ entries: ConversationEntry[] }>(
-    `/instances/${slug}/conversations?limit=${limit}`,
-  );
-  return data.entries;
 }
 
 export async function syncAgents(slug: string): Promise<SyncResult> {
@@ -218,10 +196,6 @@ export async function deleteAgent(instanceSlug: string, agentId: string): Promis
 
 // --- Skills API ---
 
-export async function fetchInstanceSkills(slug: string): Promise<SkillsListResponse> {
-  return apiFetch<SkillsListResponse>(`/instances/${slug}/skills`);
-}
-
 // --- Blueprint API ---
 
 export async function fetchBlueprints(): Promise<Blueprint[]> {
@@ -231,16 +205,6 @@ export async function fetchBlueprints(): Promise<Blueprint[]> {
 export async function createBlueprint(data: CreateBlueprintRequest): Promise<Blueprint> {
   return apiFetch<Blueprint>("/blueprints", {
     method: "POST",
-    body: JSON.stringify(data),
-  });
-}
-
-export async function updateBlueprint(
-  id: number,
-  data: Partial<CreateBlueprintRequest>,
-): Promise<Blueprint> {
-  return apiFetch<Blueprint>(`/blueprints/${id}`, {
-    method: "PUT",
     body: JSON.stringify(data),
   });
 }
@@ -575,16 +539,6 @@ export async function createAgentBlueprint(data: {
 }): Promise<AgentBlueprintInfo> {
   return apiFetch<AgentBlueprintInfo>("/agent-blueprints", {
     method: "POST",
-    body: JSON.stringify(data),
-  });
-}
-
-export async function updateAgentBlueprint(
-  id: string,
-  data: Partial<{ name: string; description: string | null; configJson: string }>,
-): Promise<AgentBlueprintInfo> {
-  return apiFetch<AgentBlueprintInfo>(`/agent-blueprints/${id}`, {
-    method: "PUT",
     body: JSON.stringify(data),
   });
 }

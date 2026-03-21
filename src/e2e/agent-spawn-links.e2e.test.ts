@@ -4,7 +4,7 @@
 // All instances are claw-runtime. Links are stored DB-only — runtime.json is never touched.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { startTestServer, type TestContext } from "./helpers/test-server.js";
-import { seedAdmin, seedLocalServer, seedInstance } from "./helpers/seed.js";
+import { seedAdmin, seedLocalServer } from "./helpers/seed.js";
 
 // Minimal runtime.json for claw-runtime instances
 const MINIMAL_RUNTIME_JSON = JSON.stringify(

@@ -18,7 +18,6 @@ import type Database from "better-sqlite3";
 import {
   buildSessionKey,
   createSession,
-  getSession,
   getSessionByKey,
   countActiveChildren,
   archiveSession,
@@ -412,7 +411,7 @@ describe("forkSession() — message and part history", () => {
   "fork with upToMessageId: copies only messages up to the specified one (inclusive)", () => {
     // Arrange
     const source = createSession(db, { instanceSlug: "test-instance", agentId: "main" });
-    const m1 = createUserMessage(db, { sessionId: source.id, text: "First" });
+    createUserMessage(db, { sessionId: source.id, text: "First" });
     const m2 = createAssistantMessage(db, { sessionId: source.id });
     createUserMessage(db, { sessionId: source.id, text: "Third" }); // should NOT be copied
 

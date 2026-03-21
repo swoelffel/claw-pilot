@@ -27,7 +27,7 @@ import { initDatabase } from "../../../db/schema.js";
 import type Database from "better-sqlite3";
 import { createSession } from "../session.js";
 import { listMessages, getMessage } from "../message.js";
-import { createAssistantMessage, createUserMessage } from "../message.js";
+import { createAssistantMessage } from "../message.js";
 import { listParts, createPart, updatePartState } from "../part.js";
 import { buildCoreMessages } from "../message-builder.js";
 import { listMessagesFromCompaction } from "../message.js";

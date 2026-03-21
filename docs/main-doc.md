@@ -1,9 +1,9 @@
 # claw-pilot — Functional Architecture
 
-> **Version**: 0.41.39
+> **Version**: 0.42.0
 > **Stack**: TypeScript / Node.js ESM, Lit web components, SQLite, Hono
 > **Repo**: https://github.com/swoelffel/claw-pilot
-> **Detailed References**: [ux-design.md](./ux-design.md) · [agents.md](./agents.md) · [registry-db.md](./registry-db.md) · [i18n.md](./i18n.md) · [design-rules.md](./design-rules.md) · `CLAUDE.md`
+> **Detailed References**: [ux-design.md](./ux-design.md) (index) · [ux-screens/](./ux-screens/) · [ux-components/](./ux-components/) · [agents.md](./agents.md) · [registry-db.md](./registry-db.md) · [i18n.md](./i18n.md) · [design-rules.md](./design-rules.md) · `CLAUDE.md`
 
 ---
 
@@ -31,7 +31,7 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
 │   Provisioner · Lifecycle · Health · Discovery · AgentSync      │
 │   BlueprintDeployer · AgentProvisioner · TeamExport/Import      │
 │                        │                                        │
-│              Registry (facade) → 8 Repositories                 │
+│              Registry (facade) → 9 Repositories                 │
 │                        │                                        │
 │              ServerConnection (abstraction)                     │
 │              LocalConnection (local shell/fs)                   │
@@ -76,7 +76,7 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
 
 **Default port range**: 18789–18838 (50 ports, 10 instances at 5-port intervals). Dashboard: 19000.
 
-**Migration rule**: always additive (ADD COLUMN nullable, CREATE TABLE IF NOT EXISTS). Never use DROP COLUMN / DROP TABLE without table recreation — migrations are irreversible on VM01.
+**Migration rule**: always additive (ADD COLUMN nullable, CREATE TABLE IF NOT EXISTS). Never use DROP COLUMN / DROP TABLE without table recreation — migrations are irreversible in production.
 
 Full reference: [registry-db.md](./registry-db.md)
 
@@ -624,8 +624,8 @@ Separate SQLite FTS5 index in `memory-index.db`. Chunks MEMORY.md and memory/*.m
 
 | Manager | Platform | claw-runtime instances |
 |---|---|---|
-| **systemd --user** | Linux (VM01) | PID file |
-| **launchd** | macOS (dev local, MACMINI-INT) | PID file |
+| **systemd --user** | Linux | PID file |
+| **launchd** | macOS | PID file |
 | **Docker** | Container | PID file |
 
 ---
@@ -636,4 +636,4 @@ Separate SQLite FTS5 index in `memory-index.db`. Chunks MEMORY.md and memory/*.m
 
 ---
 
-*Updated: 2026-03-19 - v0.41.39: schema v16 (agent_blueprints, agent_blueprint_files), 9 repositories, 69 API endpoints (12 new /api/agent-blueprints), 26 bus events (session.system_prompt), plugin hooks renamed, wizard/ directory*
+*Updated: 2026-03-21 — v0.42.0: schema v16, 9 repositories, 72 API endpoints, 26 bus events, TS 5.8, parallel CI, logger.child() scoped logging*

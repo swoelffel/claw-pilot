@@ -3,7 +3,6 @@ import {
   parseRuntimeConfig,
   safeParseRuntimeConfig,
   createDefaultRuntimeConfig,
-  RuntimeConfigSchema,
 } from "../config/index.js";
 
 describe("RuntimeConfigSchema", () => {

@@ -22,6 +22,7 @@ import { TelegramPoller } from "./polling.js";
 import type { TelegramUpdate } from "./polling.js";
 import { markdownToTelegramV2 } from "./formatter.js";
 import { createPairingCode } from "../pairing.js";
+import { logger } from "../../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // TelegramChannel
@@ -66,7 +67,7 @@ export class TelegramChannel implements Channel {
       // Token not set — Telegram is enabled in config but not yet configured.
       // This is expected on a fresh install. Log a warning and skip silently
       // instead of crashing the runtime.
-      console.warn(
+      logger.warn(
         `[telegram] Bot token env var "${this.options.botTokenEnvVar}" is not set — Telegram channel disabled until token is configured.`,
       );
       return;
@@ -117,7 +118,7 @@ export class TelegramChannel implements Channel {
   getStatus(): "connected" | "disconnected" | "not_configured" {
     if (!this.poller) return "not_configured";
     // TelegramPoller.running est privé — accéder via cast
-    return (this.poller as unknown as { running: boolean }).running ? "connected" : "disconnected";
+    return this.poller.isRunning ? "connected" : "disconnected";
   }
 
   // ---------------------------------------------------------------------------

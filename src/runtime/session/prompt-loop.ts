@@ -327,7 +327,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       role: "user",
       text: sendingText,
     }).catch((err) => {
-      console.warn("[claw-runtime] plugin hook message.sending threw:", err);
+      logger.warn(`Plugin hook message.sending threw: ${err}`);
     });
 
     const llmCallStart = Date.now();

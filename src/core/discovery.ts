@@ -2,9 +2,8 @@
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
 import type { AgentSync } from "./agent-sync.js";
-import { constants } from "../lib/constants.js";
 import { logger } from "../lib/logger.js";
-import { getInstancesDir, getRuntimePid } from "../lib/platform.js";
+import { getRuntimePid } from "../lib/platform.js";
 import { normaliseModel } from "../lib/model-helpers.js";
 
 export interface DiscoveredAgent {

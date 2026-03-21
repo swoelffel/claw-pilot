@@ -27,8 +27,3 @@ export function getToken(): string {
 export function clearToken(): void {
   _token = null;
 }
-
-/** Returns true if a token is currently set. */
-export function hasToken(): boolean {
-  return _token !== null && _token.length > 0;
-}

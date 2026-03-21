@@ -5,6 +5,7 @@ import { customElement, property } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { SessionContext } from "../../../types.js";
 import { tokenStyles } from "../../../styles/tokens.js";
+import "../../session-tree.js";
 
 type AgentInfo = SessionContext["agent"];
 type Teammate = SessionContext["teammates"][number];

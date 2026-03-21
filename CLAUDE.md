@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-`claw-pilot` v0.41.45 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, and permanent cross-channel sessions.
+`claw-pilot` v0.42.0 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, and permanent cross-channel sessions.
 
 All instances use the **claw-runtime** engine — a native Node.js engine (`src/runtime/`), managed via PID file daemon.
 
@@ -23,15 +23,29 @@ GitHub: https://github.com/swoelffel/claw-pilot
 - **Lint**: oxlint
 - **LLM SDK**: Vercel AI SDK `ai` v6.x
 
+## Language standard
+
+All documentation and code comments must be written in **English**.
+Commit messages follow conventional commits in English.
+Exception: DB migration context and UI localization strings may reference French for historical reasons.
+
 ## Key commands
 
 ```sh
 pnpm build:cli     # Build CLI only (dist/)
 pnpm build         # Build CLI + UI
+pnpm build:safe    # typecheck:all then build
 pnpm test:run      # Run tests once
 pnpm test:e2e      # Run e2e tests (real HTTP server, in-memory DB)
 pnpm typecheck     # tsc --noEmit
+pnpm typecheck:all # tsc --noEmit (backend + UI)
 pnpm lint          # oxlint src/
+pnpm lint:all      # oxlint src/ + ui/src/
+pnpm format        # prettier --write
+pnpm format:check  # prettier --check (CI mode)
+pnpm spellcheck    # cspell (en + fr dictionaries)
+pnpm knip          # Dead code detection
+pnpm check:circular # Circular dependency check via madge
 ```
 
 Run a single test file or case:
@@ -39,6 +53,9 @@ Run a single test file or case:
 pnpm vitest run src/dashboard/__tests__/routes.test.ts
 pnpm vitest run -t "POST /api/instances/:slug/start"
 ```
+
+Pre-commit hooks (lefthook): format:check + lint:all + typecheck:all.
+Pre-push hooks: test:run. Commits must follow conventional commits (commitlint).
 
 ## Architecture
 
@@ -88,6 +105,64 @@ docs/main-doc.md    # Functional architecture — read this before major changes
 | `sessions` | Server-side dashboard sessions with TTL |
 
 Schema lives in `src/db/schema.ts`. Migrations run on DB open. **Always additive** — never DROP COLUMN/TABLE.
+
+## Code style
+
+### Formatting (Prettier-enforced)
+- Double quotes, always semicolons, trailing commas everywhere
+- Print width: 100, tab width: 2, arrow parens: always
+
+### Imports
+- **Order**: Node builtins (`node:` prefix) → third-party → relative
+- **Named exports only** — no default exports in project code
+- **`import type`** for type-only imports: `import type { Foo } from "./foo.js"`
+- **`.js` extensions** on all relative imports (ESM NodeNext requirement)
+- Namespace imports (`import * as`) only for Node builtins
+
+### Naming conventions
+| Element | Convention | Example |
+|---|---|---|
+| Files | `kebab-case.ts` | `prompt-loop.ts`, `tool-set-builder.ts` |
+| Private files | `_kebab-case.ts` | `_context.ts`, `_helpers.ts` |
+| Variables/functions | `camelCase` | `portAllocator`, `runPromptLoop()` |
+| Private members | `_camelCase` | `_authenticated`, `_handleWsMessage()` |
+| Classes | `PascalCase` | `PortAllocator`, `CliError` |
+| Types/interfaces | `PascalCase` | `InstanceSlug`, `RouteDeps` |
+| Constants | `UPPER_SNAKE_CASE` | `COMPACTION_THRESHOLD`, `SCHEMA_SQL` |
+| DB columns | `snake_case` | `instance_slug`, `created_at` |
+| Lit elements | `cp-` prefix | `cp-instance-card`, `cp-app` |
+
+### Types
+- **`interface`** for object shapes (data, configs, contracts)
+- **`type`** for unions, aliases, template literals
+- **Explicit return types** on all exported functions
+- **Avoid `any`** — suppress with `// eslint-disable-next-line` when unavoidable
+- **`as` assertions** only for JSON.parse results and DB query rows
+
+### Error handling
+- Custom hierarchy: `ClawPilotError` (with `code` string) → specific errors
+- `CliError` for CLI exit codes
+- Route handlers: `try/catch` with `instanceof` checks, return `apiError(c, status, code, msg)`
+- Resource cleanup: `try/finally` or `withContext()` pattern
+- Silent catch only for non-critical operations, with inline comment explaining why
+
+### Comments
+- JSDoc `/** */` on exported functions and types
+- Section dividers: `// ---` banners for major sections
+- Inline comments explain "why", not "what"
+- Numbered step comments in long functions: `// 1. Create user message`
+
+### Async patterns
+- `async/await` everywhere — no raw `.then()` chains
+- Fire-and-forget: prefix with `void` keyword
+- `AbortSignal`/`AbortController` for cancellation
+
+### File organization
+- Co-located tests in `__tests__/` directories next to source
+- E2E tests in `src/e2e/` with helpers in `src/e2e/helpers/`
+- Route modules export `register*Routes(app, deps)` functions
+- Dependency injection via options objects (`RouteDeps`, `PromptLoopInput`, `CommandContext`)
+- No barrel `index.ts` files except for CLI entry and a few subsystem entry points
 
 ## Important conventions
 
@@ -165,11 +240,12 @@ Reference docs:
 | Document | Content |
 |----------|---------|
 | `docs/main-doc.md` | Functional architecture overview |
-| `docs/ux-design.md` | All screens, components, visual behaviors |
+| `docs/ux-design.md` | UX index — global tokens, routing, screen/component map |
+| `docs/ux-screens/` | Individual screen docs (one file per screen) |
+| `docs/ux-components/` | Individual component and dialog docs |
 | `docs/design-rules.md` | Design system, anti-patterns, delivery checklist |
 | `docs/i18n.md` | i18n architecture, adding languages/features |
 | `docs/registry-db.md` | SQLite schema reference (all tables, columns, migrations) |
-| `docs/agents.md` | Agent architecture: kinds, modes, tools, permissions, UI panels |
 | `docs/runbook-deploy.md` | Deployment workflow, CI/CD validation, MACMINI-INT |
 
 ## What NOT to do
