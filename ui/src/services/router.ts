@@ -15,7 +15,8 @@ export type Route =
   | { view: "agent-templates" }
   | { view: "agent-template-detail"; templateId: string }
   | { view: "instance-settings"; slug: string; initialSection?: SidebarSection }
-  | { view: "pilot"; slug: string };
+  | { view: "pilot"; slug: string }
+  | { view: "profile" };
 
 /** Convert a Route to a hash string (without the leading #). */
 export function routeToHash(route: Route): string {
@@ -36,6 +37,8 @@ export function routeToHash(route: Route): string {
       return "/agent-templates";
     case "agent-template-detail":
       return `/agent-templates/${route.templateId}`;
+    case "profile":
+      return "/profile";
   }
 }
 
@@ -70,6 +73,9 @@ export function hashToRoute(hash: string): Route {
 
   // /agent-templates
   if (path === "agent-templates") return { view: "agent-templates" };
+
+  // /profile
+  if (path === "profile") return { view: "profile" };
 
   return { view: "cluster" };
 }

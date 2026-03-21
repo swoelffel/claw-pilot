@@ -531,3 +531,40 @@ export interface AgentBlueprintFileContent {
   content_hash: string | null;
   updated_at: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// User Profile
+// ---------------------------------------------------------------------------
+
+export type ProfileSection = "general" | "providers" | "models" | "instructions" | "import";
+
+export interface UserProfile {
+  userId: number;
+  displayName: string | null;
+  language: string;
+  timezone: string | null;
+  communicationStyle: "concise" | "detailed" | "technical";
+  customInstructions: string | null;
+  defaultModel: string | null;
+  avatarUrl: string | null;
+  uiPreferences: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserProvider {
+  providerId: string;
+  apiKeyEnvVar: string;
+  baseUrl: string | null;
+  priority: number;
+  headers: Record<string, string> | null;
+  hasApiKey: boolean;
+  apiKeyMasked: string | null;
+}
+
+export interface UserModelAlias {
+  aliasId: string;
+  provider: string;
+  model: string;
+  contextWindow: number | null;
+}

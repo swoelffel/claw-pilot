@@ -22,6 +22,9 @@ import type {
   SessionContext,
   AgentBlueprintInfo,
   AgentBlueprintFileContent,
+  UserProfile,
+  UserProvider,
+  UserModelAlias,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 import { getToken } from "./services/auth-state.js";
@@ -641,4 +644,88 @@ export async function importAgentBlueprint(yamlContent: string): Promise<AgentBl
     throw new ApiError(res.status, "IMPORT_FAILED", msg);
   }
   return (await res.json()) as AgentBlueprintInfo;
+}
+
+// ---------------------------------------------------------------------------
+// User Profile API
+// ---------------------------------------------------------------------------
+
+export async function fetchProfile(): Promise<{ profile: UserProfile | null }> {
+  return apiFetch<{ profile: UserProfile | null }>("/profile");
+}
+
+export async function patchProfile(
+  data: Partial<{
+    displayName: string | null;
+    language: string;
+    timezone: string | null;
+    communicationStyle: string;
+    customInstructions: string | null;
+    defaultModel: string | null;
+    avatarUrl: string | null;
+    uiPreferences: Record<string, unknown> | null;
+  }>,
+): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>("/profile", {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function fetchProfileProviders(): Promise<{ providers: UserProvider[] }> {
+  return apiFetch<{ providers: UserProvider[] }>("/profile/providers");
+}
+
+export async function upsertProfileProvider(
+  providerId: string,
+  data: {
+    apiKeyEnvVar: string;
+    baseUrl?: string | null;
+    priority?: number;
+    headers?: Record<string, string> | null;
+  },
+): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/profile/providers/${encodeURIComponent(providerId)}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteProfileProvider(providerId: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/profile/providers/${encodeURIComponent(providerId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function patchProfileProviderKey(
+  providerId: string,
+  apiKey: string,
+): Promise<{ ok: boolean; masked: string }> {
+  return apiFetch<{ ok: boolean; masked: string }>(
+    `/profile/providers/${encodeURIComponent(providerId)}/key`,
+    { method: "PATCH", body: JSON.stringify({ apiKey }) },
+  );
+}
+
+export async function fetchProfileModels(): Promise<{ models: UserModelAlias[] }> {
+  return apiFetch<{ models: UserModelAlias[] }>("/profile/models");
+}
+
+export async function replaceProfileModels(models: UserModelAlias[]): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>("/profile/models", {
+    method: "PUT",
+    body: JSON.stringify(models),
+  });
+}
+
+export async function importProvidersFromInstance(slug: string): Promise<{
+  ok: boolean;
+  imported: {
+    providers: number;
+    modelAliases: number;
+    apiKeys: number;
+    defaultModel: string | null;
+  };
+}> {
+  return apiFetch(`/profile/import-providers/${encodeURIComponent(slug)}`, { method: "POST" });
 }

@@ -29,6 +29,7 @@ import "./components/login-view.js";
 import "./components/permission-request-overlay.js";
 import "./components/bus-alerts.js";
 import "./components/create-agent-dialog.js";
+import "./components/profile-settings.js";
 
 // Initialize locale — resolved before first render via localeReady promise
 export const localeReady = initLocale();
@@ -360,6 +361,32 @@ export class CpApp extends LitElement {
       .btn-logout:hover {
         border-color: var(--state-error);
         color: var(--state-error);
+      }
+
+      .btn-profile {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: none;
+        border: 1px solid transparent;
+        border-radius: 5px;
+        color: var(--text-muted);
+        font-size: 15px;
+        cursor: pointer;
+        padding: 4px 8px;
+        transition:
+          border-color 0.15s,
+          color 0.15s;
+      }
+
+      .btn-profile:hover {
+        border-color: var(--accent-border);
+        color: var(--text-primary);
+      }
+
+      .btn-profile.active {
+        border-color: var(--accent);
+        color: var(--accent);
       }
 
       /* ── Responsive ───────────────────────────────────────────────────────── */
@@ -799,6 +826,9 @@ export class CpApp extends LitElement {
         ></cp-instance-settings>
       `;
     }
+    if (this._route.view === "profile") {
+      return html`<cp-profile-settings @navigate=${this._navigate}></cp-profile-settings>`;
+    }
     if (this._route.view === "pilot") {
       const pilotSlug = this._route.slug;
       return html`
@@ -881,6 +911,16 @@ export class CpApp extends LitElement {
           </nav>
         </div>
         <div class="header-right">
+          <button
+            class="btn-profile ${this._route.view === "profile" ? "active" : ""}"
+            title=${msg("Profile", { id: "nav-profile" })}
+            @click=${() => {
+              this._route = { view: "profile" };
+              window.location.hash = "#/profile";
+            }}
+          >
+            👤
+          </button>
           <div class="ws-indicator">
             <span class="ws-dot ${this._wsConnected ? "connected" : "disconnected"}"></span>
             ${this._wsConnected
