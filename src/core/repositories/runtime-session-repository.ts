@@ -2,9 +2,17 @@
 //
 // Repository for rt_sessions queries that require aggregated stats.
 // Extracted from dashboard/routes/instances/runtime.ts to keep route handlers thin.
+//
+// Also exposes purgeArchivedSessions() for on-demand cleanup of ephemeral sessions.
 
 import type Database from "better-sqlite3";
 import { listSessions } from "../../runtime/index.js";
+
+export interface PurgeResult {
+  sessionsDeleted: number;
+  messagesDeleted: number;
+  partsDeleted: number;
+}
 
 export interface EnrichedSessionRow {
   id: string;
@@ -158,4 +166,43 @@ export function listEnrichedSessions(
     messageCount: row.message_count ?? 0,
     totalTokens: row.total_tokens ?? 0,
   }));
+}
+
+/**
+ * Immediately delete ALL archived ephemeral sessions for an instance.
+ * Permanent sessions (persistent=1) are never touched.
+ * Deletes in FK order: parts → messages → sessions.
+ */
+export function purgeArchivedSessions(db: Database.Database, instanceSlug: string): PurgeResult {
+  const toDelete = db
+    .prepare(
+      `SELECT id FROM rt_sessions
+       WHERE instance_slug = ? AND state = 'archived' AND persistent = 0`,
+    )
+    .all(instanceSlug) as Array<{ id: string }>;
+
+  if (toDelete.length === 0) {
+    return { sessionsDeleted: 0, messagesDeleted: 0, partsDeleted: 0 };
+  }
+
+  const ids = toDelete.map((s) => s.id);
+  const ph = ids.map(() => "?").join(", ");
+
+  const result = db.transaction(() => {
+    const parts = db
+      .prepare(
+        `DELETE FROM rt_parts WHERE message_id IN
+         (SELECT id FROM rt_messages WHERE session_id IN (${ph}))`,
+      )
+      .run(...ids);
+    const messages = db.prepare(`DELETE FROM rt_messages WHERE session_id IN (${ph})`).run(...ids);
+    const sessions = db.prepare(`DELETE FROM rt_sessions WHERE id IN (${ph})`).run(...ids);
+    return {
+      partsDeleted: parts.changes,
+      messagesDeleted: messages.changes,
+      sessionsDeleted: sessions.changes,
+    };
+  })();
+
+  return result;
 }

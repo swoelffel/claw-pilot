@@ -233,6 +233,30 @@ export class SessionTree extends LitElement {
         background: var(--bg-hover);
         color: var(--text-primary);
       }
+
+      .btn-purge {
+        padding: 5px 12px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--state-error);
+        background: transparent;
+        color: var(--state-error);
+        font-size: 12px;
+        cursor: pointer;
+        opacity: 0.7;
+        transition:
+          background 0.15s,
+          opacity 0.15s;
+      }
+
+      .btn-purge:hover {
+        background: color-mix(in srgb, var(--state-error) 12%, transparent);
+        opacity: 1;
+      }
+
+      .btn-purge:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
     `,
   ];
 
@@ -241,6 +265,7 @@ export class SessionTree extends LitElement {
   @state() private _roots: SessionNode[] = [];
   @state() private _loading = false;
   @state() private _error = "";
+  @state() private _purging = false;
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -282,6 +307,21 @@ export class SessionTree extends LitElement {
       this._error = err instanceof Error ? err.message : "Failed to load sessions";
     } finally {
       this._loading = false;
+    }
+  }
+
+  private async _purgeArchived(): Promise<void> {
+    if (this._purging) return;
+    this._purging = true;
+    try {
+      const token = getToken();
+      await fetch(`/api/instances/${this.slug}/runtime/sessions?state=archived`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      await this._load();
+    } finally {
+      this._purging = false;
     }
   }
 
@@ -338,6 +378,15 @@ export class SessionTree extends LitElement {
         <div class="footer">
           <button class="btn-refresh" @click=${() => void this._load()}>
             ↻ ${msg("Refresh", { id: "session-tree-refresh" })}
+          </button>
+          <button
+            class="btn-purge"
+            ?disabled=${this._purging}
+            @click=${() => void this._purgeArchived()}
+          >
+            ${this._purging
+              ? msg("Purging…", { id: "session-tree-purging" })
+              : msg("Purge archived", { id: "session-tree-purge" })}
           </button>
         </div>
       </div>
