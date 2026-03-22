@@ -101,31 +101,6 @@ export class CpApp extends LitElement {
         gap: 10px;
       }
 
-      .ws-indicator {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 12px;
-        color: var(--text-muted);
-      }
-
-      .ws-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        flex-shrink: 0;
-        transition: background 0.3s;
-      }
-
-      .ws-dot.connected {
-        background: var(--state-success);
-        box-shadow: 0 0 6px var(--state-success);
-      }
-
-      .ws-dot.disconnected {
-        background: var(--text-muted);
-      }
-
       main {
         display: block;
         width: 100%;
@@ -421,7 +396,7 @@ export class CpApp extends LitElement {
           font-size: 15px;
         }
 
-        .ws-indicator {
+        cp-live-stream-widget {
           display: none;
         }
 
@@ -946,12 +921,10 @@ export class CpApp extends LitElement {
           >
             👤
           </button>
-          <div class="ws-indicator">
-            <span class="ws-dot ${this._wsConnected ? "connected" : "disconnected"}"></span>
-            ${this._wsConnected
-              ? msg("Live", { id: "ws-live" })
-              : msg("Offline", { id: "ws-offline" })}
-          </div>
+          <cp-live-stream-widget
+            .slug=${"slug" in this._route ? this._route.slug : ""}
+            .wsConnected=${this._wsConnected}
+          ></cp-live-stream-widget>
           <button class="btn-logout" @click=${this._logout}>
             ${msg("Sign out", { id: "app-btn-logout" })}
           </button>
@@ -975,10 +948,6 @@ export class CpApp extends LitElement {
         : nothing}
 
       <cp-bus-alerts></cp-bus-alerts>
-
-      ${"slug" in this._route && this._route.slug
-        ? html`<cp-live-stream-widget .slug=${this._route.slug}></cp-live-stream-widget>`
-        : nothing}
       ${this._useTemplateId
         ? html`<cp-create-agent-dialog
             .templateId=${this._useTemplateId}

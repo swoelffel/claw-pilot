@@ -1,6 +1,6 @@
 // ui/src/components/live-stream-widget.ts
-// Floating live event stream widget — pill (collapsed) or panel (expanded).
-// Lives in cp-app, outside <main>, and survives navigation between instance pages.
+// Live event stream dropdown — opens from the header nav bar.
+// Renders a dropdown panel with SSE events when expanded.
 
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
@@ -28,7 +28,11 @@ const LEVEL_COLORS: Record<string, string> = {
 function fmtTimeShort(iso: string): string {
   try {
     const d = new Date(iso);
-    return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    return d.toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
   } catch {
     return "";
   }
@@ -45,75 +49,79 @@ export class LiveStreamWidget extends LitElement {
     tokenStyles,
     css`
       :host {
-        position: fixed;
-        bottom: 16px;
-        right: 16px;
-        z-index: 500;
-        font-size: 0.8rem;
+        position: relative;
+        display: inline-flex;
+        align-items: center;
       }
 
-      /* ── Pill (collapsed) ───────────────────────────────────────── */
+      /* ── Trigger button (in header) ─────────────────────────────── */
 
-      .pill {
+      .live-btn {
         display: flex;
         align-items: center;
-        gap: var(--space-2);
-        background: var(--bg-surface);
-        border: 1px solid var(--bg-border);
-        border-radius: 999px;
-        padding: var(--space-1) var(--space-3);
+        gap: 6px;
+        background: none;
+        border: 1px solid transparent;
+        border-radius: 5px;
+        color: var(--text-muted);
+        font-size: 12px;
         cursor: pointer;
-        max-width: 320px;
-        overflow: hidden;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        padding: 4px 8px;
+        font-family: inherit;
+        transition:
+          border-color 0.15s,
+          color 0.15s;
       }
-      .pill:hover {
-        background: var(--bg-hover);
+      .live-btn:hover {
+        border-color: var(--accent-border);
+        color: var(--text-primary);
+      }
+      .live-btn.open {
+        border-color: var(--accent);
+        color: var(--accent);
       }
 
-      .conn-dot {
+      .ws-dot {
         width: 6px;
         height: 6px;
         border-radius: 50%;
         flex-shrink: 0;
       }
-      .conn-dot.connected {
+      .ws-dot.connected {
         background: #34d399;
       }
-      .conn-dot.disconnected {
+      .ws-dot.disconnected {
         background: #94a3b8;
-      }
-
-      .pill-text {
-        flex: 1;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        color: var(--text-secondary);
       }
 
       .badge {
         background: var(--accent);
         color: #fff;
-        font-size: 0.65rem;
+        font-size: 0.6rem;
         font-weight: 600;
-        padding: 0 6px;
+        padding: 0 5px;
         border-radius: 999px;
-        min-width: 16px;
+        min-width: 14px;
         text-align: center;
+        line-height: 1.4;
       }
 
-      /* ── Panel (expanded) ───────────────────────────────────────── */
+      /* ── Dropdown panel ─────────────────────────────────────────── */
 
       .panel {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
         width: 420px;
-        height: 320px;
+        height: 340px;
         background: var(--bg-surface);
         border: 1px solid var(--bg-border);
         border-radius: var(--radius-md);
         display: flex;
         flex-direction: column;
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+        z-index: 600;
+        font-size: 0.8rem;
       }
 
       .panel-header {
@@ -199,8 +207,10 @@ export class LiveStreamWidget extends LitElement {
   ];
 
   @property() slug = "";
+  /** Whether the WS monitor connection is active (passed from parent). */
+  @property({ type: Boolean }) wsConnected = false;
 
-  @state() private _mode: "hidden" | "collapsed" | "expanded" = "hidden";
+  @state() private _open = false;
   @state() private _events: LiveStreamEvent[] = [];
   @state() private _newCount = 0;
   @state() private _paused = false;
@@ -210,6 +220,7 @@ export class LiveStreamWidget extends LitElement {
   private _reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private _reconnectDelay = SSE_RECONNECT_INITIAL_MS;
   private _onVisibilityChange: (() => void) | null = null;
+  private _onDocumentClick: ((e: MouseEvent) => void) | null = null;
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -223,6 +234,14 @@ export class LiveStreamWidget extends LitElement {
       }
     };
     document.addEventListener("visibilitychange", this._onVisibilityChange);
+
+    // Close panel on outside click
+    this._onDocumentClick = (e: MouseEvent) => {
+      if (this._open && !this.contains(e.target as Node)) {
+        this._open = false;
+      }
+    };
+    document.addEventListener("click", this._onDocumentClick, true);
   }
 
   override disconnectedCallback(): void {
@@ -231,6 +250,10 @@ export class LiveStreamWidget extends LitElement {
     if (this._onVisibilityChange) {
       document.removeEventListener("visibilitychange", this._onVisibilityChange);
       this._onVisibilityChange = null;
+    }
+    if (this._onDocumentClick) {
+      document.removeEventListener("click", this._onDocumentClick, true);
+      this._onDocumentClick = null;
     }
   }
 
@@ -241,13 +264,12 @@ export class LiveStreamWidget extends LitElement {
         this._closeStream();
         this._events = [];
         this._newCount = 0;
-        this._mode = "collapsed";
         this._openStream();
       } else if (!this.slug) {
         this._closeStream();
-        this._mode = "hidden";
         this._events = [];
         this._newCount = 0;
+        this._open = false;
       }
     }
   }
@@ -319,17 +341,15 @@ export class LiveStreamWidget extends LitElement {
   }
 
   private _pushEvent(event: LiveStreamEvent): void {
-    // Ring buffer
     const next = [...this._events, event];
     if (next.length > MAX_EVENTS) next.splice(0, next.length - MAX_EVENTS);
     this._events = next;
 
-    if (this._mode === "collapsed") {
+    if (!this._open) {
       this._newCount++;
     }
 
-    // Auto-scroll if expanded and not paused
-    if (this._mode === "expanded" && !this._paused) {
+    if (this._open && !this._paused) {
       this.updateComplete.then(() => {
         const body = this.shadowRoot?.querySelector(".panel-body");
         if (body) body.scrollTop = body.scrollHeight;
@@ -341,17 +361,15 @@ export class LiveStreamWidget extends LitElement {
   // Actions
   // ---------------------------------------------------------------------------
 
-  private _expand(): void {
-    this._mode = "expanded";
-    this._newCount = 0;
-    this.updateComplete.then(() => {
-      const body = this.shadowRoot?.querySelector(".panel-body");
-      if (body) body.scrollTop = body.scrollHeight;
-    });
-  }
-
-  private _collapse(): void {
-    this._mode = "collapsed";
+  private _toggle(): void {
+    this._open = !this._open;
+    if (this._open) {
+      this._newCount = 0;
+      this.updateComplete.then(() => {
+        const body = this.shadowRoot?.querySelector(".panel-body");
+        if (body) body.scrollTop = body.scrollHeight;
+      });
+    }
   }
 
   private _clear(): void {
@@ -367,20 +385,19 @@ export class LiveStreamWidget extends LitElement {
   // Render
   // ---------------------------------------------------------------------------
 
-  override render() {
-    if (this._mode === "hidden") return nothing;
-    if (this._mode === "collapsed") return this._renderPill();
-    return this._renderPanel();
+  /** The effective connection state: SSE connected (when instance selected) or WS connected. */
+  private get _connected(): boolean {
+    return this.slug ? this._sseConnected : this.wsConnected;
   }
 
-  private _renderPill() {
-    const last = this._events[this._events.length - 1];
+  override render() {
     return html`
-      <div class="pill" @click=${this._expand}>
-        <span class="conn-dot ${this._sseConnected ? "connected" : "disconnected"}"></span>
-        <span class="pill-text">${last ? last.summary : msg("Live", { id: "live.title" })}</span>
+      <button class="live-btn ${this._open ? "open" : ""}" @click=${this._toggle}>
+        <span class="ws-dot ${this._connected ? "connected" : "disconnected"}"></span>
+        ${this._connected ? msg("Live", { id: "ws-live" }) : msg("Offline", { id: "ws-offline" })}
         ${this._newCount > 0 ? html`<span class="badge">${this._newCount}</span>` : nothing}
-      </div>
+      </button>
+      ${this._open && this.slug ? this._renderPanel() : nothing}
     `;
   }
 
@@ -388,7 +405,7 @@ export class LiveStreamWidget extends LitElement {
     return html`
       <div class="panel">
         <div class="panel-header">
-          <span class="conn-dot ${this._sseConnected ? "connected" : "disconnected"}"></span>
+          <span class="ws-dot ${this._sseConnected ? "connected" : "disconnected"}"></span>
           <span class="panel-title">${msg("Live", { id: "live.panel-title" })}</span>
           <button
             class="panel-btn"
@@ -398,7 +415,6 @@ export class LiveStreamWidget extends LitElement {
             ${this._paused ? "▶" : "⏸"}
           </button>
           <button class="panel-btn" @click=${this._clear} title="Clear">✕</button>
-          <button class="panel-btn" @click=${this._collapse} title="Collapse">▼</button>
         </div>
         <div class="panel-body">
           ${this._events.length === 0
