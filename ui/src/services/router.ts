@@ -18,6 +18,7 @@ export type Route =
   | { view: "pilot"; slug: string }
   | { view: "costs"; slug: string }
   | { view: "activity"; slug: string }
+  | { view: "memory"; slug: string }
   | { view: "profile" };
 
 /** Convert a Route to a hash string (without the leading #). */
@@ -35,6 +36,8 @@ export function routeToHash(route: Route): string {
       return `/instances/${route.slug}/costs`;
     case "activity":
       return `/instances/${route.slug}/activity`;
+    case "memory":
+      return `/instances/${route.slug}/memory`;
     case "blueprints":
       return "/blueprints";
     case "blueprint-builder":
@@ -73,6 +76,10 @@ export function hashToRoute(hash: string): Route {
   // /instances/:slug/activity
   const activityMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/activity$/);
   if (activityMatch) return { view: "activity", slug: activityMatch[1]! };
+
+  // /instances/:slug/memory
+  const memoryMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/memory$/);
+  if (memoryMatch) return { view: "memory", slug: memoryMatch[1]! };
 
   // /blueprints/:id/builder
   const bpBuilderMatch = path.match(/^blueprints\/(\d+)\/builder$/);

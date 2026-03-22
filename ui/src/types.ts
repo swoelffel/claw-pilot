@@ -632,3 +632,39 @@ export interface LiveStreamEvent {
   payload?: Record<string, unknown>;
   timestamp: string;
 }
+
+// ---------------------------------------------------------------------------
+// Memory Browser
+// ---------------------------------------------------------------------------
+
+export interface MemoryAgentSummary {
+  agentId: string;
+  name: string;
+  fileCount: number;
+  totalSize: number;
+  lastModified: string | null;
+}
+
+export interface MemoryFileInfo {
+  path: string;
+  size: number;
+}
+
+export interface MemoryFileContent {
+  agentId: string;
+  path: string;
+  content: string;
+  size: number;
+}
+
+export interface MemorySearchResult {
+  agentId: string;
+  source: string;
+  snippet: string;
+  line: number;
+}
+
+export interface MemorySearchResponse {
+  query: string;
+  results: MemorySearchResult[];
+}

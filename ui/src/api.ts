@@ -30,6 +30,10 @@ import type {
   AgentCost,
   ModelCost,
   RtEventsPage,
+  MemoryAgentSummary,
+  MemoryFileInfo,
+  MemoryFileContent,
+  MemorySearchResponse,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 import { getToken } from "./services/auth-state.js";
@@ -780,4 +784,42 @@ export function getEventsStreamUrl(
   if (filters?.level) qs.set("level", filters.level);
   const q = qs.toString();
   return `/api/instances/${slug}/events/stream${q ? `?${q}` : ""}`;
+}
+
+// ---------------------------------------------------------------------------
+// Memory Browser
+// ---------------------------------------------------------------------------
+
+export async function fetchMemoryAgents(slug: string): Promise<{ agents: MemoryAgentSummary[] }> {
+  return apiFetch<{ agents: MemoryAgentSummary[] }>(`/instances/${slug}/memory/agents`);
+}
+
+export async function fetchMemoryFiles(
+  slug: string,
+  agentId: string,
+): Promise<{ agentId: string; files: MemoryFileInfo[] }> {
+  return apiFetch<{ agentId: string; files: MemoryFileInfo[] }>(
+    `/instances/${slug}/memory/agents/${encodeURIComponent(agentId)}/files`,
+  );
+}
+
+export async function fetchMemoryFile(
+  slug: string,
+  agentId: string,
+  filePath: string,
+): Promise<MemoryFileContent> {
+  return apiFetch<MemoryFileContent>(
+    `/instances/${slug}/memory/agents/${encodeURIComponent(agentId)}/files/${encodeURIComponent(filePath)}`,
+  );
+}
+
+export async function searchMemoryFiles(
+  slug: string,
+  query: string,
+  opts?: { agentId?: string; limit?: number },
+): Promise<MemorySearchResponse> {
+  const qs = new URLSearchParams({ q: query });
+  if (opts?.agentId) qs.set("agentId", opts.agentId);
+  if (opts?.limit) qs.set("limit", String(opts.limit));
+  return apiFetch<MemorySearchResponse>(`/instances/${slug}/memory/search?${qs.toString()}`);
 }

@@ -33,6 +33,7 @@ import "./components/profile-settings.js";
 import "./components/costs-dashboard.js";
 import "./components/activity-console.js";
 import "./components/live-stream-widget.js";
+import "./components/memory-browser.js";
 
 // Initialize locale — resolved before first render via localeReady promise
 export const localeReady = initLocale();
@@ -697,6 +698,8 @@ export class CpApp extends LitElement {
       this._route = { view: "costs", slug: detail.slug };
     } else if (detail.view === "activity" && detail.slug) {
       this._route = { view: "activity", slug: detail.slug };
+    } else if (detail.view === "memory" && detail.slug) {
+      this._route = { view: "memory", slug: detail.slug };
     } else if (detail.view === "agents-builder" && detail.slug) {
       this._route = { view: "agents-builder", slug: detail.slug };
     } else if (detail.view === "blueprints") {
@@ -854,6 +857,14 @@ export class CpApp extends LitElement {
         ></cp-activity-console>
       `;
     }
+    if (this._route.view === "memory") {
+      return html`
+        <cp-memory-browser
+          .slug=${this._route.slug}
+          @navigate=${this._navigate}
+        ></cp-memory-browser>
+      `;
+    }
     return html``;
   }
 
@@ -884,7 +895,8 @@ export class CpApp extends LitElement {
               this._route.view === "instance-settings" ||
               this._route.view === "pilot" ||
               this._route.view === "costs" ||
-              this._route.view === "activity"
+              this._route.view === "activity" ||
+              this._route.view === "memory"
                 ? "active"
                 : ""}"
               @click=${() => {
