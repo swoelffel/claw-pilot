@@ -16,6 +16,7 @@ export type Route =
   | { view: "agent-template-detail"; templateId: string }
   | { view: "instance-settings"; slug: string; initialSection?: SidebarSection }
   | { view: "pilot"; slug: string }
+  | { view: "costs"; slug: string }
   | { view: "profile" };
 
 /** Convert a Route to a hash string (without the leading #). */
@@ -29,6 +30,8 @@ export function routeToHash(route: Route): string {
       return `/instances/${route.slug}/settings`;
     case "pilot":
       return `/instances/${route.slug}/pilot`;
+    case "costs":
+      return `/instances/${route.slug}/costs`;
     case "blueprints":
       return "/blueprints";
     case "blueprint-builder":
@@ -59,6 +62,10 @@ export function hashToRoute(hash: string): Route {
   // /instances/:slug/pilot
   const pilotMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/pilot$/);
   if (pilotMatch) return { view: "pilot", slug: pilotMatch[1]! };
+
+  // /instances/:slug/costs
+  const costsMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/costs$/);
+  if (costsMatch) return { view: "costs", slug: costsMatch[1]! };
 
   // /blueprints/:id/builder
   const bpBuilderMatch = path.match(/^blueprints\/(\d+)\/builder$/);

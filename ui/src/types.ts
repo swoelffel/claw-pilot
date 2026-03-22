@@ -567,3 +567,39 @@ export interface DiscoveredModel {
   name: string;
   providerId: string;
 }
+
+// ---------------------------------------------------------------------------
+// Cost Dashboard
+// ---------------------------------------------------------------------------
+
+export interface CostSummary {
+  messageCount: number;
+  totalTokensIn: number;
+  totalTokensOut: number;
+  totalCostUsd: number;
+  period: string;
+}
+
+export interface DailyCost {
+  day: string;
+  model: string;
+  tokensIn: number;
+  tokensOut: number;
+  costUsd: number;
+}
+
+export interface AgentCost {
+  agentId: string;
+  tokensIn: number;
+  tokensOut: number;
+  costUsd: number;
+  messageCount: number;
+}
+
+export interface ModelCost {
+  model: string;
+  tokensIn: number;
+  tokensOut: number;
+  costUsd: number;
+  messageCount: number;
+}

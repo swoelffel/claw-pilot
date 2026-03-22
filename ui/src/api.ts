@@ -25,6 +25,10 @@ import type {
   UserProfile,
   UserProvider,
   DiscoveredModel,
+  CostSummary,
+  DailyCost,
+  AgentCost,
+  ModelCost,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 import { getToken } from "./services/auth-state.js";
@@ -714,4 +718,24 @@ export async function discoverProviderModels(
     `/profile/providers/${encodeURIComponent(providerId)}/models`,
     { method: "POST" },
   );
+}
+
+// ---------------------------------------------------------------------------
+// Cost Dashboard
+// ---------------------------------------------------------------------------
+
+export async function fetchCostSummary(slug: string, period = "7d"): Promise<CostSummary> {
+  return apiFetch<CostSummary>(`/instances/${slug}/costs/summary?period=${period}`);
+}
+
+export async function fetchDailyCosts(slug: string, period = "7d"): Promise<DailyCost[]> {
+  return apiFetch<DailyCost[]>(`/instances/${slug}/costs/daily?period=${period}`);
+}
+
+export async function fetchCostsByAgent(slug: string, period = "7d"): Promise<AgentCost[]> {
+  return apiFetch<AgentCost[]>(`/instances/${slug}/costs/by-agent?period=${period}`);
+}
+
+export async function fetchCostsByModel(slug: string, period = "7d"): Promise<ModelCost[]> {
+  return apiFetch<ModelCost[]>(`/instances/${slug}/costs/by-model?period=${period}`);
 }

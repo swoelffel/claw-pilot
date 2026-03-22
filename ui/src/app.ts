@@ -30,6 +30,7 @@ import "./components/permission-request-overlay.js";
 import "./components/bus-alerts.js";
 import "./components/create-agent-dialog.js";
 import "./components/profile-settings.js";
+import "./components/costs-dashboard.js";
 
 // Initialize locale — resolved before first render via localeReady promise
 export const localeReady = initLocale();
@@ -700,6 +701,8 @@ export class CpApp extends LitElement {
       };
     } else if (detail.view === "pilot" && detail.slug) {
       this._route = { view: "pilot", slug: detail.slug };
+    } else if (detail.view === "costs" && detail.slug) {
+      this._route = { view: "costs", slug: detail.slug };
     } else if (detail.view === "agents-builder" && detail.slug) {
       this._route = { view: "agents-builder", slug: detail.slug };
     } else if (detail.view === "blueprints") {
@@ -841,6 +844,14 @@ export class CpApp extends LitElement {
         ></cp-runtime-pilot>
       `;
     }
+    if (this._route.view === "costs") {
+      return html`
+        <cp-costs-dashboard
+          .slug=${this._route.slug}
+          @navigate=${this._navigate}
+        ></cp-costs-dashboard>
+      `;
+    }
     return html``;
   }
 
@@ -869,7 +880,8 @@ export class CpApp extends LitElement {
               class="nav-tab ${this._route.view === "cluster" ||
               this._route.view === "agents-builder" ||
               this._route.view === "instance-settings" ||
-              this._route.view === "pilot"
+              this._route.view === "pilot" ||
+              this._route.view === "costs"
                 ? "active"
                 : ""}"
               @click=${() => {
