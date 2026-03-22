@@ -603,3 +603,32 @@ export interface ModelCost {
   costUsd: number;
   messageCount: number;
 }
+
+// ---------------------------------------------------------------------------
+// Activity Console / Events
+// ---------------------------------------------------------------------------
+
+export interface RtEvent {
+  id: number;
+  eventType: string;
+  agentId: string | null;
+  sessionId: string | null;
+  level: "info" | "warn" | "error";
+  summary: string | null;
+  payload: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface RtEventsPage {
+  events: RtEvent[];
+  nextCursor: number | null;
+}
+
+/** Lightweight event type for the live stream widget. */
+export interface LiveStreamEvent {
+  type: string;
+  level: "info" | "warn" | "error";
+  summary: string;
+  payload?: Record<string, unknown>;
+  timestamp: string;
+}

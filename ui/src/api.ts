@@ -29,6 +29,7 @@ import type {
   DailyCost,
   AgentCost,
   ModelCost,
+  RtEventsPage,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 import { getToken } from "./services/auth-state.js";
@@ -738,4 +739,45 @@ export async function fetchCostsByAgent(slug: string, period = "7d"): Promise<Ag
 
 export async function fetchCostsByModel(slug: string, period = "7d"): Promise<ModelCost[]> {
   return apiFetch<ModelCost[]>(`/instances/${slug}/costs/by-model?period=${period}`);
+}
+
+// ---------------------------------------------------------------------------
+// Activity Console / Events
+// ---------------------------------------------------------------------------
+
+export async function fetchRtEvents(
+  slug: string,
+  params?: {
+    cursor?: number;
+    limit?: number;
+    type?: string[];
+    agentId?: string;
+    level?: string;
+    since?: string;
+    until?: string;
+  },
+): Promise<RtEventsPage> {
+  const qs = new URLSearchParams();
+  if (params?.cursor) qs.set("cursor", String(params.cursor));
+  if (params?.limit) qs.set("limit", String(params.limit));
+  if (params?.type?.length) qs.set("type", params.type.join(","));
+  if (params?.agentId) qs.set("agentId", params.agentId);
+  if (params?.level) qs.set("level", params.level);
+  if (params?.since) qs.set("since", params.since);
+  if (params?.until) qs.set("until", params.until);
+  const q = qs.toString();
+  return apiFetch<RtEventsPage>(`/instances/${slug}/events${q ? `?${q}` : ""}`);
+}
+
+/** Build the SSE URL for the events stream endpoint. */
+export function getEventsStreamUrl(
+  slug: string,
+  filters?: { type?: string[]; agentId?: string; level?: string },
+): string {
+  const qs = new URLSearchParams();
+  if (filters?.type?.length) qs.set("type", filters.type.join(","));
+  if (filters?.agentId) qs.set("agentId", filters.agentId);
+  if (filters?.level) qs.set("level", filters.level);
+  const q = qs.toString();
+  return `/api/instances/${slug}/events/stream${q ? `?${q}` : ""}`;
 }

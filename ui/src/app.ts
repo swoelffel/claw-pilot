@@ -31,6 +31,8 @@ import "./components/bus-alerts.js";
 import "./components/create-agent-dialog.js";
 import "./components/profile-settings.js";
 import "./components/costs-dashboard.js";
+import "./components/activity-console.js";
+import "./components/live-stream-widget.js";
 
 // Initialize locale — resolved before first render via localeReady promise
 export const localeReady = initLocale();
@@ -703,6 +705,8 @@ export class CpApp extends LitElement {
       this._route = { view: "pilot", slug: detail.slug };
     } else if (detail.view === "costs" && detail.slug) {
       this._route = { view: "costs", slug: detail.slug };
+    } else if (detail.view === "activity" && detail.slug) {
+      this._route = { view: "activity", slug: detail.slug };
     } else if (detail.view === "agents-builder" && detail.slug) {
       this._route = { view: "agents-builder", slug: detail.slug };
     } else if (detail.view === "blueprints") {
@@ -852,6 +856,14 @@ export class CpApp extends LitElement {
         ></cp-costs-dashboard>
       `;
     }
+    if (this._route.view === "activity") {
+      return html`
+        <cp-activity-console
+          .slug=${this._route.slug}
+          @navigate=${this._navigate}
+        ></cp-activity-console>
+      `;
+    }
     return html``;
   }
 
@@ -881,7 +893,8 @@ export class CpApp extends LitElement {
               this._route.view === "agents-builder" ||
               this._route.view === "instance-settings" ||
               this._route.view === "pilot" ||
-              this._route.view === "costs"
+              this._route.view === "costs" ||
+              this._route.view === "activity"
                 ? "active"
                 : ""}"
               @click=${() => {
@@ -963,6 +976,9 @@ export class CpApp extends LitElement {
 
       <cp-bus-alerts></cp-bus-alerts>
 
+      ${"slug" in this._route && this._route.slug
+        ? html`<cp-live-stream-widget .slug=${this._route.slug}></cp-live-stream-widget>`
+        : nothing}
       ${this._useTemplateId
         ? html`<cp-create-agent-dialog
             .templateId=${this._useTemplateId}

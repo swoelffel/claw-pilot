@@ -835,6 +835,35 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v19: rt_events — persisted bus events for the Activity Console.
+    // Separate from the existing `events` audit table (which tracks registry
+    // lifecycle events). rt_events stores runtime bus events per instance.
+    version: 19,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS rt_events (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          instance_slug TEXT NOT NULL,
+          event_type    TEXT NOT NULL,
+          agent_id      TEXT,
+          session_id    TEXT,
+          level         TEXT NOT NULL DEFAULT 'info'
+            CHECK(level IN ('info', 'warn', 'error')),
+          summary       TEXT,
+          payload       TEXT,
+          created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_events_slug_created
+          ON rt_events(instance_slug, created_at);
+        CREATE INDEX IF NOT EXISTS idx_rt_events_slug_type
+          ON rt_events(instance_slug, event_type);
+        CREATE INDEX IF NOT EXISTS idx_rt_events_slug_level
+          ON rt_events(instance_slug, level);
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

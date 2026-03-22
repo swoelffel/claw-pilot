@@ -35,6 +35,8 @@ import { wirePluginsToBus } from "./plugin-wiring.js";
 import { startHeartbeatRunner } from "../heartbeat/runner.js";
 import { getRegisteredHooks } from "../plugin/hooks.js";
 import { cleanupEphemeralSessions } from "../session/cleanup.js";
+import { wireEventPersistence } from "./event-persistence.js";
+import { pruneRtEvents } from "../../core/repositories/rt-event-repository.js";
 import { logger, type Logger } from "../../lib/logger.js";
 import type { ProfileResolver } from "../profile/types.js";
 
@@ -49,6 +51,7 @@ export class ClawRuntime {
   private _pluginUnsubscribers: Array<() => void> = [];
   private _subagentUnsubscribe: (() => void) | undefined;
   private _stopHeartbeat: (() => void) | undefined;
+  private _eventPersistenceUnsub: (() => void) | undefined;
   private _cleanupTimer: ReturnType<typeof setInterval> | undefined;
   private _error: string | undefined;
   readonly log: Logger;
@@ -149,6 +152,9 @@ export class ClawRuntime {
         workDir: this.workDir,
       });
 
+      // 3d. Wire event persistence to rt_events table
+      this._eventPersistenceUnsub = wireEventPersistence(this.db, this.instanceSlug);
+
       // 4. Create and connect channels
       this._channels = createChannels(this.config, this.instanceSlug, this.db);
       const messageHandler = this._buildMessageHandler();
@@ -240,6 +246,12 @@ export class ClawRuntime {
     if (this._stopHeartbeat) {
       this._stopHeartbeat();
       this._stopHeartbeat = undefined;
+    }
+
+    // 3d. Unsubscribe event persistence
+    if (this._eventPersistenceUnsub) {
+      this._eventPersistenceUnsub();
+      this._eventPersistenceUnsub = undefined;
     }
 
     this._setState("stopped");
@@ -350,23 +362,41 @@ export class ClawRuntime {
 
   private _runCleanup(): void {
     const retentionHours = this.config.subagents?.retentionHours ?? 72;
-    if (retentionHours <= 0) return;
 
     setImmediate(() => {
+      // 1. Cleanup ephemeral sessions
+      if (retentionHours > 0) {
+        try {
+          const result = cleanupEphemeralSessions(this.db, this.instanceSlug, retentionHours);
+          if (result.sessionsDeleted > 0) {
+            this.log.info("session_cleanup", {
+              event: "session_cleanup",
+              sessionsDeleted: result.sessionsDeleted,
+              messagesDeleted: result.messagesDeleted,
+              partsDeleted: result.partsDeleted,
+              durationMs: result.durationMs,
+            });
+          }
+        } catch (err) {
+          this.log.error("session_cleanup_error", {
+            event: "session_cleanup_error",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      // 2. Prune old rt_events (keep 7 days)
       try {
-        const result = cleanupEphemeralSessions(this.db, this.instanceSlug, retentionHours);
-        if (result.sessionsDeleted > 0) {
-          this.log.info("session_cleanup", {
-            event: "session_cleanup",
-            sessionsDeleted: result.sessionsDeleted,
-            messagesDeleted: result.messagesDeleted,
-            partsDeleted: result.partsDeleted,
-            durationMs: result.durationMs,
+        const eventsDeleted = pruneRtEvents(this.db, this.instanceSlug, 7);
+        if (eventsDeleted > 0) {
+          this.log.info("rt_events_prune", {
+            event: "rt_events_prune",
+            eventsDeleted,
           });
         }
       } catch (err) {
-        this.log.error("session_cleanup_error", {
-          event: "session_cleanup_error",
+        this.log.error("rt_events_prune_error", {
+          event: "rt_events_prune_error",
           error: err instanceof Error ? err.message : String(err),
         });
       }
