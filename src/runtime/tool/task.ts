@@ -28,6 +28,7 @@ import {
 import { evaluateRuleset } from "../permission/index.js";
 import { getBus } from "../bus/index.js";
 import { SubagentCompleted } from "../bus/events.js";
+import { createUserMessage } from "../session/message.js";
 import type { InstanceSlug, PermissionRuleset, SessionId } from "../types.js";
 import { resolveModel } from "../provider/provider.js";
 import type { ResolvedModel } from "../provider/provider.js";
@@ -275,6 +276,15 @@ export function createTaskTool(options: {
             ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
           })
             .then((asyncResult) => {
+              injectTaskTrace(db, {
+                callerSessionId: ctx.sessionId,
+                callerAgentId: ctx.agentId,
+                targetAgentId: primaryPeerConfig.id,
+                targetSessionId: targetSession.id,
+                taskDescription: params.description,
+                resultText: asyncResult.text,
+                isPrimaryPeer: true,
+              });
               bus.publish(SubagentCompleted, {
                 parentSessionId: ctx.sessionId,
                 subSessionId: targetSession.id,
@@ -328,6 +338,16 @@ export function createTaskTool(options: {
           extraSystemPrompt,
           ...(compactionConfig !== undefined ? { compactionConfig } : {}),
           ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
+        });
+
+        injectTaskTrace(db, {
+          callerSessionId: ctx.sessionId,
+          callerAgentId: ctx.agentId,
+          targetAgentId: primaryPeerConfig.id,
+          targetSessionId: targetSession.id,
+          taskDescription: params.description,
+          resultText: result.text,
+          isPrimaryPeer: true,
         });
 
         const tokensTotal = result.tokens.input + result.tokens.output;
@@ -463,6 +483,14 @@ export function createTaskTool(options: {
             if (params.lifecycle !== "session") {
               archiveSession(db, sessionId);
             }
+            injectTaskTrace(db, {
+              callerSessionId: ctx.sessionId,
+              callerAgentId: ctx.agentId,
+              targetAgentId: agent.name,
+              taskDescription: params.description,
+              resultText: asyncResult.text,
+              isPrimaryPeer: false,
+            });
             bus.publish(SubagentCompleted, {
               parentSessionId: ctx.sessionId,
               subSessionId: sessionId,
@@ -518,6 +546,15 @@ export function createTaskTool(options: {
       if (params.lifecycle !== "session") {
         archiveSession(db, sessionId);
       }
+
+      injectTaskTrace(db, {
+        callerSessionId: ctx.sessionId,
+        callerAgentId: ctx.agentId,
+        targetAgentId: agent.name,
+        taskDescription: params.description,
+        resultText: result.text,
+        isPrimaryPeer: false,
+      });
 
       const stepsInfo = agentConfig.maxSteps
         ? `${result.steps}/${agentConfig.maxSteps}`
@@ -575,6 +612,52 @@ export function checkA2APolicy(
     }
   }
   return { allowed: true };
+}
+
+// ---------------------------------------------------------------------------
+// Task trace injection
+// ---------------------------------------------------------------------------
+
+/** Max length for the result summary injected into permanent sessions. */
+const TRACE_SUMMARY_MAX_LENGTH = 200;
+
+/**
+ * Inject a compact trace of a completed task into permanent sessions so that
+ * delegations survive compaction and agents remember past exchanges.
+ *
+ * For A2A primary peer tasks: both caller and target sessions get a trace.
+ * For subagent (ephemeral) tasks: only the caller session gets a trace.
+ */
+function injectTaskTrace(
+  db: Database.Database,
+  opts: {
+    callerSessionId: SessionId;
+    callerAgentId: string;
+    targetAgentId: string;
+    targetSessionId?: SessionId;
+    taskDescription: string;
+    resultText: string;
+    isPrimaryPeer: boolean;
+  },
+): void {
+  const summary =
+    opts.resultText.length > TRACE_SUMMARY_MAX_LENGTH
+      ? opts.resultText.slice(0, TRACE_SUMMARY_MAX_LENGTH) + "..."
+      : opts.resultText;
+
+  // Trace in caller's session
+  createUserMessage(db, {
+    sessionId: opts.callerSessionId,
+    text: `[delegation] Asked ${opts.targetAgentId}: "${opts.taskDescription}" → ${summary}`,
+  });
+
+  // Trace in target's permanent session (A2A primary peers only)
+  if (opts.isPrimaryPeer && opts.targetSessionId) {
+    createUserMessage(db, {
+      sessionId: opts.targetSessionId,
+      text: `[delegation] ${opts.callerAgentId} asked: "${opts.taskDescription}" → I responded: ${summary}`,
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -641,7 +724,7 @@ function createSubSession(
  * Resolve a "provider/model" string (or named alias) to a ResolvedModel.
  * Falls back to the caller's resolvedModel if resolution fails.
  */
-function resolveAgentModel(
+export function resolveAgentModel(
   modelRef: string,
   aliases: ModelAlias[],
   fallback: ResolvedModel,

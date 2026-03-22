@@ -160,6 +160,16 @@ export const SubagentCompleted = defineEvent<
   }
 >("subagent.completed");
 
+export const AgentMessageSent = defineEvent<
+  "agent.message.sent",
+  {
+    fromAgentId: AgentId;
+    toAgentId: AgentId;
+    expectReply: boolean;
+    instanceSlug: InstanceSlug;
+  }
+>("agent.message.sent");
+
 export const AgentTimeout = defineEvent<
   "agent.timeout",
   { sessionId: SessionId; agentId: AgentId; timeoutMs: number }
@@ -250,6 +260,7 @@ export type AnyEventDef =
   | typeof ChannelMessageReceived
   | typeof ChannelMessageSent
   | typeof SubagentCompleted
+  | typeof AgentMessageSent
   | typeof AgentTimeout
   | typeof HeartbeatTick
   | typeof HeartbeatAlert

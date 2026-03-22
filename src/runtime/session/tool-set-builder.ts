@@ -38,6 +38,7 @@ import {
 import { createMemorySearchTool } from "../memory/search-tool.js";
 import { rebuildMemoryIndex } from "../memory/index.js";
 import { createTaskTool } from "../tool/task.js";
+import { createSendMessageTool } from "../tool/send-message.js";
 import { invalidateWorkspaceCache } from "./workspace-cache.js";
 
 // ---------------------------------------------------------------------------
@@ -275,6 +276,47 @@ export async function buildToolSet(
           const part = getOrCreateToolCallPart(db, messageId, options.toolCallId, "task", args);
           try {
             const result = await taskDef.execute(args as never, ctx);
+            updatePartState(db, part.id, "completed", result.output);
+            bus.publish(MessageUpdated, { sessionId, messageId });
+            return result.output;
+          } catch (err) {
+            updatePartState(db, part.id, "error", err instanceof Error ? err.message : String(err));
+            bus.publish(MessageUpdated, { sessionId, messageId });
+            throw err;
+          }
+        },
+      });
+
+      // send_message — persistent inter-agent messaging
+      const sendMsgToolInfo = createSendMessageTool({
+        db,
+        instanceSlug,
+        resolvedModel,
+        workDir,
+        callerAgentConfig,
+        ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
+        ...(runtimeConfig?.models !== undefined ? { modelAliases: runtimeConfig.models } : {}),
+        ...(compactionConfig !== undefined ? { compactionConfig } : {}),
+        runPromptLoop: runPromptLoopFn,
+      });
+      const sendMsgDef = await sendMsgToolInfo.init();
+      const normalizedSendMsgParams = normalizeForProvider(
+        sendMsgDef.parameters,
+        resolvedModel.providerId,
+      );
+      set["send_message"] = aiTool({
+        description: sendMsgDef.description,
+        inputSchema: zodSchema(normalizedSendMsgParams),
+        execute: async (args: unknown, options: { toolCallId: string }) => {
+          const part = getOrCreateToolCallPart(
+            db,
+            messageId,
+            options.toolCallId,
+            "send_message",
+            args,
+          );
+          try {
+            const result = await sendMsgDef.execute(args as never, ctx);
             updatePartState(db, part.id, "completed", result.output);
             bus.publish(MessageUpdated, { sessionId, messageId });
             return result.output;
