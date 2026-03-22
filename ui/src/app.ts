@@ -344,17 +344,25 @@ export class CpApp extends LitElement {
       .btn-profile {
         display: inline-flex;
         align-items: center;
-        justify-content: center;
+        gap: 6px;
         background: none;
         border: 1px solid transparent;
         border-radius: 5px;
         color: var(--text-muted);
-        font-size: 15px;
+        font-size: 12px;
         cursor: pointer;
         padding: 4px 8px;
+        font-family: inherit;
         transition:
           border-color 0.15s,
           color 0.15s;
+      }
+
+      .profile-name {
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .btn-profile:hover {
@@ -425,6 +433,7 @@ export class CpApp extends LitElement {
   @state() private _authenticated = false;
   @state() private _authChecking = true;
   @state() private _sessionExpired = false;
+  @state() private _username: string | null = null;
   @state() private _route: Route = { view: "cluster" };
   @state() private _instances: InstanceInfo[] = [];
   @state() private _blueprintCount: number | null = null;
@@ -530,10 +539,15 @@ export class CpApp extends LitElement {
     try {
       const res = await fetch("/api/auth/me");
       if (res.ok) {
-        const data = (await res.json()) as { authenticated: boolean; token: string };
+        const data = (await res.json()) as {
+          authenticated: boolean;
+          token: string;
+          username?: string;
+        };
         if (data.authenticated && data.token) {
           setToken(data.token);
           this._authenticated = true;
+          this._username = data.username ?? null;
         }
       }
     } catch {
@@ -558,6 +572,7 @@ export class CpApp extends LitElement {
     }
     this._authenticated = false;
     this._sessionExpired = false;
+    this._username = null;
     clearToken();
     window.removeEventListener("hashchange", this._onHashChange);
     this._wsMonitor?.disconnect();
@@ -919,7 +934,19 @@ export class CpApp extends LitElement {
               window.location.hash = "#/profile";
             }}
           >
-            👤
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" /></svg
+            >${this._username ? html`<span class="profile-name">${this._username}</span>` : nothing}
           </button>
           <cp-live-stream-widget
             .slug=${"slug" in this._route ? this._route.slug : ""}
