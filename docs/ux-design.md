@@ -51,6 +51,8 @@ Since v0.7.1, navigation uses hash URLs (`#/...`). Browser back/forward and page
 | `#/instances/:slug/builder` | Agent builder | `cp-agents-builder` |
 | `#/instances/:slug/settings` | Instance settings | `cp-instance-settings` |
 | `#/instances/:slug/pilot` | Interactive chat + LLM context panel | `cp-runtime-pilot` |
+| `#/instances/:slug/costs` | Cost analytics dashboard | `cp-costs-dashboard` |
+| `#/instances/:slug/activity` | Event browser + filters | `cp-activity-console` |
 | `#/blueprints` | Blueprints view | `cp-blueprints-view` |
 | `#/blueprints/:id/builder` | Blueprint builder | `cp-blueprint-builder` |
 | `#/agent-templates` | Agent templates (reusable agent blueprints) | `cp-agent-templates-view` |
@@ -67,7 +69,7 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  ClawPilot   Instances [2]   Blueprints [3]   Templates [5]   👤  ● Live  [Sign out]│
+│  ClawPilot   Instances [2]   Blueprints [3]   Templates [5]   👤  ● Live [3]  [Sign out]│
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -78,7 +80,7 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 | **Blueprints** | Active tab if blueprints or blueprint-builder view. Numeric badge if `blueprintCount !== null && blueprintCount > 0`. |
 | **Templates** | Active tab if agent-templates or agent-template-detail view. Numeric badge if `agentTemplateCount !== null && agentTemplateCount > 0`. Links to `#/agent-templates`. |
 | **Profile** | 👤 emoji button, transparent border default, accent border on hover, accent fill when `#/profile` is active. Click → `#/profile`. |
-| **WS indicator** | Green dot (`--state-running`) + "Live" if connected; red dot (`--state-error`) + "Offline" if disconnected. |
+| **Live Stream** | `cp-live-stream-widget` — button with status dot + "Live"/"Offline" label + unread badge. Click opens dropdown panel with real-time SSE events (see [comp-live-stream-widget.md](ux-components/comp-live-stream-widget.md)). |
 | **Sign out** | Gray outline button, red hover (`--state-error`). Calls `POST /api/auth/logout` then resets local state. |
 
 **Footer** (`height: 48px`, `background: --bg-surface`):
@@ -108,6 +110,8 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 | 1 | Instances | `cp-cluster-view` | `#/instances` | instance-card, create-dialog, delete-instance-dialog, discover-dialog | [screen-instances.md](ux-screens/screen-instances.md) |
 | 2b | Instance Settings | `cp-instance-settings` | `#/instances/:slug/settings` | channels, mcp, permissions, config (inline) | [screen-instance-settings.md](ux-screens/screen-instance-settings.md) |
 | 2c | Runtime Pilot | `cp-runtime-pilot` | `#/instances/:slug/pilot` | 18 sub-components (inline) | [screen-runtime-pilot.md](ux-screens/screen-runtime-pilot.md) |
+| 2d | Cost Dashboard | `cp-costs-dashboard` | `#/instances/:slug/costs` | — (self-contained: summary cards, SVG chart, table, donut) | [screen-costs-dashboard.md](ux-screens/screen-costs-dashboard.md) |
+| 2e | Activity Console | `cp-activity-console` | `#/instances/:slug/activity` | — (self-contained: filters, event table, detail panel) | [screen-activity-console.md](ux-screens/screen-activity-console.md) |
 | 3 | Agent Builder | `cp-agents-builder` | `#/instances/:slug/builder` | agent-card-mini, agent-detail-panel, agent-links-svg | [screen-agent-builder.md](ux-screens/screen-agent-builder.md) |
 | 4 | Blueprints | `cp-blueprints-view` | `#/blueprints` | blueprint-card | [screen-blueprints.md](ux-screens/screen-blueprints.md) |
 | 5 | Blueprint Builder | `cp-blueprint-builder` | `#/blueprints/:id/builder` | agent-card-mini, agent-detail-panel, agent-links-svg | [screen-blueprint-builder.md](ux-screens/screen-blueprint-builder.md) |
@@ -130,6 +134,7 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 | Agent Links SVG | `cp-agent-links-svg` | [comp-agent-links-svg.md](ux-components/comp-agent-links-svg.md) |
 | Agent File Editor | `cp-agent-file-editor` | [comp-agent-file-editor.md](ux-components/comp-agent-file-editor.md) |
 | Session Tree | `cp-session-tree` | [comp-session-tree.md](ux-components/comp-session-tree.md) |
+| Live Stream Widget | `cp-live-stream-widget` | [comp-live-stream-widget.md](ux-components/comp-live-stream-widget.md) |
 | Permission Overlay | `cp-permission-request-overlay` | [comp-permission-overlay.md](ux-components/comp-permission-overlay.md) |
 | Bus Alerts | `cp-bus-alerts` | [comp-bus-alerts.md](ux-components/comp-bus-alerts.md) |
 
@@ -166,3 +171,5 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 *Updated: 2026-03-21 - restructuration: éclatement en ux-screens/ (9 fichiers) et ux-components/ (20 fichiers), suppression des sections deprecated*
 
 *Updated: 2026-03-21 - v0.44.0: added Profile Settings screen (cp-profile-settings), 👤 button in header, #/profile route*
+
+*Updated: 2026-03-22 - v0.45.0: added Cost Dashboard (cp-costs-dashboard, #/instances/:slug/costs), Activity Console (cp-activity-console, #/instances/:slug/activity), Live Stream Widget (cp-live-stream-widget replacing static WS indicator)*
