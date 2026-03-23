@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.47.2] — 2026-03-23
+
+### Changed
+
+- **System prompt cleanup — remove duplicated static content** : `AGENTS.md` template stripped of `## Agent` (duplicated by `<agent_identity>` block), `## Team roster` (duplicated by `<teammates>` block), and obsolete `agentToAgent` protocol. Only A2A guidance (`task` / `send_message`) and memory section remain.
+- **Remove TOOLS.md from discovery** : `TOOLS.md` was 100% redundant with auto-generated tool descriptions from Vercel AI SDK. Removed from `DISCOVERY_FILES_FULL`, `DISCOVERY_FILES_MINIMAL`, and `DISCOVERY_FILES_SUBAGENT`. Existing workspace files are simply ignored.
+- **Enriched A2A delegation context** : the `extraSystemPrompt` injected into target agents during A2A peer delegation now includes the source channel and an explicit "this is not a user message" framing.
+
+---
+
 ## [0.47.1] — 2026-03-23
 
 ### Fixed

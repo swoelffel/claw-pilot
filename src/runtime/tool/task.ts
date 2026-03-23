@@ -250,11 +250,14 @@ export function createTaskTool(options: {
         };
 
         // Build context block injected into the target agent's prompt
+        const callerSession = getSession(db, ctx.sessionId);
         const extraSystemPrompt = [
           "## Incoming delegation",
           `Agent '${ctx.agentId}' is delegating the following task to you:`,
-          `${params.description}`,
-          "Please respond with your result. It will be forwarded back to the delegating agent.",
+          `> ${params.description}`,
+          ...(callerSession?.channel ? [`Source channel: ${callerSession.channel}`] : []),
+          "This is an agent-to-agent delegation, not a direct user message.",
+          "Respond with your result — it will be forwarded back to the delegating agent.",
         ].join("\n");
 
         // Resolve the target agent's model. Fall back to caller's model if unavailable.
@@ -738,9 +741,7 @@ export function resolveAgentModel(
     if (aliases.length > 0) {
       const alias = aliases.find((a) => a.id === modelRef);
       if (alias) {
-        return resolveModel(alias.provider, alias.model, {
-          ...(env !== undefined ? { env } : {}),
-        });
+        return resolveModel(alias.provider, alias.model, env !== undefined ? { env } : {});
       }
     }
     // Standard "provider/model" format
@@ -748,9 +749,7 @@ export function resolveAgentModel(
     if (slashIdx === -1) return fallback;
     const providerId = modelRef.slice(0, slashIdx);
     const modelId = modelRef.slice(slashIdx + 1);
-    return resolveModel(providerId, modelId, {
-      ...(env !== undefined ? { env } : {}),
-    });
+    return resolveModel(providerId, modelId, env !== undefined ? { env } : {});
   } catch {
     // If model resolution fails (e.g. missing API key at task-build time),
     // fall back to the caller's model silently — the actual key is resolved

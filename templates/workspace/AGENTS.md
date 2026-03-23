@@ -1,22 +1,23 @@
-# AGENTS.md — {{agentName}} ({{instanceName}})
+# AGENTS.md — {{agentName}}
 
-## Agent
+## Inter-agent communication
 
-- **ID**: `{{agentId}}`
-- **Instance**: `{{instanceSlug}}`
+Two tools for collaborating with teammates:
 
-## Team roster
+### `task` — Delegation
+- Delegate a task to a teammate or subagent
+- Route by agent ID or by skill name (the runtime resolves automatically)
+- Modes: `sync` (wait for result) or `async` (background)
+- Include context: what, why, expected output format
 
-{{#each agents}}
-- `{{this.id}}` — {{this.name}}
-{{/each}}
+### `send_message` — Persistent messaging
+- Send a message to a teammate's permanent session
+- Both sides retain the exchange in their session history
+- Use for ongoing conversations, follow-ups, or status updates
 
-## Inter-agent protocol
-
-Delegate tasks to teammates using the `agentToAgent` tool.
-- Include context: what, why, expected output format.
-- Do not re-delegate a received task to a third agent — report back instead.
-- Use `REPLY_SKIP` when an exchange is complete.
+## Communication rules
+- Do not re-delegate a received task to a third agent — report back instead
+- Prefer `task` for focused work, `send_message` for coordination
 
 ## Memory
 

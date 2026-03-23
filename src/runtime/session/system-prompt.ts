@@ -72,26 +72,20 @@ function buildAgentIdentityBlock(ctx: AgentIdentityContext): string {
 }
 
 /** Workspace files read during auto-discovery for agents with promptMode="full". */
-const DISCOVERY_FILES_FULL = [
-  "SOUL.md",
-  "BOOTSTRAP.md",
-  "AGENTS.md",
-  "TOOLS.md",
-  "USER.md",
-] as const;
+const DISCOVERY_FILES_FULL = ["SOUL.md", "BOOTSTRAP.md", "AGENTS.md", "USER.md"] as const;
 
 /**
  * Workspace files for agents with promptMode="minimal".
  * Same as full but without BOOTSTRAP.md (already archived or not needed).
  */
-const DISCOVERY_FILES_MINIMAL = ["SOUL.md", "AGENTS.md", "TOOLS.md", "USER.md"] as const;
+const DISCOVERY_FILES_MINIMAL = ["SOUL.md", "AGENTS.md", "USER.md"] as const;
 
 /**
  * Workspace files for agents with promptMode="subagent".
  * Only method files — no identity, no memory, no heartbeat.
  * Saves 4 000–10 000 tokens per subagent call.
  */
-const DISCOVERY_FILES_SUBAGENT = ["AGENTS.md", "TOOLS.md"] as const;
+const DISCOVERY_FILES_SUBAGENT = ["AGENTS.md"] as const;
 
 // ---------------------------------------------------------------------------
 // User profile block (dynamic injection replacing static USER.md)
