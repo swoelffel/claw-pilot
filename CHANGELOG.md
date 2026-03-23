@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.48.1] — 2026-03-23
+
+### Fixed
+
+- **Fully remove TOOLS.md from codebase** : Removed `TOOLS.md` from `agent-provisioner.ts` (subagent workspace files), `runtime.ts` (workspace discovery), deleted `templates/workspace/TOOLS.md` template, and fixed E2E tests to use correct agent ID.
+
+---
+
 ## [0.47.3] — 2026-03-23
 
 ### Changed
