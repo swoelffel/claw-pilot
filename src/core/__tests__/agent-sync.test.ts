@@ -180,7 +180,7 @@ describe("AgentSync.sync()", () => {
     const workspacePath = `${STATE_DIR}/workspaces/pilot`;
     conn.files.set(`${workspacePath}/AGENTS.md`, "# Agents");
     conn.files.set(`${workspacePath}/SOUL.md`, "# Soul");
-    conn.files.set(`${workspacePath}/TOOLS.md`, "# Tools");
+    conn.files.set(`${workspacePath}/HEARTBEAT.md`, "# Heartbeat");
 
     const agentSync = new AgentSync(conn, registry);
     const result = await agentSync.sync(instance);
@@ -192,7 +192,7 @@ describe("AgentSync.sync()", () => {
     const filenames = mainAgent!.files.map((f) => f.filename);
     expect(filenames).toContain("AGENTS.md");
     expect(filenames).toContain("SOUL.md");
-    expect(filenames).toContain("TOOLS.md");
+    expect(filenames).toContain("HEARTBEAT.md");
   });
 
   it("returns correct agent structure for multi-agent config", async () => {

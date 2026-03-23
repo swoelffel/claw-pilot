@@ -146,9 +146,9 @@ describe("importBlueprintTeam()", () => {
     if (!("dry_run" in result)) {
       expect(result.agents_imported).toBe(2);
       expect(result.links_imported).toBe(1);
-      // main has SOUL.md (1 from YAML) + 4 gap-filled (AGENTS, TOOLS, USER, HEARTBEAT)
-      // helper has 0 from YAML + 5 gap-filled (all EXPORTABLE_FILES)
-      expect(result.files_written).toBe(10);
+      // main has SOUL.md (1 from YAML) + 3 gap-filled (AGENTS, USER, HEARTBEAT)
+      // helper has 0 from YAML + 4 gap-filled (all EXPORTABLE_FILES)
+      expect(result.files_written).toBe(8);
     }
   });
 
@@ -190,8 +190,8 @@ describe("importBlueprintTeam()", () => {
     if ("dry_run" in result) {
       expect(result.summary.agents_to_import).toBe(2);
       expect(result.summary.links_to_import).toBe(1);
-      // main has SOUL.md (1 YAML) + 4 gap-fills; helper has 0 YAML + 5 gap-fills = 10 total
-      expect(result.summary.files_to_write).toBe(10);
+      // main has SOUL.md (1 YAML) + 3 gap-fills; helper has 0 YAML + 4 gap-fills = 8 total
+      expect(result.summary.files_to_write).toBe(8);
       expect(result.summary.agents_to_remove).toBe(0); // no existing agents
       expect(result.summary.current_agent_count).toBe(0);
     }
@@ -278,8 +278,8 @@ describe("importInstanceTeam()", () => {
     if ("dry_run" in result) {
       expect(result.summary.agents_to_import).toBe(2);
       expect(result.summary.links_to_import).toBe(1);
-      // main has SOUL.md (1 YAML) + 4 gap-fills; helper has 0 YAML + 5 gap-fills = 10 total
-      expect(result.summary.files_to_write).toBe(10);
+      // main has SOUL.md (1 YAML) + 3 gap-fills; helper has 0 YAML + 4 gap-fills = 8 total
+      expect(result.summary.files_to_write).toBe(8);
     }
 
     // No agents should have been written to DB
@@ -368,10 +368,10 @@ describe("importInstanceTeam()", () => {
     const result = await importInstanceTeam(db, registry, conn, instance, team, "/run/user/1000");
 
     if (!("dry_run" in result)) {
-      // main: 1 YAML (SOUL.md) + 4 gap-filled (AGENTS, TOOLS, USER, HEARTBEAT) = 5
-      // helper: 0 YAML + 5 gap-filled (all EXPORTABLE_FILES) = 5
-      // Total: 10
-      expect(result.files_written).toBe(10);
+      // main: 1 YAML (SOUL.md) + 3 gap-filled (AGENTS, USER, HEARTBEAT) = 4
+      // helper: 0 YAML + 4 gap-filled (all EXPORTABLE_FILES) = 4
+      // Total: 8
+      expect(result.files_written).toBe(8);
     }
   });
 });
@@ -381,9 +381,9 @@ describe("importInstanceTeam()", () => {
 // ---------------------------------------------------------------------------
 
 describe("gap-fill — missing workspace files seeded from templates", () => {
-  it("blueprint import — partial files get gap-filled to all 5 EXPORTABLE_FILES", async () => {
+  it("blueprint import — partial files get gap-filled to all 4 EXPORTABLE_FILES", async () => {
     const blueprint = seedBlueprint();
-    // Agent with only AGENTS.md and SOUL.md — missing TOOLS, USER, HEARTBEAT
+    // Agent with only AGENTS.md and SOUL.md — missing USER, HEARTBEAT
     const team: TeamFile = {
       version: "1",
       exported_at: "2026-01-01T00:00:00Z",
@@ -406,8 +406,8 @@ describe("gap-fill — missing workspace files seeded from templates", () => {
     const files = registry.listAgentFiles(agents[0]!.id);
     const filenames = files.map((f) => f.filename).sort();
 
-    // Should have all 5 EXPORTABLE_FILES
-    expect(filenames).toEqual(["AGENTS.md", "HEARTBEAT.md", "SOUL.md", "TOOLS.md", "USER.md"]);
+    // Should have all 4 EXPORTABLE_FILES
+    expect(filenames).toEqual(["AGENTS.md", "HEARTBEAT.md", "SOUL.md", "USER.md"]);
   });
 
   it("blueprint import — YAML-provided files are NOT overwritten by templates", async () => {
@@ -434,7 +434,7 @@ describe("gap-fill — missing workspace files seeded from templates", () => {
     expect(soulFile?.content).toBe(customContent);
   });
 
-  it("blueprint import — agent with ALL 5 EXPORTABLE files gets zero gap-fills", async () => {
+  it("blueprint import — agent with ALL 4 EXPORTABLE files gets zero gap-fills", async () => {
     const blueprint = seedBlueprint();
     const team: TeamFile = {
       version: "1",
@@ -447,7 +447,6 @@ describe("gap-fill — missing workspace files seeded from templates", () => {
           files: {
             "AGENTS.md": "# A",
             "SOUL.md": "# S",
-            "TOOLS.md": "# T",
             "USER.md": "# U",
             "HEARTBEAT.md": "# H",
           },
@@ -459,8 +458,8 @@ describe("gap-fill — missing workspace files seeded from templates", () => {
     const result = await importBlueprintTeam(db, registry, blueprint.id, team);
 
     if (!("dry_run" in result)) {
-      // 5 YAML files, 0 gap-filled
-      expect(result.files_written).toBe(5);
+      // 4 YAML files, 0 gap-filled
+      expect(result.files_written).toBe(4);
     }
   });
 
@@ -468,7 +467,7 @@ describe("gap-fill — missing workspace files seeded from templates", () => {
     const instance = seedInstance();
     conn.files.set(CONFIG_PATH, MINIMAL_RUNTIME_JSON);
 
-    // Agent with only USER.md — missing 5 other EXPORTABLE_FILES
+    // Agent with only USER.md — missing 3 other EXPORTABLE_FILES
     const team: TeamFile = {
       version: "1",
       exported_at: "2026-01-01T00:00:00Z",
@@ -491,7 +490,7 @@ describe("gap-fill — missing workspace files seeded from templates", () => {
     expect(conn.files.get(path.join(workspaceDir, "USER.md"))).toBe("# Custom user");
 
     // Gap-filled files should exist on disk
-    for (const filename of ["AGENTS.md", "SOUL.md", "TOOLS.md", "HEARTBEAT.md"]) {
+    for (const filename of ["AGENTS.md", "SOUL.md", "HEARTBEAT.md"]) {
       const filePath = path.join(workspaceDir, filename);
       expect(conn.files.has(filePath)).toBe(true);
       // Gap-filled content should not be empty
@@ -519,11 +518,11 @@ describe("gap-fill — missing workspace files seeded from templates", () => {
 
     await importInstanceTeam(db, registry, conn, instance, team, "/run/user/1000");
 
-    // Check DB has all 5 EXPORTABLE files for the agent
+    // Check DB has all 4 EXPORTABLE files for the agent
     const agents = registry.listAgents("test-inst");
     expect(agents).toHaveLength(1);
     const files = registry.listAgentFiles(agents[0]!.id);
     const filenames = files.map((f) => f.filename).sort();
-    expect(filenames).toEqual(["AGENTS.md", "HEARTBEAT.md", "SOUL.md", "TOOLS.md", "USER.md"]);
+    expect(filenames).toEqual(["AGENTS.md", "HEARTBEAT.md", "SOUL.md", "USER.md"]);
   });
 });

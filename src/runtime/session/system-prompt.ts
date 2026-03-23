@@ -336,9 +336,9 @@ function resolveWorkspaceDir(workDir: string, agentId: string): string | undefin
 
 /**
  * Resolve the discovery file list based on the agent's promptMode.
- * - "full" (default for primary agents): all workspace files including HEARTBEAT.md
- * - "minimal": core files only, excludes HEARTBEAT.md
- * - "subagent": method files only (AGENTS.md, TOOLS.md) — for ephemeral subagents
+ * - "full" (default for primary agents): SOUL.md, BOOTSTRAP.md, AGENTS.md, USER.md + memory
+ * - "minimal": SOUL.md, AGENTS.md, USER.md + memory
+ * - "subagent": AGENTS.md only — for ephemeral subagents
  *
  * If promptMode is not set, infer from agent kind:
  * - kind="subagent" → "subagent"

@@ -209,7 +209,7 @@ export const templates = {
   "catd-cat-tool": "Strumento",
   "catd-cat-system": "Sistema",
   "catd-seed-files": "Crea file workspace predefiniti",
-  "catd-seed-files-hint": "Crea SOUL.md, AGENTS.md, TOOLS.md, BOOTSTRAP.md, USER.md, HEARTBEAT.md",
+  "catd-seed-files-hint": "Crea SOUL.md, AGENTS.md, BOOTSTRAP.md, USER.md, HEARTBEAT.md",
   "catd-btn-cancel": "Annulla",
   "catd-btn-creating": "Creazione...",
   "catd-btn-create": "Crea",

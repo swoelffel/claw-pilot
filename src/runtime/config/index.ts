@@ -108,9 +108,9 @@ const AgentConfigSchema = z.object({
   toolProfile: z.enum(["minimal", "coding", "messaging", "full"]).default("coding"),
   /**
    * Controls which workspace files are injected into the system prompt.
-   * - "full": all files including BOOTSTRAP.md and HEARTBEAT.md (default for primary agents)
-   * - "minimal": core files only, excludes HEARTBEAT.md
-   * - "subagent": method files only (AGENTS.md, TOOLS.md) — for ephemeral subagents
+   * - "full": SOUL.md, BOOTSTRAP.md, AGENTS.md, USER.md + memory (default for primary agents)
+   * - "minimal": SOUL.md, AGENTS.md, USER.md + memory
+   * - "subagent": AGENTS.md only — for ephemeral subagents
    * If omitted, inferred from kind: primary→full, subagent→subagent.
    */
   promptMode: z.enum(["full", "minimal", "subagent"]).optional(),

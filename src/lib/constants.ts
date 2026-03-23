@@ -38,7 +38,6 @@ export const constants = {
   DISCOVERABLE_FILES: [
     "AGENTS.md",
     "SOUL.md",
-    "TOOLS.md",
     "USER.md",
     "HEARTBEAT.md",
     "MEMORY.md",
@@ -46,20 +45,12 @@ export const constants = {
   ] as const,
 
   /** Subset of discoverable files that the dashboard UI is allowed to edit. */
-  EDITABLE_FILES: [
-    "AGENTS.md",
-    "SOUL.md",
-    "TOOLS.md",
-    "BOOTSTRAP.md",
-    "USER.md",
-    "HEARTBEAT.md",
-  ] as const,
+  EDITABLE_FILES: ["AGENTS.md", "SOUL.md", "BOOTSTRAP.md", "USER.md", "HEARTBEAT.md"] as const,
 
   /** Files created from templates during provisioning/deployment (on disk). */
   TEMPLATE_FILES: [
     "AGENTS.md",
     "SOUL.md",
-    "TOOLS.md",
     "BOOTSTRAP.md",
     "USER.md",
     "HEARTBEAT.md",
@@ -67,10 +58,10 @@ export const constants = {
   ] as const,
 
   /** Files included in .team.yaml exports and expected during import. */
-  EXPORTABLE_FILES: ["AGENTS.md", "SOUL.md", "TOOLS.md", "USER.md", "HEARTBEAT.md"] as const,
+  EXPORTABLE_FILES: ["AGENTS.md", "SOUL.md", "USER.md", "HEARTBEAT.md"] as const,
 
   // Legacy alias — kept for backward compat, prefer the specific lists above.
-  WORKSPACE_FILES: ["AGENTS.md", "SOUL.md", "TOOLS.md", "USER.md", "MEMORY.md"],
+  WORKSPACE_FILES: ["AGENTS.md", "SOUL.md", "USER.md", "MEMORY.md"],
 
   // PATH prefix for non-interactive SSH sessions on Linux servers
   SSH_PATH_PREFIX: "export PATH=~/.npm-global/bin:/usr/local/bin:/usr/bin:/bin",

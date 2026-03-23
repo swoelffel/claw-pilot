@@ -209,8 +209,7 @@ export const templates = {
   "catd-cat-tool": "Werkzeug",
   "catd-cat-system": "System",
   "catd-seed-files": "Standard-Workspace-Dateien erstellen",
-  "catd-seed-files-hint":
-    "Erstellt SOUL.md, AGENTS.md, TOOLS.md, BOOTSTRAP.md, USER.md, HEARTBEAT.md",
+  "catd-seed-files-hint": "Erstellt SOUL.md, AGENTS.md, BOOTSTRAP.md, USER.md, HEARTBEAT.md",
   "catd-btn-cancel": "Abbrechen",
   "catd-btn-creating": "Erstellen...",
   "catd-btn-create": "Erstellen",

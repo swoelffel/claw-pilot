@@ -23,14 +23,7 @@ import { agentDetailPanelStyles } from "../styles/agent-detail-panel.styles.js";
 import { getToken } from "../services/auth-state.js";
 import "./agent-file-editor.js";
 
-const EDITABLE_FILES = new Set([
-  "AGENTS.md",
-  "SOUL.md",
-  "TOOLS.md",
-  "BOOTSTRAP.md",
-  "USER.md",
-  "HEARTBEAT.md",
-]);
+const EDITABLE_FILES = new Set(["AGENTS.md", "SOUL.md", "BOOTSTRAP.md", "USER.md", "HEARTBEAT.md"]);
 
 @localized()
 @customElement("cp-agent-detail-panel")
