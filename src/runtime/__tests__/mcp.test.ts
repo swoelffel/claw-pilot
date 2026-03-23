@@ -18,43 +18,53 @@ import { parseRuntimeConfig } from "../config/index.js";
 // ---------------------------------------------------------------------------
 
 // We mock the entire SDK so tests don't need a real MCP server.
+// Vitest 4 requires vi.fn() used with `new` to wrap a function constructor, not an arrow.
 vi.mock("@modelcontextprotocol/sdk/client/index.js", () => {
   return {
-    Client: vi.fn().mockImplementation(() => ({
-      connect: vi.fn().mockResolvedValue(undefined),
-      listTools: vi.fn().mockResolvedValue({
-        tools: [
-          {
-            name: "read_file",
-            description: "Read a file",
-            inputSchema: { type: "object", properties: { path: { type: "string" } } },
-          },
-          {
-            name: "write file", // name with space — should be sanitized
-            description: "Write a file",
-            inputSchema: { type: "object", properties: {} },
-          },
-        ],
-      }),
-      callTool: vi.fn().mockResolvedValue({
-        content: [{ type: "text", text: "file contents" }],
-      }),
-      close: vi.fn().mockResolvedValue(undefined),
-    })),
+    Client: vi.fn().mockImplementation(function () {
+      return {
+        connect: vi.fn().mockResolvedValue(undefined),
+        listTools: vi.fn().mockResolvedValue({
+          tools: [
+            {
+              name: "read_file",
+              description: "Read a file",
+              inputSchema: { type: "object", properties: { path: { type: "string" } } },
+            },
+            {
+              name: "write file", // name with space — should be sanitized
+              description: "Write a file",
+              inputSchema: { type: "object", properties: {} },
+            },
+          ],
+        }),
+        callTool: vi.fn().mockResolvedValue({
+          content: [{ type: "text", text: "file contents" }],
+        }),
+        close: vi.fn().mockResolvedValue(undefined),
+        setNotificationHandler: vi.fn(),
+      };
+    }),
   };
 });
 
 vi.mock("@modelcontextprotocol/sdk/client/stdio.js", () => ({
-  StdioClientTransport: vi.fn().mockImplementation(() => ({})),
+  StdioClientTransport: vi.fn().mockImplementation(function () {
+    return {};
+  }),
 }));
 
 vi.mock("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
-  StreamableHTTPClientTransport: vi.fn().mockImplementation(() => ({})),
+  StreamableHTTPClientTransport: vi.fn().mockImplementation(function () {
+    return {};
+  }),
   StreamableHTTPError: class StreamableHTTPError extends Error {},
 }));
 
 vi.mock("@modelcontextprotocol/sdk/client/sse.js", () => ({
-  SSEClientTransport: vi.fn().mockImplementation(() => ({})),
+  SSEClientTransport: vi.fn().mockImplementation(function () {
+    return {};
+  }),
   SseError: class SseError extends Error {},
 }));
 

@@ -17,5 +17,6 @@
     "@types/dompurify"
   ],
   "ignoreExportsUsedInFile": true,
+  "ignoreMembers": ["Summary"],
   "tags": ["-public"]
 }
