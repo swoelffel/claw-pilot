@@ -34,6 +34,9 @@ import type {
   MemoryFileInfo,
   MemoryFileContent,
   MemorySearchResponse,
+  HeartbeatScheduleAgent,
+  HeartbeatHourBucket,
+  HeartbeatAgentStats,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 import { getToken } from "./services/auth-state.js";
@@ -822,4 +825,23 @@ export async function searchMemoryFiles(
   if (opts?.agentId) qs.set("agentId", opts.agentId);
   if (opts?.limit) qs.set("limit", String(opts.limit));
   return apiFetch<MemorySearchResponse>(`/instances/${slug}/memory/search?${qs.toString()}`);
+}
+
+// ---------------------------------------------------------------------------
+// Heartbeat Heatmap
+// ---------------------------------------------------------------------------
+
+export async function fetchHeartbeatSchedule(
+  slug: string,
+): Promise<{ agents: HeartbeatScheduleAgent[] }> {
+  return apiFetch<{ agents: HeartbeatScheduleAgent[] }>(`/instances/${slug}/heartbeat/schedule`);
+}
+
+export async function fetchHeartbeatHeatmap(
+  slug: string,
+  days: 7 | 14 | 30 = 7,
+): Promise<{ period: string; buckets: HeartbeatHourBucket[]; stats: HeartbeatAgentStats[] }> {
+  return apiFetch<{ period: string; buckets: HeartbeatHourBucket[]; stats: HeartbeatAgentStats[] }>(
+    `/instances/${slug}/heartbeat/heatmap?days=${days}`,
+  );
 }

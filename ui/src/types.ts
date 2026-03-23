@@ -668,3 +668,31 @@ export interface MemorySearchResponse {
   query: string;
   results: MemorySearchResult[];
 }
+
+// ---------------------------------------------------------------------------
+// Heartbeat Heatmap
+// ---------------------------------------------------------------------------
+
+export interface HeartbeatScheduleAgent {
+  agentId: string;
+  every: string;
+  model?: string;
+  activeHours?: { start: string; end: string; tz?: string };
+}
+
+export interface HeartbeatHourBucket {
+  agentId: string;
+  day: string;
+  hour: number;
+  tickCount: number;
+  alertCount: number;
+  okCount: number;
+}
+
+export interface HeartbeatAgentStats {
+  agentId: string;
+  totalTicks: number;
+  totalAlerts: number;
+  firstTick: string | null;
+  lastTick: string | null;
+}
