@@ -115,9 +115,9 @@ describe("Blueprints API — full CRUD", () => {
     expect(body.blueprint.id).toBe(blueprintId);
     expect(Array.isArray(body.agents)).toBe(true);
     expect(Array.isArray(body.links)).toBe(true);
-    // Default "main" agent is seeded on creation
-    const main = body.agents.find((a: any) => a.agent_id === "main");
-    expect(main).toBeDefined();
+    // Default "pilot" agent is seeded on creation
+    const pilot = body.agents.find((a: any) => a.agent_id === "pilot");
+    expect(pilot).toBeDefined();
   });
 
   it("GET /api/blueprints/:id/builder with unknown id → 404 NOT_FOUND", async () => {
@@ -221,10 +221,10 @@ describe("Blueprints API — full CRUD", () => {
   // ─── Agent files ───────────────────────────────────────────────────────────
 
   it("GET /api/blueprints/:id/agents/:agentId/files/:filename → 200, has content", async () => {
-    // The "main" agent is seeded with workspace files on blueprint creation
+    // The "pilot" agent is seeded with workspace files on blueprint creation
     const res = await ctx.client
       .withBearer()
-      .get(`/api/blueprints/${blueprintId}/agents/main/files/AGENTS.md`);
+      .get(`/api/blueprints/${blueprintId}/agents/pilot/files/AGENTS.md`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as any;
     expect(body.filename).toBe("AGENTS.md");
@@ -236,7 +236,7 @@ describe("Blueprints API — full CRUD", () => {
   it("GET /api/blueprints/:id/agents/:agentId/files/:filename with unknown file → 404 FILE_NOT_FOUND", async () => {
     const res = await ctx.client
       .withBearer()
-      .get(`/api/blueprints/${blueprintId}/agents/main/files/NONEXISTENT.md`);
+      .get(`/api/blueprints/${blueprintId}/agents/pilot/files/NONEXISTENT.md`);
     expect(res.status).toBe(404);
     const body = (await res.json()) as any;
     expect(body.code).toBe("FILE_NOT_FOUND");
@@ -246,7 +246,7 @@ describe("Blueprints API — full CRUD", () => {
     const newContent = "# AGENTS.md\n\nUpdated by e2e test.\n";
     const res = await ctx.client
       .withBearer()
-      .put(`/api/blueprints/${blueprintId}/agents/main/files/AGENTS.md`, {
+      .put(`/api/blueprints/${blueprintId}/agents/pilot/files/AGENTS.md`, {
         content: newContent,
       });
     expect(res.status).toBe(200);
@@ -259,7 +259,7 @@ describe("Blueprints API — full CRUD", () => {
   it("GET /api/blueprints/:id/agents/:agentId/files/:filename after PUT → reflects new content", async () => {
     const res = await ctx.client
       .withBearer()
-      .get(`/api/blueprints/${blueprintId}/agents/main/files/AGENTS.md`);
+      .get(`/api/blueprints/${blueprintId}/agents/pilot/files/AGENTS.md`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as any;
     expect(body.content).toBe("# AGENTS.md\n\nUpdated by e2e test.\n");
@@ -270,7 +270,7 @@ describe("Blueprints API — full CRUD", () => {
   it("PATCH /api/blueprints/:id/agents/:agentId/spawn-links → 200, links updated", async () => {
     const res = await ctx.client
       .withBearer()
-      .patch(`/api/blueprints/${blueprintId}/agents/main/spawn-links`, {
+      .patch(`/api/blueprints/${blueprintId}/agents/pilot/spawn-links`, {
         targets: ["helper"],
       });
     expect(res.status).toBe(200);
@@ -278,7 +278,7 @@ describe("Blueprints API — full CRUD", () => {
     expect(body.ok).toBe(true);
     expect(Array.isArray(body.links)).toBe(true);
     const link = body.links.find(
-      (l: any) => l.source_agent_id === "main" && l.target_agent_id === "helper",
+      (l: any) => l.source_agent_id === "pilot" && l.target_agent_id === "helper",
     );
     expect(link).toBeDefined();
     expect(link.link_type).toBe("spawn");
@@ -287,14 +287,14 @@ describe("Blueprints API — full CRUD", () => {
   it("PATCH spawn-links with empty targets → 200, spawn links cleared", async () => {
     const res = await ctx.client
       .withBearer()
-      .patch(`/api/blueprints/${blueprintId}/agents/main/spawn-links`, {
+      .patch(`/api/blueprints/${blueprintId}/agents/pilot/spawn-links`, {
         targets: [],
       });
     expect(res.status).toBe(200);
     const body = (await res.json()) as any;
     expect(body.ok).toBe(true);
     const spawnLinks = body.links.filter(
-      (l: any) => l.source_agent_id === "main" && l.link_type === "spawn",
+      (l: any) => l.source_agent_id === "pilot" && l.link_type === "spawn",
     );
     expect(spawnLinks.length).toBe(0);
   });
@@ -302,7 +302,7 @@ describe("Blueprints API — full CRUD", () => {
   it("PATCH spawn-links with unknown blueprint → 404 NOT_FOUND", async () => {
     const res = await ctx.client
       .withBearer()
-      .patch("/api/blueprints/99999/agents/main/spawn-links", { targets: [] });
+      .patch("/api/blueprints/99999/agents/pilot/spawn-links", { targets: [] });
     expect(res.status).toBe(404);
     const body = (await res.json()) as any;
     expect(body.code).toBe("NOT_FOUND");
