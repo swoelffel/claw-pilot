@@ -6,6 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.47.1] — 2026-03-23
+
+### Fixed
+
+- **A2A provider key resolution** : `resolveAgentModel()` in the task tool now receives an explicit `env` map (merged from global `~/.claw-pilot/.env` + instance `.env`), so delegating to agents using a different provider (e.g. OpenAI) no longer fails with a missing API key error. Previously, `resolveModel()` fell back to `process.env` which was incomplete in the dashboard chat path.
+- **Dashboard chat — missing profile merge** : the `/runtime/chat` endpoint now uses `loadMergedConfig()` with `CommunityProfileResolver`, so user-level provider configs from the DB (`user_providers`) are included in the runtime config — matching the daemon behavior.
+- **Dashboard chat — incomplete env loading** : replaced `readEnvFileSync(stateDir)` with `buildResolvedEnv(stateDir)` which merges both global and instance `.env` files.
+- **Heartbeat model resolution** : the heartbeat runner's `resolveModel` lambda now passes an explicit `env` map from `buildResolvedEnv()` instead of relying on `process.env`.
+
+### Added
+
+- `buildResolvedEnv(stateDir)` helper in `env-reader.ts` — single function to merge global + instance `.env` files (instance wins).
+
+---
+
 ## [0.41.42] — 2026-03-19
 
 ### Fixed

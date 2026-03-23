@@ -2,6 +2,7 @@
 import * as path from "node:path";
 import * as fs from "node:fs";
 import type { ServerConnection } from "../server/connection.js";
+import { getDataDir } from "./platform.js";
 
 /**
  * Read all environment variables from an instance's .env file (synchronously).
@@ -29,6 +30,16 @@ export function readEnvFileSync(stateDir: string): Record<string, string> {
     // .env missing or unreadable — return empty object
   }
   return result;
+}
+
+/**
+ * Build a merged env map from global (~/.claw-pilot/.env) and instance (<stateDir>/.env).
+ * Instance values override global values.
+ */
+export function buildResolvedEnv(stateDir: string): Record<string, string> {
+  const globalEnv = readEnvFileSync(getDataDir());
+  const instanceEnv = readEnvFileSync(stateDir);
+  return { ...globalEnv, ...instanceEnv };
 }
 
 /**

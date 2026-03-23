@@ -8,10 +8,12 @@ import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
 import { instanceGuard } from "../../../lib/guards.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
-import { readEnvFileSync } from "../../../lib/env-reader.js";
+import { buildResolvedEnv } from "../../../lib/env-reader.js";
+import { CommunityProfileResolver } from "../../../runtime/profile/community-resolver.js";
+import { UserProfileRepository } from "../../../core/repositories/user-profile-repository.js";
 import {
   runtimeConfigExists,
-  loadRuntimeConfig,
+  loadMergedConfig,
   listMessages,
   listParts,
   resolveModel,
@@ -57,7 +59,8 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
 
     let config;
     try {
-      config = loadRuntimeConfig(stateDir);
+      const profileResolver = new CommunityProfileResolver(new UserProfileRepository(db));
+      config = loadMergedConfig(stateDir, profileResolver);
     } catch (err) {
       return apiError(
         c,
@@ -184,7 +187,8 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
 
     let config;
     try {
-      config = loadRuntimeConfig(stateDir);
+      const profileResolver = new CommunityProfileResolver(new UserProfileRepository(db));
+      config = loadMergedConfig(stateDir, profileResolver);
     } catch (err) {
       return apiError(
         c,
@@ -477,7 +481,8 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
 
     let config;
     try {
-      config = loadRuntimeConfig(stateDir);
+      const profileResolver = new CommunityProfileResolver(new UserProfileRepository(db));
+      config = loadMergedConfig(stateDir, profileResolver);
     } catch (err) {
       return apiError(
         c,
@@ -522,11 +527,11 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       );
     }
 
-    // Load instance env vars for API key resolution.
+    // Load merged env (global ~/.claw-pilot/.env + instance .env) for API key resolution.
     // Inject into process.env so downstream resolveModel calls (e.g. A2A model resolution
     // inside the task tool) can also find them — mirrors what the runtime daemon does at startup.
-    const instanceEnv = readEnvFileSync(stateDir);
-    for (const [key, value] of Object.entries(instanceEnv)) {
+    const mergedEnv = buildResolvedEnv(stateDir);
+    for (const [key, value] of Object.entries(mergedEnv)) {
       if (process.env[key] === undefined) {
         process.env[key] = value;
       }
@@ -535,7 +540,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     let resolvedModelObj;
     try {
       resolvedModelObj = resolveModel(modelStr.slice(0, slashIdx), modelStr.slice(slashIdx + 1), {
-        env: instanceEnv,
+        env: mergedEnv,
       });
     } catch (err) {
       return apiError(

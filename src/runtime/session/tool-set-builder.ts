@@ -40,6 +40,7 @@ import { rebuildMemoryIndex } from "../memory/index.js";
 import { createTaskTool } from "../tool/task.js";
 import { createSendMessageTool } from "../tool/send-message.js";
 import { invalidateWorkspaceCache } from "./workspace-cache.js";
+import { buildResolvedEnv } from "../../lib/env-reader.js";
 
 // ---------------------------------------------------------------------------
 // Part helpers
@@ -251,6 +252,7 @@ export async function buildToolSet(
   if (callerAgentConfig && agentKind !== "subagent") {
     const profile = callerAgentConfig.toolProfile ?? "coding";
     if (profile === "full") {
+      const env = workDir ? buildResolvedEnv(workDir) : undefined;
       const taskToolInfo = createTaskTool({
         db,
         instanceSlug,
@@ -262,6 +264,7 @@ export async function buildToolSet(
         callerAgentConfig,
         ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
         ...(runtimeConfig?.models !== undefined ? { modelAliases: runtimeConfig.models } : {}),
+        ...(env !== undefined ? { env } : {}),
         runPromptLoop: runPromptLoopFn,
       });
       const taskDef = await taskToolInfo.init();

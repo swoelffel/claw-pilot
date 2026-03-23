@@ -95,6 +95,8 @@ export function createTaskTool(options: {
    * Model aliases from the runtime config — used to resolve the model of a primary peer agent.
    */
   modelAliases?: ModelAlias[];
+  /** Merged env map (global + instance .env) — used to resolve API keys for target agents */
+  env?: Record<string, string>;
   /** Injected prompt loop runner — breaks circular dependency with session/prompt-loop */
   runPromptLoop: (input: TaskPromptLoopInput) => Promise<TaskPromptLoopResult>;
 }): Tool.Info {
@@ -109,6 +111,7 @@ export function createTaskTool(options: {
     callerAgentConfig,
     runtimeAgentConfigs,
     modelAliases,
+    env,
     runPromptLoop,
   } = options;
 
@@ -256,7 +259,7 @@ export function createTaskTool(options: {
 
         // Resolve the target agent's model. Fall back to caller's model if unavailable.
         const targetModel: ResolvedModel = primaryPeerConfig.model
-          ? resolveAgentModel(primaryPeerConfig.model, modelAliases ?? [], resolvedModel)
+          ? resolveAgentModel(primaryPeerConfig.model, modelAliases ?? [], resolvedModel, env)
           : resolvedModel;
 
         if (params.mode === "async") {
@@ -728,13 +731,16 @@ export function resolveAgentModel(
   modelRef: string,
   aliases: ModelAlias[],
   fallback: ResolvedModel,
+  env?: Record<string, string>,
 ): ResolvedModel {
   try {
     // Try alias resolution first
     if (aliases.length > 0) {
       const alias = aliases.find((a) => a.id === modelRef);
       if (alias) {
-        return resolveModel(alias.provider, alias.model);
+        return resolveModel(alias.provider, alias.model, {
+          ...(env !== undefined ? { env } : {}),
+        });
       }
     }
     // Standard "provider/model" format
@@ -742,7 +748,9 @@ export function resolveAgentModel(
     if (slashIdx === -1) return fallback;
     const providerId = modelRef.slice(0, slashIdx);
     const modelId = modelRef.slice(slashIdx + 1);
-    return resolveModel(providerId, modelId);
+    return resolveModel(providerId, modelId, {
+      ...(env !== undefined ? { env } : {}),
+    });
   } catch {
     // If model resolution fails (e.g. missing API key at task-build time),
     // fall back to the caller's model silently — the actual key is resolved
