@@ -62,8 +62,9 @@ export class BlueprintDeployer {
       }
 
       // Add to agents[] array in runtime.json
+      let agentEntry: Record<string, unknown>;
       {
-        const agentEntry: Record<string, unknown> = {
+        agentEntry = {
           id: bpAgent.agent_id,
           name: bpAgent.name,
           permissions: [],
@@ -113,6 +114,7 @@ export class BlueprintDeployer {
         isDefault,
         position_x: bpAgent.position_x ?? null,
         position_y: bpAgent.position_y ?? null,
+        configJson: JSON.stringify(agentEntry),
       });
 
       // Copy files to instance agent DB cache

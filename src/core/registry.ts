@@ -126,6 +126,9 @@ export class Registry {
   updateAgentMeta(agentDbId: number, fields: Parameters<AgentRepository["updateAgentMeta"]>[1]) {
     return this.agents.updateAgentMeta(agentDbId, fields);
   }
+  updateAgentConfig(agentDbId: number, configJson: string) {
+    return this.agents.updateAgentConfig(agentDbId, configJson);
+  }
   updateAgentPosition(agentDbId: number, x: number, y: number) {
     return this.agents.updateAgentPosition(agentDbId, x, y);
   }

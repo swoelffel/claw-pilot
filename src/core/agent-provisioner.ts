@@ -103,25 +103,28 @@ export class AgentProvisioner {
     if (!Array.isArray(config["agents"])) {
       config["agents"] = [];
     }
-    (config["agents"] as unknown[]).push({
+    const agentConfigBlock = {
       id: data.agentSlug,
       name: data.name,
       model: `${data.provider}/${data.model}`,
       permissions: [],
       ...(data.toolProfile ? { toolProfile: data.toolProfile } : {}),
-    });
+    };
+    (config["agents"] as unknown[]).push(agentConfigBlock);
 
     await this.conn.writeFile(instance.config_path, JSON.stringify(config, null, 2) + "\n");
 
-    // Upsert agent in DB
+    // Upsert agent in DB with full config_json
     this.registry.upsertAgent(instance.id, {
       agentId: data.agentSlug,
       name: data.name,
       model: `${data.provider}/${data.model}`,
       workspacePath: workspaceDir,
       isDefault: false,
+      configJson: JSON.stringify(agentConfigBlock),
     });
 
+    // Save optional metadata fields to DB
     if (data.role) {
       const agent = this.registry.getAgentByAgentId(instance.id, data.agentSlug);
       if (agent) {

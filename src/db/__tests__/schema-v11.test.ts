@@ -213,7 +213,7 @@ describe("migration v11 — rt_sessions new columns", () => {
     const db = initDatabase(dbPath);
 
     // Assert: v18 is the latest migration (drop user_model_aliases)
-    expect(schemaVersion(db)).toBe(19);
+    expect(schemaVersion(db)).toBe(20);
     db.close();
   });
 });

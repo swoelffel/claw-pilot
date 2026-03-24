@@ -174,6 +174,9 @@ export class AgentSync {
 
       let agentDbId: number;
 
+      // Serialize the full agent config block as config_json
+      const configJson = JSON.stringify(ca.rawBlock);
+
       if (!existing) {
         // New agent — upsert creates the row (no position yet → null)
         const created = this.registry.upsertAgent(instance.id, {
@@ -182,6 +185,7 @@ export class AgentSync {
           ...(ca.model != null && { model: ca.model }),
           workspacePath: ca.workspacePath,
           isDefault: ca.isDefault,
+          configJson,
         });
         agentDbId = created.id;
         agentsAdded.push(ca.agentId);
@@ -198,8 +202,12 @@ export class AgentSync {
             isDefault: ca.isDefault,
             position_x: existing.position_x,
             position_y: existing.position_y,
+            configJson,
           });
           agentsUpdated.push(ca.agentId);
+        } else if (existing.config_json == null) {
+          // Backfill config_json for agents that were synced before v20
+          this.registry.updateAgentConfig(agentDbId, configJson);
         }
       }
 

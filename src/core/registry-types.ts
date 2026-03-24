@@ -49,6 +49,8 @@ export interface AgentRecord {
   position_y: number | null;
   config_hash: string | null;
   synced_at: string | null;
+  /** Full RuntimeAgentConfig as JSON — source of truth for all agent config fields (v20+). */
+  config_json: string | null;
 }
 
 export interface AgentFileRecord {
