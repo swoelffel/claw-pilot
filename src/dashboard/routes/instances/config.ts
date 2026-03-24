@@ -685,19 +685,27 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
               agent.heartbeat = agentPatch.heartbeat as typeof agent.heartbeat;
             }
           }
-          // Sync name to DB if changed
-          if (agentPatch.name !== undefined) {
+          // Sync name / model to DB so the builder reflects changes immediately
+          if (agentPatch.name !== undefined || agentPatch.model !== undefined) {
             try {
               const dbAgent = registry.getAgentByAgentId(instance!.id, agentPatch.id);
-              if (dbAgent)
-                registry.updateAgentMeta(dbAgent.id, {
-                  role: null,
-                  tags: null,
-                  notes: null,
-                  skills: null,
+              if (dbAgent) {
+                registry.upsertAgent(instance!.id, {
+                  agentId: dbAgent.agent_id,
+                  name: agentPatch.name ?? dbAgent.name,
+                  ...(agentPatch.model != null
+                    ? { model: agentPatch.model }
+                    : dbAgent.model != null
+                      ? { model: dbAgent.model }
+                      : {}),
+                  workspacePath: dbAgent.workspace_path,
+                  isDefault: dbAgent.is_default === 1,
+                  position_x: dbAgent.position_x,
+                  position_y: dbAgent.position_y,
                 });
+              }
             } catch {
-              // Non-critical — runtime.json is the source of truth for name
+              // Non-critical — runtime.json remains source of truth
             }
           }
         }
