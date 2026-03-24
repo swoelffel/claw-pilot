@@ -184,7 +184,7 @@ describe("send_message — expect_reply=true", () => {
 // ---------------------------------------------------------------------------
 
 describe("send_message — expect_reply=false", () => {
-  it("delivers message without running prompt loop, caller has sent trace", async () => {
+  it("triggers async prompt loop on target, caller has sent trace", async () => {
     const callerSession = createSession(db, {
       instanceSlug: INSTANCE_SLUG,
       agentId: "pilot",
@@ -192,7 +192,11 @@ describe("send_message — expect_reply=false", () => {
     });
     const ctx = makeToolContext(db, callerSession.id);
 
-    const mockRunPromptLoop = vi.fn();
+    const mockRunPromptLoop = vi.fn().mockResolvedValue({
+      text: "acknowledged",
+      steps: 1,
+      tokens: { input: 5, output: 3, cacheRead: 0, cacheWrite: 0 },
+    });
 
     const toolInfo = createSendMessageTool({
       db,
@@ -211,23 +215,24 @@ describe("send_message — expect_reply=false", () => {
       ctx,
     );
 
-    // Assert: no prompt loop called
-    expect(mockRunPromptLoop).not.toHaveBeenCalled();
+    // Assert: prompt loop triggered asynchronously — wait for microtask flush
+    await vi.waitFor(() => {
+      expect(mockRunPromptLoop).toHaveBeenCalledOnce();
+    });
     expect(result.output).toContain("fire-and-forget");
+    expect(result.output).toContain("processing triggered");
 
     // Assert: caller has [message_sent]
     const callerTexts = getUserMessageTexts(db, callerSession.id);
     expect(callerTexts.some((t) => t.includes("[message_sent]"))).toBe(true);
 
-    // Assert: target session has the message
-    const targetSessionKey = `${INSTANCE_SLUG}:lead-tech`;
-    const targetSession = db
-      .prepare("SELECT id FROM rt_sessions WHERE session_key = ?")
-      .get(targetSessionKey) as { id: string } | undefined;
-    expect(targetSession).toBeDefined();
-
-    const targetTexts = getUserMessageTexts(db, targetSession!.id);
-    expect(targetTexts.some((t) => t.includes("heartbeat spec updated"))).toBe(true);
+    // Assert: prompt loop was called with correct parameters
+    const call = mockRunPromptLoop.mock.calls[0]![0] as {
+      userText: string;
+      agentConfig: { id: string };
+    };
+    expect(call.userText).toContain("heartbeat spec updated");
+    expect(call.agentConfig.id).toBe("lead-tech");
   });
 });
 

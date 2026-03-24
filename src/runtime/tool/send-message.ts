@@ -10,8 +10,8 @@
  * Two modes:
  * - expect_reply=true  (default): runs a prompt loop on the target's permanent
  *   session and returns the reply. Both sides get the full exchange in history.
- * - expect_reply=false: fire-and-forget — writes the message into the target's
- *   permanent session without running a prompt loop.
+ * - expect_reply=false: fire-and-forget — triggers an async prompt loop on the
+ *   target's permanent session without waiting for the result.
  */
 
 import { z } from "zod";
@@ -25,6 +25,7 @@ import { AgentMessageSent } from "../bus/events.js";
 import type { InstanceSlug, SessionId } from "../types.js";
 import type { ResolvedModel } from "../provider/provider.js";
 import type { RuntimeConfig, RuntimeAgentConfig, ModelAlias } from "../config/index.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Prompt loop injection types (same as task.ts — avoids circular dependency)
@@ -168,25 +169,45 @@ export function createSendMessageTool(options: {
         instanceSlug,
       });
 
-      // 6. Fire-and-forget mode
-      if (!params.expect_reply) {
-        createUserMessage(db, {
-          sessionId: targetSession.id,
-          text: `[message_from:${callerAgentConfig.id}] ${params.message}`,
-        });
-
-        return {
-          title: `Message sent to ${targetConfig.id}`,
-          output: `Message delivered to ${targetConfig.id} (fire-and-forget, no reply expected).`,
-          truncated: false,
-        };
-      }
-
-      // 7. Expect reply: run prompt loop on target's permanent session
+      // 6. Resolve target model (needed for both fire-and-forget and expect-reply)
       const targetModel: ResolvedModel = targetConfig.model
         ? resolveAgentModel(targetConfig.model, modelAliases ?? [], resolvedModel)
         : resolvedModel;
 
+      // 7. Fire-and-forget mode — trigger async prompt loop without waiting
+      if (!params.expect_reply) {
+        const fireAndForgetSystemPrompt = [
+          "## Incoming message",
+          `Agent '${callerAgentConfig.id}' (${callerAgentConfig.name}) sends you this message.`,
+          "Process this message autonomously.",
+        ].join("\n");
+
+        void runPromptLoop({
+          db,
+          instanceSlug,
+          sessionId: targetSession.id,
+          userText: `[message_from:${callerAgentConfig.id}] ${params.message}`,
+          agentConfig: targetConfig,
+          resolvedModel: targetModel,
+          workDir,
+          abort: new AbortController().signal,
+          extraSystemPrompt: fireAndForgetSystemPrompt,
+          ...(compactionConfig !== undefined ? { compactionConfig } : {}),
+          ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
+        }).catch((err) => {
+          logger.error(
+            `[send_message] fire-and-forget prompt loop failed for ${targetConfig.id}: ${err}`,
+          );
+        });
+
+        return {
+          title: `Message sent to ${targetConfig.id}`,
+          output: `Message delivered to ${targetConfig.id} (fire-and-forget, processing triggered).`,
+          truncated: false,
+        };
+      }
+
+      // 8. Expect reply: run prompt loop on target's permanent session
       const extraSystemPrompt = [
         "## Incoming message",
         `Agent '${callerAgentConfig.id}' (${callerAgentConfig.name}) sends you this message.`,
@@ -207,7 +228,7 @@ export function createSendMessageTool(options: {
         ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
       });
 
-      // 8. Record incoming reply in caller's session
+      // 9. Record incoming reply in caller's session
       createUserMessage(db, {
         sessionId: ctx.sessionId,
         text: `[message_received] From ${targetConfig.id}: ${result.text}`,
