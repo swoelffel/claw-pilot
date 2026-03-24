@@ -6,13 +6,13 @@
 #   --dry-run    Show what would be removed, do nothing
 #   --yes        Remove everything without confirmation (required when piping to sh)
 #   --keep-data  Remove claw-pilot binary/repo but keep ~/.claw-pilot/ and instance state dirs
-set -e
 
 # Ensure we have a valid working directory
 cd "${HOME:-/tmp}" 2>/dev/null || true
 
 # --- Constants ---
 DATA_DIR="$HOME/.claw-pilot"
+INSTANCES_DIR="$DATA_DIR/instances"
 STATE_PREFIX_LEGACY="$HOME/.openclaw-"
 STATE_PREFIX_RUNTIME="$HOME/.runtime-"
 DEFAULT_INSTALL_DIR="/opt/claw-pilot"
@@ -53,7 +53,7 @@ log()    { printf "${GREEN}[+]${NC} %s\n" "$1"; }
 warn()   { printf "${YELLOW}[!]${NC} %s\n" "$1"; }
 error()  { printf "${RED}[x]${NC} %s\n" "$1" >&2; exit 1; }
 info()   { printf "${CYAN}[-]${NC} %s\n" "$1"; }
-drylog() { printf "${YELLOW}[DRY-RUN]${NC} Would remove: %s\n" "$1"; }
+drylog() { printf "${YELLOW}[DRY-RUN]${NC} Would: %s\n" "$1"; }
 
 # --- Helpers ---
 
@@ -64,7 +64,7 @@ safe_remove() {
     return 0
   fi
   if [ "$DRY_RUN" -eq 1 ]; then
-    drylog "$target"
+    drylog "remove $target"
     return 0
   fi
   if rm -rf "$target" 2>/dev/null; then
@@ -101,6 +101,139 @@ stop_launchd_agent() {
     return 0
   fi
   launchctl unload "$plist" 2>/dev/null && log "Unloaded agent: $label" || true
+}
+
+# Kill a process gracefully: SIGTERM → poll up to 5s → SIGKILL fallback.
+# Args: $1=PID, $2=label (for logging)
+# Returns 0 if killed (or already dead), 1 if SIGKILL also failed.
+kill_pid_graceful() {
+  _kpid="$1"
+  _klabel="${2:-PID $_kpid}"
+
+  # Check if alive
+  if ! kill -0 "$_kpid" 2>/dev/null; then
+    info "$_klabel (PID $_kpid) is not running"
+    return 0
+  fi
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    drylog "kill $_klabel (PID $_kpid)"
+    return 0
+  fi
+
+  log "Sending SIGTERM to $_klabel (PID $_kpid)..."
+  kill -TERM "$_kpid" 2>/dev/null || true
+
+  # Poll for exit (up to 5 seconds, ~200ms intervals)
+  _attempts=0
+  while [ "$_attempts" -lt 25 ]; do
+    if ! kill -0 "$_kpid" 2>/dev/null; then
+      log "$_klabel (PID $_kpid) stopped"
+      return 0
+    fi
+    sleep 0.2 2>/dev/null || sleep 1
+    _attempts=$((_attempts + 1))
+  done
+
+  # Still alive — escalate to SIGKILL
+  warn "$_klabel (PID $_kpid) did not stop after SIGTERM, sending SIGKILL..."
+  kill -KILL "$_kpid" 2>/dev/null || true
+  sleep 1
+
+  if ! kill -0 "$_kpid" 2>/dev/null; then
+    log "$_klabel (PID $_kpid) killed (SIGKILL)"
+    return 0
+  fi
+
+  warn "Could not kill $_klabel (PID $_kpid)"
+  return 1
+}
+
+# Read a PID from a file, validate it is a number, echo it.
+# Returns 1 if file missing, empty, or not a valid number.
+read_pid_file() {
+  _pidfile="$1"
+  [ -f "$_pidfile" ] || return 1
+  _pid=$(cat "$_pidfile" 2>/dev/null | tr -d '[:space:]')
+  case "$_pid" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  echo "$_pid"
+}
+
+# Kill all claw-runtime daemon processes.
+# Phase 1: PID-file based (precise, covers ~/.claw-pilot/instances/ + legacy dirs)
+# Phase 2: pgrep/ps-based orphan scan (catches leaked processes without PID files)
+kill_runtime_daemons() {
+  _killed=0
+  _handled_pids=""
+
+  # --- Phase 1: PID files ---
+  log "Stopping runtime daemons (PID files)..."
+
+  # Current format: ~/.claw-pilot/instances/<slug>/runtime.pid
+  if [ -d "$INSTANCES_DIR" ]; then
+    for _pidfile in "$INSTANCES_DIR"/*/runtime.pid; do
+      [ -f "$_pidfile" ] || continue
+      _slug=$(basename "$(dirname "$_pidfile")")
+      _pid=$(read_pid_file "$_pidfile")
+      if [ -z "$_pid" ]; then
+        warn "Invalid PID in $_pidfile — removing stale file"
+        [ "$DRY_RUN" -eq 0 ] && rm -f "$_pidfile" 2>/dev/null
+        continue
+      fi
+      if kill_pid_graceful "$_pid" "runtime:$_slug"; then
+        _killed=$((_killed + 1))
+      fi
+      _handled_pids="$_handled_pids $_pid"
+      [ "$DRY_RUN" -eq 0 ] && rm -f "$_pidfile" 2>/dev/null
+    done
+  fi
+
+  # Legacy format: ~/.runtime-<slug>/runtime.pid
+  for _dir in "${STATE_PREFIX_RUNTIME}"*/; do
+    [ -d "$_dir" ] || continue
+    _pidfile="$_dir/runtime.pid"
+    [ -f "$_pidfile" ] || continue
+    _slug=$(basename "$_dir")
+    _slug=${_slug#.runtime-}
+    _pid=$(read_pid_file "$_pidfile")
+    [ -z "$_pid" ] && continue
+    if kill_pid_graceful "$_pid" "runtime:$_slug (legacy)"; then
+      _killed=$((_killed + 1))
+    fi
+    _handled_pids="$_handled_pids $_pid"
+    [ "$DRY_RUN" -eq 0 ] && rm -f "$_pidfile" 2>/dev/null
+  done
+
+  # --- Phase 2: Orphan scan (catches processes without PID files) ---
+  log "Scanning for orphan claw-pilot processes..."
+  _orphan_pids=""
+  if command -v pgrep >/dev/null 2>&1; then
+    _orphan_pids=$(pgrep -f "claw-pilot.*runtime start" 2>/dev/null || true)
+  else
+    # Fallback: ps + grep (the [c] trick avoids matching the grep itself)
+    _orphan_pids=$(ps aux 2>/dev/null | grep "[c]law-pilot.*runtime start" | awk '{print $2}' || true)
+  fi
+
+  _found_orphan=0
+  if [ -n "$_orphan_pids" ]; then
+    for _opid in $_orphan_pids; do
+      # Skip our own PID and PIDs already handled in Phase 1
+      [ "$_opid" = "$$" ] && continue
+      case " $_handled_pids " in *" $_opid "*) continue ;; esac
+      _found_orphan=1
+      warn "Found orphan process: PID $_opid"
+      if kill_pid_graceful "$_opid" "orphan runtime"; then
+        _killed=$((_killed + 1))
+      fi
+    done
+  fi
+  [ "$_found_orphan" -eq 0 ] && info "No orphan runtime processes found"
+
+  if [ "$_killed" -gt 0 ]; then
+    log "Killed $_killed runtime process(es)"
+  fi
 }
 
 # Confirm action interactively (skipped if --yes or --dry-run).
@@ -158,18 +291,27 @@ resolve_install_dir() {
   echo "${CLAW_PILOT_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
 }
 
-# List instance slugs by scanning ~/.runtime-<slug>/ and legacy ~/.openclaw-<slug>/
-# Uses explicit glob expansion check to avoid iterating on unexpanded patterns
-# (POSIX sh does not support nullglob).
+# List instance slugs by scanning ~/.claw-pilot/instances/, ~/.runtime-<slug>/,
+# and legacy ~/.openclaw-<slug>/. Deduplicates across all sources.
+# Uses explicit glob expansion check (POSIX sh does not support nullglob).
 list_instances() {
   _seen=""
-  # Scan new state dirs (~/.runtime-<slug>/)
+  # Scan current state dirs (~/.claw-pilot/instances/<slug>/) — highest priority
+  if [ -d "$INSTANCES_DIR" ]; then
+    for dir in "$INSTANCES_DIR"/*/; do
+      [ -d "$dir" ] || continue
+      slug=$(basename "$dir")
+      [ -n "$slug" ] && [ "$slug" != "*" ] && echo "$slug" && _seen="$_seen $slug"
+    done
+  fi
+  # Scan ~/.runtime-<slug>/ — skip duplicates
   for dir in "${STATE_PREFIX_RUNTIME}"*/; do
-    # Skip if glob was not expanded (no matching dirs)
     [ -d "$dir" ] || continue
     slug=$(basename "$dir")
     slug=${slug#.runtime-}
-    [ -n "$slug" ] && [ "$slug" != "*" ] && echo "$slug" && _seen="$_seen $slug"
+    [ -n "$slug" ] && [ "$slug" != "*" ] || continue
+    case " $_seen " in *" $slug "*) continue ;; esac
+    echo "$slug" && _seen="$_seen $slug"
   done
   # Scan legacy state dirs (~/.openclaw-<slug>/) — skip duplicates
   for dir in "${STATE_PREFIX_LEGACY}"*/; do
@@ -208,11 +350,28 @@ info "Instances found        : ${INSTANCE_COUNT}"
 
 if [ "$INSTANCE_COUNT" -gt 0 ]; then
   for slug in $INSTANCES; do
-    if [ -d "${STATE_PREFIX_RUNTIME}${slug}" ]; then
-      info "  - $slug  (~/.runtime-${slug}/)"
+    # Determine source directory
+    _src=""
+    if [ -d "$INSTANCES_DIR/$slug" ]; then
+      _src="~/.claw-pilot/instances/${slug}/"
+    elif [ -d "${STATE_PREFIX_RUNTIME}${slug}" ]; then
+      _src="~/.runtime-${slug}/  [legacy]"
     else
-      info "  - $slug  (~/.openclaw-${slug}/)  [legacy]"
+      _src="~/.openclaw-${slug}/  [legacy]"
     fi
+    # Check runtime status via PID file
+    _status="stopped"
+    _pidfile="$INSTANCES_DIR/$slug/runtime.pid"
+    [ -f "$_pidfile" ] || _pidfile="${STATE_PREFIX_RUNTIME}${slug}/runtime.pid"
+    if [ -f "$_pidfile" ]; then
+      _rpid=$(read_pid_file "$_pidfile")
+      if [ -n "$_rpid" ] && kill -0 "$_rpid" 2>/dev/null; then
+        _status="RUNNING PID $_rpid"
+      else
+        _status="stale PID file"
+      fi
+    fi
+    info "  - $slug  ($_src)  [$_status]"
   done
 fi
 
@@ -235,24 +394,15 @@ fi
 
 echo ""
 
-# --- Step 3: Stop all services ---
+# --- Step 3: Stop all processes ---
 
 OS=$(uname -s)
 
-# Stop instance services
-if [ "$INSTANCE_COUNT" -gt 0 ]; then
-  log "Stopping instance services..."
-  for slug in $INSTANCES; do
-    if [ "$OS" = "Linux" ]; then
-      stop_systemd_service "claw-runtime-${slug}.service"
-    elif [ "$OS" = "Darwin" ]; then
-      plist="$HOME/Library/LaunchAgents/ai.claw-runtime.${slug}.plist"
-      stop_launchd_agent "ai.claw-runtime.${slug}" "$plist"
-    fi
-  done
-fi
+# 3a. Kill runtime daemons FIRST (PID-file based + orphan scan)
+# Runtimes are detached node processes, NOT launchd/systemd services.
+kill_runtime_daemons
 
-# Stop dashboard service
+# 3b. Stop dashboard service (this IS a launchd/systemd service)
 log "Stopping claw-pilot dashboard service..."
 if [ "$OS" = "Linux" ]; then
   stop_systemd_service "claw-pilot-dashboard.service"
@@ -274,7 +424,7 @@ log "Removing service files..."
 
 if [ "$OS" = "Linux" ]; then
   SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
-  # Remove instance service files
+  # Remove vestigial instance service files (runtimes are daemons, not services)
   for slug in $INSTANCES; do
     safe_remove "${SYSTEMD_USER_DIR}/claw-runtime-${slug}.service"
   done
@@ -288,6 +438,7 @@ if [ "$OS" = "Linux" ]; then
   fi
 elif [ "$OS" = "Darwin" ]; then
   LAUNCHD_DIR="$HOME/Library/LaunchAgents"
+  # Remove vestigial instance plist files
   for slug in $INSTANCES; do
     safe_remove "${LAUNCHD_DIR}/ai.claw-runtime.${slug}.plist"
   done
@@ -298,10 +449,11 @@ fi
 
 if [ "$KEEP_DATA" -eq 0 ] && [ "$INSTANCE_COUNT" -gt 0 ]; then
   echo ""
-  if confirm "Remove all instance data (~/.runtime-*/ and legacy ~/.openclaw-*/)? This includes API keys and workspaces."; then
+  if confirm "Remove all instance data? This includes API keys, workspaces, and logs."; then
     log "Removing instance data..."
     warn "Note: API keys stored in .env files will be permanently deleted."
     for slug in $INSTANCES; do
+      safe_remove "$INSTANCES_DIR/$slug"
       safe_remove "${STATE_PREFIX_RUNTIME}${slug}"
       safe_remove "${STATE_PREFIX_LEGACY}${slug}"
     done
@@ -423,7 +575,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
 else
   log "claw-pilot has been uninstalled."
   if [ "$KEEP_DATA" -eq 1 ]; then
-    info "Instance data kept in ~/.runtime-*/ (and legacy ~/.openclaw-*/)"
+    info "Instance data kept in ~/.claw-pilot/instances/ (and legacy ~/.runtime-*/, ~/.openclaw-*/)"
     info "claw-pilot data kept in ~/.claw-pilot/"
   fi
 fi
