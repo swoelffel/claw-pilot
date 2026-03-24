@@ -167,6 +167,8 @@ export interface CreateAgentRequest {
   role: string;
   provider: string;
   model: string;
+  kind?: "primary" | "subagent";
+  toolProfile?: "minimal" | "coding" | "messaging" | "full";
 }
 
 export interface SyncResult {

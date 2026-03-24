@@ -9,7 +9,13 @@ import type {
   ProviderInfo,
   ProvidersResponse,
 } from "../types.js";
-import { fetchProviders, fetchInstances, createAgent, createAgentFromTemplate } from "../api.js";
+import {
+  fetchProviders,
+  fetchProfileProviders,
+  fetchInstances,
+  createAgent,
+  createAgentFromTemplate,
+} from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { DialogMixin } from "../lib/dialog-mixin.js";
 import { tokenStyles } from "../styles/tokens.js";
@@ -193,6 +199,9 @@ export class CreateAgentDialog extends DialogMixin(LitElement) {
   @state() private _selectedProvider: ProviderInfo | null = null;
   @state() private _model = "";
   @state() private _providersLoading = true;
+  @state() private _providersFiltered = false;
+  @state() private _kind: "primary" | "subagent" = "primary";
+  @state() private _toolProfile: "minimal" | "coding" | "messaging" | "full" = "coding";
   @state() private _submitting = false;
   @state() private _submitError = "";
 
@@ -221,9 +230,26 @@ export class CreateAgentDialog extends DialogMixin(LitElement) {
   private async _loadProviders(): Promise<void> {
     this._providersLoading = true;
     try {
-      const data: ProvidersResponse = await fetchProviders();
-      this._providers = data.providers;
-      const defaultProvider = data.providers.find((p) => p.isDefault) ?? data.providers[0] ?? null;
+      const [catalog, profile] = await Promise.all([
+        fetchProviders(),
+        fetchProfileProviders().catch(() => ({ providers: [] })),
+      ]);
+      let providers = catalog.providers;
+
+      // Filter by user profile: keep only providers the admin has configured with an API key
+      const configuredIds = new Set(
+        profile.providers.filter((p) => p.hasApiKey).map((p) => p.providerId),
+      );
+      if (configuredIds.size > 0) {
+        const filtered = providers.filter((p) => configuredIds.has(p.id));
+        if (filtered.length > 0) {
+          providers = filtered;
+          this._providersFiltered = true;
+        }
+      }
+
+      this._providers = providers;
+      const defaultProvider = providers.find((p) => p.isDefault) ?? providers[0] ?? null;
       this._selectedProvider = defaultProvider;
       this._model = defaultProvider?.defaultModel ?? defaultProvider?.models[0] ?? "";
     } catch {
@@ -332,6 +358,8 @@ export class CreateAgentDialog extends DialogMixin(LitElement) {
           role: this._role.trim(),
           provider,
           model,
+          kind: this._kind,
+          toolProfile: this._toolProfile,
         };
         builderData = await createAgent(this.slug, request);
       }
@@ -507,7 +535,76 @@ export class CreateAgentDialog extends DialogMixin(LitElement) {
                     </select>
                   </div>
                 </div>
+                ${this._providersFiltered
+                  ? html`<span class="field-hint"
+                      >${msg("Showing your configured providers", {
+                        id: "cad-providers-filtered-hint",
+                      })}</span
+                    >`
+                  : ""}
               `}
+        </div>
+
+        <hr class="divider" />
+
+        <!-- Configuration -->
+        <div class="section">
+          <div class="section-label">${msg("Configuration", { id: "cad-section-config" })}</div>
+          <div class="field-row">
+            <div class="field">
+              <label for="agent-kind">${msg("Agent type", { id: "cad-label-kind" })}</label>
+              <select
+                id="agent-kind"
+                @change=${(e: Event) => {
+                  this._kind = (e.target as HTMLSelectElement).value as "primary" | "subagent";
+                }}
+              >
+                <option value="primary" ?selected=${this._kind === "primary"}>
+                  ${msg("Primary agent", { id: "cad-kind-primary" })}
+                </option>
+                <option value="subagent" ?selected=${this._kind === "subagent"}>
+                  ${msg("Subagent", { id: "cad-kind-subagent" })}
+                </option>
+              </select>
+              <span class="field-hint">
+                ${this._kind === "primary"
+                  ? msg("Full workspace with identity, memory and heartbeat", {
+                      id: "cad-kind-primary-hint",
+                    })
+                  : msg("Minimal workspace (AGENTS.md only) — for delegated tasks", {
+                      id: "cad-kind-subagent-hint",
+                    })}
+              </span>
+            </div>
+            <div class="field">
+              <label for="agent-tool-profile"
+                >${msg("Tool profile", { id: "cad-label-tool-profile" })}</label
+              >
+              <select
+                id="agent-tool-profile"
+                @change=${(e: Event) => {
+                  this._toolProfile = (e.target as HTMLSelectElement).value as
+                    | "minimal"
+                    | "coding"
+                    | "messaging"
+                    | "full";
+                }}
+              >
+                <option value="coding" ?selected=${this._toolProfile === "coding"}>
+                  ${msg("Coding", { id: "cad-tool-coding" })}
+                </option>
+                <option value="full" ?selected=${this._toolProfile === "full"}>
+                  ${msg("Full", { id: "cad-tool-full" })}
+                </option>
+                <option value="messaging" ?selected=${this._toolProfile === "messaging"}>
+                  ${msg("Messaging", { id: "cad-tool-messaging" })}
+                </option>
+                <option value="minimal" ?selected=${this._toolProfile === "minimal"}>
+                  ${msg("Minimal", { id: "cad-tool-minimal" })}
+                </option>
+              </select>
+            </div>
+          </div>
         </div>
 
         ${this._submitError ? html`<div class="error-banner">${this._submitError}</div>` : ""}

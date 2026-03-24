@@ -35,6 +35,8 @@ export interface CreateAgentData {
    * - "subagent": minimal context, only AGENTS.md created
    */
   kind?: "primary" | "subagent";
+  /** Tool profile written to runtime.json — controls available tools. */
+  toolProfile?: "minimal" | "coding" | "messaging" | "full";
 }
 
 export class AgentProvisioner {
@@ -106,6 +108,7 @@ export class AgentProvisioner {
       name: data.name,
       model: `${data.provider}/${data.model}`,
       permissions: [],
+      ...(data.toolProfile ? { toolProfile: data.toolProfile } : {}),
     });
 
     await this.conn.writeFile(instance.config_path, JSON.stringify(config, null, 2) + "\n");

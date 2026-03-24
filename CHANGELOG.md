@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.48.2] — 2026-03-24
+
+### Added
+
+- **Enhanced New Agent dialog** : Added agent type (primary/subagent), tool profile (coding/full/messaging/minimal), and provider filtering by user profile. New "Configuration" section in the dialog. 12 new i18n keys across 6 languages.
+
+---
+
 ## [0.48.1] — 2026-03-23
 
 ### Fixed
