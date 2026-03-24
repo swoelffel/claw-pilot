@@ -13,7 +13,7 @@
  */
 
 import type Database from "better-sqlite3";
-import type { Hono } from "hono";
+
 import type { RuntimeInstanceState, InstanceSlug } from "../types.js";
 import type { RuntimeConfig } from "../config/index.js";
 import type { Channel } from "../channel/channel.js";
@@ -33,7 +33,7 @@ import { ChannelRouter, registerSubagentCompletedHandler } from "../channel/rout
 import { createChannels } from "./channel-factory.js";
 import { wirePluginsToBus } from "./plugin-wiring.js";
 import { startHeartbeatRunner } from "../heartbeat/runner.js";
-import { getRegisteredHooks } from "../plugin/hooks.js";
+// getRegisteredHooks import removed — routes hook was removed (YAGNI)
 import { cleanupEphemeralSessions } from "../session/cleanup.js";
 import { wireEventPersistence } from "./event-persistence.js";
 import { pruneRtEvents } from "../../core/repositories/rt-event-repository.js";
@@ -308,24 +308,6 @@ export class ClawRuntime {
       }
     }
     return result;
-  }
-
-  /**
-   * Register plugin routes on the given Hono app.
-   * Must be called after initPlugins() and before start().
-   * Plugins can use this to expose additional HTTP endpoints.
-   */
-  registerPluginRoutes(app: Hono): void {
-    const hooks = getRegisteredHooks();
-    for (const hook of hooks) {
-      if (hook.routes) {
-        try {
-          hook.routes(app);
-        } catch (err) {
-          this.log.warn(`Plugin hook routes threw: ${err}`);
-        }
-      }
-    }
   }
 
   // -------------------------------------------------------------------------

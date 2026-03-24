@@ -21,7 +21,6 @@
  */
 
 import type { ZodType } from "zod";
-import type { Hono } from "hono";
 import type { InstanceSlug, SessionId } from "../types.js";
 import type { Tool } from "../tool/tool.js";
 
@@ -107,13 +106,6 @@ export interface PluginHooks {
    * Plugin tools are subject to toolProfile filtering and permission checks.
    */
   tools?: (ctx: PluginInput) => Tool.Info[] | Promise<Tool.Info[]>;
-
-  /**
-   * Register additional HTTP routes on the runtime's Hono app.
-   * Called once during ClawRuntime.start().
-   * Routes are available immediately after start() completes.
-   */
-  routes?: (app: Hono) => void;
 
   /**
    * Transform a tool definition before it is registered in the tool set.

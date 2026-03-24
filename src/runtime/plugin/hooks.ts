@@ -88,10 +88,10 @@ export async function triggerSessionEnd(ctx: SessionContext): Promise<void> {
 
 /**
  * Keys of PluginHooks that are simple void-returning event hooks.
- * Excludes "tools", "routes", and "tool.definition" which have different signatures
+ * Excludes "tools" and "tool.definition" which have different signatures
  * and are invoked directly (not via runHooks).
  */
-type VoidHookKey = Exclude<keyof PluginHooks, "tools" | "routes" | "tool.definition">;
+type VoidHookKey = Exclude<keyof PluginHooks, "tools" | "tool.definition">;
 
 async function runHooks<K extends VoidHookKey>(
   hookName: K,

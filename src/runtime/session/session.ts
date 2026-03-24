@@ -12,6 +12,8 @@ import { listMessages } from "./message.js";
 import { listParts, createPart } from "./part.js";
 import { clearCachedSystemPrompt } from "./system-prompt-cache.js";
 import { logger } from "../../lib/logger.js";
+import { getBus } from "../bus/index.js";
+import { SessionCreated, SessionEnded } from "../bus/events.js";
 
 export interface SessionInfo {
   id: SessionId;
@@ -153,7 +155,17 @@ export function createSession(
   );
 
   const row = db.prepare("SELECT * FROM rt_sessions WHERE id = ?").get(id) as SessionRow;
-  return fromRow(row);
+  const session = fromRow(row);
+
+  // Emit SessionCreated event so plugin hooks (session.start) fire for ALL creation paths
+  const bus = getBus(input.instanceSlug);
+  bus.publish(SessionCreated, {
+    sessionId: session.id,
+    agentId: input.agentId,
+    channel,
+  });
+
+  return session;
 }
 
 export function getSession(db: Database.Database, id: SessionId): SessionInfo | undefined {
@@ -207,6 +219,15 @@ export function getOrCreatePermanentSession(
         WHERE id = ?
       `,
       ).run(now, existing.id);
+
+      // Emit SessionCreated on reactivation so plugin hooks fire
+      const bus = getBus(params.instanceSlug);
+      bus.publish(SessionCreated, {
+        sessionId: existing.id,
+        agentId: params.agentId,
+        channel: params.channel,
+      });
+
       return fromRow({ ...existing, state: "active", updated_at: now });
     }
     return fromRow(existing);
@@ -309,10 +330,18 @@ export function archiveSession(
   }
 
   const now = new Date().toISOString();
-  db.prepare(
-    "UPDATE rt_sessions SET state = 'archived', updated_at = ? WHERE id = ? AND state = 'active'",
-  ).run(now, id);
+  const changes = db
+    .prepare(
+      "UPDATE rt_sessions SET state = 'archived', updated_at = ? WHERE id = ? AND state = 'active'",
+    )
+    .run(now, id);
   clearCachedSystemPrompt(id);
+
+  // Emit SessionEnded only if the row was actually updated (was active)
+  if (changes.changes > 0) {
+    const bus = getBus(session.instanceSlug);
+    bus.publish(SessionEnded, { sessionId: id, reason: "completed" });
+  }
 }
 
 export function forkSession(

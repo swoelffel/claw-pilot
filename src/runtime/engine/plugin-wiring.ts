@@ -20,6 +20,7 @@ import {
 } from "../bus/events.js";
 import {
   triggerMessageReceived,
+  triggerMessageSending,
   triggerSessionStart,
   triggerSessionEnd,
   triggerAgentBeforeStart,
@@ -40,19 +41,30 @@ export function wirePluginsToBus(instanceSlug: InstanceSlug): Array<() => void> 
   const bus = getBus(instanceSlug);
   const unsubs: Array<() => void> = [];
 
-  // message.created → plugin "message.received"
+  // message.created → plugin "message.received" (user) or "message.sending" (assistant)
   unsubs.push(
     bus.subscribe(MessageCreated, (payload) => {
-      if (payload.role !== "user") return; // only user messages trigger "received"
-      void triggerMessageReceived({
-        instanceSlug,
-        sessionId: payload.sessionId,
-        messageId: payload.messageId,
-        role: payload.role,
-        text: "", // text not available in the event payload — plugins can query DB if needed
-      }).catch((err) => {
-        logger.warn(`Plugin hook message.received threw: ${err}`);
-      });
+      if (payload.role === "user") {
+        void triggerMessageReceived({
+          instanceSlug,
+          sessionId: payload.sessionId,
+          messageId: payload.messageId,
+          role: payload.role,
+          text: "", // text not available in the event payload — plugins can query DB if needed
+        }).catch((err) => {
+          logger.warn(`Plugin hook message.received threw: ${err}`);
+        });
+      } else if (payload.role === "assistant") {
+        void triggerMessageSending({
+          instanceSlug,
+          sessionId: payload.sessionId,
+          messageId: payload.messageId,
+          role: payload.role,
+          text: "", // text not yet available — plugins can query DB after streaming
+        }).catch((err) => {
+          logger.warn(`Plugin hook message.sending threw: ${err}`);
+        });
+      }
     }),
   );
 

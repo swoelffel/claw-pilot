@@ -18,9 +18,7 @@
  *   - Deduplication: plugin tool with same id as built-in is skipped + warn
  *   - Error in hook.tools → warn + continue (non-fatal)
  *
- * Phase 2b — registerPluginRoutes():
- *   - Calls routes(app) for each plugin
- *   - Error in routes → warn + continue (non-fatal)
+ * Phase 2b — registerPluginRoutes(): REMOVED (routes hook removed, YAGNI)
  *
  * Phase 2c — tool.definition hook:
  *   - Transforms tool description
@@ -508,79 +506,7 @@ describe("getTools() with pluginInput — plugin tools", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Phase 2b — registerPluginRoutes()
-// ---------------------------------------------------------------------------
-
-describe("registerPluginRoutes()", () => {
-  beforeEach(() => {
-    clearHooks();
-  });
-
-  /**
-   * Objective: registerPluginRoutes() must call routes(app) for each plugin that
-   * declares a routes hook.
-   * Positive test: routes function is called once with the Hono app.
-   */
-  it("[positive] calls routes(app) for each plugin with a routes hook", () => {
-    // Arrange: mock Hono app and register a plugin with routes
-    const mockApp = { get: vi.fn(), post: vi.fn() } as unknown as import("hono").Hono;
-    const routesFn = vi.fn();
-
-    registerHooks({ routes: routesFn });
-
-    // Import ClawRuntime lazily to avoid heavy deps — test registerPluginRoutes directly
-    // by calling getRegisteredHooks() and invoking routes manually (same logic as engine.ts)
-    const hooks = getRegisteredHooks();
-
-    // Act: simulate registerPluginRoutes() logic
-    for (const hook of hooks) {
-      if (hook.routes) {
-        hook.routes(mockApp);
-      }
-    }
-
-    // Assert: routes function was called with the app
-    expect(routesFn).toHaveBeenCalledOnce();
-    expect(routesFn).toHaveBeenCalledWith(mockApp);
-  });
-
-  /**
-   * Objective: an error in routes() must not crash the system — it should warn and continue.
-   * Negative test: broken routes hook → warn + other hooks still processed.
-   */
-  it("[negative] error in routes hook → warns and continues (non-fatal)", () => {
-    // Arrange
-    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const mockApp = {} as unknown as import("hono").Hono;
-    const goodRoutesFn = vi.fn();
-
-    registerHooks({
-      routes: () => {
-        throw new Error("Routes hook exploded");
-      },
-    });
-    registerHooks({ routes: goodRoutesFn });
-
-    // Act: simulate registerPluginRoutes() with error isolation
-    const hooks = getRegisteredHooks();
-    for (const hook of hooks) {
-      if (hook.routes) {
-        try {
-          hook.routes(mockApp);
-        } catch (err) {
-          console.warn("[claw-runtime] Plugin hook routes threw:", err);
-        }
-      }
-    }
-
-    // Assert: good routes hook still called, warning emitted
-    expect(goodRoutesFn).toHaveBeenCalledOnce();
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("routes"), expect.any(Error));
-
-    consoleSpy.mockRestore();
-  });
-});
+// Phase 2b — registerPluginRoutes() — REMOVED (routes hook removed, YAGNI)
 
 // ---------------------------------------------------------------------------
 // Phase 2c — tool.definition hook

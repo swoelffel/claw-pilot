@@ -86,6 +86,33 @@ function isMemoryFile(filePath: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// tool.definition hook helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply all registered plugin tool.definition hooks to a tool definition.
+ * Used for ALL tools (built-in, MCP, plugin, and dynamic) to ensure uniform hook coverage.
+ */
+async function applyToolDefinitionHooks(
+  def: Tool.Definition<import("zod").ZodType>,
+  pluginInput: PluginInput | undefined,
+): Promise<Tool.Definition<import("zod").ZodType>> {
+  if (!pluginInput) return def;
+  const hooks = getRegisteredHooks();
+  let result = def;
+  for (const hook of hooks) {
+    if (hook["tool.definition"]) {
+      try {
+        result = await hook["tool.definition"](result, pluginInput);
+      } catch (err) {
+        logger.warn(`Plugin hook tool.definition threw: ${err}`);
+      }
+    }
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // buildToolSet
 // ---------------------------------------------------------------------------
 
@@ -123,20 +150,7 @@ export async function buildToolSet(
   const recentCalls: Array<{ tool: string; hash: string }> = [];
 
   for (const toolInfo of tools) {
-    let def = await toolInfo.init();
-
-    if (pluginInput) {
-      const hooks = getRegisteredHooks();
-      for (const hook of hooks) {
-        if (hook["tool.definition"]) {
-          try {
-            def = await hook["tool.definition"](def, pluginInput);
-          } catch (err) {
-            logger.warn(`Plugin hook tool.definition threw: ${err}`);
-          }
-        }
-      }
-    }
+    let def = await applyToolDefinitionHooks(await toolInfo.init(), pluginInput);
 
     if (def.ownerOnly && !ctx.senderIsOwner) continue;
 
@@ -241,7 +255,9 @@ export async function buildToolSet(
             args,
             output: err instanceof Error ? err.message : String(err),
             durationMs: Date.now() - callStart,
-          }).catch(() => {});
+          }).catch((hookErr) => {
+            logger.warn(`Plugin hook tool.afterCall threw on error path: ${hookErr}`);
+          });
 
           throw err;
         }
@@ -267,7 +283,7 @@ export async function buildToolSet(
         ...(env !== undefined ? { env } : {}),
         runPromptLoop: runPromptLoopFn,
       });
-      const taskDef = await taskToolInfo.init();
+      const taskDef = await applyToolDefinitionHooks(await taskToolInfo.init(), pluginInput);
       const normalizedTaskParams = normalizeForProvider(
         taskDef.parameters,
         resolvedModel.providerId,
@@ -302,7 +318,7 @@ export async function buildToolSet(
         ...(compactionConfig !== undefined ? { compactionConfig } : {}),
         runPromptLoop: runPromptLoopFn,
       });
-      const sendMsgDef = await sendMsgToolInfo.init();
+      const sendMsgDef = await applyToolDefinitionHooks(await sendMsgToolInfo.init(), pluginInput);
       const normalizedSendMsgParams = normalizeForProvider(
         sendMsgDef.parameters,
         resolvedModel.providerId,
@@ -335,7 +351,7 @@ export async function buildToolSet(
 
   if (memoryDb) {
     const memorySearchTool = createMemorySearchTool(memoryDb);
-    const memoryDef = await memorySearchTool.init();
+    const memoryDef = await applyToolDefinitionHooks(await memorySearchTool.init(), pluginInput);
     set["memory_search"] = aiTool({
       description: memoryDef.description,
       inputSchema: zodSchema(memoryDef.parameters),

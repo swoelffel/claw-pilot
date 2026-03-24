@@ -30,6 +30,7 @@ import { resolveModel } from "../provider/provider.js";
 import { getBus } from "../bus/index.js";
 import { ChannelMessageReceived, ChannelMessageSent, SubagentCompleted } from "../bus/events.js";
 import { resolveAgentWorkspacePath } from "../../core/agent-workspace.js";
+import { runMiddlewarePipeline } from "../middleware/pipeline.js";
 
 // ---------------------------------------------------------------------------
 // Per-session serialization queue
@@ -119,12 +120,8 @@ export class ChannelRouter {
     // 3. Find or create session for this peer
     const sessionId = findOrCreateSession(db, instanceSlug, message, agentId, config);
 
-    // 4. Run prompt loop — serialized per session via queue
+    // 4. Run middleware pipeline + prompt loop — serialized per session via queue
     // Resolve the agent's workspace directory to show to the agent (env block).
-    // This restricts the agent's perceived working directory to its own workspace
-    // instead of the full instance stateDir (which contains .env, runtime.json, etc.).
-    // workspace field is not part of RuntimeAgentConfig (Zod schema) — it is resolved
-    // at provisioning time and stored in DB. At runtime, we rely on agentId heuristics.
     const agentWorkDir = workDir
       ? resolveAgentWorkspacePath(workDir, agentId, undefined)
       : undefined;
@@ -133,26 +130,49 @@ export class ChannelRouter {
     const userProfile = input.profileResolver?.getActiveProfile();
 
     const prev = sessionQueues.get(sessionId) ?? Promise.resolve();
-    const next: Promise<PromptLoopResult> = prev.then(() =>
-      runPromptLoop({
-        db,
-        instanceSlug,
-        sessionId,
-        userText: message.text,
-        agentConfig,
-        resolvedModel,
-        workDir,
-        ...(agentWorkDir !== undefined ? { agentWorkDir } : {}),
-        runtimeAgents: config.agents.map((a) => ({ id: a.id, name: a.name })),
-        compactionConfig: config.compaction,
-        subagentsConfig: config.subagents,
-        runtimeConfig: config,
-        ...(input.abort !== undefined ? { abort: input.abort } : {}),
-        ...(mcpRegistry !== undefined ? { mcpRegistry } : {}),
-        ...(internalResolvedModel !== undefined ? { internalResolvedModel } : {}),
-        ...(userProfile !== undefined ? { userProfile } : {}),
-      }),
-    );
+    const next: Promise<PromptLoopResult> = prev.then(async () => {
+      const pipelineResult = await runMiddlewarePipeline({
+        ctx: {
+          db,
+          instanceSlug,
+          sessionId,
+          agentConfig,
+          message,
+        },
+        runLoop: () =>
+          runPromptLoop({
+            db,
+            instanceSlug,
+            sessionId,
+            userText: message.text,
+            agentConfig,
+            resolvedModel,
+            workDir,
+            ...(agentWorkDir !== undefined ? { agentWorkDir } : {}),
+            runtimeAgents: config.agents.map((a) => ({ id: a.id, name: a.name })),
+            compactionConfig: config.compaction,
+            subagentsConfig: config.subagents,
+            runtimeConfig: config,
+            ...(input.abort !== undefined ? { abort: input.abort } : {}),
+            ...(mcpRegistry !== undefined ? { mcpRegistry } : {}),
+            ...(internalResolvedModel !== undefined ? { internalResolvedModel } : {}),
+            ...(userProfile !== undefined ? { userProfile } : {}),
+          }),
+      });
+
+      if (pipelineResult.aborted || !pipelineResult.result) {
+        // Return a minimal result when pipeline was aborted
+        return {
+          messageId: "",
+          text: pipelineResult.abortReason ?? "Request aborted by middleware.",
+          steps: 0,
+          tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          costUsd: 0,
+        } satisfies PromptLoopResult;
+      }
+
+      return pipelineResult.result;
+    });
     sessionQueues.set(sessionId, next);
 
     let result: PromptLoopResult;

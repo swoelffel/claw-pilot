@@ -212,6 +212,16 @@ export const LLMChunkTimeout = defineEvent<
   { sessionId: SessionId; agentId: AgentId; elapsedMs: number }
 >("llm.chunk_timeout");
 
+export const GuardrailBlocked = defineEvent<
+  "guardrail.blocked",
+  { sessionId: string; provider: string; reason: string }
+>("guardrail.blocked");
+
+export const ToolErrorRecovered = defineEvent<
+  "tool.error.recovered",
+  { sessionId: string; toolName: string; errorType: string }
+>("tool.error.recovered");
+
 // ---------------------------------------------------------------------------
 // Session system prompt event
 // ---------------------------------------------------------------------------
@@ -266,7 +276,9 @@ export type AnyEventDef =
   | typeof HeartbeatAlert
   | typeof McpServerReconnected
   | typeof McpToolsChanged
-  | typeof LLMChunkTimeout;
+  | typeof LLMChunkTimeout
+  | typeof GuardrailBlocked
+  | typeof ToolErrorRecovered;
 
 export type AnyEvent = {
   [K in AnyEventDef["type"]]: {

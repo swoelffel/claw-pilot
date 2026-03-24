@@ -12,7 +12,7 @@
  */
 
 import { createRequire } from "node:module";
-import { streamText, stepCountIs, type ModelMessage } from "ai";
+import { streamText, stepCountIs } from "ai";
 import type Database from "better-sqlite3";
 import type { SessionId, InstanceSlug } from "../types.js";
 import type { RuntimeAgentConfig } from "../config/index.js";
@@ -49,7 +49,7 @@ import { findModel } from "../provider/models.js";
 import type { RuntimeConfig, SubagentsConfig } from "../config/index.js";
 import type { McpRegistry } from "../mcp/registry.js";
 import { getAgent } from "../agent/registry.js";
-import { triggerMessageSending } from "../plugin/hooks.js";
+// message.sending hook is now wired via bus in plugin-wiring.ts (fires on MessageCreated with role=assistant)
 import type { PluginInput } from "../plugin/types.js";
 import { logger } from "../../lib/logger.js";
 
@@ -317,22 +317,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
         ? { anthropic: anthropicProviderOpts }
         : undefined;
 
-    const lastUserContent = [...coreMessages]
-      .reverse()
-      .find((m: ModelMessage) => m.role === "user");
-    const sendingText =
-      lastUserContent && typeof lastUserContent.content === "string"
-        ? lastUserContent.content
-        : userText;
-    await triggerMessageSending({
-      instanceSlug,
-      sessionId,
-      messageId: userMsg.id,
-      role: "user",
-      text: sendingText,
-    }).catch((err) => {
-      logger.warn(`Plugin hook message.sending threw: ${err}`);
-    });
+    // message.sending hook now fires via bus on assistant MessageCreated (see plugin-wiring.ts)
 
     const llmCallStart = Date.now();
     const streamResult = streamText({
