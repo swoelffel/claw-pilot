@@ -630,6 +630,7 @@ export class AgentsBuilder extends LitElement {
                   this._onDeleteRequested(e.detail.agentId)}
                 @agent-save-as-template=${(e: CustomEvent<{ agentId: string; name: string }>) =>
                   void this._saveAsTemplate(e.detail.agentId, e.detail.name)}
+                @agent-meta-updated=${() => void this._syncAndLoad()}
                 @spawn-links-updated=${() => {
                   this._pendingAdditions = new Map();
                   void this._syncAndLoad();
