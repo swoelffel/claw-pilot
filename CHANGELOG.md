@@ -6,6 +6,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.49.0] — 2026-03-24
+
+### Added
+
+- **Middleware chain foundation** : New extensible pre/post middleware pipeline in `ChannelRouter.route()`. Types (`Middleware`, `MiddlewareContext`), pipeline runner, and registry. Supports abort, shared metadata, and ordered execution.
+- **Guardrail middleware** : Pluggable `GuardrailProvider` interface for dynamic pre-message authorization (content moderation, cost gates). Publishes `GuardrailBlocked` bus event.
+- **Tool error recovery middleware** : Post-middleware that classifies tool errors (rate-limit, timeout, parsing) and stores recovery hints in metadata.
+- **New bus events** : `GuardrailBlocked`, `ToolErrorRecovered`.
+
+### Fixed
+
+- **Session lifecycle hooks** : `SessionCreated` now emitted from `createSession()` and on permanent session reactivation. `SessionEnded` emitted from `archiveSession()`. Plugin hooks `session.start` / `session.end` now actually fire.
+- **Plugin hook uniformity** : `message.sending` wired via bus (consistent with `message.received`). `tool.definition` hooks now applied to ALL tools (task, send_message, memory_search), not just built-in tools.
+- **Silent error swallowing** : `tool.afterCall` error path now logs warning instead of `.catch(() => {})`.
+
+### Removed
+
+- **Dead `routes` plugin hook** : Removed from `PluginHooks` type (never invoked). Will be reintroduced properly if needed.
+
+---
+
 ## [0.48.2] — 2026-03-24
 
 ### Added

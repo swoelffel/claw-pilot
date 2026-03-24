@@ -27,7 +27,7 @@ type ErrorType = "rate-limit" | "timeout" | "parsing" | "unknown";
 
 function classifyError(errorMessage: string): ErrorType {
   const lower = errorMessage.toLowerCase();
-  if (lower.includes("rate limit") || lower.includes("429") || lower.includes("throttl")) {
+  if (lower.includes("rate limit") || lower.includes("429") || lower.includes("throttle")) {
     return "rate-limit";
   }
   if (lower.includes("timeout") || lower.includes("timed out") || lower.includes("deadline")) {
