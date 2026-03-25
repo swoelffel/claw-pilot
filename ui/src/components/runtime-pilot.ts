@@ -742,6 +742,7 @@ export class RuntimePilot extends LitElement {
             .status=${this._status}
             .hasMore=${this._hasMore}
             .subagentResults=${this._subagentResults}
+            .slug=${this.slug}
             @load-more=${this._loadMore}
           ></cp-pilot-messages>
 

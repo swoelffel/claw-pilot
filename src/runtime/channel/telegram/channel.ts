@@ -19,10 +19,13 @@ import type { Channel } from "../channel.js";
 import type { InboundMessage, OutboundMessage } from "../../types.js";
 import { ChannelError } from "../channel.js";
 import { TelegramPoller } from "./polling.js";
-import type { TelegramUpdate } from "./polling.js";
+import type { TelegramUpdate, TelegramInlineKeyboardButton } from "./polling.js";
 import { markdownToTelegramV2 } from "./formatter.js";
 import { createPairingCode } from "../pairing.js";
 import { logger } from "../../../lib/logger.js";
+import { getBus } from "../../bus/index.js";
+import { QuestionAsked } from "../../bus/events.js";
+import { resolveQuestion } from "../../tool/built-in/question.js";
 
 // ---------------------------------------------------------------------------
 // TelegramChannel
@@ -50,6 +53,9 @@ export class TelegramChannel implements Channel {
   private poller: TelegramPoller | undefined;
   private handler: ((msg: InboundMessage) => Promise<void>) | undefined;
   private readonly options: TelegramChannelOptions;
+  private busUnsub: (() => void) | undefined;
+  /** Track last known chatId for sending question keyboards */
+  private lastChatId: number | undefined;
 
   constructor(options: TelegramChannelOptions) {
     this.options = options;
@@ -80,6 +86,14 @@ export class TelegramChannel implements Channel {
     });
 
     this.poller.start((update) => this.handleUpdate(update));
+
+    // Subscribe to question events to send inline keyboards
+    if (this.options.instanceSlug) {
+      const bus = getBus(this.options.instanceSlug);
+      this.busUnsub = bus.subscribe(QuestionAsked, (payload) => {
+        void this.handleQuestionAsked(payload);
+      });
+    }
   }
 
   async send(message: OutboundMessage): Promise<void> {
@@ -111,6 +125,8 @@ export class TelegramChannel implements Channel {
   }
 
   async disconnect(): Promise<void> {
+    this.busUnsub?.();
+    this.busUnsub = undefined;
     this.poller?.stop();
     this.poller = undefined;
   }
@@ -126,6 +142,12 @@ export class TelegramChannel implements Channel {
   // ---------------------------------------------------------------------------
 
   private async handleUpdate(update: TelegramUpdate): Promise<void> {
+    // Handle callback queries (inline keyboard button presses)
+    if (update.callback_query) {
+      await this.handleCallbackQuery(update.callback_query);
+      return;
+    }
+
     if (!this.handler) return;
 
     const message = update.message;
@@ -134,6 +156,7 @@ export class TelegramChannel implements Channel {
     const chatId = message.chat.id;
     const userId = message.from?.id;
     const peerId = `telegram:${chatId}`;
+    this.lastChatId = chatId;
 
     // Check if user is allowed
     const allowed = this.isUserAllowed(userId);
@@ -238,6 +261,73 @@ export class TelegramChannel implements Channel {
       )
       .get(this.options.instanceSlug, peerId, now) as { code: string } | undefined;
     return row?.code;
+  }
+
+  /**
+   * Handle a callback_query from an inline keyboard button press.
+   * Data format: "q:<questionId>:<optionIndex>"
+   */
+  private async handleCallbackQuery(query: TelegramUpdate["callback_query"] & {}): Promise<void> {
+    if (!this.poller || !query.data) return;
+
+    // Acknowledge the callback to remove the loading spinner in Telegram
+    try {
+      await this.poller.answerCallbackQuery(query.id);
+    } catch {
+      // Non-critical — continue processing
+    }
+
+    // Parse callback data
+    const parts = query.data.split(":");
+    if (parts[0] !== "q" || !parts[1] || !parts[2]) return;
+
+    const questionId = parts[1];
+    const answer = decodeURIComponent(parts.slice(2).join(":"));
+
+    const resolved = resolveQuestion(questionId, answer);
+    if (!resolved) {
+      logger.warn(`[telegram] callback_query for unknown/expired question: ${questionId}`);
+    }
+  }
+
+  /**
+   * Handle a QuestionAsked bus event — send inline keyboard to the last known chat.
+   */
+  private async handleQuestionAsked(payload: {
+    questionId: string;
+    question: string;
+    options?: string[];
+  }): Promise<void> {
+    if (!this.poller || !this.lastChatId) return;
+
+    const options = payload.options ?? [];
+    if (options.length === 0) {
+      // No options — send as plain text (user must reply via text)
+      const text = `❓ ${payload.question}`;
+      try {
+        await this.poller.sendMessage(this.lastChatId, text);
+      } catch (err) {
+        logger.warn(`[telegram] Failed to send question: ${err}`);
+      }
+      return;
+    }
+
+    // Build inline keyboard (one button per row)
+    const keyboard: TelegramInlineKeyboardButton[][] = options.map((opt) => [
+      {
+        text: opt,
+        callback_data: `q:${payload.questionId}:${encodeURIComponent(opt)}`,
+      },
+    ]);
+
+    const text = `❓ ${payload.question}`;
+    try {
+      await this.poller.sendMessage(this.lastChatId, text, undefined, {
+        inline_keyboard: keyboard,
+      });
+    } catch (err) {
+      logger.warn(`[telegram] Failed to send question with keyboard: ${err}`);
+    }
   }
 }
 

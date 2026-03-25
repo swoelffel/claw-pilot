@@ -675,6 +675,8 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
           // Timeouts
           "llm.chunk_timeout",
           "agent.timeout",
+          // Questions
+          "question.asked",
         ]);
 
         if (!relevantTypes.has(event.type)) return;
@@ -713,6 +715,44 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
         stream.onAbort(resolve);
       });
     });
+  });
+
+  // ---------------------------------------------------------------------------
+  // POST /api/instances/:slug/runtime/questions/:questionId/answer
+  // Submit an answer to a pending question from the question tool.
+  // Body: { answer: string }
+  // ---------------------------------------------------------------------------
+  app.post("/api/instances/:slug/runtime/questions/:questionId/answer", async (c) => {
+    const slug = c.req.param("slug");
+    const questionId = c.req.param("questionId");
+    const instance = registry.getInstance(slug);
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
+
+    let body: { answer?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return apiError(c, 400, "INVALID_JSON", "Request body must be valid JSON");
+    }
+
+    if (!body.answer || typeof body.answer !== "string") {
+      return apiError(c, 400, "MISSING_ANSWER", "Field 'answer' is required");
+    }
+
+    const { resolveQuestion } = await import("../../../runtime/tool/built-in/question.js");
+    const resolved = resolveQuestion(questionId, body.answer);
+
+    if (!resolved) {
+      return apiError(
+        c,
+        404,
+        "QUESTION_NOT_FOUND",
+        `No pending question with ID "${questionId}" — it may have expired or already been answered.`,
+      );
+    }
+
+    return c.json({ ok: true, questionId, answer: body.answer });
   });
 
   // ---------------------------------------------------------------------------

@@ -223,6 +223,22 @@ export const ToolErrorRecovered = defineEvent<
 >("tool.error.recovered");
 
 // ---------------------------------------------------------------------------
+// Question events
+// ---------------------------------------------------------------------------
+
+export const QuestionAsked = defineEvent<
+  "question.asked",
+  {
+    questionId: string;
+    sessionId: SessionId;
+    messageId: MessageId;
+    agentId: AgentId;
+    question: string;
+    options?: string[];
+  }
+>("question.asked");
+
+// ---------------------------------------------------------------------------
 // Session system prompt event
 // ---------------------------------------------------------------------------
 
@@ -278,7 +294,8 @@ export type AnyEventDef =
   | typeof McpToolsChanged
   | typeof LLMChunkTimeout
   | typeof GuardrailBlocked
-  | typeof ToolErrorRecovered;
+  | typeof ToolErrorRecovered
+  | typeof QuestionAsked;
 
 export type AnyEvent = {
   [K in AnyEventDef["type"]]: {

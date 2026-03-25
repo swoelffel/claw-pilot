@@ -534,6 +534,21 @@ export async function fetchSessionContext(
   return apiFetch<SessionContext>(`/instances/${slug}/runtime/sessions/${sessionId}/context`);
 }
 
+/**
+ * Submit an answer to a pending question from the question tool.
+ */
+export async function answerQuestion(
+  slug: string,
+  questionId: string,
+  answer: string,
+): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/instances/${slug}/runtime/questions/${questionId}/answer`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ answer }),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Agent Blueprints (standalone reusable agent templates)
 // ---------------------------------------------------------------------------

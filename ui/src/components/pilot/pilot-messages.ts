@@ -151,6 +151,7 @@ export class PilotMessages extends LitElement {
   @property() status: AgentStatus = "idle";
   @property({ type: Boolean }) hasMore = false;
   @property({ type: Object }) subagentResults: Record<string, unknown> = {};
+  @property() slug = "";
 
   @state() private _userScrolled = false;
 
@@ -215,6 +216,7 @@ export class PilotMessages extends LitElement {
           (m) => html`
             <cp-pilot-message
               .message=${m}
+              .slug=${this.slug}
               .subagentResults=${this.subagentResults as Record<
                 string,
                 {

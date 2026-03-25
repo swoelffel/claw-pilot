@@ -16,7 +16,24 @@ import * as https from "node:https";
 export interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
+  callback_query?: TelegramCallbackQuery;
 }
+
+export interface TelegramCallbackQuery {
+  id: string;
+  from: TelegramUser;
+  message?: TelegramMessage;
+  data?: string;
+}
+
+export interface TelegramInlineKeyboardButton {
+  text: string;
+  callback_data?: string;
+}
+
+export type TelegramReplyMarkup = {
+  inline_keyboard: TelegramInlineKeyboardButton[][];
+};
 
 export interface TelegramMessage {
   message_id: number;
@@ -135,7 +152,7 @@ export class TelegramPoller {
     const params = new URLSearchParams({
       offset: String(this.offset),
       timeout: String(this.options.longPollTimeoutSec),
-      allowed_updates: JSON.stringify(["message"]),
+      allowed_updates: JSON.stringify(["message", "callback_query"]),
     });
 
     const url = `https://api.telegram.org/bot${this.options.token}/getUpdates?${params}`;
@@ -156,14 +173,29 @@ export class TelegramPoller {
     chatId: number,
     text: string,
     parseMode?: "MarkdownV2" | "HTML",
+    replyMarkup?: TelegramReplyMarkup,
   ): Promise<void> {
     const payload = JSON.stringify({
       chat_id: chatId,
       text,
       ...(parseMode ? { parse_mode: parseMode } : {}),
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
     });
 
     const url = `https://api.telegram.org/bot${this.options.token}/sendMessage`;
+    await httpsPost(url, payload);
+  }
+
+  /**
+   * Acknowledge a callback query (required by Telegram after inline keyboard press).
+   */
+  async answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
+    const payload = JSON.stringify({
+      callback_query_id: callbackQueryId,
+      ...(text ? { text } : {}),
+    });
+
+    const url = `https://api.telegram.org/bot${this.options.token}/answerCallbackQuery`;
     await httpsPost(url, payload);
   }
 

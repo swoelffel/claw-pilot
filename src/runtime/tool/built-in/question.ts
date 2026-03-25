@@ -9,6 +9,7 @@
 import { z } from "zod";
 import { Tool } from "../tool.js";
 import { getBus } from "../../bus/index.js";
+import { QuestionAsked } from "../../bus/events.js";
 
 // ---------------------------------------------------------------------------
 // Pending question registry (in-memory)
@@ -69,16 +70,14 @@ export const QuestionTool = Tool.define("question", {
     const bus = getBus(ctx.agentId.split(":")[0] ?? "default");
 
     // Emit event so the channel layer can display the question
-    bus.publish(
-      { type: "question.asked" } as never,
-      {
-        questionId,
-        sessionId: ctx.sessionId,
-        messageId: ctx.messageId,
-        question: params.question,
-        options: params.options,
-      } as never,
-    );
+    bus.publish(QuestionAsked, {
+      questionId,
+      sessionId: ctx.sessionId,
+      messageId: ctx.messageId,
+      agentId: ctx.agentId,
+      question: params.question,
+      ...(params.options !== undefined ? { options: params.options } : {}),
+    });
 
     // Wait for answer (or abort)
     const answer = await new Promise<string>((resolve, reject) => {

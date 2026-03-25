@@ -10,6 +10,7 @@ import "./parts/part-tool.js";
 import "./parts/part-reasoning.js";
 import "./parts/part-subtask.js";
 import "./parts/part-compaction.js";
+import "./parts/part-question.js";
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -152,6 +153,8 @@ export class PilotMessageEl extends LitElement {
     string,
     { text?: string; steps?: number; tokens?: { input: number; output: number }; model?: string }
   > = {};
+  /** Instance slug, passed down for API calls (e.g. question answers) */
+  @property() slug = "";
   /** Current session's channel, used to show badge only for cross-channel messages */
   @property() sessionChannel = "web";
 
@@ -211,6 +214,20 @@ export class PilotMessageEl extends LitElement {
               }
             })(),
         );
+        // Render question tool as interactive card instead of generic tool block
+        let toolName: string | undefined;
+        try {
+          toolName = (JSON.parse(part.metadata ?? "{}") as { toolName?: string }).toolName;
+        } catch {
+          /* ignore */
+        }
+        if (toolName === "question") {
+          return html`<cp-pilot-part-question
+            .call=${part}
+            .result=${result}
+            .slug=${this.slug}
+          ></cp-pilot-part-question>`;
+        }
         return html`<cp-pilot-part-tool .call=${part} .result=${result}></cp-pilot-part-tool>`;
       }
 
