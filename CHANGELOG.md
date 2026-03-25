@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.50.0] — 2026-03-25
+
+### Added
+
+- **Multimodal vision support** : Agents can now receive and process images in conversations. Telegram photos are downloaded and sent to vision-capable models (Claude, GPT-4o). New `InboundAttachment` type, `"image"` part type, multimodal pre-middleware, and `cp-pilot-part-image` UI component with click-to-zoom.
+- **Multimodal config** : New `multimodal` section in runtime config (enabled by default, 20 MB max, JPEG/PNG/WebP/GIF).
+- **Telegram photo/document handling** : `TelegramPoller.getFile()` and `downloadFileAsBase64()` methods. Channel now processes photo and image document messages.
+
+---
+
 ## [0.49.1] — 2026-03-24
 
 ### Fixed
