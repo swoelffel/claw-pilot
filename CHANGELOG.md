@@ -6,13 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
-## [0.50.0] — 2026-03-25
+## [0.50.2] — 2026-03-25
 
 ### Added
 
 - **Multimodal vision support** : Agents can now receive and process images in conversations. Telegram photos are downloaded and sent to vision-capable models (Claude, GPT-4o). New `InboundAttachment` type, `"image"` part type, multimodal pre-middleware, and `cp-pilot-part-image` UI component with click-to-zoom.
 - **Multimodal config** : New `multimodal` section in runtime config (enabled by default, 20 MB max, JPEG/PNG/WebP/GIF).
 - **Telegram photo/document handling** : `TelegramPoller.getFile()` and `downloadFileAsBase64()` methods. Channel now processes photo and image document messages.
+- **File upload in Pilot** : Paperclip attach button with thumbnail preview, drag & drop support, base64 encoding and transmission to backend via POST /runtime/chat.
+- **Send/Stop toggle** : Pilot input button intelligently switches between Send (idle) and Stop (streaming). Stop aborts the active prompt loop via new `POST /runtime/sessions/:sessionId/abort` route with AbortController registry.
 
 ---
 
