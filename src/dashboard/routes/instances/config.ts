@@ -237,6 +237,7 @@ function buildInstanceConfig(
     name: a.name,
     model: a.model ?? null,
     toolProfile: a.toolProfile ?? "executor",
+    ...(a.customTools !== undefined ? { customTools: a.customTools } : {}),
     maxSteps: a.maxSteps ?? 20,
     temperature: a.temperature ?? null,
     thinking: a.thinking?.enabled
