@@ -157,6 +157,8 @@ export class PilotInput extends LitElement {
   ];
 
   @property({ type: Boolean }) disabled = false;
+  /** When true, shows Stop button instead of Send */
+  @property({ type: Boolean }) streaming = false;
   @property() placeholder = "";
 
   @state() private _text = "";
@@ -176,6 +178,10 @@ export class PilotInput extends LitElement {
       e.preventDefault();
       this._send();
     }
+  }
+
+  private _abort(): void {
+    this.dispatchEvent(new CustomEvent("abort-request", { bubbles: true, composed: true }));
   }
 
   private _send(): void {
@@ -298,7 +304,7 @@ export class PilotInput extends LitElement {
           />
           <button
             class="btn-attach"
-            ?disabled=${this.disabled}
+            ?disabled=${this.disabled || this.streaming}
             @click=${this._openFilePicker}
             title=${msg("Attach image", { id: "pilot-btn-attach" })}
           >
@@ -314,12 +320,16 @@ export class PilotInput extends LitElement {
             @dragleave=${this._handleDragLeave}
             @drop=${this._handleDrop}
             placeholder=${placeholder}
-            ?disabled=${this.disabled}
+            ?disabled=${this.disabled || this.streaming}
             rows="1"
           ></textarea>
-          <button class="btn btn-primary" ?disabled=${!canSend} @click=${this._send}>
-            ${msg("Send", { id: "pilot-btn-send" })}
-          </button>
+          ${this.streaming
+            ? html`<button class="btn btn-danger" @click=${this._abort}>
+                ${msg("Stop", { id: "pilot-btn-stop" })}
+              </button>`
+            : html`<button class="btn btn-primary" ?disabled=${!canSend} @click=${this._send}>
+                ${msg("Send", { id: "pilot-btn-send" })}
+              </button>`}
         </div>
       </div>
     `;

@@ -507,6 +507,13 @@ export async function postRuntimeChat(
   });
 }
 
+/** Abort an active prompt loop for a session. */
+export async function abortSession(slug: string, sessionId: string): Promise<{ aborted: boolean }> {
+  return apiFetch<{ aborted: boolean }>(`/instances/${slug}/runtime/sessions/${sessionId}/abort`, {
+    method: "POST",
+  });
+}
+
 export function getRuntimeChatStreamUrl(slug: string, sessionId?: string): string {
   const base = `/api/instances/${slug}/runtime/chat/stream`;
   return sessionId ? `${base}?sessionId=${encodeURIComponent(sessionId)}` : base;

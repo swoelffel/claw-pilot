@@ -37,6 +37,10 @@ import {
   purgeArchivedSessions,
 } from "../../../core/repositories/runtime-session-repository.js";
 
+// Active prompt-loop AbortControllers, keyed by sessionId.
+// Created in POST /runtime/chat, cleaned up in finally block.
+const activeAbortControllers = new Map<string, AbortController>();
+
 export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, db } = deps;
 
@@ -614,8 +618,10 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
             }))
         : undefined;
 
-    // Run prompt loop
+    // Run prompt loop with abort support
     const agentWorkDir = resolveAgentWorkspacePath(stateDir, agentId, undefined);
+    const abortController = new AbortController();
+    activeAbortControllers.set(session.id, abortController);
     try {
       const result = await runPromptLoop({
         db,
@@ -630,6 +636,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
         runtimeConfig: config,
         compactionConfig: config.compaction,
         subagentsConfig: config.subagents,
+        abort: abortController.signal,
         ...(imageAttachments !== undefined && imageAttachments.length > 0
           ? { imageAttachments }
           : {}),
@@ -644,13 +651,39 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
         steps: result.steps,
       });
     } catch (err) {
+      if (abortController.signal.aborted) {
+        return c.json({ sessionId: session.id, aborted: true, text: "" }, 200);
+      }
       return apiError(
         c,
         500,
         "PROMPT_LOOP_FAILED",
         err instanceof Error ? err.message : "Agent execution failed",
       );
+    } finally {
+      activeAbortControllers.delete(session.id);
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // POST /api/instances/:slug/runtime/sessions/:sessionId/abort
+  // Abort an active prompt loop for a session.
+  // ---------------------------------------------------------------------------
+  app.post("/api/instances/:slug/runtime/sessions/:sessionId/abort", (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
+
+    const sessionId = c.req.param("sessionId");
+    const controller = activeAbortControllers.get(sessionId);
+    if (!controller) {
+      return c.json({ aborted: false, reason: "No active prompt loop for this session" }, 404);
+    }
+
+    controller.abort();
+    activeAbortControllers.delete(sessionId);
+    return c.json({ aborted: true });
   });
 
   // ---------------------------------------------------------------------------

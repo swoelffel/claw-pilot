@@ -12,6 +12,7 @@ import { localized, msg } from "@lit/localize";
 import type { PilotMessage, SessionContext, PilotBusEvent, RuntimeSession } from "../types.js";
 import {
   postRuntimeChat,
+  abortSession,
   getRuntimeChatStreamUrl,
   fetchSessionMessages,
   fetchSessionContext,
@@ -667,6 +668,21 @@ export class RuntimePilot extends LitElement {
     }
   }
 
+  // ── Abort ───────────────────────────────────────────────────────────────
+
+  private async _onAbortRequest(): Promise<void> {
+    if (!this._activeSessionId) return;
+    try {
+      await abortSession(this.slug, this._activeSessionId);
+    } catch {
+      // Non-fatal — the loop may have already finished
+    }
+    // Optimistic: immediately restore idle state
+    this._status = "idle";
+    this._streamingText = "";
+    this._streamingAgentId = "";
+  }
+
   // ── Stats computed from messages ──────────────────────────────────────────
 
   private get _totalTokens(): number {
@@ -720,6 +736,7 @@ export class RuntimePilot extends LitElement {
 
   override render() {
     const isDisabled = this._status !== "idle";
+    const isStreaming = this._status === "sending" || this._status === "streaming";
     const agentId = this._context?.agent.id ?? "";
     const agentName = this._context?.agent.name ?? agentId;
     const model = this._context?.agent.model ?? "";
@@ -757,7 +774,9 @@ export class RuntimePilot extends LitElement {
 
           <cp-pilot-input
             .disabled=${isDisabled}
+            .streaming=${isStreaming}
             @send-message=${this._onSendMessage}
+            @abort-request=${this._onAbortRequest}
           ></cp-pilot-input>
         </div>
 

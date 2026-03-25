@@ -104,6 +104,14 @@ export const buttonStyles = css`
   .btn-stop:hover:not(:disabled) {
     background: rgba(239, 68, 68, 0.15);
   }
+  .btn-danger {
+    background: rgba(239, 68, 68, 0.12);
+    color: var(--state-error);
+    border-color: rgba(239, 68, 68, 0.3);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.22);
+  }
 `;
 
 export const sectionLabelStyles = css`
