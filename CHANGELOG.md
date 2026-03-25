@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.49.1] — 2026-03-24
+
+### Fixed
+
+- **Fire-and-forget `send_message` now triggers async prompt loop** : Previously, `send_message(expect_reply=false)` only wrote the message to the target session DB without triggering LLM processing — messages were permanently stuck. Now launches an async `runPromptLoop()` on the target agent (non-blocking for the caller).
+
+### Changed
+
+- **Dependency bumps** : TypeScript 5.9 → 6.0, Vitest 4.1.0 → 4.1.1, oxlint 1.56 → 1.57, knip 6.0.2 → 6.0.5, nanoid, ws, hono, AI SDK updates.
+
+---
+
 ## [0.49.0] — 2026-03-24
 
 ### Added
