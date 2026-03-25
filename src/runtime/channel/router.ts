@@ -292,7 +292,7 @@ function buildAgentConfig(
     temperature: agent.temperature,
     maxSteps: agent.steps ?? 20,
     allowSubAgents: true,
-    toolProfile: "coding",
+    toolProfile: "executor",
     isDefault: false,
     permissions: agent.permission ?? [],
     inheritWorkspace: true,

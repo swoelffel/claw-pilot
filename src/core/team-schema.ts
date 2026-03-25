@@ -57,7 +57,8 @@ const AgentConfigSchema = z
     model: AgentModelSchema.optional(),
     identity: IdentitySchema.optional(),
     /** Tool profile controls which tools are available to the agent */
-    toolProfile: z.enum(["minimal", "coding", "messaging", "full"]).optional(),
+    toolProfile: z.enum(["sentinel", "pilot", "manager", "executor", "custom"]).optional(),
+    customTools: z.array(z.string()).optional(),
     /** Permission ruleset for this agent */
     permissions: z.array(PermissionRuleSchema).optional(),
     subagents: SubagentsConfigSchema.optional(),

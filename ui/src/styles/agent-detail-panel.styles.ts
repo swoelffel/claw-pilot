@@ -1177,4 +1177,87 @@ export const agentDetailPanelStyles = css`
   .cfg-tag-remove:hover {
     opacity: 1;
   }
+
+  /* ── Tools tab ─────────────────────────────────────────────────────── */
+
+  .tools-profiles {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 0 12px;
+  }
+
+  .tools-profile-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--bg-border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 12px;
+    transition:
+      border-color 0.12s,
+      background-color 0.12s;
+  }
+
+  .tools-profile-option:hover {
+    border-color: var(--accent);
+  }
+
+  .tools-profile-option.selected {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+
+  .tools-profile-option input[type="radio"] {
+    accent-color: var(--accent);
+    margin: 0;
+  }
+
+  .tools-profile-name {
+    font-weight: 600;
+    min-width: 60px;
+  }
+
+  .tools-profile-desc {
+    color: var(--text-secondary);
+    font-size: 11px;
+  }
+
+  .tools-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 0 12px;
+  }
+
+  .tools-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border: 1px solid var(--bg-border);
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    transition:
+      border-color 0.12s,
+      background-color 0.12s;
+  }
+
+  .tools-checkbox:hover {
+    border-color: var(--accent);
+  }
+
+  .tools-checkbox.checked {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+  }
+
+  .tools-checkbox input[type="checkbox"] {
+    accent-color: var(--accent);
+    margin: 0;
+  }
 `;

@@ -438,7 +438,7 @@ export function createTaskTool(options: {
         temperature: agent.temperature,
         maxSteps: agent.steps ?? 20,
         allowSubAgents: false,
-        toolProfile: "coding" as const,
+        toolProfile: "executor" as const,
         isDefault: false,
         permissions: agent.permission,
         inheritWorkspace: true,

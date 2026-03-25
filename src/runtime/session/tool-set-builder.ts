@@ -39,6 +39,7 @@ import { createMemorySearchTool } from "../memory/search-tool.js";
 import { rebuildMemoryIndex } from "../memory/index.js";
 import { createTaskTool } from "../tool/task.js";
 import { createSendMessageTool } from "../tool/send-message.js";
+import { TOOL_PROFILES } from "../tool/registry.js";
 import { invalidateWorkspaceCache } from "./workspace-cache.js";
 import { buildResolvedEnv } from "../../lib/env-reader.js";
 
@@ -266,8 +267,13 @@ export async function buildToolSet(
   }
 
   if (callerAgentConfig && agentKind !== "subagent") {
-    const profile = callerAgentConfig.toolProfile ?? "coding";
-    if (profile === "full") {
+    const profile = callerAgentConfig.toolProfile ?? "executor";
+    // Resolve allowed tools from profile or custom list
+    const allowedTools = new Set(
+      profile === "custom" ? (callerAgentConfig.customTools ?? []) : (TOOL_PROFILES[profile] ?? []),
+    );
+
+    if (allowedTools.has("task")) {
       const env = workDir ? buildResolvedEnv(workDir) : undefined;
       const taskToolInfo = createTaskTool({
         db,
@@ -305,7 +311,9 @@ export async function buildToolSet(
           }
         },
       });
+    }
 
+    if (allowedTools.has("send_message")) {
       // send_message — persistent inter-agent messaging
       const sendMsgToolInfo = createSendMessageTool({
         db,

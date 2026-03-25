@@ -120,7 +120,7 @@ describe("custom agent kind default via initAgentRegistry()", () => {
         systemPrompt: "You are a custom agent.",
         maxSteps: 10,
         allowSubAgents: false,
-        toolProfile: "minimal",
+        toolProfile: "sentinel",
         isDefault: false,
         permissions: [],
       },
@@ -146,7 +146,7 @@ describe("custom agent kind default via initAgentRegistry()", () => {
         temperature: 0.5,
         maxSteps: 20,
         allowSubAgents: true,
-        toolProfile: "coding",
+        toolProfile: "executor",
         isDefault: true,
         permissions: [],
       },
@@ -220,7 +220,7 @@ describe("resolveEffectivePersistence()", () => {
       model: "anthropic/claude-sonnet-4-5",
       maxSteps: 20,
       allowSubAgents: true,
-      toolProfile: "coding" as const,
+      toolProfile: "executor" as const,
       isDefault: true,
       permissions: [] as Array<{
         permission: string;
@@ -250,7 +250,7 @@ describe("resolveEffectivePersistence()", () => {
       model: "anthropic/claude-sonnet-4-5",
       maxSteps: 20,
       allowSubAgents: false,
-      toolProfile: "minimal" as const,
+      toolProfile: "sentinel" as const,
       isDefault: false,
       permissions: [] as Array<{
         permission: string;
@@ -280,7 +280,7 @@ describe("resolveEffectivePersistence()", () => {
       model: "anthropic/claude-sonnet-4-5",
       maxSteps: 20,
       allowSubAgents: false,
-      toolProfile: "minimal" as const,
+      toolProfile: "sentinel" as const,
       isDefault: false,
       permissions: [] as Array<{
         permission: string;

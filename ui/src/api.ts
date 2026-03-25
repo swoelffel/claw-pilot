@@ -396,6 +396,13 @@ export async function fetchInstanceConfig(slug: string): Promise<InstanceConfig>
   return apiFetch<InstanceConfig>(`/instances/${slug}/config`);
 }
 
+export async function fetchToolProfiles(slug: string): Promise<{
+  tools: readonly string[];
+  profiles: Record<string, string[]>;
+}> {
+  return apiFetch(`/instances/${slug}/runtime/tools`);
+}
+
 export async function patchInstanceConfig(
   slug: string,
   patch: Record<string, unknown>,

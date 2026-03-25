@@ -83,7 +83,7 @@ function writeRuntimeJson(stateDir: string) {
         permissions: [],
         maxSteps: 3,
         allowSubAgents: false,
-        toolProfile: "coding",
+        toolProfile: "executor",
         isDefault: true,
       },
     ],

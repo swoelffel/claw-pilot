@@ -259,11 +259,11 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       .get(sessionId) as { total: number } | undefined;
 
     // Build tools list (builtin from toolProfile + placeholder for MCP)
-    const toolProfile = agentCfg?.toolProfile ?? "coding";
+    const toolProfile = agentCfg?.toolProfile ?? "executor";
     const builtinToolsByProfile: Record<string, string[]> = {
-      minimal: ["question"],
-      messaging: ["question", "webfetch"],
-      coding: [
+      sentinel: ["question"],
+      pilot: ["question", "webfetch"],
+      executor: [
         "read",
         "write",
         "edit",
@@ -277,7 +277,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
         "todoread",
         "skill",
       ],
-      full: [
+      manager: [
         "read",
         "write",
         "edit",
@@ -294,7 +294,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       ],
     };
     const builtinTools = (
-      builtinToolsByProfile[toolProfile] ?? builtinToolsByProfile["coding"]!
+      builtinToolsByProfile[toolProfile] ?? builtinToolsByProfile["executor"]!
     ).map((name) => ({ name, source: "builtin" as const }));
 
     // MCP tools — attempt to read from DB snapshot if available, else return empty
@@ -519,7 +519,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       permissions: agentInfo.permission ?? [],
       maxSteps: agentInfo.steps ?? 20,
       allowSubAgents: true,
-      toolProfile: "coding",
+      toolProfile: "executor",
       isDefault: false,
       inheritWorkspace: true,
     };
@@ -771,6 +771,15 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
         stream.onAbort(resolve);
       });
     });
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /api/instances/:slug/runtime/tools
+  // Returns available tool IDs and profile definitions for the Tools tab UI.
+  // ---------------------------------------------------------------------------
+  app.get("/api/instances/:slug/runtime/tools", async (c) => {
+    const { TOOL_PROFILES, ALL_TOOL_IDS } = await import("../../../runtime/tool/registry.js");
+    return c.json({ tools: ALL_TOOL_IDS, profiles: TOOL_PROFILES });
   });
 
   // ---------------------------------------------------------------------------
