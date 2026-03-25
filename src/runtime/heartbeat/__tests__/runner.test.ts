@@ -54,7 +54,7 @@ function makeAgent(overrides?: Partial<RuntimeAgentConfig>): RuntimeAgentConfig 
     permissions: [],
     maxSteps: 5,
     allowSubAgents: false,
-    toolProfile: "minimal",
+    toolProfile: "sentinel",
     isDefault: false,
     heartbeat: { every: "30m" },
     ...overrides,
@@ -132,7 +132,7 @@ describe("startHeartbeatRunner — lifecycle", () => {
       permissions: [],
       maxSteps: 5,
       allowSubAgents: false,
-      toolProfile: "minimal",
+      toolProfile: "sentinel",
       isDefault: false,
     };
 

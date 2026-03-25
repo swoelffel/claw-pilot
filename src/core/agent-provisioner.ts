@@ -36,7 +36,7 @@ export interface CreateAgentData {
    */
   kind?: "primary" | "subagent";
   /** Tool profile written to runtime.json — controls available tools. */
-  toolProfile?: "minimal" | "coding" | "messaging" | "full";
+  toolProfile?: "sentinel" | "pilot" | "manager" | "executor" | "custom";
 }
 
 export class AgentProvisioner {

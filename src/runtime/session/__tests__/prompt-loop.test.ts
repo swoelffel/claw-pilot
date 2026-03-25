@@ -72,7 +72,7 @@ function makeAgentConfig(overrides?: Partial<RuntimeAgentConfig>): RuntimeAgentC
     permissions: [],
     maxSteps: 5,
     allowSubAgents: false,
-    toolProfile: "coding",
+    toolProfile: "executor",
     isDefault: true,
     ...overrides,
   };

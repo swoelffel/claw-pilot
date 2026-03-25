@@ -105,7 +105,9 @@ const AgentConfigSchema = z.object({
   /** Whether this agent can spawn sub-agents */
   allowSubAgents: z.boolean().default(true),
   /** Tool profile */
-  toolProfile: z.enum(["minimal", "coding", "messaging", "full"]).default("coding"),
+  toolProfile: z.enum(["sentinel", "pilot", "manager", "executor", "custom"]).default("executor"),
+  /** Custom tool list — used only when toolProfile is "custom" */
+  customTools: z.array(z.string()).optional(),
   /**
    * Controls which workspace files are injected into the system prompt.
    * - "full": SOUL.md, BOOTSTRAP.md, AGENTS.md, USER.md + memory (default for primary agents)
@@ -470,7 +472,7 @@ export function createDefaultRuntimeConfig(options: {
         name: "Pilot",
         model: options.defaultModel ?? "anthropic/claude-sonnet-4-5",
         isDefault: true,
-        toolProfile: "full",
+        toolProfile: "manager",
         maxSteps: 20,
         allowSubAgents: true,
         // Default permissions: allow all tools, ask for .env reads, allow question tool.

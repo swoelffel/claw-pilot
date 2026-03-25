@@ -547,7 +547,7 @@ function runtimeChatCommand(): Command {
           permissions: agentInfo.permission ?? [],
           maxSteps: agentInfo.steps ?? 20,
           allowSubAgents: true,
-          toolProfile: "coding",
+          toolProfile: "executor",
           isDefault: false,
           inheritWorkspace: true,
         };

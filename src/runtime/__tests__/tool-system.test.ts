@@ -228,12 +228,12 @@ describe("getTools()", () => {
 
 describe("getTools() — toolProfile filtering", () => {
   /**
-   * Objective: toolProfile "minimal" must return only the "question" tool.
+   * Objective: toolProfile "sentinel" must return only the "question" tool.
    * Positive test: exactly 1 tool with id "question".
    */
-  it('[positive] toolProfile "minimal" returns only question', async () => {
+  it('[positive] toolProfile "sentinel" returns only question', async () => {
     // Arrange + Act
-    const tools = await getTools({ toolProfile: "minimal" });
+    const tools = await getTools({ toolProfile: "sentinel" });
     const ids = tools.map((t) => t.id);
 
     // Assert
@@ -242,12 +242,12 @@ describe("getTools() — toolProfile filtering", () => {
   });
 
   /**
-   * Objective: toolProfile "messaging" must return question + webfetch only.
+   * Objective: toolProfile "pilot" must return question + webfetch only.
    * Positive test: exactly 2 tools with the expected IDs.
    */
-  it('[positive] toolProfile "messaging" returns question + webfetch', async () => {
+  it('[positive] toolProfile "pilot" returns question + webfetch', async () => {
     // Arrange + Act
-    const tools = await getTools({ toolProfile: "messaging" });
+    const tools = await getTools({ toolProfile: "pilot" });
     const ids = tools.map((t) => t.id);
 
     // Assert
@@ -257,12 +257,12 @@ describe("getTools() — toolProfile filtering", () => {
   });
 
   /**
-   * Objective: toolProfile "coding" must include the 11 coding tools but NOT "task".
+   * Objective: toolProfile "executor" must include the 11 coding tools but NOT "task".
    * Positive test: all expected coding tools present, "task" absent.
    */
-  it('[positive] toolProfile "coding" includes coding tools but not task', async () => {
+  it('[positive] toolProfile "executor" includes coding tools but not task', async () => {
     // Arrange + Act
-    const tools = await getTools({ toolProfile: "coding" });
+    const tools = await getTools({ toolProfile: "executor" });
     const ids = tools.map((t) => t.id);
 
     // Assert: all expected coding tools present
@@ -278,21 +278,21 @@ describe("getTools() — toolProfile filtering", () => {
     expect(ids).toContain("todowrite");
     expect(ids).toContain("todoread");
     expect(ids).toContain("skill");
-    // "task" must NOT be present in coding profile
+    // "task" must NOT be present in executor profile
     expect(ids).not.toContain("task");
     expect(tools).toHaveLength(12);
   });
 
   /**
-   * Objective: toolProfile "full" must include all coding tools plus "task".
+   * Objective: toolProfile "manager" must include all coding tools plus "task".
    * Note: "task" is a dynamic tool created by createTaskTool() and injected by the
-   * prompt-loop — it is NOT in BUILTIN_TOOLS. TOOL_PROFILES["full"] lists "task" as
+   * prompt-loop — it is NOT in BUILTIN_TOOLS. TOOL_PROFILES["manager"] lists "task" as
    * an allowed ID so that the prompt-loop can include it when building the toolset.
    * getTools() alone cannot return it since it only knows about BUILTIN_TOOLS.
    */
-  it('[positive] toolProfile "full" includes all coding tools', async () => {
+  it('[positive] toolProfile "manager" includes all coding tools', async () => {
     // Arrange + Act
-    const tools = await getTools({ toolProfile: "full" });
+    const tools = await getTools({ toolProfile: "manager" });
     const ids = tools.map((t) => t.id);
 
     // Assert: all coding tools are present
@@ -301,20 +301,20 @@ describe("getTools() — toolProfile filtering", () => {
     expect(ids).toContain("multiedit");
     expect(ids).toContain("skill");
     // "task" is NOT returned by getTools() — it is injected dynamically by the prompt-loop
-    // via createTaskTool(). TOOL_PROFILES["full"] lists it as an allowed ID for that purpose.
+    // via createTaskTool(). TOOL_PROFILES["manager"] lists it as an allowed ID for that purpose.
     expect(ids).not.toContain("task");
   });
 
   /**
    * Objective: alsoAllow adds extra tools beyond the profile.
-   * Positive test: messaging profile + alsoAllow:["bash"] → bash is included.
+   * Positive test: pilot profile + alsoAllow:["bash"] → bash is included.
    */
-  it("[positive] alsoAllow adds bash to messaging profile", async () => {
+  it("[positive] alsoAllow adds bash to pilot profile", async () => {
     // Arrange + Act
-    const tools = await getTools({ toolProfile: "messaging", alsoAllow: ["bash"] });
+    const tools = await getTools({ toolProfile: "pilot", alsoAllow: ["bash"] });
     const ids = tools.map((t) => t.id);
 
-    // Assert: messaging tools + bash
+    // Assert: pilot tools + bash
     expect(ids).toContain("question");
     expect(ids).toContain("webfetch");
     expect(ids).toContain("bash");
@@ -323,11 +323,11 @@ describe("getTools() — toolProfile filtering", () => {
 
   /**
    * Objective: alsoAllow must not add duplicates if the tool is already in the profile.
-   * Positive test: messaging + alsoAllow:["question"] → still 2 tools (no duplicate).
+   * Positive test: pilot + alsoAllow:["question"] → still 2 tools (no duplicate).
    */
   it("[positive] alsoAllow does not duplicate tools already in the profile", async () => {
     // Arrange + Act
-    const tools = await getTools({ toolProfile: "messaging", alsoAllow: ["question"] });
+    const tools = await getTools({ toolProfile: "pilot", alsoAllow: ["question"] });
 
     // Assert: no duplicate question
     const ids = tools.map((t) => t.id);
@@ -338,14 +338,14 @@ describe("getTools() — toolProfile filtering", () => {
 
   /**
    * Objective: exclude must still work after profile filtering.
-   * Positive test: coding profile + exclude:["bash"] → bash absent, others present.
+   * Positive test: executor profile + exclude:["bash"] → bash absent, others present.
    */
   it("[positive] exclude works after toolProfile filtering", async () => {
     // Arrange + Act
-    const tools = await getTools({ toolProfile: "coding", exclude: ["bash"] });
+    const tools = await getTools({ toolProfile: "executor", exclude: ["bash"] });
     const ids = tools.map((t) => t.id);
 
-    // Assert: bash excluded, other coding tools present
+    // Assert: bash excluded, other executor tools present
     expect(ids).not.toContain("bash");
     expect(ids).toContain("read");
     expect(ids).toContain("write");
@@ -365,13 +365,13 @@ describe("getTools() — toolProfile filtering", () => {
   });
 
   /**
-   * Objective: minimal profile must NOT include bash, write, edit, or other
+   * Objective: sentinel profile must NOT include bash, write, edit, or other
    * coding tools — only question.
-   * Negative test: coding tools are absent from minimal profile.
+   * Negative test: coding tools are absent from sentinel profile.
    */
-  it('[negative] toolProfile "minimal" does not include coding tools', async () => {
+  it('[negative] toolProfile "sentinel" does not include coding tools', async () => {
     // Arrange + Act
-    const tools = await getTools({ toolProfile: "minimal" });
+    const tools = await getTools({ toolProfile: "sentinel" });
     const ids = tools.map((t) => t.id);
 
     // Assert: no coding tools

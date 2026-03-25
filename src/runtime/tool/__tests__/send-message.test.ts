@@ -68,7 +68,7 @@ const PILOT_CONFIG: RuntimeAgentConfig = {
   permissions: [],
   maxSteps: 20,
   allowSubAgents: true,
-  toolProfile: "full" as const,
+  toolProfile: "manager" as const,
   isDefault: true,
 };
 
@@ -79,7 +79,7 @@ const LEAD_TECH_CONFIG: RuntimeAgentConfig = {
   permissions: [],
   maxSteps: 20,
   allowSubAgents: true,
-  toolProfile: "full" as const,
+  toolProfile: "manager" as const,
   isDefault: false,
   expertIn: ["architecture", "code-review"],
 };

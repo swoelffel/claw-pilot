@@ -1382,7 +1382,7 @@ agents:
     is_default: true
     config:
       model: anthropic/claude-haiku-4-5
-      toolProfile: full
+      toolProfile: manager
       permissions:
         - permission: "*"
           pattern: "**"
@@ -1480,7 +1480,7 @@ agents:
     is_default: true
     config:
       model: anthropic/claude-haiku-4-5
-      toolProfile: coding
+      toolProfile: executor
 links: []
 `;
 

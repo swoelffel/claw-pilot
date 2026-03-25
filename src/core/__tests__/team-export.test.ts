@@ -74,7 +74,7 @@ function seedRuntimeJsonWithAgent(agentId: string, extra: Record<string, unknown
           name: "Pilot",
           isDefault: true,
           model: "anthropic/claude-haiku-4-5",
-          toolProfile: "full",
+          toolProfile: "manager",
           permissions: [
             { permission: "*", pattern: "**", action: "allow" },
             { permission: "read", pattern: "*.env", action: "ask" },
@@ -128,7 +128,7 @@ describe("exportInstanceTeam()", () => {
 
     const team = await exportInstanceTeam(conn, registry, instance);
 
-    expect(team.agents[0]!.config?.toolProfile).toBe("full");
+    expect(team.agents[0]!.config?.toolProfile).toBe("manager");
   });
 
   it("exports permissions array from runtime.json agent entry", async () => {
@@ -327,7 +327,7 @@ describe("serializeTeamYaml()", () => {
           id: "pilot",
           name: "Pilot",
           is_default: true,
-          config: { model: "anthropic/claude-haiku-4-5", toolProfile: "full" as const },
+          config: { model: "anthropic/claude-haiku-4-5", toolProfile: "manager" as const },
         },
       ],
       links: [],
@@ -338,7 +338,7 @@ describe("serializeTeamYaml()", () => {
     expect(typeof yaml).toBe("string");
     expect(yaml).toContain("version:");
     expect(yaml).toContain("agents:");
-    expect(yaml).toContain("toolProfile: full");
+    expect(yaml).toContain("toolProfile: manager");
     expect(yaml).toContain("model: anthropic/claude-haiku-4-5");
   });
 

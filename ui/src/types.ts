@@ -168,7 +168,7 @@ export interface CreateAgentRequest {
   provider: string;
   model: string;
   kind?: "primary" | "subagent";
-  toolProfile?: "minimal" | "coding" | "messaging" | "full";
+  toolProfile?: "sentinel" | "pilot" | "manager" | "executor" | "custom";
 }
 
 export interface SyncResult {

@@ -13,6 +13,7 @@ import {
   updateAgentMeta,
   patchInstanceConfig,
   fetchInstanceConfig,
+  fetchToolProfiles,
   fetchProviders,
   fetchProfileProviders,
   updateBlueprintAgentMeta,
@@ -73,7 +74,7 @@ export class AgentDetailPanel extends LitElement {
 
   // ── Config tab state ─────────────────────────────────────────────────────
 
-  @state() private _cfgToolProfile: "minimal" | "messaging" | "coding" | "full" = "coding";
+  @state() private _cfgToolProfile = "executor";
   @state() private _cfgTemperature: number | null = null;
   @state() private _cfgMaxSteps = 20;
   @state() private _cfgPromptMode: "full" | "minimal" = "full";
@@ -90,6 +91,16 @@ export class AgentDetailPanel extends LitElement {
   @state() private _cfgDirty = false;
   @state() private _cfgSaving = false;
   @state() private _cfgLoading = false;
+
+  // ── Tools tab state ─────────────────────────────────────────────────────
+
+  @state() private _toolsProfile = "executor";
+  @state() private _toolsSelected: string[] = [];
+  @state() private _toolsDirty = false;
+  @state() private _toolsSaving = false;
+  @state() private _toolsLoading = false;
+  @state() private _toolsAllIds: string[] = [];
+  @state() private _toolsProfiles: Record<string, string[]> = {};
 
   // ── Heartbeat tab state ──────────────────────────────────────────────────
 
@@ -144,7 +155,7 @@ export class AgentDetailPanel extends LitElement {
         cfg = agentEntry as Record<string, unknown> | undefined;
       }
       this._cfgToolProfile =
-        (cfg?.toolProfile as typeof this._cfgToolProfile | undefined) ?? "coding";
+        (cfg?.toolProfile as typeof this._cfgToolProfile | undefined) ?? "executor";
       this._cfgTemperature = (cfg?.temperature as number | undefined) ?? null;
       this._cfgMaxSteps = (cfg?.maxSteps as number | undefined) ?? 20;
       this._cfgPromptMode = (cfg?.promptMode as typeof this._cfgPromptMode | undefined) ?? "full";
@@ -173,7 +184,6 @@ export class AgentDetailPanel extends LitElement {
     try {
       const agentPatch: Record<string, unknown> = {
         id: this.agent.agent_id,
-        toolProfile: this._cfgToolProfile,
         maxSteps: this._cfgMaxSteps,
         promptMode: this._cfgPromptMode,
         thinking: this._cfgThinkingEnabled
@@ -197,7 +207,6 @@ export class AgentDetailPanel extends LitElement {
   }
 
   private _renderConfigTab() {
-    const TOOL_PROFILES = ["minimal", "messaging", "coding", "full"] as const;
     const PROMPT_MODES = ["full", "minimal"] as const;
 
     if (this._cfgLoading) {
@@ -209,23 +218,6 @@ export class AgentDetailPanel extends LitElement {
         <!-- LLM section -->
         <div class="hb-section-title">${msg("LLM", { id: "cfg-llm" })}</div>
         <div class="hb-grid-2">
-          <div class="hb-field">
-            <label class="hb-label">${msg("Tool profile", { id: "cfg-tool-profile" })}</label>
-            <select
-              class="hb-select"
-              .value=${this._cfgToolProfile}
-              @change=${(e: Event) => {
-                this._cfgToolProfile = (e.target as HTMLSelectElement)
-                  .value as typeof this._cfgToolProfile;
-                this._cfgDirty = true;
-              }}
-            >
-              ${TOOL_PROFILES.map(
-                (p) =>
-                  html`<option value=${p} ?selected=${this._cfgToolProfile === p}>${p}</option>`,
-              )}
-            </select>
-          </div>
           <div class="hb-field">
             <label class="hb-label">${msg("Prompt mode", { id: "cfg-prompt-mode" })}</label>
             <select
@@ -623,6 +615,153 @@ export class AgentDetailPanel extends LitElement {
     } finally {
       this._hbSaving = false;
     }
+  }
+
+  // ── Tools tab ──────────────────────────────────────────────────────────
+
+  private async _initToolsTab(): Promise<void> {
+    if (this.context.kind !== "instance") return;
+    this._toolsLoading = true;
+    this._toolsDirty = false;
+    try {
+      const [toolData, instanceConfig] = await Promise.all([
+        fetchToolProfiles(this.context.slug),
+        fetchInstanceConfig(this.context.slug),
+      ]);
+      this._toolsAllIds = [...toolData.tools];
+      this._toolsProfiles = toolData.profiles;
+      const agentEntry = instanceConfig.agents.find((a) => a.id === this.agent.agent_id);
+      this._toolsProfile = (agentEntry?.toolProfile as string) ?? "executor";
+      if (this._toolsProfile === "custom" && agentEntry) {
+        this._toolsSelected =
+          ((agentEntry as Record<string, unknown>).customTools as string[]) ?? [];
+      } else {
+        this._toolsSelected = [...(this._toolsProfiles[this._toolsProfile] ?? [])];
+      }
+    } catch {
+      // Fallback
+    } finally {
+      this._toolsLoading = false;
+    }
+  }
+
+  private async _saveTools(): Promise<void> {
+    if (this.context.kind !== "instance") return;
+    this._toolsSaving = true;
+    try {
+      const agentPatch: Record<string, unknown> = {
+        id: this.agent.agent_id,
+        toolProfile: this._toolsProfile,
+        ...(this._toolsProfile === "custom" ? { customTools: this._toolsSelected } : {}),
+      };
+      await patchInstanceConfig(this.context.slug, { agents: [agentPatch] });
+      this._toolsDirty = false;
+    } catch {
+      // Silently ignore
+    } finally {
+      this._toolsSaving = false;
+    }
+  }
+
+  private _renderToolsTab() {
+    if (this._toolsLoading) {
+      return html`<div class="tab-loading"><span class="spinner"></span></div>`;
+    }
+
+    const PROFILE_DESCRIPTIONS: Record<string, string> = {
+      sentinel: "Monitoring only — can ask questions",
+      pilot: "Orchestrator — sends messages, delegates tasks, no coding",
+      executor: "Coding agent — full coding tools + messaging, no task delegation",
+      manager: "Manager — full coding tools + messaging + task delegation",
+      custom: "Custom selection of tools",
+    };
+
+    const profiles = Object.keys(this._toolsProfiles).filter((p) => p !== "custom");
+    const selectedSet = new Set(this._toolsSelected);
+
+    return html`
+      <div class="hb-tab">
+        <div class="hb-section-title">${msg("Profile", { id: "tools-profile" })}</div>
+        <div class="tools-profiles">
+          ${[...profiles, "custom"].map(
+            (p) => html`
+              <label class="tools-profile-option ${this._toolsProfile === p ? "selected" : ""}">
+                <input
+                  type="radio"
+                  name="tool-profile"
+                  value=${p}
+                  ?checked=${this._toolsProfile === p}
+                  @change=${() => {
+                    this._toolsProfile = p;
+                    if (p !== "custom") {
+                      this._toolsSelected = [...(this._toolsProfiles[p] ?? [])];
+                    }
+                    this._toolsDirty = true;
+                  }}
+                />
+                <span class="tools-profile-name">${p}</span>
+                <span class="tools-profile-desc">${PROFILE_DESCRIPTIONS[p] ?? ""}</span>
+              </label>
+            `,
+          )}
+        </div>
+
+        <div class="hb-section-title" style="margin-top: 16px">
+          ${msg("Available tools", { id: "tools-available" })}
+        </div>
+        <div class="tools-grid">
+          ${this._toolsAllIds.map(
+            (toolId) => html`
+              <label class="tools-checkbox ${selectedSet.has(toolId) ? "checked" : ""}">
+                <input
+                  type="checkbox"
+                  .checked=${selectedSet.has(toolId)}
+                  @change=${(e: Event) => {
+                    const checked = (e.target as HTMLInputElement).checked;
+                    if (checked) {
+                      this._toolsSelected = [...this._toolsSelected, toolId];
+                    } else {
+                      this._toolsSelected = this._toolsSelected.filter((t) => t !== toolId);
+                    }
+                    // Auto-switch to custom if checkboxes diverge from profile
+                    if (this._toolsProfile !== "custom") {
+                      const profileTools = this._toolsProfiles[this._toolsProfile] ?? [];
+                      const same =
+                        this._toolsSelected.length === profileTools.length &&
+                        this._toolsSelected.every((t) => profileTools.includes(t));
+                      if (!same) this._toolsProfile = "custom";
+                    }
+                    this._toolsDirty = true;
+                  }}
+                />
+                <span>${toolId}</span>
+              </label>
+            `,
+          )}
+        </div>
+
+        ${this._toolsDirty
+          ? html`
+              <div class="hb-save-bar">
+                <button
+                  class="btn-save-spawn"
+                  ?disabled=${this._toolsSaving}
+                  @click=${() => void this._saveTools()}
+                >
+                  ${this._toolsSaving ? "…" : msg("Save", { id: "tools-save" })}
+                </button>
+                <button
+                  class="btn-cancel-spawn"
+                  ?disabled=${this._toolsSaving}
+                  @click=${() => void this._initToolsTab()}
+                >
+                  ${msg("Cancel", { id: "tools-cancel" })}
+                </button>
+              </div>
+            `
+          : nothing}
+      </div>
+    `;
   }
 
   private _renderHeartbeatTab() {
@@ -1640,6 +1779,19 @@ export class AgentDetailPanel extends LitElement {
               </button>
             `
           : nothing}
+        ${this.context.kind === "instance"
+          ? html`
+              <button
+                class="tab ${this._activeTab === "tools" ? "active" : ""}"
+                @click=${() => {
+                  this._selectTab("tools");
+                  void this._initToolsTab();
+                }}
+              >
+                ${msg("Tools", { id: "adp-tab-tools" })}
+              </button>
+            `
+          : nothing}
       </div>
 
       <div
@@ -1653,14 +1805,16 @@ export class AgentDetailPanel extends LitElement {
             ? this._renderHeartbeatTab()
             : this._activeTab === "config"
               ? this._renderConfigTab()
-              : html`
-                  <cp-agent-file-editor
-                    .files=${fileTabs}
-                    .loadFile=${this._loadFileFn}
-                    .saveFile=${this._saveFileFn}
-                    .editableFiles=${EDITABLE_FILES}
-                  ></cp-agent-file-editor>
-                `}
+              : this._activeTab === "tools"
+                ? this._renderToolsTab()
+                : html`
+                    <cp-agent-file-editor
+                      .files=${fileTabs}
+                      .loadFile=${this._loadFileFn}
+                      .saveFile=${this._saveFileFn}
+                      .editableFiles=${EDITABLE_FILES}
+                    ></cp-agent-file-editor>
+                  `}
       </div>
 
       ${this._pendingRemovals.size > 0 || this._pendingAdditions.size > 0

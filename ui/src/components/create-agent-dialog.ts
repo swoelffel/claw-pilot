@@ -201,7 +201,8 @@ export class CreateAgentDialog extends DialogMixin(LitElement) {
   @state() private _providersLoading = true;
   @state() private _providersFiltered = false;
   @state() private _kind: "primary" | "subagent" = "primary";
-  @state() private _toolProfile: "minimal" | "coding" | "messaging" | "full" = "coding";
+  @state() private _toolProfile: "sentinel" | "pilot" | "manager" | "executor" | "custom" =
+    "executor";
   @state() private _submitting = false;
   @state() private _submitError = "";
 
@@ -584,23 +585,23 @@ export class CreateAgentDialog extends DialogMixin(LitElement) {
                 id="agent-tool-profile"
                 @change=${(e: Event) => {
                   this._toolProfile = (e.target as HTMLSelectElement).value as
-                    | "minimal"
-                    | "coding"
-                    | "messaging"
-                    | "full";
+                    | "sentinel"
+                    | "pilot"
+                    | "manager"
+                    | "executor";
                 }}
               >
-                <option value="coding" ?selected=${this._toolProfile === "coding"}>
-                  ${msg("Coding", { id: "cad-tool-coding" })}
+                <option value="executor" ?selected=${this._toolProfile === "executor"}>
+                  ${msg("Executor", { id: "cad-tool-executor" })}
                 </option>
-                <option value="full" ?selected=${this._toolProfile === "full"}>
-                  ${msg("Full", { id: "cad-tool-full" })}
+                <option value="manager" ?selected=${this._toolProfile === "manager"}>
+                  ${msg("Manager", { id: "cad-tool-manager" })}
                 </option>
-                <option value="messaging" ?selected=${this._toolProfile === "messaging"}>
-                  ${msg("Messaging", { id: "cad-tool-messaging" })}
+                <option value="pilot" ?selected=${this._toolProfile === "pilot"}>
+                  ${msg("Pilot", { id: "cad-tool-pilot" })}
                 </option>
-                <option value="minimal" ?selected=${this._toolProfile === "minimal"}>
-                  ${msg("Minimal", { id: "cad-tool-minimal" })}
+                <option value="sentinel" ?selected=${this._toolProfile === "sentinel"}>
+                  ${msg("Sentinel", { id: "cad-tool-sentinel" })}
                 </option>
               </select>
             </div>

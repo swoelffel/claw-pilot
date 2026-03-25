@@ -52,7 +52,7 @@ function makeAgentConfig(overrides?: Partial<RuntimeAgentConfig>): RuntimeAgentC
     permissions: [],
     maxSteps: 20,
     allowSubAgents: false,
-    toolProfile: "coding",
+    toolProfile: "executor",
     isDefault: false,
     ...overrides,
   };
@@ -162,10 +162,10 @@ describe("resolveDiscoveryFiles — promptMode", () => {
   });
 
   /**
-   * Objective: when promptMode is absent and toolProfile="minimal", fallback to minimal mode.
+   * Objective: when promptMode is absent and toolProfile="sentinel", fallback to minimal mode.
    * Positive test: HEARTBEAT.md must be absent.
    */
-  it("[positive] promptMode absent + toolProfile=minimal → HEARTBEAT.md excluded", async () => {
+  it("[positive] promptMode absent + toolProfile=sentinel → HEARTBEAT.md excluded", async () => {
     const workDir = "/workspace";
     const wsDir = `${workDir}/workspaces/agent1`;
 
@@ -179,7 +179,7 @@ describe("resolveDiscoveryFiles — promptMode", () => {
     const ctx = makeCtx({
       workDir,
       // promptMode intentionally omitted — toolProfile drives the fallback
-      agentConfig: makeAgentConfig({ toolProfile: "minimal" }),
+      agentConfig: makeAgentConfig({ toolProfile: "sentinel" }),
     });
 
     // Act
@@ -191,10 +191,10 @@ describe("resolveDiscoveryFiles — promptMode", () => {
   });
 
   /**
-   * Objective: when promptMode is absent and toolProfile="coding", fallback to full mode.
+   * Objective: when promptMode is absent and toolProfile="executor", fallback to full mode.
    * HEARTBEAT.md is no longer in the full discovery list — it must be absent.
    */
-  it("[positive] promptMode absent + toolProfile=coding → HEARTBEAT.md excluded (no longer in full)", async () => {
+  it("[positive] promptMode absent + toolProfile=executor → HEARTBEAT.md excluded (no longer in full)", async () => {
     const workDir = "/workspace";
     const wsDir = `${workDir}/workspaces/agent1`;
 
@@ -207,7 +207,7 @@ describe("resolveDiscoveryFiles — promptMode", () => {
 
     const ctx = makeCtx({
       workDir,
-      agentConfig: makeAgentConfig({ toolProfile: "coding" }), // no promptMode
+      agentConfig: makeAgentConfig({ toolProfile: "executor" }), // no promptMode
     });
 
     // Act
@@ -919,7 +919,7 @@ describe("buildSystemPrompt — agent_identity block", () => {
         permissions: [],
         maxSteps: 20,
         allowSubAgents: true,
-        toolProfile: "coding",
+        toolProfile: "executor",
         isDefault: true,
       },
     ]);
@@ -1123,7 +1123,7 @@ describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
         permissions: [],
         maxSteps: 20,
         allowSubAgents: true,
-        toolProfile: "coding",
+        toolProfile: "executor",
         isDefault: true,
       },
     ]);

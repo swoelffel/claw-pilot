@@ -31,9 +31,9 @@ import type { PluginInput } from "../plugin/types.js";
 // ---------------------------------------------------------------------------
 
 export const TOOL_PROFILES: Record<string, string[]> = {
-  minimal: ["question"],
-  messaging: ["question", "webfetch"],
-  coding: [
+  sentinel: ["question"],
+  pilot: ["question", "webfetch", "send_message", "task"],
+  executor: [
     "read",
     "write",
     "edit",
@@ -46,8 +46,9 @@ export const TOOL_PROFILES: Record<string, string[]> = {
     "todowrite",
     "todoread",
     "skill",
+    "send_message",
   ],
-  full: [
+  manager: [
     "read",
     "write",
     "edit",
@@ -60,9 +61,31 @@ export const TOOL_PROFILES: Record<string, string[]> = {
     "todowrite",
     "todoread",
     "skill",
+    "send_message",
     "task",
   ],
 };
+
+/**
+ * All selectable tool IDs (for the UI tools tab).
+ * Includes both built-in and dynamic tools.
+ */
+export const ALL_TOOL_IDS = [
+  "read",
+  "write",
+  "edit",
+  "multiedit",
+  "bash",
+  "glob",
+  "grep",
+  "webfetch",
+  "question",
+  "todowrite",
+  "todoread",
+  "skill",
+  "send_message",
+  "task",
+] as const;
 
 // ---------------------------------------------------------------------------
 // Built-in tools
@@ -180,8 +203,8 @@ export async function getToolsForAgent(
   const tools = await getTools(toolOptions);
 
   if (agentKind === "subagent") {
-    // Hard rule: subagents can never spawn — remove task tool
-    return tools.filter((t) => t.id !== "task");
+    // Hard rule: subagents can never spawn or message — remove task and send_message
+    return tools.filter((t) => t.id !== "task" && t.id !== "send_message");
   }
 
   return tools;

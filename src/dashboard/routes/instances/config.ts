@@ -181,7 +181,8 @@ const RuntimeConfigPatchSchema = z.object({
         id: z.string().min(1),
         name: z.string().optional(),
         model: z.string().nullable().optional(),
-        toolProfile: z.enum(["minimal", "messaging", "coding", "full"]).optional(),
+        toolProfile: z.enum(["sentinel", "pilot", "manager", "executor", "custom"]).optional(),
+        customTools: z.array(z.string()).optional(),
         maxSteps: z.number().int().min(1).max(200).optional(),
         temperature: z.number().min(0).max(2).nullable().optional(),
         promptMode: z.enum(["full", "minimal"]).optional(),
@@ -235,7 +236,7 @@ function buildInstanceConfig(
     id: a.id,
     name: a.name,
     model: a.model ?? null,
-    toolProfile: a.toolProfile ?? "coding",
+    toolProfile: a.toolProfile ?? "executor",
     maxSteps: a.maxSteps ?? 20,
     temperature: a.temperature ?? null,
     thinking: a.thinking?.enabled
@@ -651,6 +652,7 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
           if (agentPatch.model !== undefined && agentPatch.model !== null)
             agent.model = agentPatch.model;
           if (agentPatch.toolProfile !== undefined) agent.toolProfile = agentPatch.toolProfile;
+          if (agentPatch.customTools !== undefined) agent.customTools = agentPatch.customTools;
           if (agentPatch.maxSteps !== undefined) agent.maxSteps = agentPatch.maxSteps;
           if (agentPatch.temperature !== undefined)
             agent.temperature = agentPatch.temperature ?? undefined;

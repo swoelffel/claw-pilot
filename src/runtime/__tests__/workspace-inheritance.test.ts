@@ -86,7 +86,7 @@ function makeCallerAgentConfig(overrides?: Partial<RuntimeAgentConfig>): Runtime
     permissions: [],
     maxSteps: 20,
     allowSubAgents: true,
-    toolProfile: "coding",
+    toolProfile: "executor",
     isDefault: true,
     ...overrides,
   };
