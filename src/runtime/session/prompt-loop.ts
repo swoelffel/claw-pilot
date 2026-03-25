@@ -80,6 +80,8 @@ export interface PromptLoopInput {
   runtimeConfig?: RuntimeConfig;
   /** User profile for dynamic injection into system prompt */
   userProfile?: import("../profile/types.js").UserProfile;
+  /** Image attachments (validated by multimodal middleware) to include in user message */
+  imageAttachments?: import("../types.js").InboundAttachment[];
 }
 
 export interface PromptLoopResult {
@@ -182,8 +184,25 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
   });
 
   try {
-    // 1. Create user message
+    // 1. Create user message (+ image parts if attachments present)
     const userMsg = createUserMessage(db, { sessionId, text: userText });
+
+    // Store image attachments as parts on the user message (for message-builder to pick up)
+    if (input.imageAttachments && input.imageAttachments.length > 0) {
+      for (const att of input.imageAttachments) {
+        createPart(db, {
+          messageId: userMsg.id,
+          type: "image",
+          content: att.data,
+          metadata: JSON.stringify({
+            mimeType: att.mimeType,
+            ...(att.filename !== undefined ? { filename: att.filename } : {}),
+            ...(att.sizeBytes !== undefined ? { sizeBytes: att.sizeBytes } : {}),
+          }),
+        });
+      }
+    }
+
     bus.publish(MessageCreated, { sessionId, messageId: userMsg.id, role: "user" });
 
     for (const feedback of permissionFeedbackMessages) {

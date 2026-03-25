@@ -16,7 +16,7 @@
 
 import type Database from "better-sqlite3";
 import type { Channel } from "../channel.js";
-import type { InboundMessage, OutboundMessage } from "../../types.js";
+import type { InboundMessage, InboundAttachment, OutboundMessage } from "../../types.js";
 import { ChannelError } from "../channel.js";
 import { TelegramPoller } from "./polling.js";
 import type { TelegramUpdate, TelegramInlineKeyboardButton } from "./polling.js";
@@ -151,7 +151,11 @@ export class TelegramChannel implements Channel {
     if (!this.handler) return;
 
     const message = update.message;
-    if (!message?.text) return; // ignore non-text messages
+    if (!message) return;
+
+    // A message must have text, a photo, or a document to be processable
+    const hasContent = message.text || message.caption || message.photo || message.document;
+    if (!hasContent) return;
 
     const chatId = message.chat.id;
     const userId = message.from?.id;
@@ -169,18 +173,20 @@ export class TelegramChannel implements Channel {
         this.options.db &&
         this.options.instanceSlug
       ) {
-        // Generate pairing code and reply to the user
         await this.handlePairingRequest(chatId, userId, message.from?.username);
       }
-      // For other policies (allowlist, disabled, open with no match), silently ignore
       return;
     }
+
+    // Build attachments from photo/document
+    const attachments = await this.extractAttachments(message);
 
     const inbound: InboundMessage = {
       channelType: "telegram",
       peerId,
-      text: message.text,
+      text: message.text ?? message.caption ?? "",
       raw: update,
+      ...(attachments.length > 0 ? { attachments } : {}),
     };
 
     await this.handler(inbound);
@@ -261,6 +267,61 @@ export class TelegramChannel implements Channel {
       )
       .get(this.options.instanceSlug, peerId, now) as { code: string } | undefined;
     return row?.code;
+  }
+
+  /**
+   * Extract image/document attachments from a Telegram message.
+   * Downloads files via Bot API and returns base64-encoded data.
+   */
+  private async extractAttachments(
+    message: import("./polling.js").TelegramMessage,
+  ): Promise<InboundAttachment[]> {
+    if (!this.poller) return [];
+    const attachments: InboundAttachment[] = [];
+
+    // Handle photos (pick the largest size — last in array)
+    if (message.photo && message.photo.length > 0) {
+      const largest = message.photo[message.photo.length - 1]!;
+      try {
+        const fileInfo = await this.poller.getFile(largest.file_id);
+        const base64 = await this.poller.downloadFileAsBase64(fileInfo.file_path);
+        const ext = fileInfo.file_path.split(".").pop()?.toLowerCase() ?? "jpg";
+        const mimeType = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+        attachments.push({
+          id: largest.file_unique_id,
+          type: "image",
+          mimeType,
+          data: base64,
+          ...(fileInfo.file_size !== undefined ? { sizeBytes: fileInfo.file_size } : {}),
+        });
+      } catch (err) {
+        logger.warn(`[telegram] Failed to download photo: ${err}`);
+      }
+    }
+
+    // Handle documents (images sent as files)
+    if (message.document) {
+      const doc = message.document;
+      const isImage = doc.mime_type?.startsWith("image/") ?? false;
+      if (isImage) {
+        try {
+          const fileInfo = await this.poller.getFile(doc.file_id);
+          const base64 = await this.poller.downloadFileAsBase64(fileInfo.file_path);
+          attachments.push({
+            id: doc.file_unique_id,
+            type: "image",
+            mimeType: doc.mime_type ?? "image/jpeg",
+            data: base64,
+            ...(doc.file_name !== undefined ? { filename: doc.file_name } : {}),
+            ...(doc.file_size !== undefined ? { sizeBytes: doc.file_size } : {}),
+          });
+        } catch (err) {
+          logger.warn(`[telegram] Failed to download document: ${err}`);
+        }
+      }
+    }
+
+    return attachments;
   }
 
   /**

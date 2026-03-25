@@ -143,6 +143,11 @@ function makeRuntimeConfig(): RuntimeConfig {
     webChat: { enabled: true, maxSessions: 10 },
     compaction: { auto: true, threshold: 0.85, reservedTokens: 8000, periodicMessageCount: 0 },
     subagents: { maxSpawnDepth: 3, maxChildrenPerSession: 5, retentionHours: 72 },
+    multimodal: {
+      enabled: true,
+      maxFileSizeMB: 20,
+      allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+    },
     mcpEnabled: false,
     mcpServers: [],
     log: { level: "info" as const, format: "text" as const, maxSizeMb: 10, maxFiles: 3 },

@@ -366,6 +366,24 @@ export const RuntimeConfigSchema = z.object({
     maxFiles: 3,
   })),
 
+  /** Multimodal support (images, documents) */
+  multimodal: z
+    .object({
+      /** Enable attachment processing (images sent to vision-capable models) */
+      enabled: z.boolean().default(true),
+      /** Maximum file size in megabytes (default 20 MB) */
+      maxFileSizeMB: z.number().min(1).default(20),
+      /** Allowed MIME type patterns (default: common image formats) */
+      allowedMimeTypes: z
+        .array(z.string())
+        .default(["image/jpeg", "image/png", "image/webp", "image/gif"]),
+    })
+    .default({
+      enabled: true,
+      maxFileSizeMB: 20,
+      allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+    }),
+
   /** Whether to enable MCP tool integration */
   mcpEnabled: z.boolean().default(false),
 

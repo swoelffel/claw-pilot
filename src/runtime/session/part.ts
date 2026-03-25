@@ -15,6 +15,7 @@ import type { PartId, MessageId } from "../types.js";
 /** Atomic content type of a message part */
 export type PartType =
   | "text"
+  | "image"
   | "tool_call"
   | "tool_result"
   | "reasoning"

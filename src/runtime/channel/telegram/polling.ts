@@ -35,12 +35,33 @@ export type TelegramReplyMarkup = {
   inline_keyboard: TelegramInlineKeyboardButton[][];
 };
 
+export interface TelegramPhotoSize {
+  file_id: string;
+  file_unique_id: string;
+  width: number;
+  height: number;
+  file_size?: number;
+}
+
+export interface TelegramDocument {
+  file_id: string;
+  file_unique_id: string;
+  file_name?: string;
+  mime_type?: string;
+  file_size?: number;
+}
+
 export interface TelegramMessage {
   message_id: number;
   from?: TelegramUser;
   chat: TelegramChat;
   text?: string;
+  caption?: string;
   date: number;
+  /** Photo array — ordered by size, largest last */
+  photo?: TelegramPhotoSize[];
+  /** Document attachment */
+  document?: TelegramDocument;
 }
 
 export interface TelegramUser {
@@ -199,6 +220,35 @@ export class TelegramPoller {
     await httpsPost(url, payload);
   }
 
+  /**
+   * Get file path from Telegram servers (needed before download).
+   */
+  async getFile(fileId: string): Promise<{ file_path: string; file_size?: number }> {
+    const url = `https://api.telegram.org/bot${this.options.token}/getFile?file_id=${encodeURIComponent(fileId)}`;
+    const body = await httpsGet(url);
+    const response = JSON.parse(body) as TelegramApiResponse<{
+      file_id: string;
+      file_path?: string;
+      file_size?: number;
+    }>;
+    if (!response.ok || !response.result?.file_path) {
+      throw new Error(`Telegram getFile failed: ${response.description ?? "no file_path"}`);
+    }
+    return {
+      file_path: response.result.file_path,
+      ...(response.result.file_size !== undefined ? { file_size: response.result.file_size } : {}),
+    };
+  }
+
+  /**
+   * Download a file from Telegram and return as base64 string.
+   */
+  async downloadFileAsBase64(filePath: string): Promise<string> {
+    const url = `https://api.telegram.org/file/bot${this.options.token}/${filePath}`;
+    const buffer = await httpsGetBuffer(url);
+    return buffer.toString("base64");
+  }
+
   private isAllowed(update: TelegramUpdate): boolean {
     if (this.options.allowedUserIds.length === 0) return true;
     const userId = update.message?.from?.id;
@@ -218,6 +268,29 @@ function httpsGet(url: string): Promise<string> {
         const chunks: Buffer[] = [];
         res.on("data", (chunk: Buffer) => chunks.push(chunk));
         res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+        res.on("error", reject);
+      })
+      .on("error", reject);
+  });
+}
+
+function httpsGetBuffer(url: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    https
+      .get(url, (res) => {
+        // Follow redirects (Telegram file API may redirect)
+        if (
+          res.statusCode &&
+          res.statusCode >= 300 &&
+          res.statusCode < 400 &&
+          res.headers.location
+        ) {
+          httpsGetBuffer(res.headers.location).then(resolve, reject);
+          return;
+        }
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        res.on("end", () => resolve(Buffer.concat(chunks)));
         res.on("error", reject);
       })
       .on("error", reject);

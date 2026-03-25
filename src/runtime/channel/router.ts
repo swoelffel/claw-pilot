@@ -157,6 +157,10 @@ export class ChannelRouter {
             ...(mcpRegistry !== undefined ? { mcpRegistry } : {}),
             ...(internalResolvedModel !== undefined ? { internalResolvedModel } : {}),
             ...(userProfile !== undefined ? { userProfile } : {}),
+            // Pass validated attachments from middleware-enriched message
+            ...(message.attachments !== undefined && message.attachments.length > 0
+              ? { imageAttachments: message.attachments }
+              : {}),
           }),
       });
 

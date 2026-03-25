@@ -232,11 +232,37 @@ export function buildCoreMessages(db: Database.Database, messages: MessageInfo[]
     const parts = partsMap.get(msg.id) ?? [];
 
     if (msg.role === "user") {
-      const text = parts
-        .filter((p) => p.type === "text")
-        .map((p) => p.content ?? "")
-        .join("\n");
-      if (text) result.push({ role: "user", content: text });
+      const textParts = parts.filter((p) => p.type === "text");
+      const imageParts = parts.filter((p) => p.type === "image");
+      const text = textParts.map((p) => p.content ?? "").join("\n");
+
+      if (imageParts.length > 0 && text) {
+        // Multipart user message: text + images
+        const contentArray: Array<
+          { type: "text"; text: string } | { type: "image"; image: string; mimeType?: string }
+        > = [{ type: "text", text }];
+
+        for (const imgPart of imageParts) {
+          if (!imgPart.content) continue;
+          let mimeType = "image/jpeg";
+          if (imgPart.metadata) {
+            try {
+              const meta = JSON.parse(imgPart.metadata) as { mimeType?: string };
+              if (meta.mimeType) mimeType = meta.mimeType;
+            } catch {
+              // Use default mimeType
+            }
+          }
+          contentArray.push({
+            type: "image",
+            image: imgPart.content,
+            ...(mimeType !== undefined ? { mimeType } : {}),
+          });
+        }
+        result.push({ role: "user", content: contentArray } as ModelMessage);
+      } else if (text) {
+        result.push({ role: "user", content: text });
+      }
     } else {
       const textParts = parts.filter((p) => p.type === "text" || p.type === "compaction");
       const toolCallParts = parts.filter((p) => p.type === "tool_call");

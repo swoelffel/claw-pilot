@@ -393,6 +393,7 @@ export interface RuntimeChatResponse {
 
 export type PilotPartType =
   | "text"
+  | "image"
   | "tool_call"
   | "tool_result"
   | "reasoning"

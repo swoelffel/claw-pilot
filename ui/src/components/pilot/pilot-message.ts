@@ -11,6 +11,7 @@ import "./parts/part-reasoning.js";
 import "./parts/part-subtask.js";
 import "./parts/part-compaction.js";
 import "./parts/part-question.js";
+import "./parts/part-image.js";
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -191,6 +192,25 @@ export class PilotMessageEl extends LitElement {
     switch (part.type) {
       case "text":
         return html`<cp-pilot-part-text .content=${part.content ?? ""}></cp-pilot-part-text>`;
+
+      case "image": {
+        let mimeType = "image/jpeg";
+        let filename = "";
+        if (part.metadata) {
+          try {
+            const meta = JSON.parse(part.metadata) as { mimeType?: string; filename?: string };
+            if (meta.mimeType) mimeType = meta.mimeType;
+            if (meta.filename) filename = meta.filename;
+          } catch {
+            /* ignore */
+          }
+        }
+        return html`<cp-pilot-part-image
+          .data=${part.content ?? ""}
+          .mimeType=${mimeType}
+          .filename=${filename}
+        ></cp-pilot-part-image>`;
+      }
 
       case "tool_call": {
         // Find associated tool_result by toolCallId in metadata

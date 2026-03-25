@@ -140,6 +140,25 @@ export interface PermissionResult {
 /** Supported messaging channels */
 export type ChannelType = "web" | "telegram" | "discord" | "slack";
 
+/** Attachment type classification */
+export type AttachmentType = "image" | "document" | "audio" | "video";
+
+/** Structured attachment metadata for inbound messages */
+export interface InboundAttachment {
+  /** Unique attachment identifier */
+  id: string;
+  /** High-level attachment type */
+  type: AttachmentType;
+  /** MIME type (e.g. "image/jpeg", "application/pdf") */
+  mimeType: string;
+  /** Base64-encoded file content */
+  data: string;
+  /** Optional original filename */
+  filename?: string;
+  /** File size in bytes (before base64 encoding) */
+  sizeBytes?: number;
+}
+
 /** Inbound message from a channel */
 export interface InboundMessage {
   channelType: ChannelType;
@@ -148,8 +167,8 @@ export interface InboundMessage {
   /** Channel-specific account identifier (bot ID, workspace ID, etc.) */
   accountId?: string;
   text: string;
-  /** Optional attachments (file paths, URLs) */
-  attachments?: string[];
+  /** Optional structured attachments (images, documents, etc.) */
+  attachments?: InboundAttachment[];
   /** Original raw message from the channel SDK */
   raw?: unknown;
 }
