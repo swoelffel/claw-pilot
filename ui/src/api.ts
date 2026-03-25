@@ -489,7 +489,13 @@ export async function fetchRuntimeSessions(slug: string): Promise<RuntimeSession
 
 export async function postRuntimeChat(
   slug: string,
-  body: { message: string; sessionId?: string; agentId?: string; model?: string },
+  body: {
+    message: string;
+    sessionId?: string;
+    agentId?: string;
+    model?: string;
+    files?: Array<{ name: string; mimeType: string; data: string }>;
+  },
 ): Promise<RuntimeChatResponse> {
   return apiFetch<RuntimeChatResponse>(`/instances/${slug}/runtime/chat`, {
     method: "POST",

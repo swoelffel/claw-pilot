@@ -628,9 +628,15 @@ export class RuntimePilot extends LitElement {
 
   // ── Send message ──────────────────────────────────────────────────────────
 
-  private async _onSendMessage(e: CustomEvent<{ text: string }>): Promise<void> {
+  private async _onSendMessage(
+    e: CustomEvent<{
+      text: string;
+      files?: Array<{ name: string; mimeType: string; data: string }>;
+    }>,
+  ): Promise<void> {
     const text = e.detail.text;
-    if (!text.trim() || this._status !== "idle") return;
+    const files = e.detail.files;
+    if ((!text.trim() && !files?.length) || this._status !== "idle") return;
 
     this._status = "sending";
     this._error = "";
@@ -639,6 +645,7 @@ export class RuntimePilot extends LitElement {
       const result = await postRuntimeChat(this.slug, {
         message: text,
         ...(this._activeSessionId ? { sessionId: this._activeSessionId } : {}),
+        ...(files !== undefined && files.length > 0 ? { files } : {}),
       });
 
       // If this is the first message, we now have a sessionId — load context + start polling

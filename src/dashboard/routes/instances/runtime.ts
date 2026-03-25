@@ -457,7 +457,13 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
 
-    let body: { message?: string; agentId?: string; sessionId?: string; model?: string };
+    let body: {
+      message?: string;
+      agentId?: string;
+      sessionId?: string;
+      model?: string;
+      files?: Array<{ name: string; mimeType: string; data: string }>;
+    };
     try {
       body = await c.req.json();
     } catch {
@@ -594,6 +600,20 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       }
     }
 
+    // Convert uploaded files to InboundAttachment[] for vision models
+    const imageAttachments =
+      body.files && body.files.length > 0
+        ? body.files
+            .filter((f) => f.mimeType.startsWith("image/"))
+            .map((f) => ({
+              id: `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              type: "image" as const,
+              mimeType: f.mimeType,
+              data: f.data,
+              ...(f.name ? { filename: f.name } : {}),
+            }))
+        : undefined;
+
     // Run prompt loop
     const agentWorkDir = resolveAgentWorkspacePath(stateDir, agentId, undefined);
     try {
@@ -610,6 +630,9 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
         runtimeConfig: config,
         compactionConfig: config.compaction,
         subagentsConfig: config.subagents,
+        ...(imageAttachments !== undefined && imageAttachments.length > 0
+          ? { imageAttachments }
+          : {}),
       });
 
       return c.json({
