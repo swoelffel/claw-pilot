@@ -669,11 +669,17 @@ export class AgentDetailPanel extends LitElement {
     }
 
     const PROFILE_DESCRIPTIONS: Record<string, string> = {
-      sentinel: "Monitoring only — can ask questions",
-      pilot: "Orchestrator — sends messages, delegates tasks, no coding",
-      executor: "Coding agent — full coding tools + messaging, no task delegation",
-      manager: "Manager — full coding tools + messaging + task delegation",
-      custom: "Custom selection of tools",
+      sentinel: msg("Monitoring only — can ask questions", { id: "tools-desc-sentinel" }),
+      pilot: msg("Orchestrator — sends messages, delegates tasks, no coding", {
+        id: "tools-desc-pilot",
+      }),
+      executor: msg("Coding agent — full coding tools + messaging, no task delegation", {
+        id: "tools-desc-executor",
+      }),
+      manager: msg("Manager — full coding tools + messaging + task delegation", {
+        id: "tools-desc-manager",
+      }),
+      custom: msg("Custom selection of tools", { id: "tools-desc-custom" }),
     };
 
     const profiles = Object.keys(this._toolsProfiles).filter((p) => p !== "custom");
