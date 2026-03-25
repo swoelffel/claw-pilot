@@ -343,7 +343,7 @@ function resolveWorkspaceDir(workDir: string, agentId: string): string | undefin
  * If promptMode is not set, infer from agent kind:
  * - kind="subagent" → "subagent"
  * - kind="primary" (or unknown) → "full"
- * Legacy fallback: toolProfile="minimal" → "minimal"
+ * Legacy fallback: toolProfile="sentinel" → "minimal"
  */
 function resolveDiscoveryFiles(agentConfig: RuntimeAgentConfig): readonly string[] {
   const agentInfo = getAgent(agentConfig.id);
@@ -354,7 +354,7 @@ function resolveDiscoveryFiles(agentConfig: RuntimeAgentConfig): readonly string
     mode = agentConfig.promptMode;
   } else if (agentKind === "subagent") {
     mode = "subagent";
-  } else if (agentConfig.toolProfile === "minimal") {
+  } else if (agentConfig.toolProfile === "sentinel") {
     // Legacy fallback — kept for backward-compat
     mode = "minimal";
   } else {

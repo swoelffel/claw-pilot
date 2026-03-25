@@ -6,6 +6,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.51.0] — 2026-03-25
+
+### Changed
+
+- **Tool profiles redesign** : Replace old profiles (minimal/messaging/coding/full) with role-based profiles matching team delegation strategy: `sentinel` (monitoring), `pilot` (orchestrator), `executor` (coding agent), `manager` (coding + delegation). New `custom` profile with arbitrary tool selection via `customTools` array.
+- **`send_message` available for all profiles except sentinel** : Every agent can now communicate with peers. `task` (spawn delegation) remains limited to pilot and manager profiles.
+- **Profile-driven tool injection** : `tool-set-builder.ts` now reads from `TOOL_PROFILES` instead of hardcoded `profile === "full"` check. Subagents blocked from both `task` and `send_message`.
+
+### Added
+
+- **Tools tab in agent detail panel** : New tab with radio-button profile selector and checkbox grid for all 14 tools. Changing a checkbox auto-switches to "custom" profile. Save/Cancel with `patchInstanceConfig`.
+- **`GET /runtime/tools` API endpoint** : Returns `ALL_TOOL_IDS` and `TOOL_PROFILES` for UI tool discovery.
+- **`customTools` field in agent config** : Persisted in `runtime.json`, passed through config API GET/PATCH.
+- **i18n for profile descriptions** : Localized labels in 6 languages (en, fr, de, es, it, pt).
+
+---
+
 ## [0.50.2] — 2026-03-25
 
 ### Added

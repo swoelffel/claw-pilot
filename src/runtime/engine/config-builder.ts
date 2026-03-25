@@ -63,7 +63,7 @@ export function buildAgentConfigsFromDb(
       permissions: [],
       maxSteps: 20,
       allowSubAgents: true,
-      toolProfile: "coding",
+      toolProfile: "executor",
     } as RuntimeAgentConfig);
   }
 

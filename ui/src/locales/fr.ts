@@ -126,10 +126,18 @@ export const templates = {
   "cad-kind-primary-hint": "Workspace complet avec identité, mémoire et heartbeat",
   "cad-kind-subagent-hint": "Workspace minimal (AGENTS.md) — pour tâches déléguées",
   "cad-label-tool-profile": "Profil d'outils",
-  "cad-tool-coding": "Coding",
-  "cad-tool-full": "Complet",
-  "cad-tool-messaging": "Messagerie",
-  "cad-tool-minimal": "Minimal",
+  "cad-tool-executor": "Exécuteur",
+  "cad-tool-manager": "Manager",
+  "cad-tool-pilot": "Pilote",
+  "cad-tool-sentinel": "Sentinelle",
+
+  // agent-detail-panel.ts — Tools tab
+  "tools-desc-sentinel": "Surveillance uniquement — peut poser des questions",
+  "tools-desc-pilot": "Orchestrateur — envoie des messages, délègue des tâches, pas de code",
+  "tools-desc-executor":
+    "Agent technique — tous les outils de code + messagerie, pas de délégation",
+  "tools-desc-manager": "Manager — tous les outils de code + messagerie + délégation de tâches",
+  "tools-desc-custom": "Sélection personnalisée d'outils",
   "cad-error-slug-required": "L'identifiant est requis",
   "cad-error-slug-invalid": "L'identifiant doit faire 2-30 caractères minuscules",
   "cad-error-slug-taken": "Cet identifiant est déjà utilisé",

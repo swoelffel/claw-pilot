@@ -126,7 +126,7 @@ function makeRuntimeConfig(): RuntimeConfig {
         permissions: [],
         maxSteps: 5,
         allowSubAgents: true,
-        toolProfile: "coding",
+        toolProfile: "executor",
         isDefault: true,
       },
     ],
@@ -935,7 +935,7 @@ describe("checkA2APolicy", () => {
       permissions: [],
       maxSteps: 20,
       allowSubAgents: true,
-      toolProfile: "coding" as const,
+      toolProfile: "executor" as const,
       isDefault: true,
       // No agentToAgent field
     };
@@ -952,7 +952,7 @@ describe("checkA2APolicy", () => {
       permissions: [],
       maxSteps: 20,
       allowSubAgents: true,
-      toolProfile: "coding" as const,
+      toolProfile: "executor" as const,
       isDefault: true,
       agentToAgent: { enabled: true },
     };
@@ -969,7 +969,7 @@ describe("checkA2APolicy", () => {
       permissions: [],
       maxSteps: 20,
       allowSubAgents: false,
-      toolProfile: "coding" as const,
+      toolProfile: "executor" as const,
       isDefault: false,
       agentToAgent: { enabled: false },
     };
@@ -987,7 +987,7 @@ describe("checkA2APolicy", () => {
       permissions: [],
       maxSteps: 20,
       allowSubAgents: true,
-      toolProfile: "coding" as const,
+      toolProfile: "executor" as const,
       isDefault: false,
       agentToAgent: { enabled: true, allowList: ["explore", "general"] },
     };
@@ -1004,7 +1004,7 @@ describe("checkA2APolicy", () => {
       permissions: [],
       maxSteps: 20,
       allowSubAgents: true,
-      toolProfile: "coding" as const,
+      toolProfile: "executor" as const,
       isDefault: false,
       agentToAgent: { enabled: true, allowList: ["general"] },
     };
@@ -1023,7 +1023,7 @@ describe("checkA2APolicy", () => {
       permissions: [],
       maxSteps: 20,
       allowSubAgents: true,
-      toolProfile: "coding" as const,
+      toolProfile: "executor" as const,
       isDefault: false,
       agentToAgent: { enabled: true, allowList: ["*"] },
     };
@@ -1041,7 +1041,7 @@ describe("checkA2APolicy", () => {
       permissions: [],
       maxSteps: 20,
       allowSubAgents: false,
-      toolProfile: "coding" as const,
+      toolProfile: "executor" as const,
       isDefault: false,
       agentToAgent: { enabled: false },
     };
@@ -1082,7 +1082,7 @@ describe("checkA2APolicy", () => {
       permissions: [],
       maxSteps: 20,
       allowSubAgents: true,
-      toolProfile: "coding" as const,
+      toolProfile: "executor" as const,
       isDefault: false,
       agentToAgent: { enabled: true, allowList: ["general"] },
     };
@@ -1127,7 +1127,7 @@ describe("createTaskTool — A2A primary-to-primary", () => {
     permissions: [],
     maxSteps: 20,
     allowSubAgents: true,
-    toolProfile: "full" as const,
+    toolProfile: "manager" as const,
     isDefault: false,
   };
 
@@ -1138,7 +1138,7 @@ describe("createTaskTool — A2A primary-to-primary", () => {
     permissions: [],
     maxSteps: 20,
     allowSubAgents: true,
-    toolProfile: "full" as const,
+    toolProfile: "manager" as const,
     isDefault: true,
   };
 
@@ -1303,7 +1303,7 @@ describe("createTaskTool — A2A primary-to-primary", () => {
       permissions: [],
       maxSteps: 20,
       allowSubAgents: false,
-      toolProfile: "coding" as const,
+      toolProfile: "executor" as const,
       isDefault: false,
       agentToAgent: { enabled: false },
     };

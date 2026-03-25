@@ -127,10 +127,19 @@ export const templates = {
   "cad-kind-primary-hint": "Workspace completo con identidad, memoria y heartbeat",
   "cad-kind-subagent-hint": "Workspace mínimo (solo AGENTS.md) — para tareas delegadas",
   "cad-label-tool-profile": "Perfil de herramientas",
-  "cad-tool-coding": "Coding",
-  "cad-tool-full": "Completo",
-  "cad-tool-messaging": "Mensajería",
-  "cad-tool-minimal": "Mínimo",
+  "cad-tool-executor": "Ejecutor",
+  "cad-tool-manager": "Manager",
+  "cad-tool-pilot": "Piloto",
+  "cad-tool-sentinel": "Sentinel",
+
+  // agent-detail-panel.ts — Tools tab
+  "tools-desc-sentinel": "Solo monitoreo — puede hacer preguntas",
+  "tools-desc-pilot": "Orquestador — envía mensajes, delega tareas, no codifica",
+  "tools-desc-executor":
+    "Agente técnico — todas las herramientas de código + mensajería, sin delegación",
+  "tools-desc-manager":
+    "Manager — todas las herramientas de código + mensajería + delegación de tareas",
+  "tools-desc-custom": "Selección personalizada de herramientas",
   "cad-error-slug-required": "El ID del agente es obligatorio",
   "cad-error-slug-invalid": "El ID debe tener 2-30 caracteres en minúsculas",
   "cad-error-slug-taken": "Este ID ya está en uso",
