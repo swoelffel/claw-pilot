@@ -38,6 +38,7 @@ export {
   saveRuntimeConfig,
   ensureRuntimeConfig,
   runtimeConfigExists,
+  exportRuntimeJsonSnapshot,
 } from "./engine/index.js";
 
 // Provider exports — explicit to avoid name conflicts with config types

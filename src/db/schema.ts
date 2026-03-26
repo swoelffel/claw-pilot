@@ -900,6 +900,38 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // v21: instances.runtime_config_json — store full RuntimeConfig as JSON blob.
+    // Source of truth for all instance configuration (providers, agents, channels,
+    // compaction, etc.). Replaces runtime.json as the canonical store.
+    // Backfilled from runtime.json for existing instances.
+    version: 21,
+    up(db) {
+      db.exec(`ALTER TABLE instances ADD COLUMN runtime_config_json TEXT`);
+
+      // Backfill: read runtime.json for each instance and populate runtime_config_json
+      const instances = db
+        .prepare("SELECT id, state_dir FROM instances WHERE state_dir IS NOT NULL")
+        .all() as Array<{ id: number; state_dir: string }>;
+
+      const update = db.prepare("UPDATE instances SET runtime_config_json = ? WHERE id = ?");
+
+      for (const inst of instances) {
+        try {
+          const configPath = `${inst.state_dir}/runtime.json`;
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const fs = require("node:fs") as typeof import("node:fs");
+          if (!fs.existsSync(configPath)) continue;
+          const raw = fs.readFileSync(configPath, "utf-8");
+          // Validate it is parsable JSON before storing
+          JSON.parse(raw);
+          update.run(raw, inst.id);
+        } catch {
+          // Non-critical: skip instances with missing or malformed runtime.json
+        }
+      }
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

@@ -21,6 +21,7 @@ import {
   saveRuntimeConfig,
   ensureRuntimeConfig,
   runtimeConfigExists,
+  exportRuntimeJsonSnapshot,
   createDefaultRuntimeConfig,
   createSession,
   listSessions,
@@ -35,6 +36,35 @@ import { resolveAgentWorkspacePath } from "../core/agent-workspace.js";
 import { UserProfileRepository } from "../core/repositories/user-profile-repository.js";
 import { CommunityProfileResolver } from "../runtime/profile/community-resolver.js";
 import { getDataDir } from "../lib/platform.js";
+import { Registry } from "../core/registry.js";
+import type { RuntimeConfig } from "../runtime/index.js";
+
+/**
+ * Load RuntimeConfig from DB first, then fallback to runtime.json.
+ * If loaded from file, backfill the DB for next time.
+ * Returns null if no config found anywhere.
+ */
+function loadConfigFromDbOrFile(
+  db: ReturnType<typeof initDatabase>,
+  slug: string,
+  stateDir: string,
+): RuntimeConfig | null {
+  const reg = new Registry(db);
+
+  // 1. Try DB (source of truth since v21)
+  const fromDb = reg.getRuntimeConfig(slug);
+  if (fromDb) return fromDb;
+
+  // 2. Fallback to file
+  if (!runtimeConfigExists(stateDir)) return null;
+  const fromFile = loadRuntimeConfig(stateDir);
+
+  // 3. Backfill DB
+  reg.saveRuntimeConfig(slug, fromFile);
+  logger.info(`[runtime] Backfilled runtime config to DB for "${slug}"`);
+
+  return fromFile;
+}
 
 // ---------------------------------------------------------------------------
 // runtime config init <slug>
@@ -247,22 +277,23 @@ function runtimeStartCommand(): Command {
       // Load environment variables from .env file
       loadEnvFile(stateDir);
 
-      // Load or create config
+      // Open DB early so we can read config from it
+      const db = initDatabase(getDbPath());
+
+      // Load config: DB first, then file fallback, then create default
       let config;
-      if (opts.ensureConfig) {
+      const fromDb = loadConfigFromDbOrFile(db, slug, stateDir);
+      if (fromDb) {
+        config = fromDb;
+      } else if (opts.ensureConfig) {
         config = ensureRuntimeConfig(stateDir);
+        // Persist to DB for next time
+        new Registry(db).saveRuntimeConfig(slug, config);
       } else {
-        if (!runtimeConfigExists(stateDir)) {
-          logger.error(`No runtime.json found for instance "${slug}".`);
-          logger.error(`Run: claw-pilot runtime config init ${slug}`);
-          process.exit(1);
-        }
-        try {
-          config = loadRuntimeConfig(stateDir);
-        } catch (err) {
-          logger.error(`Invalid runtime.json: ${err instanceof Error ? err.message : String(err)}`);
-          process.exit(1);
-        }
+        logger.error(`No runtime config found for instance "${slug}" (checked DB and file).`);
+        logger.error(`Run: claw-pilot runtime config init ${slug}`);
+        db.close();
+        process.exit(1);
       }
 
       // Apply log config before any further logging
@@ -272,12 +303,8 @@ function runtimeStartCommand(): Command {
       const logFile = `${stateDir}/logs/runtime.log`;
       rotateLogs(logFile, config.log.maxSizeMb, config.log.maxFiles);
 
-      if (opts.ensureConfig) {
-        logger.info(`Config loaded from ${stateDir}/runtime.json`);
-      }
-
-      // Open DB
-      const db = initDatabase(getDbPath());
+      // Export runtime.json snapshot for debugging
+      exportRuntimeJsonSnapshot(stateDir, config);
 
       // Load user-level .env (shared across instances) — if it exists
       const userEnvDir = getDataDir();
@@ -506,25 +533,21 @@ function runtimeChatCommand(): Command {
         },
       ) => {
         const stateDir = getRuntimeStateDir(slug);
+        const chatDb = initDatabase(getDbPath());
 
-        // Load config
+        // Load config: DB first, then file fallback
         let config;
-        if (opts.ensureConfig) {
+        const chatFromDb = loadConfigFromDbOrFile(chatDb, slug, stateDir);
+        if (chatFromDb) {
+          config = chatFromDb;
+        } else if (opts.ensureConfig) {
           config = ensureRuntimeConfig(stateDir);
+          new Registry(chatDb).saveRuntimeConfig(slug, config);
         } else {
-          if (!runtimeConfigExists(stateDir)) {
-            logger.error(`No runtime.json found for instance "${slug}".`);
-            logger.error(`Run: claw-pilot runtime config init ${slug}`);
-            process.exit(1);
-          }
-          try {
-            config = loadRuntimeConfig(stateDir);
-          } catch (err) {
-            logger.error(
-              `Invalid runtime.json: ${err instanceof Error ? err.message : String(err)}`,
-            );
-            process.exit(1);
-          }
+          logger.error(`No runtime config found for instance "${slug}" (checked DB and file).`);
+          logger.error(`Run: claw-pilot runtime config init ${slug}`);
+          chatDb.close();
+          process.exit(1);
         }
 
         // Init agent registry
@@ -572,8 +595,8 @@ function runtimeChatCommand(): Command {
           process.exit(1);
         }
 
-        // Open DB
-        const db = initDatabase(getDbPath());
+        // Use the DB opened earlier for config loading
+        const db = chatDb;
 
         // Create or resume session
         let session;

@@ -28,6 +28,8 @@ export interface InstanceRecord {
   default_model: string | null;
   discovered: number;
   instance_type: "claw-runtime";
+  /** Full RuntimeConfig as JSON — source of truth for all instance config fields (v21+). */
+  runtime_config_json: string | null;
   created_at: string;
   updated_at: string;
 }

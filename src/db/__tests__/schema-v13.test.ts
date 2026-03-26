@@ -326,7 +326,7 @@ describe("migration v13 — idempotency", () => {
     const db = initDatabase(dbPath);
 
     // Assert: v18 is the latest migration (drop user_model_aliases)
-    expect(schemaVersion(db)).toBe(20);
+    expect(schemaVersion(db)).toBe(21);
     db.close();
   });
 });
