@@ -30,7 +30,8 @@ export async function runWizard(
   const port = await promptPort(portAllocator, serverId);
 
   // Step 3: Agent team
-  const { agents } = await promptAgents();
+  const agentsResult = await promptAgents();
+  const { agents } = agentsResult;
 
   // Step 4: Provider + API key
   const existingInstances = registry.listInstances();
@@ -50,7 +51,9 @@ export async function runWizard(
   console.log(`  Slug:        ${slug}`);
   console.log(`  Name:        ${displayName}`);
   console.log(`  Port:        ${port}`);
-  console.log(`  Agents:      ${agents.map((a) => a.id).join(", ")}`);
+  console.log(
+    `  Agents:      ${agentsResult.mode === "blueprint" ? `From Blueprint (${agents.map((a) => a.id).join(", ")})` : agents.map((a) => a.id).join(", ")}`,
+  );
   console.log(`  Model:       ${defaultModel}`);
   console.log(`  Provider:    ${provider}`);
   console.log(
@@ -79,5 +82,6 @@ export async function runWizard(
     apiKey,
     telegram,
     mem0,
+    ...(agentsResult.teamFile !== undefined ? { blueprintTeamFile: agentsResult.teamFile } : {}),
   };
 }

@@ -141,9 +141,8 @@ export function createTaskTool(options: {
 
   const primaryList = primaryPeers
     .map((cfg) => {
-      const skills =
-        cfg.expertIn && cfg.expertIn.length > 0 ? ` [skills: ${cfg.expertIn.join(", ")}]` : "";
-      return `- ${cfg.id} (${cfg.name})${skills}: Primary agent — use for peer-to-peer delegation.`;
+      const arch = cfg.archetype ? ` [archetype: ${cfg.archetype}]` : "";
+      return `- ${cfg.id} (${cfg.name})${arch}: Primary agent — use for peer-to-peer delegation.`;
     })
     .join("\n");
 
@@ -160,7 +159,7 @@ export function createTaskTool(options: {
     `- When you need to delegate a complex subtask to a specialized agent\n` +
     `- When parallel execution would speed up the work\n` +
     `- When you want to communicate with a peer agent (use the agent's id as subagent_type)\n` +
-    `- When you want to route by skill: use a skill name as subagent_type (e.g. "code-review", "test-writing") — the runtime resolves the first primary agent that declares that skill in expertIn\n\n` +
+    `- When you want to route by archetype: use an archetype name as subagent_type (e.g. "evaluator", "planner") — the runtime resolves the first primary agent with that archetype\n\n` +
     `When NOT to use the Task tool:\n` +
     `- For simple single-file operations — use the direct tools instead\n` +
     `- When you already have all the context needed to complete the task\n\n` +
@@ -234,9 +233,17 @@ export function createTaskTool(options: {
         // Note: "ask" action is not interactive in the task tool context — treat as allow
       }
 
-      // A2A policy check (declarative allowList)
+      // A2A policy check (declarative allowList — accepts agent IDs and archetype names)
       if (callerAgentConfig) {
-        const a2aCheck = checkA2APolicy(callerAgentConfig, params.subagent_type);
+        // Resolve archetype early for policy check (full resolution happens below)
+        const resolvedArchetype = (runtimeAgentConfigs ?? []).find(
+          (cfg) =>
+            cfg.id === params.subagent_type ||
+            (cfg.id !== callerAgentConfig.id &&
+              cfg.archetype != null &&
+              cfg.archetype === params.subagent_type),
+        )?.archetype;
+        const a2aCheck = checkA2APolicy(callerAgentConfig, params.subagent_type, resolvedArchetype);
         if (!a2aCheck.allowed) {
           throw new Error(a2aCheck.reason ?? `Agent-to-agent spawn denied`);
         }
@@ -245,14 +252,14 @@ export function createTaskTool(options: {
       // 1. Try to resolve as a user-defined primary agent (A2A peer delegation)
       //    Resolution order:
       //    a) Exact match by agent ID (cfg.id)
-      //    b) Skill-based match: find first primary agent that declares this skill in expertIn
+      //    b) Archetype match: find first primary agent with that archetype
       const primaryPeerConfig =
         (runtimeAgentConfigs ?? []).find((cfg) => cfg.id === params.subagent_type) ??
         (runtimeAgentConfigs ?? []).find(
           (cfg) =>
             cfg.id !== callerAgentConfig?.id &&
-            cfg.expertIn !== undefined &&
-            cfg.expertIn.includes(params.subagent_type),
+            cfg.archetype != null &&
+            cfg.archetype === params.subagent_type,
         );
 
       if (primaryPeerConfig) {
@@ -404,19 +411,19 @@ export function createTaskTool(options: {
           .filter((cfg) => cfg.id !== callerAgentConfig?.id)
           .map((cfg) => cfg.id)
           .join(", ");
-        // Collect all declared skills from primary agents for the error message
-        const declaredSkills = [
+        // Collect all declared archetypes from primary agents for the error message
+        const declaredArchetypes = [
           ...new Set(
             (runtimeAgentConfigs ?? [])
-              .filter((cfg) => cfg.id !== callerAgentConfig?.id && cfg.expertIn?.length)
-              .flatMap((cfg) => cfg.expertIn ?? []),
+              .filter((cfg) => cfg.id !== callerAgentConfig?.id && cfg.archetype != null)
+              .map((cfg) => cfg.archetype!),
           ),
         ].join(", ");
         throw new Error(
           `Unknown agent type: "${params.subagent_type}" is not a valid agent type.\n` +
             `Available subagents: ${availableSubagents}\n` +
             (availablePrimary ? `Available primary agents: ${availablePrimary}\n` : "") +
-            (declaredSkills ? `Available skills for routing: ${declaredSkills}` : ""),
+            (declaredArchetypes ? `Available archetypes for routing: ${declaredArchetypes}` : ""),
         );
       }
 
@@ -666,10 +673,12 @@ export function createTaskTool(options: {
 /**
  * Check if the calling agent is allowed to spawn the target agent
  * based on the agentToAgent policy in the agent config.
+ * The allowList accepts agent IDs and/or archetype names.
  */
 export function checkA2APolicy(
   agentConfig: RuntimeAgentConfig,
   targetAgentId: string,
+  targetArchetype?: string | null,
 ): { allowed: boolean; reason?: string } {
   const policy = agentConfig.agentToAgent;
   if (!policy) return { allowed: true };
@@ -680,7 +689,10 @@ export function checkA2APolicy(
     };
   }
   if (policy.allowList && !policy.allowList.includes("*")) {
-    if (!policy.allowList.includes(targetAgentId)) {
+    const allowed =
+      policy.allowList.includes(targetAgentId) ||
+      (targetArchetype != null && policy.allowList.includes(targetArchetype));
+    if (!allowed) {
       return {
         allowed: false,
         reason:

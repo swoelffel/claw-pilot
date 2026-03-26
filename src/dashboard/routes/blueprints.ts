@@ -8,6 +8,7 @@ import type { RouteDeps } from "../route-deps.js";
 import { apiError } from "../route-deps.js";
 import { buildAgentPayload } from "./_helpers.js";
 import { constants } from "../../lib/constants.js";
+import { listBuiltinBlueprints } from "../../core/builtin-blueprints.js";
 
 /**
  * Seed workspace files (AGENTS.md, SOUL.md, etc.) for a blueprint agent.
@@ -99,10 +100,30 @@ function buildBlueprintPayload(blueprintId: number, reg: Registry) {
 export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
   const { registry } = deps;
 
-  // GET /api/blueprints — liste tous les blueprints
-  app.get("/api/blueprints", (c) => {
-    const blueprints = registry.listBlueprints();
-    return c.json(blueprints);
+  // GET /api/blueprints — liste tous les blueprints (DB + built-in)
+  app.get("/api/blueprints", async (c) => {
+    const dbBlueprints = registry.listBlueprints();
+    const builtinBlueprints = await listBuiltinBlueprints();
+
+    // Merge: built-in blueprints not yet in the DB are appended with _builtin marker
+    const dbNames = new Set(dbBlueprints.map((b) => b.name));
+    const builtinEntries = builtinBlueprints
+      .filter((b) => !dbNames.has(b.name))
+      .map((b) => ({
+        id: -1, // sentinel: not in DB
+        name: b.name,
+        description: b.description,
+        icon: null,
+        tags: JSON.stringify(["builtin"]),
+        color: null,
+        agent_count: b.agentCount,
+        created_at: "",
+        updated_at: "",
+        _builtin: true as const,
+        _slug: b.slug,
+      }));
+
+    return c.json([...builtinEntries, ...dbBlueprints]);
   });
 
   // POST /api/blueprints — créer un blueprint
@@ -151,6 +172,32 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
           "BLUEPRINT_NAME_TAKEN",
           "A blueprint with this name already exists",
         );
+      return apiError(c, 500, "INTERNAL_ERROR", msg);
+    }
+  });
+
+  // POST /api/blueprints/import-builtin/:slug — import a built-in blueprint into the DB
+  app.post("/api/blueprints/import-builtin/:slug", async (c) => {
+    const slug = c.req.param("slug");
+    const { loadBuiltinBlueprint } = await import("../../core/builtin-blueprints.js");
+    const builtin = await loadBuiltinBlueprint(slug);
+    if (!builtin) {
+      return apiError(c, 404, "NOT_FOUND", `Built-in blueprint '${slug}' not found`);
+    }
+
+    try {
+      const blueprint = registry.createBlueprint({
+        name: builtin.name,
+        description: builtin.description,
+        tags: JSON.stringify(["builtin"]),
+      });
+
+      const { importBlueprintTeam } = await import("../../core/team-import.js");
+      await importBlueprintTeam(deps.db, registry, blueprint.id, builtin.teamFile);
+
+      return c.json(blueprint, 201);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to import built-in blueprint";
       return apiError(c, 500, "INTERNAL_ERROR", msg);
     }
   });

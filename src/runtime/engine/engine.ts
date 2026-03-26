@@ -106,6 +106,7 @@ export class ClawRuntime {
             agentInfo ?? {
               kind: "primary",
               category: "user",
+              archetype: null,
               name: agentConfig.id,
               permission: [],
               mode: "all",

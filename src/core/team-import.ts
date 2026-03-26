@@ -165,12 +165,6 @@ async function _importTeamCore(
       const createdAt = now();
 
       if (target.type === "blueprint") {
-        // Serialize skills from config.skills (array) → JSON string for DB column.
-        const skillsJson =
-          Array.isArray(agent.config?.skills) && (agent.config.skills as string[]).length >= 0
-            ? JSON.stringify(agent.config.skills)
-            : null;
-
         db.prepare(
           `INSERT INTO agents (blueprint_id, agent_id, name, model, workspace_path, is_default,
            role, tags, notes, skills, position_x, position_y, created_at)
@@ -185,7 +179,7 @@ async function _importTeamCore(
           agent.meta?.role ?? null,
           tagsJson,
           agent.meta?.notes ?? null,
-          skillsJson,
+          null, // skills column (deprecated — archetype is now in config)
           agent.meta?.position?.x ?? null,
           agent.meta?.position?.y ?? null,
           createdAt,
@@ -445,7 +439,7 @@ function mergeTeamIntoRuntimeConfig(config: Record<string, unknown>, team: TeamF
         subagents,
         tools,
         params,
-        skills,
+        archetype,
         heartbeat,
         humanDelay,
         identity,
@@ -458,7 +452,7 @@ function mergeTeamIntoRuntimeConfig(config: Record<string, unknown>, team: TeamF
       if (subagents !== undefined) entry["subagents"] = subagents;
       if (tools !== undefined) entry["tools"] = tools;
       if (params !== undefined) entry["params"] = params;
-      if (skills !== undefined) entry["skills"] = skills;
+      if (archetype !== undefined) entry["archetype"] = archetype;
       if (heartbeat !== undefined) entry["heartbeat"] = heartbeat;
       if (humanDelay !== undefined) entry["humanDelay"] = humanDelay;
       if (identity !== undefined) entry["identity"] = identity;
@@ -467,9 +461,10 @@ function mergeTeamIntoRuntimeConfig(config: Record<string, unknown>, team: TeamF
     }
 
     // Inject subagents.allowAgents from spawn links
+    // Targets starting with "@" are archetype references — strip the prefix for allowList
     const spawnTargets = team.links
       .filter((l) => l.type === "spawn" && l.source === agent.id)
-      .map((l) => l.target);
+      .map((l) => (l.target.startsWith("@") ? l.target.slice(1) : l.target));
     if (spawnTargets.length > 0) {
       const existingSubagents = (entry["subagents"] ?? {}) as Record<string, unknown>;
       entry["subagents"] = { ...existingSubagents, allowAgents: spawnTargets };

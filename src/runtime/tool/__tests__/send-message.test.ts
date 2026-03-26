@@ -81,7 +81,7 @@ const LEAD_TECH_CONFIG: RuntimeAgentConfig = {
   allowSubAgents: true,
   toolProfile: "manager" as const,
   isDefault: false,
-  expertIn: ["architecture", "code-review"],
+  archetype: "evaluator" as const,
 };
 
 function getUserMessageTexts(db: Database.Database, sessionId: string): string[] {
@@ -295,11 +295,11 @@ describe("send_message — error cases", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Skill-based routing
+// Archetype-based routing
 // ---------------------------------------------------------------------------
 
-describe("send_message — skill routing", () => {
-  it("routes by skill name when no exact agent ID match", async () => {
+describe("send_message — archetype routing", () => {
+  it("routes by archetype name when no exact agent ID match", async () => {
     const callerSession = createSession(db, {
       instanceSlug: INSTANCE_SLUG,
       agentId: "pilot",
@@ -308,7 +308,7 @@ describe("send_message — skill routing", () => {
     const ctx = makeToolContext(db, callerSession.id);
 
     const mockRunPromptLoop = vi.fn().mockResolvedValue({
-      text: "architecture advice here",
+      text: "evaluation feedback here",
       steps: 1,
       tokens: { input: 5, output: 3, cacheRead: 0, cacheWrite: 0 },
     });
@@ -324,13 +324,13 @@ describe("send_message — skill routing", () => {
     });
     const def = await toolInfo.init();
 
-    // Act: route by skill "architecture" → should resolve to lead-tech
+    // Act: route by archetype "evaluator" → should resolve to lead-tech (archetype: "evaluator")
     const result = await def.execute(
-      { to: "architecture", message: "Need arch advice", expect_reply: true },
+      { to: "evaluator", message: "Need evaluation", expect_reply: true },
       ctx,
     );
 
-    expect(result.output).toContain("architecture advice here");
+    expect(result.output).toContain("evaluation feedback here");
 
     // Verify it called prompt loop with lead-tech's session
     const call = mockRunPromptLoop.mock.calls[0]![0] as { agentConfig: { id: string } };

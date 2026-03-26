@@ -2,7 +2,14 @@
 import { LitElement, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { AgentBuilderInfo, AgentLink, PanelContext, AgentMetaPatch } from "../types.js";
+import {
+  type AgentBuilderInfo,
+  type AgentLink,
+  type PanelContext,
+  type AgentMetaPatch,
+  AGENT_ARCHETYPES,
+  isArchetypeLink,
+} from "../types.js";
 import {
   fetchAgentFile,
   updateSpawnLinks,
@@ -1200,6 +1207,34 @@ export class AgentDetailPanel extends LitElement {
     this._emitPendingAdditions(new Set());
   }
 
+  /**
+   * Render the archetype section at the top of the spawn dropdown.
+   * Shows archetypes not already linked (as @archetype targets).
+   */
+  private _renderArchetypeSection(spawnLinks: AgentLink[]) {
+    const linkedArchetypes = new Set(
+      spawnLinks.filter(isArchetypeLink).map((l) => l.target_agent_id),
+    );
+    const pendingArchetypes = new Set(
+      Array.from(this._pendingAdditions).filter((id) => id.startsWith("@")),
+    );
+    const available = AGENT_ARCHETYPES.filter(
+      (a) => !linkedArchetypes.has(`@${a}`) && !pendingArchetypes.has(`@${a}`),
+    );
+    if (available.length === 0) return nothing;
+    return html`
+      <div class="spawn-dropdown-section">
+        <span class="spawn-dropdown-header">${msg("Archetypes", { id: "adp-archetypes" })}</span>
+        ${available.map(
+          (a) =>
+            html`<button class="spawn-dropdown-item" @click=${() => this._addSpawnLink(`@${a}`)}>
+              @${a}
+            </button>`,
+        )}
+      </div>
+    `;
+  }
+
   private _addSpawnLink(targetId: string): void {
     const next = new Set(this._pendingAdditions).add(targetId);
     this._pendingAdditions = next;
@@ -1588,6 +1623,7 @@ export class AgentDetailPanel extends LitElement {
                         ${this._dropdownOpen
                           ? html`
                               <div class="spawn-dropdown">
+                                ${this._renderArchetypeSection(spawnLinks)}
                                 ${availableAgents.map(
                                   (ag) =>
                                     html`<button

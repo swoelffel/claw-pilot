@@ -500,11 +500,15 @@ describe("GET /api/next-port", () => {
 // ---------------------------------------------------------------------------
 
 describe("GET /api/blueprints", () => {
-  it("returns empty array when no blueprints", async () => {
+  it("returns built-in blueprints when no DB blueprints exist", async () => {
     const res = await ctx.app.request("/api/blueprints", { headers: authHeaders() });
     expect(res.status).toBe(200);
-    const body = await json(res);
-    expect(body).toEqual([]);
+    const body = (await json(res)) as Array<{ _builtin?: boolean; name: string }>;
+    // Built-in blueprints are always returned (from templates/blueprints/)
+    expect(Array.isArray(body)).toBe(true);
+    for (const bp of body) {
+      expect(bp._builtin).toBe(true);
+    }
   });
 });
 

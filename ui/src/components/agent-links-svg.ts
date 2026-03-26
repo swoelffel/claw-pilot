@@ -1,7 +1,7 @@
 // ui/src/components/agent-links-svg.ts
 import { LitElement, html, css, svg } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import type { AgentLink } from "../types.js";
+import { type AgentLink, type AgentBuilderInfo, isArchetypeLink } from "../types.js";
 
 @customElement("cp-agent-links-svg")
 export class AgentLinksSvg extends LitElement {
@@ -24,9 +24,27 @@ export class AgentLinksSvg extends LitElement {
   `;
 
   @property({ type: Array }) links: AgentLink[] = [];
+  @property({ type: Array }) agents: AgentBuilderInfo[] = [];
   @property({ type: Object }) positions: Map<string, { x: number; y: number }> = new Map();
   @property({ type: Object }) pendingRemovals: Set<string> = new Set();
   @property({ type: Object }) pendingAdditions: Map<string, Set<string>> = new Map();
+
+  /**
+   * Resolve the canvas position for a link target.
+   * For @archetype targets, find the first agent with a matching archetype tag.
+   */
+  /**
+   * Resolve canvas position for a link target.
+   * For @archetype targets, there is no positioned canvas card — returns undefined.
+   * These links are shown as badges in the detail panel instead.
+   */
+  private _resolveTargetPos(
+    targetId: string,
+  ): { pos: { x: number; y: number }; label: string } | undefined {
+    if (targetId.startsWith("@")) return undefined;
+    const pos = this.positions.get(targetId);
+    return pos ? { pos, label: targetId } : undefined;
+  }
 
   override render() {
     return html`
@@ -62,9 +80,13 @@ export class AgentLinksSvg extends LitElement {
           >
             <path d="M0,0 L0,6 L8,3 z" fill="#10b981" />
           </marker>
+          <marker id="arrow-a2a" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#94a3b8" />
+          </marker>
         </defs>
+        <!-- Spawn links (dashed) -->
         ${this.links
-          .filter((link) => link.link_type === "spawn")
+          .filter((link) => link.link_type === "spawn" && !isArchetypeLink(link))
           .map((link) => {
             const src = this.positions.get(link.source_agent_id);
             const tgt = this.positions.get(link.target_agent_id);
@@ -89,6 +111,26 @@ export class AgentLinksSvg extends LitElement {
               />
             `;
           })}
+        <!-- A2A links (solid, thin) -->
+        ${this.links
+          .filter((link) => link.link_type === "a2a" && !isArchetypeLink(link))
+          .map((link) => {
+            const src = this.positions.get(link.source_agent_id);
+            const tgt = this.positions.get(link.target_agent_id);
+            if (!src || !tgt) return "";
+
+            return svg`
+              <line
+                x1=${src.x} y1=${src.y}
+                x2=${tgt.x} y2=${tgt.y}
+                stroke="#94a3b8"
+                stroke-width="1"
+                marker-end="url(#arrow-a2a)"
+                aria-label="a2a link to ${link.target_agent_id}"
+              />
+            `;
+          })}
+        <!-- Pending additions -->
         ${Array.from(this.pendingAdditions.entries()).flatMap(([sourceId, targets]) => {
           const src = this.positions.get(sourceId);
           if (!src) return [];

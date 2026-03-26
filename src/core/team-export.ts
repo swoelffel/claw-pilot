@@ -25,7 +25,7 @@ const AGENT_CONFIG_KEYS = [
   "subagents",
   "tools",
   "params",
-  "skills",
+  "archetype",
   "heartbeat",
   "humanDelay",
   "identity",
@@ -199,17 +199,6 @@ export function exportBlueprintTeam(registry: Registry, blueprintId: number): Te
       } catch {
         // intentionally ignored — model is a bare string, not JSON; use it as-is
         config = { model: agent.model };
-      }
-    }
-
-    // Inject skills from DB column if present (blueprints store skills as JSON string)
-    const agentSkills = agent.skills;
-    if (agentSkills) {
-      try {
-        const skills = JSON.parse(agentSkills) as string[];
-        config = { ...config, skills };
-      } catch {
-        // intentionally ignored — invalid JSON in skills column, skip
       }
     }
 

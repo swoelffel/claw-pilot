@@ -151,13 +151,16 @@ const AgentConfigSchema = z.object({
    */
   skillUrls: z.array(z.string().url()).optional(),
   /**
-   * Skills this agent declares as its areas of expertise.
-   * Enables skill-based routing: another agent can call task({ skill: "code-review" })
-   * and the runtime will resolve the first primary agent that lists "code-review" here.
-   * Free-form strings — matched by exact case-sensitive comparison.
-   * Examples: ["code-review", "test-writing", "documentation", "planning"]
+   * Behavioral archetype of the agent.
+   * Controls system prompt injection (archetype-specific behavioral instructions)
+   * and enables archetype-based routing: task({ subagent_type: "evaluator" })
+   * resolves to the first primary agent with that archetype.
+   * Orthogonal to toolProfile (which controls tool access).
    */
-  expertIn: z.array(z.string()).optional(),
+  archetype: z
+    .enum(["planner", "generator", "evaluator", "orchestrator", "analyst", "communicator"])
+    .nullable()
+    .optional(),
   /**
    * Extended thinking configuration (Anthropic only).
    * When enabled, the model uses a dedicated reasoning phase before responding.
@@ -183,7 +186,8 @@ const AgentConfigSchema = z.object({
       /** Whether this agent can spawn sub-agents at all (default: true) */
       enabled: z.boolean().default(true),
       /**
-       * Whitelist of agent IDs this agent can spawn.
+       * Whitelist of agent IDs or archetype names this agent can spawn.
+       * Accepts agent IDs (e.g. "qa") and/or archetype names (e.g. "evaluator").
        * ["*"] = all agents (default behavior).
        * If absent, all agents are allowed (same as ["*"]).
        */

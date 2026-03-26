@@ -5,6 +5,8 @@ import type { PortAllocator } from "../core/port-allocator.js";
 import type { AgentDefinition } from "../core/config-generator.js";
 import { PROVIDER_ENV_VARS } from "../core/config-generator.js";
 import { PROVIDER_CATALOG } from "../lib/provider-catalog.js";
+import { listBuiltinBlueprints } from "../core/builtin-blueprints.js";
+import type { TeamFile } from "../core/team-schema.js";
 
 export async function promptSlug(
   registry: Registry,
@@ -47,16 +49,47 @@ export async function promptPort(portAllocator: PortAllocator, serverId: number)
 }
 
 export async function promptAgents(): Promise<{
-  mode: "custom" | "minimal";
+  mode: "custom" | "minimal" | "blueprint";
   agents: AgentDefinition[];
+  teamFile?: TeamFile;
 }> {
-  const mode = await select<"custom" | "minimal">({
+  const mode = await select<"custom" | "minimal" | "blueprint">({
     message: "How do you want to configure agents?",
     choices: [
+      { value: "blueprint", name: "From Blueprint (pre-configured team)" },
       { value: "custom", name: "Custom (define agents one by one)" },
       { value: "minimal", name: "Minimal (pilot agent only)" },
     ],
   });
+
+  if (mode === "blueprint") {
+    const blueprints = await listBuiltinBlueprints();
+    if (blueprints.length === 0) {
+      console.log("No built-in blueprints found. Falling back to minimal mode.");
+      return {
+        mode: "minimal",
+        agents: [{ id: "pilot", name: "Pilot", isDefault: true }],
+      };
+    }
+    const slug = await select<string>({
+      message: "Select a team blueprint:",
+      choices: blueprints.map((b) => ({
+        value: b.slug,
+        name: `${b.name} (${b.agentCount} agents: ${b.agentNames.join(", ")})`,
+        description: b.description,
+      })),
+    });
+    const selected = blueprints.find((b) => b.slug === slug)!;
+    return {
+      mode: "blueprint",
+      agents: selected.teamFile.agents.map((a) => ({
+        id: a.id,
+        name: a.name,
+        ...(a.is_default ? { isDefault: true } : {}),
+      })),
+      teamFile: selected.teamFile,
+    };
+  }
 
   if (mode === "minimal") {
     return {

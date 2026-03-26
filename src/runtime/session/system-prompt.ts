@@ -32,6 +32,35 @@ try {
 const DEFAULT_INSTRUCTIONS = "You are a helpful AI assistant. Be concise and accurate.";
 
 // ---------------------------------------------------------------------------
+// Archetype behavioral instructions (loaded from templates/archetypes/)
+// ---------------------------------------------------------------------------
+
+/** In-memory cache for archetype template files (loaded once, never invalidated). */
+const _archetypeCache = new Map<string, string>();
+
+/**
+ * Load archetype behavioral instructions from templates/archetypes/<archetype>.md.
+ * Returns the file contents or undefined if the file does not exist.
+ * Results are cached in memory — archetype templates are static package files.
+ */
+function loadArchetypeBlock(archetype: string): string | undefined {
+  const cached = _archetypeCache.get(archetype);
+  if (cached !== undefined) return cached;
+
+  const archetypeDir = resolve(__dirname, "../../../templates/archetypes");
+  const filePath = join(archetypeDir, `${archetype}.md`);
+  try {
+    const content = readFileSync(filePath, "utf-8").trim();
+    _archetypeCache.set(archetype, content);
+    return content;
+  } catch {
+    // File not found or read error — cache empty string to avoid repeated I/O
+    _archetypeCache.set(archetype, "");
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Agent identity block (injected for primary agents only)
 // ---------------------------------------------------------------------------
 
@@ -196,6 +225,13 @@ export async function buildSystemPrompt(ctx: SystemPromptContext): Promise<strin
   const instructions = await resolveInstructions(ctx);
   if (instructions) sections.push(instructions.trim());
 
+  // 1.2. Archetype behavioral instructions (injected after agent identity, before teammates)
+  const archetype = ctx.agentConfig.archetype;
+  if (archetype) {
+    const block = loadArchetypeBlock(archetype);
+    if (block) sections.push(block);
+  }
+
   // 1.5. Teammates block (injected after instructions, before env)
   if (ctx.runtimeAgents && ctx.runtimeAgents.length > 1) {
     sections.push(
@@ -218,6 +254,7 @@ export async function buildSystemPrompt(ctx: SystemPromptContext): Promise<strin
         agentInfoForCtx ?? {
           kind: "primary",
           category: "user",
+          archetype: null,
           name: ctx.agentConfig.id,
           permission: [],
           mode: "all",
@@ -650,34 +687,34 @@ function readSystemPromptFile(filePath: string, workDir: string): string | undef
 /**
  * Build the <teammates> block listing all agents in the instance.
  * The current agent is marked with [you].
- * If runtimeAgentConfigs is provided, agents with declared expertIn skills
- * are annotated with [skills: ...] to guide skill-based routing.
+ * If runtimeAgentConfigs is provided, agents with declared archetypes
+ * are annotated with [archetype: ...] to guide archetype-based routing.
  */
 function buildTeammatesBlock(
   agents: Array<{ id: string; name: string }>,
   currentAgentId: string,
   runtimeAgentConfigs?: RuntimeAgentConfig[],
 ): string {
-  // Build a lookup map: agentId → expertIn
-  const skillsById = new Map<string, string[]>();
+  // Build a lookup map: agentId → archetype
+  const archetypeById = new Map<string, string>();
   if (runtimeAgentConfigs) {
     for (const cfg of runtimeAgentConfigs) {
-      if (cfg.expertIn && cfg.expertIn.length > 0) {
-        skillsById.set(cfg.id, cfg.expertIn);
+      if (cfg.archetype != null) {
+        archetypeById.set(cfg.id, cfg.archetype);
       }
     }
   }
 
   const lines = agents.map((a) => {
     const marker = a.id === currentAgentId ? " [you]" : "";
-    const skills = skillsById.get(a.id);
-    const skillsMarker = skills ? ` [skills: ${skills.join(", ")}]` : "";
-    return `- ${a.id} (${a.name})${skillsMarker}${marker}`;
+    const archetype = archetypeById.get(a.id);
+    const archetypeMarker = archetype ? ` [archetype: ${archetype}]` : "";
+    return `- ${a.id} (${a.name})${archetypeMarker}${marker}`;
   });
 
-  const hasAnySkills = skillsById.size > 0;
-  const routingHint = hasAnySkills
-    ? '\nTo route by skill, use the skill name as subagent_type in the task tool (e.g. task({ subagent_type: "code-review", ... })).'
+  const hasAnyArchetypes = archetypeById.size > 0;
+  const routingHint = hasAnyArchetypes
+    ? '\nTo route by archetype, use the archetype name as subagent_type in the task tool (e.g. task({ subagent_type: "evaluator", ... })).'
     : "";
 
   return [

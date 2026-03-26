@@ -141,6 +141,27 @@ export interface AgentLink {
   link_type: "a2a" | "spawn";
 }
 
+/** Valid agent archetypes — must match the backend enum. */
+export const AGENT_ARCHETYPES = [
+  "planner",
+  "generator",
+  "evaluator",
+  "orchestrator",
+  "analyst",
+  "communicator",
+] as const;
+export type AgentArchetype = (typeof AGENT_ARCHETYPES)[number];
+
+/** Whether a link targets an archetype reference (e.g. "@evaluator") rather than a specific agent ID. */
+export function isArchetypeLink(link: AgentLink): boolean {
+  return link.target_agent_id.startsWith("@");
+}
+
+/** Extract the archetype name from an archetype link target (strips the "@" prefix). */
+export function getArchetypeFromLink(link: AgentLink): string {
+  return link.target_agent_id.slice(1);
+}
+
 export interface AgentFileContent {
   filename: string;
   content: string;
