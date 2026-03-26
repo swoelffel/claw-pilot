@@ -368,6 +368,24 @@ export const RuntimeConfigSchema = z.object({
     maxFiles: 3,
   })),
 
+  /** Artifacts & follow-up suggestions */
+  artifacts: z
+    .object({
+      /** Enable the create_artifact tool for agents */
+      enabled: z.boolean().default(true),
+      /** Enable follow-up suggestion generation after responses */
+      suggestionsEnabled: z.boolean().default(true),
+      /** Model to use for suggestion generation (defaults to agent model) */
+      suggestionsModel: z.string().optional(),
+      /** Number of suggestions to generate (1-5) */
+      maxSuggestions: z.number().int().min(1).max(5).default(3),
+    })
+    .default({
+      enabled: true,
+      suggestionsEnabled: true,
+      maxSuggestions: 3,
+    }),
+
   /** Multimodal support (images, documents) */
   multimodal: z
     .object({

@@ -24,8 +24,9 @@ import { markdownToTelegramV2 } from "./formatter.js";
 import { createPairingCode } from "../pairing.js";
 import { logger } from "../../../lib/logger.js";
 import { getBus } from "../../bus/index.js";
-import { QuestionAsked } from "../../bus/events.js";
+import { QuestionAsked, SuggestionsGenerated } from "../../bus/events.js";
 import { resolveQuestion } from "../../tool/built-in/question.js";
+import type { OutboundArtifact } from "../../types.js";
 
 // ---------------------------------------------------------------------------
 // TelegramChannel
@@ -54,6 +55,7 @@ export class TelegramChannel implements Channel {
   private handler: ((msg: InboundMessage) => Promise<void>) | undefined;
   private readonly options: TelegramChannelOptions;
   private busUnsub: (() => void) | undefined;
+  private suggestionsUnsub: (() => void) | undefined;
   /** Track last known chatId for sending question keyboards */
   private lastChatId: number | undefined;
 
@@ -87,11 +89,14 @@ export class TelegramChannel implements Channel {
 
     this.poller.start((update) => this.handleUpdate(update));
 
-    // Subscribe to question events to send inline keyboards
+    // Subscribe to bus events for inline keyboards
     if (this.options.instanceSlug) {
       const bus = getBus(this.options.instanceSlug);
       this.busUnsub = bus.subscribe(QuestionAsked, (payload) => {
         void this.handleQuestionAsked(payload);
+      });
+      this.suggestionsUnsub = bus.subscribe(SuggestionsGenerated, (payload) => {
+        void this.handleSuggestionsGenerated(payload);
       });
     }
   }
@@ -122,11 +127,24 @@ export class TelegramChannel implements Channel {
       // Fallback: send as plain text (no parse_mode)
       await this.poller.sendMessage(chatId, message.text);
     }
+
+    // Send artifacts as downloadable documents
+    if (message.artifacts && message.artifacts.length > 0) {
+      for (const artifact of message.artifacts) {
+        try {
+          await this.sendArtifactDocument(chatId, artifact);
+        } catch (err) {
+          logger.warn(`[telegram] Failed to send artifact document: ${err}`);
+        }
+      }
+    }
   }
 
   async disconnect(): Promise<void> {
     this.busUnsub?.();
     this.busUnsub = undefined;
+    this.suggestionsUnsub?.();
+    this.suggestionsUnsub = undefined;
     this.poller?.stop();
     this.poller = undefined;
   }
@@ -340,14 +358,65 @@ export class TelegramChannel implements Channel {
 
     // Parse callback data
     const parts = query.data.split(":");
-    if (parts[0] !== "q" || !parts[1] || !parts[2]) return;
+    const prefix = parts[0];
 
-    const questionId = parts[1];
-    const answer = decodeURIComponent(parts.slice(2).join(":"));
+    if (prefix === "q" && parts[1] && parts[2]) {
+      // Question answer: q:<questionId>:<answer>
+      const questionId = parts[1];
+      const answer = decodeURIComponent(parts.slice(2).join(":"));
+      const resolved = resolveQuestion(questionId, answer);
+      if (!resolved) {
+        logger.warn(`[telegram] callback_query for unknown/expired question: ${questionId}`);
+      }
+    } else if (prefix === "s" && parts[1]) {
+      // Suggestion click: s:<suggestion text>
+      const suggestionText = decodeURIComponent(parts.slice(1).join(":"));
+      const chatId = query.message?.chat?.id;
+      if (suggestionText && chatId && this.handler) {
+        // Send as a new inbound message
+        void this.handler({
+          channelType: "telegram",
+          peerId: `telegram:${chatId}`,
+          text: suggestionText,
+        });
+      }
+    }
+  }
 
-    const resolved = resolveQuestion(questionId, answer);
-    if (!resolved) {
-      logger.warn(`[telegram] callback_query for unknown/expired question: ${questionId}`);
+  /**
+   * Send an artifact as a Telegram document (downloadable file).
+   */
+  private async sendArtifactDocument(chatId: number, artifact: OutboundArtifact): Promise<void> {
+    if (!this.poller) return;
+    const ext = artifactExtension(artifact.artifactType, artifact.language);
+    const filename = `${sanitizeFilename(artifact.title)}${ext}`;
+    const buffer = Buffer.from(artifact.content, "utf-8");
+    await this.poller.sendDocument(chatId, buffer, filename, `📎 ${artifact.title}`);
+  }
+
+  /**
+   * Handle SuggestionsGenerated bus event — send inline keyboard with suggestion buttons.
+   */
+  private async handleSuggestionsGenerated(payload: {
+    sessionId: string;
+    messageId: string;
+    suggestions: string[];
+  }): Promise<void> {
+    if (!this.poller || !this.lastChatId) return;
+
+    const keyboard: TelegramInlineKeyboardButton[][] = payload.suggestions.map((s) => [
+      {
+        text: s,
+        callback_data: `s:${encodeURIComponent(s).slice(0, 60)}`,
+      },
+    ]);
+
+    try {
+      await this.poller.sendMessage(this.lastChatId, "💡", undefined, {
+        inline_keyboard: keyboard,
+      });
+    } catch (err) {
+      logger.warn(`[telegram] Failed to send suggestions keyboard: ${err}`);
     }
   }
 
@@ -400,4 +469,47 @@ function parseChatId(peerId: string): number | undefined {
   const match = peerId.match(/^telegram:(-?\d+)$/);
   if (!match) return undefined;
   return parseInt(match[1]!, 10);
+}
+
+/** Map artifact type + language to a file extension */
+function artifactExtension(artifactType: string, language?: string): string {
+  if (artifactType === "code" && language) {
+    const langMap: Record<string, string> = {
+      python: ".py",
+      typescript: ".ts",
+      javascript: ".js",
+      go: ".go",
+      rust: ".rs",
+      java: ".java",
+      c: ".c",
+      cpp: ".cpp",
+      ruby: ".rb",
+      php: ".php",
+      swift: ".swift",
+      kotlin: ".kt",
+      shell: ".sh",
+      bash: ".sh",
+      sql: ".sql",
+      yaml: ".yaml",
+      toml: ".toml",
+    };
+    return langMap[language.toLowerCase()] ?? ".txt";
+  }
+  const typeMap: Record<string, string> = {
+    code: ".txt",
+    markdown: ".md",
+    json: ".json",
+    csv: ".csv",
+    svg: ".svg",
+    html: ".html",
+  };
+  return typeMap[artifactType] ?? ".txt";
+}
+
+/** Sanitize a string for use as a filename */
+function sanitizeFilename(name: string): string {
+  return name
+    .replace(/[/\\:*?"<>|]/g, "_")
+    .replace(/\s+/g, "-")
+    .slice(0, 60);
 }

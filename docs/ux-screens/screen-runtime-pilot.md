@@ -3,7 +3,7 @@
 > **Source**: `ui/src/components/runtime-pilot.ts`
 > **Route**: `#/instances/:slug/pilot`
 
-> Replaces `cp-runtime-chat` since v0.37.0. 18 components total.
+> Replaces `cp-runtime-chat` since v0.37.0. 22 components total.
 
 Advanced chat view with LLM context panel on side. Full-height flex column layout (no scroll on `<main>`).
 
@@ -24,13 +24,17 @@ Advanced chat view with LLM context panel on side. Full-height flex column layou
 │  │  └───────────────────────┘ │  │  │  (gauge / tools /   │ ││
 │  │  ┌─ assistant message ───┐ │  │  │   agents / system / │ ││
 │  │  │  part-text            │ │  │  │   events)           │ ││
-│  │  │  part-tool (tool call)│ │  │  └─────────────────────┘ ││
+│  │  │  part-artifact (card) │ │  │  └─────────────────────┘ ││
+│  │  │  part-tool (tool call)│ │  │                          ││
+│  │  │  part-image           │ │  │                          ││
 │  │  │  part-reasoning       │ │  │                          ││
 │  │  │  part-subtask         │ │  │                          ││
+│  │  │  part-question        │ │  │                          ││
 │  │  │  part-compaction      │ │  └──────────────────────────┘│
+│  │  │  part-suggestion      │ │                               │
 │  │  └───────────────────────┘ │                               │
 │  │  ┌─ pilot-input ─────────┐ │                               │
-│  │  │  [textarea]   [Send]  │ │                               │
+│  │  │ [📎] [textarea] [⏹/▶]│ │                               │
 │  │  └───────────────────────┘ │                               │
 │  └─────────────────────────────┘                               │
 └───────────────────────────────────────────────────────────────────┘
@@ -107,7 +111,7 @@ Retractable right panel. Toggled by the `⊞` button in the pilot header. Five i
 
 Default active section: `gauge`.
 
-### Components (18)
+### Components (22)
 
 | Component | File | Role |
 |---|---|---|
@@ -115,7 +119,7 @@ Default active section: `gauge`.
 | `cp-pilot-header` | `pilot/pilot-header.ts` | Session header — active agent name + model, status pill, stats, panel toggle |
 | `cp-pilot-messages` | `pilot/pilot-messages.ts` | Scrollable message list |
 | `cp-pilot-message` | `pilot/pilot-message.ts` | Message rendering (dispatches to part renderers) |
-| `cp-pilot-input` | `pilot/pilot-input.ts` | Textarea + Send button |
+| `cp-pilot-input` | `pilot/pilot-input.ts` | Textarea + attach + Send/Stop toggle |
 | `cp-pilot-context-panel` | `pilot/pilot-context-panel.ts` | Right side panel — icon tab bar + section switcher |
 | `cp-pilot-context-gauge` | `pilot/context/context-gauge.ts` | Token usage donut gauge + embedded system prompt viewer |
 | `cp-pilot-context-prompt` | `pilot/context/context-prompt.ts` | System prompt viewer — parses prompt into collapsible sections (embedded in gauge tab) |
@@ -127,6 +131,10 @@ Default active section: `gauge`.
 | `cp-pilot-part-tool` | `pilot/parts/part-tool.ts` | Tool-call + tool-result rendering (collapsible) |
 | `cp-pilot-part-reasoning` | `pilot/parts/part-reasoning.ts` | Anthropic extended thinking rendering |
 | `cp-pilot-part-subtask` | `pilot/parts/part-subtask.ts` | Subagent rendering (spawn info + result) |
+| `cp-pilot-part-artifact` | `pilot/parts/part-artifact.ts` | Artifact card — rich content with copy button ([doc](../ux-components/comp-pilot-part-artifact.md)) |
+| `cp-pilot-part-suggestion` | `pilot/parts/part-suggestion.ts` | Follow-up suggestion chips ([doc](../ux-components/comp-pilot-part-suggestion.md)) |
+| `cp-pilot-part-image` | `pilot/parts/part-image.ts` | Image thumbnail + zoom overlay ([doc](../ux-components/comp-pilot-part-image.md)) |
+| `cp-pilot-part-question` | `pilot/parts/part-question.ts` | Interactive question with options ([doc](../ux-components/comp-pilot-part-question.md)) |
 | `cp-pilot-part-compaction` | `pilot/parts/part-compaction.ts` | Compaction summary |
 | `cp-session-tree` | `session-tree.ts` | Session hierarchy (parent/child) |
 
@@ -143,4 +151,39 @@ SSE opened via `GET /api/instances/:slug/runtime/chat/stream`. Events:
 | Subagent | `subagent.completed`, `agent.timeout` | part-subtask update |
 | Heartbeat | `heartbeat.tick`, `heartbeat.alert` | Bus alerts |
 | Tool | `tool.doom_loop`, `llm.chunk_timeout` | Bus alerts |
+| Suggestions | `suggestions.generated` | Refresh messages to show suggestion chips |
 | Infra | `ping` | Keep-alive |
+
+## Input Features (v0.51.0+)
+
+### File Upload
+
+The input bar includes a 📎 attach button (left of textarea). Clicking opens a file picker (`accept="image/*"`). Drag & drop is also supported on the textarea area.
+
+Selected files appear as `56×56px` thumbnail previews above the input with a remove (✕) button per preview. Max file size: 20 MB. Files are sent as base64-encoded attachments in the `send-message` event detail (`files: [{ name, mimeType, data }]`).
+
+### Send / Stop Toggle
+
+| State | Button | Behavior |
+|---|---|---|
+| `idle` | **Send** (primary blue) | Sends message + files |
+| `sending` / `streaming` | **Stop** (danger red ■) | Dispatches `abort-request` → POST abort → optimistic idle restore |
+| `error` | **Send** (primary) | Textarea re-enabled, error banner shown |
+
+The `streaming` property is set by `cp-runtime-pilot` based on `_status === "sending" \|\| _status === "streaming"`.
+
+## Message Part Types (9)
+
+| Part Type | Component | Description |
+|---|---|---|
+| `text` | `cp-pilot-part-text` | Markdown text rendering |
+| `artifact` | `cp-pilot-part-artifact` | Rich card for `create_artifact` tool (header + content + copy) |
+| `tool_call` | `cp-pilot-part-tool` | Generic tool call/result (collapsible) |
+| `image` | `cp-pilot-part-image` | Image thumbnail + zoom |
+| `reasoning` | `cp-pilot-part-reasoning` | Extended thinking (collapsible) |
+| `subtask` | `cp-pilot-part-subtask` | Sub-agent delegation info |
+| `question` | `cp-pilot-part-question` | Interactive question (routed from `tool_call` when `toolName === "question"`) |
+| `compaction` | `cp-pilot-part-compaction` | Context compaction marker |
+| `suggestion` | `cp-pilot-part-suggestion` | Follow-up suggestion chips (clickable) |
+
+Note: `artifact` and `question` parts are actually stored as `tool_call` parts in the database. The `_renderPart()` method in `cp-pilot-message` checks `toolName` in the metadata and dispatches to the specialized component instead of the generic `cp-pilot-part-tool`.

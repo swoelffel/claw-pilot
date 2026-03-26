@@ -20,6 +20,7 @@ import {
   TodoReadTool,
   SkillTool,
   MultiEditTool,
+  CreateArtifactTool,
 } from "./built-in/index.js";
 import type { McpRegistry } from "../mcp/index.js";
 import { getRegisteredHooks } from "../plugin/hooks.js";
@@ -32,7 +33,7 @@ import type { PluginInput } from "../plugin/types.js";
 
 export const TOOL_PROFILES: Record<string, string[]> = {
   sentinel: ["question"],
-  pilot: ["question", "webfetch", "send_message", "task"],
+  pilot: ["question", "webfetch", "send_message", "task", "create_artifact"],
   executor: [
     "read",
     "write",
@@ -47,6 +48,7 @@ export const TOOL_PROFILES: Record<string, string[]> = {
     "todoread",
     "skill",
     "send_message",
+    "create_artifact",
   ],
   manager: [
     "read",
@@ -63,6 +65,7 @@ export const TOOL_PROFILES: Record<string, string[]> = {
     "skill",
     "send_message",
     "task",
+    "create_artifact",
   ],
 };
 
@@ -85,6 +88,7 @@ export const ALL_TOOL_IDS = [
   "skill",
   "send_message",
   "task",
+  "create_artifact",
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -104,6 +108,7 @@ const BUILTIN_TOOLS: Tool.Info[] = [
   TodoReadTool,
   SkillTool,
   MultiEditTool,
+  CreateArtifactTool,
 ];
 
 // ---------------------------------------------------------------------------

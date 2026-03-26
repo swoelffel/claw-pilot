@@ -32,6 +32,12 @@ import {
   type RuntimeAgentConfig,
 } from "../../../runtime/index.js";
 import { resolveAgentWorkspacePath } from "../../../core/agent-workspace.js";
+import { runMiddlewarePipeline } from "../../../runtime/middleware/pipeline.js";
+import { registerMiddleware, clearMiddlewares } from "../../../runtime/middleware/registry.js";
+import { guardrailMiddleware } from "../../../runtime/middleware/built-in/guardrail.js";
+import { multimodalMiddleware } from "../../../runtime/middleware/built-in/multimodal.js";
+import { toolErrorRecoveryMiddleware } from "../../../runtime/middleware/built-in/tool-error-recovery.js";
+import { createSuggestionMiddleware } from "../../../runtime/middleware/built-in/suggestions.js";
 import {
   listEnrichedSessions,
   purgeArchivedSessions,
@@ -504,6 +510,26 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     // Init agent registry
     initAgentRegistry(config.agents);
 
+    // Register built-in middlewares (dashboard runs in a separate process from
+    // the runtime daemon, so the module-level registry is empty here)
+    clearMiddlewares();
+    registerMiddleware(guardrailMiddleware);
+    registerMiddleware(multimodalMiddleware);
+    registerMiddleware(toolErrorRecoveryMiddleware);
+    if (config.artifacts?.suggestionsEnabled !== false) {
+      registerMiddleware(
+        createSuggestionMiddleware({
+          ...(config.artifacts?.suggestionsModel !== undefined
+            ? { suggestionsModel: config.artifacts.suggestionsModel }
+            : {}),
+          maxSuggestions: config.artifacts?.maxSuggestions ?? 3,
+          ...(config.models !== undefined && config.models.length > 0
+            ? { modelAliases: config.models }
+            : {}),
+        }),
+      );
+    }
+
     // Resolve agent
     const agentId = body.agentId ?? defaultAgentName();
     const agentInfo = getAgent(agentId);
@@ -618,30 +644,56 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
             }))
         : undefined;
 
-    // Run prompt loop with abort support
+    // Run middleware pipeline + prompt loop with abort support
     const agentWorkDir = resolveAgentWorkspacePath(stateDir, agentId, undefined);
     const abortController = new AbortController();
     activeAbortControllers.set(session.id, abortController);
     try {
-      const result = await runPromptLoop({
-        db,
-        instanceSlug: slug,
-        sessionId: session.id,
-        userText: body.message.trim(),
-        agentConfig: agentCfg,
-        resolvedModel: resolvedModelObj,
-        workDir: stateDir,
-        agentWorkDir,
-        runtimeAgents: config.agents.map((a) => ({ id: a.id, name: a.name })),
-        runtimeConfig: config,
-        compactionConfig: config.compaction,
-        subagentsConfig: config.subagents,
-        abort: abortController.signal,
-        ...(imageAttachments !== undefined && imageAttachments.length > 0
-          ? { imageAttachments }
-          : {}),
+      const pipelineOutput = await runMiddlewarePipeline({
+        ctx: {
+          db,
+          instanceSlug: slug,
+          sessionId: session.id,
+          agentConfig: agentCfg,
+          message: {
+            text: body.message!.trim(),
+            channelType: "web",
+            peerId: "dashboard",
+          },
+        },
+        runLoop: () =>
+          runPromptLoop({
+            db,
+            instanceSlug: slug,
+            sessionId: session.id,
+            userText: body.message!.trim(),
+            agentConfig: agentCfg,
+            resolvedModel: resolvedModelObj,
+            workDir: stateDir,
+            agentWorkDir,
+            runtimeAgents: config.agents.map((a) => ({ id: a.id, name: a.name })),
+            runtimeConfig: config,
+            compactionConfig: config.compaction,
+            subagentsConfig: config.subagents,
+            abort: abortController.signal,
+            ...(imageAttachments !== undefined && imageAttachments.length > 0
+              ? { imageAttachments }
+              : {}),
+          }),
       });
 
+      if (pipelineOutput.aborted) {
+        return c.json({
+          sessionId: session.id,
+          aborted: true,
+          text: "",
+          ...(pipelineOutput.abortReason !== undefined
+            ? { reason: pipelineOutput.abortReason }
+            : {}),
+        });
+      }
+
+      const result = pipelineOutput.result!;
       return c.json({
         sessionId: session.id,
         messageId: result.messageId,

@@ -173,6 +173,14 @@ export interface InboundMessage {
   raw?: unknown;
 }
 
+/** Artifact produced by the create_artifact tool */
+export interface OutboundArtifact {
+  title: string;
+  artifactType: string;
+  content: string;
+  language?: string;
+}
+
 /** Outbound message to a channel */
 export interface OutboundMessage {
   channelType: ChannelType;
@@ -181,6 +189,8 @@ export interface OutboundMessage {
   text: string;
   /** Whether to stream the response token by token */
   streaming?: boolean;
+  /** Artifacts to deliver as files (e.g. Telegram documents) */
+  artifacts?: OutboundArtifact[];
 }
 
 // ---------------------------------------------------------------------------
