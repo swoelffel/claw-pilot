@@ -31,6 +31,8 @@ import { getBus } from "../bus/index.js";
 import { ChannelMessageReceived, ChannelMessageSent, SubagentCompleted } from "../bus/events.js";
 import { resolveAgentWorkspacePath } from "../../core/agent-workspace.js";
 import { runMiddlewarePipeline } from "../middleware/pipeline.js";
+import { listParts } from "../session/part.js";
+import type { OutboundArtifact } from "../types.js";
 
 // ---------------------------------------------------------------------------
 // Per-session serialization queue
@@ -189,12 +191,16 @@ export class ChannelRouter {
       }
     }
 
-    // 5. Build outbound message
+    // 5. Extract artifacts from message parts (for channel delivery as documents)
+    const artifacts = extractArtifacts(db, result.messageId);
+
+    // 6. Build outbound message
     const response: OutboundMessage = {
       channelType: message.channelType,
       peerId: message.peerId,
       ...(message.accountId !== undefined ? { accountId: message.accountId } : {}),
       text: result.text,
+      ...(artifacts.length > 0 ? { artifacts } : {}),
     };
 
     // Emit sent event
@@ -326,6 +332,57 @@ function resolveModelFromString(
   const providerId = modelRef.slice(0, slashIdx);
   const modelId = modelRef.slice(slashIdx + 1);
   return resolveModel(providerId, modelId);
+}
+
+// ---------------------------------------------------------------------------
+// Artifact extraction
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract artifacts from assistant message parts.
+ * Artifacts are tool_call parts where toolName is "create_artifact".
+ * The content comes from the matching tool_result part.
+ */
+function extractArtifacts(db: Database.Database, messageId: string): OutboundArtifact[] {
+  const parts = listParts(db, messageId);
+  const artifacts: OutboundArtifact[] = [];
+
+  for (const part of parts) {
+    if (part.type !== "tool_call") continue;
+    let meta: { toolName?: string; toolCallId?: string; args?: Record<string, unknown> };
+    try {
+      meta = JSON.parse(part.metadata ?? "{}") as typeof meta;
+    } catch {
+      continue;
+    }
+    if (meta.toolName !== "create_artifact") continue;
+
+    // Find the matching tool_result for content
+    const resultPart = parts.find((p) => {
+      if (p.type !== "tool_result") return false;
+      try {
+        const rm = JSON.parse(p.metadata ?? "{}") as { toolCallId?: string };
+        return rm.toolCallId === meta.toolCallId;
+      } catch {
+        return false;
+      }
+    });
+
+    const args = meta.args ?? {};
+    const content = resultPart?.content ?? (args.content as string | undefined) ?? "";
+    if (!content) continue;
+
+    artifacts.push({
+      title: (args.title as string | undefined) ?? "Artifact",
+      artifactType: (args.artifactType as string | undefined) ?? "code",
+      content,
+      ...((args.language as string | undefined) !== undefined
+        ? { language: args.language as string }
+        : {}),
+    });
+  }
+
+  return artifacts;
 }
 
 // ---------------------------------------------------------------------------
