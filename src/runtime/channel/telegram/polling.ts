@@ -249,6 +249,32 @@ export class TelegramPoller {
     return buffer.toString("base64");
   }
 
+  /**
+   * Send a document (file) to a chat via multipart/form-data upload.
+   */
+  async sendDocument(
+    chatId: number,
+    document: Buffer,
+    filename: string,
+    caption?: string,
+    parseMode?: "MarkdownV2" | "HTML",
+  ): Promise<void> {
+    const url = `https://api.telegram.org/bot${this.options.token}/sendDocument`;
+    await httpsPostMultipart(
+      url,
+      {
+        chat_id: String(chatId),
+        ...(caption !== undefined ? { caption } : {}),
+        ...(parseMode !== undefined ? { parse_mode: parseMode } : {}),
+      },
+      {
+        fieldName: "document",
+        buffer: document,
+        filename,
+      },
+    );
+  }
+
   private isAllowed(update: TelegramUpdate): boolean {
     if (this.options.allowedUserIds.length === 0) return true;
     const userId = update.message?.from?.id;
@@ -307,6 +333,58 @@ function httpsPost(url: string, body: string): Promise<string> {
       headers: {
         "Content-Type": "application/json",
         "Content-Length": Buffer.byteLength(body),
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk: Buffer) => chunks.push(chunk));
+      res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+      res.on("error", reject);
+    });
+
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+function httpsPostMultipart(
+  url: string,
+  fields: Record<string, string>,
+  file: { fieldName: string; buffer: Buffer; filename: string },
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const boundary = `----FormBoundary${Date.now().toString(36)}`;
+    const parts: Buffer[] = [];
+
+    // Text fields
+    for (const [key, value] of Object.entries(fields)) {
+      parts.push(
+        Buffer.from(
+          `--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`,
+        ),
+      );
+    }
+
+    // File field
+    parts.push(
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${file.fieldName}"; filename="${file.filename}"\r\nContent-Type: application/octet-stream\r\n\r\n`,
+      ),
+    );
+    parts.push(file.buffer);
+    parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
+
+    const body = Buffer.concat(parts);
+    const urlObj = new URL(url);
+    const options: https.RequestOptions = {
+      hostname: urlObj.hostname,
+      path: urlObj.pathname + urlObj.search,
+      method: "POST",
+      headers: {
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+        "Content-Length": body.length,
       },
     };
 

@@ -109,7 +109,7 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 | 0 | Login | `cp-login-view` | — (pre-auth) | — | [screen-login.md](ux-screens/screen-login.md) |
 | 1 | Instances | `cp-cluster-view` | `#/instances` | instance-card, create-dialog, delete-instance-dialog, discover-dialog | [screen-instances.md](ux-screens/screen-instances.md) |
 | 2b | Instance Settings | `cp-instance-settings` | `#/instances/:slug/settings` | channels, mcp, permissions, config (inline) | [screen-instance-settings.md](ux-screens/screen-instance-settings.md) |
-| 2c | Runtime Pilot | `cp-runtime-pilot` | `#/instances/:slug/pilot` | 18 sub-components (inline) | [screen-runtime-pilot.md](ux-screens/screen-runtime-pilot.md) |
+| 2c | Runtime Pilot | `cp-runtime-pilot` | `#/instances/:slug/pilot` | 22 sub-components (inline) | [screen-runtime-pilot.md](ux-screens/screen-runtime-pilot.md) |
 | 2d | Cost Dashboard | `cp-costs-dashboard` | `#/instances/:slug/costs` | — (self-contained: summary cards, SVG chart, table, donut) | [screen-costs-dashboard.md](ux-screens/screen-costs-dashboard.md) |
 | 2e | Activity Console | `cp-activity-console` | `#/instances/:slug/activity` | — (self-contained: filters, event table, detail panel) | [screen-activity-console.md](ux-screens/screen-activity-console.md) |
 | 3 | Agent Builder | `cp-agents-builder` | `#/instances/:slug/builder` | agent-card-mini, agent-detail-panel, agent-links-svg | [screen-agent-builder.md](ux-screens/screen-agent-builder.md) |
@@ -173,3 +173,5 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 *Updated: 2026-03-21 - v0.44.0: added Profile Settings screen (cp-profile-settings), 👤 button in header, #/profile route*
 
 *Updated: 2026-03-22 - v0.45.0: added Cost Dashboard (cp-costs-dashboard, #/instances/:slug/costs), Activity Console (cp-activity-console, #/instances/:slug/activity), Live Stream Widget (cp-live-stream-widget replacing static WS indicator)*
+
+*Updated: 2026-03-26 - v0.51.0: Runtime Pilot expanded to 22 components. Added 4 part components: cp-pilot-part-artifact (rich card for create_artifact tool), cp-pilot-part-suggestion (follow-up chips), cp-pilot-part-image (image viewer), cp-pilot-part-question (interactive question). Input enhanced with file upload (📎 button + drag & drop), Send/Stop toggle (streaming abort). Suggestions generated via post-middleware + SuggestionsGenerated SSE event. Artifacts delivered as Telegram documents, suggestions as inline keyboard buttons.*
