@@ -20,7 +20,8 @@ export type PartType =
   | "tool_result"
   | "reasoning"
   | "subtask"
-  | "compaction";
+  | "compaction"
+  | "suggestion";
 
 /** Lifecycle state of a part (relevant for tool_call / subtask parts) */
 export type PartState = "pending" | "running" | "completed" | "error";

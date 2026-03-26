@@ -266,6 +266,11 @@ export async function buildToolSet(
     });
   }
 
+  // Remove create_artifact tool when artifacts are disabled in config
+  if (runtimeConfig?.artifacts?.enabled === false) {
+    delete set["create_artifact"];
+  }
+
   if (callerAgentConfig && agentKind !== "subagent") {
     const profile = callerAgentConfig.toolProfile ?? "executor";
     // Resolve allowed tools from profile or custom list

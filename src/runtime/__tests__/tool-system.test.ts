@@ -163,9 +163,9 @@ describe("Tool.define()", () => {
 // ---------------------------------------------------------------------------
 
 describe("getBuiltinTools()", () => {
-  it("returns 12 built-in tools (phase 2 + multiedit)", () => {
+  it("returns 13 built-in tools (phase 2 + multiedit + create_artifact)", () => {
     const tools = getBuiltinTools();
-    expect(tools).toHaveLength(12);
+    expect(tools).toHaveLength(13);
   });
 
   it("includes core tools: read, write, edit, bash, glob, grep", () => {
@@ -191,14 +191,14 @@ describe("getBuiltinTools()", () => {
 });
 
 describe("getTools()", () => {
-  it("returns 12 built-in tools without customToolsDir", async () => {
+  it("returns 13 built-in tools without customToolsDir", async () => {
     const tools = await getTools();
-    expect(tools).toHaveLength(12);
+    expect(tools).toHaveLength(13);
   });
 
   it("returns built-ins when customToolsDir does not exist", async () => {
     const tools = await getTools({ customToolsDir: "/nonexistent/path/to/tools" });
-    expect(tools).toHaveLength(12);
+    expect(tools).toHaveLength(13);
   });
 
   it("excludes tools by ID when exclude option is provided", async () => {
@@ -208,7 +208,7 @@ describe("getTools()", () => {
     expect(ids).not.toContain("write");
     expect(ids).not.toContain("edit");
     expect(ids).toContain("read");
-    expect(tools).toHaveLength(9);
+    expect(tools).toHaveLength(10);
   });
 
   it("read tool has a real description (not a stub)", async () => {
@@ -242,18 +242,19 @@ describe("getTools() — toolProfile filtering", () => {
   });
 
   /**
-   * Objective: toolProfile "pilot" must return question + webfetch only.
-   * Positive test: exactly 2 tools with the expected IDs.
+   * Objective: toolProfile "pilot" must return question + webfetch + create_artifact.
+   * Positive test: exactly 3 tools with the expected IDs.
    */
-  it('[positive] toolProfile "pilot" returns question + webfetch', async () => {
+  it('[positive] toolProfile "pilot" returns question + webfetch + create_artifact', async () => {
     // Arrange + Act
     const tools = await getTools({ toolProfile: "pilot" });
     const ids = tools.map((t) => t.id);
 
     // Assert
-    expect(tools).toHaveLength(2);
+    expect(tools).toHaveLength(3);
     expect(ids).toContain("question");
     expect(ids).toContain("webfetch");
+    expect(ids).toContain("create_artifact");
   });
 
   /**
@@ -280,7 +281,7 @@ describe("getTools() — toolProfile filtering", () => {
     expect(ids).toContain("skill");
     // "task" must NOT be present in executor profile
     expect(ids).not.toContain("task");
-    expect(tools).toHaveLength(12);
+    expect(tools).toHaveLength(13);
   });
 
   /**
@@ -318,12 +319,12 @@ describe("getTools() — toolProfile filtering", () => {
     expect(ids).toContain("question");
     expect(ids).toContain("webfetch");
     expect(ids).toContain("bash");
-    expect(tools).toHaveLength(3);
+    expect(tools).toHaveLength(4);
   });
 
   /**
    * Objective: alsoAllow must not add duplicates if the tool is already in the profile.
-   * Positive test: pilot + alsoAllow:["question"] → still 2 tools (no duplicate).
+   * Positive test: pilot + alsoAllow:["question"] → still 3 tools (no duplicate).
    */
   it("[positive] alsoAllow does not duplicate tools already in the profile", async () => {
     // Arrange + Act
@@ -333,7 +334,7 @@ describe("getTools() — toolProfile filtering", () => {
     const ids = tools.map((t) => t.id);
     const questionCount = ids.filter((id) => id === "question").length;
     expect(questionCount).toBe(1);
-    expect(tools).toHaveLength(2);
+    expect(tools).toHaveLength(3);
   });
 
   /**
@@ -349,19 +350,19 @@ describe("getTools() — toolProfile filtering", () => {
     expect(ids).not.toContain("bash");
     expect(ids).toContain("read");
     expect(ids).toContain("write");
-    expect(tools).toHaveLength(11);
+    expect(tools).toHaveLength(12);
   });
 
   /**
-   * Objective: without toolProfile, all 12 built-in tools are returned (unchanged behavior).
-   * Negative test: no toolProfile → 12 tools (not filtered to any profile).
+   * Objective: without toolProfile, all 13 built-in tools are returned (unchanged behavior).
+   * Negative test: no toolProfile → 13 tools (not filtered to any profile).
    */
-  it("[negative] without toolProfile, all 12 built-in tools are returned", async () => {
+  it("[negative] without toolProfile, all 13 built-in tools are returned", async () => {
     // Arrange + Act
     const tools = await getTools();
 
-    // Assert: all 12 tools, not filtered
-    expect(tools).toHaveLength(12);
+    // Assert: all 13 tools, not filtered
+    expect(tools).toHaveLength(13);
   });
 
   /**

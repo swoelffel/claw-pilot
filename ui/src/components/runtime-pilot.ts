@@ -563,6 +563,14 @@ export class RuntimePilot extends LitElement {
         break;
       }
 
+      // ── Suggestions ─────────────────────────────────────────────────────
+      case "suggestions.generated": {
+        if (eventSessionId && eventSessionId !== this._activeSessionId) break;
+        // Refresh messages to pick up the new suggestion part
+        void this._refreshMessages();
+        break;
+      }
+
       // ── System prompt real-time update ──────────────────────────────────
       case "session.system_prompt": {
         if (eventSessionId && eventSessionId !== this._activeSessionId) break;
@@ -683,6 +691,12 @@ export class RuntimePilot extends LitElement {
     this._streamingAgentId = "";
   }
 
+  // ── Suggestion click ────────────────────────────────────────────────────
+
+  private _onSuggestionClick(e: CustomEvent<{ text: string }>): void {
+    void this._onSendMessage(new CustomEvent("send-message", { detail: { text: e.detail.text } }));
+  }
+
   // ── Stats computed from messages ──────────────────────────────────────────
 
   private get _totalTokens(): number {
@@ -758,7 +772,7 @@ export class RuntimePilot extends LitElement {
       ></cp-pilot-header>
 
       <div class="pilot-body">
-        <div class="pilot-main">
+        <div class="pilot-main" @suggestion-click=${this._onSuggestionClick}>
           <cp-pilot-messages
             .messages=${this._messages}
             .streamingText=${this._streamingText}

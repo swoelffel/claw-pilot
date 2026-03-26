@@ -375,9 +375,9 @@ describe("getTools() with mcpRegistry", () => {
 
   it("does not include MCP tools when mcpRegistry is not provided", async () => {
     const tools = await getTools();
-    // No tool ID should follow the MCP pattern "<serverId>_<toolName>" with two underscore segments
-    // Built-in tool IDs are simple single words: "read", "write", "edit", "bash", etc.
-    const mcpPrefixed = tools.filter((t) => /^[a-z][a-z0-9]*_[a-z]/.test(t.id));
+    // No tool ID should start with "mcp_" — that prefix is reserved for MCP-provided tools.
+    // Built-in tools may use underscores (e.g. "create_artifact") but never the "mcp_" prefix.
+    const mcpPrefixed = tools.filter((t) => t.id.startsWith("mcp_"));
     expect(mcpPrefixed).toHaveLength(0);
   });
 
