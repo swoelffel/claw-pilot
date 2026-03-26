@@ -686,6 +686,7 @@ export class BlueprintBuilder extends LitElement {
                 }}
                 @agent-delete-requested=${(e: CustomEvent<{ agentId: string }>) =>
                   this._onDeleteRequested(e.detail.agentId)}
+                @agent-meta-updated=${() => void this._load()}
                 @spawn-links-updated=${(e: CustomEvent<{ links: AgentLink[] }>) => {
                   if (this._data) {
                     this._data = { ...this._data, links: e.detail.links };
