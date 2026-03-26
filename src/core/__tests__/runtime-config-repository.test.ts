@@ -39,7 +39,7 @@ function provisionAgent(slug: string, agentId: string, name: string): void {
 }
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cp-rtconfig-test-"));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cp-rt-config-test-"));
   db = initDatabase(path.join(tmpDir, "registry.db"));
   registry = new Registry(db);
 });
