@@ -32,6 +32,35 @@ try {
 const DEFAULT_INSTRUCTIONS = "You are a helpful AI assistant. Be concise and accurate.";
 
 // ---------------------------------------------------------------------------
+// Archetype behavioral instructions (loaded from templates/archetypes/)
+// ---------------------------------------------------------------------------
+
+/** In-memory cache for archetype template files (loaded once, never invalidated). */
+const _archetypeCache = new Map<string, string>();
+
+/**
+ * Load archetype behavioral instructions from templates/archetypes/<archetype>.md.
+ * Returns the file contents or undefined if the file does not exist.
+ * Results are cached in memory — archetype templates are static package files.
+ */
+function loadArchetypeBlock(archetype: string): string | undefined {
+  const cached = _archetypeCache.get(archetype);
+  if (cached !== undefined) return cached;
+
+  const archetypeDir = resolve(__dirname, "../../../templates/archetypes");
+  const filePath = join(archetypeDir, `${archetype}.md`);
+  try {
+    const content = readFileSync(filePath, "utf-8").trim();
+    _archetypeCache.set(archetype, content);
+    return content;
+  } catch {
+    // File not found or read error — cache empty string to avoid repeated I/O
+    _archetypeCache.set(archetype, "");
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Agent identity block (injected for primary agents only)
 // ---------------------------------------------------------------------------
 
@@ -195,6 +224,13 @@ export async function buildSystemPrompt(ctx: SystemPromptContext): Promise<strin
   // 1. Agent instructions (inline > file > auto-discovery > default)
   const instructions = await resolveInstructions(ctx);
   if (instructions) sections.push(instructions.trim());
+
+  // 1.2. Archetype behavioral instructions (injected after agent identity, before teammates)
+  const archetype = ctx.agentConfig.archetype;
+  if (archetype) {
+    const block = loadArchetypeBlock(archetype);
+    if (block) sections.push(block);
+  }
 
   // 1.5. Teammates block (injected after instructions, before env)
   if (ctx.runtimeAgents && ctx.runtimeAgents.length > 1) {
