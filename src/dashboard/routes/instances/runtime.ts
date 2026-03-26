@@ -32,6 +32,7 @@ import {
   type RuntimeAgentConfig,
 } from "../../../runtime/index.js";
 import { resolveAgentWorkspacePath } from "../../../core/agent-workspace.js";
+import { runMiddlewarePipeline } from "../../../runtime/middleware/pipeline.js";
 import {
   listEnrichedSessions,
   purgeArchivedSessions,
@@ -618,30 +619,56 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
             }))
         : undefined;
 
-    // Run prompt loop with abort support
+    // Run middleware pipeline + prompt loop with abort support
     const agentWorkDir = resolveAgentWorkspacePath(stateDir, agentId, undefined);
     const abortController = new AbortController();
     activeAbortControllers.set(session.id, abortController);
     try {
-      const result = await runPromptLoop({
-        db,
-        instanceSlug: slug,
-        sessionId: session.id,
-        userText: body.message.trim(),
-        agentConfig: agentCfg,
-        resolvedModel: resolvedModelObj,
-        workDir: stateDir,
-        agentWorkDir,
-        runtimeAgents: config.agents.map((a) => ({ id: a.id, name: a.name })),
-        runtimeConfig: config,
-        compactionConfig: config.compaction,
-        subagentsConfig: config.subagents,
-        abort: abortController.signal,
-        ...(imageAttachments !== undefined && imageAttachments.length > 0
-          ? { imageAttachments }
-          : {}),
+      const pipelineOutput = await runMiddlewarePipeline({
+        ctx: {
+          db,
+          instanceSlug: slug,
+          sessionId: session.id,
+          agentConfig: agentCfg,
+          message: {
+            text: body.message!.trim(),
+            channelType: "web",
+            peerId: "dashboard",
+          },
+        },
+        runLoop: () =>
+          runPromptLoop({
+            db,
+            instanceSlug: slug,
+            sessionId: session.id,
+            userText: body.message!.trim(),
+            agentConfig: agentCfg,
+            resolvedModel: resolvedModelObj,
+            workDir: stateDir,
+            agentWorkDir,
+            runtimeAgents: config.agents.map((a) => ({ id: a.id, name: a.name })),
+            runtimeConfig: config,
+            compactionConfig: config.compaction,
+            subagentsConfig: config.subagents,
+            abort: abortController.signal,
+            ...(imageAttachments !== undefined && imageAttachments.length > 0
+              ? { imageAttachments }
+              : {}),
+          }),
       });
 
+      if (pipelineOutput.aborted) {
+        return c.json({
+          sessionId: session.id,
+          aborted: true,
+          text: "",
+          ...(pipelineOutput.abortReason !== undefined
+            ? { reason: pipelineOutput.abortReason }
+            : {}),
+        });
+      }
+
+      const result = pipelineOutput.result!;
       return c.json({
         sessionId: session.id,
         messageId: result.messageId,
