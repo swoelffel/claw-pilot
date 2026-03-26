@@ -2,8 +2,10 @@
 import { createHash } from "node:crypto";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
+import type { RuntimeConfig } from "../runtime/config/index.js";
 import { normaliseModel } from "../lib/model-helpers.js";
 import { constants } from "../lib/constants.js";
+import { logger } from "../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Constants (imported from single source of truth)
@@ -73,7 +75,7 @@ export class AgentSync {
    * Synchronise the agent roster and workspace files for a given instance.
    *
    * Algorithm:
-   *  1. Read + parse runtime.json
+   *  1. Read config from DB (source of truth), fallback to runtime.json
    *  2. Reconcile agents (add / update / remove)
    *  3. For each agent, sync workspace files
    *  4. Extract and persist agent links
@@ -81,14 +83,27 @@ export class AgentSync {
    */
   async sync(instance: InstanceRecord): Promise<AgentSyncResult> {
     // ------------------------------------------------------------------
-    // 1. Read and parse runtime.json
+    // 1. Read config — DB first, fallback to runtime.json file
     // ------------------------------------------------------------------
-    const configRaw = await this.conn.readFile(instance.config_path);
-    const config = JSON.parse(configRaw) as Record<string, unknown>;
+    let config: Record<string, unknown>;
+    let _typedConfig: RuntimeConfig | null = null;
+
+    const dbConfig = this.registry.getRuntimeConfig(instance.slug);
+    if (dbConfig) {
+      _typedConfig = dbConfig;
+      // Convert to untyped for backward-compatible agent parsing below
+      config = JSON.parse(JSON.stringify(dbConfig)) as Record<string, unknown>;
+    } else {
+      // Fallback: read runtime.json (pre-v21 instances or file-only setups)
+      const configRaw = await this.conn.readFile(instance.config_path);
+      config = JSON.parse(configRaw) as Record<string, unknown>;
+      logger.debug(
+        `[agent-sync] Read config from file for "${instance.slug}" (DB config not found)`,
+      );
+    }
 
     // ------------------------------------------------------------------
     // 2. Build the expected agent list from config
-    //    runtime.json uses a flat agents[] array (no agents.defaults/list split)
     // ------------------------------------------------------------------
     const agentsList = (config["agents"] ?? []) as Array<Record<string, unknown>>;
     const defaultModel = normaliseModel(config["defaultModel"]);

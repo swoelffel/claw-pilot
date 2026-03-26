@@ -4,7 +4,7 @@ import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { instanceGuard } from "../../../../lib/guards.js";
 import { getRuntimeStateDir } from "../../../../lib/platform.js";
-import { runtimeConfigExists, loadRuntimeConfig } from "../../../../runtime/index.js";
+import { loadConfigDbFirst } from "../../_config-helpers.js";
 
 export interface SkillInfo {
   name: string;
@@ -34,16 +34,12 @@ export function registerAgentSkillsRoutes(app: Hono, deps: RouteDeps): void {
     const fallback: SkillsListResponse = { available: false, skills: [] };
 
     const stateDir = getRuntimeStateDir(slug);
-    if (!runtimeConfigExists(stateDir)) {
+    const config = loadConfigDbFirst(registry, slug, stateDir);
+    if (!config) {
       return c.json(fallback);
     }
 
-    try {
-      // Future: extract skill info from runtime config if/when claw-runtime supports skills
-      loadRuntimeConfig(stateDir);
-      return c.json(fallback);
-    } catch {
-      return c.json(fallback);
-    }
+    // Future: extract skill info from runtime config if/when claw-runtime supports skills
+    return c.json(fallback);
   });
 }

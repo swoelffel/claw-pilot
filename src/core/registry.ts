@@ -11,6 +11,7 @@
 //   config-repository.ts    — config table
 //   event-repository.ts     — events table
 //   blueprint-repository.ts — blueprints + blueprint agents + blueprint links
+//   runtime-config-repository.ts — instances.runtime_config_json (v21+)
 
 import type Database from "better-sqlite3";
 import { ServerRepository } from "./repositories/server-repository.js";
@@ -22,6 +23,7 @@ import { EventRepository } from "./repositories/event-repository.js";
 import { BlueprintRepository } from "./repositories/blueprint-repository.js";
 import { AgentBlueprintRepository } from "./repositories/agent-blueprint-repository.js";
 import { UserProfileRepository } from "./repositories/user-profile-repository.js";
+import { RuntimeConfigRepository } from "./repositories/runtime-config-repository.js";
 import type { InstanceRecord } from "./registry-types.js";
 
 // ---------------------------------------------------------------------------
@@ -58,6 +60,7 @@ export class Registry {
   private blueprints: BlueprintRepository;
   private agentBlueprints: AgentBlueprintRepository;
   private _userProfiles: UserProfileRepository;
+  private _runtimeConfig: RuntimeConfigRepository;
 
   constructor(private db: Database.Database) {
     this.servers = new ServerRepository(db);
@@ -69,6 +72,7 @@ export class Registry {
     this.blueprints = new BlueprintRepository(db);
     this.agentBlueprints = new AgentBlueprintRepository(db);
     this._userProfiles = new UserProfileRepository(db);
+    this._runtimeConfig = new RuntimeConfigRepository(db);
   }
 
   /** Expose the underlying database handle for transaction-level operations. */
@@ -276,6 +280,23 @@ export class Registry {
   }
   deleteAgentBlueprintFile(blueprintId: string, filename: string) {
     return this.agentBlueprints.deleteAgentBlueprintFile(blueprintId, filename);
+  }
+
+  // --- Runtime Config (v21+) ---
+  getRuntimeConfig(slug: string) {
+    return this._runtimeConfig.getRuntimeConfig(slug);
+  }
+  saveRuntimeConfig(
+    slug: string,
+    config: Parameters<RuntimeConfigRepository["saveRuntimeConfig"]>[1],
+  ) {
+    return this._runtimeConfig.saveRuntimeConfig(slug, config);
+  }
+  patchRuntimeConfig(
+    slug: string,
+    fn: Parameters<RuntimeConfigRepository["patchRuntimeConfig"]>[1],
+  ) {
+    return this._runtimeConfig.patchRuntimeConfig(slug, fn);
   }
 
   // --- User Profiles ---

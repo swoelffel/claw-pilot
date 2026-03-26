@@ -14,4 +14,5 @@ export {
   saveRuntimeConfig,
   ensureRuntimeConfig,
   runtimeConfigExists,
+  exportRuntimeJsonSnapshot,
 } from "./config-loader.js";

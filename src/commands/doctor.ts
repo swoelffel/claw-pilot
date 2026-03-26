@@ -5,6 +5,7 @@ import { logger } from "../lib/logger.js";
 import { withContext } from "./_context.js";
 import { getRuntimeStateDir, isRuntimeRunning, getRuntimePid } from "../lib/platform.js";
 import { runtimeConfigExists, loadRuntimeConfig } from "../runtime/index.js";
+import type { Registry } from "../core/registry.js";
 import chalk from "chalk";
 
 export function doctorCommand(): Command {
@@ -52,11 +53,14 @@ export function doctorCommand(): Command {
             allOk = false;
           }
 
-          // 2. Check runtime.json validity
-          if (runtimeConfigExists(stateDir)) {
+          // 2. Check runtime config (DB first, then file)
+          const dbConfig = (registry as Registry).getRuntimeConfig(inst.slug);
+          if (dbConfig) {
+            logger.success(`  Config: DB valid (runtime_config_json)`);
+          } else if (runtimeConfigExists(stateDir)) {
             try {
               loadRuntimeConfig(stateDir);
-              logger.success(`  Config: runtime.json valid`);
+              logger.success(`  Config: runtime.json valid (not yet in DB)`);
             } catch (err) {
               logger.fail(
                 `  Config: runtime.json invalid — ${err instanceof Error ? err.message : String(err)}`,
@@ -64,7 +68,7 @@ export function doctorCommand(): Command {
               allOk = false;
             }
           } else {
-            logger.fail(`  Config: runtime.json missing (${stateDir}/runtime.json)`);
+            logger.fail(`  Config: no config found (DB or ${stateDir}/runtime.json)`);
             allOk = false;
           }
 

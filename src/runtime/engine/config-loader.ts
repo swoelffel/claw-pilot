@@ -96,6 +96,22 @@ export function ensureRuntimeConfig(
 }
 
 /**
+ * Export a RuntimeConfig as a read-only snapshot to <stateDir>/runtime.json.
+ * This file is generated from the DB — it is NOT the source of truth.
+ * Best-effort: failures are logged but do not throw.
+ */
+export function exportRuntimeJsonSnapshot(stateDir: string, config: RuntimeConfig): void {
+  try {
+    fs.mkdirSync(stateDir, { recursive: true });
+    const filePath = runtimeConfigPath(stateDir);
+    const content = JSON.stringify(config, null, 2) + "\n";
+    fs.writeFileSync(filePath, content, "utf-8");
+  } catch {
+    // Non-critical: the DB is the source of truth, the file is for debugging
+  }
+}
+
+/**
  * Return true if runtime.json exists in the given state directory.
  */
 export function runtimeConfigExists(stateDir: string): boolean {

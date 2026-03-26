@@ -248,6 +248,42 @@ describe("AgentSync.sync()", () => {
     expect(after!.position_y).toBe(300);
   });
 
+  it("reads config from DB when runtime_config_json is populated", async () => {
+    const instance = seedInstance();
+
+    // Store config in DB (simulates v21+ setup)
+    const dbConfigObj = {
+      version: 1 as const,
+      defaultModel: "anthropic/claude-sonnet-4-5",
+      agents: [
+        {
+          id: "db-agent",
+          name: "DB Agent",
+          model: "anthropic/claude-sonnet-4-5",
+          isDefault: true,
+          permissions: [],
+          maxSteps: 20,
+          allowSubAgents: true,
+          toolProfile: "executor" as const,
+        },
+      ],
+    };
+
+    // Use parseRuntimeConfig to get a valid RuntimeConfig with all defaults
+    const { parseRuntimeConfig } = await import("../../runtime/config/index.js");
+    const fullConfig = parseRuntimeConfig(dbConfigObj);
+    registry.saveRuntimeConfig(instance.slug, fullConfig);
+
+    // Do NOT set conn.files for CONFIG_PATH — DB should be used instead
+    const agentSync = new AgentSync(conn, registry);
+    const result = await agentSync.sync(instance);
+
+    // Agent from DB config should be synced
+    expect(result.changes.agentsAdded).toContain("db-agent");
+    const agents = registry.listAgents("test-inst");
+    expect(agents.map((a) => a.agent_id)).toContain("db-agent");
+  });
+
   it("upsertAgent with null positions does not overwrite existing positions (COALESCE)", async () => {
     const instance = seedInstance();
 

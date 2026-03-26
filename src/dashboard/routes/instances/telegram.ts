@@ -5,11 +5,8 @@ import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
 import { instanceGuard } from "../../../lib/guards.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
-import {
-  runtimeConfigExists,
-  loadRuntimeConfig,
-  saveRuntimeConfig,
-} from "../../../runtime/index.js";
+import { exportRuntimeJsonSnapshot } from "../../../runtime/index.js";
+import { loadConfigDbFirst } from "../_config-helpers.js";
 import { listPairingCodes, deletePairingCode } from "../../../runtime/channel/pairing.js";
 import { logger } from "../../../lib/logger.js";
 
@@ -38,16 +35,12 @@ export function registerTelegramRoutes(app: Hono, deps: RouteDeps): void {
       },
     }));
 
-    // Get approved user IDs from runtime.json
+    // Get approved user IDs from config (DB-first)
     const stateDir = getRuntimeStateDir(slug);
     let approved: string[] = [];
-    if (runtimeConfigExists(stateDir)) {
-      try {
-        const config = loadRuntimeConfig(stateDir);
-        approved = config.telegram.allowedUserIds.map(String);
-      } catch {
-        /* ignore — runtime.json may be temporarily unreadable */
-      }
+    const config = loadConfigDbFirst(registry, slug, stateDir);
+    if (config) {
+      approved = config.telegram.allowedUserIds.map(String);
     }
 
     return c.json({ pending, approved });
@@ -90,18 +83,23 @@ export function registerTelegramRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 400, "INVALID_PEER", "Cannot parse user ID from peer ID");
     }
 
-    // Add to allowedUserIds in runtime.json
+    // Add to allowedUserIds via DB-first config
     const stateDir = getRuntimeStateDir(slug);
     try {
-      if (!runtimeConfigExists(stateDir)) {
+      const currentConfig = loadConfigDbFirst(registry, slug, stateDir);
+      if (!currentConfig) {
         return apiError(c, 400, "NO_CONFIG", "Runtime config not found — configure Telegram first");
       }
 
-      const config = loadRuntimeConfig(stateDir);
-
-      if (!config.telegram.allowedUserIds.includes(userId)) {
-        config.telegram.allowedUserIds = [...config.telegram.allowedUserIds, userId];
-        saveRuntimeConfig(stateDir, config);
+      if (!currentConfig.telegram.allowedUserIds.includes(userId)) {
+        const updated = registry.patchRuntimeConfig(slug, (cfg) => ({
+          ...cfg,
+          telegram: {
+            ...cfg.telegram,
+            allowedUserIds: [...cfg.telegram.allowedUserIds, userId],
+          },
+        }));
+        exportRuntimeJsonSnapshot(stateDir, updated);
       }
 
       // Delete the pairing code (consumed)
