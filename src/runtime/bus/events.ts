@@ -248,6 +248,15 @@ export const SessionSystemPromptBuilt = defineEvent<
 >("session.system_prompt");
 
 // ---------------------------------------------------------------------------
+// Suggestion events
+// ---------------------------------------------------------------------------
+
+export const SuggestionsGenerated = defineEvent<
+  "suggestions.generated",
+  { sessionId: SessionId; messageId: MessageId; suggestions: string[] }
+>("suggestions.generated");
+
+// ---------------------------------------------------------------------------
 // Channel events
 // ---------------------------------------------------------------------------
 
@@ -295,7 +304,8 @@ export type AnyEventDef =
   | typeof LLMChunkTimeout
   | typeof GuardrailBlocked
   | typeof ToolErrorRecovered
-  | typeof QuestionAsked;
+  | typeof QuestionAsked
+  | typeof SuggestionsGenerated;
 
 export type AnyEvent = {
   [K in AnyEventDef["type"]]: {

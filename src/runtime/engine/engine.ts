@@ -34,6 +34,11 @@ import { createChannels } from "./channel-factory.js";
 import { wirePluginsToBus } from "./plugin-wiring.js";
 import { startHeartbeatRunner } from "../heartbeat/runner.js";
 // getRegisteredHooks import removed — routes hook was removed (YAGNI)
+import { registerMiddleware, clearMiddlewares } from "../middleware/index.js";
+import { guardrailMiddleware } from "../middleware/built-in/guardrail.js";
+import { multimodalMiddleware } from "../middleware/built-in/multimodal.js";
+import { toolErrorRecoveryMiddleware } from "../middleware/built-in/tool-error-recovery.js";
+import { createSuggestionMiddleware } from "../middleware/built-in/suggestions.js";
 import { cleanupEphemeralSessions } from "../session/cleanup.js";
 import { wireEventPersistence } from "./event-persistence.js";
 import { pruneRtEvents } from "../../core/repositories/rt-event-repository.js";
@@ -115,6 +120,25 @@ export class ClawRuntime {
             channel: "web",
           });
         }
+      }
+
+      // 1c. Register built-in middlewares
+      clearMiddlewares();
+      registerMiddleware(guardrailMiddleware);
+      registerMiddleware(multimodalMiddleware);
+      registerMiddleware(toolErrorRecoveryMiddleware);
+      if (this.config.artifacts?.suggestionsEnabled !== false) {
+        registerMiddleware(
+          createSuggestionMiddleware({
+            ...(this.config.artifacts?.suggestionsModel !== undefined
+              ? { suggestionsModel: this.config.artifacts.suggestionsModel }
+              : {}),
+            maxSuggestions: this.config.artifacts?.maxSuggestions ?? 3,
+            ...(this.config.models !== undefined && this.config.models.length > 0
+              ? { modelAliases: this.config.models }
+              : {}),
+          }),
+        );
       }
 
       // 2. Init MCP if enabled
@@ -256,6 +280,9 @@ export class ClawRuntime {
       this._eventPersistenceUnsub();
       this._eventPersistenceUnsub = undefined;
     }
+
+    // 3e. Clear middleware registry
+    clearMiddlewares();
 
     this._setState("stopped");
     this.log.info("runtime_stopped", { event: "runtime_stopped" });

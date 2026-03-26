@@ -148,6 +148,11 @@ function makeRuntimeConfig(): RuntimeConfig {
       maxFileSizeMB: 20,
       allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
     },
+    artifacts: {
+      enabled: true,
+      suggestionsEnabled: true,
+      maxSuggestions: 3,
+    },
     mcpEnabled: false,
     mcpServers: [],
     log: { level: "info" as const, format: "text" as const, maxSizeMb: 10, maxFiles: 3 },

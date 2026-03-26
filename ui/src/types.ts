@@ -398,7 +398,8 @@ export type PilotPartType =
   | "tool_result"
   | "reasoning"
   | "subtask"
-  | "compaction";
+  | "compaction"
+  | "suggestion";
 
 export type PilotPartState = "pending" | "running" | "completed" | "error";
 

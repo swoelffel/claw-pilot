@@ -12,6 +12,8 @@ import "./parts/part-subtask.js";
 import "./parts/part-compaction.js";
 import "./parts/part-question.js";
 import "./parts/part-image.js";
+import "./parts/part-artifact.js";
+import "./parts/part-suggestion.js";
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -248,6 +250,12 @@ export class PilotMessageEl extends LitElement {
             .slug=${this.slug}
           ></cp-pilot-part-question>`;
         }
+        if (toolName === "create_artifact") {
+          return html`<cp-pilot-part-artifact
+            .call=${part}
+            .result=${result}
+          ></cp-pilot-part-artifact>`;
+        }
         return html`<cp-pilot-part-tool .call=${part} .result=${result}></cp-pilot-part-tool>`;
       }
 
@@ -279,6 +287,11 @@ export class PilotMessageEl extends LitElement {
         return html`<cp-pilot-part-compaction
           .metadata=${part.metadata ?? ""}
         ></cp-pilot-part-compaction>`;
+
+      case "suggestion":
+        return html`<cp-pilot-part-suggestion
+          .content=${part.content ?? "[]"}
+        ></cp-pilot-part-suggestion>`;
 
       default:
         return nothing;
