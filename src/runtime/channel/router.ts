@@ -246,6 +246,7 @@ function findOrCreateSession(
       agentInfo ?? {
         kind: "primary",
         category: "user",
+        archetype: null,
         name: agentId,
         permission: [],
         mode: "all",

@@ -218,6 +218,7 @@ export async function buildSystemPrompt(ctx: SystemPromptContext): Promise<strin
         agentInfoForCtx ?? {
           kind: "primary",
           category: "user",
+          archetype: null,
           name: ctx.agentConfig.id,
           permission: [],
           mode: "all",
@@ -650,34 +651,34 @@ function readSystemPromptFile(filePath: string, workDir: string): string | undef
 /**
  * Build the <teammates> block listing all agents in the instance.
  * The current agent is marked with [you].
- * If runtimeAgentConfigs is provided, agents with declared expertIn skills
- * are annotated with [skills: ...] to guide skill-based routing.
+ * If runtimeAgentConfigs is provided, agents with declared archetypes
+ * are annotated with [archetype: ...] to guide archetype-based routing.
  */
 function buildTeammatesBlock(
   agents: Array<{ id: string; name: string }>,
   currentAgentId: string,
   runtimeAgentConfigs?: RuntimeAgentConfig[],
 ): string {
-  // Build a lookup map: agentId → expertIn
-  const skillsById = new Map<string, string[]>();
+  // Build a lookup map: agentId → archetype
+  const archetypeById = new Map<string, string>();
   if (runtimeAgentConfigs) {
     for (const cfg of runtimeAgentConfigs) {
-      if (cfg.expertIn && cfg.expertIn.length > 0) {
-        skillsById.set(cfg.id, cfg.expertIn);
+      if (cfg.archetype != null) {
+        archetypeById.set(cfg.id, cfg.archetype);
       }
     }
   }
 
   const lines = agents.map((a) => {
     const marker = a.id === currentAgentId ? " [you]" : "";
-    const skills = skillsById.get(a.id);
-    const skillsMarker = skills ? ` [skills: ${skills.join(", ")}]` : "";
-    return `- ${a.id} (${a.name})${skillsMarker}${marker}`;
+    const archetype = archetypeById.get(a.id);
+    const archetypeMarker = archetype ? ` [archetype: ${archetype}]` : "";
+    return `- ${a.id} (${a.name})${archetypeMarker}${marker}`;
   });
 
-  const hasAnySkills = skillsById.size > 0;
-  const routingHint = hasAnySkills
-    ? '\nTo route by skill, use the skill name as subagent_type in the task tool (e.g. task({ subagent_type: "code-review", ... })).'
+  const hasAnyArchetypes = archetypeById.size > 0;
+  const routingHint = hasAnyArchetypes
+    ? '\nTo route by archetype, use the archetype name as subagent_type in the task tool (e.g. task({ subagent_type: "evaluator", ... })).'
     : "";
 
   return [

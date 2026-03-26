@@ -61,7 +61,11 @@ const AgentConfigSchema = z
     sandbox: z.record(z.string(), z.unknown()).optional(),
     tools: z.record(z.string(), z.unknown()).optional(),
     params: z.record(z.string(), z.unknown()).optional(),
-    skills: z.array(z.string()).optional(),
+    /** Behavioral archetype for routing and system prompt injection */
+    archetype: z
+      .enum(["planner", "generator", "evaluator", "orchestrator", "analyst", "communicator"])
+      .nullable()
+      .optional(),
     humanDelay: z.record(z.string(), z.unknown()).optional(),
     groupChat: z.record(z.string(), z.unknown()).optional(),
   })
@@ -137,9 +141,15 @@ export const TeamFileSchema = z
   .refine(
     (data) => {
       const ids = new Set(data.agents.map((a) => a.id));
-      return data.links.every((l) => ids.has(l.source) && ids.has(l.target));
+      // Targets starting with "@" are archetype references (e.g. "@evaluator"), not agent IDs
+      return data.links.every(
+        (l) => ids.has(l.source) && (l.target.startsWith("@") || ids.has(l.target)),
+      );
     },
-    { message: "All link source/target must reference existing agent IDs" },
+    {
+      message:
+        "All link sources must reference existing agent IDs; targets may be agent IDs or @archetype references",
+    },
   );
 
 export type TeamFile = z.infer<typeof TeamFileSchema>;

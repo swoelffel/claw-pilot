@@ -1249,14 +1249,14 @@ describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
 });
 
 // ---------------------------------------------------------------------------
-// teammates block — skill routing hints
+// teammates block — archetype routing hints
 // ---------------------------------------------------------------------------
 
-describe("buildSystemPrompt — teammates block with expertIn skills", () => {
+describe("buildSystemPrompt — teammates block with archetypes", () => {
   it("omits teammates block when only one agent is present", async () => {
     const ctx = makeCtx({
       runtimeAgents: [{ id: "pilot", name: "Pilot" }],
-      runtimeAgentConfigs: [makeAgentConfig({ id: "pilot", expertIn: ["code-review"] })],
+      runtimeAgentConfigs: [makeAgentConfig({ id: "pilot", archetype: "planner" })],
     });
     const result = await buildSystemPrompt(ctx);
     expect(result).not.toContain("<teammates>");
@@ -1289,31 +1289,31 @@ describe("buildSystemPrompt — teammates block with expertIn skills", () => {
     expect(result).not.toContain("- dev (Dev) [you]");
   });
 
-  it("annotates agents with their declared skills when runtimeAgentConfigs provided", async () => {
+  it("annotates agents with their declared archetype when runtimeAgentConfigs provided", async () => {
     const ctx = makeCtx({
       agentConfig: makeAgentConfig({ id: "pilot" }),
       runtimeAgents: [
         { id: "pilot", name: "Pilot" },
         { id: "dev", name: "Dev" },
-        { id: "doc", name: "Doc" },
+        { id: "qa", name: "QA" },
       ],
       runtimeAgentConfigs: [
         makeAgentConfig({ id: "pilot" }),
-        makeAgentConfig({ id: "dev", expertIn: ["code-review", "test-writing"] }),
-        makeAgentConfig({ id: "doc", expertIn: ["documentation"] }),
+        makeAgentConfig({ id: "dev", archetype: "generator" }),
+        makeAgentConfig({ id: "qa", archetype: "evaluator" }),
       ],
     });
     const result = await buildSystemPrompt(ctx);
-    // dev should show its skills
-    expect(result).toContain("- dev (Dev) [skills: code-review, test-writing]");
-    // doc should show its skill
-    expect(result).toContain("- doc (Doc) [skills: documentation]");
-    // pilot has no expertIn — no skills marker
+    // dev should show its archetype
+    expect(result).toContain("- dev (Dev) [archetype: generator]");
+    // qa should show its archetype
+    expect(result).toContain("- qa (QA) [archetype: evaluator]");
+    // pilot has no archetype — no archetype marker
     expect(result).toContain("- pilot (Pilot) [you]");
-    expect(result).not.toContain("- pilot (Pilot) [skills:");
+    expect(result).not.toContain("- pilot (Pilot) [archetype:");
   });
 
-  it("includes skill routing hint when at least one agent has expertIn", async () => {
+  it("includes archetype routing hint when at least one agent has archetype", async () => {
     const ctx = makeCtx({
       agentConfig: makeAgentConfig({ id: "pilot" }),
       runtimeAgents: [
@@ -1322,15 +1322,15 @@ describe("buildSystemPrompt — teammates block with expertIn skills", () => {
       ],
       runtimeAgentConfigs: [
         makeAgentConfig({ id: "pilot" }),
-        makeAgentConfig({ id: "dev", expertIn: ["test-writing"] }),
+        makeAgentConfig({ id: "dev", archetype: "generator" }),
       ],
     });
     const result = await buildSystemPrompt(ctx);
-    expect(result).toContain("route by skill");
+    expect(result).toContain("route by archetype");
     expect(result).toContain("subagent_type");
   });
 
-  it("omits skill routing hint when no agent has expertIn", async () => {
+  it("omits archetype routing hint when no agent has archetype", async () => {
     const ctx = makeCtx({
       agentConfig: makeAgentConfig({ id: "pilot" }),
       runtimeAgents: [
@@ -1341,10 +1341,10 @@ describe("buildSystemPrompt — teammates block with expertIn skills", () => {
     });
     const result = await buildSystemPrompt(ctx);
     expect(result).toContain("<teammates>");
-    expect(result).not.toContain("route by skill");
+    expect(result).not.toContain("route by archetype");
   });
 
-  it("handles missing runtimeAgentConfigs gracefully (no skills annotations)", async () => {
+  it("handles missing runtimeAgentConfigs gracefully (no archetype annotations)", async () => {
     const ctx = makeCtx({
       runtimeAgents: [
         { id: "pilot", name: "Pilot" },
@@ -1354,7 +1354,7 @@ describe("buildSystemPrompt — teammates block with expertIn skills", () => {
     });
     const result = await buildSystemPrompt(ctx);
     expect(result).toContain("<teammates>");
-    expect(result).not.toContain("[skills:");
+    expect(result).not.toContain("[archetype:");
     expect(result).not.toContain("route by skill");
   });
 });

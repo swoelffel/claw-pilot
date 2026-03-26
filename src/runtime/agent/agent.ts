@@ -29,6 +29,16 @@ export namespace Agent {
      * - "system": internal infrastructure agents, never invocable directly (compaction, title, summary)
      */
     category: z.enum(["user", "tool", "system"]).default("tool"),
+    /**
+     * Behavioral archetype of the agent.
+     * Controls system prompt injection and enables archetype-based routing:
+     * task({ subagent_type: "evaluator" }) resolves to the first agent with that archetype.
+     * Orthogonal to toolProfile (which controls tool access).
+     */
+    archetype: z
+      .enum(["planner", "generator", "evaluator", "orchestrator", "analyst", "communicator"])
+      .nullable()
+      .default(null),
     /** Whether this is a built-in agent (not user-defined) */
     native: z.boolean().optional(),
     /** Whether to hide from agent picker UI */
@@ -54,13 +64,6 @@ export namespace Agent {
     steps: z.number().int().positive().optional(),
     /** Arbitrary extra options (passed to provider) */
     options: z.record(z.string(), z.unknown()).default({}),
-    /**
-     * Skills this agent declares as its areas of expertise.
-     * Used for skill-based routing: task({ skill: "code-review" }) resolves to the first
-     * primary agent that includes "code-review" in its expertIn list.
-     * Free-form strings — resolved by exact match.
-     */
-    expertIn: z.array(z.string()).optional(),
   });
 
   export type Info = z.infer<typeof Info>;
@@ -75,7 +78,7 @@ export namespace Agent {
     hidden: boolean;
     native: boolean;
     color: string | undefined;
-    expertIn: string[] | undefined;
+    archetype: Info["archetype"];
   }
 
   /** @public */
@@ -89,7 +92,7 @@ export namespace Agent {
       hidden: info.hidden ?? false,
       native: info.native ?? false,
       color: info.color,
-      expertIn: info.expertIn,
+      archetype: info.archetype,
     };
   }
 }

@@ -86,9 +86,8 @@ export function createSendMessageTool(options: {
   });
 
   const peerList = primaryPeers.map((cfg) => {
-    const skills =
-      cfg.expertIn && cfg.expertIn.length > 0 ? ` [skills: ${cfg.expertIn.join(", ")}]` : "";
-    return `- ${cfg.id} (${cfg.name})${skills}`;
+    const arch = cfg.archetype ? ` [archetype: ${cfg.archetype}]` : "";
+    return `- ${cfg.id} (${cfg.name})${arch}`;
   });
 
   const description = [
@@ -99,7 +98,7 @@ export function createSendMessageTool(options: {
     "Available agents:",
     ...peerList,
     "",
-    "You can also route by skill name if agents declare `expertIn`.",
+    'You can also route by archetype name (e.g. to: "evaluator").',
   ].join("\n");
 
   return Tool.define("send_message", {
@@ -113,11 +112,12 @@ export function createSendMessageTool(options: {
         .describe("Wait for a reply (true) or fire-and-forget (false)"),
     }),
     async execute(params, ctx) {
-      // 1. Resolve target agent config
+      // 1. Resolve target agent config (by ID, then by archetype)
       const targetConfig =
         (runtimeAgentConfigs ?? []).find((cfg) => cfg.id === params.to) ??
         (runtimeAgentConfigs ?? []).find(
-          (cfg) => cfg.id !== callerAgentConfig.id && cfg.expertIn?.includes(params.to),
+          (cfg) =>
+            cfg.id !== callerAgentConfig.id && cfg.archetype != null && cfg.archetype === params.to,
         );
 
       if (!targetConfig) {
@@ -125,22 +125,22 @@ export function createSendMessageTool(options: {
           .filter((cfg) => cfg.id !== callerAgentConfig.id)
           .map((cfg) => cfg.id)
           .join(", ");
-        const skills = [
+        const archetypes = [
           ...new Set(
             (runtimeAgentConfigs ?? [])
-              .filter((cfg) => cfg.id !== callerAgentConfig.id && cfg.expertIn?.length)
-              .flatMap((cfg) => cfg.expertIn ?? []),
+              .filter((cfg) => cfg.id !== callerAgentConfig.id && cfg.archetype != null)
+              .map((cfg) => cfg.archetype!),
           ),
         ].join(", ");
         throw new Error(
           `No agent found for "${params.to}". ` +
             (available ? `Available agents: ${available}. ` : "") +
-            (skills ? `Available skills: ${skills}` : ""),
+            (archetypes ? `Available archetypes: ${archetypes}` : ""),
         );
       }
 
-      // 2. A2A policy check
-      const policy = checkA2APolicy(callerAgentConfig, targetConfig.id);
+      // 2. A2A policy check (allowList accepts agent IDs and archetype names)
+      const policy = checkA2APolicy(callerAgentConfig, targetConfig.id, targetConfig.archetype);
       if (!policy.allowed) {
         throw new Error(policy.reason);
       }

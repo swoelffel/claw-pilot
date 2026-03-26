@@ -37,8 +37,28 @@ export function registerAgentSpawnLinkRoutes(app: Hono, deps: RouteDeps): void {
         return apiError(c, 404, "AGENT_NOT_FOUND", `Agent '${agentId}' not found`);
       }
 
-      // Validate that all target agents exist in DB
+      // Validate that all target agents exist in DB (or are @archetype references)
+      const validArchetypes = new Set([
+        "planner",
+        "generator",
+        "evaluator",
+        "orchestrator",
+        "analyst",
+        "communicator",
+      ]);
       for (const targetId of body.targets) {
+        if (targetId.startsWith("@")) {
+          const archetype = targetId.slice(1);
+          if (!validArchetypes.has(archetype)) {
+            return apiError(
+              c,
+              400,
+              "FIELD_INVALID",
+              `Invalid archetype reference '${targetId}'. Valid archetypes: ${[...validArchetypes].join(", ")}`,
+            );
+          }
+          continue;
+        }
         const targetAgent = registry.getAgentByAgentId(instance!.id, targetId);
         if (!targetAgent) {
           return apiError(c, 404, "AGENT_NOT_FOUND", `Target agent '${targetId}' not found`);

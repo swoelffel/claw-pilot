@@ -283,6 +283,7 @@ describe("task trace injection — subagent sync", () => {
       mode: "subagent",
       kind: "subagent",
       category: "tool",
+      archetype: null,
       native: true,
       hidden: false,
       permission: [{ permission: "*", pattern: "**", action: "allow" as const }],
