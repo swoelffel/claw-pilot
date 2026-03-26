@@ -45,12 +45,7 @@ const SubagentsConfigSchema = z
   })
   .passthrough(); // allow unknown subagent fields
 
-/** Permission rule — mirrors PermissionRuleSchema in runtime/config/index.ts */
-const PermissionRuleSchema = z.object({
-  permission: z.string().min(1),
-  pattern: z.string().min(1),
-  action: z.enum(["allow", "deny", "ask"]),
-});
+import { PermissionRuleSchema } from "../lib/schemas/permission.js";
 
 const AgentConfigSchema = z
   .object({

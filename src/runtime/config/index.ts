@@ -10,17 +10,14 @@
 
 import { z } from "zod";
 import { DEFAULT_RULESET } from "../agent/defaults.js";
+import { PermissionRuleSchema } from "../../lib/schemas/permission.js";
+
+// Re-export schema (not the type — PermissionRule is already exported from runtime/types.ts)
+export { PermissionRuleSchema } from "../../lib/schemas/permission.js";
 
 // ---------------------------------------------------------------------------
 // Sub-schemas
 // ---------------------------------------------------------------------------
-
-/** Permission rule */
-const PermissionRuleSchema = z.object({
-  permission: z.string().min(1),
-  pattern: z.string().min(1),
-  action: z.enum(["allow", "deny", "ask"]),
-});
 
 /** Auth profile config (API key stored in .env, referenced by var name) */
 const AuthProfileConfigSchema = z.object({
