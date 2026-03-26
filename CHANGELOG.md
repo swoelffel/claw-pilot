@@ -6,6 +6,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.52.0] — 2026-03-26
+
+### Added
+
+- **Artifacts tool** (`create_artifact`) : LLM can produce structured content (code, markdown, JSON, CSV, SVG, HTML) rendered as rich cards in the UI with copy button, collapsible content, and type icons. Configurable via `artifacts.enabled` in runtime config.
+- **Follow-up suggestions** : Post-middleware generates 2-3 contextual follow-up actions after each response using a lightweight LLM call (configurable model via `artifacts.suggestionsModel`). Rendered as clickable chips in the web UI. Configurable via `artifacts.suggestionsEnabled` and `artifacts.maxSuggestions`.
+- **Telegram artifact delivery** : Artifacts sent as downloadable Telegram documents with MIME-mapped file extensions (`.py`, `.ts`, `.json`, `.md`, etc.). New `sendDocument()` multipart/form-data upload in Telegram poller.
+- **Telegram suggestion buttons** : Follow-up suggestions sent as inline keyboard buttons. Clicking a suggestion sends it as a new message to the agent.
+- **Built-in middleware registration** : All 4 built-in middlewares (guardrail, multimodal, tool-error-recovery, suggestions) now properly registered at engine startup and in the dashboard chat route.
+- **UX documentation** : 4 new component docs (artifact card, suggestion chips, image viewer, question card). Updated Runtime Pilot screen doc (18 → 22 components, input features, part types table).
+
+### Fixed
+
+- **Dashboard middleware bypass** : `POST /runtime/chat` was calling `runPromptLoop()` directly, bypassing the middleware pipeline. Now wrapped in `runMiddlewarePipeline()`.
+- **Middleware registry isolation** : Dashboard and runtime daemon run as separate processes. Middleware registry was empty in the dashboard process. Now registers middlewares in both processes.
+
+---
+
 ## [0.51.0] — 2026-03-25
 
 ### Changed
