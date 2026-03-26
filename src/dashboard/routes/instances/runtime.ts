@@ -12,8 +12,6 @@ import { buildResolvedEnv } from "../../../lib/env-reader.js";
 import { CommunityProfileResolver } from "../../../runtime/profile/community-resolver.js";
 import { UserProfileRepository } from "../../../core/repositories/user-profile-repository.js";
 import {
-  runtimeConfigExists,
-  loadMergedConfig,
   listMessages,
   listParts,
   resolveModel,
@@ -42,6 +40,7 @@ import {
   listEnrichedSessions,
   purgeArchivedSessions,
 } from "../../../core/repositories/runtime-session-repository.js";
+import { loadMergedConfigDbFirst } from "../_config-helpers.js";
 
 // Active prompt-loop AbortControllers, keyed by sessionId.
 // Created in POST /runtime/chat, cleaned up in finally block.
@@ -61,23 +60,11 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     if (guard) return guard;
 
     const stateDir = getRuntimeStateDir(slug);
-    const hasConfig = runtimeConfigExists(stateDir);
+    const profileResolver = new CommunityProfileResolver(new UserProfileRepository(db));
+    const config = loadMergedConfigDbFirst(registry, slug, stateDir, profileResolver);
 
-    if (!hasConfig) {
+    if (!config) {
       return c.json({ slug, hasConfig: false, config: null });
-    }
-
-    let config;
-    try {
-      const profileResolver = new CommunityProfileResolver(new UserProfileRepository(db));
-      config = loadMergedConfig(stateDir, profileResolver);
-    } catch (err) {
-      return apiError(
-        c,
-        500,
-        "RUNTIME_CONFIG_INVALID",
-        err instanceof Error ? err.message : "Failed to load runtime.json",
-      );
     }
 
     return c.json({ slug, hasConfig: true, config });
@@ -191,21 +178,10 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     if (guard) return guard;
 
     const stateDir = getRuntimeStateDir(slug);
-    if (!runtimeConfigExists(stateDir)) {
-      return apiError(c, 404, "RUNTIME_CONFIG_NOT_FOUND", "No runtime.json found");
-    }
-
-    let config;
-    try {
-      const profileResolver = new CommunityProfileResolver(new UserProfileRepository(db));
-      config = loadMergedConfig(stateDir, profileResolver);
-    } catch (err) {
-      return apiError(
-        c,
-        500,
-        "RUNTIME_CONFIG_INVALID",
-        err instanceof Error ? err.message : "Failed to load runtime.json",
-      );
+    const profileResolver = new CommunityProfileResolver(new UserProfileRepository(db));
+    const config = loadMergedConfigDbFirst(registry, slug, stateDir, profileResolver);
+    if (!config) {
+      return apiError(c, 404, "RUNTIME_CONFIG_NOT_FOUND", "No runtime config found");
     }
 
     // Load session from DB directly
@@ -485,25 +461,14 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     }
 
     const stateDir = getRuntimeStateDir(slug);
-    if (!runtimeConfigExists(stateDir)) {
+    const profileResolver = new CommunityProfileResolver(new UserProfileRepository(db));
+    const config = loadMergedConfigDbFirst(registry, slug, stateDir, profileResolver);
+    if (!config) {
       return apiError(
         c,
         404,
         "RUNTIME_CONFIG_NOT_FOUND",
-        `No runtime.json found for instance "${slug}". Run: claw-pilot runtime config init ${slug}`,
-      );
-    }
-
-    let config;
-    try {
-      const profileResolver = new CommunityProfileResolver(new UserProfileRepository(db));
-      config = loadMergedConfig(stateDir, profileResolver);
-    } catch (err) {
-      return apiError(
-        c,
-        500,
-        "RUNTIME_CONFIG_INVALID",
-        err instanceof Error ? err.message : "Failed to load runtime.json",
+        `No runtime config found for instance "${slug}".`,
       );
     }
 

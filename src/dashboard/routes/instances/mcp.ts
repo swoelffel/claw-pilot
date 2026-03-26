@@ -10,8 +10,8 @@ import { apiError } from "../../route-deps.js";
 import { instanceGuard } from "../../../lib/guards.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
 import { readEnvFileSync } from "../../../lib/env-reader.js";
-import { runtimeConfigExists, loadRuntimeConfig } from "../../../runtime/index.js";
 import { McpRegistry } from "../../../runtime/mcp/registry.js";
+import { loadConfigDbFirst } from "../_config-helpers.js";
 
 // ---------------------------------------------------------------------------
 // In-process MCP registry cache
@@ -25,22 +25,19 @@ const _mcpRegistryCache = new Map<string, McpRegistry>();
  * Get or create a McpRegistry for the given instance slug.
  * Returns undefined if MCP is not enabled or the runtime is not running.
  */
-async function getMcpRegistryForSlug(slug: string): Promise<McpRegistry | undefined> {
+async function getMcpRegistryForSlug(
+  slug: string,
+  reg: import("../../../core/registry.js").Registry,
+): Promise<McpRegistry | undefined> {
   const stateDir = getRuntimeStateDir(slug);
 
-  if (!runtimeConfigExists(stateDir)) return undefined;
-
-  let config;
-  try {
-    const instanceEnv = readEnvFileSync(stateDir);
-    // Inject env vars so that ${VAR} references in config are resolved
-    for (const [k, v] of Object.entries(instanceEnv)) {
-      if (!(k in process.env)) process.env[k] = v;
-    }
-    config = loadRuntimeConfig(stateDir);
-  } catch {
-    return undefined;
+  const instanceEnv = readEnvFileSync(stateDir);
+  for (const [k, v] of Object.entries(instanceEnv)) {
+    if (!(k in process.env)) process.env[k] = v;
   }
+
+  const config = loadConfigDbFirst(reg, slug, stateDir);
+  if (!config) return undefined;
 
   if (!config.mcpEnabled || config.mcpServers.length === 0) return undefined;
 
@@ -77,7 +74,7 @@ export function registerMcpRoutes(app: Hono, deps: RouteDeps): void {
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
 
-    const mcpRegistry = await getMcpRegistryForSlug(slug);
+    const mcpRegistry = await getMcpRegistryForSlug(slug, registry);
     if (!mcpRegistry) {
       return c.json({ tools: [] });
     }
@@ -120,17 +117,15 @@ export function registerMcpRoutes(app: Hono, deps: RouteDeps): void {
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
 
-    const mcpRegistry = await getMcpRegistryForSlug(slug);
+    const mcpRegistry = await getMcpRegistryForSlug(slug, registry);
     if (!mcpRegistry) {
       return c.json({ servers: [] });
     }
 
     const statusMap = mcpRegistry.getStatus();
     const stateDir = getRuntimeStateDir(slug);
-    let config;
-    try {
-      config = loadRuntimeConfig(stateDir);
-    } catch {
+    const config = loadConfigDbFirst(registry, slug, stateDir);
+    if (!config) {
       return c.json({ servers: [] });
     }
 

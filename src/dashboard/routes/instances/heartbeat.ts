@@ -5,7 +5,7 @@ import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { instanceGuard } from "../../../lib/guards.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
-import { runtimeConfigExists, loadRuntimeConfig } from "../../../runtime/index.js";
+import { loadConfigDbFirst } from "../_config-helpers.js";
 import {
   getHeartbeatHeatmapData,
   getHeartbeatAgentStats,
@@ -35,10 +35,10 @@ export function registerHeartbeatRoutes(app: Hono, deps: RouteDeps): void {
 
     try {
       const stateDir = getRuntimeStateDir(slug);
-      if (!runtimeConfigExists(stateDir)) {
+      const config = loadConfigDbFirst(registry, slug, stateDir);
+      if (!config) {
         return c.json({ agents: [] });
       }
-      const config = loadRuntimeConfig(stateDir);
       const agents = config.agents
         .filter((a) => a.heartbeat?.every !== undefined)
         .map((a) => ({
