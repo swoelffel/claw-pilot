@@ -705,17 +705,17 @@ export function checkA2APolicy(
 }
 
 // ---------------------------------------------------------------------------
-// Contract verdict parsing and grading
+// Contract verdict parsing and grading (exported for testing)
 // ---------------------------------------------------------------------------
 
-interface CriterionVerdict {
+export interface CriterionVerdict {
   id: string;
   status: "PASS" | "FAIL";
   explanation: string;
 }
 
 /** Build the contract block injected into the subagent's extraSystemPrompt. */
-function buildContractPrompt(
+export function buildContractPrompt(
   criteria: string[],
   grading: "all_pass" | { threshold: number },
 ): string {
@@ -738,7 +738,7 @@ function buildContractPrompt(
 }
 
 /** Parse the <contract_verdict> XML block from the agent's response text. */
-function parseContractVerdict(text: string, criteriaCount: number): CriterionVerdict[] {
+export function parseContractVerdict(text: string, criteriaCount: number): CriterionVerdict[] {
   const blockMatch = text.match(/<contract_verdict>([\s\S]*?)<\/contract_verdict>/);
   if (!blockMatch) {
     return Array.from({ length: criteriaCount }, (_, i) => ({
@@ -775,7 +775,7 @@ function parseContractVerdict(text: string, criteriaCount: number): CriterionVer
 }
 
 /** Check whether a verdict satisfies the grading rule. */
-function isContractSatisfied(
+export function isContractSatisfied(
   verdicts: CriterionVerdict[],
   grading: "all_pass" | { threshold: number },
 ): boolean {
@@ -785,7 +785,7 @@ function isContractSatisfied(
 }
 
 /** Build a retry feedback prompt from failed verdicts. */
-function buildRetryFeedback(
+export function buildRetryFeedback(
   verdicts: CriterionVerdict[],
   criteria: string[],
   iteration: number,
@@ -814,7 +814,7 @@ function buildRetryFeedback(
 }
 
 /** Format the contract report appended to the task result output. */
-function formatContractReport(
+export function formatContractReport(
   verdicts: CriterionVerdict[],
   criteria: string[],
   iterationsUsed: number,

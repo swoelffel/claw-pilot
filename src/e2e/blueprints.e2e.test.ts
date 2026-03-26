@@ -34,12 +34,15 @@ describe("Blueprints API — full CRUD", () => {
 
   // ─── Blueprint CRUD ────────────────────────────────────────────────────────
 
-  it("GET /api/blueprints (empty) → 200, []", async () => {
+  it("GET /api/blueprints (no DB blueprints) → 200, returns built-in only", async () => {
     const res = await ctx.client.withBearer().get("/api/blueprints");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Array<{ _builtin?: boolean }>;
     expect(Array.isArray(body)).toBe(true);
-    expect(body.length).toBe(0);
+    // Only built-in blueprints (no DB entries yet)
+    for (const bp of body) {
+      expect(bp._builtin).toBe(true);
+    }
   });
 
   it("POST /api/blueprints → 201, has id and name", async () => {

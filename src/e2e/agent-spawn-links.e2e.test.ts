@@ -165,6 +165,46 @@ describe("Agent spawn-links — links stored DB-only", () => {
     expect(body["code"]).toBe("AGENT_NOT_FOUND");
   });
 
+  // ── Archetype links (@archetype targets) ─────────────────────────────────
+
+  it("PATCH spawn-links with @evaluator → accepted", async () => {
+    const res = await ctx.client
+      .withBearer()
+      .patch(`/api/instances/${SLUG}/agents/main/spawn-links`, {
+        targets: ["@evaluator"],
+      });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; links: Array<{ target_agent_id: string }> };
+    expect(body.ok).toBe(true);
+    expect(body.links.some((l) => l.target_agent_id === "@evaluator")).toBe(true);
+  });
+
+  it("PATCH spawn-links with @invalid → 400", async () => {
+    const res = await ctx.client
+      .withBearer()
+      .patch(`/api/instances/${SLUG}/agents/main/spawn-links`, {
+        targets: ["@invalid"],
+      });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body["code"]).toBe("FIELD_INVALID");
+  });
+
+  it("PATCH spawn-links with mixed ID + @archetype → accepted", async () => {
+    const res = await ctx.client
+      .withBearer()
+      .patch(`/api/instances/${SLUG}/agents/main/spawn-links`, {
+        targets: ["delegate", "@planner"],
+      });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; links: Array<{ target_agent_id: string }> };
+    expect(body.ok).toBe(true);
+    const mainLinks = [...body.links];
+    const targets = mainLinks.map((l) => l.target_agent_id);
+    expect(targets).toContain("delegate");
+    expect(targets).toContain("@planner");
+  });
+
   // ── Clear links ──────────────────────────────────────────────────────────
 
   it("PATCH spawn-links with [] → link removed from DB", async () => {
