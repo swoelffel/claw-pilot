@@ -33,6 +33,11 @@ import {
 } from "../../../runtime/index.js";
 import { resolveAgentWorkspacePath } from "../../../core/agent-workspace.js";
 import { runMiddlewarePipeline } from "../../../runtime/middleware/pipeline.js";
+import { registerMiddleware, clearMiddlewares } from "../../../runtime/middleware/registry.js";
+import { guardrailMiddleware } from "../../../runtime/middleware/built-in/guardrail.js";
+import { multimodalMiddleware } from "../../../runtime/middleware/built-in/multimodal.js";
+import { toolErrorRecoveryMiddleware } from "../../../runtime/middleware/built-in/tool-error-recovery.js";
+import { createSuggestionMiddleware } from "../../../runtime/middleware/built-in/suggestions.js";
 import {
   listEnrichedSessions,
   purgeArchivedSessions,
@@ -504,6 +509,26 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
 
     // Init agent registry
     initAgentRegistry(config.agents);
+
+    // Register built-in middlewares (dashboard runs in a separate process from
+    // the runtime daemon, so the module-level registry is empty here)
+    clearMiddlewares();
+    registerMiddleware(guardrailMiddleware);
+    registerMiddleware(multimodalMiddleware);
+    registerMiddleware(toolErrorRecoveryMiddleware);
+    if (config.artifacts?.suggestionsEnabled !== false) {
+      registerMiddleware(
+        createSuggestionMiddleware({
+          ...(config.artifacts?.suggestionsModel !== undefined
+            ? { suggestionsModel: config.artifacts.suggestionsModel }
+            : {}),
+          maxSuggestions: config.artifacts?.maxSuggestions ?? 3,
+          ...(config.models !== undefined && config.models.length > 0
+            ? { modelAliases: config.models }
+            : {}),
+        }),
+      );
+    }
 
     // Resolve agent
     const agentId = body.agentId ?? defaultAgentName();
