@@ -199,6 +199,28 @@ export function createTaskTool(options: {
           "Execution mode. 'sync' (default): blocks until the sub-agent completes. " +
             "'async': returns immediately with task_id, result injected as a message when done.",
         ),
+      contract: z
+        .object({
+          criteria: z
+            .array(z.string().min(1))
+            .min(1)
+            .describe("Testable acceptance criteria for the task"),
+          grading: z
+            .union([z.literal("all_pass"), z.object({ threshold: z.number().int().min(1) })])
+            .default("all_pass")
+            .describe(
+              "Grading mode: 'all_pass' requires all criteria to pass, { threshold: N } requires at least N",
+            ),
+          max_iterations: z
+            .number()
+            .int()
+            .min(1)
+            .max(10)
+            .default(3)
+            .describe("Maximum retry attempts if criteria are not met"),
+        })
+        .optional()
+        .describe("Optional contract with structured acceptance criteria for the task"),
     }),
     async execute(params, ctx) {
       // Second gate: verify the calling agent is allowed to spawn this specific subagent type
@@ -535,18 +557,50 @@ export function createTaskTool(options: {
       }
 
       // Sync mode (default): run the prompt loop and wait for completion
-      const result = await runPromptLoop({
-        db,
-        instanceSlug,
-        sessionId,
-        userText: params.prompt,
-        agentConfig,
-        resolvedModel,
-        workDir: subAgentWorkDir,
-        abort: ctx.abort,
-        extraSystemPrompt,
-        ...(compactionConfig !== undefined ? { compactionConfig } : {}),
-      });
+      // If a contract is provided, wrap in a retry loop with verdict parsing.
+      const contract = params.contract;
+      const contractPromptBlock = contract
+        ? "\n\n" + buildContractPrompt(contract.criteria, contract.grading)
+        : "";
+
+      let currentPrompt = params.prompt;
+      let result: TaskPromptLoopResult;
+      let contractVerdicts: CriterionVerdict[] | undefined;
+      let contractSatisfied = false;
+      let iterationsUsed = 1;
+      const maxIterations = contract?.max_iterations ?? 1;
+
+      for (let iteration = 1; iteration <= maxIterations; iteration++) {
+        iterationsUsed = iteration;
+        result = await runPromptLoop({
+          db,
+          instanceSlug,
+          sessionId,
+          userText: currentPrompt + contractPromptBlock,
+          agentConfig,
+          resolvedModel,
+          workDir: subAgentWorkDir,
+          abort: ctx.abort,
+          extraSystemPrompt,
+          ...(compactionConfig !== undefined ? { compactionConfig } : {}),
+        });
+
+        if (!contract) break; // no contract — single execution, no retry
+
+        // Parse verdict and check grading
+        contractVerdicts = parseContractVerdict(result!.text, contract.criteria.length);
+        contractSatisfied = isContractSatisfied(contractVerdicts, contract.grading);
+
+        if (contractSatisfied || iteration === maxIterations) break;
+
+        // Build retry feedback for next iteration (reuse same session)
+        currentPrompt = buildRetryFeedback(
+          contractVerdicts,
+          contract.criteria,
+          iteration + 1,
+          maxIterations,
+        );
+      }
 
       // Archive sub-session unless lifecycle="session"
       if (params.lifecycle !== "session") {
@@ -558,29 +612,47 @@ export function createTaskTool(options: {
         callerAgentId: ctx.agentId,
         targetAgentId: agent.name,
         taskDescription: params.description,
-        resultText: result.text,
+        resultText: result!.text,
         isPrimaryPeer: false,
       });
 
       const stepsInfo = agentConfig.maxSteps
-        ? `${result.steps}/${agentConfig.maxSteps}`
-        : `${result.steps}`;
-      const tokensTotal = result.tokens.input + result.tokens.output;
+        ? `${result!.steps}/${agentConfig.maxSteps}`
+        : `${result!.steps}`;
+      const tokensTotal = result!.tokens.input + result!.tokens.output;
 
-      const output = [
+      const outputParts = [
         `task_id: ${sessionId}`,
         `steps_used: ${stepsInfo}`,
         `tokens_used: ${tokensTotal}`,
         `model: ${agentConfig.model}`,
+        ...(contract
+          ? [
+              `contract_status: ${contractSatisfied ? "PASS" : "FAIL"} (${iterationsUsed}/${maxIterations} iterations)`,
+            ]
+          : []),
         "",
         "<task_result>",
-        result.text,
+        result!.text,
         "</task_result>",
-      ].join("\n");
+      ];
+
+      if (contract && contractVerdicts) {
+        outputParts.push(
+          "",
+          formatContractReport(
+            contractVerdicts,
+            contract.criteria,
+            iterationsUsed,
+            maxIterations,
+            contractSatisfied,
+          ),
+        );
+      }
 
       return {
         title: params.description,
-        output,
+        output: outputParts.join("\n"),
         truncated: false,
       };
     },
@@ -618,6 +690,135 @@ export function checkA2APolicy(
     }
   }
   return { allowed: true };
+}
+
+// ---------------------------------------------------------------------------
+// Contract verdict parsing and grading
+// ---------------------------------------------------------------------------
+
+interface CriterionVerdict {
+  id: string;
+  status: "PASS" | "FAIL";
+  explanation: string;
+}
+
+/** Build the contract block injected into the subagent's extraSystemPrompt. */
+function buildContractPrompt(
+  criteria: string[],
+  grading: "all_pass" | { threshold: number },
+): string {
+  const gradingDesc =
+    grading === "all_pass"
+      ? "ALL criteria must pass"
+      : `at least ${grading.threshold} criteria must pass`;
+  return [
+    "## Task Contract",
+    `You must satisfy the following acceptance criteria (${gradingDesc}):`,
+    ...criteria.map((c, i) => `${i + 1}. ${c}`),
+    "",
+    "After completing your work, evaluate each criterion and report your verdict:",
+    "<contract_verdict>",
+    ...criteria.map(
+      (_, i) => `  <criterion id="${i + 1}" status="PASS|FAIL">explanation</criterion>`,
+    ),
+    "</contract_verdict>",
+  ].join("\n");
+}
+
+/** Parse the <contract_verdict> XML block from the agent's response text. */
+function parseContractVerdict(text: string, criteriaCount: number): CriterionVerdict[] {
+  const blockMatch = text.match(/<contract_verdict>([\s\S]*?)<\/contract_verdict>/);
+  if (!blockMatch) {
+    return Array.from({ length: criteriaCount }, (_, i) => ({
+      id: String(i + 1),
+      status: "FAIL" as const,
+      explanation: "No contract_verdict block found in response",
+    }));
+  }
+
+  const block = blockMatch[1]!;
+  const criterionRegex = /<criterion\s+id="(\d+)"\s+status="(PASS|FAIL)">([\s\S]*?)<\/criterion>/g;
+  const verdicts: CriterionVerdict[] = [];
+  let match;
+  while ((match = criterionRegex.exec(block)) !== null) {
+    verdicts.push({
+      id: match[1]!,
+      status: match[2]! as "PASS" | "FAIL",
+      explanation: match[3]!.trim(),
+    });
+  }
+
+  // Fill in missing criteria as FAIL
+  for (let i = 1; i <= criteriaCount; i++) {
+    if (!verdicts.some((v) => v.id === String(i))) {
+      verdicts.push({
+        id: String(i),
+        status: "FAIL",
+        explanation: "Criterion not reported in verdict",
+      });
+    }
+  }
+
+  return verdicts.sort((a, b) => Number(a.id) - Number(b.id));
+}
+
+/** Check whether a verdict satisfies the grading rule. */
+function isContractSatisfied(
+  verdicts: CriterionVerdict[],
+  grading: "all_pass" | { threshold: number },
+): boolean {
+  const passCount = verdicts.filter((v) => v.status === "PASS").length;
+  if (grading === "all_pass") return passCount === verdicts.length;
+  return passCount >= grading.threshold;
+}
+
+/** Build a retry feedback prompt from failed verdicts. */
+function buildRetryFeedback(
+  verdicts: CriterionVerdict[],
+  criteria: string[],
+  iteration: number,
+  maxIterations: number,
+): string {
+  const failed = verdicts.filter((v) => v.status === "FAIL");
+  const passed = verdicts.filter((v) => v.status === "PASS");
+  return [
+    "## Contract Retry Feedback",
+    `Previous attempt failed contract criteria. Iteration ${iteration}/${maxIterations}.`,
+    "",
+    "FAILED criteria (fix these):",
+    ...failed.map(
+      (v) => `- Criterion ${v.id}: "${criteria[Number(v.id) - 1]}" — FAIL: ${v.explanation}`,
+    ),
+    "",
+    ...(passed.length > 0
+      ? [
+          "PASSED criteria (do not regress):",
+          ...passed.map((v) => `- Criterion ${v.id}: "${criteria[Number(v.id) - 1]}" — PASS`),
+          "",
+        ]
+      : []),
+    "Fix the failing criteria and try again. Maintain all passing criteria.",
+  ].join("\n");
+}
+
+/** Format the contract report appended to the task result output. */
+function formatContractReport(
+  verdicts: CriterionVerdict[],
+  criteria: string[],
+  iterationsUsed: number,
+  maxIterations: number,
+  satisfied: boolean,
+): string {
+  return [
+    "<contract_report>",
+    ...verdicts.map(
+      (v) =>
+        `  <criterion id="${v.id}" status="${v.status}">${criteria[Number(v.id) - 1]}: ${v.explanation}</criterion>`,
+    ),
+    `  iterations_used: ${iterationsUsed}/${maxIterations}`,
+    `  final_verdict: ${satisfied ? "PASS" : "FAIL"}`,
+    "</contract_report>",
+  ].join("\n");
 }
 
 // ---------------------------------------------------------------------------
