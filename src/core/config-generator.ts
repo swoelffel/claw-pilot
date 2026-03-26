@@ -26,6 +26,8 @@ export interface WizardAnswers {
     qdrantHost?: string;
     qdrantPort?: number;
   };
+  /** When set, the provisioner uses team-import instead of manual agent creation. */
+  blueprintTeamFile?: import("./team-schema.js").TeamFile;
 }
 
 // Re-export for backward compatibility with callers that import from config-generator.

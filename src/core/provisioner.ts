@@ -17,6 +17,7 @@ import { shellEscape } from "../lib/shell.js";
 
 import { BlueprintDeployer } from "./blueprint-deployer.js";
 import { ensureRuntimeConfig } from "../runtime/engine/config-loader.js";
+import { importInstanceTeam } from "./team-import.js";
 
 export interface ProvisionResult {
   slug: string;
@@ -147,27 +148,7 @@ export class Provisioner {
         telegramEnabled: answers.telegram.enabled,
       });
 
-      // Step 5: Create workspaces
-      logger.step("Creating workspaces...");
-      const renderedFilesPerAgent = new Map<string, Array<{ filename: string; content: string }>>();
-      for (const agent of answers.agents) {
-        const workspaceId = agent.workspace ?? agent.id;
-        const workspacePath = path.join(stateDir, "workspaces", workspaceId);
-        await this.conn.mkdir(workspacePath);
-        const rendered = await this.provisionWorkspaceFiles(workspacePath, {
-          agentId: agent.id,
-          agentName: agent.name,
-          instanceSlug: slug,
-          instanceName: answers.displayName,
-          agents: answers.agents,
-        });
-        renderedFilesPerAgent.set(agent.id, rendered);
-      }
-
-      // Step 6: claw-runtime — no service file needed
-      logger.step("claw-runtime — skipping service file (use 'claw-pilot runtime start')...");
-
-      // Register in registry BEFORE start (lifecycle.start needs registry entry)
+      // Register in registry BEFORE workspaces (lifecycle.start needs registry entry)
       const instance = this.registry.createInstance({
         serverId,
         slug,
@@ -176,7 +157,6 @@ export class Provisioner {
         configPath,
         stateDir,
         systemdUnit: `claw-runtime-${slug}`,
-        // telegramBot will be set after pairing — omit for now
         defaultModel: answers.defaultModel,
         discovered: false,
       });
@@ -187,24 +167,63 @@ export class Provisioner {
       this.portAllocator.reserveSidecarPorts(serverId, answers.port, slug);
       portAllocated = true;
 
-      // Register agents + persist workspace files in DB
-      for (const agent of answers.agents) {
-        const workspaceId = agent.workspace ?? agent.id;
-        this.registry.createAgent(instance.id, {
-          agentId: agent.id,
-          name: agent.name,
-          ...(agent.model !== undefined && { model: agent.model }),
-          workspacePath: path.join(stateDir, "workspaces", workspaceId),
-          ...(agent.isDefault !== undefined && { isDefault: agent.isDefault }),
-        });
+      if (answers.blueprintTeamFile) {
+        // Blueprint path: delegate to team-import pipeline
+        logger.step("Deploying team blueprint...");
+        // Inject the wizard-selected model as the team default
+        const teamFile = { ...answers.blueprintTeamFile };
+        if (!teamFile.defaults) {
+          teamFile.defaults = { model: answers.defaultModel };
+        } else if (!teamFile.defaults.model) {
+          teamFile.defaults = { ...teamFile.defaults, model: answers.defaultModel };
+        }
+        await importInstanceTeam(
+          this.registry.getDb(),
+          this.registry,
+          this.conn,
+          instance,
+          teamFile,
+          stateDir,
+        );
+      } else {
+        // Manual path: create workspaces + register agents individually
+        logger.step("Creating workspaces...");
+        const renderedFilesPerAgent = new Map<
+          string,
+          Array<{ filename: string; content: string }>
+        >();
+        for (const agent of answers.agents) {
+          const workspaceId = agent.workspace ?? agent.id;
+          const workspacePath = path.join(stateDir, "workspaces", workspaceId);
+          await this.conn.mkdir(workspacePath);
+          const rendered = await this.provisionWorkspaceFiles(workspacePath, {
+            agentId: agent.id,
+            agentName: agent.name,
+            instanceSlug: slug,
+            instanceName: answers.displayName,
+            agents: answers.agents,
+          });
+          renderedFilesPerAgent.set(agent.id, rendered);
+        }
 
-        // Persist workspace files in agent_files table
-        const agentRecord = this.registry.getAgentByAgentId(instance.id, agent.id);
-        const renderedFiles = renderedFilesPerAgent.get(agent.id) ?? [];
-        if (agentRecord) {
-          for (const { filename, content } of renderedFiles) {
-            const contentHash = createHash("sha256").update(content, "utf8").digest("hex");
-            this.registry.upsertAgentFile(agentRecord.id, { filename, content, contentHash });
+        // Register agents + persist workspace files in DB
+        for (const agent of answers.agents) {
+          const workspaceId = agent.workspace ?? agent.id;
+          this.registry.createAgent(instance.id, {
+            agentId: agent.id,
+            name: agent.name,
+            ...(agent.model !== undefined && { model: agent.model }),
+            workspacePath: path.join(stateDir, "workspaces", workspaceId),
+            ...(agent.isDefault !== undefined && { isDefault: agent.isDefault }),
+          });
+
+          const agentRecord = this.registry.getAgentByAgentId(instance.id, agent.id);
+          const renderedFiles = renderedFilesPerAgent.get(agent.id) ?? [];
+          if (agentRecord) {
+            for (const { filename, content } of renderedFiles) {
+              const contentHash = createHash("sha256").update(content, "utf8").digest("hex");
+              this.registry.upsertAgentFile(agentRecord.id, { filename, content, contentHash });
+            }
           }
         }
       }
