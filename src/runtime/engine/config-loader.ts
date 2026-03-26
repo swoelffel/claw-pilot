@@ -104,10 +104,7 @@ export function exportRuntimeJsonSnapshot(stateDir: string, config: RuntimeConfi
   try {
     fs.mkdirSync(stateDir, { recursive: true });
     const filePath = runtimeConfigPath(stateDir);
-    const content =
-      "// Generated from registry.db — do not edit manually\n" +
-      JSON.stringify(config, null, 2) +
-      "\n";
+    const content = JSON.stringify(config, null, 2) + "\n";
     fs.writeFileSync(filePath, content, "utf-8");
   } catch {
     // Non-critical: the DB is the source of truth, the file is for debugging
