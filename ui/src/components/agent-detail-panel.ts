@@ -1523,7 +1523,7 @@ export class AgentDetailPanel extends LitElement {
             `
           : nothing}
 
-        <!-- Delegates to (spawn links) -->
+        <!-- Allowed delegates -->
         ${(() => {
           const linkedIds = new Set(spawnLinks.map((l) => l.target_agent_id));
           const availableAgents = this.allAgents.filter(
@@ -1532,12 +1532,17 @@ export class AgentDetailPanel extends LitElement {
               !linkedIds.has(ag.agent_id) &&
               !this._pendingAdditions.has(ag.agent_id),
           );
-          const hasSpawnSection =
-            spawnLinks.length > 0 || this._pendingAdditions.size > 0 || availableAgents.length > 0;
-          if (!hasSpawnSection) return nothing;
+          const hasExplicitLinks = spawnLinks.length > 0 || this._pendingAdditions.size > 0;
           return html`
             <div class="info-item">
-              <span class="info-label">${msg("Delegates to", { id: "adp-label-can-spawn" })}</span>
+              <span class="info-label"
+                >${msg("Allowed delegates", { id: "adp-label-can-spawn" })}</span
+              >
+              ${!hasExplicitLinks
+                ? html`<span class="info-value" style="opacity:0.6;font-style:italic"
+                    >${msg("All agents (no restriction)", { id: "adp-delegates-all" })}</span
+                  >`
+                : nothing}
               <div class="links-list">
                 ${spawnLinks.map((l) => {
                   const isPending = this._pendingRemovals.has(l.target_agent_id);
