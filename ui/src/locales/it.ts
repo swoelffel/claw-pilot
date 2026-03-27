@@ -388,12 +388,10 @@ export const templates = {
   "channels-add-btn": "Aggiungi",
   "channels-botfather-link": "BotFather ↗",
 
-  // agent-detail-panel.ts — Config tab — Skill routing (v0.41.30)
-  "cfg-skill-routing": "Routing per competenze",
-  "cfg-expert-in-label": "Competenze dichiarate da questo agente (expertIn)",
-  "cfg-skill-remove-aria": "Rimuovi competenza",
-  "cfg-expert-in-placeholder": "es: code-review, test-writing",
-  "cfg-expert-in-add": "Aggiungi competenza",
+  // agent-detail-panel.ts — Config tab — Archetype (v0.53)
+  "cfg-archetype": "Archetipo",
+  "cfg-archetype-label": "Pattern comportamentale per routing e system prompt",
+  "cfg-archetype-none": "Nessuno",
 
   // context-prompt.ts — System prompt viewer (v0.41.34)
   "ctx-prompt-title": "Prompt di sistema",

@@ -1140,7 +1140,7 @@ export const agentDetailPanelStyles = css`
     padding: 48px 0;
   }
 
-  /* ── Skill tags (expertIn) ─────────────────────────────────────────────── */
+  /* ── Archetype selector ───────────────────────────────────────────────── */
 
   .cfg-tags-list {
     display: flex;
