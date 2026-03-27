@@ -4,6 +4,8 @@ import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { instanceGuard } from "../../../../lib/guards.js";
 import { buildAgentPayload } from "../../_helpers.js";
+import { getRuntimeStateDir } from "../../../../lib/platform.js";
+import { runtimeConfigExists, loadRuntimeConfig } from "../../../../runtime/index.js";
 
 export function registerAgentListRoutes(app: Hono, deps: RouteDeps): void {
   const { registry } = deps;
@@ -25,9 +27,19 @@ export function registerAgentListRoutes(app: Hono, deps: RouteDeps): void {
     const agents = registry.listAgents(inst.slug);
     const links = registry.listAgentLinks(inst.id);
 
-    // Enrich with archetype from runtime config (avoids extra API call from frontend)
+    // Enrich with archetype from runtime config (DB first, fallback to file)
     const archetypeMap = new Map<string, string>();
-    const config = registry.getRuntimeConfig(inst.slug);
+    let config = registry.getRuntimeConfig(inst.slug);
+    if (!config) {
+      const stateDir = getRuntimeStateDir(inst.slug);
+      if (runtimeConfigExists(stateDir)) {
+        try {
+          config = loadRuntimeConfig(stateDir);
+        } catch {
+          /* intentionally ignored — archetype enrichment is best-effort */
+        }
+      }
+    }
     if (config) {
       for (const a of config.agents) {
         if (a.archetype) archetypeMap.set(a.id, a.archetype);
