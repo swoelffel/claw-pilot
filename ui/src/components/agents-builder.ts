@@ -16,6 +16,7 @@ import { tokenStyles } from "../styles/tokens.js";
 import { badgeStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
 import "./agent-card-mini.js";
 import "./agent-links-svg.js";
+import "./canvas-legend.js";
 import "./agent-detail-panel.js";
 import "./create-agent-dialog.js";
 import "./import-team-dialog.js";
@@ -593,6 +594,7 @@ export class AgentsBuilder extends LitElement {
                   .pendingRemovals=${this._pendingRemovals}
                   .pendingAdditions=${this._pendingAdditions}
                 ></cp-agent-links-svg>
+                <cp-canvas-legend></cp-canvas-legend>
 
                 ${data.agents.map((agent) => {
                   const pos = this._positions.get(agent.agent_id);

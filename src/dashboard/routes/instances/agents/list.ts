@@ -24,6 +24,16 @@ export function registerAgentListRoutes(app: Hono, deps: RouteDeps): void {
 
     const agents = registry.listAgents(inst.slug);
     const links = registry.listAgentLinks(inst.id);
+
+    // Enrich with archetype from runtime config (avoids extra API call from frontend)
+    const archetypeMap = new Map<string, string>();
+    const config = registry.getRuntimeConfig(inst.slug);
+    if (config) {
+      for (const a of config.agents) {
+        if (a.archetype) archetypeMap.set(a.id, a.archetype);
+      }
+    }
+
     return c.json({
       instance: {
         slug: inst.slug,
@@ -32,7 +42,10 @@ export function registerAgentListRoutes(app: Hono, deps: RouteDeps): void {
         state: inst.state,
         default_model: inst.default_model,
       },
-      agents: agents.map((agent) => buildAgentPayload(agent, registry.listAgentFiles(agent.id))),
+      agents: agents.map((agent) => ({
+        ...buildAgentPayload(agent, registry.listAgentFiles(agent.id)),
+        archetype: archetypeMap.get(agent.agent_id) ?? null,
+      })),
       links: links.map((l) => ({
         source_agent_id: l.source_agent_id,
         target_agent_id: l.target_agent_id,

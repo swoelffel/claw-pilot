@@ -120,6 +120,8 @@ export interface AgentBuilderInfo {
   tags: string | null;
   notes: string | null;
   skills: string[] | null; // null = toutes les skills (champ absent en DB)
+  /** Behavioral archetype from runtime config (null if not set) */
+  archetype: string | null;
   synced_at: string | null;
   position_x: number | null;
   position_y: number | null;

@@ -31,6 +31,26 @@ export class AgentCardMini extends LitElement {
         min-width: 130px;
         max-width: 160px;
         position: relative;
+        border-left: 3px solid transparent;
+      }
+
+      .card.archetype-planner {
+        border-left-color: var(--archetype-planner);
+      }
+      .card.archetype-generator {
+        border-left-color: var(--archetype-generator);
+      }
+      .card.archetype-evaluator {
+        border-left-color: var(--archetype-evaluator);
+      }
+      .card.archetype-orchestrator {
+        border-left-color: var(--archetype-orchestrator);
+      }
+      .card.archetype-analyst {
+        border-left-color: var(--archetype-analyst);
+      }
+      .card.archetype-communicator {
+        border-left-color: var(--archetype-communicator);
       }
 
       .card:hover {
@@ -156,6 +176,18 @@ export class AgentCardMini extends LitElement {
         flex-wrap: wrap;
       }
 
+      .badge-archetype {
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: lowercase;
+        letter-spacing: 0.04em;
+        background: transparent;
+        border: 1px solid;
+        border-radius: 3px;
+        padding: 1px 5px;
+        flex-shrink: 0;
+      }
+
       .model-label {
         font-size: 9px;
         color: var(--text-muted);
@@ -217,10 +249,14 @@ export class AgentCardMini extends LitElement {
     const a = this.agent;
     const model = this._resolveModel(a.model);
     const modelShort = model ? this._truncate(model.split("/").pop() ?? model, 18) : null;
+    const archetype = a.archetype;
+    const archetypeClass = archetype ? `archetype-${archetype}` : "";
 
     return html`
       <div
-        class="card ${a.is_default ? "is-default" : ""} ${this.selected ? "selected" : ""}"
+        class="card ${a.is_default ? "is-default" : ""} ${this.selected
+          ? "selected"
+          : ""} ${archetypeClass}"
         @click=${() =>
           this.dispatchEvent(
             new CustomEvent("agent-select", {
@@ -259,7 +295,7 @@ export class AgentCardMini extends LitElement {
           <span class="agent-id">${a.agent_id}</span>
           <span class="file-count">${a.files.length} ${msg("files", { id: "acm-files" })}</span>
         </div>
-        <!-- row 3 : badge (Default | Tool | System) + model -->
+        <!-- row 3 : badge + model -->
         <div class="card-bottom">
           ${a.is_default
             ? html`<span
@@ -269,29 +305,36 @@ export class AgentCardMini extends LitElement {
                 })}
                 >${msg("Default", { id: "acm-badge-default" })}</span
               >`
-            : a.category === "system"
+            : archetype
               ? html`<span
-                  class="badge-system"
-                  title=${msg("Internal infrastructure agent (compaction, title, summary).", {
-                    id: "acm-tooltip-system",
-                  })}
-                  >${msg("System", { id: "acm-badge-system" })}</span
+                  class="badge-archetype"
+                  style="color: var(--archetype-${archetype}); border-color: var(--archetype-${archetype})"
+                  title=${archetype}
+                  >${archetype}</span
                 >`
-              : a.category === "tool"
+              : a.category === "system"
                 ? html`<span
-                    class="badge-sa"
-                    title=${msg("Built-in utility agent available as a tool for other agents.", {
-                      id: "acm-tooltip-tool",
+                    class="badge-system"
+                    title=${msg("Internal infrastructure agent (compaction, title, summary).", {
+                      id: "acm-tooltip-system",
                     })}
-                    >${msg("Tool", { id: "acm-badge-tool" })}</span
+                    >${msg("System", { id: "acm-badge-system" })}</span
                   >`
-                : html`<span
-                    class="badge-sa"
-                    title=${msg("User-created agent.", {
-                      id: "acm-tooltip-user",
-                    })}
-                    >${msg("Agent", { id: "acm-badge-user" })}</span
-                  >`}
+                : a.category === "tool"
+                  ? html`<span
+                      class="badge-sa"
+                      title=${msg("Built-in utility agent available as a tool for other agents.", {
+                        id: "acm-tooltip-tool",
+                      })}
+                      >${msg("Tool", { id: "acm-badge-tool" })}</span
+                    >`
+                  : html`<span
+                      class="badge-sa"
+                      title=${msg("User-created agent.", {
+                        id: "acm-tooltip-user",
+                      })}
+                      >${msg("Agent", { id: "acm-badge-user" })}</span
+                    >`}
           ${modelShort
             ? html`<span class="model-label" title=${model ?? ""}>${modelShort}</span>`
             : ""}

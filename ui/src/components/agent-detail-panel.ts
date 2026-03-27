@@ -1546,9 +1546,15 @@ export class AgentDetailPanel extends LitElement {
               <div class="links-list">
                 ${spawnLinks.map((l) => {
                   const isPending = this._pendingRemovals.has(l.target_agent_id);
+                  const isArch = l.target_agent_id.startsWith("@");
+                  const archName = isArch ? l.target_agent_id.slice(1) : "";
+                  const archStyle = isArch
+                    ? `color: var(--archetype-${archName}); border-color: var(--archetype-${archName})`
+                    : "";
                   return html`
                     <span
                       class="link-badge spawn spawn-editable ${isPending ? "pending-removal" : ""}"
+                      style=${archStyle}
                     >
                       → ${l.target_agent_id}
                       <button
@@ -1627,6 +1633,29 @@ export class AgentDetailPanel extends LitElement {
             `
           : nothing}
 
+        <!-- A2A messaging peers -->
+        ${(() => {
+          const a2aPeers = new Set<string>();
+          for (const l of this.links) {
+            if (l.link_type !== "a2a") continue;
+            if (l.source_agent_id === a.agent_id) a2aPeers.add(l.target_agent_id);
+            if (l.target_agent_id === a.agent_id) a2aPeers.add(l.source_agent_id);
+          }
+          if (a2aPeers.size === 0) return nothing;
+          return html`
+            <div class="info-item">
+              <span class="info-label"
+                >${msg("Messaging peers", { id: "adp-label-a2a-peers" })}</span
+              >
+              <div class="links-list">
+                ${Array.from(a2aPeers).map(
+                  (id) => html`<span class="link-badge" style="opacity:0.7">↔ ${id}</span>`,
+                )}
+              </div>
+            </div>
+          `;
+        })()}
+
         <!-- Info save bar -->
         ${this._infoDirty
           ? html`
@@ -1666,6 +1695,13 @@ export class AgentDetailPanel extends LitElement {
             <span class="agent-name">${a.name}</span>
             <span class="agent-id-label">${a.agent_id}</span>
             <span class="agent-category-badge category-${a.category}">${a.category}</span>
+            ${a.archetype
+              ? html`<span
+                  class="agent-category-badge"
+                  style="color: var(--archetype-${a.archetype}); border-color: var(--archetype-${a.archetype})"
+                  >${a.archetype}</span
+                >`
+              : nothing}
           </div>
           ${a.role ? html`<div class="agent-role-label">${a.role}</div>` : ""}
         </div>
