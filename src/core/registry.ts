@@ -286,6 +286,13 @@ export class Registry {
   getRuntimeConfig(slug: string) {
     return this._runtimeConfig.getRuntimeConfig(slug);
   }
+  /** Return the raw JSON string from instances.runtime_config_json (no Zod parse). */
+  getRawRuntimeConfigJson(slug: string): string | null {
+    const row = this.getDb()
+      .prepare("SELECT runtime_config_json FROM instances WHERE slug = ?")
+      .get(slug) as { runtime_config_json: string | null } | undefined;
+    return row?.runtime_config_json ?? null;
+  }
   saveRuntimeConfig(
     slug: string,
     config: Parameters<RuntimeConfigRepository["saveRuntimeConfig"]>[1],
