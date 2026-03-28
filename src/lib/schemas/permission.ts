@@ -12,4 +12,5 @@ export const PermissionRuleSchema = z.object({
   action: z.enum(["allow", "deny", "ask"]),
 });
 
+/** @public */
 export type PermissionRule = z.infer<typeof PermissionRuleSchema>;

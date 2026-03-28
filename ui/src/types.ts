@@ -154,6 +154,7 @@ export const AGENT_ARCHETYPES = [
   "analyst",
   "communicator",
 ] as const;
+/** @public */
 export type AgentArchetype = (typeof AGENT_ARCHETYPES)[number];
 
 /** Whether a link targets an archetype reference (e.g. "@evaluator") rather than a specific agent ID. */

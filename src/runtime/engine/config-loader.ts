@@ -122,6 +122,7 @@ export function runtimeConfigExists(stateDir: string): boolean {
  * Load runtime.json and merge with user profile providers/models if a
  * ProfileResolver is provided. Without a resolver, behaves identically
  * to loadRuntimeConfig() (backward-compatible).
+ * @public
  */
 export function loadMergedConfig(
   stateDir: string,

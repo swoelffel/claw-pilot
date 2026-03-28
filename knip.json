@@ -6,7 +6,8 @@
     "ui/src/locales/**",
     "ui/src/components/activity-console.ts",
     "ui/src/components/heartbeat-heatmap.ts",
-    "ui/src/components/live-stream-widget.ts"
+    "ui/src/components/live-stream-widget.ts",
+    "ui/src/components/pilot/parts/part-image.ts"
   ],
   "ignoreFiles": [
     "src/e2e/helpers/mock-llm-server.ts",

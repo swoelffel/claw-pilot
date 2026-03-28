@@ -49,16 +49,6 @@ export interface GuardrailProvider {
 
 const _providers: GuardrailProvider[] = [];
 
-/** Register a guardrail provider. */
-export function registerGuardrailProvider(provider: GuardrailProvider): void {
-  _providers.push(provider);
-}
-
-/** Clear all providers (for testing). */
-export function clearGuardrailProviders(): void {
-  _providers.length = 0;
-}
-
 // ---------------------------------------------------------------------------
 // Middleware
 // ---------------------------------------------------------------------------
