@@ -101,8 +101,15 @@ export class CanvasLegend extends LitElement {
     return html`
       <div class="legend">
         <div class="legend-item">
-          <svg width="30" height="10">
-            ${svg`<line x1="0" y1="5" x2="28" y2="5" stroke="#666" stroke-width="1" stroke-dasharray="2 3" />`}
+          <svg width="36" height="10">
+            ${svg`
+              <defs>
+                <marker id="leg-arrow-del" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                  <path d="M0,0 L0,6 L8,3 z" fill="#666" />
+                </marker>
+              </defs>
+              <line x1="0" y1="5" x2="30" y2="5" stroke="#666" stroke-width="1" stroke-dasharray="2 3" marker-end="url(#leg-arrow-del)" />
+            `}
           </svg>
           ${msg("Delegation", { id: "legend-delegation" })}
         </div>
