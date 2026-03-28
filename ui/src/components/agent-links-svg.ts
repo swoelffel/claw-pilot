@@ -5,9 +5,10 @@ import { type AgentLink, isArchetypeLink } from "../types.js";
 import { tokenStyles } from "../styles/tokens.js";
 
 // Card half-dimensions (cards are centered on position via translate(-50%,-50%))
-const CARD_HW = 80; // half-width (cards are 130–180px wide)
-const CARD_HH = 42; // half-height (cards are ~65–85px tall)
-const EDGE_PAD = 6; // extra padding so the arrow doesn't touch the border
+// Fixed card size: 156px wide (+ 3px border-left) × 68–88px tall
+const CARD_HW = 82; // half-width: ~164px / 2
+const CARD_HH = 46; // half-height: ~88px / 2 (use max height for safe margin)
+const EDGE_PAD = 4; // extra padding so the arrow doesn't touch the border
 
 /**
  * Find where a ray from `center` toward `target` exits a rectangle of given

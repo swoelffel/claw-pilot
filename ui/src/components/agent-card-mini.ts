@@ -38,10 +38,15 @@ export class AgentCardMini extends LitElement {
           box-shadow 0.15s,
           border-color 0.15s;
         user-select: none;
-        min-width: 130px;
-        max-width: 160px;
+        width: 156px;
+        height: 68px;
+        overflow: hidden;
         position: relative;
         border-left: 3px solid transparent;
+      }
+
+      .card.has-spawns {
+        height: 88px;
       }
 
       /* --- Archetype stripe (left border) --- */
@@ -68,8 +73,6 @@ export class AgentCardMini extends LitElement {
       .card.is-default {
         background: var(--accent-subtle);
         border-color: var(--accent-border);
-        min-width: 150px;
-        max-width: 180px;
       }
 
       /* --- Ephemeral agents: transparent bg + dashed border --- */
@@ -281,12 +284,15 @@ export class AgentCardMini extends LitElement {
     const archetype = a.archetype;
     const archetypeClass = archetype ? `archetype-${archetype}` : "";
     const isEphemeral = a.persistence === "ephemeral";
+    const hasSpawns = this.archetypeSpawns.length > 0;
 
     return html`
       <div
         class="card ${a.is_default ? "is-default" : ""} ${this.selected
           ? "selected"
-          : ""} ${archetypeClass} ${isEphemeral ? "ephemeral" : ""}"
+          : ""} ${archetypeClass} ${isEphemeral ? "ephemeral" : ""} ${hasSpawns
+          ? "has-spawns"
+          : ""}"
         @click=${() =>
           this.dispatchEvent(
             new CustomEvent("agent-select", {
