@@ -31,8 +31,23 @@ describe("generateDashboardLaunchdPlist", () => {
     expect(plist).toContain(`${dashOpts.home}/.claw-pilot/dashboard.log`);
   });
 
-  it("matches full dashboard plist snapshot", () => {
+  it("generates well-formed XML plist with correct structure", () => {
     const plist = generateDashboardLaunchdPlist(dashOpts);
-    expect(plist).toMatchSnapshot();
+    // Must start with XML declaration and plist DTD
+    expect(plist).toMatch(/^<\?xml version="1\.0"/);
+    expect(plist).toContain("<!DOCTYPE plist");
+    // Must have balanced plist root
+    expect(plist).toContain("<plist");
+    expect(plist).toContain("</plist>");
+    // Must have a Label key
+    const labelIdx = plist.indexOf("<key>Label</key>");
+    expect(labelIdx).toBeGreaterThan(-1);
+    // ProgramArguments must contain both node and claw-pilot binaries + port
+    const progIdx = plist.indexOf("<key>ProgramArguments</key>");
+    expect(progIdx).toBeGreaterThan(-1);
+    const arraySection = plist.slice(progIdx, plist.indexOf("</array>", progIdx));
+    expect(arraySection).toContain(dashOpts.nodeBin);
+    expect(arraySection).toContain(dashOpts.clawPilotBin);
+    expect(arraySection).toContain("19000");
   });
 });

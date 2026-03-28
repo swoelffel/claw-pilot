@@ -60,43 +60,40 @@ function schemaVersion(db: Database.Database): number {
 // ---------------------------------------------------------------------------
 
 describe("migration v11 — rt_sessions new columns", () => {
-  it(// Positive: after initDatabase(), rt_sessions must have the session_key column
-  "rt_sessions has the 'session_key' column after migration", () => {
+  it(// Positive: after initDatabase(), rt_sessions must have all v11 columns
+  // with the correct SQL types, nullability, and default values.
+  "rt_sessions has all v11 columns with correct types and defaults", () => {
     // Arrange + Act
     const db = initDatabase(dbPath);
+    const cols = db.pragma("table_info(rt_sessions)") as Array<{
+      name: string;
+      type: string;
+      notnull: number;
+      dflt_value: string | null;
+    }>;
+    const colMap = Object.fromEntries(cols.map((c) => [c.name, c]));
 
-    // Assert
-    expect(columnNames(db, "rt_sessions")).toContain("session_key");
-    db.close();
-  });
+    // session_key — TEXT, nullable
+    expect(colMap["session_key"]).toBeDefined();
+    expect(colMap["session_key"]!.type).toBe("TEXT");
+    expect(colMap["session_key"]!.notnull).toBe(0);
 
-  it(// Positive: after initDatabase(), rt_sessions must have the spawn_depth column
-  "rt_sessions has the 'spawn_depth' column after migration", () => {
-    // Arrange + Act
-    const db = initDatabase(dbPath);
+    // spawn_depth — INTEGER, NOT NULL, DEFAULT 0
+    expect(colMap["spawn_depth"]).toBeDefined();
+    expect(colMap["spawn_depth"]!.type).toBe("INTEGER");
+    expect(colMap["spawn_depth"]!.notnull).toBe(1);
+    expect(colMap["spawn_depth"]!.dflt_value).toBe("0");
 
-    // Assert
-    expect(columnNames(db, "rt_sessions")).toContain("spawn_depth");
-    db.close();
-  });
+    // label — TEXT, nullable
+    expect(colMap["label"]).toBeDefined();
+    expect(colMap["label"]!.type).toBe("TEXT");
+    expect(colMap["label"]!.notnull).toBe(0);
 
-  it(// Positive: after initDatabase(), rt_sessions must have the label column
-  "rt_sessions has the 'label' column after migration", () => {
-    // Arrange + Act
-    const db = initDatabase(dbPath);
+    // metadata — TEXT, nullable
+    expect(colMap["metadata"]).toBeDefined();
+    expect(colMap["metadata"]!.type).toBe("TEXT");
+    expect(colMap["metadata"]!.notnull).toBe(0);
 
-    // Assert
-    expect(columnNames(db, "rt_sessions")).toContain("label");
-    db.close();
-  });
-
-  it(// Positive: after initDatabase(), rt_sessions must have the metadata column
-  "rt_sessions has the 'metadata' column after migration", () => {
-    // Arrange + Act
-    const db = initDatabase(dbPath);
-
-    // Assert
-    expect(columnNames(db, "rt_sessions")).toContain("metadata");
     db.close();
   });
 
@@ -207,12 +204,12 @@ describe("migration v11 — rt_sessions new columns", () => {
     expect(colsBefore).not.toContain("metadata");
   });
 
-  it(// Positive: schema version must be 13 after initDatabase() (latest migration)
-  "schema version is 11 after initDatabase()", () => {
+  it(// Positive: schema version must be 21 after initDatabase() (latest)
+  "schema version is 21 after initDatabase() (latest)", () => {
     // Arrange + Act
     const db = initDatabase(dbPath);
 
-    // Assert: v18 is the latest migration (drop user_model_aliases)
+    // Assert: v21 is the latest migration
     expect(schemaVersion(db)).toBe(21);
     db.close();
   });

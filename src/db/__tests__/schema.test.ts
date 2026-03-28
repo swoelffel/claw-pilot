@@ -178,7 +178,7 @@ describe("initDatabase — fresh database", () => {
     db.close();
   });
 
-  it("reaches the latest schema version (15)", () => {
+  it("reaches the latest schema version (21)", () => {
     const db = initDatabase(dbPath);
     expect(schemaVersion(db)).toBe(21);
     db.close();
@@ -225,7 +225,7 @@ describe("initDatabase — fresh database", () => {
 // ---------------------------------------------------------------------------
 
 describe("migration v1 → v4", () => {
-  it("applies all migrations and reaches version 14", () => {
+  it("applies all migrations and reaches latest version", () => {
     const v1 = buildV1Db(dbPath);
     v1.close();
 

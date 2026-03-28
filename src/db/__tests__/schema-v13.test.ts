@@ -320,12 +320,12 @@ describe("migration v13 — idempotency", () => {
     }).not.toThrow();
   });
 
-  it(// Positive: schema version must be 14 after initDatabase() (latest migration).
-  "schema version is 13 after initDatabase()", () => {
+  it(// Positive: schema version must be 21 after initDatabase() (latest)
+  "schema version is 21 after initDatabase() (latest)", () => {
     // Arrange + Act
     const db = initDatabase(dbPath);
 
-    // Assert: v18 is the latest migration (drop user_model_aliases)
+    // Assert: v21 is the latest migration
     expect(schemaVersion(db)).toBe(21);
     db.close();
   });
