@@ -6,14 +6,14 @@ RUN apt-get update && apt-get install -y \
     python3 make g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Node.js 22 via NodeSource (same method as VM01)
+# Node.js 22 via NodeSource
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs
 
 # pnpm
 RUN npm install -g pnpm
 
-# User openclaw (uid 1000, like VM01)
+# User openclaw (uid 1000)
 # Pre-create XDG_RUNTIME_DIR so the user can write to it without root
 RUN useradd -m -u 1000 -s /bin/bash openclaw \
     && mkdir -p /home/openclaw/.claw-pilot /run/user/1000 \

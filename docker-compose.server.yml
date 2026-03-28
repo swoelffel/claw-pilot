@@ -2,7 +2,7 @@ services:
   claw-pilot:
     build:
       context: .
-      dockerfile: docker/Dockerfile.vm01
+      dockerfile: docker/Dockerfile.server
     container_name: claw-pilot-dev
     volumes:
       - .:/app
