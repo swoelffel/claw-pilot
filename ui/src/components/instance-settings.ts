@@ -26,6 +26,7 @@ import "./instance-mcp.js";
 import "./instance-permissions.js";
 import "./instance-config.js";
 import "./instance-channels.js";
+import "./instance-skills.js";
 
 @localized()
 @customElement("cp-instance-settings")
@@ -85,6 +86,10 @@ export class InstanceSettings extends LitElement {
   // ── MCP badge state ───────────────────────────────────────────────────────
 
   @state() private _mcpConnectedCount = 0;
+
+  // ── Skills badge state ───────────────────────────────────────────────────
+
+  @state() private _skillsCount = 0;
 
   // ── Permissions badge state ───────────────────────────────────────────────
 
@@ -368,6 +373,11 @@ export class InstanceSettings extends LitElement {
     const sections: Array<{ id: SidebarSection; label: string; badge?: number }> = [
       { id: "general", label: msg("General", { id: "settings-general" }) },
       { id: "agents", label: msg("Agents", { id: "settings-agents" }) },
+      {
+        id: "skills" as const,
+        label: msg("Skills", { id: "settings-skills" }),
+        ...(this._skillsCount > 0 ? { badge: this._skillsCount } : {}),
+      },
       { id: "channels" as const, label: msg("Channels", { id: "settings-channels" }) },
       {
         id: "mcp" as const,
@@ -976,6 +986,19 @@ export class InstanceSettings extends LitElement {
             : nothing}
           ${this._activeSection === "general" ? this._renderGeneralSection() : nothing}
           ${this._activeSection === "agents" ? this._renderAgentsSection() : nothing}
+          ${this._activeSection === "skills"
+            ? html`
+                <div class="section">
+                  <cp-instance-skills
+                    .slug=${this.slug}
+                    .active=${true}
+                    @skills-count-changed=${(e: CustomEvent<number>) => {
+                      this._skillsCount = e.detail;
+                    }}
+                  ></cp-instance-skills>
+                </div>
+              `
+            : nothing}
           ${this._activeSection === "channels"
             ? html`
                 <div class="section">

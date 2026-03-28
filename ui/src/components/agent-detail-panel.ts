@@ -7,6 +7,7 @@ import {
   type AgentLink,
   type PanelContext,
   type AgentMetaPatch,
+  type SkillInfo,
   AGENT_ARCHETYPES,
   isArchetypeLink,
 } from "../types.js";
@@ -24,6 +25,7 @@ import {
   fetchProviders,
   fetchProfileProviders,
   updateBlueprintAgentMeta,
+  fetchInstanceSkills,
 } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
@@ -72,6 +74,9 @@ export class AgentDetailPanel extends LitElement {
   @state() private _editModel = "";
   // null = All skills, [] = None, [...] = custom list
   @state() private _editSkills: string[] | null = null;
+  // Available skills for the picker (lazy-loaded from API)
+  @state() private _availableSkills: SkillInfo[] = [];
+  @state() private _loadingSkills = false;
   // Providers list for the provider/model selects (lazy-loaded)
   @state() private _providers: { id: string; label: string; models: string[] }[] | null = null;
   @state() private _loadingProviders = false;
@@ -1026,6 +1031,7 @@ export class AgentDetailPanel extends LitElement {
     // Eager-load providers so the selects are populated immediately on instance panels
     if (this.context?.kind === "instance") {
       void this._loadProviders();
+      void this._loadAvailableSkills();
     }
   }
 
@@ -1066,6 +1072,20 @@ export class AgentDetailPanel extends LitElement {
       this._providers = [];
     } finally {
       this._loadingProviders = false;
+    }
+  }
+
+  /** Load available skills from the instance API (for the checkbox picker). */
+  private async _loadAvailableSkills(): Promise<void> {
+    if (this._loadingSkills || this.context?.kind !== "instance") return;
+    this._loadingSkills = true;
+    try {
+      const res = await fetchInstanceSkills(this.context.slug);
+      this._availableSkills = res.skills;
+    } catch {
+      this._availableSkills = [];
+    } finally {
+      this._loadingSkills = false;
     }
   }
 
@@ -1488,22 +1508,49 @@ export class AgentDetailPanel extends LitElement {
             </button>
           </div>
           ${Array.isArray(this._editSkills)
-            ? html`
-                <input
-                  class="field-edit-input"
-                  type="text"
-                  placeholder=${msg("Comma-separated skill names", { id: "adp-skills-hint" })}
-                  .value=${this._editSkills.join(", ")}
-                  @input=${(e: Event) => {
-                    const val = (e.target as HTMLInputElement).value;
-                    this._editSkills = val
-                      .split(",")
-                      .map((s) => s.trim())
-                      .filter((s) => s.length > 0);
-                    dirty();
-                  }}
-                />
-              `
+            ? this._availableSkills.length > 0
+              ? html`
+                  <div class="skills-grid">
+                    ${this._availableSkills.map((skill) => {
+                      const checked = this._editSkills?.includes(skill.name) ?? false;
+                      return html`
+                        <label class="skills-grid-label" title=${skill.description || skill.name}>
+                          <input
+                            type="checkbox"
+                            .checked=${checked}
+                            @change=${() => {
+                              if (checked) {
+                                this._editSkills = (this._editSkills ?? []).filter(
+                                  (s) => s !== skill.name,
+                                );
+                              } else {
+                                this._editSkills = [...(this._editSkills ?? []), skill.name];
+                              }
+                              dirty();
+                            }}
+                          />
+                          ${skill.name}
+                        </label>
+                      `;
+                    })}
+                  </div>
+                `
+              : html`
+                  <input
+                    class="field-edit-input"
+                    type="text"
+                    placeholder=${msg("Comma-separated skill names", { id: "adp-skills-hint" })}
+                    .value=${this._editSkills.join(", ")}
+                    @input=${(e: Event) => {
+                      const val = (e.target as HTMLInputElement).value;
+                      this._editSkills = val
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter((s) => s.length > 0);
+                      dirty();
+                    }}
+                  />
+                `
             : nothing}
         </div>
 

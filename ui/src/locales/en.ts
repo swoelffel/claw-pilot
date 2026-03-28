@@ -443,4 +443,20 @@ export const templates = {
   "profile-select-model": "Select default model...",
   "profile-instructions-hint": "Markdown supported. Max 10,000 characters.",
   "profile-char-count": "characters",
+
+  // instance-skills.ts
+  "settings-skills": "Skills",
+  "skills-section-title": "Skills",
+  "skills-upload-zip": "Upload ZIP",
+  "skills-from-github": "From GitHub",
+  "skills-zip-label": "ZIP file",
+  "skills-github-label": "GitHub URL",
+  "skills-github-placeholder": "https://github.com/org/repo/tree/main/skills/name",
+  "skills-installing": "Installing...",
+  "skills-install-btn": "Install",
+  "skills-delete-btn": "Delete",
+  "skills-empty": "No skills available. Upload a ZIP or install from GitHub.",
+  "skills-group-workspace": "Workspace",
+  "skills-group-global": "Global",
+  "skills-group-remote": "Remote",
 };
