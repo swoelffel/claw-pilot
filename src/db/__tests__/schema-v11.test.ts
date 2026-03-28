@@ -65,6 +65,7 @@ describe("migration v11 — rt_sessions new columns", () => {
   "rt_sessions has all v11 columns with correct types and defaults", () => {
     // Arrange + Act
     const db = initDatabase(dbPath);
+    // cspell:ignore notnull dflt
     const cols = db.pragma("table_info(rt_sessions)") as Array<{
       name: string;
       type: string;
