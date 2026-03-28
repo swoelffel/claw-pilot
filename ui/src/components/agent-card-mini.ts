@@ -38,15 +38,15 @@ export class AgentCardMini extends LitElement {
           box-shadow 0.15s,
           border-color 0.15s;
         user-select: none;
-        width: 156px;
-        height: 68px;
+        width: 186px;
+        height: 72px;
         overflow: hidden;
         position: relative;
         border-left: 3px solid transparent;
       }
 
       .card.has-spawns {
-        height: 88px;
+        height: 96px;
       }
 
       /* --- Archetype stripe (left border) --- */
@@ -73,8 +73,8 @@ export class AgentCardMini extends LitElement {
       .card.is-default {
         background: var(--accent-subtle);
         border-color: var(--accent-border);
-        width: 176px;
-        height: 76px;
+        width: 200px;
+        height: 80px;
       }
 
       /* --- Ephemeral agents: darker bg to distinguish from permanent --- */
