@@ -102,21 +102,15 @@ export class CanvasLegend extends LitElement {
       <div class="legend">
         <div class="legend-item">
           <svg width="30" height="10">
-            ${svg`<line x1="0" y1="5" x2="28" y2="5" stroke="#666" stroke-width="1.5" stroke-dasharray="6 4" />`}
+            ${svg`<line x1="0" y1="5" x2="28" y2="5" stroke="#666" stroke-width="1" stroke-dasharray="2 3" />`}
           </svg>
           ${msg("Delegation", { id: "legend-delegation" })}
         </div>
         <div class="legend-item">
           <svg width="30" height="10">
-            ${svg`<line x1="0" y1="5" x2="28" y2="5" stroke="#64748b" stroke-width="1" stroke-dasharray="2 3" />`}
+            ${svg`<line x1="0" y1="5" x2="28" y2="5" stroke="#64748b" stroke-width="1.5" stroke-dasharray="6 4" />`}
           </svg>
           ${msg("Messaging", { id: "legend-messaging" })}
-        </div>
-        <div class="legend-item">
-          <svg width="30" height="10">
-            ${svg`<line x1="0" y1="5" x2="28" y2="5" stroke="#8b5cf6" stroke-width="1.5" stroke-dasharray="6 4" />`}
-          </svg>
-          ${msg("Role routing", { id: "legend-archetype" })}
         </div>
         <button
           class="toggle-btn"

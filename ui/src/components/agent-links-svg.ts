@@ -1,18 +1,8 @@
 // ui/src/components/agent-links-svg.ts
 import { LitElement, html, css, svg } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { type AgentLink, isArchetypeLink, getArchetypeFromLink } from "../types.js";
+import { type AgentLink, isArchetypeLink } from "../types.js";
 import { tokenStyles } from "../styles/tokens.js";
-
-// Archetype color mapping (must match tokens.ts)
-const ARCHETYPE_COLORS: Record<string, string> = {
-  planner: "#8b5cf6",
-  generator: "#10b981",
-  evaluator: "#f59e0b",
-  orchestrator: "#4f6ef7",
-  analyst: "#0ea5e9",
-  communicator: "#ec4899",
-};
 
 @customElement("cp-agent-links-svg")
 export class AgentLinksSvg extends LitElement {
@@ -54,9 +44,6 @@ export class AgentLinksSvg extends LitElement {
     }
     // Track rendered bi-pairs to avoid duplicates
     const renderedBi = new Set<string>();
-
-    // Collect @archetype links for floating badges
-    const archetypeLinks = this.links.filter((l) => l.link_type === "spawn" && isArchetypeLink(l));
 
     return html`
       <svg>
@@ -109,7 +96,7 @@ export class AgentLinksSvg extends LitElement {
           </marker>
         </defs>
 
-        <!-- Spawn links (dashed, gray) -->
+        <!-- Spawn links (dotted, gray) -->
         ${this.links
           .filter((link) => link.link_type === "spawn" && !isArchetypeLink(link))
           .map((link) => {
@@ -128,16 +115,16 @@ export class AgentLinksSvg extends LitElement {
                 x1=${src.x} y1=${src.y}
                 x2=${tgt.x} y2=${tgt.y}
                 stroke=${color}
-                stroke-width="1.5"
-                stroke-dasharray="6 4"
-                stroke-opacity=${isPendingRemove ? "0.8" : "1"}
+                stroke-width="1"
+                stroke-dasharray="2 3"
+                stroke-opacity=${isPendingRemove ? "0.8" : "0.7"}
                 marker-end=${marker}
                 aria-label="delegates to ${link.target_agent_id}"
               />
             `;
           })}
 
-        <!-- A2A links (dotted, muted — bidirectional merged) -->
+        <!-- A2A links (dashed, muted — bidirectional merged) -->
         ${a2aLinks.map((link) => {
           const biKey = [link.source_agent_id, link.target_agent_id].sort().join("\u2194");
           const isBi = biPairs.has(biKey);
@@ -155,53 +142,13 @@ export class AgentLinksSvg extends LitElement {
               x1=${src.x} y1=${src.y}
               x2=${tgt.x} y2=${tgt.y}
               stroke="#64748b"
-              stroke-width="1"
-              stroke-dasharray="2 3"
+              stroke-width="1.5"
+              stroke-dasharray="6 4"
               stroke-opacity="0.6"
               marker-end="url(#arrow-a2a)"
               ${isBi ? svg`marker-start="url(#arrow-a2a-start)"` : ""}
               aria-label="${isBi ? "a2a bidirectional" : "a2a"} ${link.source_agent_id} ↔ ${link.target_agent_id}"
             />
-          `;
-        })}
-
-        <!-- @archetype floating badges -->
-        ${archetypeLinks.map((link) => {
-          const src = this.positions.get(link.source_agent_id);
-          if (!src) return "";
-          const archetype = getArchetypeFromLink(link);
-          const color = ARCHETYPE_COLORS[archetype] ?? "#64748b";
-          const badgeX = src.x + 70;
-          const badgeY = src.y + 45;
-          const label = `@${archetype}`;
-          const textWidth = label.length * 6.5 + 12;
-
-          return svg`
-            <line
-              x1=${src.x} y1=${src.y}
-              x2=${badgeX} y2=${badgeY}
-              stroke=${color}
-              stroke-width="1.5"
-              stroke-dasharray="6 4"
-              stroke-opacity="0.7"
-            />
-            <g transform="translate(${badgeX - textWidth / 2}, ${badgeY - 10})">
-              <rect
-                rx="4" ry="4"
-                width=${textWidth} height="20"
-                fill="#1a1d27"
-                stroke=${color}
-                stroke-width="1"
-                stroke-opacity="0.8"
-              />
-              <text
-                x=${textWidth / 2} y="14"
-                text-anchor="middle"
-                fill=${color}
-                font-size="10"
-                font-family="var(--font-mono, monospace)"
-              >${label}</text>
-            </g>
           `;
         })}
 

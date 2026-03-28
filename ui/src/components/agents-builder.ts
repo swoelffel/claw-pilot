@@ -3,6 +3,7 @@ import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo, BuilderData } from "../types.js";
+import { isArchetypeLink, getArchetypeFromLink } from "../types.js";
 import {
   syncAgents,
   fetchBuilderData,
@@ -596,22 +597,34 @@ export class AgentsBuilder extends LitElement {
                 ></cp-agent-links-svg>
                 <cp-canvas-legend></cp-canvas-legend>
 
-                ${data.agents.map((agent) => {
-                  const pos = this._positions.get(agent.agent_id);
-                  if (!pos) return "";
-                  return html`
-                    <cp-agent-card-mini
-                      data-agent-id=${agent.agent_id}
-                      .agent=${agent}
-                      .selected=${this._selectedAgentId === agent.agent_id}
-                      .isNew=${this._justCreatedAgentId === agent.agent_id}
-                      .deletable=${!agent.is_default}
-                      style="left: ${pos.x}px; top: ${pos.y}px;"
-                      @agent-delete-requested=${(e: CustomEvent<{ agentId: string }>) =>
-                        this._onDeleteRequested(e.detail.agentId)}
-                    ></cp-agent-card-mini>
-                  `;
-                })}
+                ${(() => {
+                  // Pre-compute @archetype spawn targets per agent
+                  const archetypeSpawnMap = new Map<string, string[]>();
+                  for (const link of data.links) {
+                    if (link.link_type === "spawn" && isArchetypeLink(link)) {
+                      const targets = archetypeSpawnMap.get(link.source_agent_id) ?? [];
+                      targets.push(getArchetypeFromLink(link));
+                      archetypeSpawnMap.set(link.source_agent_id, targets);
+                    }
+                  }
+                  return data.agents.map((agent) => {
+                    const pos = this._positions.get(agent.agent_id);
+                    if (!pos) return "";
+                    return html`
+                      <cp-agent-card-mini
+                        data-agent-id=${agent.agent_id}
+                        .agent=${agent}
+                        .selected=${this._selectedAgentId === agent.agent_id}
+                        .isNew=${this._justCreatedAgentId === agent.agent_id}
+                        .deletable=${!agent.is_default}
+                        .archetypeSpawns=${archetypeSpawnMap.get(agent.agent_id) ?? []}
+                        style="left: ${pos.x}px; top: ${pos.y}px;"
+                        @agent-delete-requested=${(e: CustomEvent<{ agentId: string }>) =>
+                          this._onDeleteRequested(e.detail.agentId)}
+                      ></cp-agent-card-mini>
+                    `;
+                  });
+                })()}
               `
             : ""}
         </div>

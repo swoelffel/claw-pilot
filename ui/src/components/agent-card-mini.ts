@@ -5,6 +5,16 @@ import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo } from "../types.js";
 import { tokenStyles } from "../styles/tokens.js";
 
+// Archetype color mapping (must match tokens.ts)
+const ARCHETYPE_COLORS: Record<string, string> = {
+  planner: "#8b5cf6",
+  generator: "#10b981",
+  evaluator: "#f59e0b",
+  orchestrator: "#4f6ef7",
+  analyst: "#0ea5e9",
+  communicator: "#ec4899",
+};
+
 @localized()
 @customElement("cp-agent-card-mini")
 export class AgentCardMini extends LitElement {
@@ -34,6 +44,7 @@ export class AgentCardMini extends LitElement {
         border-left: 3px solid transparent;
       }
 
+      /* --- Archetype stripe (left border) --- */
       .card.archetype-planner {
         border-left-color: var(--archetype-planner);
       }
@@ -51,6 +62,20 @@ export class AgentCardMini extends LitElement {
       }
       .card.archetype-communicator {
         border-left-color: var(--archetype-communicator);
+      }
+
+      /* --- Default agent: accent background --- */
+      .card.is-default {
+        background: var(--accent-subtle);
+        border-color: var(--accent-border);
+        min-width: 150px;
+        max-width: 180px;
+      }
+
+      /* --- Ephemeral agents: transparent bg + dashed border --- */
+      .card.ephemeral {
+        background: color-mix(in srgb, var(--bg-surface) 55%, transparent);
+        border-style: dashed;
       }
 
       .card:hover {
@@ -75,11 +100,6 @@ export class AgentCardMini extends LitElement {
         100% {
           box-shadow: 0 0 0 0px color-mix(in srgb, var(--state-success, #22c55e) 0%, transparent);
         }
-      }
-
-      .card.is-default {
-        min-width: 150px;
-        max-width: 180px;
       }
 
       /* row 1 : name + delete button */
@@ -125,20 +145,6 @@ export class AgentCardMini extends LitElement {
         color: var(--text-muted);
         white-space: nowrap;
         flex-shrink: 0;
-      }
-
-      .badge-default {
-        font-size: 9px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: var(--accent);
-        background: var(--accent-subtle);
-        border: 1px solid var(--accent-border);
-        border-radius: 3px;
-        padding: 1px 5px;
-        flex-shrink: 0;
-        cursor: help;
       }
 
       .badge-sa {
@@ -197,6 +203,27 @@ export class AgentCardMini extends LitElement {
         max-width: 90px;
       }
 
+      /* row 4 : @archetype spawn targets (inline) */
+      .card-spawns {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3px;
+        margin-top: 4px;
+        padding-top: 4px;
+        border-top: 1px solid var(--bg-border);
+      }
+
+      .spawn-archetype {
+        font-size: 8px;
+        font-weight: 600;
+        font-family: var(--font-mono);
+        border-radius: 3px;
+        padding: 1px 4px;
+        background: transparent;
+        border: 1px solid;
+        opacity: 0.85;
+      }
+
       .btn-delete {
         background: none;
         border: none;
@@ -226,6 +253,8 @@ export class AgentCardMini extends LitElement {
   @property({ type: Boolean }) selected = false;
   @property({ type: Boolean, reflect: true }) isNew = false;
   @property({ type: Boolean }) deletable = false;
+  /** @archetype spawn targets for this agent (e.g. ["generator", "evaluator"]) */
+  @property({ type: Array }) archetypeSpawns: string[] = [];
 
   private _truncate(str: string, max: number): string {
     return str.length > max ? str.slice(0, max) + "…" : str;
@@ -251,12 +280,13 @@ export class AgentCardMini extends LitElement {
     const modelShort = model ? this._truncate(model.split("/").pop() ?? model, 18) : null;
     const archetype = a.archetype;
     const archetypeClass = archetype ? `archetype-${archetype}` : "";
+    const isEphemeral = a.persistence === "ephemeral";
 
     return html`
       <div
         class="card ${a.is_default ? "is-default" : ""} ${this.selected
           ? "selected"
-          : ""} ${archetypeClass}"
+          : ""} ${archetypeClass} ${isEphemeral ? "ephemeral" : ""}"
         @click=${() =>
           this.dispatchEvent(
             new CustomEvent("agent-select", {
@@ -297,48 +327,58 @@ export class AgentCardMini extends LitElement {
         </div>
         <!-- row 3 : badge + model -->
         <div class="card-bottom">
-          ${a.is_default
+          ${archetype
             ? html`<span
-                class="badge-default"
-                title=${msg("Main entry point for conversations. Orchestrates the agent team.", {
-                  id: "acm-tooltip-default",
-                })}
-                >${msg("Default", { id: "acm-badge-default" })}</span
+                class="badge-archetype"
+                style="color: var(--archetype-${archetype}); border-color: var(--archetype-${archetype})"
+                title=${archetype}
+                >${archetype}</span
               >`
-            : archetype
+            : a.category === "system"
               ? html`<span
-                  class="badge-archetype"
-                  style="color: var(--archetype-${archetype}); border-color: var(--archetype-${archetype})"
-                  title=${archetype}
-                  >${archetype}</span
+                  class="badge-system"
+                  title=${msg("Internal infrastructure agent (compaction, title, summary).", {
+                    id: "acm-tooltip-system",
+                  })}
+                  >${msg("System", { id: "acm-badge-system" })}</span
                 >`
-              : a.category === "system"
+              : a.category === "tool"
                 ? html`<span
-                    class="badge-system"
-                    title=${msg("Internal infrastructure agent (compaction, title, summary).", {
-                      id: "acm-tooltip-system",
+                    class="badge-sa"
+                    title=${msg("Built-in utility agent available as a tool for other agents.", {
+                      id: "acm-tooltip-tool",
                     })}
-                    >${msg("System", { id: "acm-badge-system" })}</span
+                    >${msg("Tool", { id: "acm-badge-tool" })}</span
                   >`
-                : a.category === "tool"
-                  ? html`<span
-                      class="badge-sa"
-                      title=${msg("Built-in utility agent available as a tool for other agents.", {
-                        id: "acm-tooltip-tool",
-                      })}
-                      >${msg("Tool", { id: "acm-badge-tool" })}</span
-                    >`
-                  : html`<span
-                      class="badge-sa"
-                      title=${msg("User-created agent.", {
-                        id: "acm-tooltip-user",
-                      })}
-                      >${msg("Agent", { id: "acm-badge-user" })}</span
-                    >`}
+                : html`<span
+                    class="badge-sa"
+                    title=${msg("User-created agent.", {
+                      id: "acm-tooltip-user",
+                    })}
+                    >${msg("Agent", { id: "acm-badge-user" })}</span
+                  >`}
           ${modelShort
             ? html`<span class="model-label" title=${model ?? ""}>${modelShort}</span>`
             : ""}
         </div>
+        <!-- row 4 : @archetype spawn targets (inline, only if any) -->
+        ${this.archetypeSpawns.length > 0
+          ? html`
+              <div class="card-spawns">
+                ${this.archetypeSpawns.map((arch) => {
+                  const color = ARCHETYPE_COLORS[arch] ?? "#64748b";
+                  return html`<span
+                    class="spawn-archetype"
+                    style="color: ${color}; border-color: ${color}"
+                    title=${msg("Spawns any agent with this archetype", {
+                      id: "acm-tooltip-spawn-archetype",
+                    })}
+                    >→ @${arch}</span
+                  >`;
+                })}
+              </div>
+            `
+          : nothing}
       </div>
     `;
   }
