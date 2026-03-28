@@ -83,7 +83,7 @@ const EXTRACTION_PROMPT = `Analyze the conversation above and extract ONLY new p
 
 Categorize into five lists:
 1. **facts**: Objective facts about the project, codebase, infrastructure, or domain
-   Examples: "The project uses TypeScript strict mode", "VM01 runs Ubuntu 22.04"
+   Examples: "The project uses TypeScript strict mode", "The server runs Ubuntu 22.04"
 2. **decisions**: Technical decisions made with their rationale
    Examples: "Chose SQLite over PostgreSQL for simplicity and zero-dependency deployment"
 3. **preferences**: User preferences, communication style, working habits
