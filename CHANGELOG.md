@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.53.1] — 2026-03-28
+
+### Fixed
+
+- **CI: Security audit** — Override transitive dependencies (picomatch >=2.3.2/>=4.0.4, path-to-regexp >=8.4.0) to eliminate 3 high CVEs.
+- **CI: Dead code check** — Remove unused `config-builder.ts` and guardrail registration API. Suppress knip false positives on re-exported and Lit web component symbols.
+
+---
+
 ## [0.53.0] — 2026-03-28
 
 ### Added
