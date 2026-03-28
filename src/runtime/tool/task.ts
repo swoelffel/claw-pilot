@@ -252,18 +252,27 @@ export function createTaskTool(options: {
       // 1. Try to resolve as a user-defined primary agent (A2A peer delegation)
       //    Resolution order:
       //    a) Exact match by agent ID (cfg.id)
-      //    b) Archetype match: find first primary agent with that archetype
+      //    b) Archetype match: find first non-permanent agent with that archetype
       const primaryPeerConfig =
         (runtimeAgentConfigs ?? []).find((cfg) => cfg.id === params.subagent_type) ??
         (runtimeAgentConfigs ?? []).find(
           (cfg) =>
             cfg.id !== callerAgentConfig?.id &&
+            cfg.persistence !== "permanent" &&
             cfg.archetype != null &&
             cfg.archetype === params.subagent_type,
         );
 
       if (primaryPeerConfig) {
-        // --- A2A primary-to-primary path ---
+        // Guard: permanent agents cannot be spawned — use send_message instead
+        if (primaryPeerConfig.persistence === "permanent") {
+          throw new Error(
+            `Cannot delegate task to agent '${primaryPeerConfig.id}': it is a permanent agent. ` +
+              `Use send_message to communicate with permanent agents.`,
+          );
+        }
+
+        // --- A2A peer delegation path ---
         // Use the permanent session of the target primary agent.
         const targetSession = getOrCreatePermanentSession(db, {
           instanceSlug,
