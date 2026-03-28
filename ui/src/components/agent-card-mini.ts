@@ -69,11 +69,12 @@ export class AgentCardMini extends LitElement {
         border-left-color: var(--archetype-communicator);
       }
 
-      /* --- Default agent: accent background, wider --- */
+      /* --- Default agent: accent background, wider + taller --- */
       .card.is-default {
         background: var(--accent-subtle);
         border-color: var(--accent-border);
         width: 176px;
+        height: 76px;
       }
 
       /* --- Ephemeral agents: darker bg to distinguish from permanent --- */
