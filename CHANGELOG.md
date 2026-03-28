@@ -169,7 +169,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Fixed
 
-- **Info Tab — unable to change Provider/Model** : root cause identified via MACMINI-INT logs — an agent's `runtime.json` with `heartbeat.activeHours` but no `tz` field failed Zod validation (`tz` was `z.string().min(1)` required). Any attempt to `PATCH /config` (changing Provider, Model, or any other Info tab field) triggered `loadRuntimeConfig()` → throw → `CONFIG_PATCH_FAILED` → "An unexpected error occurred".
+- **Info Tab — unable to change Provider/Model** : root cause identified via MAC logs — an agent's `runtime.json` with `heartbeat.activeHours` but no `tz` field failed Zod validation (`tz` was `z.string().min(1)` required). Any attempt to `PATCH /config` (changing Provider, Model, or any other Info tab field) triggered `loadRuntimeConfig()` → throw → `CONFIG_PATCH_FAILED` → "An unexpected error occurred".
   - **Fix Zod** : `tz` made optional (`z.string().min(1).optional()`) in `HeartbeatConfigSchema` — backward compatible with existing `runtime.json` files without timezone
   - **Fix `isWithinActiveHours()`** : signature expanded to `tz?: string`, fallback to system timezone if absent
   - **Fix UX** : "An unexpected error" message resolved — `CONFIG_PATCH_FAILED` is now included in codes that transmit raw server message (`error-messages.ts`)
@@ -457,7 +457,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Fixed
 
-- **Persistent update banner** : after update on macOS (MACMINI-INT), service didn't restart because `systemctl` unavailable — job stayed in `done` state indefinitely. Fix : use `launchctl stop/start` on macOS, `systemctl` on Linux.
+- **Persistent update banner** : after update on macOS (MAC), service didn't restart because `systemctl` unavailable — job stayed in `done` state indefinitely. Fix : use `launchctl stop/start` on macOS, `systemctl` on Linux.
 - **Dismiss of banner ignored** : closing "Updated successfully" banner via × button didn't survive page reloads (state purely in-memory). Fix : dismiss now persisted in `sessionStorage` with job key, maintaining it between reloads of same session.
 
 ---

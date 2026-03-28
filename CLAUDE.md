@@ -246,7 +246,7 @@ Reference docs:
 | `docs/design-rules.md` | Design system, anti-patterns, delivery checklist |
 | `docs/i18n.md` | i18n architecture, adding languages/features |
 | `docs/registry-db.md` | SQLite schema reference (all tables, columns, migrations) |
-| `docs/runbook-deploy.md` | Deployment workflow, CI/CD validation, MACMINI-INT |
+| `docs/runbook-deploy.md` | Deployment workflow, CI/CD validation, MAC |
 
 ## What NOT to do
 
