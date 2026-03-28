@@ -75,10 +75,9 @@ export class AgentCardMini extends LitElement {
         border-color: var(--accent-border);
       }
 
-      /* --- Ephemeral agents: transparent bg + dashed border --- */
+      /* --- Ephemeral agents: darker bg to distinguish from permanent --- */
       .card.ephemeral {
-        background: color-mix(in srgb, var(--bg-surface) 55%, transparent);
-        border-style: dashed;
+        background: var(--bg-base);
       }
 
       .card:hover {
