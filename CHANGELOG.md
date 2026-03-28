@@ -6,6 +6,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.53.0] — 2026-03-28
+
+### Added
+
+- **Builder UX harness design** : Agent cards now display archetype color stripes (6 archetypes: planner, generator, evaluator, orchestrator, analyst, communicator), persistence-based backgrounds (permanent=opaque, ephemeral=dark, default=accent), and inline @archetype spawn capsules (row 4).
+- **Differentiated link styles** : Spawn/delegation links rendered as dotted lines with filled triangle arrows. A2A/messaging links rendered as dashed lines without markers (bidirectional merged). Ray-rectangle intersection clipping ensures lines end precisely at card edges.
+- **Canvas legend** (`cp-canvas-legend`) : Collapsible legend in bottom-left corner showing link type explanations. State persisted in localStorage.
+- **Multi-select & group drag** : Rubber-band rectangle selection on empty canvas. Group drag moves all selected cards together. Click toggles selection. Detail panel shown only when exactly 1 card selected.
+- **Persistence guard** : `task.ts` rejects spawning agents with `persistence: "permanent"`. @archetype resolution filters out permanent candidates. 5 tests.
+- **Builder API enrichment** : `GET /builder` endpoint now returns `persistence` and `archetype` per agent from `runtime_config_json`.
+- **6 archetype CSS tokens** : `--archetype-planner` through `--archetype-communicator` in design system.
+
+### Changed
+
+- Agent cards have fixed dimensions (186×80px standard, 200×80px default, 186×104px with spawns) for predictable SVG clipping.
+- DEFAULT badge removed from pilot card — replaced by accent background. Archetype badge always visible.
+
+### Documentation
+
+- Updated: `comp-agent-card-mini.md`, `comp-agent-links-svg.md`, `screen-agent-builder.md`, `ux-design.md`.
+- New: `comp-canvas-legend.md`.
+
+---
+
 ## [0.52.0] — 2026-03-26
 
 ### Added
