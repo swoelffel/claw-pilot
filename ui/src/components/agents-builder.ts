@@ -3,6 +3,7 @@ import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo, BuilderData } from "../types.js";
+import { isArchetypeLink, getArchetypeFromLink } from "../types.js";
 import {
   syncAgents,
   fetchBuilderData,
@@ -16,6 +17,7 @@ import { tokenStyles } from "../styles/tokens.js";
 import { badgeStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
 import "./agent-card-mini.js";
 import "./agent-links-svg.js";
+import "./canvas-legend.js";
 import "./agent-detail-panel.js";
 import "./create-agent-dialog.js";
 import "./import-team-dialog.js";
@@ -173,6 +175,15 @@ export class AgentsBuilder extends LitElement {
         user-select: none;
       }
 
+      .rubber-band {
+        position: absolute;
+        border: 1px solid var(--accent);
+        background: color-mix(in srgb, var(--accent) 10%, transparent);
+        pointer-events: none;
+        z-index: 20;
+        border-radius: 2px;
+      }
+
       .spinner-overlay {
         position: absolute;
         inset: 0;
@@ -236,7 +247,7 @@ export class AgentsBuilder extends LitElement {
   @state() private _data: BuilderData | null = null;
   @state() private _syncing = false;
   @state() private _error = "";
-  @state() private _selectedAgentId: string | null = null;
+  @state() private _selectedAgentIds = new Set<string>();
   @state() private _positions = new Map<string, { x: number; y: number }>();
   @state() private _canvasWidth = 800;
   @state() private _canvasHeight = 600;
@@ -252,9 +263,21 @@ export class AgentsBuilder extends LitElement {
     agentId: string;
     startX: number;
     startY: number;
-    startCardX: number;
-    startCardY: number;
     moved: boolean;
+    /** True if this card was freshly selected in pointerdown (skip toggle on short click) */
+    freshSelect: boolean;
+  } | null = null;
+
+  /** Snapshot of all selected cards' positions at drag start (avoids delta accumulation) */
+  private _dragStartPositions = new Map<string, { x: number; y: number }>();
+
+  /** Rubber-band (lasso) selection state */
+  @state() private _rubberBand: {
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+    active: boolean;
   } | null = null;
 
   private _resizeObserver: ResizeObserver | null = null;
@@ -319,8 +342,15 @@ export class AgentsBuilder extends LitElement {
     );
   }
 
-  private _selectAgent(agentId: string): void {
-    this._selectedAgentId = this._selectedAgentId === agentId ? null : agentId;
+  /** Toggle a card in/out of the multi-selection set. */
+  private _toggleAgent(agentId: string): void {
+    const next = new Set(this._selectedAgentIds);
+    if (next.has(agentId)) {
+      next.delete(agentId);
+    } else {
+      next.add(agentId);
+    }
+    this._selectedAgentIds = next;
   }
 
   private _onAgentCreated(builderData: BuilderData): void {
@@ -349,7 +379,7 @@ export class AgentsBuilder extends LitElement {
 
     if (newAgent) {
       this._justCreatedAgentId = newAgent.agent_id;
-      this._selectedAgentId = newAgent.agent_id;
+      this._selectedAgentIds = new Set([newAgent.agent_id]);
       setTimeout(() => {
         this._justCreatedAgentId = null;
       }, 2000);
@@ -406,8 +436,10 @@ export class AgentsBuilder extends LitElement {
     this._agentToDelete = null;
 
     // Reset selection if the deleted agent was selected
-    if (deletedId && this._selectedAgentId === deletedId) {
-      this._selectedAgentId = null;
+    if (deletedId && this._selectedAgentIds.has(deletedId)) {
+      const next = new Set(this._selectedAgentIds);
+      next.delete(deletedId);
+      this._selectedAgentIds = next;
     }
 
     // Remove position from in-memory map
@@ -428,11 +460,15 @@ export class AgentsBuilder extends LitElement {
   }
 
   private _onPointerDown(e: PointerEvent): void {
+    const zone = e.currentTarget as HTMLElement;
+    const rect = zone.getBoundingClientRect();
+    const canvasX = e.clientX - rect.left;
+    const canvasY = e.clientY - rect.top;
+
     // Identify the card via composedPath
     const card = (e.composedPath() as Element[]).find(
       (el) => el instanceof Element && el.tagName === "CP-AGENT-CARD-MINI",
     ) as HTMLElement | undefined;
-    if (!card) return;
 
     // If the click originated from the delete button, don't start a drag
     const isDeleteBtn = (e.composedPath() as Element[]).some(
@@ -440,79 +476,138 @@ export class AgentsBuilder extends LitElement {
     );
     if (isDeleteBtn) return;
 
-    const agentId = card.dataset["agentId"];
-    if (!agentId) return;
+    if (card) {
+      // --- Click on a card: start card drag ---
+      const agentId = card.dataset["agentId"];
+      if (!agentId) return;
 
-    const pos = this._positions.get(agentId);
-    if (!pos) return;
+      // If card is not already selected, select it exclusively (replace selection)
+      const wasAlreadySelected = this._selectedAgentIds.has(agentId);
+      if (!wasAlreadySelected) {
+        this._selectedAgentIds = new Set([agentId]);
+      }
 
-    const zone = e.currentTarget as HTMLElement;
-    const rect = zone.getBoundingClientRect();
+      // Snapshot all selected cards' positions at drag start
+      this._dragStartPositions = new Map();
+      for (const id of this._selectedAgentIds) {
+        const p = this._positions.get(id);
+        if (p) this._dragStartPositions.set(id, { x: p.x, y: p.y });
+      }
 
-    this._drag = {
-      agentId,
-      startX: e.clientX - rect.left,
-      startY: e.clientY - rect.top,
-      startCardX: pos.x,
-      startCardY: pos.y,
-      moved: false,
-    };
+      this._drag = {
+        agentId,
+        startX: canvasX,
+        startY: canvasY,
+        moved: false,
+        freshSelect: !wasAlreadySelected,
+      };
+    } else {
+      // --- Click on empty canvas: start rubber-band ---
+      this._rubberBand = {
+        startX: canvasX,
+        startY: canvasY,
+        currentX: canvasX,
+        currentY: canvasY,
+        active: false,
+      };
+    }
 
     zone.setPointerCapture(e.pointerId);
     e.preventDefault();
   }
 
   private _onPointerMove(e: PointerEvent): void {
-    if (!this._drag) return;
-
     const zone = e.currentTarget as HTMLElement;
     const rect = zone.getBoundingClientRect();
-    const dx = e.clientX - rect.left - this._drag.startX;
-    const dy = e.clientY - rect.top - this._drag.startY;
+    const canvasX = e.clientX - rect.left;
+    const canvasY = e.clientY - rect.top;
 
-    if (!this._drag.moved && Math.hypot(dx, dy) >= 5) {
-      this._drag.moved = true;
-      zone.classList.add("dragging");
-    }
+    if (this._drag) {
+      const dx = canvasX - this._drag.startX;
+      const dy = canvasY - this._drag.startY;
 
-    if (this._drag.moved) {
-      const next = new Map(this._positions);
-      next.set(this._drag.agentId, {
-        x: this._drag.startCardX + dx,
-        y: this._drag.startCardY + dy,
-      });
-      this._positions = next;
+      if (!this._drag.moved && Math.hypot(dx, dy) >= 5) {
+        this._drag.moved = true;
+        zone.classList.add("dragging");
+      }
+
+      if (this._drag.moved) {
+        // Move all selected cards together
+        const next = new Map(this._positions);
+        for (const id of this._selectedAgentIds) {
+          const orig = this._dragStartPositions.get(id);
+          if (orig) next.set(id, { x: orig.x + dx, y: orig.y + dy });
+        }
+        this._positions = next;
+      }
+    } else if (this._rubberBand) {
+      const dx = canvasX - this._rubberBand.startX;
+      const dy = canvasY - this._rubberBand.startY;
+
+      if (!this._rubberBand.active && Math.hypot(dx, dy) >= 5) {
+        this._rubberBand = { ...this._rubberBand, active: true };
+      }
+
+      if (this._rubberBand.active) {
+        this._rubberBand = { ...this._rubberBand, currentX: canvasX, currentY: canvasY };
+      }
     }
   }
 
   private _onPointerUp(e: PointerEvent): void {
-    if (!this._drag) return;
-
     const zone = e.currentTarget as HTMLElement;
     zone.releasePointerCapture(e.pointerId);
     zone.classList.remove("dragging");
 
-    const { agentId, moved } = this._drag;
-    this._drag = null;
+    if (this._drag) {
+      const { agentId, moved, freshSelect } = this._drag;
+      this._drag = null;
+      this._dragStartPositions = new Map();
 
-    if (!moved) {
-      // Short click — open/close panel
-      this._selectAgent(agentId);
-      return;
-    }
+      if (!moved && !freshSelect) {
+        // Short click on an already-selected card — toggle it off
+        this._toggleAgent(agentId);
+      } else if (moved) {
+        // Drag ended — persist all moved positions fire-and-forget
+        for (const id of this._selectedAgentIds) {
+          const pos = this._positions.get(id);
+          if (pos) {
+            void updateAgentPosition(this.slug, id, pos.x, pos.y).catch((err) => {
+              console.error("Failed to save agent position:", err);
+            });
+          }
+        }
+      }
+    } else if (this._rubberBand) {
+      const rb = this._rubberBand;
+      this._rubberBand = null;
 
-    // Drag ended — persist position fire-and-forget
-    const pos = this._positions.get(agentId);
-    if (pos) {
-      void updateAgentPosition(this.slug, agentId, pos.x, pos.y).catch((err) => {
-        console.error("Failed to save agent position:", err);
-      });
+      if (rb.active) {
+        // Finalize rubber-band: select cards whose center is inside the rectangle
+        const minX = Math.min(rb.startX, rb.currentX);
+        const maxX = Math.max(rb.startX, rb.currentX);
+        const minY = Math.min(rb.startY, rb.currentY);
+        const maxY = Math.max(rb.startY, rb.currentY);
+
+        const selected = new Set<string>();
+        for (const [agentId, pos] of this._positions) {
+          if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
+            selected.add(agentId);
+          }
+        }
+        this._selectedAgentIds = selected;
+      } else {
+        // Short click on empty canvas — clear selection
+        this._selectedAgentIds = new Set();
+      }
     }
   }
 
+  /** Returns the single selected agent (for detail panel), or null if 0 or 2+ selected. */
   private get _selectedAgent(): AgentBuilderInfo | null {
-    if (!this._data || !this._selectedAgentId) return null;
-    return this._data.agents.find((a) => a.agent_id === this._selectedAgentId) ?? null;
+    if (!this._data || this._selectedAgentIds.size !== 1) return null;
+    const [id] = this._selectedAgentIds;
+    return this._data.agents.find((a) => a.agent_id === id) ?? null;
   }
 
   override render() {
@@ -593,24 +688,51 @@ export class AgentsBuilder extends LitElement {
                   .pendingRemovals=${this._pendingRemovals}
                   .pendingAdditions=${this._pendingAdditions}
                 ></cp-agent-links-svg>
+                <cp-canvas-legend></cp-canvas-legend>
 
-                ${data.agents.map((agent) => {
-                  const pos = this._positions.get(agent.agent_id);
-                  if (!pos) return "";
-                  return html`
-                    <cp-agent-card-mini
-                      data-agent-id=${agent.agent_id}
-                      .agent=${agent}
-                      .selected=${this._selectedAgentId === agent.agent_id}
-                      .isNew=${this._justCreatedAgentId === agent.agent_id}
-                      .deletable=${!agent.is_default}
-                      style="left: ${pos.x}px; top: ${pos.y}px;"
-                      @agent-delete-requested=${(e: CustomEvent<{ agentId: string }>) =>
-                        this._onDeleteRequested(e.detail.agentId)}
-                    ></cp-agent-card-mini>
-                  `;
-                })}
+                ${(() => {
+                  // Pre-compute @archetype spawn targets per agent
+                  const archetypeSpawnMap = new Map<string, string[]>();
+                  for (const link of data.links) {
+                    if (link.link_type === "spawn" && isArchetypeLink(link)) {
+                      const targets = archetypeSpawnMap.get(link.source_agent_id) ?? [];
+                      targets.push(getArchetypeFromLink(link));
+                      archetypeSpawnMap.set(link.source_agent_id, targets);
+                    }
+                  }
+                  return data.agents.map((agent) => {
+                    const pos = this._positions.get(agent.agent_id);
+                    if (!pos) return "";
+                    return html`
+                      <cp-agent-card-mini
+                        data-agent-id=${agent.agent_id}
+                        .agent=${agent}
+                        .selected=${this._selectedAgentIds.has(agent.agent_id)}
+                        .isNew=${this._justCreatedAgentId === agent.agent_id}
+                        .deletable=${!agent.is_default}
+                        .archetypeSpawns=${archetypeSpawnMap.get(agent.agent_id) ?? []}
+                        style="left: ${pos.x}px; top: ${pos.y}px;"
+                        @agent-delete-requested=${(e: CustomEvent<{ agentId: string }>) =>
+                          this._onDeleteRequested(e.detail.agentId)}
+                      ></cp-agent-card-mini>
+                    `;
+                  });
+                })()}
               `
+            : ""}
+          ${this._rubberBand?.active
+            ? html`<div
+                class="rubber-band"
+                style="left:${Math.min(
+                  this._rubberBand.startX,
+                  this._rubberBand.currentX,
+                )}px;top:${Math.min(
+                  this._rubberBand.startY,
+                  this._rubberBand.currentY,
+                )}px;width:${Math.abs(
+                  this._rubberBand.currentX - this._rubberBand.startX,
+                )}px;height:${Math.abs(this._rubberBand.currentY - this._rubberBand.startY)}px"
+              ></div>`
             : ""}
         </div>
 
@@ -622,7 +744,7 @@ export class AgentsBuilder extends LitElement {
                 .allAgents=${data?.agents ?? []}
                 .context=${this._panelContext}
                 @panel-close=${() => {
-                  this._selectedAgentId = null;
+                  this._selectedAgentIds = new Set();
                   this._pendingAdditions = new Map();
                   this._pendingRemovals = new Set();
                 }}

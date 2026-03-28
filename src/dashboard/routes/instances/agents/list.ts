@@ -24,6 +24,25 @@ export function registerAgentListRoutes(app: Hono, deps: RouteDeps): void {
 
     const agents = registry.listAgents(inst.slug);
     const links = registry.listAgentLinks(inst.id);
+
+    // Enrich with archetype + persistence from DB (raw JSON extraction — no Zod parse)
+    const archetypeMap = new Map<string, string>();
+    const persistenceMap = new Map<string, string>();
+    const rawJson = registry.getRawRuntimeConfigJson(inst.slug);
+    if (rawJson) {
+      try {
+        const parsed = JSON.parse(rawJson) as {
+          agents?: Array<{ id: string; archetype?: string | null; persistence?: string | null }>;
+        };
+        for (const a of parsed.agents ?? []) {
+          if (a.archetype) archetypeMap.set(a.id, a.archetype);
+          if (a.persistence) persistenceMap.set(a.id, a.persistence);
+        }
+      } catch {
+        /* intentionally ignored — enrichment is best-effort */
+      }
+    }
+
     return c.json({
       instance: {
         slug: inst.slug,
@@ -32,7 +51,11 @@ export function registerAgentListRoutes(app: Hono, deps: RouteDeps): void {
         state: inst.state,
         default_model: inst.default_model,
       },
-      agents: agents.map((agent) => buildAgentPayload(agent, registry.listAgentFiles(agent.id))),
+      agents: agents.map((agent) => ({
+        ...buildAgentPayload(agent, registry.listAgentFiles(agent.id)),
+        archetype: archetypeMap.get(agent.agent_id) ?? null,
+        persistence: persistenceMap.get(agent.agent_id) ?? null,
+      })),
       links: links.map((l) => ({
         source_agent_id: l.source_agent_id,
         target_agent_id: l.target_agent_id,

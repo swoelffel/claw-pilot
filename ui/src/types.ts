@@ -120,6 +120,10 @@ export interface AgentBuilderInfo {
   tags: string | null;
   notes: string | null;
   skills: string[] | null; // null = toutes les skills (champ absent en DB)
+  /** Behavioral archetype from runtime config (null if not set) */
+  archetype: string | null;
+  /** Session lifecycle: "permanent" (long-lived) or "ephemeral" (per-task) or null */
+  persistence: "permanent" | "ephemeral" | null;
   synced_at: string | null;
   position_x: number | null;
   position_y: number | null;

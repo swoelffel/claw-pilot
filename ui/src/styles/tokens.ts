@@ -26,6 +26,13 @@ export const tokenStyles = css`
     --state-warning: #f59e0b;
     --state-info: #0ea5e9;
 
+    --archetype-planner: #8b5cf6;
+    --archetype-generator: #10b981;
+    --archetype-evaluator: #f59e0b;
+    --archetype-orchestrator: #4f6ef7;
+    --archetype-analyst: #0ea5e9;
+    --archetype-communicator: #ec4899;
+
     --font-ui: "Geist", -apple-system, BlinkMacSystemFont, sans-serif;
     --font-mono: "Geist Mono", monospace;
 
