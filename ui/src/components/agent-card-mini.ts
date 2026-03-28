@@ -39,14 +39,14 @@ export class AgentCardMini extends LitElement {
           border-color 0.15s;
         user-select: none;
         width: 186px;
-        height: 72px;
+        height: 80px;
         overflow: hidden;
         position: relative;
         border-left: 3px solid transparent;
       }
 
       .card.has-spawns {
-        height: 96px;
+        height: 104px;
       }
 
       /* --- Archetype stripe (left border) --- */

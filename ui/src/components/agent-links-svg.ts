@@ -5,9 +5,9 @@ import { type AgentLink, isArchetypeLink } from "../types.js";
 import { tokenStyles } from "../styles/tokens.js";
 
 // Card half-dimensions (cards are centered on position via translate(-50%,-50%))
-// Fixed card size: 186–200px wide (+ 3px border-left) × 72–96px tall
+// Fixed card size: 186–200px wide (+ 3px border-left) × 80–104px tall
 const CARD_HW = 104; // half-width: ~200px / 2 (use max width for safe margin)
-const CARD_HH = 50; // half-height: ~96px / 2 (use max height for safe margin)
+const CARD_HH = 54; // half-height: ~104px / 2 (use max height for safe margin)
 const EDGE_PAD = 4; // extra padding so the arrow doesn't touch the border
 
 /**
