@@ -189,8 +189,7 @@ export class AgentLinksSvg extends LitElement {
               stroke-width="1.5"
               stroke-dasharray="6 4"
               stroke-opacity="0.6"
-              marker-end="url(#arrow-a2a)"
-              ${isBi ? svg`marker-start="url(#arrow-a2a-start)"` : ""}
+              ${isBi ? "" : svg`marker-end="url(#arrow-a2a)"`}
               aria-label="${isBi ? "a2a bidirectional" : "a2a"} ${link.source_agent_id} ↔ ${link.target_agent_id}"
             />
           `;
