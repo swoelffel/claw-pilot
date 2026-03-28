@@ -34,6 +34,12 @@ Serves as the foundation for interface evolution discussions.
 | `--state-error` | `#ef4444` | Error, danger |
 | `--state-warning` | `#f59e0b` | Amber — warning |
 | `--state-info` | `#0ea5e9` | Cyan — info |
+| `--archetype-planner` | `#8b5cf6` | Purple — strategic planner |
+| `--archetype-generator` | `#10b981` | Green — productive generator |
+| `--archetype-evaluator` | `#f59e0b` | Amber — quality evaluator |
+| `--archetype-orchestrator` | `#4f6ef7` | Blue — coordination orchestrator |
+| `--archetype-analyst` | `#0ea5e9` | Cyan — data analyst |
+| `--archetype-communicator` | `#ec4899` | Pink — communicator |
 | `--focus-ring` | `0 0 0 2px rgba(79,110,247,0.5)` | Focus outline |
 | `--radius-sm` | `4px` | Badges, small elements |
 | `--radius-md` | `8px` | Buttons, inputs |
@@ -137,6 +143,7 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 | Live Stream Widget | `cp-live-stream-widget` | [comp-live-stream-widget.md](ux-components/comp-live-stream-widget.md) |
 | Permission Overlay | `cp-permission-request-overlay` | [comp-permission-overlay.md](ux-components/comp-permission-overlay.md) |
 | Bus Alerts | `cp-bus-alerts` | [comp-bus-alerts.md](ux-components/comp-bus-alerts.md) |
+| Canvas Legend | `cp-canvas-legend` | [comp-canvas-legend.md](ux-components/comp-canvas-legend.md) |
 
 ---
 
@@ -175,3 +182,5 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 *Updated: 2026-03-22 - v0.45.0: added Cost Dashboard (cp-costs-dashboard, #/instances/:slug/costs), Activity Console (cp-activity-console, #/instances/:slug/activity), Live Stream Widget (cp-live-stream-widget replacing static WS indicator)*
 
 *Updated: 2026-03-26 - v0.51.0: Runtime Pilot expanded to 22 components. Added 4 part components: cp-pilot-part-artifact (rich card for create_artifact tool), cp-pilot-part-suggestion (follow-up chips), cp-pilot-part-image (image viewer), cp-pilot-part-question (interactive question). Input enhanced with file upload (📎 button + drag & drop), Send/Stop toggle (streaming abort). Suggestions generated via post-middleware + SuggestionsGenerated SSE event. Artifacts delivered as Telegram documents, suggestions as inline keyboard buttons.*
+
+*Updated: 2026-03-28 - Builder UX harness design overhaul. Agent cards: archetype color stripe (6 colors), persistence-based backgrounds (permanent=surface, ephemeral=base, default=accent), inline @archetype spawn capsules (row 4), fixed card dimensions (186×80px). SVG links: spawn=dotted with arrow, A2A messaging=dashed without arrow (bidirectional merged), ray-rectangle clipping to card edges. Canvas legend (cp-canvas-legend, collapsible). Multi-select: rubber-band rectangle selection, group drag with position persistence. Persistence guard in task.ts: permanent agents cannot be spawned. 6 archetype CSS tokens added.*
