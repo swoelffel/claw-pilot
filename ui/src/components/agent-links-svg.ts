@@ -4,27 +4,46 @@ import { customElement, property } from "lit/decorators.js";
 import { type AgentLink, isArchetypeLink } from "../types.js";
 import { tokenStyles } from "../styles/tokens.js";
 
-/** Shorten a line by `margin` px from each endpoint so it clears the cards. */
+// Card half-dimensions (cards are centered on position via translate(-50%,-50%))
+const CARD_HW = 80; // half-width (cards are 130–180px wide)
+const CARD_HH = 42; // half-height (cards are ~65–85px tall)
+const EDGE_PAD = 6; // extra padding so the arrow doesn't touch the border
+
+/**
+ * Find where a ray from `center` toward `target` exits a rectangle of given
+ * half-width/half-height centered on `center`. Returns the intersection point
+ * on the rectangle edge (+ padding).
+ */
+function rectEdgePoint(
+  center: { x: number; y: number },
+  target: { x: number; y: number },
+  hw: number,
+  hh: number,
+): { x: number; y: number } {
+  const dx = target.x - center.x;
+  const dy = target.y - center.y;
+  if (dx === 0 && dy === 0) return { x: center.x, y: center.y };
+
+  // Scale factor to reach each edge
+  const sx = dx !== 0 ? hw / Math.abs(dx) : Infinity;
+  const sy = dy !== 0 ? hh / Math.abs(dy) : Infinity;
+  const s = Math.min(sx, sy);
+
+  return { x: center.x + dx * s, y: center.y + dy * s };
+}
+
+/**
+ * Clip a line so it starts at the edge of the source card and ends at the
+ * edge of the target card (ray-rectangle intersection).
+ */
 function clipLine(
   src: { x: number; y: number },
   tgt: { x: number; y: number },
-  margin: number,
 ): { x1: number; y1: number; x2: number; y2: number } {
-  const dx = tgt.x - src.x;
-  const dy = tgt.y - src.y;
-  const len = Math.sqrt(dx * dx + dy * dy);
-  if (len < margin * 2) return { x1: src.x, y1: src.y, x2: tgt.x, y2: tgt.y };
-  const ux = dx / len;
-  const uy = dy / len;
-  return {
-    x1: src.x + ux * margin,
-    y1: src.y + uy * margin,
-    x2: tgt.x - ux * margin,
-    y2: tgt.y - uy * margin,
-  };
+  const p1 = rectEdgePoint(src, tgt, CARD_HW + EDGE_PAD, CARD_HH + EDGE_PAD);
+  const p2 = rectEdgePoint(tgt, src, CARD_HW + EDGE_PAD, CARD_HH + EDGE_PAD);
+  return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
 }
-
-const CARD_MARGIN = 75;
 
 @customElement("cp-agent-links-svg")
 export class AgentLinksSvg extends LitElement {
@@ -131,7 +150,7 @@ export class AgentLinksSvg extends LitElement {
             const marker = isPendingRemove
               ? "url(#arrow-delegate-pending-remove)"
               : "url(#arrow-delegate)";
-            const cl = clipLine(src, tgt, CARD_MARGIN);
+            const cl = clipLine(src, tgt);
 
             return svg`
               <line
@@ -159,7 +178,7 @@ export class AgentLinksSvg extends LitElement {
           const src = this.positions.get(link.source_agent_id);
           const tgt = this.positions.get(link.target_agent_id);
           if (!src || !tgt) return "";
-          const cl = clipLine(src, tgt, CARD_MARGIN);
+          const cl = clipLine(src, tgt);
 
           return svg`
             <line
@@ -183,7 +202,7 @@ export class AgentLinksSvg extends LitElement {
           return Array.from(targets).map((targetId) => {
             const tgt = this.positions.get(targetId);
             if (!tgt) return "";
-            const cl = clipLine(src, tgt, CARD_MARGIN);
+            const cl = clipLine(src, tgt);
             return svg`
               <line
                 x1=${cl.x1} y1=${cl.y1}
