@@ -264,6 +264,8 @@ export class AgentsBuilder extends LitElement {
     startX: number;
     startY: number;
     moved: boolean;
+    /** True if this card was freshly selected in pointerdown (skip toggle on short click) */
+    freshSelect: boolean;
   } | null = null;
 
   /** Snapshot of all selected cards' positions at drag start (avoids delta accumulation) */
@@ -480,7 +482,8 @@ export class AgentsBuilder extends LitElement {
       if (!agentId) return;
 
       // If card is not already selected, select it exclusively (replace selection)
-      if (!this._selectedAgentIds.has(agentId)) {
+      const wasAlreadySelected = this._selectedAgentIds.has(agentId);
+      if (!wasAlreadySelected) {
         this._selectedAgentIds = new Set([agentId]);
       }
 
@@ -491,7 +494,13 @@ export class AgentsBuilder extends LitElement {
         if (p) this._dragStartPositions.set(id, { x: p.x, y: p.y });
       }
 
-      this._drag = { agentId, startX: canvasX, startY: canvasY, moved: false };
+      this._drag = {
+        agentId,
+        startX: canvasX,
+        startY: canvasY,
+        moved: false,
+        freshSelect: !wasAlreadySelected,
+      };
     } else {
       // --- Click on empty canvas: start rubber-band ---
       this._rubberBand = {
@@ -551,14 +560,14 @@ export class AgentsBuilder extends LitElement {
     zone.classList.remove("dragging");
 
     if (this._drag) {
-      const { agentId, moved } = this._drag;
+      const { agentId, moved, freshSelect } = this._drag;
       this._drag = null;
       this._dragStartPositions = new Map();
 
-      if (!moved) {
-        // Short click on a card — toggle selection
+      if (!moved && !freshSelect) {
+        // Short click on an already-selected card — toggle it off
         this._toggleAgent(agentId);
-      } else {
+      } else if (moved) {
         // Drag ended — persist all moved positions fire-and-forget
         for (const id of this._selectedAgentIds) {
           const pos = this._positions.get(id);
