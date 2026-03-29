@@ -160,6 +160,7 @@ const KIND_TO_FILTER: Partial<Record<TimelineEntryKind, keyof TimelineFilters>> 
   tool_call: "tools",
   reasoning: "thinking",
   subtask: "subtasks",
+  suggestion: "suggestions",
 };
 
 /** Filter timeline entries based on active filter toggles. */
@@ -169,7 +170,7 @@ export function filterTimeline(
 ): TimelineEntry[] {
   return entries.filter((entry) => {
     const filterKey = KIND_TO_FILTER[entry.kind];
-    // Kinds without a dedicated filter (compaction, image, artifact, suggestion) are always visible
+    // Kinds without a dedicated filter (compaction, image, artifact) are always visible
     if (filterKey === undefined) return true;
     return filters[filterKey];
   });

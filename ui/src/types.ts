@@ -578,6 +578,7 @@ export interface TimelineFilters {
   tools: boolean;
   thinking: boolean;
   subtasks: boolean;
+  suggestions: boolean;
 }
 
 export const DEFAULT_TIMELINE_FILTERS: TimelineFilters = {
@@ -586,6 +587,7 @@ export const DEFAULT_TIMELINE_FILTERS: TimelineFilters = {
   tools: false,
   thinking: false,
   subtasks: true,
+  suggestions: true,
 };
 
 /** Événement bus générique pour le journal d'événements */

@@ -26,6 +26,11 @@ const CHIPS: FilterChip[] = [
     icon: "\u{1F4E6}",
     label: () => msg("Sub", { id: "pilot-filter-subtasks" }),
   },
+  {
+    key: "suggestions",
+    icon: "\u2728",
+    label: () => msg("Suggest", { id: "pilot-filter-suggestions" }),
+  },
 ];
 
 @localized()
