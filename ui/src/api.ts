@@ -488,9 +488,15 @@ export async function adoptInstances(slugs: string[]): Promise<AdoptResult> {
 
 // --- Runtime chat API ---
 
-export async function fetchRuntimeSessions(slug: string): Promise<RuntimeSession[]> {
+export async function fetchRuntimeSessions(
+  slug: string,
+  opts?: { includeInternal?: boolean },
+): Promise<RuntimeSession[]> {
+  const params = new URLSearchParams();
+  if (opts?.includeInternal) params.set("includeInternal", "true");
+  const qs = params.toString();
   const data = await apiFetch<{ sessions: RuntimeSession[] }>(
-    `/instances/${slug}/runtime/sessions`,
+    `/instances/${slug}/runtime/sessions${qs ? `?${qs}` : ""}`,
   );
   return data.sessions;
 }

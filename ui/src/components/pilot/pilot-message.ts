@@ -1,9 +1,11 @@
 // ui/src/components/pilot/pilot-message.ts
-// Renders a single message with all its parts + metadata footer.
+// Renders a single TimelineEntry in the unified activity timeline.
 import { LitElement, html, nothing, css } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { PilotMessage, PilotPart } from "../../types.js";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
+import type { TimelineEntry, PilotPart } from "../../types.js";
 import { tokenStyles } from "../../styles/tokens.js";
 import "./parts/part-text.js";
 import "./parts/part-tool.js";
@@ -15,13 +17,25 @@ import "./parts/part-image.js";
 import "./parts/part-artifact.js";
 import "./parts/part-suggestion.js";
 
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  if (diff < 60_000) return msg("just now", { id: "time-just-now" });
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}${msg("m ago", { id: "time-min" })}`;
-  if (diff < 86_400_000)
-    return `${Math.floor(diff / 3_600_000)}${msg("h ago", { id: "time-hour" })}`;
-  return `${Math.floor(diff / 86_400_000)}${msg("d ago", { id: "time-day" })}`;
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function formatTimelineTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  if (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  ) {
+    return `${hh}:${mm}`;
+  }
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mo} ${hh}:${mm}`;
 }
 
 function formatCost(usd: number): string {
@@ -43,6 +57,33 @@ const CHANNEL_BADGES: Record<string, { label: string; color: string }> = {
   internal: { label: "INT", color: "var(--text-muted)" },
 };
 
+// ---------------------------------------------------------------------------
+// Icon & color mapping per kind
+// ---------------------------------------------------------------------------
+
+interface KindMeta {
+  icon: string;
+  bg: string;
+}
+
+const KIND_META: Record<string, KindMeta> = {
+  user_chat: { icon: "\u{1F4AC}", bg: "var(--accent-subtle)" },
+  agent_text: { icon: "\u2B21", bg: "var(--bg-hover)" },
+  a2a_sent: { icon: "\u2192\u2B21", bg: "rgba(236, 72, 153, 0.1)" },
+  a2a_received: { icon: "\u2B21\u2192", bg: "rgba(236, 72, 153, 0.1)" },
+  tool_call: { icon: "\u{1F6E0}", bg: "rgba(245, 158, 11, 0.1)" },
+  reasoning: { icon: "\u{1F9E0}", bg: "rgba(139, 92, 246, 0.1)" },
+  subtask: { icon: "\u{1F4E6}", bg: "rgba(59, 130, 246, 0.1)" },
+  compaction: { icon: "\u2702", bg: "var(--bg-hover)" },
+  image: { icon: "\u{1F5BC}", bg: "var(--bg-hover)" },
+  suggestion: { icon: "\u2728", bg: "var(--bg-hover)" },
+  artifact: { icon: "\u{1F4C4}", bg: "rgba(59, 130, 246, 0.1)" },
+};
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 @localized()
 @customElement("cp-pilot-message")
 export class PilotMessageEl extends LitElement {
@@ -53,37 +94,55 @@ export class PilotMessageEl extends LitElement {
         display: block;
       }
 
-      .message-wrap {
-        display: flex;
-        flex-direction: column;
-        gap: 0;
+      .timeline-entry {
+        display: grid;
+        grid-template-columns: 52px 22px 1fr;
+        gap: 0 8px;
+        align-items: start;
+        padding: 4px 0;
       }
 
-      /* User messages — right-aligned bubble */
-      .message-wrap.user {
-        align-items: flex-end;
+      /* Timestamp column */
+      .ts {
+        font-size: 10px;
+        font-family: var(--font-mono);
+        color: var(--text-muted);
+        padding-top: 2px;
+        text-align: right;
+        white-space: nowrap;
+        user-select: none;
       }
 
-      .message-wrap.assistant {
-        align-items: flex-start;
-        max-width: 100%;
-      }
-
-      /* Message header */
-      .message-header {
+      /* Icon column */
+      .icon {
+        width: 20px;
+        height: 20px;
         display: flex;
         align-items: center;
-        gap: 6px;
-        margin-bottom: 4px;
-        padding: 0 2px;
+        justify-content: center;
+        border-radius: 50%;
+        font-size: 11px;
+        flex-shrink: 0;
+        margin-top: 1px;
+        user-select: none;
       }
 
-      .role-label {
+      /* Content column */
+      .content {
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .source-label {
         font-size: 10px;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.06em;
         color: var(--text-muted);
+        margin-bottom: 2px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
       }
 
       .channel-badge {
@@ -96,43 +155,99 @@ export class PilotMessageEl extends LitElement {
         color: var(--text-muted);
       }
 
-      .compaction-badge {
-        font-size: 10px;
-        padding: 1px 6px;
-        border-radius: 3px;
-        background: rgba(79, 110, 247, 0.08);
-        color: var(--accent);
-        border: 1px solid var(--accent-border);
+      /* A2A styling — markdown-rendered content */
+      .a2a-content {
+        border-left: 3px solid rgba(236, 72, 153, 0.5);
+        padding: 4px 0 4px 10px;
+        font-size: 13px;
+        line-height: 1.6;
+        color: var(--text-primary);
+        word-break: break-word;
       }
 
-      /* User bubble */
-      .user-bubble {
-        background: var(--bg-hover);
+      .a2a-content p {
+        margin: 4px 0;
+      }
+
+      .a2a-content p:first-child {
+        margin-top: 0;
+      }
+
+      .a2a-content p:last-child {
+        margin-bottom: 0;
+      }
+
+      .a2a-content ul,
+      .a2a-content ol {
+        padding-left: 18px;
+        margin: 4px 0;
+      }
+
+      .a2a-content code {
+        background: var(--bg-border);
+        padding: 1px 5px;
+        border-radius: 3px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+      }
+
+      .a2a-content pre {
+        background: var(--bg-base);
         border: 1px solid var(--bg-border);
         border-radius: var(--radius-md);
-        padding: 9px 13px;
+        padding: 8px 10px;
+        overflow-x: auto;
+        margin: 6px 0;
+      }
+
+      .a2a-content pre code {
+        background: none;
+        padding: 0;
+      }
+
+      .a2a-content strong {
+        font-weight: 700;
+      }
+
+      .a2a-content h1,
+      .a2a-content h2,
+      .a2a-content h3 {
+        font-size: 14px;
+        font-weight: 700;
+        margin: 10px 0 4px;
+      }
+
+      .a2a-content hr {
+        border: none;
+        border-top: 1px solid var(--bg-border);
+        margin: 8px 0;
+      }
+
+      /* User text (no bubble, left-aligned) */
+      .user-text {
         font-size: 13px;
+        line-height: 1.5;
         color: var(--text-primary);
         white-space: pre-wrap;
         word-break: break-word;
-        max-width: 80%;
-        line-height: 1.5;
+        background: var(--bg-hover);
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-md);
+        padding: 6px 10px;
+        max-width: 85%;
       }
 
-      /* Assistant parts container */
-      .assistant-parts {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
+      /* Part container */
+      .part-wrap {
         width: 100%;
       }
 
-      /* Message footer */
+      /* Message footer (model, tokens, cost) */
       .message-footer {
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 3px 2px 0;
+        padding: 3px 0 0;
         flex-wrap: wrap;
       }
 
@@ -147,10 +262,19 @@ export class PilotMessageEl extends LitElement {
         font-size: 10px;
         color: var(--bg-border);
       }
+
+      .compaction-badge {
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 3px;
+        background: rgba(79, 110, 247, 0.08);
+        color: var(--accent);
+        border: 1px solid var(--accent-border);
+      }
     `,
   ];
 
-  @property({ type: Object }) message!: PilotMessage;
+  @property({ type: Object }) entry!: TimelineEntry;
   /** Map of subSessionId → subagent result, populated by parent from bus events */
   @property({ type: Object }) subagentResults: Record<
     string,
@@ -161,34 +285,7 @@ export class PilotMessageEl extends LitElement {
   /** Current session's channel, used to show badge only for cross-channel messages */
   @property() sessionChannel = "web";
 
-  private _renderUserMessage() {
-    const msg_ = this.message;
-    const channel = (msg_ as unknown as { channel?: string }).channel;
-    const badge =
-      channel && channel !== "web" && channel !== this.sessionChannel
-        ? CHANNEL_BADGES[channel]
-        : undefined;
-
-    return html`
-      <div class="message-wrap user">
-        <div class="message-header">
-          <span class="role-label">${msg("You", { id: "role-user" })}</span>
-          ${badge
-            ? html`<span class="channel-badge" style="color:${badge.color}">${badge.label}</span>`
-            : nothing}
-        </div>
-        <div class="user-bubble">${this._getUserText()}</div>
-      </div>
-    `;
-  }
-
-  private _getUserText(): string {
-    // User messages: look for a text part, fallback to content field
-    const textPart = this.message.parts.find((p) => p.type === "text");
-    if (textPart?.content) return textPart.content;
-    // Legacy: some user messages stored directly
-    return "";
-  }
+  // ── Part rendering (reuses existing part components) ────────────────────
 
   private _renderPart(part: PilotPart, allParts: PilotPart[]) {
     switch (part.type) {
@@ -215,7 +312,6 @@ export class PilotMessageEl extends LitElement {
       }
 
       case "tool_call": {
-        // Find associated tool_result by toolCallId in metadata
         let callId: string | undefined;
         try {
           const meta = part.metadata ? JSON.parse(part.metadata) : {};
@@ -236,7 +332,6 @@ export class PilotMessageEl extends LitElement {
               }
             })(),
         );
-        // Render question tool as interactive card instead of generic tool block
         let toolName: string | undefined;
         try {
           toolName = (JSON.parse(part.metadata ?? "{}") as { toolName?: string }).toolName;
@@ -258,10 +353,6 @@ export class PilotMessageEl extends LitElement {
         }
         return html`<cp-pilot-part-tool .call=${part} .result=${result}></cp-pilot-part-tool>`;
       }
-
-      case "tool_result":
-        // tool_results are rendered inline with their tool_call — skip standalone render
-        return nothing;
 
       case "reasoning":
         return html`<cp-pilot-part-reasoning
@@ -298,60 +389,185 @@ export class PilotMessageEl extends LitElement {
     }
   }
 
-  private _renderAssistantMessage() {
-    const m = this.message;
-    const parts = [...m.parts].sort((a, b) => a.sortOrder - b.sortOrder);
+  // ── Content rendering per kind ──────────────────────────────────────────
+
+  private _renderContent() {
+    const e = this.entry;
+
+    switch (e.kind) {
+      case "user_chat": {
+        const channel = e.channel;
+        const badge =
+          channel && channel !== "web" && channel !== this.sessionChannel
+            ? CHANNEL_BADGES[channel]
+            : undefined;
+        const textPart = e.message.parts.find((p) => p.type === "text");
+        const text = textPart?.content ?? "";
+        return html`
+          <div class="source-label">
+            ${msg("You", { id: "role-user" })}
+            ${badge
+              ? html`<span class="channel-badge" style="color:${badge.color}">${badge.label}</span>`
+              : nothing}
+          </div>
+          <div class="user-text">${text}</div>
+        `;
+      }
+
+      case "agent_text":
+        return html`
+          <div class="source-label">
+            ${e.source}
+            ${e.message.isCompaction
+              ? html`<span class="compaction-badge">compaction</span>`
+              : nothing}
+          </div>
+          <div class="part-wrap">
+            ${e.part
+              ? html`<cp-pilot-part-text .content=${e.part.content ?? ""}></cp-pilot-part-text>`
+              : nothing}
+          </div>
+          ${this._renderFooter()}
+        `;
+
+      case "a2a_sent":
+        return html`
+          <div class="source-label">${e.source} → ${e.a2aTarget}</div>
+          <div
+            class="a2a-content"
+            .innerHTML=${DOMPurify.sanitize(marked.parse(e.a2aContent ?? "") as string)}
+          ></div>
+        `;
+
+      case "a2a_received":
+        return html`
+          <div class="source-label">${e.a2aTarget} → ${e.source}</div>
+          <div
+            class="a2a-content"
+            .innerHTML=${DOMPurify.sanitize(marked.parse(e.a2aContent ?? "") as string)}
+          ></div>
+        `;
+
+      case "tool_call":
+      case "artifact":
+        return html`
+          <div class="source-label">${e.source}</div>
+          <div class="part-wrap">
+            ${e.part ? this._renderPart(e.part, e.message.parts) : nothing}
+          </div>
+          ${this._renderFooter()}
+        `;
+
+      case "reasoning":
+        return html`
+          <div class="source-label">${e.source}</div>
+          <div class="part-wrap">
+            ${e.part
+              ? html`<cp-pilot-part-reasoning
+                  .content=${e.part.content ?? ""}
+                ></cp-pilot-part-reasoning>`
+              : nothing}
+          </div>
+          ${this._renderFooter()}
+        `;
+
+      case "subtask":
+        return html`
+          <div class="source-label">${e.source}</div>
+          <div class="part-wrap">
+            ${e.part ? this._renderPart(e.part, e.message.parts) : nothing}
+          </div>
+          ${this._renderFooter()}
+        `;
+
+      case "compaction":
+        return html`
+          <div class="part-wrap">
+            ${e.part
+              ? html`<cp-pilot-part-compaction
+                  .metadata=${e.part.metadata ?? ""}
+                ></cp-pilot-part-compaction>`
+              : nothing}
+          </div>
+        `;
+
+      case "image":
+        return html`
+          <div class="part-wrap">
+            ${e.part ? this._renderPart(e.part, e.message.parts) : nothing}
+          </div>
+          ${this._renderFooter()}
+        `;
+
+      case "suggestion":
+        return html`
+          <div class="part-wrap">
+            ${e.part
+              ? html`<cp-pilot-part-suggestion
+                  .content=${e.part.content ?? "[]"}
+                ></cp-pilot-part-suggestion>`
+              : nothing}
+          </div>
+        `;
+
+      default:
+        return nothing;
+    }
+  }
+
+  // ── Footer (only on last entry of an assistant message) ─────────────────
+
+  private _renderFooter() {
+    const e = this.entry;
+    if (!e.isLastInMessage) return nothing;
+
+    const m = e.message;
+    if (m.role !== "assistant") return nothing;
+
     const hasModel = Boolean(m.model);
     const hasTokens = m.tokensIn !== undefined || m.tokensOut !== undefined;
+    if (!hasModel && !hasTokens && m.costUsd === undefined) return nothing;
 
     return html`
-      <div class="message-wrap assistant">
-        <div class="message-header">
-          <span class="role-label">${m.agentId ?? msg("agent", { id: "role-agent" })}</span>
-          ${m.isCompaction ? html`<span class="compaction-badge">compaction</span>` : nothing}
-        </div>
-
-        <div class="assistant-parts">${parts.map((p) => this._renderPart(p, parts))}</div>
-
-        ${hasModel || hasTokens || m.costUsd !== undefined
-          ? html`
-              <div class="message-footer">
-                ${hasModel
-                  ? html`<span class="footer-item">${shortModel(m.model!)}</span>`
-                  : nothing}
-                ${hasModel && (hasTokens || m.costUsd !== undefined)
-                  ? html`<span class="footer-sep">·</span>`
-                  : nothing}
-                ${m.tokensIn !== undefined
-                  ? html`<span class="footer-item">${m.tokensIn.toLocaleString()} in</span>`
-                  : nothing}
-                ${m.tokensOut !== undefined
-                  ? html`<span class="footer-item">${m.tokensOut.toLocaleString()} out</span>`
-                  : nothing}
-                ${m.costUsd !== undefined && m.costUsd > 0
-                  ? html`<span class="footer-sep">·</span
-                      ><span class="footer-item">${formatCost(m.costUsd)}</span>`
-                  : nothing}
-                ${m.finishReason && m.finishReason !== "stop"
-                  ? html`<span class="footer-sep">·</span
-                      ><span class="footer-item" style="color:var(--state-warning)"
-                        >${m.finishReason}</span
-                      >`
-                  : nothing}
-                <span class="footer-sep">·</span>
-                <span class="footer-item">${relativeTime(m.createdAt)}</span>
-              </div>
-            `
+      <div class="message-footer">
+        ${hasModel ? html`<span class="footer-item">${shortModel(m.model!)}</span>` : nothing}
+        ${hasModel && (hasTokens || m.costUsd !== undefined)
+          ? html`<span class="footer-sep">·</span>`
+          : nothing}
+        ${m.tokensIn !== undefined
+          ? html`<span class="footer-item">${m.tokensIn.toLocaleString()} in</span>`
+          : nothing}
+        ${m.tokensOut !== undefined
+          ? html`<span class="footer-item">${m.tokensOut.toLocaleString()} out</span>`
+          : nothing}
+        ${m.costUsd !== undefined && m.costUsd > 0
+          ? html`<span class="footer-sep">·</span
+              ><span class="footer-item">${formatCost(m.costUsd)}</span>`
+          : nothing}
+        ${m.finishReason && m.finishReason !== "stop"
+          ? html`<span class="footer-sep">·</span
+              ><span class="footer-item" style="color:var(--state-warning)"
+                >${m.finishReason}</span
+              >`
           : nothing}
       </div>
     `;
   }
 
+  // ── Main render ─────────────────────────────────────────────────────────
+
   override render() {
-    if (!this.message) return nothing;
-    return this.message.role === "user"
-      ? this._renderUserMessage()
-      : this._renderAssistantMessage();
+    if (!this.entry) return nothing;
+
+    const meta = KIND_META[this.entry.kind] ?? { icon: "\u2022", bg: "var(--bg-hover)" };
+
+    return html`
+      <div class="timeline-entry">
+        <span class="ts">${formatTimelineTime(this.entry.timestamp)}</span>
+        <span class="icon" style="background:${meta.bg}">${meta.icon}</span>
+        <div class="content">${this._renderContent()}</div>
+      </div>
+    `;
   }
 }
 
