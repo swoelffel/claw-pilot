@@ -305,33 +305,54 @@ export class AgentSync {
     }
 
     // ------------------------------------------------------------------
-    // 5. Extract agent links from config
-    //    runtime.json uses agents[].links[] or agents[].subagents[]
+    // 5. Extract spawn links from config
+    //    Config sources: agents[].agentToAgent.allowList (v2),
+    //    agents[].subagents.allowAgents (legacy), agents[].links[] (explicit).
+    //
+    //    A2A links are NOT in config — they are set via the builder UI and
+    //    stored only in agent_links. The sync must PRESERVE existing a2a links.
     // ------------------------------------------------------------------
-    const links: SyncedLink[] = [];
+    const configSpawnLinks: SyncedLink[] = [];
 
     for (const agent of agentsList) {
       if (!agent["id"]) continue;
       const sourceId = agent["id"] as string;
 
-      // Spawn links from subagents.allowAgents (if present)
-      const subagents = agent["subagents"] as Record<string, unknown> | undefined;
-      const allowAgents = (subagents?.["allowAgents"] ?? []) as string[];
-      for (const target of allowAgents) {
-        links.push({
+      // Spawn links from agentToAgent.allowList (v2 format)
+      const agentToAgent = agent["agentToAgent"] as Record<string, unknown> | undefined;
+      const allowList = (agentToAgent?.["allowList"] ?? []) as string[];
+      for (const target of allowList) {
+        configSpawnLinks.push({
           source_agent_id: sourceId,
           target_agent_id: target,
           link_type: "spawn",
         });
       }
 
-      // Links from agent.links[] array (if present)
+      // Spawn links from subagents.allowAgents (legacy format)
+      const subagents = agent["subagents"] as Record<string, unknown> | undefined;
+      const allowAgents = (subagents?.["allowAgents"] ?? []) as string[];
+      for (const target of allowAgents) {
+        // Avoid duplicates if both formats are present
+        const exists = configSpawnLinks.some(
+          (l) => l.source_agent_id === sourceId && l.target_agent_id === target,
+        );
+        if (!exists) {
+          configSpawnLinks.push({
+            source_agent_id: sourceId,
+            target_agent_id: target,
+            link_type: "spawn",
+          });
+        }
+      }
+
+      // Explicit links from agent.links[] array (if present)
       const agentLinks = (agent["links"] ?? []) as Array<Record<string, unknown>>;
       for (const link of agentLinks) {
         const target = link["target"] as string | undefined;
         const linkType = (link["type"] as string | undefined) ?? "a2a";
         if (target) {
-          links.push({
+          configSpawnLinks.push({
             source_agent_id: sourceId,
             target_agent_id: target,
             link_type: linkType as "a2a" | "spawn",
@@ -340,17 +361,52 @@ export class AgentSync {
       }
     }
 
-    // Persist links (atomic replace)
+    // Merge: replace spawn links from config, but PRESERVE existing a2a links
     const prevLinks = this.registry.listAgentLinks(instance.id);
-    this.registry.replaceAgentLinks(
-      instance.id,
-      links.map((l) => ({
+    const existingA2aLinks = prevLinks
+      .filter((l) => l.link_type === "a2a")
+      .map((l) => ({
+        sourceAgentId: l.source_agent_id,
+        targetAgentId: l.target_agent_id,
+        linkType: l.link_type as "a2a" | "spawn",
+      }));
+
+    // Also preserve existing spawn links that are NOT in config
+    // (e.g. spawn links set via the builder UI that target @archetype or specific agents)
+    const configSpawnSet = new Set(
+      configSpawnLinks.map((l) => `${l.source_agent_id}:${l.target_agent_id}`),
+    );
+    const existingExtraSpawnLinks = prevLinks
+      .filter(
+        (l) =>
+          l.link_type === "spawn" &&
+          !configSpawnSet.has(`${l.source_agent_id}:${l.target_agent_id}`),
+      )
+      .map((l) => ({
+        sourceAgentId: l.source_agent_id,
+        targetAgentId: l.target_agent_id,
+        linkType: l.link_type as "a2a" | "spawn",
+      }));
+
+    const mergedLinks = [
+      ...existingA2aLinks,
+      ...existingExtraSpawnLinks,
+      ...configSpawnLinks.map((l) => ({
         sourceAgentId: l.source_agent_id,
         targetAgentId: l.target_agent_id,
         linkType: l.link_type,
       })),
-    );
-    const linksChanged = Math.abs(links.length - prevLinks.length);
+    ];
+
+    this.registry.replaceAgentLinks(instance.id, mergedLinks);
+    const linksChanged = Math.abs(mergedLinks.length - prevLinks.length);
+
+    // Return all links for the sync result
+    const links: SyncedLink[] = mergedLinks.map((l) => ({
+      source_agent_id: l.sourceAgentId,
+      target_agent_id: l.targetAgentId,
+      link_type: l.linkType,
+    }));
 
     return {
       agents: syncedAgents,
