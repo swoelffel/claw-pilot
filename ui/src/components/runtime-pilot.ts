@@ -306,7 +306,9 @@ export class RuntimePilot extends LitElement {
    */
   private async _detectPermanentSession(): Promise<string | undefined> {
     try {
-      const sessions: RuntimeSession[] = await fetchRuntimeSessions(this.slug);
+      const sessions: RuntimeSession[] = await fetchRuntimeSessions(this.slug, {
+        includeInternal: true,
+      });
       const sorted = sessions
         .filter((s) => s.persistent && s.state === "active")
         .sort((a, b) => {
