@@ -47,6 +47,13 @@ interface ServerMessage {
   text?: string;
   delta?: string;
   message?: string;
+  files?: Array<{
+    path: string;
+    filename: string;
+    title: string;
+    mimeType: string;
+    sizeBytes: number;
+  }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,7 +127,11 @@ export class WebChatChannel implements Channel {
       return;
     }
 
-    const payload: ServerMessage = { type: "message", text: message.text };
+    const payload: ServerMessage = {
+      type: "message",
+      text: message.text,
+      ...(message.files?.length ? { files: message.files } : {}),
+    };
     ws.send(JSON.stringify(payload));
   }
 

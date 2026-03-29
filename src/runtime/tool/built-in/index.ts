@@ -16,3 +16,4 @@ export { TodoWriteTool, TodoReadTool, clearTodos } from "./todo.js";
 export { SkillTool } from "./skill.js";
 export { MultiEditTool } from "./multiedit.js";
 export { CreateArtifactTool } from "./create-artifact.js";
+export { SendFileTool } from "./send-file.js";

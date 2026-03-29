@@ -14,6 +14,7 @@
  * - groupPolicy: controls group message handling
  */
 
+import * as nodeFs from "node:fs/promises";
 import type Database from "better-sqlite3";
 import type { Channel } from "../channel.js";
 import type { InboundMessage, InboundAttachment, OutboundMessage } from "../../types.js";
@@ -135,6 +136,18 @@ export class TelegramChannel implements Channel {
           await this.sendArtifactDocument(chatId, artifact);
         } catch (err) {
           logger.warn(`[telegram] Failed to send artifact document: ${err}`);
+        }
+      }
+    }
+
+    // Send workspace files as downloadable documents
+    if (message.files && message.files.length > 0) {
+      for (const file of message.files) {
+        try {
+          const buffer = await nodeFs.readFile(file.path);
+          await this.poller.sendDocument(chatId, buffer, file.filename, `📎 ${file.title}`);
+        } catch (err) {
+          logger.warn(`[telegram] Failed to send file "${file.filename}": ${err}`);
         }
       }
     }

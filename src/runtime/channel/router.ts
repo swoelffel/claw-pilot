@@ -32,7 +32,7 @@ import { ChannelMessageReceived, ChannelMessageSent, SubagentCompleted } from ".
 import { resolveAgentWorkspacePath } from "../../core/agent-workspace.js";
 import { runMiddlewarePipeline } from "../middleware/pipeline.js";
 import { listParts } from "../session/part.js";
-import type { OutboundArtifact } from "../types.js";
+import type { OutboundArtifact, OutboundFileDelivery } from "../types.js";
 
 // ---------------------------------------------------------------------------
 // Per-session serialization queue
@@ -191,8 +191,9 @@ export class ChannelRouter {
       }
     }
 
-    // 5. Extract artifacts from message parts (for channel delivery as documents)
+    // 5. Extract artifacts and file deliveries from message parts
     const artifacts = extractArtifacts(db, result.messageId);
+    const fileDeliveries = extractFileDeliveries(db, result.messageId);
 
     // 6. Build outbound message
     const response: OutboundMessage = {
@@ -201,6 +202,7 @@ export class ChannelRouter {
       ...(message.accountId !== undefined ? { accountId: message.accountId } : {}),
       text: result.text,
       ...(artifacts.length > 0 ? { artifacts } : {}),
+      ...(fileDeliveries.length > 0 ? { files: fileDeliveries } : {}),
     };
 
     // Emit sent event
@@ -413,6 +415,51 @@ function extractArtifacts(db: Database.Database, messageId: string): OutboundArt
   }
 
   return artifacts;
+}
+
+/**
+ * Extract file deliveries from assistant message parts.
+ * File deliveries are tool_call parts where toolName is "send_file".
+ * The metadata (path, filename, mimeType, sizeBytes) comes from the tool_result.
+ */
+function extractFileDeliveries(db: Database.Database, messageId: string): OutboundFileDelivery[] {
+  const parts = listParts(db, messageId);
+  const files: OutboundFileDelivery[] = [];
+
+  for (const part of parts) {
+    if (part.type !== "tool_call") continue;
+    let meta: { toolName?: string; toolCallId?: string };
+    try {
+      meta = JSON.parse(part.metadata ?? "{}") as typeof meta;
+    } catch {
+      continue;
+    }
+    if (meta.toolName !== "send_file") continue;
+
+    // Find the matching tool_result for file metadata
+    const resultPart = parts.find((p) => {
+      if (p.type !== "tool_result") return false;
+      try {
+        const rm = JSON.parse(p.metadata ?? "{}") as { toolCallId?: string };
+        return rm.toolCallId === meta.toolCallId;
+      } catch {
+        return false;
+      }
+    });
+
+    if (!resultPart?.content) continue;
+
+    try {
+      const data = JSON.parse(resultPart.content) as OutboundFileDelivery;
+      if (data.path && data.filename) {
+        files.push(data);
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return files;
 }
 
 // ---------------------------------------------------------------------------
