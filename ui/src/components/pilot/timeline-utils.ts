@@ -14,6 +14,8 @@ import type {
 
 const A2A_SENT_RE = /^\[message_sent\] To ([^:]+): ([\s\S]*)$/;
 const A2A_RECEIVED_RE = /^\[message_received\] From ([^:]+): ([\s\S]*)$/;
+// Target-side format: injected into the recipient's session by send-message.ts
+const A2A_FROM_RE = /^\[message_from:([^\]]+)\] ([\s\S]*)$/;
 
 // ---------------------------------------------------------------------------
 // Part type → TimelineEntryKind mapping
@@ -104,7 +106,23 @@ export function buildTimeline(messages: PilotMessage[], currentAgentId?: string)
         continue;
       }
 
-      // 3. Normal user message
+      // 3. Check for target-side A2A pattern: [message_from:agentId] content
+      const fromMatch = A2A_FROM_RE.exec(text);
+      if (fromMatch && fromMatch[1] && fromMatch[2] !== undefined) {
+        entries.push({
+          id: msg.id,
+          kind: "a2a_received",
+          timestamp: msg.createdAt,
+          source: currentAgentId ?? "agent",
+          message: msg,
+          a2aTarget: fromMatch[1],
+          a2aContent: fromMatch[2],
+          ...(channel !== undefined ? { channel } : {}),
+        });
+        continue;
+      }
+
+      // 4. Normal user message
       entries.push({
         id: msg.id,
         kind: "user_chat",
