@@ -871,13 +871,14 @@ export const agentDetailPanelStyles = css`
 
   .skill-row {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 8px;
     padding: 6px 8px;
     border-radius: 5px;
     font-size: 12px;
     cursor: pointer;
     transition: background 0.12s;
+    min-width: 0;
   }
 
   .skill-row:hover {
@@ -886,7 +887,6 @@ export const agentDetailPanelStyles = css`
 
   .skill-row input[type="checkbox"] {
     flex-shrink: 0;
-    margin-top: 2px;
   }
 
   .skill-row-name {
@@ -899,8 +899,11 @@ export const agentDetailPanelStyles = css`
   .skill-row-desc {
     color: var(--text-muted);
     font-size: 11px;
-    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     min-width: 0;
+    flex: 1;
   }
 
   /* ── Heartbeat tab ────────────────────────────────────────────────────── */

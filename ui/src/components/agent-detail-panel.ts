@@ -778,11 +778,6 @@ export class AgentDetailPanel extends LitElement {
         <div class="skills-list">
           ${this._availableSkills.map((skill) => {
             const checked = selectedSet.has(skill.name);
-            const short = skill.description
-              ? skill.description.length > 120
-                ? skill.description.slice(0, 117) + "…"
-                : skill.description
-              : "";
             return html`
               <label class="skill-row" title=${skill.description || skill.name}>
                 <input
@@ -801,7 +796,9 @@ export class AgentDetailPanel extends LitElement {
                   }}
                 />
                 <span class="skill-row-name">${skill.name}</span>
-                ${short ? html`<span class="skill-row-desc">${short}</span>` : nothing}
+                ${skill.description
+                  ? html`<span class="skill-row-desc">${skill.description}</span>`
+                  : nothing}
               </label>
             `;
           })}
