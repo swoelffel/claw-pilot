@@ -210,8 +210,8 @@ describe("migration v11 — rt_sessions new columns", () => {
     // Arrange + Act
     const db = initDatabase(dbPath);
 
-    // Assert: v21 is the latest migration
-    expect(schemaVersion(db)).toBe(21);
+    // Assert: v22 is the latest migration
+    expect(schemaVersion(db)).toBe(22);
     db.close();
   });
 });

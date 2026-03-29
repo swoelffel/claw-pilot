@@ -932,6 +932,73 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // v22: Sync agents.skills (UI whitelist) into runtime_config_json.
+    // The agents.skills column was a dead store — written by the UI but never
+    // read by the runtime. Now that the runtime checks RuntimeAgentConfig.skills,
+    // backfill existing whitelist data into the canonical runtime_config_json.
+    version: 22,
+    up(db) {
+      // Guard: skills column (v7) and runtime_config_json (v21) must exist
+      const cols = db.prepare("PRAGMA table_info(agents)").all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === "skills")) return;
+      const instCols = db.prepare("PRAGMA table_info(instances)").all() as Array<{ name: string }>;
+      if (!instCols.some((c) => c.name === "runtime_config_json")) return;
+
+      // Find agents with a non-null skills whitelist
+      const agents = db
+        .prepare(
+          `SELECT a.agent_id, a.skills, i.id AS instance_id, i.runtime_config_json
+           FROM agents a
+           JOIN instances i ON a.instance_id = i.id
+           WHERE a.skills IS NOT NULL AND i.runtime_config_json IS NOT NULL`,
+        )
+        .all() as Array<{
+        agent_id: string;
+        skills: string;
+        instance_id: number;
+        runtime_config_json: string;
+      }>;
+
+      // Group by instance (one runtime_config_json per instance)
+      const byInstance = new Map<number, { raw: string; patches: Array<[string, string[]]> }>();
+      for (const row of agents) {
+        let parsed: string[];
+        try {
+          parsed = JSON.parse(row.skills) as string[];
+          if (!Array.isArray(parsed)) continue;
+        } catch {
+          continue;
+        }
+        let entry = byInstance.get(row.instance_id);
+        if (!entry) {
+          entry = { raw: row.runtime_config_json, patches: [] };
+          byInstance.set(row.instance_id, entry);
+        }
+        entry.patches.push([row.agent_id, parsed]);
+      }
+
+      const update = db.prepare("UPDATE instances SET runtime_config_json = ? WHERE id = ?");
+
+      for (const [instanceId, { raw, patches }] of byInstance) {
+        try {
+          const config = JSON.parse(raw) as { agents?: Array<Record<string, unknown>> };
+          if (!Array.isArray(config.agents)) continue;
+
+          for (const [agentId, skills] of patches) {
+            const agent = config.agents.find((a) => a.id === agentId);
+            if (agent) {
+              agent.skills = skills;
+            }
+          }
+
+          update.run(JSON.stringify(config), instanceId);
+        } catch {
+          // Non-critical: skip malformed configs
+        }
+      }
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
