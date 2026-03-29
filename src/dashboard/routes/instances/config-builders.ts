@@ -34,6 +34,10 @@ export function buildInstanceConfig(
     instructionUrls: a.instructionUrls ?? [],
     bootstrapFiles: a.bootstrapFiles ?? [],
     archetype: a.archetype ?? null,
+    autoSelectSkills: a.autoSelectSkills ?? false,
+    ...(a.autoSelectSkillsTopN !== undefined
+      ? { autoSelectSkillsTopN: a.autoSelectSkillsTopN }
+      : {}),
     heartbeat: a.heartbeat?.every
       ? {
           every: a.heartbeat.every,

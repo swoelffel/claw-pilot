@@ -14,6 +14,7 @@ import type { RuntimeAgentConfig, RuntimeConfig } from "../config/index.js";
 import type { UserProfile } from "../profile/types.js";
 import type { InstanceSlug } from "../types.js";
 import { listAvailableSkills } from "../tool/built-in/skill.js";
+import { rankSkills } from "./skill-ranker.js";
 import { readWorkspaceState, writeWorkspaceState } from "../../core/workspace-state.js";
 import { getAgent, resolveEffectivePersistence } from "../agent/registry.js";
 import { logger } from "../../lib/logger.js";
@@ -193,6 +194,8 @@ export interface SystemPromptContext {
   runtimeConfig?: RuntimeConfig;
   /** User profile data for dynamic injection (replaces static USER.md) */
   userProfile?: UserProfile;
+  /** User message text — used for skill auto-selection when autoSelectSkills is enabled */
+  userText?: string;
 }
 
 /**
@@ -271,9 +274,9 @@ export async function buildSystemPrompt(ctx: SystemPromptContext): Promise<strin
     }
   }
 
-  // 3.6. Available skills block (proactive injection)
+  // 3.6. Available skills block (proactive injection or auto-select)
   if (ctx.workDir) {
-    const skillsBlock = await buildSkillsBlock(ctx.workDir, ctx.agentConfig);
+    const skillsBlock = await buildSkillsBlock(ctx.workDir, ctx.agentConfig, ctx.userText);
     if (skillsBlock) sections.push(skillsBlock);
   }
 
@@ -750,17 +753,22 @@ const MAX_SKILLS_IN_BLOCK = 150;
 const MAX_SKILLS_BLOCK_CHARS = 30_000;
 
 /**
- * Build the <available_skills> XML block for proactive injection into the system prompt.
+ * Build the <available_skills> XML block for injection into the system prompt.
  *
- * Lists all available and eligible skills (filtered by agent permissions).
+ * When autoSelectSkills is enabled, uses TF-IDF ranking to inject only the
+ * most relevant skills based on the user's message. Otherwise, lists all
+ * available and eligible skills (filtered by agent permissions).
+ *
  * Returns undefined if no skills are found.
  *
  * @param workDir     Working directory of the instance
- * @param agentConfig Agent config for permission filtering
+ * @param agentConfig Agent config for permission filtering and auto-select settings
+ * @param userText    Current user message text (used for auto-select ranking)
  */
 async function buildSkillsBlock(
   workDir: string,
   agentConfig: RuntimeAgentConfig,
+  userText?: string,
 ): Promise<string | undefined> {
   let skills;
   try {
@@ -772,13 +780,33 @@ async function buildSkillsBlock(
 
   if (skills.length === 0) return undefined;
 
-  // Cap at MAX_SKILLS_IN_BLOCK
+  const autoSelect = agentConfig.autoSelectSkills === true;
+
+  // --- Auto-select mode: rank and pick top-N ---
+  if (autoSelect && userText) {
+    const topN = agentConfig.autoSelectSkillsTopN ?? 5;
+    const selected = rankSkills(userText, skills, topN);
+
+    if (selected.length === 0) {
+      // No match — inject a minimal hint instead of all skills
+      return [
+        "<available_skills />",
+        "",
+        `No skills matched this task. ${skills.length} skills are available — ` +
+          "use the skill tool to discover them if needed.",
+      ].join("\n");
+    }
+
+    const remaining = skills.length - selected.length;
+    return buildSkillsXml(selected, remaining);
+  }
+
+  // --- Default mode: list all (capped) ---
   const capped = skills.slice(0, MAX_SKILLS_IN_BLOCK);
 
   const lines: string[] = ["<available_skills>"];
 
   for (const skill of capped) {
-    // Escape double quotes in description for XML attribute safety
     const descAttr =
       skill.description !== undefined
         ? ` description="${skill.description.replace(/"/g, "&quot;")}"`
@@ -800,5 +828,37 @@ async function buildSkillsBlock(
     return block.slice(0, MAX_SKILLS_BLOCK_CHARS);
   }
 
+  return block;
+}
+
+/** Build the XML block for auto-selected skills with an adapted instruction. */
+function buildSkillsXml(
+  selected: readonly { name: string; description?: string; path: string }[],
+  remainingCount: number,
+): string {
+  const lines: string[] = ["<available_skills>"];
+
+  for (const skill of selected) {
+    const descAttr =
+      skill.description !== undefined
+        ? ` description="${skill.description.replace(/"/g, "&quot;")}"`
+        : "";
+    lines.push(`  <skill name="${skill.name}"${descAttr} location="file://${skill.path}" />`);
+  }
+
+  lines.push("</available_skills>");
+  lines.push("");
+  lines.push(
+    "These skills were selected as most relevant to the current task. " +
+      "Load with the skill tool if applicable." +
+      (remainingCount > 0
+        ? ` ${remainingCount} other skills are also available — use the skill tool to discover them.`
+        : ""),
+  );
+
+  const block = lines.join("\n");
+  if (block.length > MAX_SKILLS_BLOCK_CHARS) {
+    return block.slice(0, MAX_SKILLS_BLOCK_CHARS);
+  }
   return block;
 }

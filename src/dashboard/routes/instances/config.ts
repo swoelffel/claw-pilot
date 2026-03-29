@@ -298,6 +298,10 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
               if (agentPatch.bootstrapFiles !== undefined)
                 agent.bootstrapFiles = agentPatch.bootstrapFiles;
               if (agentPatch.archetype !== undefined) agent.archetype = agentPatch.archetype;
+              if (agentPatch.autoSelectSkills !== undefined)
+                agent.autoSelectSkills = agentPatch.autoSelectSkills;
+              if (agentPatch.autoSelectSkillsTopN !== undefined)
+                agent.autoSelectSkillsTopN = agentPatch.autoSelectSkillsTopN;
               if (agentPatch.heartbeat !== undefined) {
                 if (agentPatch.heartbeat === null) {
                   agent.heartbeat = undefined;

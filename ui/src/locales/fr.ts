@@ -469,4 +469,7 @@ export const templates = {
   "adp-skills-available": "Skills disponibles",
   "adp-skills-save": "Enregistrer",
   "adp-skills-cancel": "Annuler",
+  "adp-skills-auto-select": "Sélection auto",
+  "adp-skills-auto-hint": "Les skills sont sélectionnées automatiquement selon la conversation.",
+  "adp-skills-manual-hint": "Choisissez manuellement les skills disponibles.",
 };
