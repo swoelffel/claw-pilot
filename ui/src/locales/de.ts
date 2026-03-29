@@ -461,4 +461,11 @@ export const templates = {
   "skills-group-workspace": "Workspace",
   "skills-group-global": "Global",
   "skills-group-remote": "Remote",
+
+  // agent-detail-panel skills tab
+  "adp-tab-skills": "Skills",
+  "adp-skills-empty": "Keine Skills für diese Instanz verfügbar.",
+  "adp-skills-available": "Verfügbare Skills",
+  "adp-skills-save": "Speichern",
+  "adp-skills-cancel": "Abbrechen",
 };
