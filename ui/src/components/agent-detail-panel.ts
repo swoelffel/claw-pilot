@@ -775,16 +775,20 @@ export class AgentDetailPanel extends LitElement {
         <div class="hb-section-title">
           ${msg("Available skills", { id: "adp-skills-available" })}
         </div>
-        <div class="tools-grid">
+        <div class="skills-list">
           ${this._availableSkills.map((skill) => {
             const checked = selectedSet.has(skill.name);
+            const short = skill.description
+              ? skill.description.length > 60
+                ? skill.description.slice(0, 57) + "…"
+                : skill.description
+              : "";
             return html`
-              <label class="tools-checkbox ${checked ? "checked" : ""}" title=${skill.description}>
+              <label class="skill-row" title=${skill.description || skill.name}>
                 <input
                   type="checkbox"
                   .checked=${checked}
                   @change=${() => {
-                    // Switch from "All" to explicit list on first uncheck
                     const current = isAll
                       ? this._availableSkills.map((s) => s.name)
                       : [...(this._editSkills ?? [])];
@@ -796,12 +800,8 @@ export class AgentDetailPanel extends LitElement {
                     this._skillsDirty = true;
                   }}
                 />
-                <span>${skill.name}</span>
-                ${skill.description
-                  ? html`<span style="color: var(--text-muted); font-size: 10px; margin-left: 4px;"
-                      >— ${skill.description}</span
-                    >`
-                  : nothing}
+                <span class="skill-row-name">${skill.name}</span>
+                ${short ? html`<span class="skill-row-desc">${short}</span>` : nothing}
               </label>
             `;
           })}

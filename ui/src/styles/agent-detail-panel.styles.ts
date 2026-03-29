@@ -860,34 +860,48 @@ export const agentDetailPanelStyles = css`
     border-color: var(--accent-border);
   }
 
-  /* ── Skills grid (checkboxes) ─────────────────────────────────────────── */
+  /* ── Skills list (row layout) ─────────────────────────────────────────── */
 
-  .skills-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 4px;
+  .skills-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
     margin-top: 4px;
   }
 
-  .skills-grid-label {
+  .skill-row {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
+    gap: 8px;
+    padding: 6px 8px;
     border-radius: 5px;
     font-size: 12px;
     cursor: pointer;
     transition: background 0.12s;
-    color: var(--text-secondary);
   }
 
-  .skills-grid-label:hover {
+  .skill-row:hover {
     background: var(--bg-border);
   }
 
-  .skills-grid-label.ineligible {
-    opacity: 0.45;
-    cursor: not-allowed;
+  .skill-row input[type="checkbox"] {
+    flex-shrink: 0;
+  }
+
+  .skill-row-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .skill-row-desc {
+    color: var(--text-muted);
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
   }
 
   /* ── Heartbeat tab ────────────────────────────────────────────────────── */
