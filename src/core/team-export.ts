@@ -17,8 +17,34 @@ import {
 // Config extraction helpers
 // ---------------------------------------------------------------------------
 
-/** Fields we extract per-agent from runtime.json agents[]. */
-const AGENT_CONFIG_KEYS = [
+/** Fields stripped from config_json because they are top-level in the YAML agent. */
+const STRIP_FROM_CONFIG = new Set(["id", "name", "isDefault"]);
+
+/**
+ * Extract config from an agent's config_json column (source of truth, v20+).
+ * Strips fields that are already top-level in the YAML agent schema.
+ */
+function extractConfigFromJson(configJson: string | null): Record<string, unknown> | undefined {
+  if (!configJson) return undefined;
+  try {
+    const parsed = JSON.parse(configJson) as Record<string, unknown>;
+    const result: Record<string, unknown> = {};
+    let hasKey = false;
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!STRIP_FROM_CONFIG.has(key) && value !== undefined) {
+        result[key] = value;
+        hasKey = true;
+      }
+    }
+    return hasKey ? result : undefined;
+  } catch {
+    // intentionally ignored — invalid JSON in config_json
+    return undefined;
+  }
+}
+
+/** Legacy fallback: extract config from runtime.json agents[] for pre-v20 agents. */
+const LEGACY_CONFIG_KEYS = [
   "model",
   "toolProfile",
   "permissions",
@@ -33,42 +59,28 @@ const AGENT_CONFIG_KEYS = [
   "groupChat",
 ] as const;
 
-function pick(
-  obj: Record<string, unknown>,
-  keys: readonly string[],
-): Record<string, unknown> | undefined {
-  const result: Record<string, unknown> = {};
-  let hasKey = false;
-  for (const key of keys) {
-    if (key in obj && obj[key] !== undefined) {
-      result[key] = obj[key];
-      hasKey = true;
-    }
-  }
-  return hasKey ? result : undefined;
-}
-
-/**
- * Extract per-agent config from the parsed runtime.json.
- * Reads from the agents[] array entries.
- */
-function extractAgentConfig(
+function extractAgentConfigLegacy(
   runtimeConfig: Record<string, unknown>,
   agentId: string,
   isDefault: boolean,
 ): Record<string, unknown> | undefined {
   const agents = (runtimeConfig["agents"] ?? []) as Array<Record<string, unknown>>;
-
-  // For the default agent, try to find it in the agents array
   const entry = agents.find((a) => a["id"] === agentId);
   if (!entry) {
-    // If default agent and not in array, extract defaultModel as config
     if (isDefault && runtimeConfig["defaultModel"]) {
       return { model: runtimeConfig["defaultModel"] };
     }
     return undefined;
   }
-  return pick(entry, AGENT_CONFIG_KEYS);
+  const result: Record<string, unknown> = {};
+  let hasKey = false;
+  for (const key of LEGACY_CONFIG_KEYS) {
+    if (key in entry && entry[key] !== undefined) {
+      result[key] = entry[key];
+      hasKey = true;
+    }
+  }
+  return hasKey ? result : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -130,22 +142,31 @@ export async function exportInstanceTeam(
   registry: Registry,
   instance: InstanceRecord,
 ): Promise<TeamFile> {
-  // 1. Force sync to ensure DB is up-to-date
+  // 1. Force sync to ensure DB (including config_json) is up-to-date
   const agentSync = new AgentSync(conn, registry);
   await agentSync.sync(instance);
 
-  // 2. Read runtime.json for config extraction
-  const configRaw = await conn.readFile(instance.config_path);
-  const runtimeConfig = JSON.parse(configRaw) as Record<string, unknown>;
+  // 2. Read runtime.json as fallback for pre-v20 agents without config_json
+  let runtimeConfig: Record<string, unknown> | undefined;
+  try {
+    const configRaw = await conn.readFile(instance.config_path);
+    runtimeConfig = JSON.parse(configRaw) as Record<string, unknown>;
+  } catch {
+    // intentionally ignored — runtime.json may not exist for new instances
+  }
 
   // 3. Load agents
   const agents = registry.listAgents(instance.slug);
 
-  // 4. Build team agents
+  // 4. Build team agents — prefer config_json, fall back to runtime.json
   const teamAgents: TeamAgent[] = [];
   for (const agent of agents) {
     const files = registry.listAgentFiles(agent.id);
-    const config = extractAgentConfig(runtimeConfig, agent.agent_id, agent.is_default === 1);
+    const config =
+      extractConfigFromJson(agent.config_json) ??
+      (runtimeConfig
+        ? extractAgentConfigLegacy(runtimeConfig, agent.agent_id, agent.is_default === 1)
+        : undefined);
     teamAgents.push(buildTeamAgent(agent, files, config));
   }
 
@@ -157,8 +178,8 @@ export async function exportInstanceTeam(
     type: l.link_type,
   }));
 
-  // 6. Extract defaults from runtime.json
-  const defaults = runtimeConfig["defaultModel"]
+  // 6. Extract defaults from runtime.json (or instance config)
+  const defaults = runtimeConfig?.["defaultModel"]
     ? { model: runtimeConfig["defaultModel"] }
     : undefined;
 
@@ -186,13 +207,13 @@ export function exportBlueprintTeam(registry: Registry, blueprintId: number): Te
   // 1. Load agents
   const agents = registry.listBlueprintAgents(blueprintId);
 
-  // 2. Build team agents (no runtime.json for blueprints)
+  // 2. Build team agents — prefer config_json, fall back to model field
   const teamAgents: TeamAgent[] = [];
   for (const agent of agents) {
     const files = registry.listAgentFiles(agent.id);
-    // For blueprints, config comes from the model field only
-    let config: Record<string, unknown> | undefined;
-    if (agent.model) {
+    let config = extractConfigFromJson(agent.config_json);
+    if (!config && agent.model) {
+      // Legacy fallback: blueprints before config_json only stored the model
       try {
         const parsed = JSON.parse(agent.model);
         config = { model: parsed };
@@ -201,7 +222,6 @@ export function exportBlueprintTeam(registry: Registry, blueprintId: number): Te
         config = { model: agent.model };
       }
     }
-
     teamAgents.push(buildTeamAgent(agent, files, config));
   }
 
@@ -213,16 +233,19 @@ export function exportBlueprintTeam(registry: Registry, blueprintId: number): Te
     type: l.link_type,
   }));
 
-  // 4. Extract defaults.model from the default agent's model (if any)
+  // 4. Extract defaults.model from the default agent's config
   const defaultAgent = agents.find((a) => a.is_default === 1);
-  let defaultModel: string | undefined;
-  if (defaultAgent?.model) {
-    try {
-      // model may be stored as JSON (complex model config) or bare string
-      defaultModel = JSON.parse(defaultAgent.model) as string;
-    } catch {
-      // intentionally ignored — model is a bare string
-      defaultModel = defaultAgent.model;
+  let defaultModel: string | unknown | undefined;
+  if (defaultAgent) {
+    const defaultConfig = extractConfigFromJson(defaultAgent.config_json);
+    defaultModel = defaultConfig?.["model"];
+    if (!defaultModel && defaultAgent.model) {
+      try {
+        defaultModel = JSON.parse(defaultAgent.model) as string;
+      } catch {
+        // intentionally ignored — model is a bare string
+        defaultModel = defaultAgent.model;
+      }
     }
   }
   const defaults = defaultModel ? ({ model: defaultModel } as TeamFile["defaults"]) : undefined;

@@ -164,11 +164,21 @@ async function _importTeamCore(
 
       const createdAt = now();
 
+      // Reconstruct config_json from YAML agent config + top-level fields
+      const configJsonValue = agent.config
+        ? JSON.stringify({
+            id: agent.id,
+            name: agent.name,
+            isDefault: agent.is_default,
+            ...agent.config,
+          })
+        : null;
+
       if (target.type === "blueprint") {
         db.prepare(
           `INSERT INTO agents (blueprint_id, agent_id, name, model, workspace_path, is_default,
-           role, tags, notes, skills, position_x, position_y, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           role, tags, notes, skills, position_x, position_y, created_at, config_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).run(
           target.blueprintId,
           agent.id,
@@ -183,12 +193,13 @@ async function _importTeamCore(
           agent.meta?.position?.x ?? null,
           agent.meta?.position?.y ?? null,
           createdAt,
+          configJsonValue,
         );
       } else {
         db.prepare(
           `INSERT INTO agents (instance_id, agent_id, name, model, workspace_path, is_default,
-           role, tags, notes, position_x, position_y, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           role, tags, notes, position_x, position_y, created_at, config_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).run(
           target.instanceId,
           agent.id,
@@ -202,6 +213,7 @@ async function _importTeamCore(
           agent.meta?.position?.x ?? null,
           agent.meta?.position?.y ?? null,
           createdAt,
+          configJsonValue,
         );
       }
 
@@ -430,34 +442,13 @@ function mergeTeamIntoRuntimeConfig(config: Record<string, unknown>, team: TeamF
       entry["isDefault"] = true;
     }
 
-    // Spread config fields
+    // Spread all config fields into the runtime.json agent entry
     if (agent.config) {
-      const {
-        model,
-        toolProfile,
-        permissions,
-        subagents,
-        tools,
-        params,
-        archetype,
-        heartbeat,
-        humanDelay,
-        identity,
-        sandbox,
-        groupChat,
-      } = agent.config;
-      if (model !== undefined) entry["model"] = model;
-      if (toolProfile !== undefined) entry["toolProfile"] = toolProfile;
-      if (permissions !== undefined) entry["permissions"] = permissions;
-      if (subagents !== undefined) entry["subagents"] = subagents;
-      if (tools !== undefined) entry["tools"] = tools;
-      if (params !== undefined) entry["params"] = params;
-      if (archetype !== undefined) entry["archetype"] = archetype;
-      if (heartbeat !== undefined) entry["heartbeat"] = heartbeat;
-      if (humanDelay !== undefined) entry["humanDelay"] = humanDelay;
-      if (identity !== undefined) entry["identity"] = identity;
-      if (sandbox !== undefined) entry["sandbox"] = sandbox;
-      if (groupChat !== undefined) entry["groupChat"] = groupChat;
+      for (const [key, value] of Object.entries(agent.config)) {
+        if (value !== undefined) {
+          entry[key] = value;
+        }
+      }
     }
 
     // Inject subagents.allowAgents from spawn links

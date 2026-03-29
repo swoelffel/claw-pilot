@@ -146,9 +146,9 @@ describe("importBlueprintTeam()", () => {
     if (!("dry_run" in result)) {
       expect(result.agents_imported).toBe(2);
       expect(result.links_imported).toBe(1);
-      // main has SOUL.md (1 from YAML) + 3 gap-filled (AGENTS, USER, HEARTBEAT)
-      // helper has 0 from YAML + 4 gap-filled (all EXPORTABLE_FILES)
-      expect(result.files_written).toBe(8);
+      // main has SOUL.md (1 from YAML) + 4 gap-filled (AGENTS, USER, HEARTBEAT, BOOTSTRAP)
+      // helper has 0 from YAML + 5 gap-filled (all EXPORTABLE_FILES)
+      expect(result.files_written).toBe(10);
     }
   });
 
@@ -190,8 +190,8 @@ describe("importBlueprintTeam()", () => {
     if ("dry_run" in result) {
       expect(result.summary.agents_to_import).toBe(2);
       expect(result.summary.links_to_import).toBe(1);
-      // main has SOUL.md (1 YAML) + 3 gap-fills; helper has 0 YAML + 4 gap-fills = 8 total
-      expect(result.summary.files_to_write).toBe(8);
+      // main has SOUL.md (1 YAML) + 4 gap-fills; helper has 0 YAML + 5 gap-fills = 10 total
+      expect(result.summary.files_to_write).toBe(10);
       expect(result.summary.agents_to_remove).toBe(0); // no existing agents
       expect(result.summary.current_agent_count).toBe(0);
     }
@@ -278,8 +278,8 @@ describe("importInstanceTeam()", () => {
     if ("dry_run" in result) {
       expect(result.summary.agents_to_import).toBe(2);
       expect(result.summary.links_to_import).toBe(1);
-      // main has SOUL.md (1 YAML) + 3 gap-fills; helper has 0 YAML + 4 gap-fills = 8 total
-      expect(result.summary.files_to_write).toBe(8);
+      // main has SOUL.md (1 YAML) + 4 gap-fills; helper has 0 YAML + 5 gap-fills = 10 total
+      expect(result.summary.files_to_write).toBe(10);
     }
 
     // No agents should have been written to DB
@@ -368,10 +368,10 @@ describe("importInstanceTeam()", () => {
     const result = await importInstanceTeam(db, registry, conn, instance, team, "/run/user/1000");
 
     if (!("dry_run" in result)) {
-      // main: 1 YAML (SOUL.md) + 3 gap-filled (AGENTS, USER, HEARTBEAT) = 4
-      // helper: 0 YAML + 4 gap-filled (all EXPORTABLE_FILES) = 4
-      // Total: 8
-      expect(result.files_written).toBe(8);
+      // main: 1 YAML (SOUL.md) + 4 gap-filled (AGENTS, USER, HEARTBEAT, BOOTSTRAP) = 5
+      // helper: 0 YAML + 5 gap-filled (all EXPORTABLE_FILES) = 5
+      // Total: 10
+      expect(result.files_written).toBe(10);
     }
   });
 });
@@ -381,7 +381,7 @@ describe("importInstanceTeam()", () => {
 // ---------------------------------------------------------------------------
 
 describe("gap-fill — missing workspace files seeded from templates", () => {
-  it("blueprint import — partial files get gap-filled to all 4 EXPORTABLE_FILES", async () => {
+  it("blueprint import — partial files get gap-filled to all 5 EXPORTABLE_FILES", async () => {
     const blueprint = seedBlueprint();
     // Agent with only AGENTS.md and SOUL.md — missing USER, HEARTBEAT
     const team: TeamFile = {
@@ -406,8 +406,8 @@ describe("gap-fill — missing workspace files seeded from templates", () => {
     const files = registry.listAgentFiles(agents[0]!.id);
     const filenames = files.map((f) => f.filename).sort();
 
-    // Should have all 4 EXPORTABLE_FILES
-    expect(filenames).toEqual(["AGENTS.md", "HEARTBEAT.md", "SOUL.md", "USER.md"]);
+    // Should have all 5 EXPORTABLE_FILES
+    expect(filenames).toEqual(["AGENTS.md", "BOOTSTRAP.md", "HEARTBEAT.md", "SOUL.md", "USER.md"]);
   });
 
   it("blueprint import — YAML-provided files are NOT overwritten by templates", async () => {
@@ -434,7 +434,7 @@ describe("gap-fill — missing workspace files seeded from templates", () => {
     expect(soulFile?.content).toBe(customContent);
   });
 
-  it("blueprint import — agent with ALL 4 EXPORTABLE files gets zero gap-fills", async () => {
+  it("blueprint import — agent with ALL 5 EXPORTABLE files gets zero gap-fills", async () => {
     const blueprint = seedBlueprint();
     const team: TeamFile = {
       version: "1",
@@ -449,6 +449,7 @@ describe("gap-fill — missing workspace files seeded from templates", () => {
             "SOUL.md": "# S",
             "USER.md": "# U",
             "HEARTBEAT.md": "# H",
+            "BOOTSTRAP.md": "# B",
           },
         },
       ],
@@ -458,8 +459,8 @@ describe("gap-fill — missing workspace files seeded from templates", () => {
     const result = await importBlueprintTeam(db, registry, blueprint.id, team);
 
     if (!("dry_run" in result)) {
-      // 4 YAML files, 0 gap-filled
-      expect(result.files_written).toBe(4);
+      // 5 YAML files, 0 gap-filled
+      expect(result.files_written).toBe(5);
     }
   });
 
@@ -490,7 +491,7 @@ describe("gap-fill — missing workspace files seeded from templates", () => {
     expect(conn.files.get(path.join(workspaceDir, "USER.md"))).toBe("# Custom user");
 
     // Gap-filled files should exist on disk
-    for (const filename of ["AGENTS.md", "SOUL.md", "HEARTBEAT.md"]) {
+    for (const filename of ["AGENTS.md", "SOUL.md", "HEARTBEAT.md", "BOOTSTRAP.md"]) {
       const filePath = path.join(workspaceDir, filename);
       expect(conn.files.has(filePath)).toBe(true);
       // Gap-filled content should not be empty
@@ -518,11 +519,190 @@ describe("gap-fill — missing workspace files seeded from templates", () => {
 
     await importInstanceTeam(db, registry, conn, instance, team, "/run/user/1000");
 
-    // Check DB has all 4 EXPORTABLE files for the agent
+    // Check DB has all 5 EXPORTABLE files for the agent
     const agents = registry.listAgents("test-inst");
     expect(agents).toHaveLength(1);
     const files = registry.listAgentFiles(agents[0]!.id);
     const filenames = files.map((f) => f.filename).sort();
-    expect(filenames).toEqual(["AGENTS.md", "HEARTBEAT.md", "SOUL.md", "USER.md"]);
+    expect(filenames).toEqual(["AGENTS.md", "BOOTSTRAP.md", "HEARTBEAT.md", "SOUL.md", "USER.md"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// config_json persistence tests (v2)
+// ---------------------------------------------------------------------------
+
+describe("config_json — written on import", () => {
+  it("blueprint import — config_json is populated in DB with full config", async () => {
+    const blueprint = seedBlueprint();
+    const team: TeamFile = {
+      version: "2",
+      exported_at: "2026-01-01T00:00:00Z",
+      agents: [
+        {
+          id: "pilot",
+          name: "Pilot",
+          is_default: true,
+          config: {
+            model: "anthropic/claude-opus-4-6",
+            toolProfile: "manager",
+            persistence: "permanent",
+            thinking: { enabled: true, budgetTokens: 20000 },
+            archetype: "orchestrator",
+            temperature: 0.7,
+          },
+        },
+      ],
+      links: [],
+    };
+
+    await importBlueprintTeam(db, registry, blueprint.id, team);
+
+    const agents = registry.listBlueprintAgents(blueprint.id);
+    expect(agents).toHaveLength(1);
+    expect(agents[0]!.config_json).not.toBeNull();
+
+    const configJson = JSON.parse(agents[0]!.config_json!) as Record<string, unknown>;
+    expect(configJson["id"]).toBe("pilot");
+    expect(configJson["name"]).toBe("Pilot");
+    expect(configJson["isDefault"]).toBe(true);
+    expect(configJson["model"]).toBe("anthropic/claude-opus-4-6");
+    expect(configJson["persistence"]).toBe("permanent");
+    expect(configJson["thinking"]).toEqual({ enabled: true, budgetTokens: 20000 });
+    expect(configJson["archetype"]).toBe("orchestrator");
+    expect(configJson["temperature"]).toBe(0.7);
+  });
+
+  it("instance import — config_json is populated in DB", async () => {
+    const instance = seedInstance();
+    conn.files.set(CONFIG_PATH, MINIMAL_RUNTIME_JSON);
+
+    const team: TeamFile = {
+      version: "2",
+      exported_at: "2026-01-01T00:00:00Z",
+      agents: [
+        {
+          id: "pilot",
+          name: "Pilot",
+          is_default: true,
+          config: {
+            model: "anthropic/claude-opus-4-6",
+            persistence: "permanent",
+            agentToAgent: { enabled: true, allowList: ["qa"] },
+          },
+        },
+      ],
+      links: [],
+    };
+
+    await importInstanceTeam(db, registry, conn, instance, team, "/run/user/1000");
+
+    const agents = registry.listAgents("test-inst");
+    expect(agents).toHaveLength(1);
+    expect(agents[0]!.config_json).not.toBeNull();
+
+    const configJson = JSON.parse(agents[0]!.config_json!) as Record<string, unknown>;
+    expect(configJson["persistence"]).toBe("permanent");
+    expect(configJson["agentToAgent"]).toEqual({ enabled: true, allowList: ["qa"] });
+  });
+
+  it("instance import — v2 config fields appear in runtime.json", async () => {
+    const instance = seedInstance();
+    conn.files.set(CONFIG_PATH, MINIMAL_RUNTIME_JSON);
+
+    const team: TeamFile = {
+      version: "2",
+      exported_at: "2026-01-01T00:00:00Z",
+      agents: [
+        {
+          id: "pilot",
+          name: "Pilot",
+          is_default: true,
+          config: {
+            model: "anthropic/claude-opus-4-6",
+            persistence: "permanent",
+            thinking: { enabled: true, budgetTokens: 15000 },
+            temperature: 0.5,
+            maxSteps: 30,
+          },
+        },
+      ],
+      links: [],
+    };
+
+    await importInstanceTeam(db, registry, conn, instance, team, "/run/user/1000");
+
+    // Check that runtime.json has the new fields
+    const configRaw = conn.files.get(CONFIG_PATH)!;
+    const config = JSON.parse(configRaw) as Record<string, unknown>;
+    const agents = config["agents"] as Array<Record<string, unknown>>;
+    expect(agents).toHaveLength(1);
+    expect(agents[0]!["persistence"]).toBe("permanent");
+    expect(agents[0]!["thinking"]).toEqual({ enabled: true, budgetTokens: 15000 });
+    expect(agents[0]!["temperature"]).toBe(0.5);
+    expect(agents[0]!["maxSteps"]).toBe(30);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Backward compatibility (v1 YAML import)
+// ---------------------------------------------------------------------------
+
+describe("backward compat — v1 YAML import", () => {
+  it("v1 YAML with partial config is accepted and config_json is built", async () => {
+    const blueprint = seedBlueprint();
+    const team: TeamFile = {
+      version: "1",
+      exported_at: "2026-01-01T00:00:00Z",
+      agents: [
+        {
+          id: "pilot",
+          name: "Pilot",
+          is_default: true,
+          config: {
+            model: "anthropic/claude-haiku-4-5",
+            toolProfile: "manager",
+            archetype: "orchestrator",
+          },
+        },
+      ],
+      links: [],
+    };
+
+    await importBlueprintTeam(db, registry, blueprint.id, team);
+
+    const agents = registry.listBlueprintAgents(blueprint.id);
+    expect(agents[0]!.config_json).not.toBeNull();
+
+    const configJson = JSON.parse(agents[0]!.config_json!) as Record<string, unknown>;
+    expect(configJson["model"]).toBe("anthropic/claude-haiku-4-5");
+    expect(configJson["toolProfile"]).toBe("manager");
+    expect(configJson["archetype"]).toBe("orchestrator");
+    // v2 fields not present in v1 YAML — should not be in config_json
+    expect(configJson).not.toHaveProperty("persistence");
+    expect(configJson).not.toHaveProperty("thinking");
+  });
+
+  it("v1 YAML without config still works", async () => {
+    const blueprint = seedBlueprint();
+    const team: TeamFile = {
+      version: "1",
+      exported_at: "2026-01-01T00:00:00Z",
+      agents: [
+        {
+          id: "pilot",
+          name: "Pilot",
+          is_default: true,
+        },
+      ],
+      links: [],
+    };
+
+    await importBlueprintTeam(db, registry, blueprint.id, team);
+
+    const agents = registry.listBlueprintAgents(blueprint.id);
+    expect(agents).toHaveLength(1);
+    // config_json should be null when no config provided
+    expect(agents[0]!.config_json).toBeNull();
   });
 });
