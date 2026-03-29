@@ -185,6 +185,8 @@ export const RuntimeConfigPatchSchema = z.object({
           .enum(["planner", "generator", "evaluator", "orchestrator", "analyst", "communicator"])
           .nullable()
           .optional(),
+        autoSelectSkills: z.boolean().optional(),
+        autoSelectSkillsTopN: z.number().int().min(1).max(20).optional(),
         heartbeat: z
           .object({
             every: z.string().optional(),

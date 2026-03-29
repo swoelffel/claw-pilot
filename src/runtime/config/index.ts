@@ -151,6 +151,18 @@ const AgentConfigSchema = z.object({
    */
   skillUrls: z.array(z.string().url()).optional(),
   /**
+   * When true, the runtime pre-selects only the most relevant skills based on the
+   * user's message (TF-IDF ranking) instead of listing all skills in the system prompt.
+   * The agent can still load any skill via the skill tool.
+   * Default: false (backward-compatible — all eligible skills listed).
+   */
+  autoSelectSkills: z.boolean().optional(),
+  /**
+   * Maximum number of skills to inject when autoSelectSkills is true.
+   * Ignored when autoSelectSkills is false. Default: 5.
+   */
+  autoSelectSkillsTopN: z.number().int().min(1).max(20).optional(),
+  /**
    * Behavioral archetype of the agent.
    * Controls system prompt injection (archetype-specific behavioral instructions)
    * and enables archetype-based routing: task({ subagent_type: "evaluator" })

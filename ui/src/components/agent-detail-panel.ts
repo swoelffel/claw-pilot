@@ -80,6 +80,8 @@ export class AgentDetailPanel extends LitElement {
   @state() private _skillsDirty = false;
   @state() private _skillsSaving = false;
   @state() private _skillsError = "";
+  @state() private _autoSelectSkills = false;
+  @state() private _autoSelectSkillsOriginal = false;
   // Providers list for the provider/model selects (lazy-loaded)
   @state() private _providers: { id: string; label: string; models: string[] }[] | null = null;
   @state() private _loadingProviders = false;
@@ -772,6 +774,29 @@ export class AgentDetailPanel extends LitElement {
 
     return html`
       <div class="hb-tab">
+        <!-- Auto-select toggle -->
+        <div class="hb-field-row" style="margin-bottom: 4px;">
+          <label class="hb-label">${msg("Auto-select", { id: "adp-skills-auto-select" })}</label>
+          <div
+            class="toggle-track ${this._autoSelectSkills ? "on" : ""}"
+            @click=${() => {
+              this._autoSelectSkills = !this._autoSelectSkills;
+              this._skillsDirty = true;
+            }}
+          >
+            <div class="toggle-thumb"></div>
+          </div>
+        </div>
+        <p style="color: var(--text-muted); font-size: 12px; margin: 0 0 12px;">
+          ${this._autoSelectSkills
+            ? msg("Skills are auto-selected based on the conversation.", {
+                id: "adp-skills-auto-hint",
+              })
+            : msg("Manually choose which skills are available.", {
+                id: "adp-skills-manual-hint",
+              })}
+        </p>
+
         <div class="hb-section-title">
           ${msg("Available skills", { id: "adp-skills-available" })}
         </div>
@@ -779,10 +804,14 @@ export class AgentDetailPanel extends LitElement {
           ${this._availableSkills.map((skill) => {
             const checked = selectedSet.has(skill.name);
             return html`
-              <label class="skill-row" title=${skill.description || skill.name}>
+              <label
+                class="skill-row ${this._autoSelectSkills ? "disabled" : ""}"
+                title=${skill.description || skill.name}
+              >
                 <input
                   type="checkbox"
                   .checked=${checked}
+                  ?disabled=${this._autoSelectSkills}
                   @change=${() => {
                     const current = isAll
                       ? this._availableSkills.map((s) => s.name)
@@ -822,6 +851,7 @@ export class AgentDetailPanel extends LitElement {
                   ?disabled=${this._skillsSaving}
                   @click=${() => {
                     this._editSkills = this.agent.skills;
+                    this._autoSelectSkills = this._autoSelectSkillsOriginal;
                     this._skillsDirty = false;
                     this._skillsError = "";
                   }}
@@ -840,15 +870,33 @@ export class AgentDetailPanel extends LitElement {
     this._skillsSaving = true;
     this._skillsError = "";
     try {
+      const promises: Promise<unknown>[] = [];
+
       if (this.context.kind === "instance") {
-        await updateAgentMeta(this.context.slug, this.agent.agent_id, {
-          skills: this._editSkills,
-        });
+        // Save manual skill whitelist (DB meta)
+        promises.push(
+          updateAgentMeta(this.context.slug, this.agent.agent_id, {
+            skills: this._editSkills,
+          }),
+        );
+        // Save autoSelectSkills toggle (runtime config) — only if changed
+        if (this._autoSelectSkills !== this._autoSelectSkillsOriginal) {
+          promises.push(
+            patchInstanceConfig(this.context.slug, {
+              agents: [{ id: this.agent.agent_id, autoSelectSkills: this._autoSelectSkills }],
+            }),
+          );
+        }
       } else {
-        await updateBlueprintAgentMeta(this.context.blueprintId, this.agent.agent_id, {
-          skills: this._editSkills,
-        });
+        promises.push(
+          updateBlueprintAgentMeta(this.context.blueprintId, this.agent.agent_id, {
+            skills: this._editSkills,
+          }),
+        );
       }
+
+      await Promise.all(promises);
+      this._autoSelectSkillsOriginal = this._autoSelectSkills;
       this._skillsDirty = false;
       this.dispatchEvent(new CustomEvent("agent-meta-updated", { bubbles: true, composed: true }));
     } catch (err) {
@@ -1194,8 +1242,17 @@ export class AgentDetailPanel extends LitElement {
     if (this._loadingSkills || this.context?.kind !== "instance") return;
     this._loadingSkills = true;
     try {
-      const res = await fetchInstanceSkills(this.context.slug);
+      const [res, instanceConfig] = await Promise.all([
+        fetchInstanceSkills(this.context.slug),
+        fetchInstanceConfig(this.context.slug),
+      ]);
       this._availableSkills = res.skills;
+      const agentEntry = instanceConfig.agents.find((a) => a.id === this.agent.agent_id) as
+        | Record<string, unknown>
+        | undefined;
+      const autoSelect = (agentEntry?.autoSelectSkills as boolean | undefined) ?? false;
+      this._autoSelectSkills = autoSelect;
+      this._autoSelectSkillsOriginal = autoSelect;
     } catch {
       this._availableSkills = [];
     } finally {

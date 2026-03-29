@@ -906,6 +906,12 @@ export const agentDetailPanelStyles = css`
     flex: 1;
   }
 
+  .skill-row.disabled {
+    opacity: 0.45;
+    cursor: default;
+    pointer-events: none;
+  }
+
   /* ── Heartbeat tab ────────────────────────────────────────────────────── */
 
   .hb-tab {

@@ -228,6 +228,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       sessionId,
       ...(runtimeConfig !== undefined ? { runtimeConfig } : {}),
       ...(userProfile !== undefined ? { userProfile } : {}),
+      ...(userText !== undefined ? { userText } : {}),
     });
 
     // 2b. Cache system prompt and notify observers (dashboard context panel)
