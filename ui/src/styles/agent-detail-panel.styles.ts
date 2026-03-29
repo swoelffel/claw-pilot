@@ -871,7 +871,7 @@ export const agentDetailPanelStyles = css`
 
   .skill-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
     padding: 6px 8px;
     border-radius: 5px;
@@ -886,6 +886,7 @@ export const agentDetailPanelStyles = css`
 
   .skill-row input[type="checkbox"] {
     flex-shrink: 0;
+    margin-top: 2px;
   }
 
   .skill-row-name {
@@ -898,9 +899,7 @@ export const agentDetailPanelStyles = css`
   .skill-row-desc {
     color: var(--text-muted);
     font-size: 11px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    line-height: 1.4;
     min-width: 0;
   }
 

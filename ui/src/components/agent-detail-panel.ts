@@ -779,8 +779,8 @@ export class AgentDetailPanel extends LitElement {
           ${this._availableSkills.map((skill) => {
             const checked = selectedSet.has(skill.name);
             const short = skill.description
-              ? skill.description.length > 60
-                ? skill.description.slice(0, 57) + "…"
+              ? skill.description.length > 120
+                ? skill.description.slice(0, 117) + "…"
                 : skill.description
               : "";
             return html`
