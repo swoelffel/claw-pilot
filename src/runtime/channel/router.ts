@@ -296,14 +296,43 @@ function buildAgentConfig(
     name: agent.name,
     model: agent.model ?? config.defaultModel,
     systemPrompt: agent.prompt,
-    temperature: agent.temperature,
-    maxSteps: agent.steps ?? 20,
-    allowSubAgents: true,
-    toolProfile: "executor",
+    temperature: agentConfigFromRuntime?.temperature ?? agent.temperature,
+    maxSteps: agentConfigFromRuntime?.maxSteps ?? agent.steps ?? 20,
+    allowSubAgents: agentConfigFromRuntime?.allowSubAgents ?? true,
+    toolProfile: agentConfigFromRuntime?.toolProfile ?? "executor",
     isDefault: false,
     permissions: agent.permission ?? [],
     inheritWorkspace: true,
     persistence,
+    // Skill fields (from runtime config — source of truth since v21)
+    ...(agentConfigFromRuntime?.skills !== undefined
+      ? { skills: agentConfigFromRuntime.skills }
+      : {}),
+    ...(agentConfigFromRuntime?.skillUrls !== undefined
+      ? { skillUrls: agentConfigFromRuntime.skillUrls }
+      : {}),
+    ...(agentConfigFromRuntime?.autoSelectSkills !== undefined
+      ? { autoSelectSkills: agentConfigFromRuntime.autoSelectSkills }
+      : {}),
+    ...(agentConfigFromRuntime?.autoSelectSkillsTopN !== undefined
+      ? { autoSelectSkillsTopN: agentConfigFromRuntime.autoSelectSkillsTopN }
+      : {}),
+    // Other config fields forwarded from runtime config
+    ...(agentConfigFromRuntime?.timeoutMs !== undefined
+      ? { timeoutMs: agentConfigFromRuntime.timeoutMs }
+      : {}),
+    ...(agentConfigFromRuntime?.chunkTimeoutMs !== undefined
+      ? { chunkTimeoutMs: agentConfigFromRuntime.chunkTimeoutMs }
+      : {}),
+    ...(agentConfigFromRuntime?.thinking !== undefined
+      ? { thinking: agentConfigFromRuntime.thinking }
+      : {}),
+    ...(agentConfigFromRuntime?.promptMode !== undefined
+      ? { promptMode: agentConfigFromRuntime.promptMode }
+      : {}),
+    ...(agentConfigFromRuntime?.archetype !== undefined
+      ? { archetype: agentConfigFromRuntime.archetype }
+      : {}),
   };
 }
 

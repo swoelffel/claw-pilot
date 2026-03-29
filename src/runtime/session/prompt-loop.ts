@@ -279,6 +279,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       abort: input.abort ?? new AbortController().signal,
       senderIsOwner,
       ...(workDir !== undefined ? { workDir } : {}),
+      agentConfig,
       metadata: (_meta) => {},
     };
 

@@ -873,20 +873,26 @@ export class AgentDetailPanel extends LitElement {
       const promises: Promise<unknown>[] = [];
 
       if (this.context.kind === "instance") {
-        // Save manual skill whitelist (DB meta)
+        // Save skill whitelist + autoSelectSkills to runtime config (source of truth)
+        promises.push(
+          patchInstanceConfig(this.context.slug, {
+            agents: [
+              {
+                id: this.agent.agent_id,
+                skills: this._editSkills,
+                ...(this._autoSelectSkills !== this._autoSelectSkillsOriginal
+                  ? { autoSelectSkills: this._autoSelectSkills }
+                  : {}),
+              },
+            ],
+          }),
+        );
+        // Keep agents.skills in sync for UI display (backward compat, display cache)
         promises.push(
           updateAgentMeta(this.context.slug, this.agent.agent_id, {
             skills: this._editSkills,
           }),
         );
-        // Save autoSelectSkills toggle (runtime config) — only if changed
-        if (this._autoSelectSkills !== this._autoSelectSkillsOriginal) {
-          promises.push(
-            patchInstanceConfig(this.context.slug, {
-              agents: [{ id: this.agent.agent_id, autoSelectSkills: this._autoSelectSkills }],
-            }),
-          );
-        }
       } else {
         promises.push(
           updateBlueprintAgentMeta(this.context.blueprintId, this.agent.agent_id, {

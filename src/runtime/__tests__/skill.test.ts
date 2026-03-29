@@ -517,6 +517,151 @@ describe("listAvailableSkills — permissions", () => {
 });
 
 // ---------------------------------------------------------------------------
+// listAvailableSkills — skill whitelist
+// ---------------------------------------------------------------------------
+
+describe("listAvailableSkills — skill whitelist", () => {
+  /**
+   * Objective: skills: undefined must return all skills (backward compat).
+   * Positive test: no whitelist → all skills accessible.
+   */
+  it("[positive] skills: undefined returns all skills", async () => {
+    const workDir = await tmpDir();
+    const skillsDir = path.join(workDir, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    await createSkill(skillsDir, "alpha", "# Alpha\nContent.\nLine 3.");
+    await createSkill(skillsDir, "beta", "# Beta\nContent.\nLine 3.");
+
+    const agentConfig = makeAgentConfig({ permissions: [] });
+    // skills is undefined by default in makeAgentConfig
+
+    const skills = await listAvailableSkills(workDir, agentConfig);
+    const names = skills.map((s) => s.name);
+    expect(names).toContain("alpha");
+    expect(names).toContain("beta");
+  });
+
+  /**
+   * Objective: skills: null must return all skills (backward compat).
+   * Positive test: null whitelist → all skills accessible.
+   */
+  it("[positive] skills: null returns all skills", async () => {
+    const workDir = await tmpDir();
+    const skillsDir = path.join(workDir, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    await createSkill(skillsDir, "alpha", "# Alpha\nContent.\nLine 3.");
+    await createSkill(skillsDir, "beta", "# Beta\nContent.\nLine 3.");
+
+    const agentConfig = makeAgentConfig({ permissions: [], skills: null });
+
+    const skills = await listAvailableSkills(workDir, agentConfig);
+    const names = skills.map((s) => s.name);
+    expect(names).toContain("alpha");
+    expect(names).toContain("beta");
+  });
+
+  /**
+   * Objective: skills: [] must return no skills.
+   * Negative test: empty whitelist → zero skills.
+   */
+  it("[negative] skills: [] returns no skills", async () => {
+    const workDir = await tmpDir();
+    const skillsDir = path.join(workDir, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    await createSkill(skillsDir, "alpha", "# Alpha\nContent.\nLine 3.");
+    await createSkill(skillsDir, "beta", "# Beta\nContent.\nLine 3.");
+
+    const agentConfig = makeAgentConfig({ permissions: [], skills: [] });
+
+    const skills = await listAvailableSkills(workDir, agentConfig);
+    expect(skills).toHaveLength(0);
+  });
+
+  /**
+   * Objective: skills: ["alpha"] must return only "alpha".
+   * Positive test: whitelist with one entry → only that skill returned.
+   */
+  it("[positive] skills: ['alpha'] returns only alpha", async () => {
+    const workDir = await tmpDir();
+    const skillsDir = path.join(workDir, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    await createSkill(skillsDir, "alpha", "# Alpha\nContent.\nLine 3.");
+    await createSkill(skillsDir, "beta", "# Beta\nContent.\nLine 3.");
+    await createSkill(skillsDir, "gamma", "# Gamma\nContent.\nLine 3.");
+
+    const agentConfig = makeAgentConfig({ permissions: [], skills: ["alpha"] });
+
+    const skills = await listAvailableSkills(workDir, agentConfig);
+    const names = skills.map((s) => s.name);
+    expect(names).toEqual(["alpha"]);
+  });
+
+  /**
+   * Objective: a skill denied by permission AND whitelisted must still be excluded.
+   * Negative test: permission deny takes precedence over whitelist inclusion.
+   */
+  it("[negative] permission deny excludes skill even if whitelisted", async () => {
+    const workDir = await tmpDir();
+    const skillsDir = path.join(workDir, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    await createSkill(skillsDir, "alpha", "# Alpha\nContent.\nLine 3.");
+    await createSkill(skillsDir, "beta", "# Beta\nContent.\nLine 3.");
+
+    const agentConfig = makeAgentConfig({
+      permissions: [{ permission: "skill", pattern: "alpha", action: "deny" }],
+      skills: ["alpha", "beta"],
+    });
+
+    const skills = await listAvailableSkills(workDir, agentConfig);
+    const names = skills.map((s) => s.name);
+    expect(names).not.toContain("alpha");
+    expect(names).toContain("beta");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SkillTool.execute() — skill whitelist guard
+// ---------------------------------------------------------------------------
+
+describe("SkillTool.execute() — skill whitelist guard", () => {
+  function makeCtxWithSkills(skills: string[] | null | undefined) {
+    return {
+      sessionId: "s1" as import("../types.js").SessionId,
+      messageId: "m1" as import("../types.js").MessageId,
+      agentId: "main",
+      abort: new AbortController().signal,
+      metadata: vi.fn(),
+      agentConfig: makeAgentConfig({
+        permissions: [],
+        ...(skills !== undefined ? { skills } : {}),
+      }),
+    };
+  }
+
+  /**
+   * Objective: SkillTool must reject loading a skill not in the whitelist.
+   * Negative test: skill not in whitelist → error output.
+   */
+  it("[negative] rejects skill not in whitelist", async () => {
+    const workDir = await tmpDir();
+    const skillsDir = path.join(workDir, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    await createSkill(skillsDir, "forbidden-skill", "# Forbidden\nContent.\nLine 3.");
+
+    const originalCwd = process.cwd();
+    process.chdir(workDir);
+    try {
+      const def = await SkillTool.init();
+      const ctx = makeCtxWithSkills(["allowed-skill"]);
+      const result = await def.execute({ name: "forbidden-skill" }, ctx);
+      expect(result.output).toContain("not available");
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // SkillTool.execute() — skill loading
 // ---------------------------------------------------------------------------
 
