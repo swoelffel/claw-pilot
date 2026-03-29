@@ -6,6 +6,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.57.0] — 2026-03-29
+
+### Added
+
+- **Unified activity timeline** : Pilot screen transformed from chat-style bubbles to a chronological timeline with distinct visual styling per event type (user chat, A2A messages, tool calls, reasoning, subtasks). Each entry has a timestamp, typed icon, and source label.
+- **Timeline filter bar** : Toggleable chips (Chat, A2A, Tools, Think, Sub, Suggest) to show/hide entry types. Preferences persisted in localStorage.
+- **Markdown rendering** : Agent text and A2A message content rendered as rich Markdown (headings, lists, code blocks, tables, bold, links) via marked + DOMPurify.
+- **Reset instance script** : `scripts/reset-instance.sh` for session/memory purge.
+
+### Fixed
+
+- **Agent tabs in Pilot** : Permanent sessions created via the internal A2A channel now appear as browsable tabs (was filtered out by `channel != 'internal'`).
+- **Target-side A2A detection** : Messages using the `[message_from:agentId]` pattern (recipient's session) are now correctly categorized as A2A instead of showing as "You".
+
+---
+
 ## [0.56.2] — 2026-03-29
 
 ### Fixed
