@@ -1,11 +1,14 @@
 // ui/src/components/pilot/pilot-messages.ts
 // Scrollable message list with auto-scroll, streaming indicator, and infinite scroll upward.
+// Transforms PilotMessage[] into a unified TimelineEntry[] and applies filters.
 import { LitElement, html, nothing, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { PilotMessage } from "../../types.js";
+import type { PilotMessage, TimelineEntry, TimelineFilters } from "../../types.js";
+import { DEFAULT_TIMELINE_FILTERS } from "../../types.js";
 import { tokenStyles } from "../../styles/tokens.js";
 import { spinnerStyles } from "../../styles/shared.js";
+import { buildTimeline, filterTimeline } from "./timeline-utils.js";
 import "./pilot-message.js";
 
 type AgentStatus = "idle" | "loading" | "sending" | "streaming" | "error";
@@ -31,7 +34,7 @@ export class PilotMessages extends LitElement {
         padding: 16px 16px 8px;
         display: flex;
         flex-direction: column;
-        gap: 14px;
+        gap: 4px;
         min-height: 0;
         scroll-behavior: smooth;
       }
@@ -80,12 +83,38 @@ export class PilotMessages extends LitElement {
         opacity: 0.4;
       }
 
-      /* Streaming message */
-      .streaming-message {
+      /* Streaming message — timeline-aligned */
+      .streaming-entry {
+        display: grid;
+        grid-template-columns: 52px 22px 1fr;
+        gap: 0 8px;
+        align-items: start;
+        padding: 4px 0;
+      }
+
+      .streaming-ts {
+        font-size: 10px;
+        font-family: var(--font-mono);
+        color: var(--text-muted);
+        padding-top: 2px;
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      .streaming-icon {
+        width: 20px;
+        height: 20px;
         display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 4px;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        font-size: 11px;
+        background: var(--bg-hover);
+        margin-top: 1px;
+      }
+
+      .streaming-content {
+        min-width: 0;
       }
 
       .streaming-header {
@@ -94,7 +123,7 @@ export class PilotMessages extends LitElement {
         text-transform: uppercase;
         letter-spacing: 0.06em;
         color: var(--text-muted);
-        padding: 0 2px;
+        margin-bottom: 2px;
       }
 
       .streaming-bubble {
@@ -126,14 +155,21 @@ export class PilotMessages extends LitElement {
         }
       }
 
-      /* Spinner row */
+      /* Spinner row — timeline-aligned */
+      .spinner-entry {
+        display: grid;
+        grid-template-columns: 52px 22px 1fr;
+        gap: 0 8px;
+        align-items: center;
+        padding: 4px 0;
+      }
+
       .spinner-row {
         display: flex;
         align-items: center;
         gap: 8px;
         color: var(--text-muted);
         font-size: 12px;
-        padding: 4px 2px;
       }
 
       .spinner-row .spinner {
@@ -146,16 +182,34 @@ export class PilotMessages extends LitElement {
   ];
 
   @property({ type: Array }) messages: PilotMessage[] = [];
+  @property({ type: Object }) filters: TimelineFilters = DEFAULT_TIMELINE_FILTERS;
   @property() streamingText = "";
   @property() streamingAgentId = "";
   @property() status: AgentStatus = "idle";
   @property({ type: Boolean }) hasMore = false;
   @property({ type: Object }) subagentResults: Record<string, unknown> = {};
   @property() slug = "";
+  @property() currentAgentId = "";
 
   @state() private _userScrolled = false;
 
-  private _scrollRef: Element | null = null;
+  // Memoization for timeline computation
+  private _cachedMessages: PilotMessage[] | null = null;
+  private _cachedAgentId = "";
+  private _cachedTimeline: TimelineEntry[] = [];
+
+  private get _timeline(): TimelineEntry[] {
+    if (this._cachedMessages !== this.messages || this._cachedAgentId !== this.currentAgentId) {
+      this._cachedMessages = this.messages;
+      this._cachedAgentId = this.currentAgentId;
+      this._cachedTimeline = buildTimeline(this.messages, this.currentAgentId || undefined);
+    }
+    return this._cachedTimeline;
+  }
+
+  private get _filteredEntries(): TimelineEntry[] {
+    return filterTimeline(this._timeline, this.filters);
+  }
 
   override updated(changed: Map<string, unknown>): void {
     if (changed.has("messages") || changed.has("streamingText")) {
@@ -178,12 +232,18 @@ export class PilotMessages extends LitElement {
     this._userScrolled = !atBottom;
   }
 
+  private _nowTime(): string {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  }
+
   override render() {
+    const filtered = this._filteredEntries;
+    const allEmpty = this._timeline.length === 0;
+    const filteredEmpty = !allEmpty && filtered.length === 0;
+
     const isEmpty =
-      this.messages.length === 0 &&
-      !this.streamingText &&
-      this.status !== "loading" &&
-      this.status !== "sending";
+      allEmpty && !this.streamingText && this.status !== "loading" && this.status !== "sending";
 
     return html`
       <div class="messages-scroll" @scroll=${this._onScroll}>
@@ -212,10 +272,22 @@ export class PilotMessages extends LitElement {
               </div>
             `
           : nothing}
-        ${this.messages.map(
-          (m) => html`
+        ${filteredEmpty
+          ? html`
+              <div class="empty-state">
+                <span class="empty-icon">🔍</span>
+                <span
+                  >${msg("No entries match the current filters", {
+                    id: "pilot-timeline-empty-filtered",
+                  })}</span
+                >
+              </div>
+            `
+          : nothing}
+        ${filtered.map(
+          (entry) => html`
             <cp-pilot-message
-              .message=${m}
+              .entry=${entry}
               .slug=${this.slug}
               .subagentResults=${this.subagentResults as Record<
                 string,
@@ -231,21 +303,29 @@ export class PilotMessages extends LitElement {
         )}
         ${this.streamingText
           ? html`
-              <div class="streaming-message">
-                <div class="streaming-header">
-                  ${this.streamingAgentId || msg("agent", { id: "role-agent" })}
-                </div>
-                <div class="streaming-bubble">
-                  ${this.streamingText}<span class="streaming-cursor"></span>
+              <div class="streaming-entry">
+                <span class="streaming-ts">${this._nowTime()}</span>
+                <span class="streaming-icon">⬡</span>
+                <div class="streaming-content">
+                  <div class="streaming-header">
+                    ${this.streamingAgentId || msg("agent", { id: "role-agent" })}
+                  </div>
+                  <div class="streaming-bubble">
+                    ${this.streamingText}<span class="streaming-cursor"></span>
+                  </div>
                 </div>
               </div>
             `
           : nothing}
         ${(this.status === "sending" || this.status === "loading") && !this.streamingText
           ? html`
-              <div class="spinner-row">
-                <div class="spinner"></div>
-                <span>${msg("Agent is thinking…", { id: "pilot-thinking" })}</span>
+              <div class="spinner-entry">
+                <span></span>
+                <span></span>
+                <div class="spinner-row">
+                  <div class="spinner"></div>
+                  <span>${msg("Agent is thinking\u2026", { id: "pilot-thinking" })}</span>
+                </div>
               </div>
             `
           : nothing}

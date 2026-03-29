@@ -540,6 +540,54 @@ export interface SessionContext {
   }>;
 }
 
+// --- Timeline types (Pilot unified activity view) ---
+
+export type TimelineEntryKind =
+  | "user_chat"
+  | "agent_text"
+  | "a2a_sent"
+  | "a2a_received"
+  | "tool_call"
+  | "reasoning"
+  | "subtask"
+  | "compaction"
+  | "image"
+  | "suggestion"
+  | "artifact";
+
+export interface TimelineEntry {
+  id: string;
+  kind: TimelineEntryKind;
+  timestamp: string;
+  source: string;
+  message: PilotMessage;
+  part?: PilotPart;
+  /** true when this is the last entry from its parent message (for footer rendering) */
+  isLastInMessage?: boolean;
+  /** A2A target/source agent ID */
+  a2aTarget?: string;
+  /** A2A extracted message text */
+  a2aContent?: string;
+  /** Channel for cross-channel user messages */
+  channel?: string;
+}
+
+export interface TimelineFilters {
+  chat: boolean;
+  a2a: boolean;
+  tools: boolean;
+  thinking: boolean;
+  subtasks: boolean;
+}
+
+export const DEFAULT_TIMELINE_FILTERS: TimelineFilters = {
+  chat: true,
+  a2a: true,
+  tools: false,
+  thinking: false,
+  subtasks: true,
+};
+
 /** Événement bus générique pour le journal d'événements */
 export interface PilotBusEvent {
   type: string;

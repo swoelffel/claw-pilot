@@ -9,7 +9,14 @@
 import { LitElement, html, nothing, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { PilotMessage, SessionContext, PilotBusEvent, RuntimeSession } from "../types.js";
+import type {
+  PilotMessage,
+  SessionContext,
+  PilotBusEvent,
+  RuntimeSession,
+  TimelineFilters,
+} from "../types.js";
+import { DEFAULT_TIMELINE_FILTERS } from "../types.js";
 import {
   postRuntimeChat,
   abortSession,
@@ -25,6 +32,7 @@ import "./pilot/pilot-header.js";
 import "./pilot/pilot-messages.js";
 import "./pilot/pilot-input.js";
 import "./pilot/pilot-context-panel.js";
+import "./pilot/pilot-filter-bar.js";
 
 type PilotStatus = "idle" | "loading" | "sending" | "streaming" | "error";
 
@@ -182,12 +190,34 @@ export class RuntimePilot extends LitElement {
   @state() private _streamingAgentId = "";
   @state() private _context: SessionContext | null = null;
   @state() private _panelOpen = true;
+  @state() private _filters: TimelineFilters = RuntimePilot._loadFilters();
   @state() private _events: PilotBusEvent[] = [];
   @state() private _permanentSessions: RuntimeSession[] = [];
   @state() private _subagentResults: Record<
     string,
     { text?: string; steps?: number; tokens?: { input: number; output: number }; model?: string }
   > = {};
+
+  // ── Timeline filter helpers ──────────────────────────────────────────────
+
+  private static _loadFilters(): TimelineFilters {
+    try {
+      const raw = localStorage.getItem("cp-pilot-timeline-filters");
+      if (raw) return { ...DEFAULT_TIMELINE_FILTERS, ...(JSON.parse(raw) as TimelineFilters) };
+    } catch {
+      /* ignore corrupt localStorage */
+    }
+    return { ...DEFAULT_TIMELINE_FILTERS };
+  }
+
+  private _onFilterChange(e: CustomEvent<TimelineFilters>): void {
+    this._filters = e.detail;
+    try {
+      localStorage.setItem("cp-pilot-timeline-filters", JSON.stringify(this._filters));
+    } catch {
+      /* ignore quota errors */
+    }
+  }
 
   private _eventSource: EventSource | null = null;
   private _activeSessionId = "";
@@ -773,8 +803,15 @@ export class RuntimePilot extends LitElement {
 
       <div class="pilot-body">
         <div class="pilot-main" @suggestion-click=${this._onSuggestionClick}>
+          <cp-pilot-filter-bar
+            .filters=${this._filters}
+            @filter-change=${this._onFilterChange}
+          ></cp-pilot-filter-bar>
+
           <cp-pilot-messages
             .messages=${this._messages}
+            .filters=${this._filters}
+            .currentAgentId=${agentId}
             .streamingText=${this._streamingText}
             .streamingAgentId=${this._streamingAgentId}
             .status=${this._status}
