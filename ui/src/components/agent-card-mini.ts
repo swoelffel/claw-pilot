@@ -5,16 +5,6 @@ import { localized, msg } from "@lit/localize";
 import type { AgentBuilderInfo } from "../types.js";
 import { tokenStyles } from "../styles/tokens.js";
 
-// Archetype color mapping (must match tokens.ts)
-const ARCHETYPE_COLORS: Record<string, string> = {
-  planner: "#8b5cf6",
-  generator: "#10b981",
-  evaluator: "#f59e0b",
-  orchestrator: "#4f6ef7",
-  analyst: "#0ea5e9",
-  communicator: "#ec4899",
-};
-
 @localized()
 @customElement("cp-agent-card-mini")
 export class AgentCardMini extends LitElement {
@@ -39,15 +29,13 @@ export class AgentCardMini extends LitElement {
           border-color 0.15s;
         user-select: none;
         width: 186px;
-        height: 80px;
+        height: 86px;
         overflow: hidden;
         position: relative;
         border-left: 3px solid transparent;
       }
 
-      .card.has-spawns {
-        height: 104px;
-      }
+      /* removed: .card.has-spawns — spawn badges no longer on card */
 
       /* --- Archetype stripe (left border) --- */
       .card.archetype-planner {
@@ -74,7 +62,7 @@ export class AgentCardMini extends LitElement {
         background: var(--accent-subtle);
         border-color: var(--accent-border);
         width: 200px;
-        height: 80px;
+        height: 86px;
       }
 
       /* --- Ephemeral agents: darker bg to distinguish from permanent --- */
@@ -207,27 +195,6 @@ export class AgentCardMini extends LitElement {
         max-width: 90px;
       }
 
-      /* row 4 : @archetype spawn targets (inline) */
-      .card-spawns {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 3px;
-        margin-top: 4px;
-        padding-top: 4px;
-        border-top: 1px solid var(--bg-border);
-      }
-
-      .spawn-archetype {
-        font-size: 8px;
-        font-weight: 600;
-        font-family: var(--font-mono);
-        border-radius: 3px;
-        padding: 1px 4px;
-        background: transparent;
-        border: 1px solid;
-        opacity: 0.85;
-      }
-
       .btn-delete {
         background: none;
         border: none;
@@ -285,15 +252,11 @@ export class AgentCardMini extends LitElement {
     const archetype = a.archetype;
     const archetypeClass = archetype ? `archetype-${archetype}` : "";
     const isEphemeral = a.persistence === "ephemeral";
-    const hasSpawns = this.archetypeSpawns.length > 0;
-
     return html`
       <div
         class="card ${a.is_default ? "is-default" : ""} ${this.selected
           ? "selected"
-          : ""} ${archetypeClass} ${isEphemeral ? "ephemeral" : ""} ${hasSpawns
-          ? "has-spawns"
-          : ""}"
+          : ""} ${archetypeClass} ${isEphemeral ? "ephemeral" : ""}"
         @click=${() =>
           this.dispatchEvent(
             new CustomEvent("agent-select", {
@@ -368,24 +331,7 @@ export class AgentCardMini extends LitElement {
             ? html`<span class="model-label" title=${model ?? ""}>${modelShort}</span>`
             : ""}
         </div>
-        <!-- row 4 : @archetype spawn targets (inline, only if any) -->
-        ${this.archetypeSpawns.length > 0
-          ? html`
-              <div class="card-spawns">
-                ${this.archetypeSpawns.map((arch) => {
-                  const color = ARCHETYPE_COLORS[arch] ?? "#64748b";
-                  return html`<span
-                    class="spawn-archetype"
-                    style="color: ${color}; border-color: ${color}"
-                    title=${msg("Spawns any agent with this archetype", {
-                      id: "acm-tooltip-spawn-archetype",
-                    })}
-                    >→ @${arch}</span
-                  >`;
-                })}
-              </div>
-            `
-          : nothing}
+        <!-- Spawn targets are shown as arrows on the canvas, not on the card -->
       </div>
     `;
   }
