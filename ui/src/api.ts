@@ -28,6 +28,7 @@ import type {
   CostSummary,
   DailyCost,
   AgentCost,
+  SkillsListResponse,
   ModelCost,
   RtEventsPage,
   MemoryAgentSummary,
@@ -879,4 +880,48 @@ export async function fetchHeartbeatHeatmap(
   return apiFetch<{ period: string; buckets: HeartbeatHourBucket[]; stats: HeartbeatAgentStats[] }>(
     `/instances/${slug}/heartbeat/heatmap?days=${days}`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Skills
+// ---------------------------------------------------------------------------
+
+export async function fetchInstanceSkills(slug: string): Promise<SkillsListResponse> {
+  return apiFetch<SkillsListResponse>(`/instances/${slug}/skills`);
+}
+
+/** Upload a ZIP archive containing a skill folder. */
+export async function uploadSkillZip(
+  slug: string,
+  file: File,
+): Promise<{ ok: boolean; name: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  // Do not use apiFetch — FormData needs the browser to set Content-Type with boundary
+  const res = await fetch(`/api/instances/${slug}/skills/upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${getToken()}` },
+    body: form,
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { code?: string; error?: string };
+    throw new ApiError(res.status, body.code ?? "UPLOAD_ERROR", body.error ?? res.statusText);
+  }
+  return res.json() as Promise<{ ok: boolean; name: string }>;
+}
+
+/** Install a skill from a GitHub directory URL. */
+export async function installSkillFromGitHub(
+  slug: string,
+  url: string,
+): Promise<{ ok: boolean; name: string; filesCount: number }> {
+  return apiFetch<{ ok: boolean; name: string; filesCount: number }>(
+    `/instances/${slug}/skills/install`,
+    { method: "POST", body: JSON.stringify({ url }) },
+  );
+}
+
+/** Delete a workspace skill by name. */
+export async function deleteSkill(slug: string, name: string): Promise<void> {
+  await apiFetch(`/instances/${slug}/skills/${encodeURIComponent(name)}`, { method: "DELETE" });
 }

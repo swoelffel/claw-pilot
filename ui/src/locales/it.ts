@@ -445,4 +445,27 @@ export const templates = {
   "profile-select-model": "Seleziona modello predefinito...",
   "profile-instructions-hint": "Markdown supportato. Massimo 10.000 caratteri.",
   "profile-char-count": "caratteri",
+
+  // instance-skills.ts
+  "settings-skills": "Skills",
+  "skills-section-title": "Skills",
+  "skills-upload-zip": "Carica ZIP",
+  "skills-from-github": "Da GitHub",
+  "skills-zip-label": "File ZIP",
+  "skills-github-label": "URL GitHub",
+  "skills-github-placeholder": "https://github.com/org/repo/tree/main/skills/name",
+  "skills-installing": "Installazione...",
+  "skills-install-btn": "Installa",
+  "skills-delete-btn": "Elimina",
+  "skills-empty": "Nessuna skill disponibile. Carica un ZIP o installa da GitHub.",
+  "skills-group-workspace": "Workspace",
+  "skills-group-global": "Globale",
+  "skills-group-remote": "Remoto",
+
+  // agent-detail-panel skills tab
+  "adp-tab-skills": "Skills",
+  "adp-skills-empty": "Nessuna skill disponibile per questa istanza.",
+  "adp-skills-available": "Skills disponibili",
+  "adp-skills-save": "Salva",
+  "adp-skills-cancel": "Annulla",
 };

@@ -13,7 +13,7 @@ import { registerAgentSkillsRoutes } from "./agents/skills.js";
 
 export function registerAgentRoutes(app: Hono, deps: RouteDeps): void {
   // Registration order matters for Hono — specific paths before parameterized ones
-  registerAgentSkillsRoutes(app, deps); // GET  .../skills
+  registerAgentSkillsRoutes(app, deps); // skills: GET, POST upload/install, DELETE
   registerAgentSyncRoutes(app, deps); // POST .../agents/sync
   registerAgentListRoutes(app, deps); // GET  .../agents, GET .../agents/builder
   registerAgentUpdateRoutes(app, deps); // PATCH .../agents/:id/position, .../agents/:id/meta

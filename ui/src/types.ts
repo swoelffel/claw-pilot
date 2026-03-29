@@ -1,11 +1,28 @@
 export type SidebarSection =
   | "general"
   | "agents"
+  | "skills"
   | "runtime"
   | "channels"
   | "mcp"
   | "permissions"
   | "config";
+
+// ---------------------------------------------------------------------------
+// Skills
+// ---------------------------------------------------------------------------
+
+export interface SkillInfo {
+  name: string;
+  description: string;
+  source: "workspace" | "global" | "remote";
+  deletable: boolean;
+}
+
+export interface SkillsListResponse {
+  available: boolean;
+  skills: SkillInfo[];
+}
 
 export interface InstanceInfo {
   id: number;
