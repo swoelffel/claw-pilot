@@ -15,7 +15,7 @@ export const EXPORTABLE_FILES = constants.EXPORTABLE_FILES;
 export type ExportableFile = (typeof EXPORTABLE_FILES)[number];
 
 /** Current format version. */
-export const TEAM_FORMAT_VERSION = "1" as const;
+export const TEAM_FORMAT_VERSION = "2" as const;
 
 // ---------------------------------------------------------------------------
 // Sub-schemas
@@ -47,6 +47,16 @@ const SubagentsConfigSchema = z
 
 import { PermissionRuleSchema } from "../lib/schemas/permission.js";
 
+const ThinkingSchema = z.object({
+  enabled: z.boolean(),
+  budgetTokens: z.number().int().min(1024).max(100_000).optional(),
+});
+
+const AgentToAgentConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  allowList: z.array(z.string().min(1)).optional(),
+});
+
 const AgentConfigSchema = z
   .object({
     model: AgentModelSchema.optional(),
@@ -68,6 +78,33 @@ const AgentConfigSchema = z
       .optional(),
     humanDelay: z.record(z.string(), z.unknown()).optional(),
     groupChat: z.record(z.string(), z.unknown()).optional(),
+    // --- v2 fields (previously missing from YAML schema) ---
+    /** Session lifecycle: permanent (cross-channel, long-lived) or ephemeral (per task) */
+    persistence: z.enum(["permanent", "ephemeral"]).optional(),
+    /** Extended thinking configuration (Anthropic only) */
+    thinking: ThinkingSchema.optional(),
+    /** Agent-to-agent spawn policy */
+    agentToAgent: AgentToAgentConfigSchema.optional(),
+    /** Model temperature (0-2) */
+    temperature: z.number().min(0).max(2).optional(),
+    /** Max steps before forcing text-only response */
+    maxSteps: z.number().int().min(1).max(100).optional(),
+    /** Controls which workspace files are injected into the system prompt */
+    promptMode: z.enum(["full", "minimal", "subagent"]).optional(),
+    /** Extra URLs to fetch and append to the system prompt */
+    instructionUrls: z.array(z.string()).optional(),
+    /** Max duration for a single prompt loop run in ms */
+    timeoutMs: z.number().int().min(1000).optional(),
+    /** Max time (ms) between consecutive SSE chunks */
+    chunkTimeoutMs: z.number().int().min(5000).optional(),
+    /** Whether sub-agents inherit the parent's workDir */
+    inheritWorkspace: z.boolean().optional(),
+    /** Additional files to inject into the system prompt (glob patterns) */
+    bootstrapFiles: z.array(z.string()).optional(),
+    /** URLs pointing to remote skill index files */
+    skillUrls: z.array(z.string()).optional(),
+    /** Whether this agent can spawn sub-agents */
+    allowSubAgents: z.boolean().optional(),
   })
   .passthrough() // allow unknown config fields for forward-compat
   .optional();
@@ -120,7 +157,7 @@ const AgentToAgentSchema = z.object({
 
 export const TeamFileSchema = z
   .object({
-    version: z.literal("1"),
+    version: z.union([z.literal("1"), z.literal("2")]),
     exported_at: z.string(),
     source: z.string().optional(),
     defaults: DefaultsSchema.optional(),

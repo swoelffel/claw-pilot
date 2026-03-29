@@ -107,7 +107,7 @@ describe("exportInstanceTeam()", () => {
 
     const team = await exportInstanceTeam(conn, registry, instance);
 
-    expect(team.version).toBe("1");
+    expect(team.version).toBe("2");
     expect(team.source).toBe("t1");
     expect(team.agents).toHaveLength(1);
     expect(team.agents[0]!.id).toBe("pilot");
@@ -250,7 +250,7 @@ describe("exportBlueprintTeam()", () => {
 
     const team = exportBlueprintTeam(registry, blueprint.id);
 
-    expect(team.version).toBe("1");
+    expect(team.version).toBe("2");
     expect(team.source).toBe("My Team");
     expect(team.agents).toHaveLength(1);
     expect(team.agents[0]!.id).toBe("pilot");
@@ -362,5 +362,158 @@ describe("serializeTeamYaml()", () => {
 
     // Literal block style uses | for multiline
     expect(yaml).toContain("SOUL.md: |");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// config_json-based export tests (v2)
+// ---------------------------------------------------------------------------
+
+describe("exportInstanceTeam() — config_json source of truth", () => {
+  it("exports v2 fields from config_json (persistence, thinking, agentToAgent)", async () => {
+    const instance = seedInstance("cfg1");
+    // Seed runtime.json with v2 fields — AgentSync reads this into config_json
+    const richAgentConfig = {
+      id: "pilot",
+      name: "Pilot",
+      isDefault: true,
+      model: "anthropic/claude-opus-4-6",
+      toolProfile: "manager",
+      persistence: "permanent",
+      thinking: { enabled: true, budgetTokens: 20000 },
+      agentToAgent: { enabled: true, allowList: ["qa", "dev"] },
+      archetype: "orchestrator",
+      temperature: 0.7,
+      maxSteps: 50,
+      promptMode: "full",
+    };
+    conn.files.set(
+      CONFIG_PATH,
+      JSON.stringify({
+        defaultModel: "anthropic/claude-opus-4-6",
+        agents: [richAgentConfig],
+        port: 18790,
+      }),
+    );
+
+    registry.createAgent(instance.id, {
+      agentId: "pilot",
+      name: "Pilot",
+      isDefault: true,
+      workspacePath: `${STATE_DIR}/workspaces/pilot`,
+    });
+
+    const team = await exportInstanceTeam(conn, registry, instance);
+    const config = team.agents[0]!.config!;
+
+    expect(config.model).toBe("anthropic/claude-opus-4-6");
+    expect(config["persistence"]).toBe("permanent");
+    expect(config["thinking"]).toEqual({ enabled: true, budgetTokens: 20000 });
+    expect(config["agentToAgent"]).toEqual({ enabled: true, allowList: ["qa", "dev"] });
+    expect(config.archetype).toBe("orchestrator");
+    expect(config["temperature"]).toBe(0.7);
+    expect(config["maxSteps"]).toBe(50);
+    expect(config["promptMode"]).toBe("full");
+  });
+
+  it("strips id, name, isDefault from config (they are top-level)", async () => {
+    const instance = seedInstance("cfg3");
+    conn.files.set(
+      CONFIG_PATH,
+      JSON.stringify({
+        defaultModel: "anthropic/claude-haiku-4-5",
+        agents: [
+          {
+            id: "pilot",
+            name: "Pilot",
+            isDefault: true,
+            model: "anthropic/claude-haiku-4-5",
+          },
+        ],
+        port: 18790,
+      }),
+    );
+
+    registry.createAgent(instance.id, {
+      agentId: "pilot",
+      name: "Pilot",
+      isDefault: true,
+      workspacePath: `${STATE_DIR}/workspaces/pilot`,
+    });
+
+    const team = await exportInstanceTeam(conn, registry, instance);
+    const config = team.agents[0]!.config!;
+
+    // These should not be in config — they are top-level YAML fields
+    expect(config).not.toHaveProperty("id");
+    expect(config).not.toHaveProperty("name");
+    expect(config).not.toHaveProperty("isDefault");
+    // But model should be there
+    expect(config.model).toBe("anthropic/claude-haiku-4-5");
+  });
+
+  it("exports BOOTSTRAP.md when present", async () => {
+    const instance = seedInstance("cfg4");
+    seedRuntimeJson();
+
+    conn.files.set(`${STATE_DIR}/workspaces/pilot/BOOTSTRAP.md`, "# Bootstrap\nSetup instructions");
+    conn.files.set(`${STATE_DIR}/workspaces/pilot/SOUL.md`, "# Soul");
+
+    const team = await exportInstanceTeam(conn, registry, instance);
+
+    const files = team.agents[0]!.files ?? {};
+    expect(Object.keys(files)).toContain("BOOTSTRAP.md");
+    expect(files["BOOTSTRAP.md"]).toBe("# Bootstrap\nSetup instructions");
+  });
+});
+
+describe("exportBlueprintTeam() — config_json source of truth", () => {
+  it("exports v2 fields from blueprint agent config_json", () => {
+    const blueprint = registry.createBlueprint({ name: "Rich Team" });
+    registry.createBlueprintAgent(blueprint.id, {
+      agentId: "pilot",
+      name: "Pilot",
+      isDefault: true,
+      model: "anthropic/claude-haiku-4-5",
+    });
+
+    // Write config_json to the blueprint agent
+    const agent = registry.listBlueprintAgents(blueprint.id)[0]!;
+    db.prepare("UPDATE agents SET config_json = ? WHERE id = ?").run(
+      JSON.stringify({
+        id: "pilot",
+        name: "Pilot",
+        isDefault: true,
+        model: "anthropic/claude-opus-4-6",
+        persistence: "permanent",
+        archetype: "orchestrator",
+        thinking: { enabled: true, budgetTokens: 15000 },
+      }),
+      agent.id,
+    );
+
+    const team = exportBlueprintTeam(registry, blueprint.id);
+    const config = team.agents[0]!.config!;
+
+    expect(team.version).toBe("2");
+    expect(config.model).toBe("anthropic/claude-opus-4-6");
+    expect(config["persistence"]).toBe("permanent");
+    expect(config.archetype).toBe("orchestrator");
+    expect(config["thinking"]).toEqual({ enabled: true, budgetTokens: 15000 });
+  });
+
+  it("falls back to model field when config_json is null", () => {
+    const blueprint = registry.createBlueprint({ name: "Legacy Team" });
+    registry.createBlueprintAgent(blueprint.id, {
+      agentId: "pilot",
+      name: "Pilot",
+      isDefault: true,
+      model: "anthropic/claude-haiku-4-5",
+    });
+
+    const team = exportBlueprintTeam(registry, blueprint.id);
+    const config = team.agents[0]!.config!;
+
+    expect(config.model).toBe("anthropic/claude-haiku-4-5");
   });
 });
