@@ -6,6 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.55.0] — 2026-03-29
+
+### Changed
+
+- **Team YAML export/import v2** : Export now reads from `config_json` (DB source of truth since v20) instead of cherry-picking fields from `runtime.json`. Import writes `config_json` to DB and spreads all config fields generically into `runtime.json`. 14 previously lost config fields now survive round-trip: `persistence`, `thinking`, `agentToAgent`, `temperature`, `maxSteps`, `promptMode`, `instructionUrls`, `timeoutMs`, `chunkTimeoutMs`, `inheritWorkspace`, `bootstrapFiles`, `skillUrls`, `allowSubAgents`.
+- **YAML format version** : Bumped to `"2"` (v1 still accepted on import for backward compatibility).
+- **BOOTSTRAP.md** : Added to exportable workspace files.
+- **BlueprintAgentRecord** : Added `config_json` field to TypeScript type (column already existed in DB).
+
+### Added
+
+- **E2E round-trip test** : New `team-export-import.e2e.test.ts` validates export → import → export → compare.
+
+---
+
 ## [0.54.0] — 2026-03-29
 
 ### Added
