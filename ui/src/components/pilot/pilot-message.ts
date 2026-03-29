@@ -3,6 +3,8 @@
 import { LitElement, html, nothing, css } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 import type { TimelineEntry, PilotPart } from "../../types.js";
 import { tokenStyles } from "../../styles/tokens.js";
 import "./parts/part-text.js";
@@ -153,15 +155,72 @@ export class PilotMessageEl extends LitElement {
         color: var(--text-muted);
       }
 
-      /* A2A styling */
+      /* A2A styling — markdown-rendered content */
       .a2a-content {
         border-left: 3px solid rgba(236, 72, 153, 0.5);
         padding: 4px 0 4px 10px;
         font-size: 13px;
-        line-height: 1.5;
+        line-height: 1.6;
         color: var(--text-primary);
-        white-space: pre-wrap;
         word-break: break-word;
+      }
+
+      .a2a-content p {
+        margin: 4px 0;
+      }
+
+      .a2a-content p:first-child {
+        margin-top: 0;
+      }
+
+      .a2a-content p:last-child {
+        margin-bottom: 0;
+      }
+
+      .a2a-content ul,
+      .a2a-content ol {
+        padding-left: 18px;
+        margin: 4px 0;
+      }
+
+      .a2a-content code {
+        background: var(--bg-border);
+        padding: 1px 5px;
+        border-radius: 3px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+      }
+
+      .a2a-content pre {
+        background: var(--bg-base);
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-md);
+        padding: 8px 10px;
+        overflow-x: auto;
+        margin: 6px 0;
+      }
+
+      .a2a-content pre code {
+        background: none;
+        padding: 0;
+      }
+
+      .a2a-content strong {
+        font-weight: 700;
+      }
+
+      .a2a-content h1,
+      .a2a-content h2,
+      .a2a-content h3 {
+        font-size: 14px;
+        font-weight: 700;
+        margin: 10px 0 4px;
+      }
+
+      .a2a-content hr {
+        border: none;
+        border-top: 1px solid var(--bg-border);
+        margin: 8px 0;
       }
 
       /* User text (no bubble, left-aligned) */
@@ -374,13 +433,19 @@ export class PilotMessageEl extends LitElement {
       case "a2a_sent":
         return html`
           <div class="source-label">${e.source} → ${e.a2aTarget}</div>
-          <div class="a2a-content">${e.a2aContent}</div>
+          <div
+            class="a2a-content"
+            .innerHTML=${DOMPurify.sanitize(marked.parse(e.a2aContent ?? "") as string)}
+          ></div>
         `;
 
       case "a2a_received":
         return html`
           <div class="source-label">${e.a2aTarget} → ${e.source}</div>
-          <div class="a2a-content">${e.a2aContent}</div>
+          <div
+            class="a2a-content"
+            .innerHTML=${DOMPurify.sanitize(marked.parse(e.a2aContent ?? "") as string)}
+          ></div>
         `;
 
       case "tool_call":
