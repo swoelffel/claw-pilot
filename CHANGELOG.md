@@ -6,6 +6,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.54.0] — 2026-03-29
+
+### Added
+
+- **Settings > Skills panel** : New sidebar section listing all available skills grouped by source (workspace, global, remote). Upload skills via ZIP archive or install directly from a GitHub URL (Contents API). Delete workspace skills with one click.
+- **Agent detail > Skills tab** : Dedicated tab (after Tools) with checkbox per skill, all checked by default. CSS-responsive descriptions adapt to panel width via `text-overflow: ellipsis`, full text on hover. Own Save/Cancel bar with dedicated save mechanism.
+- **Skills API** : `GET /api/instances/:slug/skills` lists available skills via `listAvailableSkills()`. `POST .../skills/upload` accepts ZIP archives. `POST .../skills/install` fetches from GitHub tree URLs. `DELETE .../skills/:name` removes workspace skills.
+- **Skills route tests** : 14 vitest tests covering listing, GitHub install (success, validation, API failure), and deletion.
+
+### Fixed
+
+- **Skills save** : Skills were incorrectly saved via `patchInstanceConfig` (runtime.json config patch, which doesn't support a `skills` field). Now correctly saved via `updateAgentMeta` (DB `agents.skills` column).
+
+### Changed
+
+- **i18n** : Skills-related strings added to all 6 languages (en, fr, de, es, it, pt).
+
+---
+
 ## [0.53.1] — 2026-03-28
 
 ### Fixed
