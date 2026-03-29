@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.56.0] — 2026-03-29
+
+### Added
+
+- **Progressive disclosure for skills** : New per-agent `autoSelectSkills` toggle. When enabled, the runtime pre-selects only the most relevant skills (TF-IDF ranking) based on the user's message instead of injecting all skills into the system prompt. Configurable `autoSelectSkillsTopN` (default: 5). Agents can still load any skill via the `skill` tool.
+- **Skills tab UI** : Auto-select toggle at the top of the Skills tab. When active, manual checkboxes are greyed out. Persists via runtime config PATCH.
+- **Skill ranker module** : `src/runtime/session/skill-ranker.ts` — lightweight TF-IDF scorer, zero external dependencies, sub-millisecond on 150+ skills.
+
+---
+
 ## [0.55.0] — 2026-03-29
 
 ### Changed
