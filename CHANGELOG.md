@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.56.1] — 2026-03-29
+
+### Fixed
+
+- **AgentSync link preservation** : `AgentSync.sync()` was destructively replacing all agent_links, deleting a2a links set via the builder UI and ignoring `agentToAgent.allowList` (v2 format). Now preserves existing a2a links and reads spawn targets from both `agentToAgent.allowList` and legacy `subagents.allowAgents`.
+
+---
+
 ## [0.56.0] — 2026-03-29
 
 ### Added
