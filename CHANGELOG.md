@@ -6,6 +6,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.58.3] — 2026-03-30
+
+### Fixed
+
+- **Security: systemd service runs as correct user** : System service template now includes `User=` and `Group=` directives, preventing the dashboard from running as root on Linux.
+- **install.sh update path** : Re-running `install.sh` on an existing installation now correctly detects system-level systemd services (was stuck on `systemctl --user`, never restarting the service).
+- **install.sh undefined variables** : Crontab fallback message no longer references undefined `$TARGET_USER` / `$TARGET_USER_HOME`.
+- **sudo fallback for systemctl** : All `systemctl` commands (install, uninstall, restart, daemon-reload) now try without sudo first, then fallback to sudo — works whether run as root or regular user.
+- **journalctl log hint** : Removed obsolete `--user` flag from journalctl instructions (system service, not user service).
+
+### Changed
+
+- **`WantedBy=multi-user.target`** : Standard target for headless Linux servers (was `default.target`).
+- **Dead code removal** : Removed unused `ensureLinger()` and `systemctlUser()` functions from `dashboard-service.ts`.
+
+### Added
+
+- **Orphan systemd service scanner** (uninstall.sh) : Detects service files pointing to non-existent installation directories and removes them automatically.
+- **Multi-user warning** (uninstall.sh) : Warns when services for other users are detected, with manual cleanup instructions.
+- **Crontab fallback** (install.sh) : When systemd is unavailable (Docker, WSL), suggests crontab as auto-start alternative instead of silently skipping.
+- **Improved uninstall summary** : End-of-uninstall message now lists remaining manual follow-up actions.
+
+---
+
 ## [0.58.2] — 2026-03-30
 
 ### Fixed
