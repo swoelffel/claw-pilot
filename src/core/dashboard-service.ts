@@ -5,7 +5,7 @@ import { statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { ServerConnection } from "../server/connection.js";
 import {
-  getSystemdDir,
+  getSystemdSystemDir,
   getDashboardServicePath,
   DASHBOARD_SERVICE_UNIT,
   getServiceManager,
@@ -166,39 +166,37 @@ export async function installDashboardService(
     await conn.execFile("launchctl", ["load", "-w", plistPath]);
     logger.success(`Launchd agent loaded: ${DASHBOARD_LAUNCHD_LABEL}`);
   } else {
-    // Linux: install as systemd user service
+    // Linux: install as systemd system service (not user service)
+    // System services work without linger and survive reboots regardless of user login
     const uid = process.getuid?.() ?? 1000;
 
-    // Generate service file content
+    // Generate service file content (system-level)
     const serviceContent = generateDashboardService({ nodeBin, clawPilotBin, port, home, uid });
 
-    // Ensure systemd user dir exists
-    const systemdDir = getSystemdDir();
-    await conn.mkdir(systemdDir);
+    // Ensure systemd system dir exists
+    const systemdSystemDir = getSystemdSystemDir();
+    await conn.mkdir(systemdSystemDir);
 
-    // Write service file
-    const servicePath = getDashboardServicePath();
+    // Write service file to /etc/systemd/system/
+    const servicePath = getDashboardServicePath(true);
     await conn.writeFile(servicePath, serviceContent, 0o644);
     logger.success(`Service file written: ${servicePath}`);
 
-    // Ensure linger is enabled
-    await ensureLinger(conn);
-
-    // daemon-reload
-    const reload = await systemctlUser(conn, xdgRuntimeDir, ["daemon-reload"]);
-    if (reload.code !== 0) {
+    // daemon-reload (systemctl, not --user)
+    const reload = await conn.exec("systemctl daemon-reload");
+    if (reload.exitCode !== 0) {
       throw new Error(`systemctl daemon-reload failed: ${reload.stderr}`);
     }
 
     // enable
-    const enable = await systemctlUser(conn, xdgRuntimeDir, ["enable", DASHBOARD_SERVICE_UNIT]);
-    if (enable.code !== 0) {
+    const enable = await conn.exec(`systemctl enable ${DASHBOARD_SERVICE_UNIT}`);
+    if (enable.exitCode !== 0) {
       throw new Error(`systemctl enable failed: ${enable.stderr}`);
     }
 
     // start
-    const start = await systemctlUser(conn, xdgRuntimeDir, ["start", DASHBOARD_SERVICE_UNIT]);
-    if (start.code !== 0) {
+    const start = await conn.exec(`systemctl start ${DASHBOARD_SERVICE_UNIT}`);
+    if (start.exitCode !== 0) {
       throw new Error(`systemctl start failed: ${start.stderr}`);
     }
   }
@@ -224,7 +222,7 @@ export async function installDashboardService(
 
 export async function uninstallDashboardService(
   conn: ServerConnection,
-  xdgRuntimeDir: string,
+  _xdgRuntimeDir: string,
 ): Promise<void> {
   const sm = getServiceManager();
 
@@ -241,14 +239,15 @@ export async function uninstallDashboardService(
       logger.info(`Launchd plist not found (already removed): ${plistPath}`);
     }
   } else {
+    // Linux: systemd system service
     // stop (ignore errors if not running)
-    await systemctlUser(conn, xdgRuntimeDir, ["stop", DASHBOARD_SERVICE_UNIT]);
+    await conn.exec(`systemctl stop ${DASHBOARD_SERVICE_UNIT}`).catch(() => {});
 
     // disable (ignore errors if not enabled)
-    await systemctlUser(conn, xdgRuntimeDir, ["disable", DASHBOARD_SERVICE_UNIT]);
+    await conn.exec(`systemctl disable ${DASHBOARD_SERVICE_UNIT}`).catch(() => {});
 
-    // Remove service file
-    const servicePath = getDashboardServicePath();
+    // Remove service file from /etc/systemd/system/
+    const servicePath = getDashboardServicePath(true);
     try {
       await conn.remove(servicePath);
       logger.success(`Service file removed: ${servicePath}`);
@@ -258,7 +257,7 @@ export async function uninstallDashboardService(
     }
 
     // daemon-reload
-    await systemctlUser(conn, xdgRuntimeDir, ["daemon-reload"]);
+    await conn.exec("systemctl daemon-reload");
   }
 
   logger.success(`Dashboard service uninstalled.`);
@@ -266,7 +265,7 @@ export async function uninstallDashboardService(
 
 export async function restartDashboardService(
   conn: ServerConnection,
-  xdgRuntimeDir: string,
+  _xdgRuntimeDir: string,
 ): Promise<void> {
   const sm = getServiceManager();
 
@@ -276,8 +275,9 @@ export async function restartDashboardService(
     await conn.execFile("launchctl", ["load", "-w", plistPath]);
     logger.success(`Dashboard service restarted.`);
   } else {
-    const result = await systemctlUser(conn, xdgRuntimeDir, ["restart", DASHBOARD_SERVICE_UNIT]);
-    if (result.code !== 0) {
+    // Linux: systemd system service
+    const result = await conn.exec(`systemctl restart ${DASHBOARD_SERVICE_UNIT}`);
+    if (result.exitCode !== 0) {
       throw new Error(`systemctl restart failed: ${result.stderr}`);
     }
     logger.success(`Dashboard service restarted.`);
@@ -307,29 +307,19 @@ export async function getDashboardServiceStatus(
     return { installed, active, enabled, portResponding };
   }
 
-  // Linux: systemd
-  const servicePath = getDashboardServicePath();
+  // Linux: systemd system service
+  const servicePath = getDashboardServicePath(true);
   const installed = await conn.exists(servicePath);
 
-  const activeResult = await systemctlUser(conn, xdgRuntimeDir, [
-    "is-active",
-    DASHBOARD_SERVICE_UNIT,
-  ]);
-  const active = activeResult.code === 0;
+  const activeResult = await conn.exec(`systemctl is-active ${DASHBOARD_SERVICE_UNIT}`);
+  const active = activeResult.exitCode === 0;
 
-  const enabledResult = await systemctlUser(conn, xdgRuntimeDir, [
-    "is-enabled",
-    DASHBOARD_SERVICE_UNIT,
-  ]);
-  const enabled = enabledResult.code === 0;
+  const enabledResult = await conn.exec(`systemctl is-enabled ${DASHBOARD_SERVICE_UNIT}`);
+  const enabled = enabledResult.exitCode === 0;
 
   // Get PID
   let pid: number | undefined;
-  const showResult = await systemctlUser(conn, xdgRuntimeDir, [
-    "show",
-    DASHBOARD_SERVICE_UNIT,
-    "--property=MainPID",
-  ]);
+  const showResult = await conn.exec(`systemctl show ${DASHBOARD_SERVICE_UNIT} --property=MainPID`);
   const pidMatch = showResult.stdout.match(/MainPID=(\d+)/);
   if (pidMatch && pidMatch[1] != null && pidMatch[1] !== "0") {
     pid = parseInt(pidMatch[1], 10);
@@ -337,11 +327,9 @@ export async function getDashboardServiceStatus(
 
   // Get uptime
   let uptime: string | undefined;
-  const uptimeResult = await systemctlUser(conn, xdgRuntimeDir, [
-    "show",
-    DASHBOARD_SERVICE_UNIT,
-    "--property=ActiveEnterTimestamp",
-  ]);
+  const uptimeResult = await conn.exec(
+    `systemctl show ${DASHBOARD_SERVICE_UNIT} --property=ActiveEnterTimestamp`,
+  );
   const tsMatch = uptimeResult.stdout.match(/ActiveEnterTimestamp=(.+)/);
   if (tsMatch && tsMatch[1] != null) {
     uptime = tsMatch[1].trim();

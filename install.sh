@@ -582,7 +582,13 @@ warn "Reset anytime with: $LINK_PATH auth reset"
 # ── 14. Install dashboard as systemd/launchd service ─────────────────────────
 _service_installed=false
 
-if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
+# Check if systemd is available (systemctl works and /run/systemd/system exists)
+_systemd_available=false
+if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+  _systemd_available=true
+fi
+
+if [ "$OS" = "Linux" ] && [ "$_systemd_available" = "true" ] && command -v systemctl >/dev/null 2>&1; then
   echo ""
   log "Setting up dashboard as a systemd service..."
 
@@ -596,12 +602,16 @@ if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
   # CP_NODE / CP_ENTRY already resolved in step 13
   if $CP_NODE $CP_ENTRY service install; then
     log "Dashboard service installed and started."
-    log "View logs: journalctl --user -u claw-pilot-dashboard.service -f"
+    log "View logs: sudo journalctl -u claw-pilot-dashboard.service -f"
     _service_installed=true
   else
-    warn "Dashboard service installation failed. You can start it manually:"
+    warn "Dashboard service installation failed (systemctl may not be available in this environment)."
+    warn "For auto-start on boot, add to crontab:"
+    warn "  sudo -u $TARGET_USER crontab -e"
+    warn "  @reboot $TARGET_USER_HOME/bin/claw-pilot dashboard"
+    warn ""
+    warn "Or start manually:"
     warn "  claw-pilot dashboard"
-    warn "  or: claw-pilot service install"
   fi
 elif [ "$OS" = "Darwin" ]; then
   echo ""

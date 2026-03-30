@@ -43,14 +43,19 @@ export function getRuntimeConfigPath(slug: string): string {
   return path.join(getRuntimeStateDir(slug), "runtime.json");
 }
 
-export function getSystemdDir(): string {
+export function getSystemdUserDir(): string {
   return path.join(os.homedir(), ".config/systemd/user");
+}
+
+export function getSystemdSystemDir(): string {
+  return "/etc/systemd/system";
 }
 
 export const DASHBOARD_SERVICE_UNIT = "claw-pilot-dashboard.service";
 
-export function getDashboardServicePath(): string {
-  return path.join(getSystemdDir(), DASHBOARD_SERVICE_UNIT);
+export function getDashboardServicePath(systemLevel = false): string {
+  const dir = systemLevel ? getSystemdSystemDir() : getSystemdUserDir();
+  return path.join(dir, DASHBOARD_SERVICE_UNIT);
 }
 
 // --- Service manager abstraction ---
