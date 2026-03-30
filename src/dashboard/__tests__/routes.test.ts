@@ -478,20 +478,21 @@ describe("DELETE /api/instances/:slug", () => {
 // ---------------------------------------------------------------------------
 
 describe("GET /api/next-port", () => {
-  it("returns 500 when server not initialized", async () => {
-    const res = await ctx.app.request("/api/next-port", { headers: authHeaders() });
-    expect(res.status).toBe(500);
-    const body = await json(res);
-    expect(body.code).toBe("SERVER_NOT_INIT");
-  });
-
-  it("returns a port when server is initialized", async () => {
-    ctx.registry.upsertLocalServer("testhost", "/opt/openclaw");
+  it("returns a derived port from default slug when no slug param", async () => {
     const res = await ctx.app.request("/api/next-port", { headers: authHeaders() });
     expect(res.status).toBe(200);
     const body = await json(res);
-    expect(body.port).toBeGreaterThanOrEqual(18789);
-    expect(body.port).toBeLessThanOrEqual(18799);
+    expect(body.port).toBeGreaterThanOrEqual(19100);
+    expect(body.port).toBeLessThanOrEqual(19199);
+  });
+
+  it("returns a derived port from slug query param", async () => {
+    ctx.registry.upsertLocalServer("testhost", "/opt/openclaw");
+    const res = await ctx.app.request("/api/next-port?slug=demo1", { headers: authHeaders() });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.port).toBeGreaterThanOrEqual(19100);
+    expect(body.port).toBeLessThanOrEqual(19199);
   });
 });
 
@@ -1759,16 +1760,16 @@ describe("GET /api/providers", () => {
 // ---------------------------------------------------------------------------
 
 describe("GET /api/next-port — extended", () => {
-  it("returns incrementing port when instances already use some ports", async () => {
+  it("returns derived port for a given slug", async () => {
     ctx.registry.upsertLocalServer("testhost", "/opt/openclaw");
     seedInstance(ctx, "demo1", 18789);
 
-    const res = await ctx.app.request("/api/next-port", { headers: authHeaders() });
+    const res = await ctx.app.request("/api/next-port?slug=demo2", { headers: authHeaders() });
     expect(res.status).toBe(200);
     const body = await json(res);
-    // Should suggest a port different from 18789
-    expect(body.port).toBeGreaterThanOrEqual(18789);
-    expect(body.port).toBeLessThanOrEqual(18838);
+    // Port is deterministically derived from slug in the 19100-19199 range
+    expect(body.port).toBeGreaterThanOrEqual(19100);
+    expect(body.port).toBeLessThanOrEqual(19199);
   });
 });
 

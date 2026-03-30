@@ -1,12 +1,10 @@
 // src/wizard/wizard.ts
 import { confirm } from "@inquirer/prompts";
 import type { Registry } from "../core/registry.js";
-import type { PortAllocator } from "../core/port-allocator.js";
 import type { ServerConnection } from "../server/connection.js";
 import type { WizardAnswers } from "../core/config-generator.js";
 import {
   promptSlug,
-  promptPort,
   promptAgents,
   promptModel,
   promptProvider,
@@ -17,19 +15,14 @@ import chalk from "chalk";
 
 export async function runWizard(
   registry: Registry,
-  portAllocator: PortAllocator,
   conn: ServerConnection,
-  serverId: number,
 ): Promise<WizardAnswers> {
   console.log(chalk.bold("\n=== New claw-runtime instance wizard ===\n"));
 
   // Step 1: Identity
   const { slug, displayName } = await promptSlug(registry);
 
-  // Step 2: Port
-  const port = await promptPort(portAllocator, serverId);
-
-  // Step 3: Agent team
+  // Step 2: Agent team
   const agentsResult = await promptAgents();
   const { agents } = agentsResult;
 
@@ -46,11 +39,10 @@ export async function runWizard(
   // Step 7: mem0
   const mem0 = await promptMem0(conn);
 
-  // Step 8: Summary + confirmation
+  // Step 7: Summary + confirmation
   console.log(chalk.bold("\n=== Summary ==="));
   console.log(`  Slug:        ${slug}`);
   console.log(`  Name:        ${displayName}`);
-  console.log(`  Port:        ${port}`);
   console.log(
     `  Agents:      ${agentsResult.mode === "blueprint" ? `From Blueprint (${agents.map((a) => a.id).join(", ")})` : agents.map((a) => a.id).join(", ")}`,
   );
@@ -75,7 +67,6 @@ export async function runWizard(
   return {
     slug,
     displayName,
-    port,
     agents,
     defaultModel,
     provider,

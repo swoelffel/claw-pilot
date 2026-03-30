@@ -4,13 +4,12 @@ import * as fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry } from "./registry.js";
-import type { PortAllocator } from "./port-allocator.js";
 import type { WizardAnswers } from "./config-generator.js";
 import { generateEnv, PROVIDER_ENV_VARS } from "./config-generator.js";
 import { PROVIDER_CATALOG } from "../lib/provider-catalog.js";
 import { generateGatewayToken } from "./secrets.js";
 import { constants } from "../lib/constants.js";
-import { getInstancesDir, getRuntimeStateDir } from "../lib/platform.js";
+import { getInstancesDir, getRuntimeStateDir, deriveWebChatPort } from "../lib/platform.js";
 import { InstanceAlreadyExistsError, ClawPilotError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
 import { shellEscape } from "../lib/shell.js";
@@ -85,7 +84,6 @@ export class Provisioner {
   constructor(
     private conn: ServerConnection,
     private registry: Registry,
-    private portAllocator: PortAllocator,
   ) {}
 
   async provision(
@@ -94,14 +92,11 @@ export class Provisioner {
     blueprintId?: number,
   ): Promise<ProvisionResult> {
     const { slug } = answers;
+    const port = deriveWebChatPort(slug);
 
     // Step 1: Validation
     if (this.registry.getInstance(slug)) {
       throw new InstanceAlreadyExistsError(slug);
-    }
-    const portFree = await this.portAllocator.verifyPort(serverId, answers.port);
-    if (!portFree) {
-      throw new ClawPilotError(`Port ${answers.port} is already in use`, "PORT_CONFLICT");
     }
 
     const stateDir = getRuntimeStateDir(slug);
@@ -112,7 +107,7 @@ export class Provisioner {
     // Track what has been created so we can roll back on failure
     let stateDirCreated = false;
     let instanceRegistered = false;
-    let portAllocated = false;
+    let portAllocated = false; // tracks registry.allocatePort() for rollback
 
     try {
       // Step 2: Create directory structure
@@ -153,7 +148,7 @@ export class Provisioner {
         serverId,
         slug,
         displayName: answers.displayName,
-        port: answers.port,
+        port,
         configPath,
         stateDir,
         systemdUnit: `claw-runtime-${slug}`,
@@ -162,9 +157,8 @@ export class Provisioner {
       });
       instanceRegistered = true;
 
-      // Register port (gateway + sidecar ports P+1, P+2, P+4)
-      this.registry.allocatePort(serverId, answers.port, slug);
-      this.portAllocator.reserveSidecarPorts(serverId, answers.port, slug);
+      // Register port in the ports table (useful for tracking)
+      this.registry.allocatePort(serverId, port, slug);
       portAllocated = true;
 
       if (answers.blueprintTeamFile) {
@@ -234,7 +228,7 @@ export class Provisioner {
       this.registry.logEvent(
         slug,
         "created",
-        `Instance created with ${answers.agents.length} agent(s) on port ${answers.port}`,
+        `Instance created with ${answers.agents.length} agent(s) on port ${port}`,
       );
 
       // Deploy blueprint (if specified)
@@ -246,7 +240,7 @@ export class Provisioner {
 
       return {
         slug,
-        port: answers.port,
+        port,
         stateDir,
         gatewayToken,
         agentCount: answers.agents.length,
@@ -262,7 +256,7 @@ export class Provisioner {
         stateDirCreated,
         instanceRegistered,
         portAllocated,
-        port: answers.port,
+        port,
       });
       throw err;
     }
@@ -284,7 +278,6 @@ export class Provisioner {
     if (portAllocated) {
       try {
         this.registry.releasePort(serverId, port);
-        this.portAllocator.releaseSidecarPorts(serverId, port);
       } catch {
         /* intentionally ignored — rollback is best-effort, DB may already be clean */
       }

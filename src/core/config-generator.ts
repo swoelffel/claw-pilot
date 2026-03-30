@@ -11,7 +11,6 @@ export interface AgentDefinition {
 export interface WizardAnswers {
   slug: string;
   displayName: string;
-  port: number;
   agents: AgentDefinition[];
   defaultModel: string;
   provider: string; // e.g. "anthropic" | "openai" | "openrouter" | "google" | "mistral" | "xai" | "opencode"

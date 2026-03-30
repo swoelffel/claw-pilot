@@ -9,7 +9,6 @@ import { Provisioner } from "../provisioner.js";
 import { MockConnection } from "./mock-connection.js";
 import { InstanceAlreadyExistsError } from "../../lib/errors.js";
 import type { WizardAnswers } from "../config-generator.js";
-import type { PortAllocator } from "../port-allocator.js";
 
 // ---------------------------------------------------------------------------
 // Module mocks
@@ -62,7 +61,6 @@ vi.mock("../lifecycle.js", () => ({
 const BASE_ANSWERS: WizardAnswers = {
   slug: "test-inst",
   displayName: "Test Instance",
-  port: 18790,
   agents: [{ id: "main", name: "Main", isDefault: true }],
   defaultModel: "claude-3-5-sonnet-20241022",
   provider: "anthropic",
@@ -70,24 +68,6 @@ const BASE_ANSWERS: WizardAnswers = {
   telegram: { enabled: false },
   mem0: { enabled: false },
 };
-
-// ---------------------------------------------------------------------------
-// Mock PortAllocator
-// ---------------------------------------------------------------------------
-
-let _mockVerifyPort = true;
-
-class MockPortAllocator {
-  async verifyPort(_serverId: number, _port: number): Promise<boolean> {
-    return _mockVerifyPort;
-  }
-  reserveSidecarPorts(_serverId: number, _port: number, _slug: string): void {
-    // no-op
-  }
-  releaseSidecarPorts(_serverId: number, _port: number): void {
-    // no-op
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Test setup
@@ -104,7 +84,6 @@ beforeEach(() => {
   registry = new Registry(db);
   conn = new MockConnection();
   _mockServiceManager = "systemd";
-  _mockVerifyPort = true;
 });
 
 afterEach(() => {
@@ -119,8 +98,7 @@ afterEach(() => {
 
 function makeProvisioner() {
   const server = registry.upsertLocalServer("test-host", "/tmp/openclaw-test-home");
-  const portAllocator = new MockPortAllocator() as unknown as PortAllocator;
-  return { provisioner: new Provisioner(conn, registry, portAllocator), serverId: server.id };
+  return { provisioner: new Provisioner(conn, registry), serverId: server.id };
 }
 
 // ---------------------------------------------------------------------------
@@ -134,7 +112,7 @@ describe("Provisioner.provision()", () => {
     const result = await provisioner.provision(BASE_ANSWERS, serverId);
 
     expect(result.slug).toBe("test-inst");
-    expect(result.port).toBe(18790);
+    expect(result.port).toBeGreaterThanOrEqual(19100);
     expect(result.gatewayToken).toBe("aabbccdd".repeat(6));
     expect(result.agentCount).toBe(1);
     expect(result.stateDir).toContain("test-inst");
@@ -171,7 +149,7 @@ describe("Provisioner.provision()", () => {
 
     const instance = registry.getInstance("test-inst");
     expect(instance).toBeDefined();
-    expect(instance!.port).toBe(18790);
+    expect(instance!.port).toBeGreaterThanOrEqual(19100);
     expect(instance!.slug).toBe("test-inst");
   });
 
@@ -194,15 +172,6 @@ describe("Provisioner.provision()", () => {
     // Second provision with same slug should fail
     await expect(provisioner.provision(BASE_ANSWERS, serverId)).rejects.toThrow(
       InstanceAlreadyExistsError,
-    );
-  });
-
-  it("port conflict — throws ClawPilotError with code PORT_CONFLICT", async () => {
-    _mockVerifyPort = false;
-    const { provisioner, serverId } = makeProvisioner();
-
-    await expect(provisioner.provision(BASE_ANSWERS, serverId)).rejects.toThrow(
-      expect.objectContaining({ code: "PORT_CONFLICT" }),
     );
   });
 

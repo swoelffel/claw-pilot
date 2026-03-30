@@ -18,16 +18,7 @@ import type { InstanceSlug } from "../types.js";
 import type { Channel } from "../channel/channel.js";
 import { WebChatChannel } from "../channel/web-chat.js";
 import { TelegramChannel } from "../channel/telegram/channel.js";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-/** Base port for web-chat channels (dashboard is 19000, instances start at 19100) */
-const WEB_CHAT_BASE_PORT = 19100;
-
-/** Number of ports reserved for web-chat (max instances) */
-const WEB_CHAT_PORT_RANGE = 100;
+import { deriveWebChatPort } from "../../lib/platform.js";
 
 // ---------------------------------------------------------------------------
 // createChannels
@@ -83,18 +74,7 @@ export function createChannels(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Derive a deterministic web-chat port from the instance slug.
- * Uses a simple djb2-style hash to spread ports across the reserved range.
- */
-function deriveWebChatPort(slug: InstanceSlug): number {
-  let hash = 5381;
-  for (let i = 0; i < slug.length; i++) {
-    hash = ((hash << 5) + hash) ^ slug.charCodeAt(i);
-    hash = hash >>> 0; // keep unsigned 32-bit
-  }
-  return WEB_CHAT_BASE_PORT + (hash % WEB_CHAT_PORT_RANGE);
-}
+// deriveWebChatPort is imported from ../../lib/platform.js
 
 /**
  * Resolve the web-chat auth token for an instance.

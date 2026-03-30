@@ -128,9 +128,6 @@ export function buildInstanceConfig(
     plugins: {
       mem0: null,
     },
-    gateway: {
-      port: instance.port,
-    },
   };
 }
 
@@ -160,6 +157,5 @@ export function buildInstanceConfigStub(instance: {
     agents: [],
     channels: { telegram: null },
     plugins: { mem0: null },
-    gateway: { port: instance.port },
   };
 }

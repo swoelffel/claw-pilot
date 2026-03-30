@@ -1,6 +1,5 @@
 // src/commands/create.ts
 import { Command } from "commander";
-import { PortAllocator } from "../core/port-allocator.js";
 import { Provisioner } from "../core/provisioner.js";
 import { runWizard } from "../wizard/wizard.js";
 import { logger } from "../lib/logger.js";
@@ -13,17 +12,15 @@ export function createCommand(): Command {
     .description("Create a new claw-runtime instance (wizard + provisioning)")
     .action(async () => {
       await withContext(async ({ conn, registry }) => {
-        const portAllocator = new PortAllocator(registry, conn);
-
         const server = registry.getLocalServer();
         if (!server) {
           throw new CliError("No server registered. Run 'claw-pilot init' first.");
         }
 
-        const answers = await runWizard(registry, portAllocator, conn, server.id);
+        const answers = await runWizard(registry, conn);
 
         logger.info("\nProvisioning...");
-        const provisioner = new Provisioner(conn, registry, portAllocator);
+        const provisioner = new Provisioner(conn, registry);
         const result = await provisioner.provision(answers, server.id);
 
         console.log(chalk.bold("\n=== Instance created ==="));

@@ -7,7 +7,7 @@ import { instanceGuard } from "../../../lib/guards.js";
 import type { WizardAnswers } from "../../../core/config-generator.js";
 import { Destroyer } from "../../../core/destroyer.js";
 import { Provisioner } from "../../../core/provisioner.js";
-import { PortAllocator } from "../../../core/port-allocator.js";
+import { deriveWebChatPort } from "../../../lib/platform.js";
 import { ClawPilotError, InstanceNotFoundError } from "../../../lib/errors.js";
 
 export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
@@ -118,8 +118,7 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
   app.delete("/api/instances/:slug", async (c) => {
     const slug = c.req.param("slug");
     try {
-      const portAllocator = new PortAllocator(registry, conn);
-      const destroyer = new Destroyer(conn, registry, xdgRuntimeDir, portAllocator);
+      const destroyer = new Destroyer(conn, registry, xdgRuntimeDir);
       await destroyer.destroy(slug);
       tokenCache.invalidate(slug);
       return c.json({ ok: true, slug });
@@ -136,28 +135,14 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
     }
   });
 
-  // GET /api/next-port — suggest next free port in the configured range
-  app.get("/api/next-port", async (c) => {
-    const server = registry.getLocalServer();
-    if (!server)
-      return apiError(
-        c,
-        500,
-        "SERVER_NOT_INIT",
-        "Server not initialized. Run claw-pilot init first.",
-      );
-    try {
-      const portAllocator = new PortAllocator(registry, conn);
-      const nextPort = await portAllocator.findFreePort(server.id);
-      return c.json({ port: nextPort });
-    } catch (err) {
-      return apiError(
-        c,
-        500,
-        "INTERNAL_ERROR",
-        err instanceof Error ? err.message : "No free port available",
-      );
+  // GET /api/next-port — derive port from slug (deterministic, no allocation needed)
+  app.get("/api/next-port", (c) => {
+    const slug = c.req.query("slug");
+    if (slug && /^[a-z][a-z0-9-]*$/.test(slug)) {
+      return c.json({ port: deriveWebChatPort(slug) });
     }
+    // Fallback: return a default port (slug not yet known)
+    return c.json({ port: deriveWebChatPort("default") });
   });
 
   // POST /api/instances — provision a new instance
@@ -179,7 +164,6 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
     }
 
     const slug = body["slug"];
-    const port = body["port"];
     const defaultModel = body["defaultModel"];
     const provider = body["provider"];
     const apiKey = body["apiKey"];
@@ -195,9 +179,6 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
         "INVALID_INSTANCE_SLUG",
         "Invalid slug: must be 2-30 lowercase alphanumeric chars with hyphens",
       );
-    }
-    if (typeof port !== "number" || port < 1024 || port > 65535) {
-      return apiError(c, 400, "FIELD_INVALID", "Invalid port: must be 1024-65535");
     }
     if (typeof defaultModel !== "string" || !defaultModel) {
       return apiError(c, 400, "FIELD_REQUIRED", "defaultModel is required");
@@ -230,7 +211,6 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
         typeof body["displayName"] === "string" && body["displayName"]
           ? body["displayName"]
           : slug.charAt(0).toUpperCase() + slug.slice(1),
-      port,
       agents,
       defaultModel,
       provider,
@@ -240,8 +220,7 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
     };
 
     try {
-      const portAllocator = new PortAllocator(registry, conn);
-      const provisioner = new Provisioner(conn, registry, portAllocator);
+      const provisioner = new Provisioner(conn, registry);
       const blueprintId = typeof body.blueprintId === "number" ? body.blueprintId : undefined;
       const result = await provisioner.provision(answers, server.id, blueprintId);
 

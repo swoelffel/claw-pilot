@@ -1,7 +1,6 @@
 // src/wizard/prompts.ts
 import { input, select, confirm, password } from "@inquirer/prompts";
 import type { Registry, InstanceRecord } from "../core/registry.js";
-import type { PortAllocator } from "../core/port-allocator.js";
 import type { AgentDefinition } from "../core/config-generator.js";
 import { PROVIDER_ENV_VARS } from "../core/config-generator.js";
 import { PROVIDER_CATALOG } from "../lib/provider-catalog.js";
@@ -28,24 +27,6 @@ export async function promptSlug(
   });
 
   return { slug, displayName };
-}
-
-export async function promptPort(portAllocator: PortAllocator, serverId: number): Promise<number> {
-  const suggested = await portAllocator.findFreePort(serverId);
-
-  const portStr = await input({
-    message: `Gateway port (auto: ${suggested}):`,
-    default: String(suggested),
-    validate: async (value) => {
-      const port = parseInt(value);
-      if (isNaN(port) || port < 1024 || port > 65535) return "Invalid port number";
-      const free = await portAllocator.verifyPort(serverId, port);
-      if (!free) return `Port ${port} is already in use`;
-      return true;
-    },
-  });
-
-  return parseInt(portStr);
 }
 
 export async function promptAgents(): Promise<{

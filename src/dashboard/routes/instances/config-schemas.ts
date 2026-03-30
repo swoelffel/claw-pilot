@@ -69,9 +69,6 @@ export interface InstanceConfig {
       qdrantPort: number;
     } | null;
   };
-  gateway: {
-    port: number;
-  };
 }
 
 // ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@ export class InstanceRepository {
   constructor(private db: Database.Database) {}
 
   listInstances(): InstanceRecord[] {
-    return this.db.prepare("SELECT * FROM instances ORDER BY port ASC").all() as InstanceRecord[];
+    return this.db.prepare("SELECT * FROM instances ORDER BY slug ASC").all() as InstanceRecord[];
   }
 
   getInstance(slug: string): InstanceRecord | undefined {

@@ -110,3 +110,24 @@ export function getRuntimePid(stateDir: string): number | null {
 export function isRuntimeRunning(stateDir: string): boolean {
   return getRuntimePid(stateDir) !== null;
 }
+
+// --- Web-chat port derivation ---
+
+/** Base port for web-chat channels (dashboard is 19000, instances start at 19100) */
+const WEB_CHAT_BASE_PORT = 19100;
+
+/** Number of ports in the web-chat range (max instances before hash collision) */
+const WEB_CHAT_PORT_RANGE = 100;
+
+/**
+ * Derive a deterministic web-chat port from the instance slug.
+ * Uses a djb2-style hash to spread ports across the 19100–19199 range.
+ */
+export function deriveWebChatPort(slug: string): number {
+  let hash = 5381;
+  for (let i = 0; i < slug.length; i++) {
+    hash = ((hash << 5) + hash) ^ slug.charCodeAt(i);
+    hash = hash >>> 0; // keep unsigned 32-bit
+  }
+  return WEB_CHAT_BASE_PORT + (hash % WEB_CHAT_PORT_RANGE);
+}

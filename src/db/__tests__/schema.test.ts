@@ -178,9 +178,9 @@ describe("initDatabase — fresh database", () => {
     db.close();
   });
 
-  it("reaches the latest schema version (22)", () => {
+  it("reaches the latest schema version (23)", () => {
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(22);
+    expect(schemaVersion(db)).toBe(23);
     db.close();
   });
 
@@ -230,7 +230,7 @@ describe("migration v1 → v4", () => {
     v1.close();
 
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(22);
+    expect(schemaVersion(db)).toBe(23);
     db.close();
   });
 
@@ -296,7 +296,8 @@ describe("migration v1 → v4", () => {
     const instance = registry.getInstance("test-inst");
     expect(instance).toBeDefined();
     expect(instance!.slug).toBe("test-inst");
-    expect(instance!.port).toBe(18789);
+    // v23 migration backfills port with deriveWebChatPort("test-inst") = 19126
+    expect(instance!.port).toBe(19126);
     db.close();
   });
 
@@ -367,7 +368,7 @@ describe("migration v2 → v4", () => {
     v1.close();
 
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(22);
+    expect(schemaVersion(db)).toBe(23);
     expect(tableNames(db)).toContain("blueprints");
     expect(tableNames(db)).toContain("users");
     expect(tableNames(db)).toContain("sessions");

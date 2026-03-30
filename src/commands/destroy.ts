@@ -2,7 +2,6 @@
 import { Command } from "commander";
 import { input, confirm } from "@inquirer/prompts";
 import { Destroyer } from "../core/destroyer.js";
-import { PortAllocator } from "../core/port-allocator.js";
 import { logger } from "../lib/logger.js";
 import { InstanceNotFoundError } from "../lib/errors.js";
 import { withContext } from "./_context.js";
@@ -45,8 +44,7 @@ export function destroyCommand(): Command {
           }
         }
 
-        const portAllocator = new PortAllocator(registry, conn);
-        const destroyer = new Destroyer(conn, registry, xdgRuntimeDir, portAllocator);
+        const destroyer = new Destroyer(conn, registry, xdgRuntimeDir);
         logger.info(`Destroying ${slug}...`);
         await destroyer.destroy(slug);
         logger.success(`Instance "${slug}" has been destroyed.`);

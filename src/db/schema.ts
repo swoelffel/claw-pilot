@@ -999,6 +999,62 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // v23: Replace vestigial gateway ports with actual web-chat derived ports.
+    // The gateway port range (18789-18838) was never listened on by any server.
+    // The runtime uses a deterministic port derived from the slug (19100-19199).
+    // This migration backfills instances.port with the correct web-chat port
+    // and clears the ports table (sidecar reservations are no longer used).
+    version: 23,
+    up(db) {
+      // Derive web-chat port from slug using the same djb2 hash as channel-factory
+      function derivePort(slug: string): number {
+        const BASE = 19100;
+        const RANGE = 100;
+        let hash = 5381;
+        for (let i = 0; i < slug.length; i++) {
+          hash = ((hash << 5) + hash) ^ slug.charCodeAt(i);
+          hash = hash >>> 0;
+        }
+        return BASE + (hash % RANGE);
+      }
+
+      const instances = db.prepare("SELECT id, slug, port FROM instances").all() as Array<{
+        id: number;
+        slug: string;
+        port: number;
+      }>;
+
+      const update = db.prepare("UPDATE instances SET port = ? WHERE id = ?");
+      for (const inst of instances) {
+        const newPort = derivePort(inst.slug);
+        if (inst.port !== newPort) {
+          update.run(newPort, inst.id);
+        }
+      }
+
+      // Clear the ports table — sidecar reservations are no longer used.
+      // Re-insert only the web-chat port for each instance.
+      const hasPorts = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='ports'")
+        .get();
+      if (hasPorts) {
+        db.exec("DELETE FROM ports");
+        const insertPort = db.prepare(
+          "INSERT OR IGNORE INTO ports (server_id, port, instance_slug) VALUES (?, ?, ?)",
+        );
+        for (const inst of instances) {
+          const serverId =
+            (
+              db.prepare("SELECT server_id FROM instances WHERE id = ?").get(inst.id) as
+                | { server_id: number }
+                | undefined
+            )?.server_id ?? 1;
+          insertPort.run(serverId, derivePort(inst.slug), inst.slug);
+        }
+      }
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

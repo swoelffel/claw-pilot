@@ -11,8 +11,6 @@ export const constants = {
   INSTANCES_DIR: "instances", // ~/.claw-pilot/instances/
 
   // Ports
-  PORT_RANGE_START: 18789,
-  PORT_RANGE_END: 18838, // 50 ports — 10 instances at min step 5
   DASHBOARD_PORT: 19000,
 
   // Timeouts (ms)
