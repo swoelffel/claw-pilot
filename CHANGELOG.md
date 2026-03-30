@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.58.1] — 2026-03-30
+
+### Changed
+
+- **systemd system service** : Dashboard service on Linux now uses system-level systemd (`/etc/systemd/system/`) instead of user-level (`systemctl --user`). Removes dependency on linger and `XDG_RUNTIME_DIR`.
+- **install.sh** : Improved systemd detection (`/run/systemd/system` check), cron suggestion as fallback.
+
+### Dependencies
+
+- Bump prod dependencies: ai v6.3.13, @ai-sdk/anthropic v5.1.3, @ai-sdk/google v2.1.8, @ai-sdk/openai v2.1.8, hono v4.7.10, marked v16.1.0, zod v3.25.32.
+
+---
+
 ## [0.58.0] — 2026-03-30
 
 ### Added
