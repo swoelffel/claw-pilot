@@ -77,18 +77,39 @@ safe_remove() {
   fi
 }
 
-# Stop + disable a systemd user service (best-effort)
+# Detect if systemd is available at system level (vs user services)
+# System-level systemd is preferred when /run/systemd/system exists
+detect_systemd_level() {
+  if [ -d /run/systemd/system ]; then
+    echo "system"
+  else
+    echo "user"
+  fi
+}
+
+SYSTEMD_LEVEL=$(detect_systemd_level)
+
+# Stop + disable a systemd service (system-level or user service)
 stop_systemd_service() {
   svc="$1"
   if ! command -v systemctl >/dev/null 2>&1; then return 0; fi
   if [ "$DRY_RUN" -eq 1 ]; then
-    drylog "systemctl --user stop $svc"
+    if [ "$SYSTEMD_LEVEL" = "system" ]; then
+      drylog "systemctl stop $svc"
+    else
+      drylog "systemctl --user stop $svc"
+    fi
     return 0
   fi
-  XDG_RUNTIME_DIR="/run/user/$(id -u)"
-  export XDG_RUNTIME_DIR
-  systemctl --user stop "$svc" 2>/dev/null && log "Stopped service: $svc" || true
-  systemctl --user disable "$svc" 2>/dev/null || true
+  if [ "$SYSTEMD_LEVEL" = "system" ]; then
+    systemctl stop "$svc" 2>/dev/null && log "Stopped service: $svc" || true
+    systemctl disable "$svc" 2>/dev/null || true
+  else
+    XDG_RUNTIME_DIR="/run/user/$(id -u)"
+    export XDG_RUNTIME_DIR
+    systemctl --user stop "$svc" 2>/dev/null && log "Stopped service: $svc" || true
+    systemctl --user disable "$svc" 2>/dev/null || true
+  fi
 }
 
 # Stop + unload a launchd agent (best-effort)
@@ -413,9 +434,13 @@ fi
 
 # Reload systemd after stopping services
 if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1 && [ "$DRY_RUN" -eq 0 ]; then
-  XDG_RUNTIME_DIR="/run/user/$(id -u)"
-  export XDG_RUNTIME_DIR
-  systemctl --user daemon-reload 2>/dev/null || true
+  if [ "$SYSTEMD_LEVEL" = "system" ]; then
+    systemctl daemon-reload 2>/dev/null || true
+  else
+    XDG_RUNTIME_DIR="/run/user/$(id -u)"
+    export XDG_RUNTIME_DIR
+    systemctl --user daemon-reload 2>/dev/null || true
+  fi
 fi
 
 # --- Step 4: Remove service files ---
@@ -424,17 +449,24 @@ log "Removing service files..."
 
 if [ "$OS" = "Linux" ]; then
   SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
+  SYSTEMD_SYSTEM_DIR="/etc/systemd/system"
   # Remove vestigial instance service files (runtimes are daemons, not services)
   for slug in $INSTANCES; do
     safe_remove "${SYSTEMD_USER_DIR}/claw-runtime-${slug}.service"
+    safe_remove "${SYSTEMD_SYSTEM_DIR}/claw-runtime-${slug}.service"
   done
-  # Remove dashboard service file
+  # Remove dashboard service file (both user and system locations)
   safe_remove "${SYSTEMD_USER_DIR}/claw-pilot-dashboard.service"
+  safe_remove "${SYSTEMD_SYSTEM_DIR}/claw-pilot-dashboard.service"
   # Final daemon-reload
   if command -v systemctl >/dev/null 2>&1 && [ "$DRY_RUN" -eq 0 ]; then
-    XDG_RUNTIME_DIR="/run/user/$(id -u)"
-    export XDG_RUNTIME_DIR
-    systemctl --user daemon-reload 2>/dev/null || true
+    if [ "$SYSTEMD_LEVEL" = "system" ]; then
+      systemctl daemon-reload 2>/dev/null || true
+    else
+      XDG_RUNTIME_DIR="/run/user/$(id -u)"
+      export XDG_RUNTIME_DIR
+      systemctl --user daemon-reload 2>/dev/null || true
+    fi
   fi
 elif [ "$OS" = "Darwin" ]; then
   LAUNCHD_DIR="$HOME/Library/LaunchAgents"
