@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.58.4] — 2026-03-30
+
+### Fixed
+
+- **Security: systemd `User=` now resolves correctly under sudo** — When `install.sh` runs `sudo claw-pilot service install`, the service file now uses `SUDO_USER` / `SUDO_UID` environment variables to resolve the real user instead of `root`. Previously, `os.userInfo()` returned `root` because the Node process ran as root via sudo.
+- **Wrapper installs to `/usr/local/bin/` with passwordless sudo** — When running via `curl | sh` without a TTY but with `sudo -n` (NOPASSWD), the wrapper script now correctly installs to `/usr/local/bin/` instead of falling back to `~/bin/`.
+- **Suppressed verbose "detached HEAD" git message** during fresh installation from a release tag.
+- **Removed duplicate service success messages** — `install.sh` no longer prints its own success message when `dashboard-service.ts` already does.
+
+---
+
 ## [0.58.3] — 2026-03-30
 
 ### Fixed
