@@ -102,14 +102,13 @@ stop_systemd_service() {
     return 0
   fi
   if [ "$SYSTEMD_LEVEL" = "system" ]; then
-    # System services require root — try sudo fallback
-    if systemctl stop "$svc" 2>/dev/null; then
-      log "Stopped service: $svc"
-    elif command -v sudo >/dev/null 2>&1; then
-      sudo systemctl stop "$svc" 2>/dev/null && log "Stopped service: $svc (sudo)" || true
-    fi
-    if ! systemctl disable "$svc" 2>/dev/null; then
-      command -v sudo >/dev/null 2>&1 && sudo systemctl disable "$svc" 2>/dev/null || true
+    # System services require root — use sudo directly to avoid polkit/pkttyagent noise
+    if command -v sudo >/dev/null 2>&1; then
+      sudo systemctl stop "$svc" 2>/dev/null && log "Stopped service: $svc" || true
+      sudo systemctl disable "$svc" 2>/dev/null || true
+    else
+      systemctl stop "$svc" 2>/dev/null && log "Stopped service: $svc" || true
+      systemctl disable "$svc" 2>/dev/null || true
     fi
   else
     XDG_RUNTIME_DIR="/run/user/$(id -u)"
@@ -501,8 +500,11 @@ fi
 # Reload systemd after stopping services
 if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1 && [ "$DRY_RUN" -eq 0 ]; then
   if [ "$SYSTEMD_LEVEL" = "system" ]; then
-    systemctl daemon-reload 2>/dev/null \
-      || { command -v sudo >/dev/null 2>&1 && sudo systemctl daemon-reload 2>/dev/null || true; }
+    if command -v sudo >/dev/null 2>&1; then
+      sudo systemctl daemon-reload 2>/dev/null || true
+    else
+      systemctl daemon-reload 2>/dev/null || true
+    fi
   else
     XDG_RUNTIME_DIR="/run/user/$(id -u)"
     export XDG_RUNTIME_DIR
@@ -535,7 +537,11 @@ if [ "$OS" = "Linux" ]; then
   # Final daemon-reload
   if command -v systemctl >/dev/null 2>&1 && [ "$DRY_RUN" -eq 0 ]; then
     if [ "$SYSTEMD_LEVEL" = "system" ]; then
-      systemctl daemon-reload 2>/dev/null || true
+      if command -v sudo >/dev/null 2>&1; then
+        sudo systemctl daemon-reload 2>/dev/null || true
+      else
+        systemctl daemon-reload 2>/dev/null || true
+      fi
     else
       XDG_RUNTIME_DIR="/run/user/$(id -u)"
       export XDG_RUNTIME_DIR

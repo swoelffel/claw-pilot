@@ -158,31 +158,23 @@ export async function installDashboardService(
     await conn.writeFile(servicePath, serviceContent, 0o644);
     logger.success(`Service file written: ${servicePath}`);
 
-    // daemon-reload — try without sudo first, fallback to sudo
-    const reload = await conn.exec("systemctl daemon-reload");
+    // System services require root — use sudo directly to avoid polkit/pkttyagent noise.
+    // If already root (e.g. called via sudo from install.sh), sudo is a no-op.
+    const sudo = isRoot ? "" : "sudo ";
+
+    const reload = await conn.exec(`${sudo}systemctl daemon-reload`);
     if (reload.exitCode !== 0) {
-      const sudoReload = await conn.exec("sudo systemctl daemon-reload");
-      if (sudoReload.exitCode !== 0) {
-        throw new Error(`systemctl daemon-reload failed: ${sudoReload.stderr}`);
-      }
+      throw new Error(`systemctl daemon-reload failed: ${reload.stderr}`);
     }
 
-    // enable — try without sudo first, fallback to sudo
-    const enable = await conn.exec(`systemctl enable ${DASHBOARD_SERVICE_UNIT}`);
+    const enable = await conn.exec(`${sudo}systemctl enable ${DASHBOARD_SERVICE_UNIT}`);
     if (enable.exitCode !== 0) {
-      const sudoEnable = await conn.exec(`sudo systemctl enable ${DASHBOARD_SERVICE_UNIT}`);
-      if (sudoEnable.exitCode !== 0) {
-        throw new Error(`systemctl enable failed: ${sudoEnable.stderr}`);
-      }
+      throw new Error(`systemctl enable failed: ${enable.stderr}`);
     }
 
-    // start — try without sudo first, fallback to sudo
-    const start = await conn.exec(`systemctl start ${DASHBOARD_SERVICE_UNIT}`);
+    const start = await conn.exec(`${sudo}systemctl start ${DASHBOARD_SERVICE_UNIT}`);
     if (start.exitCode !== 0) {
-      const sudoStart = await conn.exec(`sudo systemctl start ${DASHBOARD_SERVICE_UNIT}`);
-      if (sudoStart.exitCode !== 0) {
-        throw new Error(`systemctl start failed: ${sudoStart.stderr}`);
-      }
+      throw new Error(`systemctl start failed: ${start.stderr}`);
     }
   }
 
@@ -224,22 +216,15 @@ export async function uninstallDashboardService(
       logger.info(`Launchd plist not found (already removed): ${plistPath}`);
     }
   } else {
-    // Linux: systemd system service — try without sudo, fallback to sudo
+    // Linux: systemd system service — use sudo directly to avoid polkit/pkttyagent noise
+    const isRoot = process.getuid?.() === 0;
+    const sudo = isRoot ? "" : "sudo ";
+
     // stop (ignore errors if not running)
-    const stop = await conn
-      .exec(`systemctl stop ${DASHBOARD_SERVICE_UNIT}`)
-      .catch(() => ({ exitCode: 1 }));
-    if (stop.exitCode !== 0) {
-      await conn.exec(`sudo systemctl stop ${DASHBOARD_SERVICE_UNIT}`).catch(() => {});
-    }
+    await conn.exec(`${sudo}systemctl stop ${DASHBOARD_SERVICE_UNIT}`).catch(() => {});
 
     // disable (ignore errors if not enabled)
-    const disable = await conn
-      .exec(`systemctl disable ${DASHBOARD_SERVICE_UNIT}`)
-      .catch(() => ({ exitCode: 1 }));
-    if (disable.exitCode !== 0) {
-      await conn.exec(`sudo systemctl disable ${DASHBOARD_SERVICE_UNIT}`).catch(() => {});
-    }
+    await conn.exec(`${sudo}systemctl disable ${DASHBOARD_SERVICE_UNIT}`).catch(() => {});
 
     // Remove service file from /etc/systemd/system/
     const servicePath = getDashboardServicePath(true);
@@ -251,11 +236,8 @@ export async function uninstallDashboardService(
       logger.info(`Service file not found (already removed): ${servicePath}`);
     }
 
-    // daemon-reload — try without sudo, fallback to sudo
-    const reload = await conn.exec("systemctl daemon-reload");
-    if (reload.exitCode !== 0) {
-      await conn.exec("sudo systemctl daemon-reload").catch(() => {});
-    }
+    // daemon-reload
+    await conn.exec(`${sudo}systemctl daemon-reload`).catch(() => {});
   }
 
   logger.success(`Dashboard service uninstalled.`);
@@ -273,13 +255,12 @@ export async function restartDashboardService(
     await conn.execFile("launchctl", ["load", "-w", plistPath]);
     logger.success(`Dashboard service restarted.`);
   } else {
-    // Linux: systemd system service — try without sudo, fallback to sudo
-    const result = await conn.exec(`systemctl restart ${DASHBOARD_SERVICE_UNIT}`);
+    // Linux: systemd system service — use sudo directly to avoid polkit/pkttyagent noise
+    const isRoot = process.getuid?.() === 0;
+    const sudo = isRoot ? "" : "sudo ";
+    const result = await conn.exec(`${sudo}systemctl restart ${DASHBOARD_SERVICE_UNIT}`);
     if (result.exitCode !== 0) {
-      const sudoResult = await conn.exec(`sudo systemctl restart ${DASHBOARD_SERVICE_UNIT}`);
-      if (sudoResult.exitCode !== 0) {
-        throw new Error(`systemctl restart failed: ${sudoResult.stderr}`);
-      }
+      throw new Error(`systemctl restart failed: ${result.stderr}`);
     }
     logger.success(`Dashboard service restarted.`);
   }
