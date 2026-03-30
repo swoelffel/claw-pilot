@@ -170,7 +170,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
   // agent config, model capabilities, token usage estimate, available tools,
   // MCP server status, workspace files, teammates, session tree.
   // ---------------------------------------------------------------------------
-  app.get("/api/instances/:slug/runtime/sessions/:sessionId/context", (c) => {
+  app.get("/api/instances/:slug/runtime/sessions/:sessionId/context", async (c) => {
     const slug = c.req.param("slug");
     const sessionId = c.req.param("sessionId");
     const instance = registry.getInstance(slug);
@@ -242,42 +242,10 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
 
     // Build tools list (builtin from toolProfile + placeholder for MCP)
     const toolProfile = agentCfg?.toolProfile ?? "executor";
-    const builtinToolsByProfile: Record<string, string[]> = {
-      sentinel: ["question"],
-      pilot: ["question", "webfetch"],
-      executor: [
-        "read",
-        "write",
-        "edit",
-        "multiedit",
-        "bash",
-        "glob",
-        "grep",
-        "webfetch",
-        "question",
-        "todowrite",
-        "todoread",
-        "skill",
-      ],
-      manager: [
-        "read",
-        "write",
-        "edit",
-        "multiedit",
-        "bash",
-        "glob",
-        "grep",
-        "webfetch",
-        "question",
-        "todowrite",
-        "todoread",
-        "skill",
-        "task",
-      ],
-    };
-    const builtinTools = (
-      builtinToolsByProfile[toolProfile] ?? builtinToolsByProfile["executor"]!
-    ).map((name) => ({ name, source: "builtin" as const }));
+    const { TOOL_PROFILES: profiles } = await import("../../../runtime/tool/registry.js");
+    const builtinTools = (profiles[toolProfile] ?? profiles["executor"] ?? []).map(
+      (name: string) => ({ name, source: "builtin" as const }),
+    );
 
     // MCP tools — attempt to read from DB snapshot if available, else return empty
     const mcpToolRows = (() => {
