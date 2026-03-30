@@ -31,6 +31,8 @@ export namespace Tool {
      * lets them collaborate on the same files.
      */
     workDir?: string;
+    /** Agent config — used by skill tool for whitelist enforcement */
+    agentConfig?: import("../config/index.js").RuntimeAgentConfig;
     /** Callback to update the title/metadata of the in-progress tool part */
     metadata(input: { title?: string }): void;
   }

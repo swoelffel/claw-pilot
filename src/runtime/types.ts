@@ -181,6 +181,15 @@ export interface OutboundArtifact {
   language?: string;
 }
 
+/** File delivery produced by the send_file tool */
+export interface OutboundFileDelivery {
+  path: string;
+  filename: string;
+  title: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
 /** Outbound message to a channel */
 export interface OutboundMessage {
   channelType: ChannelType;
@@ -191,6 +200,8 @@ export interface OutboundMessage {
   streaming?: boolean;
   /** Artifacts to deliver as files (e.g. Telegram documents) */
   artifacts?: OutboundArtifact[];
+  /** Workspace files to deliver (from send_file tool) */
+  files?: OutboundFileDelivery[];
 }
 
 // ---------------------------------------------------------------------------

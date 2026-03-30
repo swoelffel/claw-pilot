@@ -15,6 +15,7 @@ import "./parts/part-compaction.js";
 import "./parts/part-question.js";
 import "./parts/part-image.js";
 import "./parts/part-artifact.js";
+import "./parts/part-file.js";
 import "./parts/part-suggestion.js";
 
 // ---------------------------------------------------------------------------
@@ -350,6 +351,13 @@ export class PilotMessageEl extends LitElement {
             .call=${part}
             .result=${result}
           ></cp-pilot-part-artifact>`;
+        }
+        if (toolName === "send_file") {
+          return html`<cp-pilot-part-file
+            .call=${part}
+            .result=${result}
+            .slug=${this.slug}
+          ></cp-pilot-part-file>`;
         }
         return html`<cp-pilot-part-tool .call=${part} .result=${result}></cp-pilot-part-tool>`;
       }

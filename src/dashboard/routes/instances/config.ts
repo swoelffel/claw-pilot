@@ -302,6 +302,7 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
                 agent.autoSelectSkills = agentPatch.autoSelectSkills;
               if (agentPatch.autoSelectSkillsTopN !== undefined)
                 agent.autoSelectSkillsTopN = agentPatch.autoSelectSkillsTopN;
+              if (agentPatch.skills !== undefined) agent.skills = agentPatch.skills ?? undefined;
               if (agentPatch.heartbeat !== undefined) {
                 if (agentPatch.heartbeat === null) {
                   agent.heartbeat = undefined;

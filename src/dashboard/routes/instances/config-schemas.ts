@@ -187,6 +187,7 @@ export const RuntimeConfigPatchSchema = z.object({
           .optional(),
         autoSelectSkills: z.boolean().optional(),
         autoSelectSkillsTopN: z.number().int().min(1).max(20).optional(),
+        skills: z.array(z.string()).nullable().optional(),
         heartbeat: z
           .object({
             every: z.string().optional(),

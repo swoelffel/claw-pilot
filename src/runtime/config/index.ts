@@ -163,6 +163,11 @@ const AgentConfigSchema = z.object({
    */
   autoSelectSkillsTopN: z.number().int().min(1).max(20).optional(),
   /**
+   * Skill whitelist for this agent.
+   * undefined/null = all skills (backward compat), [] = none, ["a","b"] = only those.
+   */
+  skills: z.array(z.string()).nullable().optional(),
+  /**
    * Behavioral archetype of the agent.
    * Controls system prompt injection (archetype-specific behavioral instructions)
    * and enables archetype-based routing: task({ subagent_type: "evaluator" })

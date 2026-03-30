@@ -21,6 +21,7 @@ import {
   SkillTool,
   MultiEditTool,
   CreateArtifactTool,
+  SendFileTool,
 } from "./built-in/index.js";
 import type { McpRegistry } from "../mcp/index.js";
 import { getRegisteredHooks } from "../plugin/hooks.js";
@@ -33,7 +34,7 @@ import type { PluginInput } from "../plugin/types.js";
 
 export const TOOL_PROFILES: Record<string, string[]> = {
   sentinel: ["question"],
-  pilot: ["question", "webfetch", "send_message", "task", "create_artifact"],
+  pilot: ["question", "webfetch", "send_message", "task", "create_artifact", "send_file"],
   executor: [
     "read",
     "write",
@@ -49,6 +50,7 @@ export const TOOL_PROFILES: Record<string, string[]> = {
     "skill",
     "send_message",
     "create_artifact",
+    "send_file",
   ],
   manager: [
     "read",
@@ -66,6 +68,7 @@ export const TOOL_PROFILES: Record<string, string[]> = {
     "send_message",
     "task",
     "create_artifact",
+    "send_file",
   ],
 };
 
@@ -89,6 +92,7 @@ export const ALL_TOOL_IDS = [
   "send_message",
   "task",
   "create_artifact",
+  "send_file",
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -109,6 +113,7 @@ const BUILTIN_TOOLS: Tool.Info[] = [
   SkillTool,
   MultiEditTool,
   CreateArtifactTool,
+  SendFileTool,
 ];
 
 // ---------------------------------------------------------------------------

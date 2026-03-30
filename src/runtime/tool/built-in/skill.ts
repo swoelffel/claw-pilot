@@ -506,15 +506,21 @@ export async function listAvailableSkills(
   }
 
   // Phase 1d — Filter by agent permissions
-  const skills = [...seen.values()];
-  if (!agentConfig || agentConfig.permissions.length === 0) {
-    return skills;
+  let skills = [...seen.values()];
+  if (agentConfig && agentConfig.permissions.length > 0) {
+    skills = skills.filter((skill) => {
+      const result = evaluateRuleset(agentConfig.permissions, "skill", skill.name);
+      return result.action !== "deny";
+    });
   }
 
-  return skills.filter((skill) => {
-    const result = evaluateRuleset(agentConfig.permissions, "skill", skill.name);
-    return result.action !== "deny";
-  });
+  // Phase 1e — Filter by skill whitelist (null/undefined = all)
+  if (agentConfig?.skills != null) {
+    const allowSet = new Set(agentConfig.skills);
+    return skills.filter((s) => allowSet.has(s.name));
+  }
+
+  return skills;
 }
 
 // ---------------------------------------------------------------------------
@@ -546,9 +552,19 @@ export const SkillTool = Tool.define("skill", {
       );
     }
 
+    // Guard: check skill whitelist before searching directories
+    if (ctx.agentConfig?.skills != null) {
+      const allowed = new Set(ctx.agentConfig.skills);
+      if (!allowed.has(skillName)) {
+        return {
+          title: "skill",
+          output: `Skill "${skillName}" is not available for this agent.`,
+          truncated: false,
+        };
+      }
+    }
+
     // Search across the 4-level hierarchy
-    // Note: Tool.Context does not expose agentConfig, so we cannot filter by permissions here.
-    // Permission filtering is done in listAvailableSkills() called from buildSkillsBlock().
     const instanceRoot = ctx.workDir ?? process.cwd();
     const dirs = buildSkillDirs(instanceRoot);
 
