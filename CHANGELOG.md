@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.58.2] — 2026-03-30
+
+### Fixed
+
+- **uninstall.sh** : Now detects systemd level (`/run/systemd/system`) and properly removes services from both user (`~/.config/systemd/user/`) and system (`/etc/systemd/system/`) locations. Handles both old user-service installations and new system-service installations.
+
+---
+
 ## [0.58.1] — 2026-03-30
 
 ### Changed
