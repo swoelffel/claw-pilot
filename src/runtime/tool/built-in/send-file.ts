@@ -13,7 +13,7 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { z } from "zod";
 import { Tool } from "../tool.js";
-import { mimeFromExtension } from "../../../dashboard/routes/instances/workspace-download.js";
+import { mimeFromExtension } from "../../../lib/mime.js";
 
 // ---------------------------------------------------------------------------
 // Constants
