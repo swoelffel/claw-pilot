@@ -438,8 +438,7 @@ if [ -d "$INSTALL_DIR/.git" ]; then
           sleep 2
         fi
         if sudo $CP_NODE $CP_ENTRY service install 2>/dev/null || $CP_NODE $CP_ENTRY service install; then
-          log "Dashboard service installed and started."
-          log "View logs: sudo journalctl -u claw-pilot-dashboard.service -f"
+          : # dashboard-service.ts prints success + log instructions
         else
           warn "Dashboard service installation failed. Run manually: sudo claw-pilot service install"
         fi
@@ -469,11 +468,12 @@ else
     log "Removed $INSTALL_DIR."
   fi
   # Try to clone as current user; use sudo only if needed
-  if git clone --branch "$CLAW_PILOT_REF" "$REPO_URL" "$INSTALL_DIR" 2>/dev/null; then
+  # -c advice.detachedHead=false suppresses the verbose "detached HEAD" message when cloning a tag
+  if git -c advice.detachedHead=false clone --branch "$CLAW_PILOT_REF" "$REPO_URL" "$INSTALL_DIR" 2>/dev/null; then
     : # success
   elif command -v sudo >/dev/null 2>&1; then
     warn "Cloning to $INSTALL_DIR requires elevated privileges..."
-    sudo git clone --branch "$CLAW_PILOT_REF" "$REPO_URL" "$INSTALL_DIR"
+    sudo git -c advice.detachedHead=false clone --branch "$CLAW_PILOT_REF" "$REPO_URL" "$INSTALL_DIR"
     sudo chown -R "$(id -u):$(id -g)" "$INSTALL_DIR"
   else
     error "Cannot clone to $INSTALL_DIR. Set CLAW_PILOT_INSTALL_DIR to a writable path."
@@ -512,8 +512,8 @@ _write_wrapper() {
 
 if _write_wrapper 2>/dev/null; then
   LINK_PATH="$WRAPPER_TARGET"
-elif [ -t 0 ] && command -v sudo >/dev/null 2>&1; then
-  # TTY is available — sudo can prompt for password interactively.
+elif command -v sudo >/dev/null 2>&1 && { [ -t 0 ] || sudo -n true 2>/dev/null; }; then
+  # TTY available (interactive sudo) OR passwordless sudo (NOPASSWD).
   # Write via tmpfile to avoid quoting/newline issues when passing WRAPPER_CONTENT
   # through a sudo subshell. Also ensures the target directory exists (e.g. on a
   # fresh macOS where /usr/local/bin/ is not created until Homebrew is installed).
@@ -524,7 +524,7 @@ elif [ -t 0 ] && command -v sudo >/dev/null 2>&1; then
   sudo sh -c "umask 022 && install -m 0755 '$_wrapper_tmp' '$WRAPPER_TARGET'"
   LINK_PATH="$WRAPPER_TARGET"
 else
-  # No TTY (e.g. curl | sh) or no sudo — sudo cannot prompt for password.
+  # No TTY and no passwordless sudo — cannot prompt for password.
   # Try pnpm global bin dir first, then fall back to ~/bin/ (always writable).
   PNPM_GLOBAL_BIN=$(COREPACK_ENABLE_STRICT=0 pnpm bin --global 2>/dev/null || echo "")
   if [ -n "$PNPM_GLOBAL_BIN" ]; then
@@ -625,8 +625,7 @@ if [ "$OS" = "Linux" ] && [ "$_systemd_available" = "true" ]; then
   # CP_NODE / CP_ENTRY already resolved in step 13
   # System service requires root — try sudo first, fallback to direct
   if sudo $CP_NODE $CP_ENTRY service install 2>/dev/null || $CP_NODE $CP_ENTRY service install; then
-    log "Dashboard service installed and started."
-    log "View logs: sudo journalctl -u claw-pilot-dashboard.service -f"
+    # dashboard-service.ts already prints success + log instructions
     _service_installed=true
   else
     warn "Dashboard service installation failed (systemctl may not be available in this environment)."
@@ -660,8 +659,7 @@ elif [ "$OS" = "Darwin" ]; then
       *)
         log "Installing dashboard as launchd service..."
         if $CP_NODE $CP_ENTRY service install; then
-          log "Dashboard service installed and started."
-          log "View logs: tail -f ~/.claw-pilot/dashboard.log"
+          # dashboard-service.ts prints success + log instructions
           _service_installed=true
         else
           warn "Service installation failed. Start manually: claw-pilot dashboard start"

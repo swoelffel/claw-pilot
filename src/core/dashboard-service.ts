@@ -126,15 +126,25 @@ export async function installDashboardService(
   } else {
     // Linux: install as systemd system service (not user service)
     // System services work without linger and survive reboots regardless of user login
-    const uid = process.getuid?.() ?? 1000;
-    const username = os.userInfo().username;
+    //
+    // When install.sh runs `sudo claw-pilot service install`, this process is root.
+    // Use SUDO_USER / SUDO_UID to resolve the real user who invoked sudo,
+    // so the service runs as the correct non-root user.
+    const isRoot = process.getuid?.() === 0;
+    const uid =
+      isRoot && process.env.SUDO_UID
+        ? parseInt(process.env.SUDO_UID, 10)
+        : (process.getuid?.() ?? 1000);
+    const username =
+      isRoot && process.env.SUDO_USER ? process.env.SUDO_USER : os.userInfo().username;
+    const serviceHome = isRoot && process.env.SUDO_USER ? `/home/${process.env.SUDO_USER}` : home;
 
     // Generate service file content (system-level)
     const serviceContent = generateDashboardService({
       nodeBin,
       clawPilotBin,
       port,
-      home,
+      home: serviceHome,
       uid,
       username,
     });
