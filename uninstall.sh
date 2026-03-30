@@ -102,8 +102,15 @@ stop_systemd_service() {
     return 0
   fi
   if [ "$SYSTEMD_LEVEL" = "system" ]; then
-    systemctl stop "$svc" 2>/dev/null && log "Stopped service: $svc" || true
-    systemctl disable "$svc" 2>/dev/null || true
+    # System services require root — try sudo fallback
+    if systemctl stop "$svc" 2>/dev/null; then
+      log "Stopped service: $svc"
+    elif command -v sudo >/dev/null 2>&1; then
+      sudo systemctl stop "$svc" 2>/dev/null && log "Stopped service: $svc (sudo)" || true
+    fi
+    if ! systemctl disable "$svc" 2>/dev/null; then
+      command -v sudo >/dev/null 2>&1 && sudo systemctl disable "$svc" 2>/dev/null || true
+    fi
   else
     XDG_RUNTIME_DIR="/run/user/$(id -u)"
     export XDG_RUNTIME_DIR
@@ -353,6 +360,53 @@ for _i in $INSTANCES; do INSTANCE_COUNT=$((INSTANCE_COUNT + 1)); done
 # Detect binary path (wrapper script or symlink)
 BINARY_PATH=$(command -v claw-pilot 2>/dev/null || true)
 
+# --- Step 1b: Scan for orphan systemd services ---
+# Orphan = service file exists but ExecStart points to a non-existent directory
+ORPHAN_SERVICES=""
+_orphan_count=0
+
+_check_orphan_service() {
+  _svc_file="$1"
+  [ -f "$_svc_file" ] || return 0
+  # Extract install dir from ExecStart line (second token is typically the entry point)
+  _exec_line=$(grep -m1 '^ExecStart=' "$_svc_file" 2>/dev/null || true)
+  [ -z "$_exec_line" ] && return 0
+  # Parse the path to dist/index.mjs and check its parent dir
+  _entry=$(echo "$_exec_line" | sed 's/ExecStart=[^ ]* //' | sed 's/ .*//')
+  [ -z "$_entry" ] && return 0
+  _dir=$(dirname "$(dirname "$_entry")" 2>/dev/null || true)
+  if [ -n "$_dir" ] && [ ! -d "$_dir" ]; then
+    ORPHAN_SERVICES="$ORPHAN_SERVICES $_svc_file"
+    _orphan_count=$((_orphan_count + 1))
+  fi
+}
+
+if [ "$OS" = "Linux" ]; then
+  for _f in /etc/systemd/system/claw-pilot*.service /etc/systemd/system/claw-runtime-*.service; do
+    _check_orphan_service "$_f"
+  done
+  _user_svc_dir="$HOME/.config/systemd/user"
+  if [ -d "$_user_svc_dir" ]; then
+    for _f in "$_user_svc_dir"/claw-pilot*.service "$_user_svc_dir"/claw-runtime-*.service; do
+      _check_orphan_service "$_f"
+    done
+  fi
+fi
+
+# --- Step 1c: Detect services for other users (warning only) ---
+OTHER_USERS=""
+if [ "$OS" = "Linux" ]; then
+  _current_user=$(id -un)
+  for _f in /etc/systemd/system/claw-pilot*.service /etc/systemd/system/claw-runtime-*.service; do
+    [ -f "$_f" ] || continue
+    _svc_user=$(grep -m1 '^User=' "$_f" 2>/dev/null | sed 's/User=//' || true)
+    [ -z "$_svc_user" ] && continue
+    [ "$_svc_user" = "$_current_user" ] && continue
+    case " $OTHER_USERS " in *" $_svc_user "*) continue ;; esac
+    OTHER_USERS="$OTHER_USERS $_svc_user"
+  done
+fi
+
 # --- Step 2: Summary ---
 
 echo ""
@@ -396,6 +450,18 @@ if [ "$INSTANCE_COUNT" -gt 0 ]; then
   done
 fi
 
+if [ "$_orphan_count" -gt 0 ]; then
+  warn "Orphan systemd services found (pointing to non-existent install):"
+  for _of in $ORPHAN_SERVICES; do
+    warn "  - $_of"
+  done
+fi
+
+if [ -n "$OTHER_USERS" ]; then
+  warn "Found claw-pilot services for other users:$OTHER_USERS"
+  warn "Run uninstall.sh as each user to clean up their installation."
+fi
+
 if [ "$KEEP_DATA" -eq 1 ]; then
   warn "Instance data and claw-pilot data will be KEPT (--keep-data)"
 fi
@@ -435,7 +501,8 @@ fi
 # Reload systemd after stopping services
 if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1 && [ "$DRY_RUN" -eq 0 ]; then
   if [ "$SYSTEMD_LEVEL" = "system" ]; then
-    systemctl daemon-reload 2>/dev/null || true
+    systemctl daemon-reload 2>/dev/null \
+      || { command -v sudo >/dev/null 2>&1 && sudo systemctl daemon-reload 2>/dev/null || true; }
   else
     XDG_RUNTIME_DIR="/run/user/$(id -u)"
     export XDG_RUNTIME_DIR
@@ -458,6 +525,13 @@ if [ "$OS" = "Linux" ]; then
   # Remove dashboard service file (both user and system locations)
   safe_remove "${SYSTEMD_USER_DIR}/claw-pilot-dashboard.service"
   safe_remove "${SYSTEMD_SYSTEM_DIR}/claw-pilot-dashboard.service"
+  # Remove orphan service files (pointing to non-existent install dirs)
+  if [ -n "$ORPHAN_SERVICES" ]; then
+    log "Removing orphan service files..."
+    for _of in $ORPHAN_SERVICES; do
+      safe_remove "$_of"
+    done
+  fi
   # Final daemon-reload
   if command -v systemctl >/dev/null 2>&1 && [ "$DRY_RUN" -eq 0 ]; then
     if [ "$SYSTEMD_LEVEL" = "system" ]; then
@@ -610,5 +684,30 @@ else
     info "Instance data kept in ~/.claw-pilot/instances/ (and legacy ~/.runtime-*/, ~/.openclaw-*/)"
     info "claw-pilot data kept in ~/.claw-pilot/"
   fi
+fi
+
+# --- Manual follow-up instructions ---
+_has_followup=0
+
+if [ -n "$OTHER_USERS" ]; then
+  _has_followup=1
+  echo ""
+  warn "Other users with claw-pilot services:$OTHER_USERS"
+  warn "Run uninstall.sh as each user, or remove their services manually:"
+  for _ou in $OTHER_USERS; do
+    warn "  sudo systemctl stop claw-pilot-dashboard.service  # if running as $_ou"
+    warn "  sudo rm /etc/systemd/system/claw-pilot-dashboard.service"
+  done
+fi
+
+if [ "$_removed_binary" -eq 0 ] && [ -n "$BINARY_PATH" ]; then
+  _has_followup=1
+  echo ""
+  warn "Binary at $BINARY_PATH was not removed (belongs to a different installation)."
+  warn "Remove it manually if no longer needed: rm $BINARY_PATH"
+fi
+
+if [ "$_has_followup" -eq 1 ]; then
+  echo ""
 fi
 echo ""

@@ -9,6 +9,7 @@ describe("generateDashboardService", () => {
     port: 19000,
     home: "/home/openclaw",
     uid: 1000,
+    username: "openclaw",
   };
 
   it("includes correct port and binary paths", () => {
@@ -40,7 +41,10 @@ describe("generateDashboardService", () => {
     expect(service).toMatch(/^Environment=XDG_RUNTIME_DIR=/m);
     // Restart policy
     expect(service).toMatch(/^Restart=always$/m);
+    // User/Group for system service
+    expect(service).toMatch(/^User=openclaw$/m);
+    expect(service).toMatch(/^Group=openclaw$/m);
     // Install target
-    expect(service).toMatch(/^WantedBy=default\.target$/m);
+    expect(service).toMatch(/^WantedBy=multi-user\.target$/m);
   });
 });

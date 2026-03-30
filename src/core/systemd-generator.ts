@@ -6,10 +6,11 @@ export interface DashboardServiceOptions {
   port: number; // dashboard port, default 19000
   home: string; // user home dir, e.g. /home/user
   uid: number; // user UID, e.g. 1000
+  username: string; // OS username — used for User=/Group= in the system service
 }
 
 export function generateDashboardService(options: DashboardServiceOptions): string {
-  const { nodeBin, clawPilotBin, port, home, uid } = options;
+  const { nodeBin, clawPilotBin, port, home, uid, username } = options;
   const xdgRuntimeDir = `/run/user/${uid}`;
 
   return `[Unit]
@@ -18,6 +19,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+User=${username}
+Group=${username}
 ExecStart=${nodeBin} ${clawPilotBin} dashboard --port ${port}
 Restart=always
 RestartSec=5
@@ -30,6 +33,6 @@ Environment=XDG_RUNTIME_DIR=${xdgRuntimeDir}
 Environment=NODE_ENV=production
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
 `;
 }

@@ -18,7 +18,6 @@ import { generateDashboardLaunchdPlist } from "./launchd-generator.js";
 import { constants } from "../lib/constants.js";
 import { logger } from "../lib/logger.js";
 import { pollUntilReady } from "../lib/poll.js";
-import { shellEscape } from "../lib/shell.js";
 
 export interface DashboardServiceStatus {
   installed: boolean;
@@ -51,47 +50,6 @@ function resolveClawPilotBin(): string {
     }
   }
   throw new Error("Cannot find claw-pilot binary. Ensure it is installed.");
-}
-
-/** Run a systemctl --user command via ServerConnection */
-async function systemctlUser(
-  conn: ServerConnection,
-  xdgRuntimeDir: string,
-  args: string[],
-): Promise<{ code: number; stdout: string; stderr: string }> {
-  const result = await conn.execFile("systemctl", ["--user", ...args], {
-    env: { XDG_RUNTIME_DIR: xdgRuntimeDir },
-  });
-  return { code: result.exitCode, stdout: result.stdout, stderr: result.stderr };
-}
-
-/** Check if linger is enabled for the current user, enable it if not */
-async function ensureLinger(conn: ServerConnection): Promise<void> {
-  const whoami = await conn.execFile("whoami", []);
-  const username = whoami.stdout.trim() || os.userInfo().username;
-
-  const check = await conn.execFile("loginctl", ["show-user", username, "-p", "Linger"]);
-  if (check.stdout.includes("Linger=yes")) return;
-
-  // Try to enable linger directly
-  logger.step("Enabling lingering for systemd user services...");
-  const enable = await conn.execFile("loginctl", ["enable-linger", username]);
-  if (enable.exitCode === 0) {
-    logger.success("Linger enabled");
-    return;
-  }
-
-  // Fallback: sudo
-  logger.dim("Retrying with sudo...");
-  const sudo = await conn.exec(`sudo loginctl enable-linger ${shellEscape(username)}`);
-  if (sudo.exitCode !== 0) {
-    logger.warn(
-      `Could not enable linger for ${username}. The dashboard service may stop on logout.`,
-    );
-    logger.dim(`Run manually: sudo loginctl enable-linger ${username}`);
-  } else {
-    logger.success("Linger enabled (via sudo)");
-  }
 }
 
 /** Check if port is responding (any HTTP response = server is up, even 401) */
@@ -169,9 +127,17 @@ export async function installDashboardService(
     // Linux: install as systemd system service (not user service)
     // System services work without linger and survive reboots regardless of user login
     const uid = process.getuid?.() ?? 1000;
+    const username = os.userInfo().username;
 
     // Generate service file content (system-level)
-    const serviceContent = generateDashboardService({ nodeBin, clawPilotBin, port, home, uid });
+    const serviceContent = generateDashboardService({
+      nodeBin,
+      clawPilotBin,
+      port,
+      home,
+      uid,
+      username,
+    });
 
     // Ensure systemd system dir exists
     const systemdSystemDir = getSystemdSystemDir();
@@ -182,22 +148,31 @@ export async function installDashboardService(
     await conn.writeFile(servicePath, serviceContent, 0o644);
     logger.success(`Service file written: ${servicePath}`);
 
-    // daemon-reload (systemctl, not --user)
+    // daemon-reload — try without sudo first, fallback to sudo
     const reload = await conn.exec("systemctl daemon-reload");
     if (reload.exitCode !== 0) {
-      throw new Error(`systemctl daemon-reload failed: ${reload.stderr}`);
+      const sudoReload = await conn.exec("sudo systemctl daemon-reload");
+      if (sudoReload.exitCode !== 0) {
+        throw new Error(`systemctl daemon-reload failed: ${sudoReload.stderr}`);
+      }
     }
 
-    // enable
+    // enable — try without sudo first, fallback to sudo
     const enable = await conn.exec(`systemctl enable ${DASHBOARD_SERVICE_UNIT}`);
     if (enable.exitCode !== 0) {
-      throw new Error(`systemctl enable failed: ${enable.stderr}`);
+      const sudoEnable = await conn.exec(`sudo systemctl enable ${DASHBOARD_SERVICE_UNIT}`);
+      if (sudoEnable.exitCode !== 0) {
+        throw new Error(`systemctl enable failed: ${sudoEnable.stderr}`);
+      }
     }
 
-    // start
+    // start — try without sudo first, fallback to sudo
     const start = await conn.exec(`systemctl start ${DASHBOARD_SERVICE_UNIT}`);
     if (start.exitCode !== 0) {
-      throw new Error(`systemctl start failed: ${start.stderr}`);
+      const sudoStart = await conn.exec(`sudo systemctl start ${DASHBOARD_SERVICE_UNIT}`);
+      if (sudoStart.exitCode !== 0) {
+        throw new Error(`systemctl start failed: ${sudoStart.stderr}`);
+      }
     }
   }
 
@@ -215,7 +190,7 @@ export async function installDashboardService(
     if (sm === "launchd") {
       logger.dim(`Check logs: tail -f ${home}/.claw-pilot/dashboard.log`);
     } else {
-      logger.dim(`Check logs: journalctl --user -u ${DASHBOARD_SERVICE_UNIT} -n 50`);
+      logger.dim(`Check logs: sudo journalctl -u ${DASHBOARD_SERVICE_UNIT} -n 50`);
     }
   }
 }
@@ -239,12 +214,22 @@ export async function uninstallDashboardService(
       logger.info(`Launchd plist not found (already removed): ${plistPath}`);
     }
   } else {
-    // Linux: systemd system service
+    // Linux: systemd system service — try without sudo, fallback to sudo
     // stop (ignore errors if not running)
-    await conn.exec(`systemctl stop ${DASHBOARD_SERVICE_UNIT}`).catch(() => {});
+    const stop = await conn
+      .exec(`systemctl stop ${DASHBOARD_SERVICE_UNIT}`)
+      .catch(() => ({ exitCode: 1 }));
+    if (stop.exitCode !== 0) {
+      await conn.exec(`sudo systemctl stop ${DASHBOARD_SERVICE_UNIT}`).catch(() => {});
+    }
 
     // disable (ignore errors if not enabled)
-    await conn.exec(`systemctl disable ${DASHBOARD_SERVICE_UNIT}`).catch(() => {});
+    const disable = await conn
+      .exec(`systemctl disable ${DASHBOARD_SERVICE_UNIT}`)
+      .catch(() => ({ exitCode: 1 }));
+    if (disable.exitCode !== 0) {
+      await conn.exec(`sudo systemctl disable ${DASHBOARD_SERVICE_UNIT}`).catch(() => {});
+    }
 
     // Remove service file from /etc/systemd/system/
     const servicePath = getDashboardServicePath(true);
@@ -256,8 +241,11 @@ export async function uninstallDashboardService(
       logger.info(`Service file not found (already removed): ${servicePath}`);
     }
 
-    // daemon-reload
-    await conn.exec("systemctl daemon-reload");
+    // daemon-reload — try without sudo, fallback to sudo
+    const reload = await conn.exec("systemctl daemon-reload");
+    if (reload.exitCode !== 0) {
+      await conn.exec("sudo systemctl daemon-reload").catch(() => {});
+    }
   }
 
   logger.success(`Dashboard service uninstalled.`);
@@ -275,10 +263,13 @@ export async function restartDashboardService(
     await conn.execFile("launchctl", ["load", "-w", plistPath]);
     logger.success(`Dashboard service restarted.`);
   } else {
-    // Linux: systemd system service
+    // Linux: systemd system service — try without sudo, fallback to sudo
     const result = await conn.exec(`systemctl restart ${DASHBOARD_SERVICE_UNIT}`);
     if (result.exitCode !== 0) {
-      throw new Error(`systemctl restart failed: ${result.stderr}`);
+      const sudoResult = await conn.exec(`sudo systemctl restart ${DASHBOARD_SERVICE_UNIT}`);
+      if (sudoResult.exitCode !== 0) {
+        throw new Error(`systemctl restart failed: ${sudoResult.stderr}`);
+      }
     }
     logger.success(`Dashboard service restarted.`);
   }

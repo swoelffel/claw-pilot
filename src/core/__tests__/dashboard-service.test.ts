@@ -8,6 +8,7 @@ const opts = {
   port: 19000,
   home: "/home/openclaw",
   uid: 1000,
+  username: "openclaw",
 };
 
 describe("generateDashboardService", () => {
@@ -33,9 +34,15 @@ describe("generateDashboardService", () => {
     expect(service).toContain("Restart=always");
   });
 
-  it("has WantedBy=default.target", () => {
+  it("has WantedBy=multi-user.target", () => {
     const service = generateDashboardService(opts);
-    expect(service).toContain("WantedBy=default.target");
+    expect(service).toContain("WantedBy=multi-user.target");
+  });
+
+  it("sets User and Group for system service", () => {
+    const service = generateDashboardService(opts);
+    expect(service).toContain("User=openclaw");
+    expect(service).toContain("Group=openclaw");
   });
 
   it("uses journal for output (not file)", () => {

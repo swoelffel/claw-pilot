@@ -400,13 +400,36 @@ if [ -d "$INSTALL_DIR/.git" ]; then
 
   # Manage dashboard service (Linux only)
   if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
-    if XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user is-active claw-pilot-dashboard.service >/dev/null 2>&1; then
+    # Detect system vs user service level (same logic as uninstall.sh)
+    _update_systemd_level="user"
+    if [ -d /run/systemd/system ]; then
+      _update_systemd_level="system"
+    fi
+
+    # Check if service is active (system or user level)
+    _svc_active=false
+    if [ "$_update_systemd_level" = "system" ]; then
+      systemctl is-active claw-pilot-dashboard.service >/dev/null 2>&1 && _svc_active=true
+    else
+      XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user is-active claw-pilot-dashboard.service >/dev/null 2>&1 && _svc_active=true
+    fi
+
+    if [ "$_svc_active" = "true" ]; then
       log "Restarting dashboard service to load updated code..."
-      XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user restart claw-pilot-dashboard.service
+      if [ "$_update_systemd_level" = "system" ]; then
+        sudo systemctl restart claw-pilot-dashboard.service 2>/dev/null \
+          || systemctl restart claw-pilot-dashboard.service 2>/dev/null || true
+      else
+        XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user restart claw-pilot-dashboard.service
+      fi
       log "Dashboard service restarted."
     else
-      SERVICE_FILE="$HOME/.config/systemd/user/claw-pilot-dashboard.service"
-      if [ ! -f "$SERVICE_FILE" ]; then
+      # Check if service file exists (system or user level)
+      _svc_exists=false
+      [ -f "/etc/systemd/system/claw-pilot-dashboard.service" ] && _svc_exists=true
+      [ -f "$HOME/.config/systemd/user/claw-pilot-dashboard.service" ] && _svc_exists=true
+
+      if [ "$_svc_exists" = "false" ]; then
         log "Installing dashboard as systemd service..."
         DASHBOARD_PID=$(lsof -ti:19000 2>/dev/null || true)
         if [ -n "$DASHBOARD_PID" ]; then
@@ -414,11 +437,11 @@ if [ -d "$INSTALL_DIR/.git" ]; then
           kill "$DASHBOARD_PID" 2>/dev/null || true
           sleep 2
         fi
-        if $CP_NODE $CP_ENTRY service install; then
+        if sudo $CP_NODE $CP_ENTRY service install 2>/dev/null || $CP_NODE $CP_ENTRY service install; then
           log "Dashboard service installed and started."
-          log "View logs: journalctl --user -u claw-pilot-dashboard.service -f"
+          log "View logs: sudo journalctl -u claw-pilot-dashboard.service -f"
         else
-          warn "Dashboard service installation failed. Run manually: claw-pilot service install"
+          warn "Dashboard service installation failed. Run manually: sudo claw-pilot service install"
         fi
       fi
     fi
@@ -588,7 +611,7 @@ if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1 && [ -d /run/syst
   _systemd_available=true
 fi
 
-if [ "$OS" = "Linux" ] && [ "$_systemd_available" = "true" ] && command -v systemctl >/dev/null 2>&1; then
+if [ "$OS" = "Linux" ] && [ "$_systemd_available" = "true" ]; then
   echo ""
   log "Setting up dashboard as a systemd service..."
 
@@ -600,19 +623,29 @@ if [ "$OS" = "Linux" ] && [ "$_systemd_available" = "true" ] && command -v syste
   fi
 
   # CP_NODE / CP_ENTRY already resolved in step 13
-  if $CP_NODE $CP_ENTRY service install; then
+  # System service requires root — try sudo first, fallback to direct
+  if sudo $CP_NODE $CP_ENTRY service install 2>/dev/null || $CP_NODE $CP_ENTRY service install; then
     log "Dashboard service installed and started."
     log "View logs: sudo journalctl -u claw-pilot-dashboard.service -f"
     _service_installed=true
   else
     warn "Dashboard service installation failed (systemctl may not be available in this environment)."
     warn "For auto-start on boot, add to crontab:"
-    warn "  sudo -u $TARGET_USER crontab -e"
-    warn "  @reboot $TARGET_USER_HOME/bin/claw-pilot dashboard"
+    warn "  crontab -e"
+    warn "  @reboot $HOME/bin/claw-pilot dashboard"
     warn ""
     warn "Or start manually:"
     warn "  claw-pilot dashboard"
   fi
+elif [ "$OS" = "Linux" ] && [ "$_systemd_available" = "false" ]; then
+  echo ""
+  warn "systemd not available in this environment. Skipping service setup."
+  warn "For auto-start on boot, add to crontab:"
+  warn "  crontab -e"
+  warn "  @reboot $LINK_PATH dashboard"
+  warn ""
+  warn "Or start manually:"
+  warn "  claw-pilot dashboard"
 elif [ "$OS" = "Darwin" ]; then
   echo ""
   # Ask to install as launchd service (only if stdin is a TTY)
