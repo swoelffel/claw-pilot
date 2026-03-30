@@ -6,6 +6,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.58.0] — 2026-03-30
+
+### Added
+
+- **`send_file` tool** : New built-in tool enabling agents to deliver workspace files (DOCX, PDF, images, etc.) to users as downloadable documents. Works across web UI (download card) and Telegram (sendDocument attachment).
+- **Workspace file download endpoint** : `GET /api/instances/:slug/workspace/download?path=...` with path traversal protection, symlink escape prevention, and 50MB size limit.
+- **File card UI component** : `cp-pilot-part-file` renders send_file results as a styled card with file type icon, size, and download button.
+- **DB migration v22** : Backfills existing `agents.skills` whitelist data into `runtime_config_json` for seamless upgrade.
+
+### Fixed
+
+- **Skill whitelist enforcement** : Agent skill checkboxes in the dashboard were cosmetic — the `agents.skills` column was written by the UI but never read by the runtime. Skills are now filtered by `listAvailableSkills()` and guarded in `SkillTool.execute()`. `buildAgentConfig()` forwards all config fields (skills, skillUrls, autoSelectSkills, toolProfile, timeoutMs, thinking, promptMode, archetype) from the canonical `runtime_config_json`.
+- **Stale tool profiles in context panel** : The session context route had a hardcoded copy of tool profiles missing send_file, create_artifact, send_message, etc. Replaced with a dynamic import of the canonical `TOOL_PROFILES`.
+- **File card metadata fallback** : `cp-pilot-part-file` now reads metadata from `call.content` when `result` is unavailable (matching the storage layout used by the runtime).
+
+---
+
 ## [0.57.0] — 2026-03-29
 
 ### Added
