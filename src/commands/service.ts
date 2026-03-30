@@ -33,7 +33,7 @@ export function serviceCommand(): Command {
         if (sm === "launchd") {
           console.log(`    View logs: tail -f ${DASHBOARD_LOG_PATH}`);
         } else {
-          console.log(`    View logs: journalctl --user -u claw-pilot-dashboard.service -f`);
+          console.log(`    View logs: sudo journalctl -u claw-pilot-dashboard.service -f`);
         }
       } catch (err) {
         throw new CliError(
@@ -94,7 +94,7 @@ export function serviceCommand(): Command {
           if (sm === "launchd") {
             console.log(`  To view logs: tail -f ${DASHBOARD_LOG_PATH}`);
           } else {
-            console.log("  To view logs: journalctl --user -u claw-pilot-dashboard.service -n 50");
+            console.log("  To view logs: sudo journalctl -u claw-pilot-dashboard.service -n 50");
           }
         }
       } catch (err) {

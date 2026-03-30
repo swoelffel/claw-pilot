@@ -26,7 +26,8 @@ vi.mock("../../lib/platform.js", async (importOriginal) => {
     SERVICE_MANAGER: "systemd" as const,
     getInstancesDir: () => "/tmp/openclaw-test-home/.claw-pilot/instances",
     getRuntimeStateDir: (slug: string) => `/tmp/openclaw-test-home/.claw-pilot/instances/${slug}`,
-    getSystemdDir: () => "/tmp/systemd-test",
+    getSystemdUserDir: () => "/tmp/systemd-test",
+    getSystemdSystemDir: () => "/tmp/systemd-test",
   };
 });
 
