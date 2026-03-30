@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.59.0] — 2026-03-30
+
+### Changed
+
+- **Port allocation replaced by deterministic derivation** — Instance ports are now derived from the slug via a djb2 hash (19100–19199 range), matching the actual web-chat WebSocket port. Eliminates the vestigial gateway port system (18789–18838) that was never listened on. Ports displayed in the dashboard and CLI now reflect the real listening port.
+- **Port-allocator removed** — `PortAllocator` class and sidecar port reservation (P+1, P+2, P+4) deleted. Port selection prompt removed from the instance creation wizard.
+- **DB migration v23** — Backfills existing instances with their correct derived port and clears the sidecar port reservations from the `ports` table.
+
+---
+
 ## [0.58.5] — 2026-03-30
 
 ### Fixed
