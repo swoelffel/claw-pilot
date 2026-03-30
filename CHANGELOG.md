@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.58.5] — 2026-03-30
+
+### Fixed
+
+- **Eliminated polkit/pkttyagent noise on minimal Linux** — `systemctl` commands for system services now use `sudo` directly instead of trying without sudo first. Avoids `Failed to execute /usr/bin/pkttyagent` errors on Debian minimal installs where PolicyKit agent is not available.
+
+---
+
 ## [0.58.4] — 2026-03-30
 
 ### Fixed
