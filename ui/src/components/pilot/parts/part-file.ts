@@ -121,9 +121,11 @@ export class PilotPartFile extends LitElement {
   @property() slug = "";
 
   private get _meta(): FileMetadata | undefined {
+    // Try tool_result first, fallback to tool_call content (some storage layouts
+    // put the execute() output directly in the tool_call content field)
+    const content = this.result?.content ?? this.call?.content;
+    if (!content) return undefined;
     try {
-      const content = this.result?.content;
-      if (!content) return undefined;
       return JSON.parse(content) as FileMetadata;
     } catch {
       return undefined;
