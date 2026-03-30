@@ -28,7 +28,7 @@ KillMode=process
 StandardOutput=journal
 StandardError=journal
 Environment=HOME=${home}
-Environment=PATH=${home}/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=${home}/.local/bin:${home}/.local/share/pnpm:${home}/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
 Environment=XDG_RUNTIME_DIR=${xdgRuntimeDir}
 Environment=NODE_ENV=production
 

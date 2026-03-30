@@ -49,6 +49,8 @@ export class SelfUpdater {
   // Use the current Node.js bin dir so the update works regardless of nvm version or volta.
   private static readonly _PATH = [
     path.dirname(process.execPath), // current Node.js bin dir (works with nvm, volta, etc.)
+    "~/.local/bin", // corepack install dir (pnpm via corepack enable --install-directory)
+    "~/.local/share/pnpm", // pnpm setup dir (official install script)
     "~/.npm-global/bin",
     "/usr/local/bin",
     "/usr/bin",
