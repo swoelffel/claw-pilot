@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.59.1] — 2026-03-30
+
+### Fixed
+
+- **Self-updater finds pnpm on Linux** — Added `~/.local/bin` (corepack) and `~/.local/share/pnpm` (pnpm setup) to the PATH used by the self-updater and the systemd service. Fixes `pnpm: not found` on Debian when pnpm is installed via corepack.
+
+---
+
 ## [0.59.0] — 2026-03-30
 
 ### Changed

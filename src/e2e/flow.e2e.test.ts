@@ -15,7 +15,7 @@
 // - The provisioner calls ensureRuntimeConfig() which uses the real fs.
 //   We point OPENCLAW_HOME to a tmpdir so it writes there, and clean up after.
 // - The provisioner also calls conn.mkdir/writeFile — handled by MockConnection.
-// - Port 18870 is reserved for this test suite.
+// - Port is derived from slug via deriveWebChatPort (19100-19199 range).
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -24,7 +24,7 @@ import { startTestServer, type TestContext } from "./helpers/test-server.js";
 import { seedAdmin, seedLocalServer } from "./helpers/seed.js";
 
 const FLOW_SLUG = "flow-test-inst";
-const FLOW_PORT = 18870;
+const FLOW_PORT = 19165; // deriveWebChatPort("flow-test-inst")
 
 describe("Flow: create instance → create agent → delete agent → delete instance", () => {
   let ctx: TestContext;
@@ -62,7 +62,6 @@ describe("Flow: create instance → create agent → delete agent → delete ins
   it("POST /api/instances → 201, instance provisioned", async () => {
     const res = await ctx.client.withBearer().post("/api/instances", {
       slug: FLOW_SLUG,
-      port: FLOW_PORT,
       defaultModel: "anthropic/claude-3-5-haiku-20241022",
       provider: "anthropic",
       apiKey: "sk-test-fake-key",

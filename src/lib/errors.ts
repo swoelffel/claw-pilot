@@ -37,17 +37,6 @@ export class InstanceAlreadyExistsError extends ClawPilotError {
   }
 }
 
-export class PortConflictError extends ClawPilotError {
-  constructor(port: number) {
-    super(
-      port === -1
-        ? "No free port available in the configured range"
-        : `Port ${port} is already in use`,
-      "PORT_CONFLICT",
-    );
-  }
-}
-
 /** @public */
 export class GatewayUnhealthyError extends ClawPilotError {
   constructor(slug: string, port: number, detail?: string) {
