@@ -112,7 +112,15 @@ export function createSendMessageTool(options: {
         .describe("Wait for a reply (true) or fire-and-forget (false)"),
     }),
     async execute(params, ctx) {
-      // 1. Resolve target agent config (by ID, then by archetype)
+      // 1. Reject self-messaging early with a clear error for the LLM
+      if (params.to === callerAgentConfig.id) {
+        throw new Error(
+          `Cannot send a message to yourself ('${callerAgentConfig.id}'). ` +
+            `Use send_message to communicate with other agents.`,
+        );
+      }
+
+      // 2. Resolve target agent config (by ID, then by archetype)
       const targetConfig =
         (runtimeAgentConfigs ?? []).find((cfg) => cfg.id === params.to) ??
         (runtimeAgentConfigs ?? []).find(
@@ -139,7 +147,7 @@ export function createSendMessageTool(options: {
         );
       }
 
-      // 2. A2A policy check (allowList accepts agent IDs and archetype names)
+      // 3. A2A policy check (allowList accepts agent IDs and archetype names)
       const policy = checkA2APolicy(callerAgentConfig, targetConfig.id, targetConfig.archetype);
       if (!policy.allowed) {
         throw new Error(policy.reason);
@@ -147,20 +155,20 @@ export function createSendMessageTool(options: {
 
       ctx.metadata({ title: `→ ${targetConfig.id}: ${params.message.slice(0, 50)}` });
 
-      // 3. Get target's permanent session
+      // 4. Get target's permanent session
       const targetSession = getOrCreatePermanentSession(db, {
         instanceSlug,
         agentId: targetConfig.id,
         channel: "internal",
       });
 
-      // 4. Record outgoing message in caller's session (for memory persistence)
+      // 5. Record outgoing message in caller's session (for memory persistence)
       createUserMessage(db, {
         sessionId: ctx.sessionId,
         text: `[message_sent] To ${targetConfig.id}: ${params.message}`,
       });
 
-      // 5. Publish bus event
+      // 6. Publish bus event
       const bus = getBus(instanceSlug);
       bus.publish(AgentMessageSent, {
         fromAgentId: callerAgentConfig.id,
@@ -169,12 +177,12 @@ export function createSendMessageTool(options: {
         instanceSlug,
       });
 
-      // 6. Resolve target model (needed for both fire-and-forget and expect-reply)
+      // 7. Resolve target model (needed for both fire-and-forget and expect-reply)
       const targetModel: ResolvedModel = targetConfig.model
         ? resolveAgentModel(targetConfig.model, modelAliases ?? [], resolvedModel)
         : resolvedModel;
 
-      // 7. Fire-and-forget mode — trigger async prompt loop without waiting
+      // 8. Fire-and-forget mode — trigger async prompt loop without waiting
       if (!params.expect_reply) {
         const fireAndForgetSystemPrompt = [
           "## Incoming message",
@@ -207,7 +215,7 @@ export function createSendMessageTool(options: {
         };
       }
 
-      // 8. Expect reply: run prompt loop on target's permanent session
+      // 9. Expect reply: run prompt loop on target's permanent session
       const extraSystemPrompt = [
         "## Incoming message",
         `Agent '${callerAgentConfig.id}' (${callerAgentConfig.name}) sends you this message.`,
@@ -228,7 +236,7 @@ export function createSendMessageTool(options: {
         ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
       });
 
-      // 9. Record incoming reply in caller's session
+      // 10. Record incoming reply in caller's session
       createUserMessage(db, {
         sessionId: ctx.sessionId,
         text: `[message_received] From ${targetConfig.id}: ${result.text}`,

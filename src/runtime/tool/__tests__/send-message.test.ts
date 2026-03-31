@@ -265,6 +265,30 @@ describe("send_message — error cases", () => {
     ).rejects.toThrow(/No agent found for "nonexistent"/);
   });
 
+  it("rejects self-messaging with a clear error", async () => {
+    const callerSession = createSession(db, {
+      instanceSlug: INSTANCE_SLUG,
+      agentId: "pilot",
+      persistent: true,
+    });
+    const ctx = makeToolContext(db, callerSession.id);
+
+    const toolInfo = createSendMessageTool({
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      resolvedModel: makeResolvedModel(),
+      workDir: undefined,
+      callerAgentConfig: PILOT_CONFIG,
+      runtimeAgentConfigs: [PILOT_CONFIG, LEAD_TECH_CONFIG],
+      runPromptLoop: vi.fn(),
+    });
+    const def = await toolInfo.init();
+
+    await expect(
+      def.execute({ to: "pilot", message: "hello myself", expect_reply: true }, ctx),
+    ).rejects.toThrow(/Cannot send a message to yourself/);
+  });
+
   it("throws when A2A policy denies the target agent", async () => {
     const restrictedPilot: RuntimeAgentConfig = {
       ...PILOT_CONFIG,

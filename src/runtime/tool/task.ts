@@ -254,7 +254,9 @@ export function createTaskTool(options: {
       //    a) Exact match by agent ID (cfg.id)
       //    b) Archetype match: find first non-permanent agent with that archetype
       const primaryPeerConfig =
-        (runtimeAgentConfigs ?? []).find((cfg) => cfg.id === params.subagent_type) ??
+        (runtimeAgentConfigs ?? []).find(
+          (cfg) => cfg.id !== callerAgentConfig?.id && cfg.id === params.subagent_type,
+        ) ??
         (runtimeAgentConfigs ?? []).find(
           (cfg) =>
             cfg.id !== callerAgentConfig?.id &&
