@@ -19,6 +19,8 @@ import {
 } from "../../../runtime/index.js";
 import { RuntimeConfigPatchSchema, type RuntimeConfigPatch } from "./config-schemas.js";
 import { buildInstanceConfig, buildInstanceConfigStub } from "./config-builders.js";
+import { NamedKeyRepository } from "../../../core/repositories/named-key-repository.js";
+import { isCryptoAvailable } from "../../../lib/crypto.js";
 
 export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, lifecycle } = deps;
@@ -47,6 +49,17 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
         registry.saveRuntimeConfig(slug, config);
       }
 
+      // Load named keys assigned to this instance
+      let namedKeys: import("../../../core/repositories/named-key-repository.js").InstanceNamedKeyRecord[] =
+        [];
+      if (isCryptoAvailable()) {
+        const namedKeyRepo = new NamedKeyRepository(deps.db);
+        const inst = deps.registry.getInstance(slug);
+        if (inst) {
+          namedKeys = namedKeyRepo.getInstanceKeys(inst.id);
+        }
+      }
+
       if (!config) {
         // No config anywhere — return a stub
         const stub = buildInstanceConfigStub({
@@ -54,7 +67,7 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
           default_model: instance!.default_model,
           port: instance!.port,
         });
-        return c.json(stub);
+        return c.json({ ...stub, namedKeys });
       }
 
       const payload = buildInstanceConfig(
@@ -66,7 +79,7 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
         config,
         stateDir,
       );
-      return c.json(payload);
+      return c.json({ ...payload, namedKeys });
     } catch (err) {
       logger.error(
         `[config] GET /config error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
@@ -351,6 +364,32 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
           "CONFIG_PATCH_FAILED",
           err instanceof Error ? err.message : "Failed to update config",
         );
+      }
+    }
+
+    // --- Named keys: assign/remove/setDefault (stored in separate tables, not RuntimeConfig JSON) ---
+    if (patch.namedKeys) {
+      if (!isCryptoAvailable()) {
+        return apiError(c, 503, "CRYPTO_UNAVAILABLE", "Named keys require MASTER_ENCRYPTION_KEY");
+      }
+      const namedKeyRepo = new NamedKeyRepository(deps.db);
+      const inst = deps.registry.getInstance(slug);
+      if (!inst) {
+        return apiError(c, 404, "NOT_FOUND", "Instance not found");
+      }
+
+      if (patch.namedKeys.assign) {
+        for (const entry of patch.namedKeys.assign) {
+          namedKeyRepo.assignToInstance(inst.id, entry.namedKeyId, false);
+        }
+      }
+      if (patch.namedKeys.remove) {
+        for (const entry of patch.namedKeys.remove) {
+          namedKeyRepo.removeFromInstance(inst.id, entry.namedKeyId);
+        }
+      }
+      if (patch.namedKeys.setDefault) {
+        namedKeyRepo.setInstanceDefault(inst.id, patch.namedKeys.setDefault.namedKeyId);
       }
     }
 
