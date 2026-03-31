@@ -294,6 +294,7 @@ export interface InstanceConfig {
     id: string;
     name: string;
     model: string | null;
+    namedKeyId: number | null;
     toolProfile: string;
     maxSteps: number;
     temperature: number | null;
@@ -332,6 +333,7 @@ export interface InstanceConfig {
   gateway: {
     port: number;
   };
+  namedKeys?: InstanceNamedKey[];
 }
 
 /** Result of PATCH /api/instances/:slug/config */
