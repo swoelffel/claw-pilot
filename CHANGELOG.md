@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.59.7] — 2026-03-31
+
+### Fixed
+
+- **Log and notify on SubagentCompleted prompt loop failure** — When an async subagent completed but the parent's prompt loop failed (context overflow, rate limit, etc.), the error was silently swallowed by `.catch(() => {})`. The parent agent would hang indefinitely without knowing its subagent had responded. The handler now logs the error with structured context (`subagent_result_injection_failed`) and injects a `[subagent error]` message into the parent session so the agent can react.
+
+---
+
 ## [0.59.6] — 2026-03-31
 
 ### Changed

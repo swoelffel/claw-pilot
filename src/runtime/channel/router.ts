@@ -31,8 +31,10 @@ import { getBus } from "../bus/index.js";
 import { ChannelMessageReceived, ChannelMessageSent, SubagentCompleted } from "../bus/events.js";
 import { resolveAgentWorkspacePath } from "../../core/agent-workspace.js";
 import { runMiddlewarePipeline } from "../middleware/pipeline.js";
+import { createUserMessage } from "../session/message.js";
 import { listParts } from "../session/part.js";
 import type { OutboundArtifact, OutboundFileDelivery } from "../types.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Per-session serialization queue
@@ -533,8 +535,37 @@ export function registerSubagentCompletedHandler(
           ...(internalResolvedModel !== undefined ? { internalResolvedModel } : {}),
         });
       })
-      .catch(() => {
-        // Ignore errors in async result injection — parent session continues normally
+      .catch((err: unknown) => {
+        const errMsg = err instanceof Error ? err.message : String(err);
+
+        // 1. Log the failure with full context
+        logger.error("subagent_result_injection_failed", {
+          event: "subagent_result_injection_failed",
+          slug: instanceSlug,
+          parentSessionId: payload.parentSessionId,
+          subSessionId: payload.subSessionId,
+          error: errMsg,
+        });
+
+        // 2. Inject error message into parent session so the agent knows
+        try {
+          createUserMessage(db, {
+            sessionId: payload.parentSessionId,
+            text: [
+              `[subagent error] Failed to process result from subagent ${payload.subSessionId}.`,
+              `Error: ${errMsg}`,
+              `The subagent completed successfully but its result could not be injected into this session.`,
+              `You may retry by referencing task_id: ${payload.subSessionId}.`,
+            ].join("\n"),
+          });
+        } catch (injectErr) {
+          logger.error("subagent_error_message_injection_failed", {
+            event: "subagent_error_message_injection_failed",
+            slug: instanceSlug,
+            parentSessionId: payload.parentSessionId,
+            error: injectErr instanceof Error ? injectErr.message : String(injectErr),
+          });
+        }
       });
 
     sessionQueues.set(payload.parentSessionId, next);
