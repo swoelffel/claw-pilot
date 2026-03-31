@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.59.5] — 2026-03-31
+
+### Fixed
+
+- **Clean up orphan sessions on agent deletion** — Deleting an agent left its permanent sessions in `rt_sessions` (no FK cascade), causing the deleted agent to persist as a ghost tab in the pilot screen. `deleteAgent()` now purges all sessions before removing the agent row.
+
+---
+
 ## [0.59.4] — 2026-03-31
 
 ### Fixed
