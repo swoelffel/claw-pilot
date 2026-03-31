@@ -65,13 +65,55 @@ describe("RuntimeConfigRepository", () => {
     it("returns parsed config after saveRuntimeConfig", () => {
       provisionInstance(slug);
       const config = createDefaultRuntimeConfig({});
+      const firstAgent = config.agents[0]!;
+      provisionAgent(slug, firstAgent.id, firstAgent.name);
       registry.saveRuntimeConfig(slug, config);
 
       const loaded = registry.getRuntimeConfig(slug);
       expect(loaded).not.toBeNull();
       expect(loaded!.defaultModel).toBe(config.defaultModel);
-      expect(loaded!.agents).toHaveLength(config.agents.length);
-      expect(loaded!.agents[0]!.id).toBe(config.agents[0]!.id);
+      expect(loaded!.agents).toHaveLength(1);
+      expect(loaded!.agents[0]!.id).toBe(firstAgent.id);
+    });
+
+    it("reconstructs agents from agents table, not from runtime_config_json blob", () => {
+      provisionInstance(slug);
+      const config = createDefaultRuntimeConfig({});
+      const firstAgent = config.agents[0]!;
+      provisionAgent(slug, firstAgent.id, firstAgent.name);
+      registry.saveRuntimeConfig(slug, config);
+
+      // Directly update agents.config_json with a new name (bypassing runtime_config_json)
+      const inst = registry.getInstance(slug)!;
+      const agentRow = registry.getAgentByAgentId(inst.id, firstAgent.id)!;
+      db.prepare("UPDATE agents SET config_json = ?, name = ? WHERE id = ?").run(
+        JSON.stringify({ ...firstAgent, name: "DB-Source-Name" }),
+        "DB-Source-Name",
+        agentRow.id,
+      );
+
+      // getRuntimeConfig should return the agents table version, not the blob
+      const loaded = registry.getRuntimeConfig(slug);
+      expect(loaded!.agents[0]!.name).toBe("DB-Source-Name");
+    });
+
+    it("builds minimal config for agents with null config_json (pre-v20)", () => {
+      provisionInstance(slug);
+      const config = createDefaultRuntimeConfig({});
+      registry.saveRuntimeConfig(slug, config);
+
+      // Create an agent row with NULL config_json (simulating pre-v20)
+      const inst = registry.getInstance(slug)!;
+      db.prepare(
+        `INSERT INTO agents (instance_id, agent_id, name, model, workspace_path, is_default)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      ).run(inst.id, "legacy-agent", "Legacy", "anthropic/claude-haiku-4-5", "/tmp/legacy", 0);
+
+      const loaded = registry.getRuntimeConfig(slug);
+      const legacy = loaded!.agents.find((a) => a.id === "legacy-agent");
+      expect(legacy).toBeDefined();
+      expect(legacy!.name).toBe("Legacy");
+      expect(legacy!.model).toBe("anthropic/claude-haiku-4-5");
     });
   });
 
