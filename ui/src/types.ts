@@ -793,3 +793,27 @@ export interface HeartbeatAgentStats {
   firstTick: string | null;
   lastTick: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Named API Keys
+// ---------------------------------------------------------------------------
+
+export interface NamedApiKey {
+  id: number;
+  name: string;
+  providerId: string;
+  defaultModel: string;
+  baseUrl: string | null;
+  apiKeyMasked: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InstanceNamedKey {
+  namedKeyId: number;
+  name: string;
+  providerId: string;
+  defaultModel: string;
+  baseUrl: string | null;
+  isDefault: boolean;
+}
