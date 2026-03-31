@@ -98,7 +98,7 @@ const AgentConfigSchema = z.object({
   /** Temperature (0-2) */
   temperature: z.number().min(0).max(2).optional(),
   /** Max steps before forcing text-only response */
-  maxSteps: z.number().int().min(1).max(100).default(20),
+  maxSteps: z.number().int().min(1).max(500).default(20),
   /** Whether this agent can spawn sub-agents */
   allowSubAgents: z.boolean().default(true),
   /** Tool profile */

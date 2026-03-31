@@ -163,7 +163,7 @@ export const RuntimeConfigPatchSchema = z.object({
         model: z.string().nullable().optional(),
         toolProfile: z.enum(["sentinel", "pilot", "manager", "executor", "custom"]).optional(),
         customTools: z.array(z.string()).optional(),
-        maxSteps: z.number().int().min(1).max(200).optional(),
+        maxSteps: z.number().int().min(1).max(500).optional(),
         temperature: z.number().min(0).max(2).nullable().optional(),
         promptMode: z.enum(["full", "minimal"]).optional(),
         thinking: z

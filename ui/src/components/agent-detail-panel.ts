@@ -256,7 +256,7 @@ export class AgentDetailPanel extends LitElement {
               type="number"
               class="hb-input"
               min="1"
-              max="100"
+              max="500"
               .value=${String(this._cfgMaxSteps)}
               @change=${(e: Event) => {
                 this._cfgMaxSteps = parseInt((e.target as HTMLInputElement).value, 10) || 20;

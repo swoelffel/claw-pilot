@@ -88,7 +88,7 @@ const AgentConfigSchema = z
     /** Model temperature (0-2) */
     temperature: z.number().min(0).max(2).optional(),
     /** Max steps before forcing text-only response */
-    maxSteps: z.number().int().min(1).max(100).optional(),
+    maxSteps: z.number().int().min(1).max(500).optional(),
     /** Controls which workspace files are injected into the system prompt */
     promptMode: z.enum(["full", "minimal", "subagent"]).optional(),
     /** Extra URLs to fetch and append to the system prompt */
