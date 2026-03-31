@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { constants } from "../lib/constants.js";
 import { loadWorkspaceTemplate, type TemplateVars } from "../lib/workspace-templates.js";
 import { exportRuntimeJsonSnapshot } from "../runtime/engine/config-loader.js";
+import { deleteSessionsByAgent } from "./repositories/runtime-session-repository.js";
 import { logger } from "../lib/logger.js";
 
 // Resolve templates directory relative to this file
@@ -150,6 +151,9 @@ export class AgentProvisioner {
         linkType: l.link_type as "a2a" | "spawn",
       }));
     this.registry.replaceAgentLinks(instance.id, remainingLinks);
+
+    // Clean up all sessions (permanent + ephemeral) for this agent
+    deleteSessionsByAgent(this.registry.getDb(), instance.slug, agentSlug);
 
     // Delete agent from DB (cascades to agent_files)
     this.registry.deleteAgentById(agent.id);

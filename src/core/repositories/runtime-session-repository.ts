@@ -206,3 +206,19 @@ export function purgeArchivedSessions(db: Database.Database, instanceSlug: strin
 
   return result;
 }
+
+/**
+ * Delete ALL sessions for a specific agent in an instance.
+ * Messages and parts cascade automatically via FK ON DELETE CASCADE.
+ * Used during agent deletion to prevent orphan sessions in the pilot screen.
+ */
+export function deleteSessionsByAgent(
+  db: Database.Database,
+  instanceSlug: string,
+  agentId: string,
+): number {
+  const result = db
+    .prepare("DELETE FROM rt_sessions WHERE instance_slug = ? AND agent_id = ?")
+    .run(instanceSlug, agentId);
+  return result.changes;
+}
