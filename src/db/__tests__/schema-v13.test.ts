@@ -325,8 +325,8 @@ describe("migration v13 — idempotency", () => {
     // Arrange + Act
     const db = initDatabase(dbPath);
 
-    // Assert: v22 is the latest migration
-    expect(schemaVersion(db)).toBe(23);
+    // Assert: v24 is the latest migration
+    expect(schemaVersion(db)).toBe(24);
     db.close();
   });
 });

@@ -1055,6 +1055,43 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // v24: Named API keys — centralized key management at admin level.
+    // Keys are encrypted with AES-256-GCM (MASTER_ENCRYPTION_KEY env var).
+    // Assigned to instances via junction table, overridable per agent.
+    version: 24,
+    up(db) {
+      db.exec(`
+        -- Admin-global named API keys
+        CREATE TABLE IF NOT EXISTS named_api_keys (
+          id                INTEGER PRIMARY KEY AUTOINCREMENT,
+          name              TEXT NOT NULL UNIQUE,
+          provider_id       TEXT NOT NULL,
+          encrypted_api_key TEXT NOT NULL,
+          default_model     TEXT NOT NULL,
+          base_url          TEXT,
+          created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- Junction: instance <-> named key assignment
+        CREATE TABLE IF NOT EXISTS instance_named_keys (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          instance_id   INTEGER NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
+          named_key_id  INTEGER NOT NULL REFERENCES named_api_keys(id) ON DELETE RESTRICT,
+          is_default    INTEGER NOT NULL DEFAULT 0,
+          UNIQUE(instance_id, named_key_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_instance_named_keys_instance
+          ON instance_named_keys(instance_id);
+
+        -- Agent key override (nullable — NULL means inherit instance default)
+        ALTER TABLE agents ADD COLUMN named_key_id INTEGER
+          REFERENCES named_api_keys(id) ON DELETE SET NULL;
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
