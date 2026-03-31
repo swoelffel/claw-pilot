@@ -27,6 +27,9 @@ import { runPromptLoop } from "../session/prompt-loop.js";
 import type { PromptLoopResult } from "../session/prompt-loop.js";
 import { getAgent, defaultAgentName, resolveEffectivePersistence } from "../agent/registry.js";
 import { resolveModel } from "../provider/provider.js";
+import type { ResolvedModel } from "../provider/provider.js";
+import { NamedKeyRepository } from "../../core/repositories/named-key-repository.js";
+import { isCryptoAvailable } from "../../lib/crypto.js";
 import { getBus } from "../bus/index.js";
 import { ChannelMessageReceived, ChannelMessageSent, SubagentCompleted } from "../bus/events.js";
 import { resolveAgentWorkspacePath } from "../../core/agent-workspace.js";
@@ -112,9 +115,8 @@ export class ChannelRouter {
     // Build RuntimeAgentConfig from Agent.Info + global config
     const agentConfig = buildAgentConfig(agentInfo, config);
 
-    // 2. Resolve model (supports named aliases from config.models)
-    const modelStr = agentConfig.model ?? config.defaultModel;
-    const resolvedModel = resolveModelFromString(modelStr, config.models);
+    // 2. Resolve model (named API keys first, then legacy provider/model string)
+    const resolvedModel = resolveModelForAgent(db, instanceSlug, agentConfig, config);
 
     // Resolve internal model (for compaction/title/summary) if configured
     const internalResolvedModel = config.defaultInternalModel
@@ -341,6 +343,79 @@ function buildAgentConfig(
 }
 
 /**
+ * Resolve the model for an agent, checking named keys first.
+ * Falls back to legacy "provider/model" string resolution.
+ *
+ * Priority: agent named_key_id → instance default named key → legacy env-based resolution.
+ */
+export function resolveModelForAgent(
+  db: Database.Database,
+  instanceSlug: InstanceSlug,
+  agentConfig: import("../config/index.js").RuntimeAgentConfig,
+  config: RuntimeConfig,
+): ResolvedModel {
+  // Named key resolution (only if crypto is available)
+  if (isCryptoAvailable()) {
+    const namedKeyRepo = new NamedKeyRepository(db);
+
+    // Check agent-level override first.
+    // RuntimeAgentConfig doesn't carry namedKeyId — read it from the agents table.
+    const agentRow = db
+      .prepare(
+        "SELECT named_key_id FROM agents WHERE instance_id = (SELECT id FROM instances WHERE slug = ?) AND agent_id = ?",
+      )
+      .get(instanceSlug, agentConfig.id) as { named_key_id: number | null } | undefined;
+
+    const namedKeyId = agentRow?.named_key_id;
+    if (namedKeyId) {
+      // Get full key info: provider, defaultModel, baseUrl + decrypt the API key
+      const keyInfo = db
+        .prepare("SELECT provider_id, default_model, base_url FROM named_api_keys WHERE id = ?")
+        .get(namedKeyId) as
+        | { provider_id: string; default_model: string; base_url: string | null }
+        | undefined;
+
+      if (keyInfo) {
+        const apiKey = namedKeyRepo.getDecryptedKey(namedKeyId);
+        // Agent model may be "provider/model" format or just "model" — extract model part
+        const modelId = agentConfig.model
+          ? agentConfig.model.includes("/")
+            ? agentConfig.model.split("/").slice(1).join("/")
+            : agentConfig.model
+          : keyInfo.default_model;
+        return resolveModel(keyInfo.provider_id, modelId, {
+          apiKey,
+          ...(keyInfo.base_url ? { baseUrl: keyInfo.base_url } : {}),
+        });
+      }
+    }
+
+    // Check instance default named key
+    const instance = db.prepare("SELECT id FROM instances WHERE slug = ?").get(instanceSlug) as
+      | { id: number }
+      | undefined;
+    if (instance) {
+      const defaultKey = namedKeyRepo.getInstanceDefaultKey(instance.id);
+      if (defaultKey) {
+        const modelId = agentConfig.model
+          ? agentConfig.model.includes("/")
+            ? agentConfig.model.split("/").slice(1).join("/")
+            : agentConfig.model
+          : defaultKey.defaultModel;
+        return resolveModel(defaultKey.providerId, modelId, {
+          apiKey: defaultKey.decryptedKey,
+          ...(defaultKey.baseUrl ? { baseUrl: defaultKey.baseUrl } : {}),
+        });
+      }
+    }
+  }
+
+  // Fallback: legacy resolution via "provider/model" string + .env
+  const modelStr = agentConfig.model ?? config.defaultModel;
+  return resolveModelFromString(modelStr, config.models);
+}
+
+/**
  * Parse a "provider/model" string or resolve a named alias, then call resolveModel.
  * If aliases are provided and modelRef matches an alias id, the alias is used.
  */
@@ -514,8 +589,7 @@ export function registerSubagentCompletedHandler(
         if (!agentInfo) return;
 
         const agentConfig = buildAgentConfig(agentInfo, config);
-        const modelStr = agentConfig.model ?? config.defaultModel;
-        const resolvedModel = resolveModelFromString(modelStr, config.models);
+        const resolvedModel = resolveModelForAgent(db, instanceSlug, agentConfig, config);
         const internalResolvedModel = config.defaultInternalModel
           ? resolveModelFromString(config.defaultInternalModel, config.models)
           : undefined;
