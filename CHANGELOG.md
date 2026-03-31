@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.59.8] — 2026-03-31
+
+### Fixed
+
+- **Fix self-updater restart on Linux system services** — The self-updater used `systemctl --user restart` which only works for user-level systemd services. On production (CHRONOS/Debian 12), the service is installed as a system service in `/etc/systemd/system/`. The updater now detects the service type and uses `sudo systemctl restart` with a detached subprocess for system services. Also imports `DASHBOARD_SERVICE_UNIT` constant instead of hardcoding the service name.
+
+---
+
 ## [0.59.7] — 2026-03-31
 
 ### Fixed

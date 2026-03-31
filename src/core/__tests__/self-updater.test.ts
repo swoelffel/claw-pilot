@@ -15,7 +15,9 @@ function mockSuccessSequence(conn: MockConnection) {
   // test -w checks return 0 (writable) → no sudo needed
   conn.mockExec("test -w", { stdout: "", stderr: "", exitCode: 0 });
   conn.mockExec("pnpm --dir", { stdout: "", stderr: "", exitCode: 0 });
-  // Linux restart
+  // Linux system service detection: test -f returns 1 (not found) → user service fallback
+  conn.mockExec("test -f /etc/systemd/system/", { stdout: "", stderr: "", exitCode: 1 });
+  // Linux restart (user service fallback)
   conn.mockExec("systemctl --user restart", { stdout: "", stderr: "", exitCode: 0 });
   // macOS restart: nohup sh -c 'sleep 3 && launchctl start ...' & launchctl stop ...
   conn.mockExec("nohup sh -c", { stdout: "", stderr: "", exitCode: 0 });
@@ -220,6 +222,8 @@ describe("SelfUpdater — sudo fallback on EACCES", () => {
     conn.mockExec("test -w", { stdout: "", stderr: "", exitCode: 1 });
     // sudo commands succeed
     conn.mockExec("sudo -E env", { stdout: "", stderr: "", exitCode: 0 });
+    // Linux system service detection: not found → user service fallback
+    conn.mockExec("test -f /etc/systemd/system/", { stdout: "", stderr: "", exitCode: 1 });
     conn.mockExec("systemctl --user restart", { stdout: "", stderr: "", exitCode: 0 });
     conn.mockExec("nohup sh -c", { stdout: "", stderr: "", exitCode: 0 });
     conn.mockExec("launchctl stop", { stdout: "", stderr: "", exitCode: 0 });
@@ -243,6 +247,58 @@ describe("SelfUpdater — sudo fallback on EACCES", () => {
 
     const sudoCmd = conn.commands.find((c) => c.includes("sudo -E env"));
     expect(sudoCmd).toBeUndefined();
+    expect(updater.getJob().status).toBe("done");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Linux restart: system service vs user service detection
+// ---------------------------------------------------------------------------
+
+describe("SelfUpdater — Linux system service restart", () => {
+  it("uses 'sudo systemctl restart' when system service file exists", async () => {
+    // Skip on macOS — this test is Linux-specific
+    if (process.platform === "darwin") return;
+
+    conn = new MockConnection();
+    updater = new SelfUpdater(conn);
+    conn.mockExec("git fetch", { stdout: "", stderr: "", exitCode: 0 });
+    conn.mockExec("git -C", { stdout: "", stderr: "", exitCode: 0 });
+    conn.mockExec("test -w", { stdout: "", stderr: "", exitCode: 0 });
+    conn.mockExec("pnpm --dir", { stdout: "", stderr: "", exitCode: 0 });
+    // System service file exists → exitCode 0
+    conn.mockExec("test -f /etc/systemd/system/", { stdout: "", stderr: "", exitCode: 0 });
+    conn.mockExec("nohup sh -c", { stdout: "", stderr: "", exitCode: 0 });
+
+    updater.run(undefined, undefined, "v1.0.0");
+    await flush();
+
+    const restartCmd = conn.commands.find(
+      (c) => c.includes("sudo systemctl restart") && c.includes("claw-pilot-dashboard"),
+    );
+    expect(restartCmd).toBeDefined();
+    expect(updater.getJob().status).toBe("done");
+  });
+
+  it("uses 'systemctl --user restart' when no system service file", async () => {
+    // Skip on macOS — this test is Linux-specific
+    if (process.platform === "darwin") return;
+
+    conn = new MockConnection();
+    updater = new SelfUpdater(conn);
+    conn.mockExec("git fetch", { stdout: "", stderr: "", exitCode: 0 });
+    conn.mockExec("git -C", { stdout: "", stderr: "", exitCode: 0 });
+    conn.mockExec("test -w", { stdout: "", stderr: "", exitCode: 0 });
+    conn.mockExec("pnpm --dir", { stdout: "", stderr: "", exitCode: 0 });
+    // System service file NOT found → exitCode 1 → user service fallback
+    conn.mockExec("test -f /etc/systemd/system/", { stdout: "", stderr: "", exitCode: 1 });
+    conn.mockExec("systemctl --user restart", { stdout: "", stderr: "", exitCode: 0 });
+
+    updater.run(undefined, undefined, "v1.0.0");
+    await flush();
+
+    const restartCmd = conn.commands.find((c) => c.includes("systemctl --user restart"));
+    expect(restartCmd).toBeDefined();
     expect(updater.getJob().status).toBe("done");
   });
 });

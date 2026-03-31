@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import type { ServerConnection } from "../server/connection.js";
 import { constants } from "../lib/constants.js";
+import { DASHBOARD_SERVICE_UNIT } from "../lib/platform.js";
 import { logger } from "../lib/logger.js";
 
 export type SelfUpdateJobStatus = "idle" | "running" | "done" | "error";
@@ -127,12 +128,22 @@ export class SelfUpdater {
 
       // 5. Restart du service — tue le process en cours, donc en dernier.
       // On ne verifie pas le code de retour : le process sera tue avant.
-      // Sur macOS, launchctl stop tue ce process — le start doit etre lance dans un
-      // sous-shell decroche (nohup + &) qui survit au kill du parent.
-      const restartCmd =
-        process.platform === "darwin"
-          ? `nohup sh -c 'sleep 3 && launchctl start io.claw-pilot.dashboard' >/dev/null 2>&1 & launchctl stop io.claw-pilot.dashboard`
-          : "systemctl --user restart claw-pilot-dashboard.service";
+      // Both macOS and Linux use a detached subprocess (nohup + &) because the
+      // restart kills the current process before the command can return.
+      let restartCmd: string;
+      if (process.platform === "darwin") {
+        restartCmd = `nohup sh -c 'sleep 3 && launchctl start io.claw-pilot.dashboard' >/dev/null 2>&1 & launchctl stop io.claw-pilot.dashboard`;
+      } else {
+        // Detect system service (/etc/systemd/system/) vs user service (~/.config/systemd/user/)
+        const sysCheck = await this._exec(`test -f /etc/systemd/system/${DASHBOARD_SERVICE_UNIT}`);
+        if (sysCheck.exitCode === 0) {
+          // System service — requires sudo; detach so the restart outlives this process
+          restartCmd = `nohup sh -c 'sleep 2 && sudo systemctl restart ${DASHBOARD_SERVICE_UNIT}' >/dev/null 2>&1 &`;
+        } else {
+          // User service fallback
+          restartCmd = `systemctl --user restart ${DASHBOARD_SERVICE_UNIT}`;
+        }
+      }
       this._exec(restartCmd, { timeout: 15_000 }).catch(() => {
         // Attendu : le process est tue par le restart
       });
