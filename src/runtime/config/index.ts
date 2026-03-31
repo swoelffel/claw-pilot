@@ -539,6 +539,11 @@ export function parseRuntimeConfig(raw: unknown): RuntimeConfig {
   return RuntimeConfigSchema.parse(raw);
 }
 
+/** Parse and validate a single agent config object. Throws ZodError on failure. */
+export function parseAgentConfig(raw: unknown): RuntimeAgentConfig {
+  return AgentConfigSchema.parse(raw);
+}
+
 /** Safe parse — returns success/error without throwing */
 export function safeParseRuntimeConfig(
   raw: unknown,

@@ -252,36 +252,47 @@ describe("AgentSync.sync()", () => {
     const instance = seedInstance();
 
     // Store config in DB (simulates v21+ setup)
+    const dbAgentConfig = {
+      id: "db-agent",
+      name: "DB Agent",
+      model: "anthropic/claude-sonnet-4-5",
+      isDefault: true,
+      permissions: [],
+      maxSteps: 20,
+      allowSubAgents: true,
+      toolProfile: "executor" as const,
+    };
     const dbConfigObj = {
       version: 1 as const,
       defaultModel: "anthropic/claude-sonnet-4-5",
-      agents: [
-        {
-          id: "db-agent",
-          name: "DB Agent",
-          model: "anthropic/claude-sonnet-4-5",
-          isDefault: true,
-          permissions: [],
-          maxSteps: 20,
-          allowSubAgents: true,
-          toolProfile: "executor" as const,
-        },
-      ],
+      agents: [dbAgentConfig],
     };
 
     // Use parseRuntimeConfig to get a valid RuntimeConfig with all defaults
     const { parseRuntimeConfig } = await import("../../runtime/config/index.js");
     const fullConfig = parseRuntimeConfig(dbConfigObj);
+
+    // Create agent row first (source of truth since refactoring)
+    registry.upsertAgent(instance.id, {
+      agentId: "db-agent",
+      name: "DB Agent",
+      model: "anthropic/claude-sonnet-4-5",
+      workspacePath: `${STATE_DIR}/workspaces/db-agent`,
+      isDefault: true,
+      configJson: JSON.stringify(dbAgentConfig),
+    });
+
     registry.saveRuntimeConfig(instance.slug, fullConfig);
 
     // Do NOT set conn.files for CONFIG_PATH — DB should be used instead
     const agentSync = new AgentSync(conn, registry);
     const result = await agentSync.sync(instance);
 
-    // Agent from DB config should be synced
-    expect(result.changes.agentsAdded).toContain("db-agent");
+    // Agent from DB config should be visible after sync (reads from agents table)
     const agents = registry.listAgents("test-inst");
     expect(agents.map((a) => a.agent_id)).toContain("db-agent");
+    // It should be in the sync result agents list
+    expect(result.agents.map((a) => a.agent_id)).toContain("db-agent");
   });
 
   it("upsertAgent with null positions does not overwrite existing positions (COALESCE)", async () => {

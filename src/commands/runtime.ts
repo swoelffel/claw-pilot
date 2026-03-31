@@ -125,22 +125,27 @@ function runtimeStatusCommand(): Command {
     .option("--json", "Output as JSON")
     .action(async (slug: string, opts: { json?: boolean }) => {
       const stateDir = getRuntimeStateDir(slug);
-
-      if (!runtimeConfigExists(stateDir)) {
-        logger.error(`No runtime.json found for instance "${slug}".`);
-        logger.error(`Run: claw-pilot runtime config init ${slug}`);
-        process.exit(1);
-      }
+      const db = initDatabase(getDbPath());
 
       let config;
       try {
-        config = loadRuntimeConfig(stateDir);
+        config = loadConfigFromDbOrFile(db, slug, stateDir);
       } catch (err) {
         logger.error(
-          `Failed to load runtime.json: ${err instanceof Error ? err.message : String(err)}`,
+          `Failed to load runtime config: ${err instanceof Error ? err.message : String(err)}`,
         );
+        db.close();
         process.exit(1);
       }
+
+      if (!config) {
+        logger.error(`No runtime config found for instance "${slug}" (checked DB and file).`);
+        logger.error(`Run: claw-pilot runtime config init ${slug}`);
+        db.close();
+        process.exit(1);
+      }
+
+      db.close();
 
       if (opts.json) {
         console.log(JSON.stringify({ slug, stateDir, config }, null, 2));

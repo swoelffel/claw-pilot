@@ -9,6 +9,8 @@ import { EDITABLE_FILES } from "./agent-sync.js";
 import { createHash } from "node:crypto";
 import { constants } from "../lib/constants.js";
 import { loadWorkspaceTemplate, type TemplateVars } from "../lib/workspace-templates.js";
+import { exportRuntimeJsonSnapshot } from "../runtime/engine/config-loader.js";
+import { logger } from "../lib/logger.js";
 
 // Resolve templates directory relative to this file
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -96,13 +98,7 @@ export class AgentProvisioner {
       }
     }
 
-    // Append to agents[] array in runtime.json
-    const configRaw = await this.conn.readFile(instance.config_path);
-    const config = JSON.parse(configRaw) as Record<string, unknown>;
-
-    if (!Array.isArray(config["agents"])) {
-      config["agents"] = [];
-    }
+    // Build agent config block
     const agentConfigBlock = {
       id: data.agentSlug,
       name: data.name,
@@ -110,11 +106,8 @@ export class AgentProvisioner {
       permissions: [],
       ...(data.toolProfile ? { toolProfile: data.toolProfile } : {}),
     };
-    (config["agents"] as unknown[]).push(agentConfigBlock);
 
-    await this.conn.writeFile(instance.config_path, JSON.stringify(config, null, 2) + "\n");
-
-    // Upsert agent in DB with full config_json
+    // Upsert agent in DB with full config_json (source of truth)
     this.registry.upsertAgent(instance.id, {
       agentId: data.agentSlug,
       name: data.name,
@@ -123,6 +116,9 @@ export class AgentProvisioner {
       isDefault: false,
       configJson: JSON.stringify(agentConfigBlock),
     });
+
+    // Export runtime.json snapshot for debugging
+    this.exportSnapshot(instance);
 
     // Save optional metadata fields to DB
     if (data.role) {
@@ -141,18 +137,6 @@ export class AgentProvisioner {
     // 2. Block deletion of default agent
     if (agent.is_default) throw new Error(`Cannot delete the default agent`);
 
-    // Remove from agents[] array in runtime.json
-    const configRaw = await this.conn.readFile(instance.config_path);
-    const config = JSON.parse(configRaw) as Record<string, unknown>;
-
-    if (Array.isArray(config["agents"])) {
-      config["agents"] = (config["agents"] as Array<{ id: string }>).filter(
-        (a) => a.id !== agentSlug,
-      );
-    }
-
-    await this.conn.writeFile(instance.config_path, JSON.stringify(config, null, 2) + "\n");
-
     // Delete workspace directory on server
     await this.conn.remove(agent.workspace_path, { recursive: true });
 
@@ -169,6 +153,9 @@ export class AgentProvisioner {
 
     // Delete agent from DB (cascades to agent_files)
     this.registry.deleteAgentById(agent.id);
+
+    // Export runtime.json snapshot for debugging
+    this.exportSnapshot(instance);
   }
 
   async updateAgentFile(
@@ -193,5 +180,20 @@ export class AgentProvisioner {
     // 4. Update SQLite cache
     const hash = createHash("sha256").update(content).digest("hex");
     this.registry.upsertAgentFile(agent.id, { filename, content, contentHash: hash });
+  }
+
+  /** Export runtime.json snapshot for debugging (best-effort). */
+  private exportSnapshot(instance: InstanceRecord): void {
+    try {
+      const stateDir = path.dirname(instance.config_path);
+      const config = this.registry.getRuntimeConfig(instance.slug);
+      if (config) {
+        exportRuntimeJsonSnapshot(stateDir, config);
+      }
+    } catch (err) {
+      logger.warn(
+        `[agent-provisioner] Failed to export runtime.json snapshot: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }

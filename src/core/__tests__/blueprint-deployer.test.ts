@@ -7,6 +7,8 @@ import { initDatabase } from "../../db/schema.js";
 import { Registry } from "../registry.js";
 import { BlueprintDeployer } from "../blueprint-deployer.js";
 import { MockConnection } from "./mock-connection.js";
+import { createDefaultRuntimeConfig } from "../../runtime/config/index.js";
+import type { RuntimeAgentConfig } from "../../runtime/config/index.js";
 
 // ---------------------------------------------------------------------------
 // Test setup
@@ -58,13 +60,10 @@ function seedInstance(): { instanceId: number; serverId: number } {
     isDefault: true,
   });
 
-  // Seed a minimal runtime.json (as written by Provisioner step 4)
-  const config = {
-    agents: [],
-    defaultModel: "claude-3-5-sonnet",
-    port: 18790,
-  };
-  conn.files.set(CONFIG_PATH, JSON.stringify(config, null, 2));
+  // Seed runtime config in DB (source of truth since v21)
+  const runtimeConfig = createDefaultRuntimeConfig({ defaultModel: "claude-3-5-sonnet" });
+  runtimeConfig.agents = []; // Start with empty agents — deployer adds them
+  registry.saveRuntimeConfig("test-inst", runtimeConfig);
 
   // Seed the main workspace directory (created by Provisioner step 5)
   conn.dirs.add(`${STATE_DIR}/workspaces`);
@@ -181,12 +180,11 @@ describe("BlueprintDeployer.deploy()", () => {
     const deployer = new BlueprintDeployer(conn, registry);
     await deployer.deploy(bpId, instance);
 
-    const config = JSON.parse(conn.files.get(CONFIG_PATH)!);
-    // main should be in agents[] with isDefault: true
-    expect(config.agents).toHaveLength(1);
-    const mainEntry = config.agents[0];
-    expect(mainEntry.id).toBe("main");
-    expect(mainEntry.isDefault).toBe(true);
+    // Verify via DB (source of truth)
+    const agentRow = registry.getAgentByAgentId(instance.id, "main")!;
+    const agentConfig = JSON.parse(agentRow.config_json!) as RuntimeAgentConfig;
+    expect(agentConfig.id).toBe("main");
+    expect(agentConfig.isDefault).toBe(true);
   });
 
   it("main agent — no new directory is created (workspace already exists)", async () => {
@@ -261,12 +259,11 @@ describe("BlueprintDeployer.deploy()", () => {
     const deployer = new BlueprintDeployer(conn, registry);
     await deployer.deploy(bpId, instance);
 
-    const config = JSON.parse(conn.files.get(CONFIG_PATH)!);
-    expect(config.agents).toHaveLength(1);
-
-    const entry = config.agents[0];
-    expect(entry.id).toBe("researcher");
-    expect(entry.name).toBe("Researcher");
+    // Verify via DB (source of truth)
+    const agentRow = registry.getAgentByAgentId(instance.id, "researcher")!;
+    const agentConfig = JSON.parse(agentRow.config_json!) as RuntimeAgentConfig;
+    expect(agentConfig.id).toBe("researcher");
+    expect(agentConfig.name).toBe("Researcher");
   });
 
   it("model is a plain string in agents[] for all agents", async () => {
@@ -294,13 +291,16 @@ describe("BlueprintDeployer.deploy()", () => {
     const deployer = new BlueprintDeployer(conn, registry);
     await deployer.deploy(bpId, instance);
 
-    const config = JSON.parse(conn.files.get(CONFIG_PATH)!);
-    const mainEntry = config.agents.find((a: { id: string }) => a.id === "main");
-    const researcherEntry = config.agents.find((a: { id: string }) => a.id === "researcher");
+    // Verify via DB (source of truth)
+    const mainConfig = JSON.parse(
+      registry.getAgentByAgentId(instance.id, "main")!.config_json!,
+    ) as RuntimeAgentConfig;
+    const researcherConfig = JSON.parse(
+      registry.getAgentByAgentId(instance.id, "researcher")!.config_json!,
+    ) as RuntimeAgentConfig;
 
-    // Both should have model as plain string
-    expect(mainEntry.model).toBe("anthropic/claude-3-5-sonnet");
-    expect(researcherEntry.model).toBe("openai/gpt-4o");
+    expect(mainConfig.model).toBe("anthropic/claude-3-5-sonnet");
+    expect(researcherConfig.model).toBe("openai/gpt-4o");
   });
 
   it("secondary agents do NOT have isDefault: true", async () => {
@@ -317,9 +317,11 @@ describe("BlueprintDeployer.deploy()", () => {
     const deployer = new BlueprintDeployer(conn, registry);
     await deployer.deploy(bpId, instance);
 
-    const config = JSON.parse(conn.files.get(CONFIG_PATH)!);
-    const coderEntry = config.agents.find((a: { id: string }) => a.id === "coder");
-    expect(coderEntry.isDefault).toBeUndefined();
+    // Verify via DB (source of truth) — raw JSON should not have isDefault
+    const coderRaw = JSON.parse(
+      registry.getAgentByAgentId(instance.id, "coder")!.config_json!,
+    ) as Record<string, unknown>;
+    expect(coderRaw.isDefault).toBeUndefined();
   });
 
   it("multi-agent blueprint — main overwrites templates, secondaries get own workspaces", async () => {
@@ -363,15 +365,15 @@ describe("BlueprintDeployer.deploy()", () => {
     expect(conn.files.get(`${STATE_DIR}/workspaces/coder/SOUL.md`)).toBe("# Coder SOUL\n");
     expect(conn.files.get(`${STATE_DIR}/workspaces/reviewer/SOUL.md`)).toBe("# Reviewer SOUL\n");
 
-    // Config: ALL agents in agents[] (main + secondaries)
-    const config = JSON.parse(conn.files.get(CONFIG_PATH)!);
-    expect(config.agents).toHaveLength(3);
-    const ids = config.agents.map((a: { id: string }) => a.id).sort();
+    // All agents in DB with correct config_json
+    const loaded = registry.getRuntimeConfig("test-inst")!;
+    expect(loaded.agents).toHaveLength(3);
+    const ids = loaded.agents.map((a) => a.id).sort();
     expect(ids).toEqual(["coder", "main", "reviewer"]);
 
     // main should have isDefault: true
-    const mainEntry = config.agents.find((a: { id: string }) => a.id === "main");
-    expect(mainEntry.isDefault).toBe(true);
+    const mainConfig = loaded.agents.find((a) => a.id === "main")!;
+    expect(mainConfig.isDefault).toBe(true);
   });
 
   it("model already JSON-serialized in DB — parsed correctly (no double-wrapping)", async () => {
@@ -399,13 +401,17 @@ describe("BlueprintDeployer.deploy()", () => {
     const deployer = new BlueprintDeployer(conn, registry);
     await deployer.deploy(bpId, instance);
 
-    const config = JSON.parse(conn.files.get(CONFIG_PATH)!);
-    const mainEntry = config.agents.find((a: { id: string }) => a.id === "main");
-    const researcherEntry = config.agents.find((a: { id: string }) => a.id === "researcher");
+    // Verify via DB (source of truth)
+    const mainConfig = JSON.parse(
+      registry.getAgentByAgentId(instance.id, "main")!.config_json!,
+    ) as RuntimeAgentConfig;
+    const researcherConfig = JSON.parse(
+      registry.getAgentByAgentId(instance.id, "researcher")!.config_json!,
+    ) as RuntimeAgentConfig;
 
     // Should be extracted primary strings, NOT double-wrapped
-    expect(mainEntry.model).toBe("opencode/claude-sonnet-4-5");
-    expect(researcherEntry.model).toBe("opencode/claude-haiku-4-5");
+    expect(mainConfig.model).toBe("opencode/claude-sonnet-4-5");
+    expect(researcherConfig.model).toBe("opencode/claude-haiku-4-5");
   });
 
   it("main agent — spawn links set allowSubAgents: true in agents[]", async () => {
@@ -429,9 +435,11 @@ describe("BlueprintDeployer.deploy()", () => {
     const deployer = new BlueprintDeployer(conn, registry);
     await deployer.deploy(bpId, instance);
 
-    const config = JSON.parse(conn.files.get(CONFIG_PATH)!);
-    const mainEntry = config.agents.find((a: { id: string }) => a.id === "main");
-    expect(mainEntry.allowSubAgents).toBe(true);
+    // Verify via DB (source of truth)
+    const mainConfig = JSON.parse(
+      registry.getAgentByAgentId(instance.id, "main")!.config_json!,
+    ) as RuntimeAgentConfig;
+    expect(mainConfig.allowSubAgents).toBe(true);
   });
 
   it("spawn links — set allowSubAgents: true on secondary agents with outgoing links", async () => {
@@ -450,13 +458,18 @@ describe("BlueprintDeployer.deploy()", () => {
     const deployer = new BlueprintDeployer(conn, registry);
     await deployer.deploy(bpId, instance);
 
-    const config = JSON.parse(conn.files.get(CONFIG_PATH)!);
-    const coderEntry = config.agents.find((a: { id: string }) => a.id === "coder");
-    expect(coderEntry.allowSubAgents).toBe(true);
+    // Verify via DB (source of truth)
+    const coderConfig = JSON.parse(
+      registry.getAgentByAgentId(instance.id, "coder")!.config_json!,
+    ) as RuntimeAgentConfig;
+    expect(coderConfig.allowSubAgents).toBe(true);
 
-    // Tester has no outgoing spawn links
-    const testerEntry = config.agents.find((a: { id: string }) => a.id === "tester");
-    expect(testerEntry.allowSubAgents).toBeUndefined();
+    // Tester has no outgoing spawn links — allowSubAgents defaults to true in schema
+    const testerConfig = JSON.parse(
+      registry.getAgentByAgentId(instance.id, "tester")!.config_json!,
+    ) as Record<string, unknown>;
+    // The raw config should not have allowSubAgents explicitly set
+    expect(testerConfig.allowSubAgents).toBeUndefined();
   });
 
   it("agents are registered in DB with correct workspace paths", async () => {
@@ -558,13 +571,14 @@ describe("BlueprintDeployer.deploy()", () => {
     // Blueprint with no agents
     const bp = registry.createBlueprint({ name: "Empty Blueprint" });
 
-    const configBefore = conn.files.get(CONFIG_PATH)!;
+    const agentsBefore = registry.listAgents("test-inst");
 
     const deployer = new BlueprintDeployer(conn, registry);
     await deployer.deploy(bp.id, instance);
 
-    // Config should be unchanged
-    expect(conn.files.get(CONFIG_PATH)).toBe(configBefore);
+    // No agents should have been added
+    const agentsAfter = registry.listAgents("test-inst");
+    expect(agentsAfter).toHaveLength(agentsBefore.length);
   });
 
   it("secondary agent with no files — gets minimal placeholder files", async () => {
