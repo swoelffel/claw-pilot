@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.59.3] — 2026-03-31
+
+### Changed
+
+- **`agents.config_json` is now the single source of truth** for agent runtime configs. `getRuntimeConfig()` reconstructs `config.agents[]` from the agents table instead of the monolithic JSON blob, eliminating config drift between agent CRUD and config PATCH paths.
+- **AgentProvisioner and BlueprintDeployer** no longer manipulate `runtime.json` directly — they write to the DB and export a debug snapshot.
+- **`runtime status` command** now reads config from DB first (was filesystem-only).
+
+---
+
 ## [0.59.2] — 2026-03-31
 
 ### Fixed
