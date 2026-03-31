@@ -6,7 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
-## [0.59.5] — 2026-03-31
+## [0.59.6] — 2026-03-31
+
+### Changed
+
+- **Soft-deprecate runtime.json file I/O** — All functions that read or write `runtime.json` directly are now marked `@deprecated` with JSDoc. Fallback paths that still read the file emit `logger.warn()` to surface legacy usage. `exportRuntimeJsonSnapshot()` (debug snapshot) is unaffected. Documentation updated to clarify the database is the source of truth since v0.59.3.
 
 ### Fixed
 
