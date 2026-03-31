@@ -36,8 +36,12 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
       // 1. Try DB first (source of truth since v21)
       let config = registry.getRuntimeConfig(slug);
 
-      // 2. Fallback to runtime.json (pre-v21 instances)
+      // 2. Fallback to runtime.json (deprecated — pre-v21 instances only)
       if (!config && runtimeConfigExists(stateDir)) {
+        logger.warn(
+          `[config] Falling back to runtime.json for "${slug}" — DB config not found. ` +
+            "This fallback is deprecated and will be removed in a future version.",
+        );
         config = loadRuntimeConfig(stateDir);
         // Backfill DB for next time
         registry.saveRuntimeConfig(slug, config);

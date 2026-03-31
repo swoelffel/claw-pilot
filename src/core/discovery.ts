@@ -80,6 +80,11 @@ export class InstanceDiscovery {
 
       if (!(await this.conn.exists(configPath))) continue;
 
+      // runtime.json is used here for discovery only — the DB is the source of truth for config
+      logger.warn(
+        `[discovery] Reading runtime.json for "${slug}" — file-based discovery is deprecated. ` +
+          "Config should be read from the database.",
+      );
       const instance = await this.parseInstance(slug, stateDir, configPath, "directory");
       if (instance) found.set(slug, instance);
     }

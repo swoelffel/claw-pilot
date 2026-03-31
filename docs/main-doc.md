@@ -42,7 +42,7 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
                           ▼
                 claw-runtime instances
                 (daemon PID file)
-                <stateDir>/runtime.json
+                <stateDir>/runtime.json (debug snapshot — DB is source of truth)
                 <stateDir>/workspaces/<agentId>/
 ```
 
@@ -509,9 +509,13 @@ WS connection on `/ws`. Auth via first message. Broadcasts `health_update` every
 
 ## claw-runtime engine
 
-### Config (`runtime.json`)
+### Config (`RuntimeConfig`)
 
-Stored in `<stateDir>/runtime.json`. Zod schema `RuntimeConfig`:
+> **Deprecated since v0.59.3**: The file `runtime.json` is now a read-only debug snapshot.
+> The source of truth is the database: `agents.config_json` (per-agent) and
+> `instances.runtime_config_json` (global). Do not edit runtime.json directly.
+
+Zod schema `RuntimeConfig`:
 
 ```typescript
 {

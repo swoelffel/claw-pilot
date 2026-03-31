@@ -3,8 +3,10 @@
  *
  * File I/O helpers for runtime.json — the per-instance runtime configuration.
  *
- * Stored at: <stateDir>/runtime.json
- * Parsed with: parseRuntimeConfig() (Zod schema, throws on invalid)
+ * @deprecated Since v0.59.3, the database (`agents.config_json` + `instances.runtime_config_json`)
+ * is the source of truth for runtime configuration. The file `runtime.json` is kept only as a
+ * read-only debug snapshot exported by {@link exportRuntimeJsonSnapshot}. Functions that read
+ * or write the file directly are deprecated and will be removed in a future version.
  */
 
 import * as fs from "node:fs";
@@ -16,6 +18,7 @@ import {
 } from "../config/index.js";
 import type { ProfileResolver } from "../profile/types.js";
 import { mergeProviderConfig } from "../provider/config-merge.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -38,8 +41,13 @@ function runtimeConfigPath(stateDir: string): string {
 /**
  * Load and validate runtime.json from the given state directory.
  * Throws if the file does not exist or fails validation.
+ * @deprecated Use `registry.getRuntimeConfig(slug)` instead — the database is the source of truth.
  */
 export function loadRuntimeConfig(stateDir: string): RuntimeConfig {
+  logger.warn(
+    `[config-loader] Reading runtime.json from ${stateDir} — this is deprecated. ` +
+      "Config is now stored in the database. This fallback will be removed in a future version.",
+  );
   const filePath = runtimeConfigPath(stateDir);
 
   let raw: unknown;
@@ -63,6 +71,7 @@ export function loadRuntimeConfig(stateDir: string): RuntimeConfig {
 /**
  * Write a RuntimeConfig to <stateDir>/runtime.json (pretty-printed JSON).
  * Creates the directory if it does not exist.
+ * @deprecated Use `registry.saveRuntimeConfig(slug, config)` instead — the database is the source of truth.
  */
 export function saveRuntimeConfig(stateDir: string, config: RuntimeConfig): void {
   fs.mkdirSync(stateDir, { recursive: true });
@@ -73,6 +82,7 @@ export function saveRuntimeConfig(stateDir: string, config: RuntimeConfig): void
 /**
  * Load runtime.json if it exists, otherwise create it with defaults and save.
  * Returns the (possibly newly created) config.
+ * @deprecated Used only during initial provisioning. The database is the source of truth post-bootstrap.
  */
 export function ensureRuntimeConfig(
   stateDir: string,
@@ -113,6 +123,7 @@ export function exportRuntimeJsonSnapshot(stateDir: string, config: RuntimeConfi
 
 /**
  * Return true if runtime.json exists in the given state directory.
+ * @deprecated The database is the source of truth — file existence should not drive logic.
  */
 export function runtimeConfigExists(stateDir: string): boolean {
   return fs.existsSync(runtimeConfigPath(stateDir));
@@ -122,7 +133,7 @@ export function runtimeConfigExists(stateDir: string): boolean {
  * Load runtime.json and merge with user profile providers/models if a
  * ProfileResolver is provided. Without a resolver, behaves identically
  * to loadRuntimeConfig() (backward-compatible).
- * @public
+ * @deprecated Use `loadMergedConfigDbFirst()` from `_config-helpers.ts` instead.
  */
 export function loadMergedConfig(
   stateDir: string,

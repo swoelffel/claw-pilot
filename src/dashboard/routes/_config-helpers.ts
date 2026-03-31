@@ -1,13 +1,14 @@
 // src/dashboard/routes/_config-helpers.ts
 //
 // DB-first config loading helpers for dashboard routes.
-// Reads RuntimeConfig from DB, falls back to runtime.json file.
+// Reads RuntimeConfig from DB, falls back to runtime.json file (deprecated).
 
 import type { Registry } from "../../core/registry.js";
 import type { RuntimeConfig } from "../../runtime/config/index.js";
 import type { ProfileResolver } from "../../runtime/profile/types.js";
 import { runtimeConfigExists, loadRuntimeConfig } from "../../runtime/index.js";
 import { mergeProviderConfig } from "../../runtime/provider/config-merge.js";
+import { logger } from "../../lib/logger.js";
 
 /**
  * Load RuntimeConfig from DB first, falling back to runtime.json.
@@ -22,8 +23,12 @@ export function loadConfigDbFirst(
   const fromDb = registry.getRuntimeConfig(slug);
   if (fromDb) return fromDb;
 
-  // 2. Fallback to file
+  // 2. Fallback to file (deprecated — runtime.json is no longer the source of truth)
   if (!runtimeConfigExists(stateDir)) return null;
+  logger.warn(
+    `[config-helpers] Falling back to runtime.json for "${slug}" — DB config not found. ` +
+      "This fallback is deprecated and will be removed in a future version.",
+  );
   try {
     return loadRuntimeConfig(stateDir);
   } catch {

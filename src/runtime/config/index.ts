@@ -5,7 +5,9 @@
  *
  * The dashboard is the primary editing interface, not a hand-edited JSON file.
  *
- * Stored as JSON in the instance state directory: <stateDir>/runtime.json
+ * Source of truth: the database (`agents.config_json` for per-agent config,
+ * `instances.runtime_config_json` for global config). The file `<stateDir>/runtime.json`
+ * is a read-only debug snapshot — do not edit it directly.
  */
 
 import { z } from "zod";

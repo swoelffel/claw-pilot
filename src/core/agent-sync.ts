@@ -95,11 +95,12 @@ export class AgentSync {
       config = JSON.parse(JSON.stringify(dbConfig)) as Record<string, unknown>;
     } else {
       // Fallback: read runtime.json (pre-v21 instances or file-only setups)
+      logger.warn(
+        `[agent-sync] Reading runtime.json for "${instance.slug}" — this is deprecated. ` +
+          "Config should be in the database. This fallback will be removed in a future version.",
+      );
       const configRaw = await this.conn.readFile(instance.config_path);
       config = JSON.parse(configRaw) as Record<string, unknown>;
-      logger.debug(
-        `[agent-sync] Read config from file for "${instance.slug}" (DB config not found)`,
-      );
     }
 
     // ------------------------------------------------------------------
