@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.59.2] — 2026-03-31
+
+### Fixed
+
+- **Prevent agent self-messaging** — Agents could send messages to themselves via exact ID match in `send_message`, causing conversations to stall (reply never reaches the caller). Added early self-check guard with clear error message. Same guard applied to `task` A2A resolution.
+
+---
+
 ## [0.59.1] — 2026-03-30
 
 ### Fixed
