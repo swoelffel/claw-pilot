@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.59.4] — 2026-03-31
+
+### Fixed
+
+- **Raise maxSteps ceiling from 100 to 500** — Complex delegations (codebase exploration, multi-step migrations) could exceed the previous 100-step limit, causing task failures. Aligned all validation schemas (runtime config, team schema, dashboard patch) and UI input constraint.
+
+---
+
 ## [0.59.3] — 2026-03-31
 
 ### Changed
