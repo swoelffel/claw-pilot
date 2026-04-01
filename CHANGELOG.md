@@ -6,6 +6,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.60.0] — 2026-04-01
+
+### Added
+
+- **Named API Keys** — Centralized API key management at admin level. Keys are stored encrypted (AES-256-GCM) in the database, replacing plaintext `.env` storage. Admin creates named keys in Profile > API Keys, then assigns them to instances.
+- **Crypto module** (`src/lib/crypto.ts`) — Consolidates all cryptographic operations: AES-256-GCM encryption, secure random generation (`generateSecureHex`), gateway/dashboard token generation (migrated from `secrets.ts`).
+- **Auto-generated master encryption key** — `MASTER_ENCRYPTION_KEY` is automatically generated at dashboard startup if not present. Stored in `~/.claw-pilot/.env`.
+- **Auto-migration of existing keys** — At dashboard startup, API keys from `user_providers` and instance `.env` files are automatically migrated to encrypted named keys. Deduplicates shared keys across instances.
+- **Named key dropdown in instance creation** — Instance creation dialog now selects a named key instead of typing an API key directly.
+- **Default API Key selector in instance settings** — General tab shows all global named keys with provider-filtered model dropdown.
+- **Per-agent key override** — Agents can override the instance's default named key with a specific key from the dropdown.
+- **DB migrations v24–v25** — `named_api_keys` table (encrypted storage), `instance_named_keys` (deprecated), `instances.default_named_key_id` FK, `agents.named_key_id` FK.
+
+### Changed
+
+- **Simplified provider architecture** — Removed `instance_named_keys` junction table in favor of direct `default_named_key_id` FK on instances. All named keys are globally available to all instances.
+- **Removed Providers tab** from profile settings (replaced by API Keys tab).
+- **Removed legacy provider management** from instance settings (add/remove/update provider with inline key).
+
+### Removed
+
+- `src/core/secrets.ts` — Consolidated into `src/lib/crypto.ts`.
+- Profile provider routes (`GET/PUT/DELETE/PATCH /api/profile/providers/*`).
+- Provider section in instance General settings.
+
+---
+
 ## [0.59.8] — 2026-03-31
 
 ### Fixed
