@@ -5,7 +5,6 @@ import type {
   InstanceConfig,
   ConfigPatchResult,
   ProviderInfo,
-  ProviderEntry,
   AgentBuilderInfo,
   AgentLink,
   PanelContext,
@@ -71,17 +70,8 @@ export class InstanceSettings extends LitElement {
   @state() private _dirty: Record<string, unknown> = {};
   @state() private _heartbeatEveryError = "";
 
-  // ── Providers state ───────────────────────────────────────────────────────
-
-  // Catalog from /api/providers — used for "Add provider" dropdown
+  // Catalog from /api/providers — used for model dropdown
   @state() private _providerCatalog: ProviderInfo[] = [];
-  @state() private _editingKeyForProvider: string | null = null;
-  @state() private _editingBaseUrlForProvider: string | null = null;
-  @state() private _addedProviders: Array<{ id: string; apiKey: string; baseUrl?: string }> = [];
-  @state() private _removedProviders: string[] = [];
-  @state() private _updatedKeys: Record<string, string> = {};
-  @state() private _updatedBaseUrls: Record<string, string | null> = {};
-  @state() private _showAddProvider = false;
 
   // ── MCP badge state ───────────────────────────────────────────────────────
 
@@ -110,7 +100,7 @@ export class InstanceSettings extends LitElement {
     super.connectedCallback();
     if (this.initialSection) this._activeSection = this.initialSection;
     this._loadConfig();
-    this._loadProviderCatalog();
+    void this._loadProviderCatalog();
   }
 
   // ── Config management ────────────────────────────────────────────────────
@@ -123,13 +113,6 @@ export class InstanceSettings extends LitElement {
       this._config = config;
       this._dirty = {};
       this._heartbeatEveryError = "";
-      this._addedProviders = [];
-      this._removedProviders = [];
-      this._updatedKeys = {};
-      this._updatedBaseUrls = {};
-      this._editingKeyForProvider = null;
-      this._editingBaseUrlForProvider = null;
-      this._showAddProvider = false;
     } catch (err) {
       this._error = userMessage(err);
     } finally {
@@ -160,13 +143,7 @@ export class InstanceSettings extends LitElement {
   }
 
   private get _hasChanges(): boolean {
-    return (
-      Object.keys(this._dirty).length > 0 ||
-      this._addedProviders.length > 0 ||
-      this._removedProviders.length > 0 ||
-      Object.keys(this._updatedKeys).length > 0 ||
-      Object.keys(this._updatedBaseUrls).length > 0
-    );
+    return Object.keys(this._dirty).length > 0;
   }
 
   private _buildPatch(): Record<string, unknown> {
@@ -180,32 +157,6 @@ export class InstanceSettings extends LitElement {
     if (this._isDirty("general.defaultModel"))
       general["defaultModel"] = this._dirty["general.defaultModel"];
     if (Object.keys(general).length > 0) patch["general"] = general;
-
-    // Providers section
-    const providersAdd = this._addedProviders.map((p) => ({
-      id: p.id,
-      apiKey: p.apiKey || undefined,
-      ...(p.baseUrl !== undefined ? { baseUrl: p.baseUrl || undefined } : {}),
-    }));
-    const providersUpdate: Array<{ id: string; apiKey?: string; baseUrl?: string | null }> = [
-      ...Object.entries(this._updatedKeys).map(([id, apiKey]) => ({
-        id,
-        apiKey,
-        ...(id in this._updatedBaseUrls ? { baseUrl: this._updatedBaseUrls[id] } : {}),
-      })),
-      ...Object.entries(this._updatedBaseUrls)
-        .filter(([id]) => !(id in this._updatedKeys))
-        .map(([id, baseUrl]) => ({ id, baseUrl })),
-    ];
-    const providersRemove = [...this._removedProviders];
-
-    if (providersAdd.length > 0 || providersUpdate.length > 0 || providersRemove.length > 0) {
-      const providersPatch: Record<string, unknown> = {};
-      if (providersAdd.length > 0) providersPatch["add"] = providersAdd;
-      if (providersUpdate.length > 0) providersPatch["update"] = providersUpdate;
-      if (providersRemove.length > 0) providersPatch["remove"] = providersRemove;
-      patch["providers"] = providersPatch;
-    }
 
     // Agent defaults (compaction, subagents) — mapped to runtime.json top-level fields
     const agentDefaults: Record<string, unknown> = {};
@@ -260,13 +211,6 @@ export class InstanceSettings extends LitElement {
   private _cancel(): void {
     this._dirty = {};
     this._heartbeatEveryError = "";
-    this._addedProviders = [];
-    this._removedProviders = [];
-    this._updatedKeys = {};
-    this._updatedBaseUrls = {};
-    this._editingKeyForProvider = null;
-    this._editingBaseUrlForProvider = null;
-    this._showAddProvider = false;
     this.requestUpdate();
   }
 
@@ -331,42 +275,6 @@ export class InstanceSettings extends LitElement {
     this._activeSection = section;
   }
 
-  // ── Provider management ───────────────────────────────────────────────────
-
-  private _addProvider(id: string): void {
-    if (!id) return;
-    this._addedProviders = [...this._addedProviders, { id, apiKey: "" }];
-    this._showAddProvider = false;
-    this.requestUpdate();
-  }
-
-  private _removeProvider(id: string): void {
-    const c = this._config!;
-    const defaultModel = this._getDirty("general.defaultModel", c.general.defaultModel);
-    // Block removal if this provider is used by the default model
-    if (defaultModel.startsWith(`${id}/`)) return;
-
-    // If it was a newly added provider, just remove from _addedProviders
-    const addedIdx = this._addedProviders.findIndex((p) => p.id === id);
-    if (addedIdx >= 0) {
-      this._addedProviders = this._addedProviders.filter((p) => p.id !== id);
-    } else {
-      this._removedProviders = [...this._removedProviders, id];
-    }
-    // Clean up any pending key update
-    const updated = { ...this._updatedKeys };
-    delete updated[id];
-    this._updatedKeys = updated;
-    if (this._editingKeyForProvider === id) this._editingKeyForProvider = null;
-    this.requestUpdate();
-  }
-
-  private _isDefaultModelProvider(id: string): boolean {
-    if (!this._config) return false;
-    const defaultModel = this._getDirty("general.defaultModel", this._config.general.defaultModel);
-    return defaultModel.startsWith(`${id}/`);
-  }
-
   // ── Render helpers ────────────────────────────────────────────────────────
 
   private _renderSidebar() {
@@ -416,287 +324,18 @@ export class InstanceSettings extends LitElement {
     `;
   }
 
-  private _renderProviderCard(p: ProviderEntry, isNew: boolean) {
-    const isEditingKey = this._editingKeyForProvider === p.id;
-    const isEditingUrl = this._editingBaseUrlForProvider === p.id;
-    const isDefaultProvider = this._isDefaultModelProvider(p.id);
-    const baseUrl =
-      this._updatedBaseUrls[p.id] !== undefined ? this._updatedBaseUrls[p.id] : p.baseUrl;
-
-    return html`
-      <div class="provider-card">
-        <div class="provider-header">
-          <div class="provider-header-left">
-            <span class="provider-name">${p.label}</span>
-            <span class="provider-id">${p.id}</span>
-            ${isNew ? html`<span class="badge-new">new</span>` : nothing}
-          </div>
-          <button
-            class="btn-remove-provider"
-            ?disabled=${isDefaultProvider}
-            title=${isDefaultProvider
-              ? msg("Default model uses this provider. Change it first.", {
-                  id: "settings-remove-provider-blocked",
-                })
-              : msg("Remove provider", { id: "settings-remove-provider" })}
-            @click=${() => this._removeProvider(p.id)}
-          >
-            ${msg("Remove", { id: "settings-remove" })}
-          </button>
-        </div>
-        <div class="provider-key-row">
-          <span class="provider-env-var">${p.envVar || "—"}</span>
-          ${isEditingKey
-            ? html`
-                <input
-                  class="field-input mono changed"
-                  style="flex:1"
-                  type="text"
-                  placeholder=${p.requiresKey
-                    ? msg("Enter API key", { id: "settings-enter-api-key" })
-                    : msg("Optional API key", { id: "settings-optional-api-key" })}
-                  @input=${(e: Event) => {
-                    this._updatedKeys = {
-                      ...this._updatedKeys,
-                      [p.id]: (e.target as HTMLInputElement).value,
-                    };
-                    this.requestUpdate();
-                  }}
-                />
-                <button
-                  class="btn-reveal"
-                  @click=${() => {
-                    this._editingKeyForProvider = null;
-                    const updated = { ...this._updatedKeys };
-                    delete updated[p.id];
-                    this._updatedKeys = updated;
-                    this.requestUpdate();
-                  }}
-                >
-                  ${msg("Cancel", { id: "settings-cancel" })}
-                </button>
-              `
-            : html`
-                <span class="field-readonly" style="flex:1"
-                  >${p.apiKeyMasked ??
-                  (p.requiresKey
-                    ? msg("Not set", { id: "settings-not-set" })
-                    : msg("Optional", { id: "settings-optional" }))}</span
-                >
-                <button
-                  class="btn-reveal"
-                  @click=${() => {
-                    this._editingKeyForProvider = p.id;
-                    this.requestUpdate();
-                  }}
-                >
-                  ${msg("Change", { id: "settings-change" })}
-                </button>
-              `}
-        </div>
-        ${baseUrl
-          ? html`
-              <div class="provider-url-row">
-                <span style="font-size:11px;color:var(--text-muted)">Base URL</span>
-                ${isEditingUrl
-                  ? html`
-                      <input
-                        class="field-input changed"
-                        style="flex:1"
-                        type="url"
-                        placeholder="https://api.example.com"
-                        .value=${baseUrl}
-                        @input=${(e: Event) => {
-                          this._updatedBaseUrls = {
-                            ...this._updatedBaseUrls,
-                            [p.id]: (e.target as HTMLInputElement).value || null,
-                          };
-                          this.requestUpdate();
-                        }}
-                      />
-                      <button
-                        class="btn-reveal"
-                        @click=${() => {
-                          this._editingBaseUrlForProvider = null;
-                          const updated = { ...this._updatedBaseUrls };
-                          delete updated[p.id];
-                          this._updatedBaseUrls = updated;
-                          this.requestUpdate();
-                        }}
-                      >
-                        ${msg("Cancel", { id: "settings-cancel" })}
-                      </button>
-                    `
-                  : html`
-                      <span class="field-readonly mono" style="flex:1;font-size:12px"
-                        >${baseUrl}</span
-                      >
-                      <button
-                        class="btn-reveal"
-                        @click=${() => {
-                          this._editingBaseUrlForProvider = p.id;
-                          this.requestUpdate();
-                        }}
-                      >
-                        ${msg("Edit", { id: "settings-edit" })}
-                      </button>
-                    `}
-              </div>
-            `
-          : nothing}
-      </div>
-    `;
-  }
-
-  private _renderNewProviderCard(p: { id: string; apiKey: string; baseUrl?: string }) {
-    // Build a synthetic ProviderEntry from catalog info
-    const catalogEntry = this._providerCatalog.find((c) => c.id === p.id);
-    const entry: ProviderEntry = {
-      id: p.id,
-      label: catalogEntry?.label ?? p.id,
-      envVar: "",
-      apiKeyMasked: null,
-      apiKeySet: false,
-      requiresKey: catalogEntry?.requiresKey ?? true,
-      baseUrl: null,
-      source: "models",
-    };
-
-    return html`
-      <div class="provider-card">
-        <div class="provider-header">
-          <div class="provider-header-left">
-            <span class="provider-name">${entry.label}</span>
-            <span class="provider-id">${entry.id}</span>
-            <span class="badge-new">new</span>
-          </div>
-          <button class="btn-remove-provider" @click=${() => this._removeProvider(p.id)}>
-            ${msg("Remove", { id: "settings-remove" })}
-          </button>
-        </div>
-        <div class="provider-key-row">
-          <span class="provider-env-var" style="font-size:11px;color:var(--text-muted)">
-            ${entry.requiresKey
-              ? msg("API key required", { id: "settings-api-key-required" })
-              : msg("API key optional", { id: "settings-api-key-optional" })}
-          </span>
-          <input
-            class="field-input mono changed"
-            style="flex:1"
-            type="text"
-            placeholder=${entry.requiresKey
-              ? msg("Enter API key", { id: "settings-enter-api-key" })
-              : msg("Optional API key", { id: "settings-optional-api-key" })}
-            .value=${p.apiKey}
-            @input=${(e: Event) => {
-              const val = (e.target as HTMLInputElement).value;
-              this._addedProviders = this._addedProviders.map((ap) =>
-                ap.id === p.id ? { ...ap, apiKey: val } : ap,
-              );
-              this.requestUpdate();
-            }}
-          />
-        </div>
-        <div class="provider-url-row">
-          <span style="font-size:11px;color:var(--text-muted)">Base URL (optional)</span>
-          <input
-            class="field-input changed"
-            style="flex:1"
-            type="url"
-            placeholder="https://api.example.com"
-            .value=${p.baseUrl ?? ""}
-            @input=${(e: Event) => {
-              const val = (e.target as HTMLInputElement).value;
-              this._addedProviders = this._addedProviders.map((ap) => {
-                if (ap.id !== p.id) return ap;
-                const updated: typeof ap = { id: ap.id, apiKey: ap.apiKey };
-                if (val) updated.baseUrl = val;
-                return updated;
-              });
-              this.requestUpdate();
-            }}
-          />
-        </div>
-      </div>
-    `;
-  }
-
-  private _renderProviders() {
-    const c = this._config!;
-    // Existing providers minus removed ones
-    const existing = c.providers.filter((p) => !this._removedProviders.includes(p.id));
-    // Newly added providers
-    const added = this._addedProviders;
-    // Providers available for addition (not already configured or pending add)
-    const configuredIds = new Set([...existing.map((p) => p.id), ...added.map((p) => p.id)]);
-    const available = this._providerCatalog.filter((p) => !configuredIds.has(p.id));
-
-    return html`
-      <div class="providers-section">
-        <div class="providers-header">
-          <span class="section-subheader">${msg("Providers", { id: "settings-providers" })}</span>
-          ${available.length > 0
-            ? html`
-                <button
-                  class="btn btn-ghost btn-sm"
-                  @click=${() => {
-                    this._showAddProvider = !this._showAddProvider;
-                    this.requestUpdate();
-                  }}
-                >
-                  + ${msg("Add provider", { id: "settings-add-provider" })}
-                </button>
-              `
-            : nothing}
-        </div>
-
-        ${existing.map((p) => this._renderProviderCard(p, false))}
-        ${added.map((p) => this._renderNewProviderCard(p))}
-        ${this._showAddProvider && available.length > 0
-          ? html`
-              <div class="provider-add-row">
-                <select
-                  class="field-input"
-                  @change=${(e: Event) => {
-                    const val = (e.target as HTMLSelectElement).value;
-                    if (val) this._addProvider(val);
-                  }}
-                >
-                  <option value="">
-                    ${msg("Select provider...", { id: "settings-select-provider" })}
-                  </option>
-                  ${available.map((p) => html`<option value=${p.id}>${p.label}</option>`)}
-                </select>
-              </div>
-            `
-          : nothing}
-        ${existing.length === 0 && added.length === 0
-          ? html`
-              <p style="color:var(--text-muted);font-size:13px;margin:0">
-                ${msg("No providers configured.", { id: "settings-no-providers" })}
-              </p>
-            `
-          : nothing}
-      </div>
-    `;
-  }
-
   private _renderGeneralSection() {
     const c = this._config!;
     const currentDefaultModel = this._getDirty("general.defaultModel", c.general.defaultModel);
 
-    // Build configured provider list (existing minus removed, plus newly added)
-    const existingProviders = c.providers.filter((p) => !this._removedProviders.includes(p.id));
-    const addedProviderIds = this._addedProviders.map((p) => p.id);
-    const allConfiguredProviderIds = [...existingProviders.map((p) => p.id), ...addedProviderIds];
+    // Use full provider catalog for provider/model selection
+    const allProviderIds = this._providerCatalog.map((p) => p.id);
 
-    // Determine the "selected provider" for the provider selector:
-    // - either the provider of the current defaultModel (if it's configured)
-    // - or the first configured provider
+    // Determine the selected provider from the current default model
     const currentProviderId = currentDefaultModel.split("/")[0] ?? "";
-    const selectedProviderId = allConfiguredProviderIds.includes(currentProviderId)
+    const selectedProviderId = allProviderIds.includes(currentProviderId)
       ? currentProviderId
-      : (allConfiguredProviderIds[0] ?? "");
+      : (allProviderIds[0] ?? "");
 
     // Get models for the selected provider from the catalog
     const selectedProviderCatalog = this._providerCatalog.find((p) => p.id === selectedProviderId);
@@ -731,7 +370,7 @@ export class InstanceSettings extends LitElement {
             <div class="field-readonly">:${c.general.port}</div>
           </div>
 
-          ${allConfiguredProviderIds.length > 1
+          ${allProviderIds.length > 1
             ? html`
                 <div class="field full-width">
                   <label class="field-label">
@@ -748,7 +387,7 @@ export class InstanceSettings extends LitElement {
                       this._setDirty("general.defaultModel", firstModel);
                     }}
                   >
-                    ${allConfiguredProviderIds.map((id) => {
+                    ${allProviderIds.map((id) => {
                       const cat = this._providerCatalog.find((p) => p.id === id);
                       const label = cat?.label ?? id;
                       return html`
@@ -784,8 +423,6 @@ export class InstanceSettings extends LitElement {
             </select>
           </div>
         </div>
-
-        ${this._renderProviders()}
       </div>
     `;
   }
@@ -793,7 +430,6 @@ export class InstanceSettings extends LitElement {
   private _renderAgentsSection() {
     const c = this._config!;
 
-    // Build model groups from configured providers (same logic as General section)
     return html`
       <div class="section">
         <div class="section-header">
