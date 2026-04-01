@@ -64,7 +64,8 @@ export interface EnrichedSession {
 }
 
 export interface ListEnrichedSessionsOptions {
-  state?: "active" | "archived";
+  /** Filter by session state. "all" returns both active and archived. Default: "active". */
+  state?: "active" | "archived" | "all";
   limit?: number;
   includeInternal?: boolean;
   /** Filter by agent ID. */
@@ -115,8 +116,10 @@ export function listEnrichedSessions(
   `;
   const params: (string | number)[] = [instanceSlug];
 
-  sql += " AND s.state = ?";
-  params.push(resolvedState);
+  if (resolvedState !== "all") {
+    sql += " AND s.state = ?";
+    params.push(resolvedState);
+  }
 
   if (!includeInternal) {
     sql += " AND s.channel != 'internal'";
@@ -157,7 +160,7 @@ export function listEnrichedSessions(
   } catch {
     // Fallback to listSessions if enriched query fails (e.g. missing columns on older DB)
     const fallback = listSessions(db, instanceSlug, {
-      state: resolvedState,
+      ...(resolvedState !== "all" ? { state: resolvedState } : {}),
       limit: safeLimit,
       ...(includeInternal ? {} : { excludeChannels: ["internal"] }),
     });

@@ -495,7 +495,7 @@ export class SessionLogs extends LitElement {
   @state() private _filterAgent = "";
   @state() private _filterPeriod: Period = "7d";
   @state() private _filterPersistent: "" | "0" | "1" = "";
-  @state() private _filterState: "active" | "archived" | "" = "";
+  @state() private _filterState: "active" | "archived" | "all" = "all";
 
   // Loading states
   @state() private _loading = false;
@@ -541,7 +541,7 @@ export class SessionLogs extends LitElement {
         ...(this._filterAgent ? { agentId: this._filterAgent } : {}),
         ...(since ? { since } : {}),
         ...(this._filterPersistent ? { persistent: Number(this._filterPersistent) as 0 | 1 } : {}),
-        ...(this._filterState ? { state: this._filterState } : {}),
+        state: this._filterState,
         ...(lastSession ? { before: lastSession.createdAt } : {}),
       });
 
@@ -637,7 +637,7 @@ export class SessionLogs extends LitElement {
   }
 
   private _onStateChange(e: Event): void {
-    this._filterState = (e.target as HTMLSelectElement).value as "active" | "archived" | "";
+    this._filterState = (e.target as HTMLSelectElement).value as "active" | "archived" | "all";
     this._resetAndReload();
   }
 
@@ -736,7 +736,7 @@ export class SessionLogs extends LitElement {
 
         <span class="filter-label">${msg("State", { id: "session-logs-filter-state" })}</span>
         <select class="filter-select" @change=${this._onStateChange} .value=${this._filterState}>
-          <option value="">${msg("All", { id: "session-logs-all-types" })}</option>
+          <option value="all">${msg("All", { id: "session-logs-all-types" })}</option>
           <option value="active">${msg("Active", { id: "session-logs-active" })}</option>
           <option value="archived">${msg("Archived", { id: "session-logs-archived" })}</option>
         </select>

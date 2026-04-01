@@ -80,7 +80,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
 
-    const stateParam = c.req.query("state") as "active" | "archived" | undefined;
+    const stateParam = c.req.query("state") as "active" | "archived" | "all" | undefined;
     const limitParam = c.req.query("limit");
     const limit = limitParam ? parseInt(limitParam, 10) : 50;
     const includeInternal = c.req.query("includeInternal") === "true";

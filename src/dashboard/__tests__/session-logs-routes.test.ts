@@ -277,4 +277,29 @@ describe("GET /api/instances/:slug/runtime/sessions — filtering", () => {
     expect(body.sessions).toHaveLength(1);
     expect(body.sessions[0].channel).toBe("web");
   });
+
+  it("state=all returns both active and archived sessions", async () => {
+    insertSession("s1", "demo", { state: "active" });
+    insertSession("s2", "demo", { state: "archived" });
+
+    const res = await app.request("/api/instances/demo/runtime/sessions?state=all", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.sessions).toHaveLength(2);
+  });
+
+  it("defaults to active-only when no state param", async () => {
+    insertSession("s1", "demo", { state: "active" });
+    insertSession("s2", "demo", { state: "archived" });
+
+    const res = await app.request("/api/instances/demo/runtime/sessions", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.sessions).toHaveLength(1);
+    expect(body.sessions[0].state).toBe("active");
+  });
 });

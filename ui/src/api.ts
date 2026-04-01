@@ -489,7 +489,7 @@ export async function adoptInstances(slugs: string[]): Promise<AdoptResult> {
 
 export interface FetchSessionsOptions {
   includeInternal?: boolean;
-  state?: "active" | "archived";
+  state?: "active" | "archived" | "all";
   agentId?: string;
   since?: string;
   until?: string;
