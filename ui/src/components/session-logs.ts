@@ -493,7 +493,7 @@ export class SessionLogs extends LitElement {
 
   // Filters
   @state() private _filterAgent = "";
-  @state() private _filterPeriod: Period = "7d";
+  @state() private _filterPeriod: Period = "all";
   @state() private _filterPersistent: "" | "0" | "1" = "";
   @state() private _filterState: "active" | "archived" | "all" = "all";
 
