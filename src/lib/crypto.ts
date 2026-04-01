@@ -121,6 +121,116 @@ export async function migrateUserProvidersToNamedKeys(db: Database.Database): Pr
 }
 
 // ---------------------------------------------------------------------------
+// TODO(cleanup): remove after v0.62 — instance .env API keys are deprecated.
+// This migration reads API keys from instance .env files, deduplicates them,
+// encrypts into named_api_keys, assigns to instances, and cleans up .env.
+// ---------------------------------------------------------------------------
+
+interface InstanceRow {
+  id: number;
+  slug: string;
+  state_dir: string | null;
+  default_model: string | null;
+}
+
+/**
+ * Migrate instance-level API keys from .env files to named_api_keys.
+ * Deduplicates: if multiple instances share the same key for a provider,
+ * only one named_api_key is created and assigned to all.
+ * Idempotent — skips instances already assigned named keys.
+ * Returns the number of keys migrated.
+ */
+export async function migrateInstanceProvidersToNamedKeys(db: Database.Database): Promise<number> {
+  if (!isCryptoAvailable()) return 0;
+
+  const { NamedKeyRepository } = await import("../core/repositories/named-key-repository.js");
+  const { PROVIDER_ENV_VARS } = await import("./providers.js");
+  const repo = new NamedKeyRepository(db);
+
+  const instances = db
+    .prepare("SELECT id, slug, state_dir, default_model FROM instances WHERE state_dir IS NOT NULL")
+    .all() as InstanceRow[];
+
+  if (instances.length === 0) return 0;
+
+  // Cache: provider_id → Map<rawApiKey, namedKeyId> for deduplication
+  const keyCache = new Map<string, Map<string, number>>();
+
+  // Pre-populate cache with existing named keys
+  for (const nk of repo.listAll()) {
+    const raw = repo.decryptApiKey(nk.id);
+    if (!keyCache.has(nk.providerId)) keyCache.set(nk.providerId, new Map());
+    keyCache.get(nk.providerId)!.set(raw, nk.id);
+  }
+
+  let migrated = 0;
+
+  for (const inst of instances) {
+    if (!inst.state_dir) continue;
+
+    // Skip if instance already has named keys assigned
+    const existing = repo.getInstanceKeys(inst.id);
+    if (existing.length > 0) continue;
+
+    const envPath = path.join(inst.state_dir, ".env");
+
+    // Try each known provider env var
+    for (const [providerId, envVar] of Object.entries(PROVIDER_ENV_VARS)) {
+      const apiKey = readEnvVar(envPath, envVar);
+      if (!apiKey) continue;
+
+      // Check deduplication cache
+      let namedKeyId: number | undefined;
+      const providerCache = keyCache.get(providerId);
+      if (providerCache) {
+        namedKeyId = providerCache.get(apiKey);
+      }
+
+      // Create new named key if not found
+      if (namedKeyId === undefined) {
+        const catalogEntry = PROVIDER_CATALOG.find((p) => p.id === providerId);
+        const label = catalogEntry?.label ?? providerId;
+
+        // Build unique name: "Anthropic" or "Anthropic (2)" if name taken
+        let name = label;
+        const allNames = new Set(repo.listAll().map((k) => k.name));
+        if (allNames.has(name)) {
+          let suffix = 2;
+          while (allNames.has(`${label} (${suffix})`)) suffix++;
+          name = `${label} (${suffix})`;
+        }
+
+        const defaultModel =
+          inst.default_model ?? catalogEntry?.defaultModel ?? `${providerId}/default`;
+
+        const created = repo.create({
+          name,
+          providerId,
+          apiKey,
+          defaultModel,
+        });
+        namedKeyId = created.id;
+
+        // Update cache
+        if (!keyCache.has(providerId)) keyCache.set(providerId, new Map());
+        keyCache.get(providerId)!.set(apiKey, namedKeyId);
+      }
+
+      // Determine if this is the default provider for the instance
+      const isDefault = inst.default_model
+        ? inst.default_model.startsWith(`${providerId}/`)
+        : false;
+
+      repo.assignToInstance(inst.id, namedKeyId, isDefault);
+      await removeEnvVar(envPath, envVar);
+      migrated++;
+    }
+  }
+
+  return migrated;
+}
+
+// ---------------------------------------------------------------------------
 // AES-256-GCM encryption
 // ---------------------------------------------------------------------------
 

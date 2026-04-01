@@ -8,6 +8,7 @@ import {
   generateDashboardToken,
   ensureMasterEncryptionKey,
   migrateUserProvidersToNamedKeys,
+  migrateInstanceProvidersToNamedKeys,
 } from "../lib/crypto.js";
 import { constants } from "../lib/constants.js";
 import { LocalConnection } from "../server/local.js";
@@ -55,10 +56,14 @@ export function dashboardCommand(): Command {
         logger.info("Generated master encryption key → ~/.claw-pilot/.env");
       }
 
-      // Migrate legacy user_providers to named_api_keys (idempotent)
-      const migrated = await migrateUserProvidersToNamedKeys(db);
-      if (migrated > 0) {
-        logger.info(`Migrated ${migrated} provider key(s) to named API keys`);
+      // Migrate legacy providers to named_api_keys (idempotent)
+      const userMigrated = await migrateUserProvidersToNamedKeys(db);
+      if (userMigrated > 0) {
+        logger.info(`Migrated ${userMigrated} user provider key(s) to named API keys`);
+      }
+      const instMigrated = await migrateInstanceProvidersToNamedKeys(db);
+      if (instMigrated > 0) {
+        logger.info(`Migrated ${instMigrated} instance provider key(s) to named API keys`);
       }
 
       const sessionStore = new SessionStore(db, constants.SESSION_TTL_MS);

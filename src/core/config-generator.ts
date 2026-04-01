@@ -34,6 +34,8 @@ export interface WizardAnswers {
 export { PROVIDER_ENV_VARS } from "../lib/providers.js";
 import { PROVIDER_ENV_VARS } from "../lib/providers.js";
 
+// TODO(cleanup): remove after v0.62 — instance .env API keys are deprecated.
+// The runtime should read named keys directly from the DB instead of .env files.
 /** Generate .env content */
 export function generateEnv(options: {
   provider: string;

@@ -109,8 +109,7 @@ export interface CreateInstanceRequest {
   displayName: string;
   port: number;
   defaultModel: string;
-  provider: string;
-  apiKey: string;
+  namedKeyId: number;
   agents: AgentDefinition[];
   blueprintId?: number;
 }

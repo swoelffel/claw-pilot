@@ -27,6 +27,9 @@ export interface ProvisionResult {
   telegramBot?: string;
 }
 
+// TODO(cleanup): remove after v0.62 — instance .env API keys are deprecated.
+// Provisioner writes plaintext API keys to .env; should be replaced by
+// direct named key reference from the DB at runtime.
 /** Exported for testing: resolve the API key from answers, reading from existing instance if needed */
 export async function resolveApiKey(
   answers: Pick<WizardAnswers, "provider" | "apiKey">,
