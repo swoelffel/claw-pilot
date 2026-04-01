@@ -27,6 +27,7 @@ import {
   MODEL_CATALOG,
   countMessagesSinceLastCompaction,
   getCachedSystemPrompt,
+  getPersistedSystemPrompt,
   type RuntimeAgentConfig,
 } from "../../../runtime/index.js";
 import { resolveAgentWorkspacePath } from "../../../core/agent-workspace.js";
@@ -367,8 +368,9 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       ...(r.label ? { label: r.label } : {}),
     }));
 
-    // System prompt — served from in-memory cache if available (populated by prompt-loop)
-    const cachedPromptEntry = getCachedSystemPrompt(sessionId);
+    // System prompt — in-memory cache first, then DB snapshot fallback
+    const cachedPromptEntry =
+      getCachedSystemPrompt(sessionId) ?? getPersistedSystemPrompt(db, sessionId);
 
     return c.json({
       agent: {
