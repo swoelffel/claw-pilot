@@ -154,6 +154,8 @@ export const RuntimeConfigPatchSchema = z.object({
         .optional(),
     })
     .optional(),
+  // defaultNamedKeyId: set the default named key for this instance
+  defaultNamedKeyId: z.number().int().positive().nullable().optional(),
   // agents: per-agent config patches applied to runtime.json
   agents: z
     .array(

@@ -104,6 +104,9 @@ export class UserProfileRepository {
   }
 
   // --- Providers ---
+  // TODO(cleanup): remove after v0.62 — user_providers is deprecated.
+  // These methods are still used by community-resolver.ts at runtime.
+  // Once community-resolver migrates to named_api_keys, remove these.
 
   getProviders(userId: number): UserProviderRecord[] {
     return this.db

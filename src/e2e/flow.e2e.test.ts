@@ -22,6 +22,7 @@ import * as path from "node:path";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { startTestServer, type TestContext } from "./helpers/test-server.js";
 import { seedAdmin, seedLocalServer } from "./helpers/seed.js";
+import { NamedKeyRepository } from "../core/repositories/named-key-repository.js";
 
 const FLOW_SLUG = "flow-test-inst";
 const FLOW_PORT = 19165; // deriveWebChatPort("flow-test-inst")
@@ -30,6 +31,8 @@ describe("Flow: create instance → create agent → delete agent → delete ins
   let ctx: TestContext;
   let tmpHome: string;
   let originalOpenclawHome: string | undefined;
+  let originalMasterKey: string | undefined;
+  let namedKeyId: number;
 
   beforeAll(async () => {
     // Point OPENCLAW_HOME to a real tmpdir so ensureRuntimeConfig() can write runtime.json
@@ -37,9 +40,23 @@ describe("Flow: create instance → create agent → delete agent → delete ins
     originalOpenclawHome = process.env["OPENCLAW_HOME"];
     process.env["OPENCLAW_HOME"] = tmpHome;
 
+    // Set encryption key for named API keys
+    originalMasterKey = process.env["MASTER_ENCRYPTION_KEY"];
+    process.env["MASTER_ENCRYPTION_KEY"] = "a".repeat(64);
+
     ctx = await startTestServer();
     await seedAdmin(ctx.db);
     seedLocalServer(ctx.registry);
+
+    // Seed a named API key for instance creation
+    const namedKeyRepo = new NamedKeyRepository(ctx.db);
+    const namedKey = namedKeyRepo.create({
+      name: "Test Anthropic Key",
+      providerId: "anthropic",
+      apiKey: "sk-test-fake-key",
+      defaultModel: "anthropic/claude-3-5-haiku-20241022",
+    });
+    namedKeyId = namedKey.id;
   });
 
   afterAll(async () => {
@@ -48,6 +65,11 @@ describe("Flow: create instance → create agent → delete agent → delete ins
       delete process.env["OPENCLAW_HOME"];
     } else {
       process.env["OPENCLAW_HOME"] = originalOpenclawHome;
+    }
+    if (originalMasterKey === undefined) {
+      delete process.env["MASTER_ENCRYPTION_KEY"];
+    } else {
+      process.env["MASTER_ENCRYPTION_KEY"] = originalMasterKey;
     }
     // Clean up tmpdir
     try {
@@ -63,8 +85,7 @@ describe("Flow: create instance → create agent → delete agent → delete ins
     const res = await ctx.client.withBearer().post("/api/instances", {
       slug: FLOW_SLUG,
       defaultModel: "anthropic/claude-3-5-haiku-20241022",
-      provider: "anthropic",
-      apiKey: "sk-test-fake-key",
+      namedKeyId,
     });
     expect(res.status).toBe(201);
     const body = (await res.json()) as any;

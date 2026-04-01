@@ -7,7 +7,7 @@ import type { Registry } from "./registry.js";
 import type { WizardAnswers } from "./config-generator.js";
 import { generateEnv, PROVIDER_ENV_VARS } from "./config-generator.js";
 import { PROVIDER_CATALOG } from "../lib/provider-catalog.js";
-import { generateGatewayToken } from "./secrets.js";
+import { generateGatewayToken } from "../lib/crypto.js";
 import { constants } from "../lib/constants.js";
 import { getInstancesDir, getRuntimeStateDir, deriveWebChatPort } from "../lib/platform.js";
 import { InstanceAlreadyExistsError, ClawPilotError } from "../lib/errors.js";
@@ -27,6 +27,9 @@ export interface ProvisionResult {
   telegramBot?: string;
 }
 
+// TODO(cleanup): remove after v0.62 — instance .env API keys are deprecated.
+// Provisioner writes plaintext API keys to .env; should be replaced by
+// direct named key reference from the DB at runtime.
 /** Exported for testing: resolve the API key from answers, reading from existing instance if needed */
 export async function resolveApiKey(
   answers: Pick<WizardAnswers, "provider" | "apiKey">,

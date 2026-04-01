@@ -5,10 +5,17 @@ import type {
   AgentDefinition,
   Blueprint,
   CreateInstanceRequest,
+  NamedApiKey,
   ProviderInfo,
   ProvidersResponse,
 } from "../types.js";
-import { fetchNextPort, createInstance, fetchProviders, fetchBlueprints } from "../api.js";
+import {
+  fetchNextPort,
+  createInstance,
+  fetchProviders,
+  fetchBlueprints,
+  fetchNamedKeys,
+} from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { DialogMixin } from "../lib/dialog-mixin.js";
 import { tokenStyles } from "../styles/tokens.js";
@@ -270,11 +277,13 @@ export class CreateDialog extends DialogMixin(LitElement) {
   @state() private _portError = "";
   @state() private _model = "";
   @state() private _providers: ProviderInfo[] = [];
-  @state() private _canReuseCredentials = false;
   @state() private _providersLoading = true;
   @state() private _providersError = "";
-  @state() private _selectedProvider: ProviderInfo | null = null;
-  @state() private _apiKey = "";
+
+  @state() private _namedKeys: NamedApiKey[] = [];
+  @state() private _namedKeysLoading = true;
+  @state() private _namedKeysError = "";
+  @state() private _namedKeyId: number | null = null;
 
   @state() private _blueprints: Blueprint[] = [];
   @state() private _blueprintsLoading = false;
@@ -288,6 +297,7 @@ export class CreateDialog extends DialogMixin(LitElement) {
     super.connectedCallback();
     this._loadNextPort();
     this._loadProviders();
+    this._loadNamedKeys();
     this._loadBlueprints();
   }
 
@@ -310,11 +320,6 @@ export class CreateDialog extends DialogMixin(LitElement) {
     try {
       const data: ProvidersResponse = await fetchProviders();
       this._providers = data.providers;
-      this._canReuseCredentials = data.canReuseCredentials;
-      const defaultProvider =
-        data.providers.find((p: ProviderInfo) => p.isDefault) ?? data.providers[0] ?? null;
-      this._selectedProvider = defaultProvider;
-      this._model = defaultProvider?.defaultModel ?? defaultProvider?.models[0] ?? "";
     } catch (err) {
       this._providersError = userMessage(err);
       this._providers = [
@@ -326,10 +331,28 @@ export class CreateDialog extends DialogMixin(LitElement) {
           models: ["anthropic/claude-sonnet-4-6"],
         },
       ];
-      this._selectedProvider = this._providers[0]!;
-      this._model = "anthropic/claude-sonnet-4-6";
     } finally {
       this._providersLoading = false;
+    }
+  }
+
+  private async _loadNamedKeys(): Promise<void> {
+    this._namedKeysLoading = true;
+    this._namedKeysError = "";
+    try {
+      const data = await fetchNamedKeys();
+      this._namedKeys = data.keys;
+      // Auto-select first key if available
+      if (data.keys.length > 0) {
+        const first = data.keys[0]!;
+        this._namedKeyId = first.id;
+        this._model = first.defaultModel;
+      }
+    } catch (err) {
+      this._namedKeysError = userMessage(err);
+      this._namedKeys = [];
+    } finally {
+      this._namedKeysLoading = false;
     }
   }
 
@@ -344,14 +367,21 @@ export class CreateDialog extends DialogMixin(LitElement) {
     }
   }
 
-  /** Called when the user picks a different provider — resets model to provider default */
-  private _onProviderChange(e: Event): void {
-    const id = (e.target as HTMLSelectElement).value;
-    const provider = this._providers.find((p) => p.id === id) ?? null;
-    this._selectedProvider = provider;
-    this._apiKey = "";
-    // Auto-select the default model for this provider
-    this._model = provider?.defaultModel ?? provider?.models[0] ?? "";
+  /** Called when the user picks a different named key — resets model to key's default */
+  private _onNamedKeyChange(e: Event): void {
+    const id = parseInt((e.target as HTMLSelectElement).value, 10);
+    const key = this._namedKeys.find((k) => k.id === id) ?? null;
+    this._namedKeyId = key?.id ?? null;
+    // Auto-select the default model for this key's provider
+    this._model = key?.defaultModel ?? "";
+  }
+
+  /** Get the ProviderInfo for the currently selected named key */
+  private get _selectedProvider(): ProviderInfo | null {
+    if (this._namedKeyId == null) return null;
+    const key = this._namedKeys.find((k) => k.id === this._namedKeyId);
+    if (!key) return null;
+    return this._providers.find((p) => p.id === key.providerId) ?? null;
   }
 
   private _close(): void {
@@ -387,8 +417,7 @@ export class CreateDialog extends DialogMixin(LitElement) {
     if (this._validateSlug(this._slug)) return false;
     if (!this._port || this._port < 1024 || this._port > 65535) return false;
     if (!this._model) return false;
-    if (!this._selectedProvider) return false;
-    if (this._selectedProvider.requiresKey && !this._apiKey.trim()) return false;
+    if (this._namedKeyId == null) return false;
     return true;
   }
 
@@ -403,8 +432,7 @@ export class CreateDialog extends DialogMixin(LitElement) {
       displayName: this._displayName || this._slug.charAt(0).toUpperCase() + this._slug.slice(1),
       port: this._port,
       defaultModel: this._model,
-      provider: this._selectedProvider?.id ?? "anthropic",
-      apiKey: this._selectedProvider?.requiresKey ? this._apiKey.trim() : "",
+      namedKeyId: this._namedKeyId!,
       agents: this._buildAgents(),
       ...(this._selectedBlueprintId != null && { blueprintId: this._selectedBlueprintId }),
     };
@@ -446,36 +474,61 @@ export class CreateDialog extends DialogMixin(LitElement) {
   }
 
   private _renderProviderSection() {
-    if (this._providersLoading) {
+    if (this._namedKeysLoading || this._providersLoading) {
       return html`
         <div class="section">
-          <div class="section-label">${msg("Provider", { id: "section-provider" })}</div>
-          <span class="field-hint"
-            >${msg("Loading providers...", { id: "hint-loading-providers" })}</span
-          >
+          <div class="section-label">${msg("API Key", { id: "section-api-key" })}</div>
+          <span class="field-hint">${msg("Loading...", { id: "hint-loading-keys" })}</span>
         </div>
       `;
     }
 
-    const selected = this._selectedProvider;
+    if (this._namedKeysError) {
+      return html`
+        <div class="section">
+          <div class="section-label">${msg("API Key", { id: "section-api-key" })}</div>
+          <span class="field-error">${this._namedKeysError}</span>
+        </div>
+      `;
+    }
+
+    if (this._namedKeys.length === 0) {
+      return html`
+        <div class="section">
+          <div class="section-label">${msg("API Key", { id: "section-api-key" })}</div>
+          <span class="field-hint">
+            ${msg("No API keys configured. Go to Profile > API Keys to create one.", {
+              id: "hint-no-named-keys",
+            })}
+          </span>
+        </div>
+      `;
+    }
+
+    const selectedKey = this._namedKeys.find((k) => k.id === this._namedKeyId);
+    const provider = this._selectedProvider;
+    const models = provider?.models ?? [];
 
     return html`
       <div class="section">
-        <div class="section-label">${msg("Provider", { id: "section-provider" })}</div>
+        <div class="section-label">${msg("API Key", { id: "section-api-key" })}</div>
 
         ${this._providersError
           ? html`<span class="field-error">${this._providersError}</span>`
           : ""}
 
         <div class="field">
-          <label for="provider">${msg("AI Provider *", { id: "label-ai-provider" })}</label>
-          <select id="provider" @change=${this._onProviderChange}>
-            ${this._providers.map(
-              (p) => html`
-                <option value=${p.id} ?selected=${selected?.id === p.id}>${p.label}</option>
+          <label for="named-key">${msg("API Key *", { id: "label-named-key" })}</label>
+          <select id="named-key" @change=${this._onNamedKeyChange}>
+            ${this._namedKeys.map(
+              (k) => html`
+                <option value=${k.id} ?selected=${this._namedKeyId === k.id}>
+                  ${k.name} (${k.providerId})
+                </option>
               `,
             )}
           </select>
+          ${selectedKey ? html`<span class="field-hint">${selectedKey.apiKeyMasked}</span>` : ""}
         </div>
 
         <div class="field">
@@ -487,56 +540,15 @@ export class CreateDialog extends DialogMixin(LitElement) {
               this._model = (e.target as HTMLSelectElement).value;
             }}
           >
-            ${(selected?.models ?? []).map(
+            ${models.map(
               (m) => html`
                 <option value=${m} ?selected=${this._model === m}>${m.split("/")[1] ?? m}</option>
               `,
             )}
           </select>
         </div>
-
-        ${selected?.requiresKey
-          ? html`
-              <div class="field">
-                <label for="api-key">${msg("API Key *", { id: "label-api-key" })}</label>
-                <input
-                  id="api-key"
-                  type="password"
-                  placeholder=${this._getApiKeyPlaceholder(selected.id)}
-                  .value=${this._apiKey}
-                  @input=${(e: Event) => {
-                    this._apiKey = (e.target as HTMLInputElement).value;
-                  }}
-                />
-                <span class="field-hint"
-                  >${msg("Your API key", { id: "hint-api-key" })} (${selected.label})</span
-                >
-              </div>
-            `
-          : html`
-              <span class="field-hint">
-                ${selected?.id === "opencode"
-                  ? msg("Uses the OpenCode runtime — no API key required", {
-                      id: "hint-opencode-no-key",
-                    })
-                  : msg("Credentials will be reused from the existing instance", {
-                      id: "hint-reuse-credentials",
-                    })}
-              </span>
-            `}
       </div>
     `;
-  }
-
-  private _getApiKeyPlaceholder(providerId: string): string {
-    const placeholders: Record<string, string> = {
-      anthropic: "sk-ant-...",
-      openai: "sk-...",
-      openrouter: "sk-or-...",
-      gemini: "AIza...",
-      mistral: "...",
-    };
-    return placeholders[providerId] ?? "API key";
   }
 
   private _renderForm() {
@@ -608,7 +620,7 @@ export class CreateDialog extends DialogMixin(LitElement) {
 
         <hr class="divider" />
 
-        <!-- Provider + API Key -->
+        <!-- Named API Key + Model -->
         ${this._renderProviderSection()}
 
         <hr class="divider" />

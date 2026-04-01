@@ -19,6 +19,8 @@ import {
 } from "../../../runtime/index.js";
 import { RuntimeConfigPatchSchema, type RuntimeConfigPatch } from "./config-schemas.js";
 import { buildInstanceConfig, buildInstanceConfigStub } from "./config-builders.js";
+import { NamedKeyRepository } from "../../../core/repositories/named-key-repository.js";
+import { isCryptoAvailable } from "../../../lib/crypto.js";
 
 export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, lifecycle } = deps;
@@ -47,6 +49,22 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
         registry.saveRuntimeConfig(slug, config);
       }
 
+      // Load all named keys (global) and instance default key ID
+      let defaultNamedKeyId: number | null = null;
+      let allNamedKeys: import("../../../core/repositories/named-key-repository.js").NamedApiKeyRecord[] =
+        [];
+      if (isCryptoAvailable()) {
+        const namedKeyRepo = new NamedKeyRepository(deps.db);
+        allNamedKeys = namedKeyRepo.listAll();
+        const inst = deps.registry.getInstance(slug);
+        if (inst) {
+          const row = deps.db
+            .prepare("SELECT default_named_key_id FROM instances WHERE id = ?")
+            .get(inst.id) as { default_named_key_id: number | null } | undefined;
+          defaultNamedKeyId = row?.default_named_key_id ?? null;
+        }
+      }
+
       if (!config) {
         // No config anywhere — return a stub
         const stub = buildInstanceConfigStub({
@@ -54,7 +72,7 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
           default_model: instance!.default_model,
           port: instance!.port,
         });
-        return c.json(stub);
+        return c.json({ ...stub, namedKeys: allNamedKeys, defaultNamedKeyId });
       }
 
       const payload = buildInstanceConfig(
@@ -66,7 +84,7 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
         config,
         stateDir,
       );
-      return c.json(payload);
+      return c.json({ ...payload, namedKeys: allNamedKeys, defaultNamedKeyId });
     } catch (err) {
       logger.error(
         `[config] GET /config error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
@@ -351,6 +369,18 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
           "CONFIG_PATCH_FAILED",
           err instanceof Error ? err.message : "Failed to update config",
         );
+      }
+    }
+
+    // --- Default named key (simple FK on instances, v25) ---
+    if (patch.defaultNamedKeyId !== undefined) {
+      if (!isCryptoAvailable()) {
+        return apiError(c, 503, "CRYPTO_UNAVAILABLE", "Named keys require MASTER_ENCRYPTION_KEY");
+      }
+      const inst = deps.registry.getInstance(slug);
+      if (inst) {
+        const namedKeyRepo = new NamedKeyRepository(deps.db);
+        namedKeyRepo.setDefaultKeyForInstance(inst.id, patch.defaultNamedKeyId);
       }
     }
 

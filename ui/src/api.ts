@@ -23,8 +23,6 @@ import type {
   AgentBlueprintInfo,
   AgentBlueprintFileContent,
   UserProfile,
-  UserProvider,
-  DiscoveredModel,
   CostSummary,
   DailyCost,
   AgentCost,
@@ -38,6 +36,7 @@ import type {
   HeartbeatScheduleAgent,
   HeartbeatHourBucket,
   HeartbeatAgentStats,
+  NamedApiKey,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 import { getToken } from "./services/auth-state.js";
@@ -726,50 +725,6 @@ export async function patchProfile(
   });
 }
 
-export async function fetchProfileProviders(): Promise<{ providers: UserProvider[] }> {
-  return apiFetch<{ providers: UserProvider[] }>("/profile/providers");
-}
-
-export async function upsertProfileProvider(
-  providerId: string,
-  data: {
-    apiKeyEnvVar: string;
-    baseUrl?: string | null;
-    priority?: number;
-    headers?: Record<string, string> | null;
-  },
-): Promise<{ ok: boolean }> {
-  return apiFetch<{ ok: boolean }>(`/profile/providers/${encodeURIComponent(providerId)}`, {
-    method: "PUT",
-    body: JSON.stringify(data),
-  });
-}
-
-export async function deleteProfileProvider(providerId: string): Promise<{ ok: boolean }> {
-  return apiFetch<{ ok: boolean }>(`/profile/providers/${encodeURIComponent(providerId)}`, {
-    method: "DELETE",
-  });
-}
-
-export async function patchProfileProviderKey(
-  providerId: string,
-  apiKey: string,
-): Promise<{ ok: boolean; masked: string }> {
-  return apiFetch<{ ok: boolean; masked: string }>(
-    `/profile/providers/${encodeURIComponent(providerId)}/key`,
-    { method: "PATCH", body: JSON.stringify({ apiKey }) },
-  );
-}
-
-export async function discoverProviderModels(
-  providerId: string,
-): Promise<{ models: DiscoveredModel[]; error?: string }> {
-  return apiFetch<{ models: DiscoveredModel[]; error?: string }>(
-    `/profile/providers/${encodeURIComponent(providerId)}/models`,
-    { method: "POST" },
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Cost Dashboard
 // ---------------------------------------------------------------------------
@@ -930,4 +885,47 @@ export async function installSkillFromGitHub(
 /** Delete a workspace skill by name. */
 export async function deleteSkill(slug: string, name: string): Promise<void> {
   await apiFetch(`/instances/${slug}/skills/${encodeURIComponent(name)}`, { method: "DELETE" });
+}
+
+// ---------------------------------------------------------------------------
+// Named API Keys
+// ---------------------------------------------------------------------------
+
+export async function fetchNamedKeys(): Promise<{
+  keys: NamedApiKey[];
+  cryptoAvailable: boolean;
+}> {
+  return apiFetch<{ keys: NamedApiKey[]; cryptoAvailable: boolean }>("/named-keys");
+}
+
+export async function createNamedKey(data: {
+  name: string;
+  providerId: string;
+  apiKey: string;
+  defaultModel: string;
+  baseUrl?: string | null;
+}): Promise<{ ok: boolean; key: NamedApiKey }> {
+  return apiFetch<{ ok: boolean; key: NamedApiKey }>("/named-keys", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateNamedKey(
+  id: number,
+  data: {
+    name?: string;
+    defaultModel?: string;
+    baseUrl?: string | null;
+    apiKey?: string;
+  },
+): Promise<{ ok: boolean; key: NamedApiKey }> {
+  return apiFetch<{ ok: boolean; key: NamedApiKey }>(`/named-keys/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteNamedKey(id: number): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/named-keys/${id}`, { method: "DELETE" });
 }

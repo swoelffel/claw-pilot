@@ -8,6 +8,7 @@ import {
   type PanelContext,
   type AgentMetaPatch,
   type SkillInfo,
+  type NamedApiKey,
   AGENT_ARCHETYPES,
   isArchetypeLink,
 } from "../types.js";
@@ -23,7 +24,6 @@ import {
   fetchInstanceConfig,
   fetchToolProfiles,
   fetchProviders,
-  fetchProfileProviders,
   updateBlueprintAgentMeta,
   fetchInstanceSkills,
 } from "../api.js";
@@ -85,6 +85,8 @@ export class AgentDetailPanel extends LitElement {
   // Providers list for the provider/model selects (lazy-loaded)
   @state() private _providers: { id: string; label: string; models: string[] }[] | null = null;
   @state() private _loadingProviders = false;
+  @state() private _editNamedKeyId: number | null = null;
+  @state() private _instanceNamedKeys: NamedApiKey[] = [];
   @state() private _infoDirty = false;
   @state() private _infoSaving = false;
   @state() private _infoError = "";
@@ -1194,12 +1196,27 @@ export class AgentDetailPanel extends LitElement {
     this._editProvider = slashIdx >= 0 ? rawModel.slice(0, slashIdx) : "";
     this._editModel = rawModel; // keep full format — catalog options are also "provider/model"
     this._editSkills = a.skills;
+    this._editNamedKeyId = null;
     this._infoDirty = false;
     this._infoError = "";
     // Eager-load providers so the selects are populated immediately on instance panels
     if (this.context?.kind === "instance") {
       void this._loadProviders();
       void this._loadAvailableSkills();
+      void this._loadInstanceNamedKeys();
+    }
+  }
+
+  private async _loadInstanceNamedKeys(): Promise<void> {
+    if (this.context?.kind !== "instance") return;
+    try {
+      const config = await fetchInstanceConfig(this.context.slug);
+      this._instanceNamedKeys = config.namedKeys ?? [];
+      // Find the agent's current namedKeyId from the config
+      const agentCfg = config.agents.find((a) => a.id === this.agent.agent_id);
+      this._editNamedKeyId = agentCfg?.namedKeyId ?? null;
+    } catch {
+      this._instanceNamedKeys = [];
     }
   }
 
@@ -1218,24 +1235,13 @@ export class AgentDetailPanel extends LitElement {
     return raw;
   }
 
-  /** Lazy-load providers for the provider/model selects, filtered by user profile. */
+  /** Lazy-load providers for the provider/model selects. */
   private async _loadProviders(): Promise<void> {
     if (this._providers !== null || this._loadingProviders) return;
     this._loadingProviders = true;
     try {
-      const [catalog, profile] = await Promise.all([
-        fetchProviders(),
-        fetchProfileProviders().catch(() => ({ providers: [] })),
-      ]);
-      let providers = catalog.providers;
-      const configuredIds = new Set(
-        profile.providers.filter((p) => p.hasApiKey).map((p) => p.providerId),
-      );
-      if (configuredIds.size > 0) {
-        const filtered = providers.filter((p) => configuredIds.has(p.id));
-        if (filtered.length > 0) providers = filtered;
-      }
-      this._providers = providers;
+      const catalog = await fetchProviders();
+      this._providers = catalog.providers;
     } catch {
       this._providers = [];
     } finally {
@@ -1291,16 +1297,24 @@ export class AgentDetailPanel extends LitElement {
         // Only count as a change when a valid model is selected (non-empty).
         const newModel = this._editModel || "";
         const modelChanged = newModel !== resolvedCurrentModel && newModel !== "";
-        const configChanged = this._editName !== (a.name ?? "") || modelChanged;
+        // Check if named key changed
+        const currentAgentCfg = (await fetchInstanceConfig(slug)).agents.find(
+          (ac) => ac.id === a.agent_id,
+        );
+        const currentNamedKeyId = currentAgentCfg?.namedKeyId ?? null;
+        const namedKeyChanged = this._editNamedKeyId !== currentNamedKeyId;
+        const configChanged = this._editName !== (a.name ?? "") || modelChanged || namedKeyChanged;
         if (configChanged) {
           const agentPatch: {
             id: string;
             name?: string;
             model?: string;
+            namedKeyId?: number | null;
           } = { id: a.agent_id };
           if (this._editName !== (a.name ?? "")) agentPatch.name = this._editName;
           // Only include model in patch when a complete provider/model pair is selected
           if (modelChanged) agentPatch.model = newModel;
+          if (namedKeyChanged) agentPatch.namedKeyId = this._editNamedKeyId;
           promises.push(patchInstanceConfig(slug, { agents: [agentPatch] }));
         }
 
@@ -1588,6 +1602,30 @@ export class AgentDetailPanel extends LitElement {
                   ${availableModels.map(
                     (m) =>
                       html`<option value=${m} ?selected=${m === this._editModel}>${m}</option>`,
+                  )}
+                </select>
+              </div>
+
+              <!-- Named API Key (per-agent override) -->
+              <div class="info-item">
+                <label class="info-label">${msg("API Key", { id: "adp-label-named-key" })}</label>
+                <select
+                  class="field-edit-input"
+                  @change=${(e: Event) => {
+                    const val = (e.target as HTMLSelectElement).value;
+                    this._editNamedKeyId = val ? Number(val) : null;
+                    dirty();
+                  }}
+                >
+                  <option value="" ?selected=${this._editNamedKeyId === null}>
+                    — ${msg("instance default", { id: "adp-named-key-default" })} —
+                  </option>
+                  ${this._instanceNamedKeys.map(
+                    (k) => html`
+                      <option value=${String(k.id)} ?selected=${k.id === this._editNamedKeyId}>
+                        ${k.name} (${k.providerId})
+                      </option>
+                    `,
                   )}
                 </select>
               </div>

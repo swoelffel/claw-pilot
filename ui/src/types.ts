@@ -109,8 +109,7 @@ export interface CreateInstanceRequest {
   displayName: string;
   port: number;
   defaultModel: string;
-  provider: string;
-  apiKey: string;
+  namedKeyId: number;
   agents: AgentDefinition[];
   blueprintId?: number;
 }
@@ -294,6 +293,7 @@ export interface InstanceConfig {
     id: string;
     name: string;
     model: string | null;
+    namedKeyId: number | null;
     toolProfile: string;
     maxSteps: number;
     temperature: number | null;
@@ -332,6 +332,8 @@ export interface InstanceConfig {
   gateway: {
     port: number;
   };
+  namedKeys?: NamedApiKey[];
+  defaultNamedKeyId?: number | null;
 }
 
 /** Result of PATCH /api/instances/:slug/config */
@@ -633,7 +635,7 @@ export interface AgentBlueprintFileContent {
 // User Profile
 // ---------------------------------------------------------------------------
 
-export type ProfileSection = "general" | "providers" | "instructions";
+export type ProfileSection = "general" | "api-keys" | "instructions";
 
 export interface UserProfile {
   userId: number;
@@ -647,22 +649,6 @@ export interface UserProfile {
   uiPreferences: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface UserProvider {
-  providerId: string;
-  apiKeyEnvVar: string;
-  baseUrl: string | null;
-  priority: number;
-  headers: Record<string, string> | null;
-  hasApiKey: boolean;
-  apiKeyMasked: string | null;
-}
-
-export interface DiscoveredModel {
-  id: string;
-  name: string;
-  providerId: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -792,4 +778,19 @@ export interface HeartbeatAgentStats {
   totalAlerts: number;
   firstTick: string | null;
   lastTick: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Named API Keys
+// ---------------------------------------------------------------------------
+
+export interface NamedApiKey {
+  id: number;
+  name: string;
+  providerId: string;
+  defaultModel: string;
+  baseUrl: string | null;
+  apiKeyMasked: string;
+  createdAt: string;
+  updatedAt: string;
 }

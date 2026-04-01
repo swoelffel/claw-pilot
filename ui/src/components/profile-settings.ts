@@ -9,27 +9,9 @@ import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
 import { buttonStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
 import { profileSettingsStyles } from "../styles/profile-settings.styles.js";
-import {
-  fetchProfile,
-  patchProfile,
-  fetchProfileProviders,
-  upsertProfileProvider,
-  deleteProfileProvider,
-  patchProfileProviderKey,
-  discoverProviderModels,
-} from "../api.js";
-import type { ProfileSection, UserProfile, UserProvider, DiscoveredModel } from "../types.js";
-
-// Known providers for the "Add provider" dropdown
-const KNOWN_PROVIDERS = [
-  { id: "anthropic", envVar: "ANTHROPIC_API_KEY" },
-  { id: "openai", envVar: "OPENAI_API_KEY" },
-  { id: "google", envVar: "GEMINI_API_KEY" },
-  { id: "openrouter", envVar: "OPENROUTER_API_KEY" },
-  { id: "mistral", envVar: "MISTRAL_API_KEY" },
-  { id: "xai", envVar: "XAI_API_KEY" },
-  { id: "ollama", envVar: "" },
-];
+import { fetchProfile, patchProfile } from "../api.js";
+import type { ProfileSection, UserProfile } from "../types.js";
+import "./named-keys-panel.js";
 
 @localized()
 @customElement("cp-profile-settings")
@@ -44,27 +26,12 @@ export class ProfileSettings extends LitElement {
 
   // --- State ---
   @state() private _profile: UserProfile | null = null;
-  @state() private _providers: UserProvider[] = [];
   @state() private _loading = true;
   @state() private _saving = false;
   @state() private _error = "";
   @state() private _activeSection: ProfileSection = "general";
   @state() private _toast: { message: string; type: "success" | "warning" | "error" } | null = null;
   @state() private _dirty: Record<string, unknown> = {};
-
-  // Provider editing state
-  @state() private _editingKeyFor: string | null = null;
-  @state() private _editKeyValue = "";
-  @state() private _addingProvider = false;
-  @state() private _newProviderId = "";
-  @state() private _newProviderEnvVar = "";
-  @state() private _newProviderKey = "";
-  @state() private _newProviderBaseUrl = "";
-
-  // Dynamic model discovery state
-  @state() private _discoveredModels: Map<string, DiscoveredModel[]> = new Map();
-  @state() private _discoveryErrors: Map<string, string> = new Map();
-  @state() private _discoveringProviders: Set<string> = new Set();
 
   // --- Lifecycle ---
 
@@ -77,56 +44,12 @@ export class ProfileSettings extends LitElement {
     this._loading = true;
     this._error = "";
     try {
-      const [profileRes, providersRes] = await Promise.all([
-        fetchProfile(),
-        fetchProfileProviders(),
-      ]);
+      const profileRes = await fetchProfile();
       this._profile = profileRes.profile;
-      this._providers = providersRes.providers;
-
-      // Auto-discover models for providers that have an API key
-      void this._discoverAllModels();
     } catch (err) {
       this._error = err instanceof Error ? err.message : String(err);
     } finally {
       this._loading = false;
-    }
-  }
-
-  /** Discover models for all providers that have an API key set */
-  private async _discoverAllModels(): Promise<void> {
-    const providersWithKey = this._providers.filter((p) => p.hasApiKey);
-    await Promise.allSettled(providersWithKey.map((p) => this._discoverModelsFor(p.providerId)));
-  }
-
-  private async _discoverModelsFor(providerId: string): Promise<void> {
-    this._discoveringProviders = new Set([...this._discoveringProviders, providerId]);
-    this.requestUpdate();
-
-    try {
-      const res = await discoverProviderModels(providerId);
-      const newModels = new Map(this._discoveredModels);
-      const newErrors = new Map(this._discoveryErrors);
-
-      if (res.error) {
-        newErrors.set(providerId, res.error);
-        newModels.delete(providerId);
-      } else {
-        newModels.set(providerId, res.models);
-        newErrors.delete(providerId);
-      }
-
-      this._discoveredModels = newModels;
-      this._discoveryErrors = newErrors;
-    } catch (err) {
-      const newErrors = new Map(this._discoveryErrors);
-      newErrors.set(providerId, err instanceof Error ? err.message : String(err));
-      this._discoveryErrors = newErrors;
-    } finally {
-      const updated = new Set(this._discoveringProviders);
-      updated.delete(providerId);
-      this._discoveringProviders = updated;
-      this.requestUpdate();
     }
   }
 
@@ -183,16 +106,6 @@ export class ProfileSettings extends LitElement {
     );
   }
 
-  // --- All discovered models (aggregated) ---
-
-  private get _allModels(): Array<{ providerId: string; models: DiscoveredModel[] }> {
-    const result: Array<{ providerId: string; models: DiscoveredModel[] }> = [];
-    for (const [providerId, models] of this._discoveredModels) {
-      if (models.length > 0) result.push({ providerId, models });
-    }
-    return result;
-  }
-
   // --- Render ---
 
   override render() {
@@ -235,11 +148,7 @@ export class ProfileSettings extends LitElement {
         <nav class="sidebar">
           <div class="sidebar-nav">
             ${this._renderSidebarItem("general", msg("General", { id: "profile-general" }))}
-            ${this._renderSidebarItem(
-              "providers",
-              msg("Providers", { id: "profile-providers" }),
-              this._providers.length,
-            )}
+            ${this._renderSidebarItem("api-keys", msg("API Keys", { id: "profile-api-keys" }))}
             ${this._renderSidebarItem(
               "instructions",
               msg("Instructions", { id: "profile-instructions" }),
@@ -276,8 +185,8 @@ export class ProfileSettings extends LitElement {
     switch (this._activeSection) {
       case "general":
         return this._renderGeneralSection();
-      case "providers":
-        return this._renderProvidersSection();
+      case "api-keys":
+        return html`<cp-named-keys-panel></cp-named-keys-panel>`;
       case "instructions":
         return this._renderInstructionsSection();
     }
@@ -289,7 +198,6 @@ export class ProfileSettings extends LitElement {
 
   private _renderGeneralSection() {
     const p = this._profile;
-    const currentModel = this._getDirty("defaultModel", p?.defaultModel ?? "") as string;
 
     return html`
       <div class="section">
@@ -380,304 +288,9 @@ export class ProfileSettings extends LitElement {
               />
             </div>
           </div>
-
-          <div class="field full-width">
-            <label class="field-label"
-              >${msg("Default model", { id: "profile-default-model" })}</label
-            >
-            <div class="avatar-row">
-              <select
-                class="field-input ${"defaultModel" in this._dirty ? "changed" : ""}"
-                .value=${currentModel}
-                @change=${(e: Event) =>
-                  this._setDirty("defaultModel", (e.target as HTMLSelectElement).value || null)}
-                style="flex:1"
-              >
-                <option value="">
-                  ${msg("Select default model...", { id: "profile-select-model" })}
-                </option>
-                ${this._allModels.map(
-                  (group) => html`
-                    <optgroup label=${group.providerId}>
-                      ${group.models.map(
-                        (m) => html`
-                          <option value="${group.providerId}/${m.id}">${m.name || m.id}</option>
-                        `,
-                      )}
-                    </optgroup>
-                  `,
-                )}
-                ${currentModel &&
-                !this._allModels.some((g) =>
-                  g.models.some((m) => `${g.providerId}/${m.id}` === currentModel),
-                )
-                  ? html`<option value=${currentModel} selected>${currentModel}</option>`
-                  : nothing}
-              </select>
-              <button
-                class="btn btn-ghost"
-                @click=${() => void this._discoverAllModels()}
-                title=${msg("Refresh", { id: "profile-refresh-models" })}
-              >
-                ↻
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     `;
-  }
-
-  // -----------------------------------------------------------------------
-  // Providers section
-  // -----------------------------------------------------------------------
-
-  private _renderProvidersSection() {
-    return html`
-      <div class="section">
-        <div class="section-header">${msg("Providers", { id: "profile-providers" })}</div>
-
-        ${this._providers.length === 0 && !this._addingProvider
-          ? html`<div class="empty-state">
-              ${msg("No providers configured.", { id: "profile-no-providers" })}
-            </div>`
-          : nothing}
-        ${this._providers.map((p) => this._renderProviderCard(p))}
-        ${this._addingProvider ? this._renderAddProviderForm() : nothing}
-
-        <div style="margin-top: 12px">
-          <button
-            class="btn btn-ghost"
-            @click=${() => {
-              this._addingProvider = !this._addingProvider;
-              this._newProviderId = "";
-              this._newProviderEnvVar = "";
-              this._newProviderKey = "";
-              this._newProviderBaseUrl = "";
-            }}
-          >
-            ${this._addingProvider ? "−" : "+"}
-            ${msg("Add provider", { id: "profile-add-provider" })}
-          </button>
-        </div>
-      </div>
-    `;
-  }
-
-  private _renderProviderCard(p: UserProvider) {
-    const modelCount = this._discoveredModels.get(p.providerId)?.length;
-    const discoveryError = this._discoveryErrors.get(p.providerId);
-    const isDiscovering = this._discoveringProviders.has(p.providerId);
-
-    return html`
-      <div class="provider-card">
-        <div class="provider-header">
-          <div class="provider-header-left">
-            <span class="provider-name">${p.providerId}</span>
-            <span class="provider-id">${p.apiKeyEnvVar}</span>
-            ${modelCount !== undefined
-              ? html`<span class="key-status set"
-                  >${modelCount} ${msg("models", { id: "profile-models-available" })}</span
-                >`
-              : nothing}
-            ${discoveryError
-              ? html`<span class="key-status missing"
-                  >${msg("Connection failed", { id: "profile-models-error" })}</span
-                >`
-              : nothing}
-          </div>
-          <div class="provider-actions">
-            <button
-              class="btn-change-key"
-              ?disabled=${isDiscovering}
-              @click=${() => void this._discoverModelsFor(p.providerId)}
-            >
-              ${isDiscovering ? "..." : msg("Test", { id: "profile-test-provider" })}
-            </button>
-            <button class="btn-change-key" @click=${() => this._startEditKey(p.providerId)}>
-              ${msg("Change key", { id: "profile-change-key" })}
-            </button>
-            <button class="btn-remove-provider" @click=${() => this._removeProvider(p.providerId)}>
-              ${msg("Remove", { id: "profile-remove-provider" })}
-            </button>
-          </div>
-        </div>
-        <div class="provider-key-row">
-          ${p.hasApiKey
-            ? html`
-                <span class="key-status set">✓</span>
-                <span class="masked-key">${p.apiKeyMasked}</span>
-              `
-            : html`<span class="key-status missing"
-                >${msg("Not set", { id: "profile-key-not-set" })}</span
-              >`}
-        </div>
-        ${this._editingKeyFor === p.providerId ? this._renderKeyEditRow(p.providerId) : nothing}
-      </div>
-    `;
-  }
-
-  private _renderKeyEditRow(providerId: string) {
-    return html`
-      <div class="key-edit-row">
-        <input
-          class="field-input mono"
-          type="password"
-          placeholder="${msg("API key", { id: "profile-api-key" })}"
-          .value=${this._editKeyValue}
-          @input=${(e: Event) => {
-            this._editKeyValue = (e.target as HTMLInputElement).value;
-          }}
-        />
-        <button
-          class="btn btn-primary"
-          ?disabled=${!this._editKeyValue}
-          @click=${() => this._saveProviderKey(providerId)}
-        >
-          ${msg("Save", { id: "profile-save" })}
-        </button>
-        <button
-          class="btn btn-ghost"
-          @click=${() => {
-            this._editingKeyFor = null;
-            this._editKeyValue = "";
-          }}
-        >
-          ${msg("Cancel", { id: "profile-cancel" })}
-        </button>
-      </div>
-    `;
-  }
-
-  private _renderAddProviderForm() {
-    return html`
-      <div class="add-form">
-        <div class="field-grid">
-          <div class="field">
-            <label class="field-label">${msg("Provider ID", { id: "profile-provider-id" })}</label>
-            <select
-              class="field-input"
-              .value=${this._newProviderId}
-              @change=${(e: Event) => {
-                const id = (e.target as HTMLSelectElement).value;
-                this._newProviderId = id;
-                const known = KNOWN_PROVIDERS.find((p) => p.id === id);
-                if (known) this._newProviderEnvVar = known.envVar;
-              }}
-            >
-              <option value="">—</option>
-              ${KNOWN_PROVIDERS.filter(
-                (kp) => !this._providers.some((p) => p.providerId === kp.id),
-              ).map((kp) => html`<option value=${kp.id}>${kp.id}</option>`)}
-            </select>
-          </div>
-          <div class="field">
-            <label class="field-label">${msg("Env variable", { id: "profile-env-var" })}</label>
-            <input
-              class="field-input mono"
-              .value=${this._newProviderEnvVar}
-              @input=${(e: Event) => {
-                this._newProviderEnvVar = (e.target as HTMLInputElement).value;
-              }}
-            />
-          </div>
-          <div class="field">
-            <label class="field-label">${msg("API key", { id: "profile-api-key" })}</label>
-            <input
-              class="field-input mono"
-              type="password"
-              .value=${this._newProviderKey}
-              @input=${(e: Event) => {
-                this._newProviderKey = (e.target as HTMLInputElement).value;
-              }}
-            />
-          </div>
-          <div class="field">
-            <label class="field-label">${msg("Base URL", { id: "profile-base-url" })}</label>
-            <input
-              class="field-input mono"
-              placeholder="https://..."
-              .value=${this._newProviderBaseUrl}
-              @input=${(e: Event) => {
-                this._newProviderBaseUrl = (e.target as HTMLInputElement).value;
-              }}
-            />
-          </div>
-        </div>
-        <div class="add-form-actions">
-          <button
-            class="btn btn-primary"
-            ?disabled=${!this._newProviderId || !this._newProviderEnvVar}
-            @click=${this._addProvider}
-          >
-            ${msg("Add provider", { id: "profile-add-provider" })}
-          </button>
-        </div>
-      </div>
-    `;
-  }
-
-  private _startEditKey(providerId: string): void {
-    this._editingKeyFor = providerId;
-    this._editKeyValue = "";
-  }
-
-  private async _saveProviderKey(providerId: string): Promise<void> {
-    try {
-      await patchProfileProviderKey(providerId, this._editKeyValue);
-      this._editingKeyFor = null;
-      this._editKeyValue = "";
-      const res = await fetchProfileProviders();
-      this._providers = res.providers;
-      // Auto-discover models for the updated provider
-      void this._discoverModelsFor(providerId);
-      this._showToast(msg("Profile saved", { id: "profile-saved" }));
-    } catch (err) {
-      this._showToast(err instanceof Error ? err.message : String(err), "error");
-    }
-  }
-
-  private async _removeProvider(providerId: string): Promise<void> {
-    try {
-      await deleteProfileProvider(providerId);
-      const res = await fetchProfileProviders();
-      this._providers = res.providers;
-      // Remove discovered models for this provider
-      const newModels = new Map(this._discoveredModels);
-      newModels.delete(providerId);
-      this._discoveredModels = newModels;
-      this._showToast(msg("Profile saved", { id: "profile-saved" }));
-    } catch (err) {
-      this._showToast(err instanceof Error ? err.message : String(err), "error");
-    }
-  }
-
-  private async _addProvider(): Promise<void> {
-    try {
-      await upsertProfileProvider(this._newProviderId, {
-        apiKeyEnvVar: this._newProviderEnvVar,
-        ...(this._newProviderBaseUrl ? { baseUrl: this._newProviderBaseUrl } : {}),
-      });
-
-      if (this._newProviderKey) {
-        await patchProfileProviderKey(this._newProviderId, this._newProviderKey);
-      }
-
-      const addedProviderId = this._newProviderId;
-      this._addingProvider = false;
-      this._newProviderId = "";
-      this._newProviderEnvVar = "";
-      this._newProviderKey = "";
-      this._newProviderBaseUrl = "";
-
-      const res = await fetchProfileProviders();
-      this._providers = res.providers;
-      // Auto-discover models for the new provider
-      void this._discoverModelsFor(addedProviderId);
-      this._showToast(msg("Profile saved", { id: "profile-saved" }));
-    } catch (err) {
-      this._showToast(err instanceof Error ? err.message : String(err), "error");
-    }
   }
 
   // -----------------------------------------------------------------------

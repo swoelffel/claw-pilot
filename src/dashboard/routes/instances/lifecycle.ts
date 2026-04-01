@@ -7,6 +7,7 @@ import { instanceGuard } from "../../../lib/guards.js";
 import type { WizardAnswers } from "../../../core/config-generator.js";
 import { Destroyer } from "../../../core/destroyer.js";
 import { Provisioner } from "../../../core/provisioner.js";
+import { NamedKeyRepository } from "../../../core/repositories/named-key-repository.js";
 import { deriveWebChatPort } from "../../../lib/platform.js";
 import { ClawPilotError, InstanceNotFoundError } from "../../../lib/errors.js";
 
@@ -165,8 +166,7 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
 
     const slug = body["slug"];
     const defaultModel = body["defaultModel"];
-    const provider = body["provider"];
-    const apiKey = body["apiKey"];
+    const namedKeyId = body["namedKeyId"];
     if (
       typeof slug !== "string" ||
       !/^[a-z][a-z0-9-]*$/.test(slug) ||
@@ -183,17 +183,17 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
     if (typeof defaultModel !== "string" || !defaultModel) {
       return apiError(c, 400, "FIELD_REQUIRED", "defaultModel is required");
     }
-    if (typeof provider !== "string" || !provider) {
-      return apiError(c, 400, "FIELD_REQUIRED", "provider is required");
+    if (typeof namedKeyId !== "number" || !Number.isInteger(namedKeyId)) {
+      return apiError(c, 400, "FIELD_REQUIRED", "namedKeyId is required (integer)");
     }
-    if (typeof apiKey !== "string") {
-      return apiError(
-        c,
-        400,
-        "FIELD_INVALID",
-        "apiKey must be a string (use '' for providers that need no key)",
-      );
+
+    // Resolve named key
+    const namedKeyRepo = new NamedKeyRepository(deps.db);
+    const namedKeyRecord = namedKeyRepo.getById(namedKeyId);
+    if (!namedKeyRecord) {
+      return apiError(c, 400, "INVALID_KEY", "Named key not found");
     }
+    const decryptedApiKey = namedKeyRepo.decryptApiKey(namedKeyId);
 
     const rawAgents = Array.isArray(body["agents"]) ? body["agents"] : [];
     const agents: WizardAnswers["agents"] =
@@ -213,8 +213,8 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
           : slug.charAt(0).toUpperCase() + slug.slice(1),
       agents,
       defaultModel,
-      provider,
-      apiKey,
+      provider: namedKeyRecord.providerId,
+      apiKey: decryptedApiKey,
       telegram: { enabled: false },
       mem0: { enabled: false },
     };
@@ -223,6 +223,14 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
       const provisioner = new Provisioner(conn, registry);
       const blueprintId = typeof body.blueprintId === "number" ? body.blueprintId : undefined;
       const result = await provisioner.provision(answers, server.id, blueprintId);
+
+      // Set the named key as default for the newly created instance
+      const instance = registry.getInstance(slug);
+      if (instance) {
+        deps.db
+          .prepare("UPDATE instances SET default_named_key_id = ? WHERE id = ?")
+          .run(namedKeyId, instance.id);
+      }
 
       return c.json(result, 201);
     } catch (err) {
