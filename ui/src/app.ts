@@ -56,7 +56,6 @@ export class CpApp extends LitElement {
         width: 100%;
         max-width: 100vw;
         overflow-x: hidden;
-        height: 100vh;
         min-height: 100vh;
         background: var(--bg-base);
         color: var(--text-primary);
@@ -117,7 +116,14 @@ export class CpApp extends LitElement {
       }
 
       main.pilot {
+        /* Force exact fit: flex-basis 0 + flex-grow fills remaining viewport */
+        flex: 1 1 0%;
         overflow: hidden;
+      }
+
+      /* Constrain :host height when pilot is active so main doesn't grow beyond viewport */
+      :host(.pilot-active) {
+        height: 100vh;
       }
 
       footer {
@@ -517,6 +523,8 @@ export class CpApp extends LitElement {
   override updated(changed: Map<string, unknown>): void {
     if (changed.has("_route")) {
       this._syncHashFromRoute();
+      // Constrain viewport height when pilot is active (prevents scroll overflow)
+      this.classList.toggle("pilot-active", this._route.view === "pilot");
     }
   }
 
