@@ -24,7 +24,6 @@ import {
   fetchInstanceConfig,
   fetchToolProfiles,
   fetchProviders,
-  fetchProfileProviders,
   updateBlueprintAgentMeta,
   fetchInstanceSkills,
 } from "../api.js";
@@ -1236,24 +1235,13 @@ export class AgentDetailPanel extends LitElement {
     return raw;
   }
 
-  /** Lazy-load providers for the provider/model selects, filtered by user profile. */
+  /** Lazy-load providers for the provider/model selects. */
   private async _loadProviders(): Promise<void> {
     if (this._providers !== null || this._loadingProviders) return;
     this._loadingProviders = true;
     try {
-      const [catalog, profile] = await Promise.all([
-        fetchProviders(),
-        fetchProfileProviders().catch(() => ({ providers: [] })),
-      ]);
-      let providers = catalog.providers;
-      const configuredIds = new Set(
-        profile.providers.filter((p) => p.hasApiKey).map((p) => p.providerId),
-      );
-      if (configuredIds.size > 0) {
-        const filtered = providers.filter((p) => configuredIds.has(p.id));
-        if (filtered.length > 0) providers = filtered;
-      }
-      this._providers = providers;
+      const catalog = await fetchProviders();
+      this._providers = catalog.providers;
     } catch {
       this._providers = [];
     } finally {

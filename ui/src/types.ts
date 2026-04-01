@@ -635,7 +635,7 @@ export interface AgentBlueprintFileContent {
 // User Profile
 // ---------------------------------------------------------------------------
 
-export type ProfileSection = "general" | "api-keys" | "providers" | "instructions";
+export type ProfileSection = "general" | "api-keys" | "instructions";
 
 export interface UserProfile {
   userId: number;
@@ -649,22 +649,6 @@ export interface UserProfile {
   uiPreferences: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface UserProvider {
-  providerId: string;
-  apiKeyEnvVar: string;
-  baseUrl: string | null;
-  priority: number;
-  headers: Record<string, string> | null;
-  hasApiKey: boolean;
-  apiKeyMasked: string | null;
-}
-
-export interface DiscoveredModel {
-  id: string;
-  name: string;
-  providerId: string;
 }
 
 // ---------------------------------------------------------------------------

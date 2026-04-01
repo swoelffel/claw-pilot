@@ -745,6 +745,11 @@ const MIGRATIONS: Migration[] = [
     //   (language, timezone, communication style, custom instructions) and user-level defaults
     //   (default model, avatar, UI preferences).
     //
+    // TODO(cleanup): remove after v0.62 — user_providers table is deprecated.
+    // Replaced by named_api_keys (v24) with encrypted storage. Rows are auto-migrated
+    // at dashboard startup via migrateUserProvidersToNamedKeys(). Table kept for
+    // additive-only policy; community-resolver.ts still reads it at runtime.
+    //
     // user_providers: user-level provider configs shared across all instances.
     //   Instance-level providers (in runtime.json) override user-level by provider_id.
     //   API keys are stored in ~/.claw-pilot/.env, referenced by env var name (never in DB).

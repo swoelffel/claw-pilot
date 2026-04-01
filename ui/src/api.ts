@@ -23,8 +23,6 @@ import type {
   AgentBlueprintInfo,
   AgentBlueprintFileContent,
   UserProfile,
-  UserProvider,
-  DiscoveredModel,
   CostSummary,
   DailyCost,
   AgentCost,
@@ -725,50 +723,6 @@ export async function patchProfile(
     method: "PATCH",
     body: JSON.stringify(data),
   });
-}
-
-export async function fetchProfileProviders(): Promise<{ providers: UserProvider[] }> {
-  return apiFetch<{ providers: UserProvider[] }>("/profile/providers");
-}
-
-export async function upsertProfileProvider(
-  providerId: string,
-  data: {
-    apiKeyEnvVar: string;
-    baseUrl?: string | null;
-    priority?: number;
-    headers?: Record<string, string> | null;
-  },
-): Promise<{ ok: boolean }> {
-  return apiFetch<{ ok: boolean }>(`/profile/providers/${encodeURIComponent(providerId)}`, {
-    method: "PUT",
-    body: JSON.stringify(data),
-  });
-}
-
-export async function deleteProfileProvider(providerId: string): Promise<{ ok: boolean }> {
-  return apiFetch<{ ok: boolean }>(`/profile/providers/${encodeURIComponent(providerId)}`, {
-    method: "DELETE",
-  });
-}
-
-export async function patchProfileProviderKey(
-  providerId: string,
-  apiKey: string,
-): Promise<{ ok: boolean; masked: string }> {
-  return apiFetch<{ ok: boolean; masked: string }>(
-    `/profile/providers/${encodeURIComponent(providerId)}/key`,
-    { method: "PATCH", body: JSON.stringify({ apiKey }) },
-  );
-}
-
-export async function discoverProviderModels(
-  providerId: string,
-): Promise<{ models: DiscoveredModel[]; error?: string }> {
-  return apiFetch<{ models: DiscoveredModel[]; error?: string }>(
-    `/profile/providers/${encodeURIComponent(providerId)}/models`,
-    { method: "POST" },
-  );
 }
 
 // ---------------------------------------------------------------------------

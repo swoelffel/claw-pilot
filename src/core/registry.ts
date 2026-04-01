@@ -322,14 +322,4 @@ export class Registry {
   upsertUserProfile(userId: number, data: Parameters<UserProfileRepository["upsertProfile"]>[1]) {
     return this._userProfiles.upsertProfile(userId, data);
   }
-
-  getUserProviders(userId: number) {
-    return this._userProfiles.getProviders(userId);
-  }
-  upsertUserProvider(userId: number, data: Parameters<UserProfileRepository["upsertProvider"]>[1]) {
-    return this._userProfiles.upsertProvider(userId, data);
-  }
-  removeUserProvider(userId: number, providerId: string) {
-    return this._userProfiles.removeProvider(userId, providerId);
-  }
 }

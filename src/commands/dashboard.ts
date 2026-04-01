@@ -4,7 +4,11 @@ import { getDbPath, getDashboardTokenPath } from "../lib/platform.js";
 import { initDatabase } from "../db/schema.js";
 import { Registry } from "../core/registry.js";
 import { logger } from "../lib/logger.js";
-import { generateDashboardToken, ensureMasterEncryptionKey } from "../lib/crypto.js";
+import {
+  generateDashboardToken,
+  ensureMasterEncryptionKey,
+  migrateUserProvidersToNamedKeys,
+} from "../lib/crypto.js";
 import { constants } from "../lib/constants.js";
 import { LocalConnection } from "../server/local.js";
 import { SessionStore } from "../dashboard/session-store.js";
@@ -49,6 +53,12 @@ export function dashboardCommand(): Command {
       const keyGenerated = await ensureMasterEncryptionKey();
       if (keyGenerated) {
         logger.info("Generated master encryption key → ~/.claw-pilot/.env");
+      }
+
+      // Migrate legacy user_providers to named_api_keys (idempotent)
+      const migrated = await migrateUserProvidersToNamedKeys(db);
+      if (migrated > 0) {
+        logger.info(`Migrated ${migrated} provider key(s) to named API keys`);
       }
 
       const sessionStore = new SessionStore(db, constants.SESSION_TTL_MS);

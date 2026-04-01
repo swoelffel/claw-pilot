@@ -9,13 +9,7 @@ import type {
   ProviderInfo,
   ProvidersResponse,
 } from "../types.js";
-import {
-  fetchProviders,
-  fetchProfileProviders,
-  fetchInstances,
-  createAgent,
-  createAgentFromTemplate,
-} from "../api.js";
+import { fetchProviders, fetchInstances, createAgent, createAgentFromTemplate } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { DialogMixin } from "../lib/dialog-mixin.js";
 import { tokenStyles } from "../styles/tokens.js";
@@ -199,7 +193,6 @@ export class CreateAgentDialog extends DialogMixin(LitElement) {
   @state() private _selectedProvider: ProviderInfo | null = null;
   @state() private _model = "";
   @state() private _providersLoading = true;
-  @state() private _providersFiltered = false;
   @state() private _kind: "primary" | "subagent" = "primary";
   @state() private _toolProfile: "sentinel" | "pilot" | "manager" | "executor" | "custom" =
     "executor";
@@ -231,23 +224,8 @@ export class CreateAgentDialog extends DialogMixin(LitElement) {
   private async _loadProviders(): Promise<void> {
     this._providersLoading = true;
     try {
-      const [catalog, profile] = await Promise.all([
-        fetchProviders(),
-        fetchProfileProviders().catch(() => ({ providers: [] })),
-      ]);
-      let providers = catalog.providers;
-
-      // Filter by user profile: keep only providers the admin has configured with an API key
-      const configuredIds = new Set(
-        profile.providers.filter((p) => p.hasApiKey).map((p) => p.providerId),
-      );
-      if (configuredIds.size > 0) {
-        const filtered = providers.filter((p) => configuredIds.has(p.id));
-        if (filtered.length > 0) {
-          providers = filtered;
-          this._providersFiltered = true;
-        }
-      }
+      const catalog = await fetchProviders();
+      const providers = catalog.providers;
 
       this._providers = providers;
       const defaultProvider = providers.find((p) => p.isDefault) ?? providers[0] ?? null;
@@ -536,13 +514,6 @@ export class CreateAgentDialog extends DialogMixin(LitElement) {
                     </select>
                   </div>
                 </div>
-                ${this._providersFiltered
-                  ? html`<span class="field-hint"
-                      >${msg("Showing your configured providers", {
-                        id: "cad-providers-filtered-hint",
-                      })}</span
-                    >`
-                  : ""}
               `}
         </div>
 
