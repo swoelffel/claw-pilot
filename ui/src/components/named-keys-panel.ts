@@ -220,8 +220,8 @@ export class NamedKeysPanel extends LitElement {
       <div class="content">
         ${!this._cryptoAvailable
           ? html`<div class="crypto-warning">
-              Encryption is not available. API keys will be stored in plaintext. Set the
-              CP_ENCRYPTION_KEY environment variable to enable encryption.
+              Encryption is not available. Restart the dashboard to auto-generate the
+              MASTER_ENCRYPTION_KEY, or set it manually in ~/.claw-pilot/.env.
             </div>`
           : nothing}
         ${this._showCreateForm ? this._renderCreateForm() : nothing}

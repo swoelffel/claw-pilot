@@ -1,8 +1,63 @@
+import * as path from "node:path";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { readEnvVar, writeEnvVar } from "./dotenv.js";
+import { getDataDir } from "./platform.js";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
+
+// ---------------------------------------------------------------------------
+// Secure random generation
+// ---------------------------------------------------------------------------
+
+/** Generate a cryptographically secure random hex string (via OS entropy pool). */
+export function generateSecureHex(bytes: number): string {
+  return randomBytes(bytes).toString("hex");
+}
+
+/** Generate a 48-char hex gateway auth token (24 bytes). */
+export function generateGatewayToken(): string {
+  return generateSecureHex(24);
+}
+
+/** Generate a 64-char hex dashboard access token (32 bytes). */
+export function generateDashboardToken(): string {
+  return generateSecureHex(32);
+}
+
+// ---------------------------------------------------------------------------
+// Master encryption key management
+// ---------------------------------------------------------------------------
+
+/**
+ * Ensure MASTER_ENCRYPTION_KEY is available in process.env.
+ * Resolution: process.env → ~/.claw-pilot/.env → auto-generate.
+ * Returns true if the key was freshly generated.
+ */
+export async function ensureMasterEncryptionKey(): Promise<boolean> {
+  if (isCryptoAvailable()) return false;
+
+  const envPath = path.join(getDataDir(), ".env");
+  const envVar = "MASTER_ENCRYPTION_KEY";
+
+  // Check global .env file
+  const existing = readEnvVar(envPath, envVar);
+  if (existing && existing.length >= 64) {
+    process.env[envVar] = existing;
+    return false;
+  }
+
+  // Generate and persist
+  const key = generateSecureHex(32);
+  await writeEnvVar(envPath, envVar, key);
+  process.env[envVar] = key;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// AES-256-GCM encryption
+// ---------------------------------------------------------------------------
 
 /**
  * Check whether the MASTER_ENCRYPTION_KEY env var is set.

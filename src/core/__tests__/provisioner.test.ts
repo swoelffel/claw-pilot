@@ -34,7 +34,8 @@ vi.mock("../../lib/xdg.js", () => ({
   resolveXdgRuntimeDir: async () => "/run/user/1000",
 }));
 
-vi.mock("../secrets.js", () => ({
+vi.mock("../../lib/crypto.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   generateGatewayToken: () => "aabbccdd".repeat(6),
 }));
 

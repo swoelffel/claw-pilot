@@ -7,7 +7,7 @@ import type { Registry } from "./registry.js";
 import type { WizardAnswers } from "./config-generator.js";
 import { generateEnv, PROVIDER_ENV_VARS } from "./config-generator.js";
 import { PROVIDER_CATALOG } from "../lib/provider-catalog.js";
-import { generateGatewayToken } from "./secrets.js";
+import { generateGatewayToken } from "../lib/crypto.js";
 import { constants } from "../lib/constants.js";
 import { getInstancesDir, getRuntimeStateDir, deriveWebChatPort } from "../lib/platform.js";
 import { InstanceAlreadyExistsError, ClawPilotError } from "../lib/errors.js";
