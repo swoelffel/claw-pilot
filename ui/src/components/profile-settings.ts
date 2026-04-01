@@ -19,6 +19,7 @@ import {
   discoverProviderModels,
 } from "../api.js";
 import type { ProfileSection, UserProfile, UserProvider, DiscoveredModel } from "../types.js";
+import "./named-keys-panel.js";
 
 // Known providers for the "Add provider" dropdown
 const KNOWN_PROVIDERS = [
@@ -235,6 +236,7 @@ export class ProfileSettings extends LitElement {
         <nav class="sidebar">
           <div class="sidebar-nav">
             ${this._renderSidebarItem("general", msg("General", { id: "profile-general" }))}
+            ${this._renderSidebarItem("api-keys", msg("API Keys", { id: "profile-api-keys" }))}
             ${this._renderSidebarItem(
               "providers",
               msg("Providers", { id: "profile-providers" }),
@@ -276,6 +278,8 @@ export class ProfileSettings extends LitElement {
     switch (this._activeSection) {
       case "general":
         return this._renderGeneralSection();
+      case "api-keys":
+        return html`<cp-named-keys-panel></cp-named-keys-panel>`;
       case "providers":
         return this._renderProvidersSection();
       case "instructions":

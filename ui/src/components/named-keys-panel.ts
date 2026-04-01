@@ -91,14 +91,6 @@ export class NamedKeysPanel extends LitElement {
     }, 4000);
   }
 
-  // --- Navigation ---
-
-  private _navigateBack(): void {
-    this.dispatchEvent(
-      new CustomEvent("navigate", { detail: { view: "cluster" }, bubbles: true, composed: true }),
-    );
-  }
-
   // --- Create ---
 
   private _resetCreateForm(): void {
@@ -209,21 +201,20 @@ export class NamedKeysPanel extends LitElement {
     }
 
     return html`
-      <div class="panel-header">
-        <div class="header-left">
-          <button class="back-btn" @click=${this._navigateBack}>${"<-"} Back</button>
-          <div class="header-title">Named API Keys</div>
-        </div>
-        <div class="header-right">
-          <button
-            class="btn btn-primary"
-            @click=${() => {
-              this._showCreateForm = !this._showCreateForm;
-            }}
-          >
-            ${this._showCreateForm ? "Cancel" : "+ New Key"}
-          </button>
-        </div>
+      <div
+        class="section-header"
+        style="display: flex; align-items: center; justify-content: space-between;"
+      >
+        <span>API Keys</span>
+        <button
+          class="btn btn-primary"
+          style="font-size: 12px; padding: 4px 10px;"
+          @click=${() => {
+            this._showCreateForm = !this._showCreateForm;
+          }}
+        >
+          ${this._showCreateForm ? "Cancel" : "+ New Key"}
+        </button>
       </div>
 
       <div class="content">

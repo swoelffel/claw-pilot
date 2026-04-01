@@ -35,7 +35,6 @@ import "./components/activity-console.js";
 import "./components/live-stream-widget.js";
 import "./components/memory-browser.js";
 import "./components/heartbeat-heatmap.js";
-import "./components/named-keys-panel.js";
 
 // Initialize locale — resolved before first render via localeReady promise
 export const localeReady = initLocale();
@@ -714,8 +713,6 @@ export class CpApp extends LitElement {
       this._route = { view: "agent-templates" };
     } else if (detail.view === "agent-template-detail" && detail.templateId) {
       this._route = { view: "agent-template-detail", templateId: detail.templateId };
-    } else if (detail.view === "api-keys") {
-      this._route = { view: "api-keys" };
     } else {
       this._route = { view: "cluster" };
     }
@@ -879,9 +876,6 @@ export class CpApp extends LitElement {
         ></cp-heartbeat-heatmap>
       `;
     }
-    if (this._route.view === "api-keys") {
-      return html`<cp-named-keys-panel></cp-named-keys-panel>`;
-    }
     return html``;
   }
 
@@ -956,28 +950,6 @@ export class CpApp extends LitElement {
           </nav>
         </div>
         <div class="header-right">
-          <button
-            class="btn-profile ${this._route.view === "api-keys" ? "active" : ""}"
-            title=${msg("API Keys", { id: "nav-api-keys" })}
-            @click=${() => {
-              this._route = { view: "api-keys" };
-            }}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path
-                d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"
-              />
-            </svg>
-          </button>
           <button
             class="btn-profile ${this._route.view === "profile" ? "active" : ""}"
             title=${msg("Profile", { id: "nav-profile" })}

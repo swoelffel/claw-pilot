@@ -635,7 +635,7 @@ export interface AgentBlueprintFileContent {
 // User Profile
 // ---------------------------------------------------------------------------
 
-export type ProfileSection = "general" | "providers" | "instructions";
+export type ProfileSection = "general" | "api-keys" | "providers" | "instructions";
 
 export interface UserProfile {
   userId: number;
