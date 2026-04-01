@@ -67,6 +67,21 @@ export interface ListEnrichedSessionsOptions {
   state?: "active" | "archived";
   limit?: number;
   includeInternal?: boolean;
+  /** Filter by agent ID. */
+  agentId?: string;
+  /** Only return sessions created at or after this ISO datetime. */
+  since?: string;
+  /** Only return sessions created at or before this ISO datetime. */
+  until?: string;
+  /** Filter by persistence: 0 = ephemeral, 1 = permanent. */
+  persistent?: 0 | 1;
+  /** Cursor for infinite scroll: return sessions created before this ISO datetime. */
+  before?: string;
+}
+
+export interface ListEnrichedSessionsResult {
+  sessions: EnrichedSession[];
+  hasMore: boolean;
 }
 
 /**
@@ -79,7 +94,7 @@ export function listEnrichedSessions(
   db: Database.Database,
   instanceSlug: string,
   opts: ListEnrichedSessionsOptions = {},
-): EnrichedSession[] {
+): ListEnrichedSessionsResult {
   const resolvedState = opts.state ?? "active";
   const limit = opts.limit ?? 50;
   const includeInternal = opts.includeInternal ?? false;
@@ -107,8 +122,34 @@ export function listEnrichedSessions(
     sql += " AND s.channel != 'internal'";
   }
 
+  if (opts.agentId !== undefined) {
+    sql += " AND s.agent_id = ?";
+    params.push(opts.agentId);
+  }
+
+  if (opts.since !== undefined) {
+    sql += " AND s.created_at >= ?";
+    params.push(opts.since);
+  }
+
+  if (opts.until !== undefined) {
+    sql += " AND s.created_at <= ?";
+    params.push(opts.until);
+  }
+
+  if (opts.persistent !== undefined) {
+    sql += " AND s.persistent = ?";
+    params.push(opts.persistent);
+  }
+
+  if (opts.before !== undefined) {
+    sql += " AND s.created_at < ?";
+    params.push(opts.before);
+  }
+
+  // Request limit + 1 to determine hasMore
   sql += " GROUP BY s.id ORDER BY s.created_at DESC LIMIT ?";
-  params.push(safeLimit);
+  params.push(safeLimit + 1);
 
   let rows: EnrichedSessionRow[];
   try {
@@ -120,7 +161,7 @@ export function listEnrichedSessions(
       limit: safeLimit,
       ...(includeInternal ? {} : { excludeChannels: ["internal"] }),
     });
-    return fallback.map((s) => ({
+    const sessions = fallback.map((s) => ({
       id: s.id,
       instanceSlug: s.instanceSlug,
       parentId: s.parentId,
@@ -141,9 +182,13 @@ export function listEnrichedSessions(
       messageCount: 0,
       totalTokens: 0,
     }));
+    return { sessions, hasMore: false };
   }
 
-  return rows.map((row) => ({
+  const hasMore = rows.length > safeLimit;
+  if (hasMore) rows = rows.slice(0, safeLimit);
+
+  const sessions = rows.map((row) => ({
     id: row.id,
     instanceSlug: row.instance_slug,
     parentId: row.parent_id ?? undefined,
@@ -166,6 +211,8 @@ export function listEnrichedSessions(
     messageCount: row.message_count ?? 0,
     totalTokens: row.total_tokens ?? 0,
   }));
+
+  return { sessions, hasMore };
 }
 
 /**

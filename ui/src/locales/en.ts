@@ -469,4 +469,26 @@ export const templates = {
   "adp-skills-auto-select": "Auto-select",
   "adp-skills-auto-hint": "Skills are auto-selected based on the conversation.",
   "adp-skills-manual-hint": "Manually choose which skills are available.",
+
+  // session-logs.ts
+  "session-logs-title": "Session Logs",
+  "session-logs-filter-agent": "Agent",
+  "session-logs-filter-period": "Period",
+  "session-logs-filter-type": "Type",
+  "session-logs-filter-state": "State",
+  "session-logs-all-agents": "All agents",
+  "session-logs-permanent": "Permanent",
+  "session-logs-ephemeral": "Ephemeral",
+  "session-logs-all-types": "All",
+  "session-logs-active": "Active",
+  "session-logs-archived": "Archived",
+  "session-logs-select-session": "Select a session",
+  "session-logs-system-prompt": "System prompt",
+  "session-logs-raw-mode": "Raw LLM",
+  "session-logs-loading": "Loading...",
+  "session-logs-no-sessions": "No sessions found",
+  "session-logs-cost-label": "Cost",
+
+  // instance-card.ts — session-logs menu item
+  "btn-session-logs": "Session Logs",
 };

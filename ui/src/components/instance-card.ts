@@ -550,6 +550,18 @@ export class InstanceCard extends LitElement {
           ${msg("Heartbeat", { id: "btn-heartbeat" })}
         </button>
 
+        <button
+          class="menu-item"
+          @click=${(e: Event) => {
+            e.stopPropagation();
+            this._menuOpen = false;
+            this._navigate("session-logs");
+          }}
+        >
+          <span class="menu-icon">📋</span>
+          ${msg("Session Logs", { id: "btn-session-logs" })}
+        </button>
+
         ${isRunning
           ? html`
               <button

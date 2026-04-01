@@ -487,17 +487,45 @@ export async function adoptInstances(slugs: string[]): Promise<AdoptResult> {
 
 // --- Runtime chat API ---
 
+export interface FetchSessionsOptions {
+  includeInternal?: boolean;
+  state?: "active" | "archived";
+  agentId?: string;
+  since?: string;
+  until?: string;
+  persistent?: 0 | 1;
+  before?: string;
+  limit?: number;
+}
+
+export interface FetchSessionsResult {
+  sessions: RuntimeSession[];
+  hasMore: boolean;
+}
+
 export async function fetchRuntimeSessions(
   slug: string,
-  opts?: { includeInternal?: boolean },
+  opts?: FetchSessionsOptions,
 ): Promise<RuntimeSession[]> {
+  const { sessions } = await fetchRuntimeSessionsPaginated(slug, opts);
+  return sessions;
+}
+
+export async function fetchRuntimeSessionsPaginated(
+  slug: string,
+  opts?: FetchSessionsOptions,
+): Promise<FetchSessionsResult> {
   const params = new URLSearchParams();
   if (opts?.includeInternal) params.set("includeInternal", "true");
+  if (opts?.state) params.set("state", opts.state);
+  if (opts?.agentId) params.set("agentId", opts.agentId);
+  if (opts?.since) params.set("since", opts.since);
+  if (opts?.until) params.set("until", opts.until);
+  if (opts?.persistent !== undefined) params.set("persistent", String(opts.persistent));
+  if (opts?.before) params.set("before", opts.before);
+  if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
   const qs = params.toString();
-  const data = await apiFetch<{ sessions: RuntimeSession[] }>(
-    `/instances/${slug}/runtime/sessions${qs ? `?${qs}` : ""}`,
-  );
-  return data.sessions;
+  return apiFetch<FetchSessionsResult>(`/instances/${slug}/runtime/sessions${qs ? `?${qs}` : ""}`);
 }
 
 export async function postRuntimeChat(

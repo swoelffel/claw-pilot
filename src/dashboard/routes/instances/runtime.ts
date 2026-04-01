@@ -84,15 +84,27 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     const limitParam = c.req.query("limit");
     const limit = limitParam ? parseInt(limitParam, 10) : 50;
     const includeInternal = c.req.query("includeInternal") === "true";
+    const agentId = c.req.query("agentId");
+    const since = c.req.query("since");
+    const until = c.req.query("until");
+    const persistentParam = c.req.query("persistent");
+    const before = c.req.query("before");
 
     // Delegate to repository (handles fallback on older DB schemas)
-    const sessions = listEnrichedSessions(db, slug, {
+    const { sessions, hasMore } = listEnrichedSessions(db, slug, {
       ...(stateParam !== undefined ? { state: stateParam } : {}),
       limit,
       includeInternal,
+      ...(agentId !== undefined ? { agentId } : {}),
+      ...(since !== undefined ? { since } : {}),
+      ...(until !== undefined ? { until } : {}),
+      ...(persistentParam !== undefined
+        ? { persistent: parseInt(persistentParam, 10) as 0 | 1 }
+        : {}),
+      ...(before !== undefined ? { before } : {}),
     });
 
-    return c.json({ sessions });
+    return c.json({ sessions, hasMore });
   });
 
   // ---------------------------------------------------------------------------
