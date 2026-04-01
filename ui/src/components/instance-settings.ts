@@ -328,26 +328,19 @@ export class InstanceSettings extends LitElement {
     const c = this._config!;
     const currentDefaultModel = this._getDirty("general.defaultModel", c.general.defaultModel);
 
-    // Use full provider catalog for provider/model selection
-    const allProviderIds = this._providerCatalog.map((p) => p.id);
+    // Named keys assigned to this instance (from GET /api/instances/:slug/config)
+    const namedKeys = c.namedKeys ?? [];
+    const defaultKey = namedKeys.find((k) => k.isDefault);
 
-    // Determine the selected provider from the current default model
-    const currentProviderId = currentDefaultModel.split("/")[0] ?? "";
-    const selectedProviderId = allProviderIds.includes(currentProviderId)
-      ? currentProviderId
-      : (allProviderIds[0] ?? "");
+    // Determine the provider from the default named key (or from the model string as fallback)
+    const selectedProviderId = defaultKey?.providerId ?? currentDefaultModel.split("/")[0] ?? "";
 
     // Get models for the selected provider from the catalog
     const selectedProviderCatalog = this._providerCatalog.find((p) => p.id === selectedProviderId);
     const modelsForSelectedProvider = selectedProviderCatalog?.models ?? [];
-
-    // Check if the current model belongs to the selected provider's catalog
     const currentModelInList = modelsForSelectedProvider.includes(currentDefaultModel);
-
-    // The model select value: either the dirty model or the current configured model
     const modelSelectValue = currentDefaultModel;
-
-    const isProviderDirty = this._isDirty("general.defaultModel");
+    const isModelDirty = this._isDirty("general.defaultModel");
 
     return html`
       <div class="section">
@@ -370,41 +363,40 @@ export class InstanceSettings extends LitElement {
             <div class="field-readonly">:${c.general.port}</div>
           </div>
 
-          ${allProviderIds.length > 1
-            ? html`
-                <div class="field full-width">
-                  <label class="field-label">
-                    ${msg("Default provider", { id: "settings-default-provider" })}
-                  </label>
+          <div class="field full-width">
+            <label class="field-label">
+              ${msg("Default API Key", { id: "settings-default-key" })}
+            </label>
+            ${namedKeys.length > 0
+              ? html`
                   <select
-                    class="field-input ${isProviderDirty ? "changed" : ""}"
+                    class="field-input"
                     @change=${(e: Event) => {
-                      const newProviderId = (e.target as HTMLSelectElement).value;
-                      const catalog = this._providerCatalog.find((p) => p.id === newProviderId);
-                      // Pick the first model of the new provider (or keep current if same provider)
-                      const firstModel =
-                        catalog?.models[0] ?? catalog?.defaultModel ?? newProviderId;
-                      this._setDirty("general.defaultModel", firstModel);
+                      const keyId = Number((e.target as HTMLSelectElement).value);
+                      if (!keyId) return;
+                      void this._changeDefaultKey(keyId);
                     }}
                   >
-                    ${allProviderIds.map((id) => {
-                      const cat = this._providerCatalog.find((p) => p.id === id);
-                      const label = cat?.label ?? id;
-                      return html`
-                        <option value=${id} ?selected=${id === selectedProviderId}>${label}</option>
-                      `;
-                    })}
+                    ${namedKeys.map(
+                      (k) => html`
+                        <option value=${String(k.namedKeyId)} ?selected=${k.isDefault}>
+                          ${k.name} (${k.providerId})
+                        </option>
+                      `,
+                    )}
                   </select>
-                </div>
-              `
-            : nothing}
+                `
+              : html`<div class="field-readonly" style="color:var(--text-muted)">
+                  No API keys assigned — go to Config &gt; Keys
+                </div>`}
+          </div>
 
           <div class="field full-width">
             <label class="field-label"
               >${msg("Default model", { id: "settings-default-model" })}</label
             >
             <select
-              class="field-input ${isProviderDirty ? "changed" : ""}"
+              class="field-input ${isModelDirty ? "changed" : ""}"
               @change=${(e: Event) =>
                 this._setDirty("general.defaultModel", (e.target as HTMLSelectElement).value)}
             >
@@ -425,6 +417,20 @@ export class InstanceSettings extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  /** Change the default named key for this instance (immediate save, not dirty-tracked). */
+  private async _changeDefaultKey(namedKeyId: number): Promise<void> {
+    try {
+      await patchInstanceConfig(this.slug, {
+        namedKeys: { setDefault: { namedKeyId } },
+      });
+      // Reload config to reflect the change
+      await this._loadConfig();
+      this._showToast(msg("Default key updated", { id: "settings-key-updated" }), "success");
+    } catch (err) {
+      this._showToast(userMessage(err), "error");
+    }
   }
 
   private _renderAgentsSection() {
