@@ -62,13 +62,24 @@ function fmtTokens(n: number | undefined): string {
 function parseToolMetadata(meta: string | undefined): {
   toolName?: string;
   toolCallId?: string;
-  args?: string;
+  args?: unknown;
 } {
   if (!meta) return {};
   try {
     return JSON.parse(meta);
   } catch {
     return {};
+  }
+}
+
+/** Safely format any value as a readable string. */
+function stringify(val: unknown): string {
+  if (val == null) return "";
+  if (typeof val === "string") return val;
+  try {
+    return JSON.stringify(val, null, 2);
+  } catch {
+    return String(val);
   }
 }
 
@@ -946,7 +957,7 @@ export class SessionLogs extends LitElement {
       return html`
         <div class="tool-part tool-call">
           <div class="tool-header">🔧 tool_call: ${meta.toolName ?? "unknown"}</div>
-          <div class="tool-detail">${JSON.stringify({ ...meta, content: p.content }, null, 2)}</div>
+          <div class="tool-detail">${stringify({ ...meta, content: p.content })}</div>
         </div>
       `;
     }
@@ -966,7 +977,9 @@ export class SessionLogs extends LitElement {
           <span>🔧 ${meta.toolName ?? "unknown"}</span>
           <span style="color:var(--text-muted)">→ ${p.state ?? "completed"}</span>
         </div>
-        ${expanded ? html`<div class="tool-detail">${meta.args ?? p.content ?? ""}</div>` : nothing}
+        ${expanded
+          ? html`<div class="tool-detail">${stringify(meta.args) || p.content || ""}</div>`
+          : nothing}
       </div>
     `;
   }
