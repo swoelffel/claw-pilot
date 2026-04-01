@@ -538,6 +538,7 @@ export class SessionLogs extends LitElement {
 
       const { sessions, hasMore } = await fetchRuntimeSessionsPaginated(this.slug, {
         limit: PAGE_SIZE,
+        includeInternal: true,
         ...(this._filterAgent ? { agentId: this._filterAgent } : {}),
         ...(since ? { since } : {}),
         ...(this._filterPersistent ? { persistent: Number(this._filterPersistent) as 0 | 1 } : {}),
