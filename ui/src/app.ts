@@ -51,8 +51,7 @@ export class CpApp extends LitElement {
     tokenStyles,
     css`
       :host {
-        display: flex;
-        flex-direction: column;
+        display: block;
         width: 100%;
         max-width: 100vw;
         overflow-x: hidden;
@@ -70,7 +69,6 @@ export class CpApp extends LitElement {
         justify-content: space-between;
         padding: 0 16px;
         height: 56px;
-        flex-shrink: 0;
         background: var(--bg-surface);
         border-bottom: 1px solid var(--bg-border);
         position: sticky;
@@ -110,20 +108,14 @@ export class CpApp extends LitElement {
         display: block;
         width: 100%;
         box-sizing: border-box;
-        flex: 1;
-        min-height: 0;
+        min-height: calc(100vh - 56px - 48px);
         overflow-x: hidden;
       }
 
       main.pilot {
-        /* Force exact fit: flex-basis 0 + flex-grow fills remaining viewport */
-        flex: 1 1 0%;
+        height: calc(100dvh - 56px - 48px);
+        min-height: unset;
         overflow: hidden;
-      }
-
-      /* Constrain :host height when pilot is active so main doesn't grow beyond viewport */
-      :host(.pilot-active) {
-        height: 100vh;
       }
 
       footer {
@@ -134,7 +126,6 @@ export class CpApp extends LitElement {
         justify-content: space-between;
         padding: 8px 16px;
         min-height: 48px;
-        flex-shrink: 0;
         background: var(--bg-surface);
         border-top: 1px solid var(--bg-border);
         font-size: 12px;
@@ -421,7 +412,7 @@ export class CpApp extends LitElement {
         }
 
         main {
-          /* flex: 1 from parent handles height — no calc needed */
+          min-height: calc(100vh - 104px - 48px);
         }
 
         footer {
@@ -523,8 +514,6 @@ export class CpApp extends LitElement {
   override updated(changed: Map<string, unknown>): void {
     if (changed.has("_route")) {
       this._syncHashFromRoute();
-      // Constrain viewport height when pilot is active (prevents scroll overflow)
-      this.classList.toggle("pilot-active", this._route.view === "pilot");
     }
   }
 
