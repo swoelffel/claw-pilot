@@ -51,10 +51,12 @@ export class CpApp extends LitElement {
     tokenStyles,
     css`
       :host {
-        display: block;
+        display: flex;
+        flex-direction: column;
         width: 100%;
         max-width: 100vw;
         overflow-x: hidden;
+        height: 100vh;
         min-height: 100vh;
         background: var(--bg-base);
         color: var(--text-primary);
@@ -69,6 +71,7 @@ export class CpApp extends LitElement {
         justify-content: space-between;
         padding: 0 16px;
         height: 56px;
+        flex-shrink: 0;
         background: var(--bg-surface);
         border-bottom: 1px solid var(--bg-border);
         position: sticky;
@@ -108,13 +111,12 @@ export class CpApp extends LitElement {
         display: block;
         width: 100%;
         box-sizing: border-box;
-        min-height: calc(100vh - 56px - 48px);
+        flex: 1;
+        min-height: 0;
         overflow-x: hidden;
       }
 
       main.pilot {
-        height: calc(100vh - 56px - 48px);
-        min-height: unset;
         overflow: hidden;
       }
 
@@ -126,6 +128,7 @@ export class CpApp extends LitElement {
         justify-content: space-between;
         padding: 8px 16px;
         min-height: 48px;
+        flex-shrink: 0;
         background: var(--bg-surface);
         border-top: 1px solid var(--bg-border);
         font-size: 12px;
@@ -412,7 +415,7 @@ export class CpApp extends LitElement {
         }
 
         main {
-          min-height: calc(100vh - 104px - 48px);
+          /* flex: 1 from parent handles height — no calc needed */
         }
 
         footer {
