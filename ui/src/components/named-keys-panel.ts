@@ -8,19 +8,14 @@ import { customElement, state } from "lit/decorators.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { buttonStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
 import { namedKeysPanelStyles } from "../styles/named-keys-panel.styles.js";
-import { fetchNamedKeys, createNamedKey, updateNamedKey, deleteNamedKey } from "../api.js";
-import type { NamedApiKey } from "../types.js";
-
-// Known providers for the dropdown
-const PROVIDERS = [
-  { id: "anthropic", label: "Anthropic" },
-  { id: "openai", label: "OpenAI" },
-  { id: "google", label: "Google" },
-  { id: "openrouter", label: "OpenRouter" },
-  { id: "ollama", label: "Ollama" },
-  { id: "mistral", label: "Mistral" },
-  { id: "xai", label: "xAI" },
-];
+import {
+  fetchNamedKeys,
+  createNamedKey,
+  updateNamedKey,
+  deleteNamedKey,
+  fetchProviders,
+} from "../api.js";
+import type { NamedApiKey, ProviderInfo } from "../types.js";
 
 @customElement("cp-named-keys-panel")
 export class NamedKeysPanel extends LitElement {
@@ -35,6 +30,7 @@ export class NamedKeysPanel extends LitElement {
   // --- State ---
 
   @state() private _keys: NamedApiKey[] = [];
+  @state() private _providers: ProviderInfo[] = [];
   @state() private _cryptoAvailable = true;
   @state() private _loading = true;
   @state() private _error = "";
@@ -72,9 +68,10 @@ export class NamedKeysPanel extends LitElement {
     this._loading = true;
     this._error = "";
     try {
-      const res = await fetchNamedKeys();
-      this._keys = res.keys;
-      this._cryptoAvailable = res.cryptoAvailable;
+      const [keysRes, providersRes] = await Promise.all([fetchNamedKeys(), fetchProviders()]);
+      this._keys = keysRes.keys;
+      this._cryptoAvailable = keysRes.cryptoAvailable;
+      this._providers = providersRes.providers;
     } catch (err) {
       this._error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -310,14 +307,20 @@ export class NamedKeysPanel extends LitElement {
               </div>
               <div class="field">
                 <label class="field-label">Default Model</label>
-                <input
+                <select
                   class="field-input mono"
-                  type="text"
                   .value=${this._editModel}
-                  @input=${(e: Event) => {
-                    this._editModel = (e.target as HTMLInputElement).value;
+                  @change=${(e: Event) => {
+                    this._editModel = (e.target as HTMLSelectElement).value;
                   }}
-                />
+                >
+                  ${(this._providers.find((p) => p.id === key.providerId)?.models ?? []).map(
+                    (m) =>
+                      html`<option value=${m} ?selected=${m === this._editModel}>
+                        ${m.split("/")[1] ?? m}
+                      </option>`,
+                  )}
+                </select>
               </div>
               <div class="field">
                 <label class="field-label">Base URL</label>
@@ -382,11 +385,14 @@ export class NamedKeysPanel extends LitElement {
               class="field-input"
               .value=${this._createProvider}
               @change=${(e: Event) => {
-                this._createProvider = (e.target as HTMLSelectElement).value;
+                const id = (e.target as HTMLSelectElement).value;
+                this._createProvider = id;
+                const p = this._providers.find((pr) => pr.id === id);
+                this._createModel = p?.defaultModel ?? "";
               }}
             >
               <option value="">-- Select --</option>
-              ${PROVIDERS.map((p) => html`<option value=${p.id}>${p.label}</option>`)}
+              ${this._providers.map((p) => html`<option value=${p.id}>${p.label}</option>`)}
             </select>
           </div>
           <div class="field">
@@ -403,15 +409,21 @@ export class NamedKeysPanel extends LitElement {
           </div>
           <div class="field">
             <label class="field-label">Default Model</label>
-            <input
+            <select
               class="field-input mono"
-              type="text"
-              placeholder="e.g. claude-sonnet-4-20250514"
               .value=${this._createModel}
-              @input=${(e: Event) => {
-                this._createModel = (e.target as HTMLInputElement).value;
+              @change=${(e: Event) => {
+                this._createModel = (e.target as HTMLSelectElement).value;
               }}
-            />
+            >
+              <option value="">-- Select --</option>
+              ${(this._providers.find((p) => p.id === this._createProvider)?.models ?? []).map(
+                (m) =>
+                  html`<option value=${m} ?selected=${m === this._createModel}>
+                    ${m.split("/")[1] ?? m}
+                  </option>`,
+              )}
+            </select>
           </div>
           <div class="field full-width">
             <label class="field-label">Base URL (optional)</label>
