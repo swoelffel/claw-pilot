@@ -195,14 +195,14 @@ describe("NamedKeyRepository", () => {
       const created = repo.create({
         name: "Display Key",
         providerId: "anthropic",
-        apiKey: "sk-ant-olddisplay123456789012345",
+        apiKey: "sk-ant-old-display12345678901234",
         defaultModel: "claude-3-5-sonnet-20241022",
       });
 
-      const updated = repo.update(created.id, { apiKey: "sk-ant-newdisplay123456789012345" });
+      const updated = repo.update(created.id, { apiKey: "sk-ant-new-display12345678901234" });
       // The masked key should reflect the new key's prefix and suffix
       expect(updated.apiKeyMasked).toMatch(/^sk-a/);
-      expect(updated.apiKeyMasked).toMatch(/2345$/);
+      expect(updated.apiKeyMasked).toMatch(/1234$/);
     });
 
     it("throws for non-existent id", () => {
@@ -231,7 +231,7 @@ describe("NamedKeyRepository", () => {
       const created = repo.create({
         name: "Assigned Key",
         providerId: "anthropic",
-        apiKey: "sk-ant-asgn1234567890123456789012345",
+        apiKey: "sk-ant-assign12345678901234567890123",
         defaultModel: "claude-3-5-sonnet-20241022",
       });
 
@@ -289,7 +289,7 @@ describe("NamedKeyRepository", () => {
       const created = repo.create({
         name: "Default Key",
         providerId: "anthropic",
-        apiKey: "sk-ant-dflt1234567890123456789012345",
+        apiKey: "sk-ant-default1234567890123456789012",
         defaultModel: "claude-3-5-sonnet-20241022",
       });
 
@@ -309,7 +309,7 @@ describe("NamedKeyRepository", () => {
       const keyB = repo.create({
         name: "Key List B",
         providerId: "openai",
-        apiKey: "sk-proj-listb12345678901234567890123",
+        apiKey: "sk-proj-list-b1234567890123456789012",
         defaultModel: "gpt-4o",
       });
 
@@ -361,7 +361,7 @@ describe("NamedKeyRepository", () => {
     });
 
     it("getInstanceDefaultKey returns decrypted key for default", () => {
-      const rawKey = "sk-ant-instdefault12345678901234567";
+      const rawKey = "sk-ant-inst-default1234567890123456";
       const created = repo.create({
         name: "Default Decrypt Key",
         providerId: "anthropic",
@@ -384,7 +384,7 @@ describe("NamedKeyRepository", () => {
       const created = repo.create({
         name: "Protected Key",
         providerId: "anthropic",
-        apiKey: "sk-ant-prot12345678901234567890123456",
+        apiKey: "sk-ant-protect12345678901234567890123",
         defaultModel: "claude-3-5-sonnet-20241022",
       });
 
@@ -397,7 +397,7 @@ describe("NamedKeyRepository", () => {
     });
 
     it("getDecryptedKey returns the raw API key by named key id", () => {
-      const rawKey = "sk-ant-getdecrypt1234567890123456789";
+      const rawKey = "sk-ant-get-decrypt123456789012345678";
       const created = repo.create({
         name: "Decrypt By ID",
         providerId: "anthropic",
