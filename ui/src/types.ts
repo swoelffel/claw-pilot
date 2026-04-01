@@ -332,7 +332,8 @@ export interface InstanceConfig {
   gateway: {
     port: number;
   };
-  namedKeys?: InstanceNamedKey[];
+  namedKeys?: NamedApiKey[];
+  defaultNamedKeyId?: number | null;
 }
 
 /** Result of PATCH /api/instances/:slug/config */
@@ -792,13 +793,4 @@ export interface NamedApiKey {
   apiKeyMasked: string;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface InstanceNamedKey {
-  namedKeyId: number;
-  name: string;
-  providerId: string;
-  defaultModel: string;
-  baseUrl: string | null;
-  isDefault: boolean;
 }

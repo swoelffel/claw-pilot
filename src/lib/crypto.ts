@@ -168,9 +168,11 @@ export async function migrateInstanceProvidersToNamedKeys(db: Database.Database)
   for (const inst of instances) {
     if (!inst.state_dir) continue;
 
-    // Skip if instance already has named keys assigned
-    const existing = repo.getInstanceKeys(inst.id);
-    if (existing.length > 0) continue;
+    // Skip if instance already has a default named key assigned
+    const existingDefault = db
+      .prepare("SELECT default_named_key_id FROM instances WHERE id = ?")
+      .get(inst.id) as { default_named_key_id: number | null } | undefined;
+    if (existingDefault?.default_named_key_id) continue;
 
     const envPath = path.join(inst.state_dir, ".env");
 
@@ -221,7 +223,12 @@ export async function migrateInstanceProvidersToNamedKeys(db: Database.Database)
         ? inst.default_model.startsWith(`${providerId}/`)
         : false;
 
-      repo.assignToInstance(inst.id, namedKeyId, isDefault);
+      if (isDefault) {
+        db.prepare("UPDATE instances SET default_named_key_id = ? WHERE id = ?").run(
+          namedKeyId,
+          inst.id,
+        );
+      }
       await removeEnvVar(envPath, envVar);
       migrated++;
     }

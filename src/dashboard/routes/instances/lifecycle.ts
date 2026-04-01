@@ -224,10 +224,12 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
       const blueprintId = typeof body.blueprintId === "number" ? body.blueprintId : undefined;
       const result = await provisioner.provision(answers, server.id, blueprintId);
 
-      // Assign the named key to the newly created instance
+      // Set the named key as default for the newly created instance
       const instance = registry.getInstance(slug);
       if (instance) {
-        namedKeyRepo.assignToInstance(instance.id, namedKeyId, true);
+        deps.db
+          .prepare("UPDATE instances SET default_named_key_id = ? WHERE id = ?")
+          .run(namedKeyId, instance.id);
       }
 
       return c.json(result, 201);

@@ -226,8 +226,11 @@ describe("resolveModelForAgent", () => {
       defaultModel: "claude-sonnet-4-20250514",
     });
 
-    // Assign key to instance as default
-    repo.assignToInstance(instanceId, key.id, true);
+    // Set default_named_key_id on instance (v25 approach)
+    db.prepare("UPDATE instances SET default_named_key_id = ? WHERE id = ?").run(
+      key.id,
+      instanceId,
+    );
 
     // Agent has no named_key_id
     seedAgent(instanceId, "test-agent", null);
@@ -252,7 +255,10 @@ describe("resolveModelForAgent", () => {
       apiKey: "sk-ant-instance-key",
       defaultModel: "claude-sonnet-4-20250514",
     });
-    repo.assignToInstance(instanceId, instanceKey.id, true);
+    db.prepare("UPDATE instances SET default_named_key_id = ? WHERE id = ?").run(
+      instanceKey.id,
+      instanceId,
+    );
 
     const agentKey = repo.create({
       name: "Agent Key",

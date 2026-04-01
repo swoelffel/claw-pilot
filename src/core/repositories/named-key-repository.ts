@@ -38,16 +38,6 @@ export interface NamedKeyUpdateData {
   apiKey?: string;
 }
 
-/** Named key record as seen from an instance's perspective. */
-export interface InstanceNamedKeyRecord {
-  namedKeyId: number;
-  name: string;
-  providerId: string;
-  defaultModel: string;
-  baseUrl: string | null;
-  isDefault: boolean;
-}
-
 // ---------------------------------------------------------------------------
 // Raw DB row shapes (internal, snake_case columns)
 // ---------------------------------------------------------------------------
@@ -61,15 +51,6 @@ interface RawNamedApiKeyRow {
   base_url: string | null;
   created_at: string;
   updated_at: string;
-}
-
-interface RawInstanceNamedKeyRow {
-  named_key_id: number;
-  name: string;
-  provider_id: string;
-  default_model: string;
-  base_url: string | null;
-  is_default: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -215,112 +196,47 @@ export class NamedKeyRepository {
     return decrypt(row.encrypted_api_key);
   }
 
-  // --- instance_named_keys ---
+  // --- Instance default key (v25: simple FK on instances) ---
 
-  /**
-   * Assign a named key to an instance.
-   * If isDefault is true the key will be marked as default for that instance;
-   * it is the caller's responsibility to clear any previous default first
-   * (or use setInstanceDefault for atomic swap).
-   */
-  assignToInstance(instanceId: number, namedKeyId: number, isDefault: boolean): void {
-    this.db
-      .prepare(
-        `INSERT INTO instance_named_keys (instance_id, named_key_id, is_default)
-         VALUES (?, ?, ?)`,
-      )
-      .run(instanceId, namedKeyId, isDefault ? 1 : 0);
-  }
-
-  /**
-   * Remove a named key assignment from an instance.
-   */
-  removeFromInstance(instanceId: number, namedKeyId: number): void {
-    this.db
-      .prepare("DELETE FROM instance_named_keys WHERE instance_id = ? AND named_key_id = ?")
-      .run(instanceId, namedKeyId);
-  }
-
-  /**
-   * Atomically clear the current default and set a new one for an instance.
-   */
-  setInstanceDefault(instanceId: number, namedKeyId: number): void {
-    const clearDefault = this.db.prepare(
-      "UPDATE instance_named_keys SET is_default = 0 WHERE instance_id = ?",
-    );
-    const setDefault = this.db.prepare(
-      "UPDATE instance_named_keys SET is_default = 1 WHERE instance_id = ? AND named_key_id = ?",
-    );
-
-    const run = this.db.transaction(() => {
-      clearDefault.run(instanceId);
-      setDefault.run(instanceId, namedKeyId);
-    });
-    run();
-  }
-
-  /**
-   * List all named keys assigned to an instance, with their metadata.
-   */
-  getInstanceKeys(instanceId: number): InstanceNamedKeyRecord[] {
-    const rows = this.db
-      .prepare(
-        `SELECT ink.named_key_id, nak.name, nak.provider_id, nak.default_model, nak.base_url, ink.is_default
-         FROM instance_named_keys ink
-         JOIN named_api_keys nak ON nak.id = ink.named_key_id
-         WHERE ink.instance_id = ?
-         ORDER BY nak.name ASC`,
-      )
-      .all(instanceId) as RawInstanceNamedKeyRow[];
-
-    return rows.map((row) => ({
-      namedKeyId: row.named_key_id,
-      name: row.name,
-      providerId: row.provider_id,
-      defaultModel: row.default_model,
-      baseUrl: row.base_url,
-      isDefault: row.is_default === 1,
-    }));
-  }
-
-  /**
-   * Get the default named key for an instance, with its decrypted API key.
-   * Returns null if no default is set.
-   */
-  getInstanceDefaultKey(instanceId: number): {
-    namedKeyId: number;
-    decryptedKey: string;
+  /** Get the default named key for an instance (decrypted). */
+  getDefaultKeyForInstance(instanceId: number): {
+    id: number;
     providerId: string;
     defaultModel: string;
+    apiKey: string;
     baseUrl: string | null;
   } | null {
     const row = this.db
       .prepare(
-        `SELECT nak.id, nak.encrypted_api_key, nak.provider_id, nak.default_model, nak.base_url
-         FROM instance_named_keys ink
-         JOIN named_api_keys nak ON nak.id = ink.named_key_id
-         WHERE ink.instance_id = ? AND ink.is_default = 1
-         LIMIT 1`,
+        `SELECT nk.id, nk.provider_id, nk.default_model, nk.encrypted_api_key, nk.base_url
+         FROM instances i
+         JOIN named_api_keys nk ON nk.id = i.default_named_key_id
+         WHERE i.id = ?`,
       )
       .get(instanceId) as
       | {
           id: number;
-          encrypted_api_key: string;
           provider_id: string;
           default_model: string;
+          encrypted_api_key: string;
           base_url: string | null;
         }
       | undefined;
-
     if (!row) return null;
-
     return {
-      namedKeyId: row.id,
-      decryptedKey: decrypt(row.encrypted_api_key),
+      id: row.id,
       providerId: row.provider_id,
       defaultModel: row.default_model,
+      apiKey: decrypt(row.encrypted_api_key),
       baseUrl: row.base_url,
     };
+  }
+
+  /** Set the default named key for an instance. */
+  setDefaultKeyForInstance(instanceId: number, namedKeyId: number | null): void {
+    this.db
+      .prepare("UPDATE instances SET default_named_key_id = ? WHERE id = ?")
+      .run(namedKeyId, instanceId);
   }
 
   /**

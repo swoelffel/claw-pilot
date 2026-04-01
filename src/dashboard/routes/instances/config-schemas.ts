@@ -72,16 +72,6 @@ export interface InstanceConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Named keys patch schema
-// ---------------------------------------------------------------------------
-
-const NamedKeysPatchSchema = z.object({
-  assign: z.array(z.object({ namedKeyId: z.number().int().positive() })).optional(),
-  remove: z.array(z.object({ namedKeyId: z.number().int().positive() })).optional(),
-  setDefault: z.object({ namedKeyId: z.number().int().positive() }).optional(),
-});
-
-// ---------------------------------------------------------------------------
 // Config patch schema for runtime instances
 // ---------------------------------------------------------------------------
 
@@ -164,8 +154,8 @@ export const RuntimeConfigPatchSchema = z.object({
         .optional(),
     })
     .optional(),
-  // namedKeys: named API key assignments for this instance
-  namedKeys: NamedKeysPatchSchema.optional(),
+  // defaultNamedKeyId: set the default named key for this instance
+  defaultNamedKeyId: z.number().int().positive().nullable().optional(),
   // agents: per-agent config patches applied to runtime.json
   agents: z
     .array(

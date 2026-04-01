@@ -6,10 +6,10 @@ import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
 import { buttonStyles, spinnerStyles } from "../styles/shared.js";
 import { getToken } from "../services/auth-state.js";
-import { fetchProviders, fetchNamedKeys, patchInstanceConfig } from "../api.js";
-import type { ProviderInfo, InstanceNamedKey, NamedApiKey } from "../types.js";
+import { fetchProviders } from "../api.js";
+import type { ProviderInfo } from "../types.js";
 
-type ConfigTab = "models" | "compaction" | "subagents" | "keys";
+type ConfigTab = "models" | "compaction" | "subagents";
 
 interface ModelAlias {
   id: string;
@@ -246,18 +246,12 @@ export class InstanceConfig extends LitElement {
   @state() private _providerCatalog: ProviderInfo[] = [];
   @state() private _configuredProviderIds: string[] = [];
 
-  // Named keys state
-  @state() private _instanceKeys: InstanceNamedKey[] = [];
-  @state() private _allNamedKeys: NamedApiKey[] = [];
-  @state() private _keysSaving = false;
-
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   override updated(changed: Map<string, unknown>): void {
     if (changed.has("active") && this.active) {
       void this._load();
       void this._loadProviderCatalog();
-      void this._loadAllNamedKeys();
     }
   }
 
@@ -280,10 +274,8 @@ export class InstanceConfig extends LitElement {
           compaction?: { threshold?: number; reservedTokens?: number };
           subagents?: { maxSpawnDepth?: number; maxChildrenPerSession?: number };
         };
-        namedKeys?: InstanceNamedKey[];
       };
       this._configuredProviderIds = (data.providers ?? []).map((p) => p.id);
-      this._instanceKeys = data.namedKeys ?? [];
       const ad = data.agentDefaults ?? {};
       this._internalModel = ad.defaultInternalModel ?? "";
       this._aliases = (ad.models ?? []).map((m) => ({
@@ -309,60 +301,6 @@ export class InstanceConfig extends LitElement {
       this._providerCatalog = data.providers;
     } catch {
       // Non-fatal
-    }
-  }
-
-  private async _loadAllNamedKeys(): Promise<void> {
-    try {
-      const data = await fetchNamedKeys();
-      this._allNamedKeys = data.keys;
-    } catch {
-      // Non-fatal — the keys tab will show no available keys
-    }
-  }
-
-  private async _assignKey(namedKeyId: number): Promise<void> {
-    if (!this.slug) return;
-    this._keysSaving = true;
-    try {
-      await patchInstanceConfig(this.slug, {
-        namedKeys: { assign: [{ namedKeyId }] },
-      });
-      await this._load();
-    } catch {
-      // Silently ignore
-    } finally {
-      this._keysSaving = false;
-    }
-  }
-
-  private async _removeKey(namedKeyId: number): Promise<void> {
-    if (!this.slug) return;
-    this._keysSaving = true;
-    try {
-      await patchInstanceConfig(this.slug, {
-        namedKeys: { remove: [{ namedKeyId }] },
-      });
-      await this._load();
-    } catch {
-      // Silently ignore
-    } finally {
-      this._keysSaving = false;
-    }
-  }
-
-  private async _setDefaultKey(namedKeyId: number): Promise<void> {
-    if (!this.slug) return;
-    this._keysSaving = true;
-    try {
-      await patchInstanceConfig(this.slug, {
-        namedKeys: { setDefault: { namedKeyId } },
-      });
-      await this._load();
-    } catch {
-      // Silently ignore
-    } finally {
-      this._keysSaving = false;
     }
   }
 
@@ -637,80 +575,6 @@ export class InstanceConfig extends LitElement {
     `;
   }
 
-  private _renderKeys() {
-    // Keys already assigned to this instance
-    const assignedIds = new Set(this._instanceKeys.map((k) => k.namedKeyId));
-    // Keys available for assignment (not yet assigned)
-    const availableKeys = this._allNamedKeys.filter((k) => !assignedIds.has(k.id));
-
-    return html`
-      ${this._instanceKeys.length > 0
-        ? html`
-            <div class="alias-list">
-              ${this._instanceKeys.map(
-                (key) => html`
-                  <div class="alias-row">
-                    <input
-                      type="radio"
-                      name="default-key"
-                      .checked=${key.isDefault}
-                      ?disabled=${this._keysSaving}
-                      @change=${() => void this._setDefaultKey(key.namedKeyId)}
-                      title=${msg("Set as default", { id: "cfg-key-set-default" })}
-                      style="flex-shrink:0; accent-color: var(--accent);"
-                    />
-                    <span class="alias-id">${key.name}</span>
-                    <span
-                      class="field-label"
-                      style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;"
-                      >${key.providerId}${key.defaultModel
-                        ? html` / ${key.defaultModel}`
-                        : nothing}</span
-                    >
-                    <button
-                      class="btn-remove-alias"
-                      ?disabled=${this._keysSaving}
-                      @click=${() => void this._removeKey(key.namedKeyId)}
-                      title=${msg("Remove key from instance", { id: "cfg-key-remove" })}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                `,
-              )}
-            </div>
-          `
-        : html`
-            <div class="field-label" style="margin-bottom:8px; font-style:italic;">
-              ${msg("No API keys assigned to this instance.", { id: "cfg-no-keys" })}
-            </div>
-          `}
-      ${availableKeys.length > 0
-        ? html`
-            <div class="field" style="margin-top:8px;">
-              <label class="field-label">${msg("Assign a key", { id: "cfg-assign-key" })}</label>
-              <select
-                class="field-select"
-                ?disabled=${this._keysSaving}
-                @change=${(e: Event) => {
-                  const val = (e.target as HTMLSelectElement).value;
-                  if (val) {
-                    void this._assignKey(Number(val));
-                    (e.target as HTMLSelectElement).value = "";
-                  }
-                }}
-              >
-                <option value="">— ${msg("select key", { id: "cfg-key-placeholder" })} —</option>
-                ${availableKeys.map(
-                  (k) => html` <option value=${String(k.id)}>${k.name} (${k.providerId})</option> `,
-                )}
-              </select>
-            </div>
-          `
-        : nothing}
-    `;
-  }
-
   override render() {
     return html`
       <div class="config-panel">
@@ -744,21 +608,12 @@ export class InstanceConfig extends LitElement {
           >
             ${msg("Sub-agents", { id: "cfg-tab-subagents" })}
           </button>
-          <button
-            class="sub-tab ${this._tab === "keys" ? "active" : ""}"
-            @click=${() => {
-              this._tab = "keys";
-            }}
-          >
-            ${msg("API Keys", { id: "cfg-tab-keys" })}
-          </button>
         </div>
 
         <!-- Tab content -->
         ${this._tab === "models" ? this._renderModels() : nothing}
         ${this._tab === "compaction" ? this._renderCompaction() : nothing}
         ${this._tab === "subagents" ? this._renderSubagents() : nothing}
-        ${this._tab === "keys" ? this._renderKeys() : nothing}
 
         <!-- Save bar -->
         ${this._dirty

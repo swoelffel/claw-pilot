@@ -328,9 +328,10 @@ export class InstanceSettings extends LitElement {
     const c = this._config!;
     const currentDefaultModel = this._getDirty("general.defaultModel", c.general.defaultModel);
 
-    // Named keys assigned to this instance (from GET /api/instances/:slug/config)
+    // All named keys (global) and instance default key ID
     const namedKeys = c.namedKeys ?? [];
-    const defaultKey = namedKeys.find((k) => k.isDefault);
+    const defaultNamedKeyId = c.defaultNamedKeyId ?? null;
+    const defaultKey = namedKeys.find((k) => k.id === defaultNamedKeyId);
 
     // Determine the provider from the default named key (or from the model string as fallback)
     const selectedProviderId = defaultKey?.providerId ?? currentDefaultModel.split("/")[0] ?? "";
@@ -377,9 +378,12 @@ export class InstanceSettings extends LitElement {
                       void this._changeDefaultKey(keyId);
                     }}
                   >
+                    <option value="" ?selected=${!defaultNamedKeyId}>
+                      — ${msg("None", { id: "settings-key-none" })} —
+                    </option>
                     ${namedKeys.map(
                       (k) => html`
-                        <option value=${String(k.namedKeyId)} ?selected=${k.isDefault}>
+                        <option value=${String(k.id)} ?selected=${k.id === defaultNamedKeyId}>
                           ${k.name} (${k.providerId})
                         </option>
                       `,
@@ -387,7 +391,7 @@ export class InstanceSettings extends LitElement {
                   </select>
                 `
               : html`<div class="field-readonly" style="color:var(--text-muted)">
-                  No API keys assigned — go to Config &gt; Keys
+                  No API keys configured
                 </div>`}
           </div>
 
@@ -423,7 +427,7 @@ export class InstanceSettings extends LitElement {
   private async _changeDefaultKey(namedKeyId: number): Promise<void> {
     try {
       await patchInstanceConfig(this.slug, {
-        namedKeys: { setDefault: { namedKeyId } },
+        defaultNamedKeyId: namedKeyId || null,
       });
       // Reload config to reflect the change
       await this._loadConfig();

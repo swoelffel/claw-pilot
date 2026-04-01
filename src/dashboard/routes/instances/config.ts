@@ -49,14 +49,19 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
         registry.saveRuntimeConfig(slug, config);
       }
 
-      // Load named keys assigned to this instance
-      let namedKeys: import("../../../core/repositories/named-key-repository.js").InstanceNamedKeyRecord[] =
+      // Load all named keys (global) and instance default key ID
+      let defaultNamedKeyId: number | null = null;
+      let allNamedKeys: import("../../../core/repositories/named-key-repository.js").NamedApiKeyRecord[] =
         [];
       if (isCryptoAvailable()) {
         const namedKeyRepo = new NamedKeyRepository(deps.db);
+        allNamedKeys = namedKeyRepo.listAll();
         const inst = deps.registry.getInstance(slug);
         if (inst) {
-          namedKeys = namedKeyRepo.getInstanceKeys(inst.id);
+          const row = deps.db
+            .prepare("SELECT default_named_key_id FROM instances WHERE id = ?")
+            .get(inst.id) as { default_named_key_id: number | null } | undefined;
+          defaultNamedKeyId = row?.default_named_key_id ?? null;
         }
       }
 
@@ -67,7 +72,7 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
           default_model: instance!.default_model,
           port: instance!.port,
         });
-        return c.json({ ...stub, namedKeys });
+        return c.json({ ...stub, namedKeys: allNamedKeys, defaultNamedKeyId });
       }
 
       const payload = buildInstanceConfig(
@@ -79,7 +84,7 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
         config,
         stateDir,
       );
-      return c.json({ ...payload, namedKeys });
+      return c.json({ ...payload, namedKeys: allNamedKeys, defaultNamedKeyId });
     } catch (err) {
       logger.error(
         `[config] GET /config error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
@@ -367,29 +372,15 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
       }
     }
 
-    // --- Named keys: assign/remove/setDefault (stored in separate tables, not RuntimeConfig JSON) ---
-    if (patch.namedKeys) {
+    // --- Default named key (simple FK on instances, v25) ---
+    if (patch.defaultNamedKeyId !== undefined) {
       if (!isCryptoAvailable()) {
         return apiError(c, 503, "CRYPTO_UNAVAILABLE", "Named keys require MASTER_ENCRYPTION_KEY");
       }
-      const namedKeyRepo = new NamedKeyRepository(deps.db);
       const inst = deps.registry.getInstance(slug);
-      if (!inst) {
-        return apiError(c, 404, "NOT_FOUND", "Instance not found");
-      }
-
-      if (patch.namedKeys.assign) {
-        for (const entry of patch.namedKeys.assign) {
-          namedKeyRepo.assignToInstance(inst.id, entry.namedKeyId, false);
-        }
-      }
-      if (patch.namedKeys.remove) {
-        for (const entry of patch.namedKeys.remove) {
-          namedKeyRepo.removeFromInstance(inst.id, entry.namedKeyId);
-        }
-      }
-      if (patch.namedKeys.setDefault) {
-        namedKeyRepo.setInstanceDefault(inst.id, patch.namedKeys.setDefault.namedKeyId);
+      if (inst) {
+        const namedKeyRepo = new NamedKeyRepository(deps.db);
+        namedKeyRepo.setDefaultKeyForInstance(inst.id, patch.defaultNamedKeyId);
       }
     }
 

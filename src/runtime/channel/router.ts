@@ -395,7 +395,7 @@ export function resolveModelForAgent(
       | { id: number }
       | undefined;
     if (instance) {
-      const defaultKey = namedKeyRepo.getInstanceDefaultKey(instance.id);
+      const defaultKey = namedKeyRepo.getDefaultKeyForInstance(instance.id);
       if (defaultKey) {
         const modelId = agentConfig.model
           ? agentConfig.model.includes("/")
@@ -403,7 +403,7 @@ export function resolveModelForAgent(
             : agentConfig.model
           : defaultKey.defaultModel;
         return resolveModel(defaultKey.providerId, modelId, {
-          apiKey: defaultKey.decryptedKey,
+          apiKey: defaultKey.apiKey,
           ...(defaultKey.baseUrl ? { baseUrl: defaultKey.baseUrl } : {}),
         });
       }

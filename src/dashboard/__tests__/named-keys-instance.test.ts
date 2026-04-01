@@ -1,8 +1,8 @@
 // src/dashboard/__tests__/named-keys-instance.test.ts
 //
-// Integration tests for namedKeys support in the instance config routes.
-// Tests GET /api/instances/:slug/config (namedKeys field) and
-// PATCH /api/instances/:slug/config (namedKeys.assign/remove/setDefault).
+// Integration tests for defaultNamedKeyId support in the instance config routes.
+// Tests GET /api/instances/:slug/config (namedKeys + defaultNamedKeyId fields) and
+// PATCH /api/instances/:slug/config (defaultNamedKeyId).
 
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
 import { Hono } from "hono";
@@ -159,11 +159,11 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// PATCH /api/instances/:slug/config — namedKeys.assign
+// PATCH /api/instances/:slug/config — defaultNamedKeyId
 // ---------------------------------------------------------------------------
 
-describe("PATCH /api/instances/:slug/config — namedKeys.assign", () => {
-  it("assigns a named key to an instance", async () => {
+describe("PATCH /api/instances/:slug/config — defaultNamedKeyId", () => {
+  it("sets the default named key for an instance", async () => {
     seedInstance(ctx, "alpha", 18800);
     const namedKey = ctx.namedKeyRepo.create({
       name: "My Key",
@@ -176,9 +176,7 @@ describe("PATCH /api/instances/:slug/config — namedKeys.assign", () => {
       method: "PATCH",
       headers: jsonHeaders(),
       body: JSON.stringify({
-        namedKeys: {
-          assign: [{ namedKeyId: namedKey.id }],
-        },
+        defaultNamedKeyId: namedKey.id,
       }),
     });
 
@@ -186,44 +184,38 @@ describe("PATCH /api/instances/:slug/config — namedKeys.assign", () => {
     const body = await json(res);
     expect(body.ok).toBe(true);
 
-    // Verify assignment in DB
+    // Verify in DB
     const instance = ctx.registry.getInstance("alpha")!;
-    const keys = ctx.namedKeyRepo.getInstanceKeys(instance.id);
-    expect(keys).toHaveLength(1);
-    expect(keys[0]!.namedKeyId).toBe(namedKey.id);
-    expect(keys[0]!.name).toBe("My Key");
-    expect(keys[0]!.isDefault).toBe(false);
+    const row = ctx.db
+      .prepare("SELECT default_named_key_id FROM instances WHERE id = ?")
+      .get(instance.id) as { default_named_key_id: number | null };
+    expect(row.default_named_key_id).toBe(namedKey.id);
   });
 
-  it("can assign multiple named keys", async () => {
+  it("clears the default key when set to null", async () => {
     seedInstance(ctx, "beta", 18801);
-    const key1 = ctx.namedKeyRepo.create({
+    const key = ctx.namedKeyRepo.create({
       name: "Key One",
       providerId: "anthropic",
       apiKey: "sk-ant-key1",
       defaultModel: "claude-3-haiku",
     });
-    const key2 = ctx.namedKeyRepo.create({
-      name: "Key Two",
-      providerId: "openai",
-      apiKey: "sk-openai-key2",
-      defaultModel: "gpt-4o",
-    });
+    const instance = ctx.registry.getInstance("beta")!;
+    ctx.namedKeyRepo.setDefaultKeyForInstance(instance.id, key.id);
 
     const res = await ctx.app.request("/api/instances/beta/config", {
       method: "PATCH",
       headers: jsonHeaders(),
       body: JSON.stringify({
-        namedKeys: {
-          assign: [{ namedKeyId: key1.id }, { namedKeyId: key2.id }],
-        },
+        defaultNamedKeyId: null,
       }),
     });
 
     expect(res.status).toBe(200);
-    const instance = ctx.registry.getInstance("beta")!;
-    const keys = ctx.namedKeyRepo.getInstanceKeys(instance.id);
-    expect(keys).toHaveLength(2);
+    const row = ctx.db
+      .prepare("SELECT default_named_key_id FROM instances WHERE id = ?")
+      .get(instance.id) as { default_named_key_id: number | null };
+    expect(row.default_named_key_id).toBeNull();
   });
 
   it("returns 503 when MASTER_ENCRYPTION_KEY is not set", async () => {
@@ -234,9 +226,7 @@ describe("PATCH /api/instances/:slug/config — namedKeys.assign", () => {
         method: "PATCH",
         headers: jsonHeaders(),
         body: JSON.stringify({
-          namedKeys: {
-            assign: [{ namedKeyId: 1 }],
-          },
+          defaultNamedKeyId: 1,
         }),
       });
 
@@ -247,54 +237,9 @@ describe("PATCH /api/instances/:slug/config — namedKeys.assign", () => {
       process.env.MASTER_ENCRYPTION_KEY = TEST_MASTER_KEY;
     }
   });
-});
 
-// ---------------------------------------------------------------------------
-// PATCH /api/instances/:slug/config — namedKeys.setDefault
-// ---------------------------------------------------------------------------
-
-describe("PATCH /api/instances/:slug/config — namedKeys.setDefault", () => {
-  it("sets the default named key for an instance", async () => {
+  it("changes the default key", async () => {
     seedInstance(ctx, "delta", 18803);
-    const key1 = ctx.namedKeyRepo.create({
-      name: "Default Candidate",
-      providerId: "anthropic",
-      apiKey: "sk-ant-default",
-      defaultModel: "claude-3-5-sonnet",
-    });
-    const key2 = ctx.namedKeyRepo.create({
-      name: "Secondary Key",
-      providerId: "anthropic",
-      apiKey: "sk-ant-secondary",
-      defaultModel: "claude-3-haiku",
-    });
-    const instance = ctx.registry.getInstance("delta")!;
-    ctx.namedKeyRepo.assignToInstance(instance.id, key1.id, false);
-    ctx.namedKeyRepo.assignToInstance(instance.id, key2.id, false);
-
-    const res = await ctx.app.request("/api/instances/delta/config", {
-      method: "PATCH",
-      headers: jsonHeaders(),
-      body: JSON.stringify({
-        namedKeys: {
-          setDefault: { namedKeyId: key1.id },
-        },
-      }),
-    });
-
-    expect(res.status).toBe(200);
-    const keys = ctx.namedKeyRepo.getInstanceKeys(instance.id);
-    const defaultKey = keys.find((k) => k.isDefault);
-    expect(defaultKey).toBeDefined();
-    expect(defaultKey!.namedKeyId).toBe(key1.id);
-
-    // The other key should not be default
-    const nonDefault = keys.find((k) => k.namedKeyId === key2.id);
-    expect(nonDefault!.isDefault).toBe(false);
-  });
-
-  it("changes the default key atomically", async () => {
-    seedInstance(ctx, "epsilon", 18804);
     const key1 = ctx.namedKeyRepo.create({
       name: "First Key",
       providerId: "anthropic",
@@ -307,105 +252,32 @@ describe("PATCH /api/instances/:slug/config — namedKeys.setDefault", () => {
       apiKey: "sk-ant-second",
       defaultModel: "claude-3-haiku",
     });
-    const instance = ctx.registry.getInstance("epsilon")!;
-    ctx.namedKeyRepo.assignToInstance(instance.id, key1.id, true); // key1 starts as default
-    ctx.namedKeyRepo.assignToInstance(instance.id, key2.id, false);
+    const instance = ctx.registry.getInstance("delta")!;
+    ctx.namedKeyRepo.setDefaultKeyForInstance(instance.id, key1.id);
 
     // Switch default to key2
-    const res = await ctx.app.request("/api/instances/epsilon/config", {
+    const res = await ctx.app.request("/api/instances/delta/config", {
       method: "PATCH",
       headers: jsonHeaders(),
       body: JSON.stringify({
-        namedKeys: {
-          setDefault: { namedKeyId: key2.id },
-        },
+        defaultNamedKeyId: key2.id,
       }),
     });
 
     expect(res.status).toBe(200);
-    const keys = ctx.namedKeyRepo.getInstanceKeys(instance.id);
-    const defaultKey = keys.find((k) => k.isDefault);
-    expect(defaultKey!.namedKeyId).toBe(key2.id);
-
-    const formerDefault = keys.find((k) => k.namedKeyId === key1.id);
-    expect(formerDefault!.isDefault).toBe(false);
+    const row = ctx.db
+      .prepare("SELECT default_named_key_id FROM instances WHERE id = ?")
+      .get(instance.id) as { default_named_key_id: number | null };
+    expect(row.default_named_key_id).toBe(key2.id);
   });
 });
 
 // ---------------------------------------------------------------------------
-// PATCH /api/instances/:slug/config — namedKeys.remove
+// GET /api/instances/:slug/config — namedKeys + defaultNamedKeyId
 // ---------------------------------------------------------------------------
 
-describe("PATCH /api/instances/:slug/config — namedKeys.remove", () => {
-  it("removes a named key assignment from an instance", async () => {
-    seedInstance(ctx, "zeta", 18805);
-    const key = ctx.namedKeyRepo.create({
-      name: "To Remove",
-      providerId: "openai",
-      apiKey: "sk-remove-me",
-      defaultModel: "gpt-4o",
-    });
-    const instance = ctx.registry.getInstance("zeta")!;
-    ctx.namedKeyRepo.assignToInstance(instance.id, key.id, false);
-
-    expect(ctx.namedKeyRepo.getInstanceKeys(instance.id)).toHaveLength(1);
-
-    const res = await ctx.app.request("/api/instances/zeta/config", {
-      method: "PATCH",
-      headers: jsonHeaders(),
-      body: JSON.stringify({
-        namedKeys: {
-          remove: [{ namedKeyId: key.id }],
-        },
-      }),
-    });
-
-    expect(res.status).toBe(200);
-    const keys = ctx.namedKeyRepo.getInstanceKeys(instance.id);
-    expect(keys).toHaveLength(0);
-  });
-
-  it("can combine assign and remove in a single patch", async () => {
-    seedInstance(ctx, "eta", 18806);
-    const keyToRemove = ctx.namedKeyRepo.create({
-      name: "Old Key",
-      providerId: "anthropic",
-      apiKey: "sk-ant-old",
-      defaultModel: "claude-3-haiku",
-    });
-    const keyToAssign = ctx.namedKeyRepo.create({
-      name: "New Key",
-      providerId: "anthropic",
-      apiKey: "sk-ant-new",
-      defaultModel: "claude-3-5-sonnet",
-    });
-    const instance = ctx.registry.getInstance("eta")!;
-    ctx.namedKeyRepo.assignToInstance(instance.id, keyToRemove.id, false);
-
-    const res = await ctx.app.request("/api/instances/eta/config", {
-      method: "PATCH",
-      headers: jsonHeaders(),
-      body: JSON.stringify({
-        namedKeys: {
-          assign: [{ namedKeyId: keyToAssign.id }],
-          remove: [{ namedKeyId: keyToRemove.id }],
-        },
-      }),
-    });
-
-    expect(res.status).toBe(200);
-    const keys = ctx.namedKeyRepo.getInstanceKeys(instance.id);
-    expect(keys).toHaveLength(1);
-    expect(keys[0]!.namedKeyId).toBe(keyToAssign.id);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// GET /api/instances/:slug/config — namedKeys field
-// ---------------------------------------------------------------------------
-
-describe("GET /api/instances/:slug/config — namedKeys field", () => {
-  it("returns namedKeys as empty array when none are assigned", async () => {
+describe("GET /api/instances/:slug/config — namedKeys + defaultNamedKeyId", () => {
+  it("returns namedKeys as all global keys and defaultNamedKeyId as null when none set", async () => {
     seedInstance(ctx, "theta", 18807);
 
     const res = await ctx.app.request("/api/instances/theta/config", {
@@ -417,9 +289,10 @@ describe("GET /api/instances/:slug/config — namedKeys field", () => {
     expect(body.namedKeys).toBeDefined();
     expect(Array.isArray(body.namedKeys)).toBe(true);
     expect(body.namedKeys).toHaveLength(0);
+    expect(body.defaultNamedKeyId).toBeNull();
   });
 
-  it("returns assigned named keys with their metadata", async () => {
+  it("returns all global named keys and the instance defaultNamedKeyId", async () => {
     seedInstance(ctx, "iota", 18808);
     const key1 = ctx.namedKeyRepo.create({
       name: "Prod Key",
@@ -434,8 +307,7 @@ describe("GET /api/instances/:slug/config — namedKeys field", () => {
       defaultModel: "gpt-4o",
     });
     const instance = ctx.registry.getInstance("iota")!;
-    ctx.namedKeyRepo.assignToInstance(instance.id, key1.id, true); // key1 is default
-    ctx.namedKeyRepo.assignToInstance(instance.id, key2.id, false);
+    ctx.namedKeyRepo.setDefaultKeyForInstance(instance.id, key1.id);
 
     const res = await ctx.app.request("/api/instances/iota/config", {
       headers: authHeaders(),
@@ -444,17 +316,15 @@ describe("GET /api/instances/:slug/config — namedKeys field", () => {
     expect(res.status).toBe(200);
     const body = await json(res);
     expect(Array.isArray(body.namedKeys)).toBe(true);
+    // All global keys are returned
     expect(body.namedKeys).toHaveLength(2);
-
-    const defaultKey = body.namedKeys.find((k: Json) => k.isDefault === true);
-    expect(defaultKey).toBeDefined();
-    expect(defaultKey.namedKeyId).toBe(key1.id);
-    expect(defaultKey.name).toBe("Prod Key");
-    expect(defaultKey.providerId).toBe("anthropic");
-    expect(defaultKey.defaultModel).toBe("claude-3-5-sonnet");
+    expect(body.namedKeys.map((k: Json) => k.name)).toContain("Prod Key");
+    expect(body.namedKeys.map((k: Json) => k.name)).toContain("Dev Key");
+    // defaultNamedKeyId points to key1
+    expect(body.defaultNamedKeyId).toBe(key1.id);
   });
 
-  it("returns empty namedKeys when crypto is unavailable", async () => {
+  it("returns empty namedKeys and null defaultNamedKeyId when crypto is unavailable", async () => {
     delete process.env.MASTER_ENCRYPTION_KEY;
     try {
       seedInstance(ctx, "kappa", 18809);
@@ -467,6 +337,7 @@ describe("GET /api/instances/:slug/config — namedKeys field", () => {
       const body = await json(res);
       expect(body.namedKeys).toBeDefined();
       expect(body.namedKeys).toHaveLength(0);
+      expect(body.defaultNamedKeyId).toBeNull();
     } finally {
       process.env.MASTER_ENCRYPTION_KEY = TEST_MASTER_KEY;
     }

@@ -8,7 +8,7 @@ import {
   type PanelContext,
   type AgentMetaPatch,
   type SkillInfo,
-  type InstanceNamedKey,
+  type NamedApiKey,
   AGENT_ARCHETYPES,
   isArchetypeLink,
 } from "../types.js";
@@ -86,7 +86,7 @@ export class AgentDetailPanel extends LitElement {
   @state() private _providers: { id: string; label: string; models: string[] }[] | null = null;
   @state() private _loadingProviders = false;
   @state() private _editNamedKeyId: number | null = null;
-  @state() private _instanceNamedKeys: InstanceNamedKey[] = [];
+  @state() private _instanceNamedKeys: NamedApiKey[] = [];
   @state() private _infoDirty = false;
   @state() private _infoSaving = false;
   @state() private _infoError = "";
@@ -1622,14 +1622,8 @@ export class AgentDetailPanel extends LitElement {
                   </option>
                   ${this._instanceNamedKeys.map(
                     (k) => html`
-                      <option
-                        value=${String(k.namedKeyId)}
-                        ?selected=${k.namedKeyId === this._editNamedKeyId}
-                      >
-                        ${k.name}
-                        (${k.providerId})${k.isDefault
-                          ? ` — ${msg("default", { id: "adp-named-key-is-default" })}`
-                          : ""}
+                      <option value=${String(k.id)} ?selected=${k.id === this._editNamedKeyId}>
+                        ${k.name} (${k.providerId})
                       </option>
                     `,
                   )}

@@ -1061,6 +1061,7 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
+    // TODO(cleanup): remove after v0.62 — instance_named_keys table is unused
     // v24: Named API keys — centralized key management at admin level.
     // Keys are encrypted with AES-256-GCM (MASTER_ENCRYPTION_KEY env var).
     // Assigned to instances via junction table, overridable per agent.
@@ -1094,6 +1095,30 @@ const MIGRATIONS: Migration[] = [
         -- Agent key override (nullable — NULL means inherit instance default)
         ALTER TABLE agents ADD COLUMN named_key_id INTEGER
           REFERENCES named_api_keys(id) ON DELETE SET NULL;
+      `);
+    },
+  },
+  {
+    // v25: Simplify named keys — all keys are global, instances reference default key directly.
+    // Replaces instance_named_keys junction table with a simple FK on instances.
+    // TODO(cleanup): remove after v0.62 — instance_named_keys table is unused
+    version: 25,
+    up(db) {
+      db.exec(
+        `ALTER TABLE instances ADD COLUMN default_named_key_id INTEGER REFERENCES named_api_keys(id) ON DELETE SET NULL`,
+      );
+
+      // Backfill: copy is_default=1 assignments to instances.default_named_key_id
+      db.exec(`
+        UPDATE instances SET default_named_key_id = (
+          SELECT named_key_id FROM instance_named_keys
+          WHERE instance_named_keys.instance_id = instances.id AND instance_named_keys.is_default = 1
+          LIMIT 1
+        )
+        WHERE EXISTS (
+          SELECT 1 FROM instance_named_keys
+          WHERE instance_named_keys.instance_id = instances.id AND instance_named_keys.is_default = 1
+        )
       `);
     },
   },
