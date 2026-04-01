@@ -76,7 +76,18 @@ export class RuntimePilot extends LitElement {
         flex-direction: column;
         flex: 1;
         min-width: 0;
+        min-height: 0;
         overflow: hidden;
+      }
+
+      /* Flex constraints from parent — more reliable cross-browser than :host */
+      .pilot-main > cp-pilot-messages {
+        flex: 1 1 0%;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .pilot-main > cp-pilot-input {
+        flex-shrink: 0;
       }
 
       /* Error banner */
