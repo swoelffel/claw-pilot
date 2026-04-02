@@ -991,13 +991,12 @@ export class CpApp extends LitElement {
         </div>
       </header>
 
-      <main
-        class="${this._route.view === "pilot" ? "pilot" : ""}"
+      <cp-self-update-banner
+        .status=${this._selfUpdateStatus}
         @cp-update-action=${this._onSelfUpdateStart}
-      >
-        <cp-self-update-banner .status=${this._selfUpdateStatus}></cp-self-update-banner>
-        ${this._renderMain()}
-      </main>
+      ></cp-self-update-banner>
+
+      <main class="${this._route.view === "pilot" ? "pilot" : ""}">${this._renderMain()}</main>
 
       ${"slug" in this._route && this._route.slug
         ? html`
