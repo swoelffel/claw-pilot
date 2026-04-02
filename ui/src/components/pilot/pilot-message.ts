@@ -125,6 +125,8 @@ export class PilotMessageEl extends LitElement {
         font-size: 11px;
         flex-shrink: 0;
         margin-top: 1px;
+        overflow: hidden;
+        line-height: 1;
         user-select: none;
       }
 

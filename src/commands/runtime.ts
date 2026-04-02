@@ -15,6 +15,7 @@ import {
   isRuntimeRunning,
 } from "../lib/platform.js";
 import { initDatabase } from "../db/schema.js";
+import { ensureMasterEncryptionKey } from "../lib/crypto.js";
 import {
   ClawRuntime,
   loadRuntimeConfig,
@@ -281,6 +282,9 @@ function runtimeStartCommand(): Command {
 
       // Load environment variables from .env file
       loadEnvFile(stateDir);
+
+      // Ensure master encryption key is available (for named API key decryption)
+      await ensureMasterEncryptionKey();
 
       // Open DB early so we can read config from it
       const db = initDatabase(getDbPath());

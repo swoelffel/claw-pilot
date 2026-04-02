@@ -40,7 +40,7 @@ import {
   LLMChunkTimeout,
   PermissionReplied,
 } from "../bus/events.js";
-import { cacheSystemPrompt } from "./system-prompt-cache.js";
+import { cacheSystemPrompt, persistSystemPromptSnapshot } from "./system-prompt-cache.js";
 import { buildCoreMessages, applyCaching } from "./message-builder.js";
 import { normalizeTokenUsage } from "./usage-tracker.js";
 import { buildToolSet } from "./tool-set-builder.js";
@@ -231,8 +231,9 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       ...(userText !== undefined ? { userText } : {}),
     });
 
-    // 2b. Cache system prompt and notify observers (dashboard context panel)
+    // 2b. Cache system prompt, persist snapshot, and notify observers
     cacheSystemPrompt(sessionId, systemPrompt);
+    persistSystemPromptSnapshot(db, sessionId, systemPrompt);
     bus.publish(SessionSystemPromptBuilt, {
       sessionId,
       agentId: agentConfig.id,
