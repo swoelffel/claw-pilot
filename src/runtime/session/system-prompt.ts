@@ -196,6 +196,8 @@ export interface SystemPromptContext {
   userProfile?: UserProfile;
   /** User message text — used for skill auto-selection when autoSelectSkills is enabled */
   userText?: string;
+  /** When true, skip the skills block (used by dirty-flag cache to cache base prompt). */
+  skipSkills?: boolean;
 }
 
 /**
@@ -275,7 +277,8 @@ export async function buildSystemPrompt(ctx: SystemPromptContext): Promise<strin
   }
 
   // 3.6. Available skills block (proactive injection or auto-select)
-  if (ctx.workDir) {
+  // Skipped when building the base prompt for dirty-flag cache
+  if (!ctx.skipSkills && ctx.workDir) {
     const skillsBlock = await buildSkillsBlock(ctx.workDir, ctx.agentConfig, ctx.userText);
     if (skillsBlock) sections.push(skillsBlock);
   }
@@ -765,7 +768,7 @@ const MAX_SKILLS_BLOCK_CHARS = 30_000;
  * @param agentConfig Agent config for permission filtering and auto-select settings
  * @param userText    Current user message text (used for auto-select ranking)
  */
-async function buildSkillsBlock(
+export async function buildSkillsBlock(
   workDir: string,
   agentConfig: RuntimeAgentConfig,
   userText?: string,

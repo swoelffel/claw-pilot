@@ -561,9 +561,8 @@ describe("runPromptLoop — extraSystemPrompt", () => {
    * buildSystemPrompt and appear in the system prompt sent to the LLM.
    * Positive test: we spy on buildSystemPrompt and verify it receives the extra content.
    */
-  it("[positive] extraSystemPrompt is forwarded to buildSystemPrompt", async () => {
-    // Arrange: spy on buildSystemPrompt to capture the context it receives
-    const { buildSystemPrompt } = await import("../system-prompt.js");
+  it("[positive] extraSystemPrompt appears in the final system prompt", async () => {
+    // Arrange: spy on buildSystemPrompt to capture the generated prompt
     const spy = vi.spyOn(await import("../system-prompt.js"), "buildSystemPrompt");
 
     const session = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
@@ -582,11 +581,14 @@ describe("runPromptLoop — extraSystemPrompt", () => {
       extraSystemPrompt: extra,
     });
 
-    // Assert: buildSystemPrompt was called with the extra content
-    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ extraSystemPrompt: extra }));
+    // Assert: buildSystemPrompt was called with skipSkills (dirty-flag cache)
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ skipSkills: true }));
+    // extraSystemPrompt is no longer passed to buildSystemPrompt — it is
+    // appended separately by the prompt-loop after cache logic
+    const callArg = spy.mock.calls[0]![0];
+    expect(callArg).not.toHaveProperty("extraSystemPrompt");
 
     spy.mockRestore();
-    void buildSystemPrompt; // suppress unused import warning
   });
 
   /**

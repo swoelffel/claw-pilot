@@ -9,6 +9,7 @@ import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { constants } from "../../lib/constants.js";
 import { UserProfilePatchSchema } from "./profile-schema.js";
+import { markAllDirty } from "../../runtime/session/system-prompt-dirty.js";
 
 /**
  * Extract the authenticated userId from the session cookie.
@@ -105,6 +106,10 @@ export function registerProfileRoutes(app: Hono, deps: RouteDeps): void {
     }
 
     const updated = registry.upsertUserProfile(targetUserId, dbData);
+
+    // Invalidate all system prompt caches — profile data is injected into every prompt
+    markAllDirty("profile");
+
     return c.json({
       ok: true,
       profile: { userId: updated.user_id, updatedAt: updated.updated_at },
