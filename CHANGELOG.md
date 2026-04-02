@@ -6,6 +6,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.61.0] — 2026-04-02
+
+### Added
+
+- **Session Logs Viewer** — New screen (`#/instances/:slug/session-logs`) to browse all sessions (active + archived, permanent + ephemeral) with infinite scroll, agent/period/type/state filters, conversation and raw LLM view modes, collapsible system prompt, expandable tool calls.
+- **System prompt persistence** — New `rt_system_prompts` table (migration v26) stores historical snapshots of built system prompts, deduplicated by content hash. The session logs viewer shows the exact prompt the LLM saw at the time of the conversation.
+- **`GET /runtime/sessions` filters** — New query params: `agentId`, `since`, `until`, `persistent`, `before` (cursor), `state=all`. Returns `hasMore` for infinite scroll.
+
+### Fixed
+
+- **Pilot input invisible** — The chat input/send/attach bar was clipped below the viewport due to `calc(100vh)` not accounting for browser chrome. Replaced with `100dvh` + parent-side flex constraints.
+- **Named key provider mismatch** — Dashboard chat handler bypassed named key resolution entirely, falling back to missing `.env` keys. Now uses `resolveModelForAgent()` with provider-aware key matching.
+- **Runtime master key loading** — Runtime daemon didn't call `ensureMasterEncryptionKey()`, so named key decryption was always skipped. Added static import at runtime startup.
+- **Update banner pushing footer** — Self-update banner inside `<main>` added unaccounted height. Moved outside main.
+- **Emoji overflow in pilot timeline** — Agent archetype emoji icons overflowed their 20x20 grid cell.
+- **Inconsistent menu icons** — Replaced emoji icons (lightning, clipboard) with typographic characters matching the design system.
+
+---
+
 ## [0.60.0] — 2026-04-01
 
 ### Added
