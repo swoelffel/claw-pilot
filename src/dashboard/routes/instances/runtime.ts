@@ -6,6 +6,7 @@ import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
+import { logger } from "../../../lib/logger.js";
 import { instanceGuard } from "../../../lib/guards.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
 import { buildResolvedEnv } from "../../../lib/env-reader.js";
@@ -643,6 +644,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       if (abortController.signal.aborted) {
         return c.json({ sessionId: session.id, aborted: true, text: "" }, 200);
       }
+      logger.error("[POST /runtime/chat] prompt loop failed:", err as Record<string, unknown>);
       return apiError(
         c,
         500,

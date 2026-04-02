@@ -249,7 +249,7 @@ export class NamedKeyRepository {
     // First try keys linked to this instance, then any global key matching the provider
     const row = this.db
       .prepare(
-        "SELECT id, provider_id, default_model, encrypted_api_key, base_url FROM named_api_keys WHERE provider_id = ? LIMIT 1",
+        "SELECT id, provider_id, default_model, encrypted_api_key, base_url FROM named_api_keys WHERE provider_id = ? ORDER BY updated_at DESC LIMIT 1",
       )
       .get(providerId) as
       | {
