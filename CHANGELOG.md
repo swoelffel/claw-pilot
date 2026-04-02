@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.61.2] — 2026-04-02
+
+### Fixed
+
+- **Self-updater now restarts running runtimes** — After a successful update (git fetch, checkout, pnpm install, build), the self-updater restarts all runtime instances in `running` state before restarting the dashboard service. Previously only the dashboard was restarted, leaving runtimes on old code until manual intervention.
+
+---
+
 ## [0.61.0] — 2026-04-02
 
 ### Added

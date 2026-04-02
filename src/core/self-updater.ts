@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import type { ServerConnection } from "../server/connection.js";
+import type { Lifecycle } from "./lifecycle.js";
+import type { Registry } from "./registry.js";
 import { constants } from "../lib/constants.js";
 import { DASHBOARD_SERVICE_UNIT } from "../lib/platform.js";
 import { logger } from "../lib/logger.js";
@@ -22,7 +24,11 @@ export interface SelfUpdateJob {
 export class SelfUpdater {
   private _job: SelfUpdateJob = { status: "idle", jobId: "" };
 
-  constructor(private conn: ServerConnection) {}
+  constructor(
+    private conn: ServerConnection,
+    private lifecycle?: Lifecycle,
+    private registry?: Registry,
+  ) {}
 
   getJob(): SelfUpdateJob {
     return { ...this._job };
@@ -115,7 +121,10 @@ export class SelfUpdater {
         throw new Error(build.stderr.trim() || build.stdout.trim() || "pnpm build failed");
       }
 
-      const msg = `Updated successfully to ${targetRef}. Restarting dashboard service…`;
+      // 5. Restart running runtimes so they pick up the new code
+      const runtimeSummary = await this._restartRuntimes();
+
+      const msg = `Updated successfully to ${targetRef}. ${runtimeSummary} Restarting dashboard service…`;
       logger.info(`[self-updater] ${msg}`);
 
       this._job = {
@@ -159,6 +168,33 @@ export class SelfUpdater {
         message: msg,
       };
     }
+  }
+
+  /** Restart all running runtime instances so they pick up the new code. */
+  private async _restartRuntimes(): Promise<string> {
+    if (!this.lifecycle || !this.registry) {
+      return "Runtime restart skipped (CLI mode).";
+    }
+
+    const instances = this.registry.listInstances();
+    const running = instances.filter((i) => i.state === "running");
+    if (running.length === 0) return "No running runtimes to restart.";
+
+    let ok = 0;
+    for (const inst of running) {
+      try {
+        await this.lifecycle.restart(inst.slug);
+        ok++;
+        logger.info(`[self-updater] Restarted runtime "${inst.slug}"`);
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        logger.info(`[self-updater] Failed to restart runtime "${inst.slug}": ${errMsg}`);
+      }
+    }
+
+    const total = running.length;
+    if (ok === total) return `Restarted ${total} runtime(s).`;
+    return `Restarted ${ok}/${total} runtime(s). ${total - ok} failed.`;
   }
 
   // Remonte depuis dist/index.mjs → racine du projet (ou /opt/claw-pilot en fallback)

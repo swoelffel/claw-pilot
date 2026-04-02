@@ -1,6 +1,9 @@
 // src/core/__tests__/self-updater.test.ts
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { SelfUpdater } from "../self-updater.js";
+import type { Lifecycle } from "../lifecycle.js";
+import type { Registry } from "../registry.js";
+import type { InstanceRecord } from "../registry-types.js";
 import { MockConnection } from "./mock-connection.js";
 
 /** Wait for all pending microtasks / macrotasks to flush */
@@ -300,5 +303,126 @@ describe("SelfUpdater — Linux system service restart", () => {
     const restartCmd = conn.commands.find((c) => c.includes("systemctl --user restart"));
     expect(restartCmd).toBeDefined();
     expect(updater.getJob().status).toBe("done");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Runtime restart after update
+// ---------------------------------------------------------------------------
+
+function makeInstance(slug: string, state: InstanceRecord["state"]): InstanceRecord {
+  return {
+    id: 1,
+    server_id: 1,
+    slug,
+    display_name: slug,
+    port: 19100,
+    state,
+    config_path: `/home/test/.claw-pilot/instances/${slug}/runtime.json`,
+    state_dir: `/home/test/.claw-pilot/instances/${slug}`,
+    systemd_unit: `claw-runtime-${slug}`,
+    telegram_bot: null,
+    default_model: null,
+    discovered: 0,
+    instance_type: "claw-runtime",
+    runtime_config_json: null,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+}
+
+function mockLifecycle(restartFn?: Lifecycle["restart"]): Lifecycle {
+  return { restart: restartFn ?? vi.fn().mockResolvedValue(undefined) } as unknown as Lifecycle;
+}
+
+function mockRegistry(instances: InstanceRecord[]): Registry {
+  return { listInstances: vi.fn().mockReturnValue(instances) } as unknown as Registry;
+}
+
+describe("SelfUpdater — runtime restart after update", () => {
+  it("restarts all running runtimes after successful build", async () => {
+    const instances = [makeInstance("alpha", "running"), makeInstance("beta", "running")];
+    const lifecycle = mockLifecycle();
+    const registry = mockRegistry(instances);
+
+    conn = new MockConnection();
+    mockSuccessSequence(conn);
+    updater = new SelfUpdater(conn, lifecycle, registry);
+
+    updater.run(undefined, undefined, "v1.0.0");
+    await flush();
+
+    expect(lifecycle.restart).toHaveBeenCalledTimes(2);
+    expect(lifecycle.restart).toHaveBeenCalledWith("alpha");
+    expect(lifecycle.restart).toHaveBeenCalledWith("beta");
+    expect(updater.getJob().status).toBe("done");
+    expect(updater.getJob().message).toContain("Restarted 2 runtime(s).");
+  });
+
+  it("skips stopped instances", async () => {
+    const instances = [makeInstance("alpha", "running"), makeInstance("beta", "stopped")];
+    const lifecycle = mockLifecycle();
+    const registry = mockRegistry(instances);
+
+    conn = new MockConnection();
+    mockSuccessSequence(conn);
+    updater = new SelfUpdater(conn, lifecycle, registry);
+
+    updater.run(undefined, undefined, "v1.0.0");
+    await flush();
+
+    expect(lifecycle.restart).toHaveBeenCalledTimes(1);
+    expect(lifecycle.restart).toHaveBeenCalledWith("alpha");
+  });
+
+  it("continues if one runtime restart fails", async () => {
+    const instances = [makeInstance("alpha", "running"), makeInstance("beta", "running")];
+    const restartFn = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("alpha timeout"))
+      .mockResolvedValueOnce(undefined);
+    const lifecycle = mockLifecycle(restartFn);
+    const registry = mockRegistry(instances);
+
+    conn = new MockConnection();
+    mockSuccessSequence(conn);
+    updater = new SelfUpdater(conn, lifecycle, registry);
+
+    updater.run(undefined, undefined, "v1.0.0");
+    await flush();
+
+    expect(restartFn).toHaveBeenCalledTimes(2);
+    expect(updater.getJob().status).toBe("done");
+    expect(updater.getJob().message).toContain("1/2");
+    expect(updater.getJob().message).toContain("1 failed");
+  });
+
+  it("skips runtime restart when no lifecycle provided (CLI mode)", async () => {
+    conn = new MockConnection();
+    mockSuccessSequence(conn);
+    updater = new SelfUpdater(conn);
+
+    updater.run(undefined, undefined, "v1.0.0");
+    await flush();
+
+    expect(updater.getJob().status).toBe("done");
+    expect(updater.getJob().message).toContain("CLI mode");
+  });
+
+  it("handles zero running runtimes gracefully", async () => {
+    const instances = [makeInstance("alpha", "stopped")];
+    const lifecycle = mockLifecycle();
+    const registry = mockRegistry(instances);
+
+    conn = new MockConnection();
+    mockSuccessSequence(conn);
+    updater = new SelfUpdater(conn, lifecycle, registry);
+
+    updater.run(undefined, undefined, "v1.0.0");
+    await flush();
+
+    expect(lifecycle.restart).not.toHaveBeenCalled();
+    expect(updater.getJob().status).toBe("done");
+    expect(updater.getJob().message).toContain("No running runtimes");
   });
 });

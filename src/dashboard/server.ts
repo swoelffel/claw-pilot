@@ -117,7 +117,7 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   const lifecycle = new Lifecycle(conn, registry, xdgRuntimeDir);
   const monitor = new Monitor(health, undefined, db);
   const selfUpdateChecker = new SelfUpdateChecker();
-  const selfUpdater = new SelfUpdater(conn);
+  const selfUpdater = new SelfUpdater(conn, lifecycle, registry);
   const tokenCache = new TokenCache(conn);
 
   // Periodic session cleanup (every 60s)
