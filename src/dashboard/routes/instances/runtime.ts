@@ -508,11 +508,8 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       }
     }
 
-    // Ensure master encryption key for named API key decryption
-    const { ensureMasterEncryptionKey } = await import("../../../lib/crypto.js");
-    await ensureMasterEncryptionKey();
-
     // Resolve model — named keys first, then legacy env-based
+    // Note: ensureMasterEncryptionKey() is called at dashboard startup (commands/dashboard.ts)
     const chatAgentCfg = body.model ? { ...agentCfg, model: body.model } : agentCfg;
     let resolvedModelObj;
     try {
