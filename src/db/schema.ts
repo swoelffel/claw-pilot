@@ -1122,6 +1122,23 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v26: system prompt snapshots — persist built system prompts for session log viewer.
+    // Deduplicated by content hash: a new row is inserted only when the prompt changes.
+    version: 26,
+    up(db) {
+      db.exec(`
+        CREATE TABLE rt_system_prompts (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id      TEXT NOT NULL REFERENCES rt_sessions(id) ON DELETE CASCADE,
+          prompt_hash     TEXT NOT NULL,
+          system_prompt   TEXT NOT NULL,
+          built_at        TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX idx_rt_system_prompts_session ON rt_system_prompts(session_id);
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

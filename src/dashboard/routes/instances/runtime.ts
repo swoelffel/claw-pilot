@@ -6,6 +6,7 @@ import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
+import { logger } from "../../../lib/logger.js";
 import { instanceGuard } from "../../../lib/guards.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
 import { buildResolvedEnv } from "../../../lib/env-reader.js";
@@ -27,6 +28,7 @@ import {
   MODEL_CATALOG,
   countMessagesSinceLastCompaction,
   getCachedSystemPrompt,
+  getPersistedSystemPrompt,
   type RuntimeAgentConfig,
 } from "../../../runtime/index.js";
 import { resolveAgentWorkspacePath } from "../../../core/agent-workspace.js";
@@ -41,6 +43,7 @@ import {
   purgeArchivedSessions,
 } from "../../../core/repositories/runtime-session-repository.js";
 import { loadMergedConfigDbFirst } from "../_config-helpers.js";
+import { resolveModelForAgent } from "../../../runtime/channel/router.js";
 
 // Active prompt-loop AbortControllers, keyed by sessionId.
 // Created in POST /runtime/chat, cleaned up in finally block.
@@ -80,19 +83,31 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
 
-    const stateParam = c.req.query("state") as "active" | "archived" | undefined;
+    const stateParam = c.req.query("state") as "active" | "archived" | "all" | undefined;
     const limitParam = c.req.query("limit");
     const limit = limitParam ? parseInt(limitParam, 10) : 50;
     const includeInternal = c.req.query("includeInternal") === "true";
+    const agentId = c.req.query("agentId");
+    const since = c.req.query("since");
+    const until = c.req.query("until");
+    const persistentParam = c.req.query("persistent");
+    const before = c.req.query("before");
 
     // Delegate to repository (handles fallback on older DB schemas)
-    const sessions = listEnrichedSessions(db, slug, {
+    const { sessions, hasMore } = listEnrichedSessions(db, slug, {
       ...(stateParam !== undefined ? { state: stateParam } : {}),
       limit,
       includeInternal,
+      ...(agentId !== undefined ? { agentId } : {}),
+      ...(since !== undefined ? { since } : {}),
+      ...(until !== undefined ? { until } : {}),
+      ...(persistentParam !== undefined
+        ? { persistent: parseInt(persistentParam, 10) as 0 | 1 }
+        : {}),
+      ...(before !== undefined ? { before } : {}),
     });
 
-    return c.json({ sessions });
+    return c.json({ sessions, hasMore });
   });
 
   // ---------------------------------------------------------------------------
@@ -355,8 +370,9 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       ...(r.label ? { label: r.label } : {}),
     }));
 
-    // System prompt — served from in-memory cache if available (populated by prompt-loop)
-    const cachedPromptEntry = getCachedSystemPrompt(sessionId);
+    // System prompt — in-memory cache first, then DB snapshot fallback
+    const cachedPromptEntry =
+      getCachedSystemPrompt(sessionId) ?? getPersistedSystemPrompt(db, sessionId);
 
     return c.json({
       agent: {
@@ -483,18 +499,6 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       inheritWorkspace: true,
     };
 
-    // Resolve model
-    const modelStr = body.model ?? agentCfg.model;
-    const slashIdx = modelStr.indexOf("/");
-    if (slashIdx === -1) {
-      return apiError(
-        c,
-        400,
-        "INVALID_MODEL",
-        `Invalid model format "${modelStr}" — expected "provider/model"`,
-      );
-    }
-
     // Load merged env (global ~/.claw-pilot/.env + instance .env) for API key resolution.
     // Inject into process.env so downstream resolveModel calls (e.g. A2A model resolution
     // inside the task tool) can also find them — mirrors what the runtime daemon does at startup.
@@ -505,17 +509,18 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       }
     }
 
+    // Resolve model — named keys first, then legacy env-based
+    // Note: ensureMasterEncryptionKey() is called at dashboard startup (commands/dashboard.ts)
+    const chatAgentCfg = body.model ? { ...agentCfg, model: body.model } : agentCfg;
     let resolvedModelObj;
     try {
-      resolvedModelObj = resolveModel(modelStr.slice(0, slashIdx), modelStr.slice(slashIdx + 1), {
-        env: mergedEnv,
-      });
+      resolvedModelObj = resolveModelForAgent(db, slug, chatAgentCfg, config);
     } catch (err) {
       return apiError(
         c,
         400,
         "MODEL_RESOLUTION_FAILED",
-        err instanceof Error ? err.message : `Cannot resolve model "${modelStr}"`,
+        err instanceof Error ? err.message : `Cannot resolve model "${chatAgentCfg.model}"`,
       );
     }
 
@@ -639,6 +644,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       if (abortController.signal.aborted) {
         return c.json({ sessionId: session.id, aborted: true, text: "" }, 200);
       }
+      logger.error("[POST /runtime/chat] prompt loop failed:", err as Record<string, unknown>);
       return apiError(
         c,
         500,
