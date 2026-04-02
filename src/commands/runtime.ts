@@ -282,6 +282,10 @@ function runtimeStartCommand(): Command {
       // Load environment variables from .env file
       loadEnvFile(stateDir);
 
+      // Ensure master encryption key is available (for named API key decryption)
+      const { ensureMasterEncryptionKey } = await import("../lib/crypto.js");
+      await ensureMasterEncryptionKey();
+
       // Open DB early so we can read config from it
       const db = initDatabase(getDbPath());
 
