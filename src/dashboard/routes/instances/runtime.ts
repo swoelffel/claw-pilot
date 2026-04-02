@@ -42,6 +42,7 @@ import {
   purgeArchivedSessions,
 } from "../../../core/repositories/runtime-session-repository.js";
 import { loadMergedConfigDbFirst } from "../_config-helpers.js";
+import { resolveModelForAgent } from "../../../runtime/channel/router.js";
 
 // Active prompt-loop AbortControllers, keyed by sessionId.
 // Created in POST /runtime/chat, cleaned up in finally block.
@@ -497,18 +498,6 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       inheritWorkspace: true,
     };
 
-    // Resolve model
-    const modelStr = body.model ?? agentCfg.model;
-    const slashIdx = modelStr.indexOf("/");
-    if (slashIdx === -1) {
-      return apiError(
-        c,
-        400,
-        "INVALID_MODEL",
-        `Invalid model format "${modelStr}" — expected "provider/model"`,
-      );
-    }
-
     // Load merged env (global ~/.claw-pilot/.env + instance .env) for API key resolution.
     // Inject into process.env so downstream resolveModel calls (e.g. A2A model resolution
     // inside the task tool) can also find them — mirrors what the runtime daemon does at startup.
@@ -519,17 +508,21 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       }
     }
 
+    // Ensure master encryption key for named API key decryption
+    const { ensureMasterEncryptionKey } = await import("../../../lib/crypto.js");
+    await ensureMasterEncryptionKey();
+
+    // Resolve model — named keys first, then legacy env-based
+    const chatAgentCfg = body.model ? { ...agentCfg, model: body.model } : agentCfg;
     let resolvedModelObj;
     try {
-      resolvedModelObj = resolveModel(modelStr.slice(0, slashIdx), modelStr.slice(slashIdx + 1), {
-        env: mergedEnv,
-      });
+      resolvedModelObj = resolveModelForAgent(db, slug, chatAgentCfg, config);
     } catch (err) {
       return apiError(
         c,
         400,
         "MODEL_RESOLUTION_FAILED",
-        err instanceof Error ? err.message : `Cannot resolve model "${modelStr}"`,
+        err instanceof Error ? err.message : `Cannot resolve model "${chatAgentCfg.model}"`,
       );
     }
 
