@@ -141,7 +141,7 @@ export class Provisioner {
       // Step 4: Generate runtime.json configuration
       logger.step("Generating configuration...");
       const defaultModel = answers.defaultModel || undefined;
-      ensureRuntimeConfig(stateDir, {
+      const runtimeConfig = ensureRuntimeConfig(stateDir, {
         ...(defaultModel !== undefined ? { defaultModel } : {}),
         telegramEnabled: answers.telegram.enabled,
       });
@@ -159,6 +159,9 @@ export class Provisioner {
         discovered: false,
       });
       instanceRegistered = true;
+
+      // Persist runtime config to DB so exportSnapshot() can read it back
+      this.registry.saveRuntimeConfig(slug, runtimeConfig);
 
       // Register port in the ports table (useful for tracking)
       this.registry.allocatePort(serverId, port, slug);

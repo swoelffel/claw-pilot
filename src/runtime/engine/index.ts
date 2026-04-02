@@ -10,7 +10,6 @@ export { createChannels } from "./channel-factory.js";
 export { wirePluginsToBus } from "./plugin-wiring.js";
 export {
   loadRuntimeConfig,
-  loadMergedConfig,
   saveRuntimeConfig,
   ensureRuntimeConfig,
   runtimeConfigExists,
