@@ -138,6 +138,7 @@ export class ClawRuntime {
             ...(this.config.models !== undefined && this.config.models.length > 0
               ? { modelAliases: this.config.models }
               : {}),
+            runtimeConfig: this.config,
           }),
         );
       }

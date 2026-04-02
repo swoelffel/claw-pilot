@@ -336,6 +336,13 @@ export class InstanceSettings extends LitElement {
     // Determine the provider from the default named key (or from the model string as fallback)
     const selectedProviderId = defaultKey?.providerId ?? currentDefaultModel.split("/")[0] ?? "";
 
+    // Detect provider mismatch between default key and default model
+    const defaultModelProvider = currentDefaultModel?.includes("/")
+      ? currentDefaultModel.split("/")[0]
+      : null;
+    const hasProviderMismatch =
+      defaultKey && defaultModelProvider && defaultKey.providerId !== defaultModelProvider;
+
     // Get models for the selected provider from the catalog
     const selectedProviderCatalog = this._providerCatalog.find((p) => p.id === selectedProviderId);
     const modelsForSelectedProvider = selectedProviderCatalog?.models ?? [];
@@ -394,6 +401,17 @@ export class InstanceSettings extends LitElement {
                   No API keys configured
                 </div>`}
           </div>
+
+          ${hasProviderMismatch
+            ? html`<div class="field full-width">
+                <div class="save-warning">
+                  ${msg(
+                    "Provider mismatch: the default API key and default model use different providers. Agents will fall back to provider-matching key resolution.",
+                    { id: "settings-provider-mismatch" },
+                  )}
+                </div>
+              </div>`
+            : nothing}
 
           <div class="field full-width">
             <label class="field-label"

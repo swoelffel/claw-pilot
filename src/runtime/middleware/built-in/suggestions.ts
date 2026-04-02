@@ -9,8 +9,10 @@
 
 import { generateText } from "ai";
 import type { Middleware, MiddlewareContext } from "../types.js";
-import type { ModelAlias } from "../../config/index.js";
+import type { ModelAlias, RuntimeConfig } from "../../config/index.js";
 import { resolveModel } from "../../provider/provider.js";
+import type { ResolvedModel } from "../../provider/provider.js";
+import { resolveModelForAgent } from "../../channel/router.js";
 import { createPart } from "../../session/part.js";
 import { listMessages } from "../../session/message.js";
 import { listParts } from "../../session/part.js";
@@ -37,6 +39,8 @@ export interface SuggestionMiddlewareOptions {
   maxSuggestions: number;
   /** Named model aliases from runtime config */
   modelAliases?: ModelAlias[];
+  /** Runtime config — enables named API key resolution when provided */
+  runtimeConfig?: RuntimeConfig;
 }
 
 /**
@@ -88,9 +92,26 @@ async function generateSuggestions(
   }
   const conversationSummary = conversationLines.join("\n");
 
-  // 2. Resolve model
-  const modelStr = opts.suggestionsModel ?? agentConfig.model;
-  const resolved = resolveModelFromString(modelStr, opts.modelAliases);
+  // 2. Resolve model — named keys first, then legacy fallback
+  let resolved: ResolvedModel;
+  if (opts.runtimeConfig) {
+    const tempAgentConfig = opts.suggestionsModel
+      ? { ...agentConfig, model: opts.suggestionsModel }
+      : agentConfig;
+    try {
+      resolved = resolveModelForAgent(db, instanceSlug, tempAgentConfig, opts.runtimeConfig);
+    } catch {
+      resolved = resolveModelFromString(
+        opts.suggestionsModel ?? agentConfig.model,
+        opts.modelAliases,
+      );
+    }
+  } else {
+    resolved = resolveModelFromString(
+      opts.suggestionsModel ?? agentConfig.model,
+      opts.modelAliases,
+    );
+  }
 
   // 3. Generate suggestions
   const result = await generateText({
@@ -145,10 +166,7 @@ function parseSuggestions(text: string, max: number): string[] {
   }
 }
 
-function resolveModelFromString(
-  modelStr: string,
-  aliases?: ModelAlias[],
-): { languageModel: import("ai").LanguageModel; providerId: string; modelId: string } {
+function resolveModelFromString(modelStr: string, aliases?: ModelAlias[]): ResolvedModel {
   // Check named alias first
   if (aliases) {
     const alias = aliases.find((a) => a.id === modelStr);

@@ -491,4 +491,8 @@ export const templates = {
 
   // instance-card.ts — session-logs menu item
   "btn-session-logs": "Session Logs",
+
+  // instance-settings.ts — provider mismatch warning
+  "settings-provider-mismatch":
+    "Provider mismatch: the default API key and default model use different providers. Agents will fall back to provider-matching key resolution.",
 };

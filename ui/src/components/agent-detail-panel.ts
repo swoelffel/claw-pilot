@@ -1559,34 +1559,80 @@ export class AgentDetailPanel extends LitElement {
         <!-- Provider + Model (instance only) -->
         ${this.context?.kind === "instance"
           ? html`
-              <div class="info-item">
-                <label class="info-label">${msg("Provider", { id: "adp-label-provider" })}</label>
-                ${this._loadingProviders
-                  ? html`<span class="loading-text"
-                      >${msg("Loading...", { id: "adp-loading-providers" })}</span
-                    >`
-                  : html`
+              ${this._instanceNamedKeys.length === 0
+                ? html`
+                    <div class="info-item">
+                      <label class="info-label"
+                        >${msg("Provider", { id: "adp-label-provider" })}</label
+                      >
+                      ${this._loadingProviders
+                        ? html`<span class="loading-text"
+                            >${msg("Loading...", { id: "adp-loading-providers" })}</span
+                          >`
+                        : html`
+                            <select
+                              class="field-edit-input"
+                              @focus=${() => void this._loadProviders()}
+                              @change=${(e: Event) => {
+                                this._editProvider = (e.target as HTMLSelectElement).value;
+                                this._editModel = "";
+                                dirty();
+                              }}
+                            >
+                              <option value="">
+                                — ${msg("select provider", { id: "adp-provider-placeholder" })} —
+                              </option>
+                              ${providers.map(
+                                (p) =>
+                                  html`<option
+                                    value=${p.id}
+                                    ?selected=${p.id === this._editProvider}
+                                  >
+                                    ${p.label}
+                                  </option>`,
+                              )}
+                            </select>
+                          `}
+                    </div>
+                  `
+                : html`
+                    <!-- Named API Key (per-agent override) — shown before model when keys exist -->
+                    <div class="info-item">
+                      <label class="info-label"
+                        >${msg("API Key", { id: "adp-label-named-key" })}</label
+                      >
                       <select
                         class="field-edit-input"
-                        @focus=${() => void this._loadProviders()}
                         @change=${(e: Event) => {
-                          this._editProvider = (e.target as HTMLSelectElement).value;
-                          this._editModel = "";
+                          const val = (e.target as HTMLSelectElement).value;
+                          this._editNamedKeyId = val ? Number(val) : null;
+                          // Update provider to match the selected key
+                          if (val) {
+                            const key = this._instanceNamedKeys.find((k) => k.id === Number(val));
+                            if (key) {
+                              this._editProvider = key.providerId;
+                              this._editModel = "";
+                            }
+                          }
                           dirty();
                         }}
                       >
-                        <option value="">
-                          — ${msg("select provider", { id: "adp-provider-placeholder" })} —
+                        <option value="" ?selected=${this._editNamedKeyId === null}>
+                          — ${msg("instance default", { id: "adp-named-key-default" })} —
                         </option>
-                        ${providers.map(
-                          (p) =>
-                            html`<option value=${p.id} ?selected=${p.id === this._editProvider}>
-                              ${p.label}
-                            </option>`,
+                        ${this._instanceNamedKeys.map(
+                          (k) => html`
+                            <option
+                              value=${String(k.id)}
+                              ?selected=${k.id === this._editNamedKeyId}
+                            >
+                              ${k.name} (${k.providerId})
+                            </option>
+                          `,
                         )}
                       </select>
-                    `}
-              </div>
+                    </div>
+                  `}
               <div class="info-item">
                 <label class="info-label">${msg("Model", { id: "adp-label-model" })}</label>
                 <select
@@ -1602,30 +1648,6 @@ export class AgentDetailPanel extends LitElement {
                   ${availableModels.map(
                     (m) =>
                       html`<option value=${m} ?selected=${m === this._editModel}>${m}</option>`,
-                  )}
-                </select>
-              </div>
-
-              <!-- Named API Key (per-agent override) -->
-              <div class="info-item">
-                <label class="info-label">${msg("API Key", { id: "adp-label-named-key" })}</label>
-                <select
-                  class="field-edit-input"
-                  @change=${(e: Event) => {
-                    const val = (e.target as HTMLSelectElement).value;
-                    this._editNamedKeyId = val ? Number(val) : null;
-                    dirty();
-                  }}
-                >
-                  <option value="" ?selected=${this._editNamedKeyId === null}>
-                    — ${msg("instance default", { id: "adp-named-key-default" })} —
-                  </option>
-                  ${this._instanceNamedKeys.map(
-                    (k) => html`
-                      <option value=${String(k.id)} ?selected=${k.id === this._editNamedKeyId}>
-                        ${k.name} (${k.providerId})
-                      </option>
-                    `,
                   )}
                 </select>
               </div>

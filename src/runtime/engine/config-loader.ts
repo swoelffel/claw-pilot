@@ -16,8 +16,6 @@ import {
   createDefaultRuntimeConfig,
   type RuntimeConfig,
 } from "../config/index.js";
-import type { ProfileResolver } from "../profile/types.js";
-import { mergeProviderConfig } from "../provider/config-merge.js";
 import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -127,31 +125,4 @@ export function exportRuntimeJsonSnapshot(stateDir: string, config: RuntimeConfi
  */
 export function runtimeConfigExists(stateDir: string): boolean {
   return fs.existsSync(runtimeConfigPath(stateDir));
-}
-
-/**
- * Load runtime.json and merge with user profile providers/models if a
- * ProfileResolver is provided. Without a resolver, behaves identically
- * to loadRuntimeConfig() (backward-compatible).
- * @deprecated Use `loadMergedConfigDbFirst()` from `_config-helpers.ts` instead.
- */
-export function loadMergedConfig(
-  stateDir: string,
-  profileResolver?: ProfileResolver,
-): RuntimeConfig {
-  const config = loadRuntimeConfig(stateDir);
-
-  if (!profileResolver) return config;
-
-  const profile = profileResolver.getActiveProfile();
-  if (!profile) return config;
-
-  const userProviders = profileResolver.getProviders();
-
-  // Only merge if there is something to merge
-  if (userProviders.length === 0 && !profile.defaultModel) {
-    return config;
-  }
-
-  return mergeProviderConfig(config, userProviders, profile.defaultModel ?? undefined);
 }

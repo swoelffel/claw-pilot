@@ -40,8 +40,9 @@ vi.mock("../../lib/crypto.js", async (importOriginal) => ({
 }));
 
 // Mock ensureRuntimeConfig to avoid real filesystem operations
+// Returns a minimal RuntimeConfig so saveRuntimeConfig can serialize it
 vi.mock("../../runtime/engine/config-loader.js", () => ({
-  ensureRuntimeConfig: () => {},
+  ensureRuntimeConfig: () => ({ agents: [], defaultModel: "anthropic/claude-sonnet-4-20250514" }),
 }));
 
 // Mock Lifecycle to avoid real daemon spawn

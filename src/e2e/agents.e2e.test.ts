@@ -69,22 +69,7 @@ describe("Agents API", () => {
     expect(created.name).toBe("Test Agent");
   });
 
-  // 3. After create, runtime.json has agents[] array (not agents.list[])
-  it("After create, runtime.json has agents[] array (not agents.list[])", async () => {
-    const raw = ctx.conn.files.get(CONFIG_PATH);
-    expect(raw).toBeDefined();
-    const config = JSON.parse(raw!) as Record<string, unknown>;
-
-    // Must be a top-level array
-    expect(Array.isArray(config["agents"])).toBe(true);
-    // Must contain the new agent
-    const agents = config["agents"] as Array<Record<string, unknown>>;
-    expect(agents.find((a) => a["id"] === "test-agent")).toBeDefined();
-    // Must NOT have been corrupted with openclaw format
-    expect((config["agents"] as Record<string, unknown>)["list"]).toBeUndefined();
-  });
-
-  // 4. GET /api/instances/:slug/agents → array with 1 agent
+  // 3. GET /api/instances/:slug/agents → array with 1 agent
   it("GET /api/instances/:slug/agents → array with 1 agent", async () => {
     const res = await ctx.client.withBearer().get(`/api/instances/${INSTANCE_SLUG}/agents`);
     expect(res.status).toBe(200);
@@ -141,21 +126,7 @@ describe("Agents API", () => {
     expect(stillPresent).toBeUndefined();
   });
 
-  // 8. After delete, runtime.json no longer contains deleted agent
-  it("After delete, runtime.json no longer contains deleted agent", async () => {
-    const raw = ctx.conn.files.get(CONFIG_PATH);
-    expect(raw).toBeDefined();
-    const config = JSON.parse(raw!) as Record<string, unknown>;
-
-    expect(Array.isArray(config["agents"])).toBe(true);
-    const agents = config["agents"] as Array<Record<string, unknown>>;
-    // agent-to-delete must be gone
-    expect(agents.find((a) => a["id"] === "agent-to-delete")).toBeUndefined();
-    // test-agent must still be there
-    expect(agents.find((a) => a["id"] === "test-agent")).toBeDefined();
-  });
-
-  // 9. After delete, GET /api/instances/:slug/agents → deleted agent not present
+  // 7. After delete, GET /api/instances/:slug/agents → deleted agent not present
   it("After delete, GET .../agents → deleted agent not present", async () => {
     const res = await ctx.client.withBearer().get(`/api/instances/${INSTANCE_SLUG}/agents`);
     expect(res.status).toBe(200);

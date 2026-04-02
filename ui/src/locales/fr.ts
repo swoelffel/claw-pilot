@@ -494,4 +494,8 @@ export const templates = {
 
   // instance-card.ts — session-logs menu item
   "btn-session-logs": "Logs de sessions",
+
+  // instance-settings.ts — provider mismatch warning
+  "settings-provider-mismatch":
+    "Incohérence de provider : la clé API par défaut et le modèle par défaut utilisent des providers différents. Les agents utiliseront la résolution par correspondance de provider.",
 };
