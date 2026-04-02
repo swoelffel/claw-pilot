@@ -395,8 +395,15 @@ export function resolveModelForAgent(
       | { id: number }
       | undefined;
     if (instance) {
+      // Determine the provider the agent's model requires
+      const agentProviderId = agentConfig.model?.includes("/")
+        ? agentConfig.model.split("/")[0]
+        : undefined;
+
       const defaultKey = namedKeyRepo.getDefaultKeyForInstance(instance.id);
-      if (defaultKey) {
+
+      // Use instance default key only if its provider matches the agent's model provider
+      if (defaultKey && (!agentProviderId || defaultKey.providerId === agentProviderId)) {
         const modelId = agentConfig.model
           ? agentConfig.model.includes("/")
             ? agentConfig.model.split("/").slice(1).join("/")
@@ -406,6 +413,20 @@ export function resolveModelForAgent(
           apiKey: defaultKey.apiKey,
           ...(defaultKey.baseUrl ? { baseUrl: defaultKey.baseUrl } : {}),
         });
+      }
+
+      // Fallback: find any named key matching the required provider
+      if (agentProviderId) {
+        const matchingKey = namedKeyRepo.findKeyByProvider(instance.id, agentProviderId);
+        if (matchingKey) {
+          const modelId = agentConfig.model!.includes("/")
+            ? agentConfig.model!.split("/").slice(1).join("/")
+            : agentConfig.model!;
+          return resolveModel(matchingKey.providerId, modelId, {
+            apiKey: matchingKey.apiKey,
+            ...(matchingKey.baseUrl ? { baseUrl: matchingKey.baseUrl } : {}),
+          });
+        }
       }
     }
   }

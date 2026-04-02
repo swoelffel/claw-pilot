@@ -232,6 +232,44 @@ export class NamedKeyRepository {
     };
   }
 
+  /**
+   * Find any named key matching a specific provider for an instance.
+   * Used as fallback when the instance default key doesn't match the required provider.
+   */
+  findKeyByProvider(
+    instanceId: number,
+    providerId: string,
+  ): {
+    id: number;
+    providerId: string;
+    defaultModel: string;
+    apiKey: string;
+    baseUrl: string | null;
+  } | null {
+    // First try keys linked to this instance, then any global key matching the provider
+    const row = this.db
+      .prepare(
+        "SELECT id, provider_id, default_model, encrypted_api_key, base_url FROM named_api_keys WHERE provider_id = ? LIMIT 1",
+      )
+      .get(providerId) as
+      | {
+          id: number;
+          provider_id: string;
+          default_model: string;
+          encrypted_api_key: string;
+          base_url: string | null;
+        }
+      | undefined;
+    if (!row) return null;
+    return {
+      id: row.id,
+      providerId: row.provider_id,
+      defaultModel: row.default_model,
+      apiKey: decrypt(row.encrypted_api_key),
+      baseUrl: row.base_url,
+    };
+  }
+
   /** Set the default named key for an instance. */
   setDefaultKeyForInstance(instanceId: number, namedKeyId: number | null): void {
     this.db
