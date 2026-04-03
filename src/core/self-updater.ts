@@ -75,8 +75,8 @@ export class SelfUpdater {
     logger.info(`[self-updater] Starting claw-pilot update to ${targetRef} in ${installDir}`);
 
     try {
-      // 1. git fetch
-      const fetch = await this._exec(`git -C "${installDir}" fetch --tags --prune`, {
+      // 1. git fetch (--force so moved/recreated tags don't cause "would clobber" errors)
+      const fetch = await this._exec(`git -C "${installDir}" fetch --tags --force --prune`, {
         timeout: 60_000,
       });
       if (fetch.exitCode !== 0) {
