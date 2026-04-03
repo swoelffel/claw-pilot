@@ -6,7 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
-## [0.61.4] — 2026-04-03
+## [0.61.5] — 2026-04-03
 
 ### Changed
 
@@ -14,6 +14,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Fixed
 
+- **Self-updater tag clobber** — `git fetch --tags` now uses `--force` so moved/recreated tags don't cause "would clobber existing tag" errors that abort the update.
 - **Circular dependency crypto ↔ named-key-repository** — Extracted key migration functions from `crypto.ts` into `lib/key-migration.ts` to break the cycle that failed the CI circular dependency check.
 
 ---
