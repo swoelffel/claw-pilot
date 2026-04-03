@@ -171,6 +171,11 @@ export class InstanceSettings extends LitElement {
         comp["reservedTokens"] = this._dirty["agentDefaults.compaction.reserveTokensFloor"];
       agentDefaults["compaction"] = comp;
     }
+    if (this._isDirty("agentDefaults.heartbeat.model")) {
+      agentDefaults["heartbeat"] = {
+        model: (this._dirty["agentDefaults.heartbeat.model"] as string) || undefined,
+      };
+    }
     if (Object.keys(agentDefaults).length > 0) patch["agentDefaults"] = agentDefaults;
 
     return patch;
@@ -489,6 +494,50 @@ export class InstanceSettings extends LitElement {
                     ${m}
                   </option>
                 `,
+              )}
+            </select>
+          </div>
+          <div class="field full-width">
+            <label class="field-label">
+              ${msg("Default heartbeat model", { id: "settings-default-heartbeat-model" })}
+              <span class="info-hint">
+                ${msg("optional — agents use their own model if unset", {
+                  id: "settings-heartbeat-model-hint",
+                })}
+              </span>
+            </label>
+            <select
+              class="field-input ${this._isDirty("agentDefaults.heartbeat.model") ? "changed" : ""}"
+              @change=${(e: Event) =>
+                this._setDirty(
+                  "agentDefaults.heartbeat.model",
+                  (e.target as HTMLSelectElement).value,
+                )}
+            >
+              <option
+                value=""
+                ?selected=${!this._getDirty(
+                  "agentDefaults.heartbeat.model",
+                  c.agentDefaults.heartbeat.model ?? "",
+                )}
+              >
+                — ${msg("Same as agent model", { id: "settings-heartbeat-model-default" })} —
+              </option>
+              ${this._providerCatalog.flatMap((p) =>
+                p.models.map(
+                  (m) => html`
+                    <option
+                      value="${p.id}/${m}"
+                      ?selected=${`${p.id}/${m}` ===
+                      this._getDirty(
+                        "agentDefaults.heartbeat.model",
+                        c.agentDefaults.heartbeat.model ?? "",
+                      )}
+                    >
+                      ${p.id}/${m}
+                    </option>
+                  `,
+                ),
               )}
             </select>
           </div>

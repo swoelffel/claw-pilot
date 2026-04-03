@@ -15,13 +15,13 @@
  */
 
 import type Database from "better-sqlite3";
-import type { RuntimeAgentConfig } from "../config/index.js";
-import type { ResolvedModel } from "../provider/provider.js";
+import type { RuntimeAgentConfig, RuntimeConfig } from "../config/index.js";
 import type { InstanceSlug } from "../types.js";
 import { getBus } from "../bus/index.js";
 import { HeartbeatTick, HeartbeatAlert } from "../bus/events.js";
 import { createSession, listSessions } from "../session/session.js";
 import { runPromptLoop } from "../session/prompt-loop.js";
+import { resolveModelForAgent } from "../channel/router.js";
 import { parseInterval, isWithinActiveHours } from "./interval.js";
 import { logger } from "../../lib/logger.js";
 
@@ -31,7 +31,7 @@ const HEARTBEAT_PEER_PREFIX = "heartbeat:";
 export interface HeartbeatRunnerContext {
   db: Database.Database;
   instanceSlug: InstanceSlug;
-  resolveModel: (agentConfig: RuntimeAgentConfig) => ResolvedModel;
+  runtimeConfig: RuntimeConfig;
   workDir: string | undefined;
 }
 
@@ -74,7 +74,7 @@ async function runHeartbeatTick(
   agent: RuntimeAgentConfig,
   ctx: HeartbeatRunnerContext,
 ): Promise<void> {
-  const { db, instanceSlug, resolveModel, workDir } = ctx;
+  const { db, instanceSlug, runtimeConfig, workDir } = ctx;
   const bus = getBus(instanceSlug);
 
   // Check active hours restriction
@@ -124,17 +124,12 @@ async function runHeartbeatTick(
 
   const heartbeatStart = Date.now();
   try {
-    // Resolve model (use heartbeat.model override if specified)
-    let resolvedModel: ResolvedModel;
-    if (agent.heartbeat!.model) {
-      const slashIdx = agent.heartbeat!.model.indexOf("/");
-      const providerId = agent.heartbeat!.model.slice(0, slashIdx);
-      const modelId = agent.heartbeat!.model.slice(slashIdx + 1);
-      // Use the same resolveModel but with a temporary agent config override
-      resolvedModel = resolveModel({ ...agent, model: `${providerId}/${modelId}` });
-    } else {
-      resolvedModel = resolveModel(agent);
-    }
+    // Resolution chain: heartbeat.model → config.defaultHeartbeatModel → agent.model
+    const effectiveModel =
+      agent.heartbeat!.model ?? runtimeConfig.defaultHeartbeatModel ?? undefined;
+    const tempAgentConfig =
+      effectiveModel !== undefined ? { ...agent, model: effectiveModel } : agent;
+    const resolvedModel = resolveModelForAgent(db, instanceSlug, tempAgentConfig, runtimeConfig);
     const result = await runPromptLoop({
       db,
       instanceSlug,

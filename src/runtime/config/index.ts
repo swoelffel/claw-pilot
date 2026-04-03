@@ -334,6 +334,13 @@ export const RuntimeConfigSchema = z.object({
   defaultInternalModel: z.string().optional(),
 
   /**
+   * Default model for heartbeat runs across all agents.
+   * Individual agents override via heartbeat.model.
+   * Format: "provider/model" or a named alias from models[].
+   */
+  defaultHeartbeatModel: z.string().optional(),
+
+  /**
    * Named model aliases — map short identifiers to provider/model pairs.
    * Agents can reference these by alias instead of the full "provider/model" string.
    * Example: [{ id: "fast", provider: "anthropic", model: "claude-haiku-3-5" }]

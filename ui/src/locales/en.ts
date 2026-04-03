@@ -495,4 +495,8 @@ export const templates = {
   // instance-settings.ts — provider mismatch warning
   "settings-provider-mismatch":
     "Provider mismatch: the default API key and default model use different providers. Agents will fall back to provider-matching key resolution.",
+  // instance-settings.ts — heartbeat model
+  "settings-default-heartbeat-model": "Default heartbeat model",
+  "settings-heartbeat-model-hint": "optional — agents use their own model if unset",
+  "settings-heartbeat-model-default": "Same as agent model",
 };

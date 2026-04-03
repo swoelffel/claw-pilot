@@ -112,7 +112,8 @@ export function buildInstanceConfig(
         maxChildrenPerSession: config.subagents.maxChildrenPerSession ?? 5,
         retentionHours: config.subagents.retentionHours ?? 72,
       },
-      heartbeat: {},
+      heartbeat:
+        config.defaultHeartbeatModel !== undefined ? { model: config.defaultHeartbeatModel } : {},
       defaultInternalModel: config.defaultInternalModel ?? "",
       models,
     },

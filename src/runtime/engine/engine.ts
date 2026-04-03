@@ -19,7 +19,6 @@ import type { RuntimeConfig } from "../config/index.js";
 import type { Channel } from "../channel/channel.js";
 import type { InboundMessage } from "../types.js";
 import { getBus, disposeBus } from "../bus/index.js";
-import { resolveModel } from "../provider/provider.js";
 import {
   RuntimeStarted,
   RuntimeStopped,
@@ -43,7 +42,6 @@ import { cleanupEphemeralSessions } from "../session/cleanup.js";
 import { wireEventPersistence } from "./event-persistence.js";
 import { pruneRtEvents } from "../../core/repositories/rt-event-repository.js";
 import { logger, type Logger } from "../../lib/logger.js";
-import { buildResolvedEnv } from "../../lib/env-reader.js";
 import type { ProfileResolver } from "../profile/types.js";
 
 // ---------------------------------------------------------------------------
@@ -165,19 +163,7 @@ export class ClawRuntime {
       this._stopHeartbeat = startHeartbeatRunner(this.config.agents, {
         db: this.db,
         instanceSlug: this.instanceSlug,
-        resolveModel: (agentConfig) => {
-          const env = this.workDir ? buildResolvedEnv(this.workDir) : undefined;
-          const envOpts = env !== undefined ? { env } : {};
-          const modelStr = agentConfig.model;
-          // Try named alias first
-          const alias = this.config.models?.find((a) => a.id === modelStr);
-          if (alias) return resolveModel(alias.provider, alias.model, envOpts);
-          // Standard "provider/model" format
-          const slashIdx = modelStr.indexOf("/");
-          if (slashIdx === -1)
-            throw new Error(`Invalid model ref "${modelStr}": expected "provider/model" format`);
-          return resolveModel(modelStr.slice(0, slashIdx), modelStr.slice(slashIdx + 1), envOpts);
-        },
+        runtimeConfig: this.config,
         workDir: this.workDir,
       });
 

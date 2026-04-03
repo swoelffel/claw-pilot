@@ -498,4 +498,8 @@ export const templates = {
   // instance-settings.ts — provider mismatch warning
   "settings-provider-mismatch":
     "Incohérence de provider : la clé API par défaut et le modèle par défaut utilisent des providers différents. Les agents utiliseront la résolution par correspondance de provider.",
+  // instance-settings.ts — heartbeat model
+  "settings-default-heartbeat-model": "Modèle heartbeat par défaut",
+  "settings-heartbeat-model-hint": "optionnel — les agents utilisent leur propre modèle sinon",
+  "settings-heartbeat-model-default": "Même modèle que l'agent",
 };

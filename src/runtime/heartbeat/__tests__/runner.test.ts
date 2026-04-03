@@ -23,14 +23,24 @@ vi.mock("../../tool/registry.js", () => ({
   getTools: vi.fn().mockResolvedValue([]),
 }));
 
+// Mock resolveModelForAgent to avoid DB named key lookups
+vi.mock("../../channel/router.js", () => ({
+  resolveModelForAgent: vi.fn().mockReturnValue({
+    languageModel: {},
+    providerId: "anthropic",
+    modelId: "claude-3",
+    costPerMillion: undefined,
+  }),
+}));
+
 import { initDatabase } from "../../../db/schema.js";
 import type Database from "better-sqlite3";
 import { getBus, disposeBus } from "../../bus/index.js";
 import { HeartbeatTick, HeartbeatAlert } from "../../bus/events.js";
 import { startHeartbeatRunner } from "../runner.js";
 import { runPromptLoop } from "../../session/prompt-loop.js";
-import type { RuntimeAgentConfig } from "../../config/index.js";
-import type { ResolvedModel } from "../../provider/provider.js";
+import { resolveModelForAgent } from "../../channel/router.js";
+import type { RuntimeAgentConfig, RuntimeConfig } from "../../config/index.js";
 
 const INSTANCE_SLUG = "test-heartbeat-runner";
 
@@ -61,13 +71,28 @@ function makeAgent(overrides?: Partial<RuntimeAgentConfig>): RuntimeAgentConfig 
   };
 }
 
-function makeResolvedModel(): ResolvedModel {
+function makeRuntimeConfig(overrides?: Partial<RuntimeConfig>): RuntimeConfig {
   return {
-    languageModel: {} as ResolvedModel["languageModel"],
-    providerId: "anthropic",
-    modelId: "claude-3",
-    costPerMillion: undefined,
-  };
+    defaultModel: "anthropic/claude-3",
+    agents: [],
+    models: [],
+    providers: [],
+    compaction: { auto: true, threshold: 0.85, reservedTokens: 8000 },
+    subagents: { maxSpawnDepth: 3, maxChildrenPerSession: 5, retentionHours: 72 },
+    telegram: {
+      enabled: false,
+      botTokenEnvVar: "TELEGRAM_BOT_TOKEN",
+      pollingIntervalMs: 1000,
+      allowedUserIds: [],
+      dmPolicy: "pairing",
+      groupPolicy: "allowlist",
+    },
+    webChat: { enabled: true },
+    globalPermissions: [],
+    mcpEnabled: false,
+    mcpServers: [],
+    ...overrides,
+  } as RuntimeConfig;
 }
 
 let db: Database.Database;
@@ -91,7 +116,7 @@ describe("startHeartbeatRunner — lifecycle", () => {
     const cleanup = startHeartbeatRunner([makeAgent()], {
       db,
       instanceSlug: INSTANCE_SLUG,
-      resolveModel: makeResolvedModel,
+      runtimeConfig: makeRuntimeConfig(),
       workDir: undefined,
     });
     expect(typeof cleanup).toBe("function");
@@ -111,7 +136,7 @@ describe("startHeartbeatRunner — lifecycle", () => {
     const cleanup = startHeartbeatRunner([makeAgent({ heartbeat: { every: "5m" } })], {
       db,
       instanceSlug: INSTANCE_SLUG,
-      resolveModel: makeResolvedModel,
+      runtimeConfig: makeRuntimeConfig(),
       workDir: undefined,
     });
 
@@ -139,7 +164,7 @@ describe("startHeartbeatRunner — lifecycle", () => {
     startHeartbeatRunner([agentWithout], {
       db,
       instanceSlug: INSTANCE_SLUG,
-      resolveModel: makeResolvedModel,
+      runtimeConfig: makeRuntimeConfig(),
       workDir: undefined,
     });
 
@@ -162,7 +187,7 @@ describe("startHeartbeatRunner — tick behavior", () => {
     const cleanup = startHeartbeatRunner([makeAgent({ heartbeat: { every: "5m" } })], {
       db,
       instanceSlug: INSTANCE_SLUG,
-      resolveModel: makeResolvedModel,
+      runtimeConfig: makeRuntimeConfig(),
       workDir: undefined,
     });
 
@@ -191,7 +216,7 @@ describe("startHeartbeatRunner — tick behavior", () => {
     const cleanup = startHeartbeatRunner([makeAgent({ heartbeat: { every: "5m" } })], {
       db,
       instanceSlug: INSTANCE_SLUG,
-      resolveModel: makeResolvedModel,
+      runtimeConfig: makeRuntimeConfig(),
       workDir: undefined,
     });
 
@@ -219,7 +244,7 @@ describe("startHeartbeatRunner — tick behavior", () => {
     const cleanup = startHeartbeatRunner([makeAgent({ heartbeat: { every: "5m" } })], {
       db,
       instanceSlug: INSTANCE_SLUG,
-      resolveModel: makeResolvedModel,
+      runtimeConfig: makeRuntimeConfig(),
       workDir: undefined,
     });
 
@@ -249,7 +274,7 @@ describe("startHeartbeatRunner — tick behavior", () => {
     const cleanup = startHeartbeatRunner([makeAgent({ heartbeat: { every: "5m" } })], {
       db,
       instanceSlug: INSTANCE_SLUG,
-      resolveModel: makeResolvedModel,
+      runtimeConfig: makeRuntimeConfig(),
       workDir: undefined,
     });
 
@@ -275,7 +300,7 @@ describe("startHeartbeatRunner — error resilience", () => {
     const cleanup = startHeartbeatRunner([makeAgent({ heartbeat: { every: "5m" } })], {
       db,
       instanceSlug: INSTANCE_SLUG,
-      resolveModel: makeResolvedModel,
+      runtimeConfig: makeRuntimeConfig(),
       workDir: undefined,
     });
 
@@ -297,7 +322,7 @@ describe("startHeartbeatRunner — error resilience", () => {
     const cleanup = startHeartbeatRunner([makeAgent({ heartbeat: { every: "5m" } })], {
       db,
       instanceSlug: INSTANCE_SLUG,
-      resolveModel: makeResolvedModel,
+      runtimeConfig: makeRuntimeConfig(),
       workDir: undefined,
     });
 
@@ -306,6 +331,106 @@ describe("startHeartbeatRunner — error resilience", () => {
 
     expect(alertHandler).toHaveBeenCalledWith(
       expect.objectContaining({ text: expect.stringContaining("LLM down") }),
+    );
+    cleanup();
+  });
+});
+
+describe("startHeartbeatRunner — model resolution chain", () => {
+  it("[positive] uses heartbeat.model override when specified", async () => {
+    const mockResolve = vi.mocked(resolveModelForAgent);
+    const mockRunPromptLoop = vi.mocked(runPromptLoop);
+    mockRunPromptLoop.mockResolvedValue({
+      text: "HEARTBEAT_OK",
+      messageId: "m1",
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      costUsd: 0,
+      steps: 0,
+    });
+
+    const agent = makeAgent({
+      heartbeat: { every: "5m", model: "anthropic/claude-haiku-3-5" },
+    });
+    const cleanup = startHeartbeatRunner([agent], {
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      runtimeConfig: makeRuntimeConfig({ defaultHeartbeatModel: "openai/gpt-4o-mini" }),
+      workDir: undefined,
+    });
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(0);
+
+    // heartbeat.model takes priority over defaultHeartbeatModel
+    expect(mockResolve).toHaveBeenCalledWith(
+      db,
+      INSTANCE_SLUG,
+      expect.objectContaining({ model: "anthropic/claude-haiku-3-5" }),
+      expect.anything(),
+    );
+    cleanup();
+  });
+
+  it("[positive] falls back to defaultHeartbeatModel when no heartbeat.model", async () => {
+    const mockResolve = vi.mocked(resolveModelForAgent);
+    const mockRunPromptLoop = vi.mocked(runPromptLoop);
+    mockRunPromptLoop.mockResolvedValue({
+      text: "HEARTBEAT_OK",
+      messageId: "m1",
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      costUsd: 0,
+      steps: 0,
+    });
+
+    const agent = makeAgent({ heartbeat: { every: "5m" } });
+    const cleanup = startHeartbeatRunner([agent], {
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      runtimeConfig: makeRuntimeConfig({ defaultHeartbeatModel: "openai/gpt-4o-mini" }),
+      workDir: undefined,
+    });
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(0);
+
+    // defaultHeartbeatModel used as fallback
+    expect(mockResolve).toHaveBeenCalledWith(
+      db,
+      INSTANCE_SLUG,
+      expect.objectContaining({ model: "openai/gpt-4o-mini" }),
+      expect.anything(),
+    );
+    cleanup();
+  });
+
+  it("[positive] uses agent model when neither heartbeat.model nor defaultHeartbeatModel set", async () => {
+    const mockResolve = vi.mocked(resolveModelForAgent);
+    const mockRunPromptLoop = vi.mocked(runPromptLoop);
+    mockRunPromptLoop.mockResolvedValue({
+      text: "HEARTBEAT_OK",
+      messageId: "m1",
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      costUsd: 0,
+      steps: 0,
+    });
+
+    const agent = makeAgent({ model: "anthropic/claude-sonnet-4-5", heartbeat: { every: "5m" } });
+    const cleanup = startHeartbeatRunner([agent], {
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      runtimeConfig: makeRuntimeConfig(),
+      workDir: undefined,
+    });
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Agent's own model used (no override)
+    expect(mockResolve).toHaveBeenCalledWith(
+      db,
+      INSTANCE_SLUG,
+      expect.objectContaining({ model: "anthropic/claude-sonnet-4-5" }),
+      expect.anything(),
     );
     cleanup();
   });

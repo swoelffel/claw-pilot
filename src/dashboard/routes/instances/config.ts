@@ -275,6 +275,9 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
             if (ad.defaultInternalModel !== undefined) {
               config.defaultInternalModel = ad.defaultInternalModel || undefined;
             }
+            if (ad.heartbeat?.model !== undefined) {
+              config.defaultHeartbeatModel = ad.heartbeat.model || undefined;
+            }
             if (ad.models !== undefined) {
               config.models = ad.models.map((m) => ({
                 id: m.id,
