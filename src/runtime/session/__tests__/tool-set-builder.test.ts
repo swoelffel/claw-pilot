@@ -370,8 +370,8 @@ describe("buildToolSet", () => {
 
   // 12. Tool execution updates part state to "error" on failure
   it("updates part state to 'error' on execution failure", async () => {
-    const set = await callBuild([makeFailingTool("badtool")]);
-    const badTool = set["badtool"] as {
+    const set = await callBuild([makeFailingTool("bad-tool")]);
+    const badTool = set["bad-tool"] as {
       execute: (args: unknown, opts: { toolCallId: string }) => Promise<unknown>;
     };
 

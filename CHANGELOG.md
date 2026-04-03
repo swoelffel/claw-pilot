@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.61.8] — 2026-04-03
+
+### Changed
+
+- **Test coverage Phase 2** — Added 90 unit tests for moderate-coverage modules: tool-set-builder, tool registry, channel router, Telegram formatter, plugin system, server/local. Overall coverage: 51% → 53% lines. Total: 1520 tests.
+- **CI coverage thresholds raised** — lines 49→50, statements 48→49, functions 51→53, branches 42→43.
+
+---
+
 ## [0.61.7] — 2026-04-03
 
 ### Changed

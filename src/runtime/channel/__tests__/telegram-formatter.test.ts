@@ -109,7 +109,7 @@ describe("markdownToTelegramV2", () => {
     expect(result).toBe("above\n\nbelow");
   });
 
-  it("handles blockquotes", () => {
+  it("handles block quotes", () => {
     const result = markdownToTelegramV2("> quoted text");
     // Blockquote: >content (no space after >)
     expect(result.startsWith(">")).toBe(true);

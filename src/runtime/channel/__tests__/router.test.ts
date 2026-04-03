@@ -37,7 +37,7 @@ vi.mock("../../session/prompt-loop.js", () => ({
 }));
 
 vi.mock("../../session/message.js", () => ({
-  createUserMessage: vi.fn(() => ({ id: "umsg-001" })),
+  createUserMessage: vi.fn(() => ({ id: "user-msg-001" })),
 }));
 
 vi.mock("../../session/part.js", () => ({
