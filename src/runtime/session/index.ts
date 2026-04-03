@@ -9,6 +9,7 @@ export * from "./message.js";
 export * from "./part.js";
 export * from "./system-prompt.js";
 export * from "./system-prompt-cache.js";
+export * from "./system-prompt-dirty.js";
 export * from "./prompt-loop.js";
 export * from "./compaction.js";
 export * from "./message-builder.js";

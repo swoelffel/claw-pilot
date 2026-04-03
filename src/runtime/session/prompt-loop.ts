@@ -19,7 +19,7 @@ import type { RuntimeAgentConfig } from "../config/index.js";
 import type { ResolvedModel } from "../provider/provider.js";
 import type { Tool } from "../tool/tool.js";
 import { getToolsForAgent } from "../tool/registry.js";
-import { buildSystemPrompt } from "./system-prompt.js";
+import { buildSystemPrompt, buildSkillsBlock } from "./system-prompt.js";
 import { getSession } from "./session.js";
 import {
   createUserMessage,
@@ -41,6 +41,12 @@ import {
   PermissionReplied,
 } from "../bus/events.js";
 import { cacheSystemPrompt, persistSystemPromptSnapshot } from "./system-prompt-cache.js";
+import {
+  getCachedBasePrompt,
+  cacheBasePrompt,
+  isDirty,
+  clearDirty,
+} from "./system-prompt-dirty.js";
 import { buildCoreMessages, applyCaching } from "./message-builder.js";
 import { normalizeTokenUsage } from "./usage-tracker.js";
 import { buildToolSet } from "./tool-set-builder.js";
@@ -214,22 +220,48 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
     }
     permissionFeedbackMessages.length = 0;
 
-    // 2. Build system prompt
-    const systemPrompt = await buildSystemPrompt({
-      instanceSlug,
-      agentConfig,
-      channel: session.channel,
-      workDir,
-      ...(agentWorkDir !== undefined ? { agentWorkDir } : {}),
-      ...(runtimeAgents !== undefined ? { runtimeAgents } : {}),
-      ...(runtimeConfig?.agents !== undefined ? { runtimeAgentConfigs: runtimeConfig.agents } : {}),
-      ...(extraSystemPrompt !== undefined ? { extraSystemPrompt } : {}),
-      db,
-      sessionId,
-      ...(runtimeConfig !== undefined ? { runtimeConfig } : {}),
-      ...(userProfile !== undefined ? { userProfile } : {}),
-      ...(userText !== undefined ? { userText } : {}),
-    });
+    // 2. Build system prompt (with dirty-flag cache)
+    let systemPrompt: string;
+    const cachedBase = getCachedBasePrompt(sessionId);
+
+    if (cachedBase && !isDirty(sessionId)) {
+      // Cache hit — reuse base prompt, recalculate skills only
+      const skillsBlock = workDir
+        ? await buildSkillsBlock(workDir, agentConfig, userText)
+        : undefined;
+      systemPrompt = [cachedBase, skillsBlock, extraSystemPrompt?.trim()]
+        .filter(Boolean)
+        .join("\n\n");
+      logger.debug(`[prompt-loop] system_prompt_cache_hit sid=${sessionId}`);
+    } else {
+      // Cache miss — full rebuild without skills (cached separately)
+      const basePrompt = await buildSystemPrompt({
+        instanceSlug,
+        agentConfig,
+        channel: session.channel,
+        workDir,
+        ...(agentWorkDir !== undefined ? { agentWorkDir } : {}),
+        ...(runtimeAgents !== undefined ? { runtimeAgents } : {}),
+        ...(runtimeConfig?.agents !== undefined
+          ? { runtimeAgentConfigs: runtimeConfig.agents }
+          : {}),
+        db,
+        sessionId,
+        ...(runtimeConfig !== undefined ? { runtimeConfig } : {}),
+        ...(userProfile !== undefined ? { userProfile } : {}),
+        skipSkills: true,
+      });
+      cacheBasePrompt(sessionId, basePrompt);
+      clearDirty(sessionId);
+
+      const skillsBlock = workDir
+        ? await buildSkillsBlock(workDir, agentConfig, userText)
+        : undefined;
+      systemPrompt = [basePrompt, skillsBlock, extraSystemPrompt?.trim()]
+        .filter(Boolean)
+        .join("\n\n");
+      logger.debug(`[prompt-loop] system_prompt_cache_miss sid=${sessionId}`);
+    }
 
     // 2b. Cache system prompt, persist snapshot, and notify observers
     cacheSystemPrompt(sessionId, systemPrompt);

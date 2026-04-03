@@ -41,6 +41,7 @@ import { createTaskTool } from "../tool/task.js";
 import { createSendMessageTool } from "../tool/send-message.js";
 import { TOOL_PROFILES } from "../tool/registry.js";
 import { invalidateWorkspaceCache } from "./workspace-cache.js";
+import { markDirty } from "./system-prompt-dirty.js";
 import { buildResolvedEnv } from "../../lib/env-reader.js";
 
 // ---------------------------------------------------------------------------
@@ -229,6 +230,7 @@ export async function buildToolSet(
                 : undefined;
             if (writtenPath) {
               invalidateWorkspaceCache(writtenPath);
+              markDirty(sessionId, isMemoryFile(writtenPath) ? "memory" : "workspace");
 
               // Trigger memory re-indexation in background if a memory file was written
               if (memoryDb && workDir && isMemoryFile(writtenPath)) {

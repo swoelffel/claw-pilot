@@ -12,6 +12,8 @@
  */
 
 import type Database from "better-sqlite3";
+import { clearSessionDirtyState } from "./system-prompt-dirty.js";
+import { clearCachedSystemPrompt } from "./system-prompt-cache.js";
 
 export interface CleanupResult {
   sessionsDeleted: number;
@@ -85,5 +87,12 @@ export function cleanupEphemeralSessions(
   });
 
   const result = deleteAll();
+
+  // Clean up in-memory caches for deleted sessions (prevents unbounded growth)
+  for (const sid of sessionIds) {
+    clearSessionDirtyState(sid);
+    clearCachedSystemPrompt(sid);
+  }
+
   return { ...result, durationMs: Date.now() - start };
 }

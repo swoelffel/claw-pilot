@@ -27,6 +27,7 @@ import { SessionStatusChanged, MessageCreated, MessageUpdated } from "../bus/eve
 import { appendToMemoryFile, consolidateMemoryFileIfNeeded } from "../memory/writer.js";
 import { openMemoryIndex, rebuildMemoryIndex } from "../memory/index.js";
 import { applyDecayToFile, extractReferencedContents } from "../memory/decay.js";
+import { markDirty } from "./system-prompt-dirty.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -274,6 +275,9 @@ export async function compact(input: CompactionInput): Promise<CompactionResult>
         compactedAt: new Date().toISOString(),
       }),
     });
+
+    // Invalidate system prompt cache — next turn will include new compaction summary
+    markDirty(sessionId, "compaction");
 
     // Update message metadata
     const usage = summaryResult.usage;
