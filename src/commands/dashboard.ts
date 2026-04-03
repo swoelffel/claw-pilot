@@ -4,12 +4,11 @@ import { getDbPath, getDashboardTokenPath } from "../lib/platform.js";
 import { initDatabase } from "../db/schema.js";
 import { Registry } from "../core/registry.js";
 import { logger } from "../lib/logger.js";
+import { generateDashboardToken, ensureMasterEncryptionKey } from "../lib/crypto.js";
 import {
-  generateDashboardToken,
-  ensureMasterEncryptionKey,
   migrateUserProvidersToNamedKeys,
   migrateInstanceProvidersToNamedKeys,
-} from "../lib/crypto.js";
+} from "../lib/key-migration.js";
 import { constants } from "../lib/constants.js";
 import { LocalConnection } from "../server/local.js";
 import { SessionStore } from "../dashboard/session-store.js";
