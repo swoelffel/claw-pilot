@@ -10,11 +10,12 @@ export default defineConfig({
       exclude: ["src/**/__tests__/**", "src/index.ts"],
       reporter: ["text", "html", "json-summary"],
       thresholds: {
-        // After feat/skills-management: skills routes + tests added (skills-routes.test.ts).
-        lines: 43,
-        statements: 38,
-        functions: 46,
-        branches: 37,
+        // Phase 1 test coverage improvement: +151 tests covering compaction, cleanup,
+        // middleware pipeline, memory system, built-in middleware, built-in tools.
+        lines: 49,
+        statements: 48,
+        functions: 51,
+        branches: 42,
       },
     },
   },
