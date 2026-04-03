@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.61.11] — 2026-04-03
+
+### Added
+
+- **Test coverage Phase 4** — Integration test for compaction-to-memory pipeline (7 tests: real filesystem + FTS5 index + decay scoring). UI service unit tests for auth-state (6 tests) and hash router (46 tests). New `vitest.ui.config.ts` for UI test suite. Total: 1567 backend + 52 UI tests.
+
+---
+
 ## [0.61.10] — 2026-04-03
 
 ### Changed

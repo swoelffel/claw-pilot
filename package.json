@@ -1,6 +1,6 @@
 {
   "name": "claw-pilot",
-  "version": "0.61.10",
+  "version": "0.61.11",
   "description": "Orchestrator for claw-runtime multi-agent instances",
   "type": "module",
   "license": "MIT",
@@ -15,6 +15,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:ui": "vitest run --config vitest.ui.config.ts",
     "lint": "oxlint src/",
     "lint:ui": "oxlint ui/src/",
     "lint:all": "pnpm lint && pnpm lint:ui",
