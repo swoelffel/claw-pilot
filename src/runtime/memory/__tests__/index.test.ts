@@ -202,7 +202,7 @@ describe("searchMemory", () => {
       "The project uses TypeScript",
     );
 
-    const results = searchMemory(db, "kubernetes");
+    const results = searchMemory(db, "nonexistent-term");
     expect(results).toEqual([]);
   });
 });

@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.61.7] — 2026-04-03
+
+### Changed
+
+- **Test coverage Phase 1** — Added 151 unit tests covering previously untested runtime modules: session compaction (9% → 96%), session cleanup (0% → 100%), middleware pipeline (5% → 100%), memory system (5% → 85%), built-in middleware (8% → 83%), built-in tools (48% → 76%). Overall coverage: 46% → 51% lines.
+- **CI coverage thresholds raised** — lines 43→49, statements 38→48, functions 46→51, branches 37→42.
+
+---
+
 ## [0.61.5] — 2026-04-03
 
 ### Changed
