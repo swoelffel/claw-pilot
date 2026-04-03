@@ -2,7 +2,7 @@
 
 **CLI + web dashboard to orchestrate multi-agent clusters on a Linux or macOS server**
 
-`claw-pilot` v0.61.11 manages the full lifecycle of **claw-runtime** agent instances: provisioning,
+`claw-pilot` v0.61.12 manages the full lifecycle of **claw-runtime** agent instances: provisioning,
 service integration, visual Agent Builder, inter-agent messaging, middleware pipeline, named API keys,
 user profiles, and a real-time dashboard to monitor and interact with multi-agent teams.
 
