@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.61.9] — 2026-04-03
+
+### Changed
+
+- **Test coverage Phase 3** — Added 44 unit tests: CLI withContext pattern, DB schema migrations v24-v26, lib utilities (shellEscape, error classes, platform detection). Overall coverage: 53% lines. Total: 1564 tests.
+- **CI coverage thresholds raised** — lines 50→51, statements 49→50, branches 43→44.
+
+---
+
 ## [0.61.8] — 2026-04-03
 
 ### Changed

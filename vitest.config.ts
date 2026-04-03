@@ -10,12 +10,12 @@ export default defineConfig({
       exclude: ["src/**/__tests__/**", "src/index.ts"],
       reporter: ["text", "html", "json-summary"],
       thresholds: {
-        // Phase 2 test coverage: +90 tests covering tool-set-builder, tool registry,
-        // channel router, telegram formatter, plugin system, server/local.
-        lines: 50,
-        statements: 49,
+        // Phase 3 test coverage: +44 tests covering CLI withContext, schema v24-v26,
+        // shell, errors, platform utilities.
+        lines: 51,
+        statements: 50,
         functions: 53,
-        branches: 43,
+        branches: 44,
       },
     },
   },
