@@ -6,11 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
-## [0.61.3] — 2026-04-03
+## [0.61.4] — 2026-04-03
 
 ### Changed
 
 - **System prompt dirty-flag cache** — Prompt-loop optimization that avoids rebuilding the system prompt on every turn when no config has changed.
+
+### Fixed
+
+- **Circular dependency crypto ↔ named-key-repository** — Extracted key migration functions from `crypto.ts` into `lib/key-migration.ts` to break the cycle that failed the CI circular dependency check.
 
 ---
 
