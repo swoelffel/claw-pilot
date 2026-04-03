@@ -1,7 +1,7 @@
 # claw-pilot — Functional Architecture
 
-> **Version**: 0.42.0
-> **Stack**: TypeScript / Node.js ESM, Lit web components, SQLite, Hono
+> **Version**: 0.61.11
+> **Stack**: TypeScript ~6.0 / Node.js ESM, Lit ^3, SQLite (schema v26), Hono ^4.12
 > **Repo**: https://github.com/swoelffel/claw-pilot
 > **Detailed References**: [ux-design.md](./ux-design.md) (index) · [ux-screens/](./ux-screens/) · [ux-components/](./ux-components/) · [agents.md](./agents.md) · [registry-db.md](./registry-db.md) · [i18n.md](./i18n.md) · [design-rules.md](./design-rules.md) · `CLAUDE.md`
 
@@ -31,7 +31,7 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
 │   Provisioner · Lifecycle · Health · Discovery · AgentSync      │
 │   BlueprintDeployer · AgentProvisioner · TeamExport/Import      │
 │                        │                                        │
-│              Registry (facade) → 9 Repositories                 │
+│              Registry (facade) → 15 Repositories                │
 │                        │                                        │
 │              ServerConnection (abstraction)                     │
 │              LocalConnection (local shell/fs)                   │
@@ -71,8 +71,20 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
 | `rt_pairing_codes` | v9 + v12 | Device pairing codes (legacy, table retained) |
 | `agent_blueprints` | v16 | Standalone reusable agent templates (id TEXT PK, config_json, category) |
 | `agent_blueprint_files` | v16 | Workspace files per agent blueprint |
+| `user_profiles` | v17 | Per-user preferences (language, timezone, communication style, custom instructions) |
+| `user_providers` | v17 (deprecated v24) | User-level provider configs — replaced by `named_api_keys` |
+| `rt_events` | v19 | Runtime bus events per instance (activity console) |
+| `named_api_keys` | v24 | AES-256-GCM encrypted API keys (admin-global, provider_id, default_model) |
+| `instance_named_keys` | v24 (deprecated v25) | Junction: instance ↔ named key (replaced by FK on instances) |
+| `rt_system_prompts` | v26 | System prompt snapshots per session (deduplicated by content hash) |
 
-**Current migration version: 16**
+**Added columns (v17–v26)**:
+- `agents.config_json` (v20) — full RuntimeAgentConfig as JSON blob
+- `agents.named_key_id` (v24) — optional FK to named_api_keys
+- `instances.runtime_config_json` (v21) — full RuntimeConfig as JSON blob (source of truth)
+- `instances.default_named_key_id` (v25) — default named key FK
+
+**Current migration version: 26**
 
 **Default port range**: 18789–18838 (50 ports, 10 instances at 5-port intervals). Dashboard: 19000.
 
@@ -118,9 +130,9 @@ lifecycle.ts              start/stop/restart — PID file daemon
 health.ts                 health check — PID file
 provisioner.ts            instance creation (wizard)
 agent-provisioner.ts      add agents to existing instance
-registry.ts               facade over 9 repositories
+registry.ts               facade over 15 repositories
 registry-types.ts         types InstanceRecord, AgentRecord, BlueprintRecord, AgentBlueprintRecord, etc.
-repositories/             9 SQLite repositories:
+repositories/             15 SQLite repositories:
   server-repository.ts      — servers table
   instance-repository.ts    — instances table
   agent-repository.ts       — agents + agent_files + agent_links tables
@@ -130,6 +142,12 @@ repositories/             9 SQLite repositories:
   blueprint-repository.ts   — blueprints + blueprint agents + blueprint links
   runtime-session-repository.ts — rt_sessions enriched queries
   agent-blueprint-repository.ts — agent_blueprints + agent_blueprint_files
+  rt-event-repository.ts    — rt_events (activity console)
+  cost-repository.ts        — cost aggregations per agent/session
+  heartbeat-repository.ts   — heartbeat history and analytics
+  named-key-repository.ts   — named_api_keys CRUD
+  runtime-config-repository.ts — instances.runtime_config_json operations
+  user-profile-repository.ts — user_profiles CRUD
 agent-sync.ts             sync agents from runtime.json
 agent-workspace.ts        resolve agent workspace paths
 blueprint-deployer.ts     deploy blueprint on creation
@@ -146,6 +164,7 @@ team-import.ts            import .team.yaml
 team-schema.ts            Zod schema for .team.yaml (version "1")
 workspace-state.ts        workspace state
 auth.ts                   authentication helpers
+builtin-blueprints.ts     built-in team blueprints (dev-harness, design-studio, team-architect)
 launchd-generator.ts      generate macOS plist
 systemd-generator.ts      generate systemd unit Linux
 ```
@@ -160,7 +179,8 @@ engine/       ClawRuntime(config, db, slug, workDir?) — state machine, channel
 bus/          getBus(slug), disposeBus(), 26 event types (typed EventDef<T, P>)
 provider/     resolveModel(providerId, modelId), 5 providers, auth-profiles rotation
               MODEL_CATALOG: 10 models (Anthropic, OpenAI, Google, Ollama)
-permission/   ruleset last-match-wins, allow/deny/ask, wildcard glob matching
+permission/   ruleset last-match-wins, allow/deny/ask, wildcard glob matching (index.ts, wildcard.ts)
+profile/      user profile resolution for system prompt injection (community-resolver.ts, types.ts)
 config/       RuntimeConfig Zod schema, parseRuntimeConfig(), createDefaultRuntimeConfig()
 session/      createSession(), getOrCreatePermanentSession(), runPromptLoop()
               permanent session key: <slug>:<agentId> (cross-channel, no peerId)
@@ -208,16 +228,23 @@ routes/
   teams.ts         GET/POST export/import instances and blueprints
   blueprints.ts    CRUD blueprints + agents + files + spawn-links
   agent-blueprints.ts  CRUD agent blueprint templates + files + clone + export/import YAML
+  named-keys.ts    CRUD named API keys (encrypted, admin-global)
+  profile.ts       GET/PATCH user profile preferences
   instances.ts     Instance routes dispatcher
   instances/
     index.ts       Instance routes orchestrator
     lifecycle.ts   CRUD instances + start/stop/restart + discover/adopt
     config.ts      GET/PATCH config + providers catalog + telegram token
-    runtime.ts     GET runtime status/sessions/messages/context, POST chat, GET stream SSE, GET heartbeat history
+    runtime.ts     GET runtime status/sessions/messages/context, POST chat, GET stream SSE
+    costs.ts       GET cost aggregations per agent/session
+    events.ts      GET rt_events (activity console)
+    heartbeat.ts   GET heartbeat history and analytics
+    memory.ts      GET memory files with decay scores
     mcp.ts         GET mcp tools/status
     permissions.ts GET permissions, DELETE rule, POST reply
     telegram.ts    GET pairing, POST approve, DELETE reject
     discover.ts    POST discover + adopt
+    workspace-download.ts  GET workspace file download
     agents.ts      Agents routes dispatcher
     agents/        CRUD agents + files + sync + skills + spawn-links (8 submodules):
       create.ts, delete.ts, files.ts, list.ts, skills.ts, spawn-links.ts, sync.ts, update.ts
@@ -365,10 +392,15 @@ Hono HTTP/WS server on port 19000. Dual auth: session cookie (priority) or Beare
 | `#/instances/:slug/builder` | Agent builder | `cp-agents-builder` |
 | `#/instances/:slug/settings` | Instance settings | `cp-instance-settings` |
 | `#/instances/:slug/pilot` | Interactive chat + LLM context panel | `cp-runtime-pilot` |
+| `#/instances/:slug/costs` | Cost analytics dashboard | `cp-costs-dashboard` |
+| `#/instances/:slug/activity` | Event browser + filters | `cp-activity-console` |
 | `#/blueprints` | Blueprints view | `cp-blueprints-view` |
 | `#/blueprints/:id/builder` | Blueprint builder | `cp-blueprint-builder` |
+| `#/agent-templates` | Agent templates (reusable) | `cp-agent-templates-view` |
+| `#/agent-templates/:id` | Agent template detail + files | `cp-agent-template-detail` |
+| `#/profile` | User profile settings | `cp-profile-settings` |
 
-### REST API (69 endpoints)
+### REST API (~105 endpoints)
 
 #### Auth
 
@@ -436,7 +468,15 @@ Hono HTTP/WS server on port 19000. Dual auth: session cookie (priority) or Beare
 | `GET` | `/api/instances/:slug/runtime/sessions/:id/context` | LLM context |
 | `POST` | `/api/instances/:slug/runtime/chat` | Send message |
 | `GET` | `/api/instances/:slug/runtime/chat/stream` | SSE real-time streaming |
-| `GET` | `/api/instances/:slug/runtime/heartbeat/history` | Heartbeat history |
+
+#### Instances — Costs, Events, Heartbeat, Memory
+
+| Method | Route | Role |
+|---|---|---|
+| `GET` | `/api/instances/:slug/costs` | Cost aggregations per agent/session |
+| `GET` | `/api/instances/:slug/events` | Runtime bus events (activity console) |
+| `GET` | `/api/instances/:slug/heartbeat/history` | Heartbeat history and analytics |
+| `GET` | `/api/instances/:slug/memory` | Memory files with decay scores |
 
 #### Instances — MCP & Permissions
 
@@ -500,6 +540,22 @@ Standalone reusable agent templates, independent of team blueprints and instance
 | `POST` | `/api/instances/:slug/team/import` | Import YAML (with dry_run) |
 | `GET` | `/api/blueprints/:id/team/export` | Export blueprint |
 | `POST` | `/api/blueprints/:id/team/import` | Import blueprint |
+
+#### Named API Keys
+
+| Method | Route | Role |
+|---|---|---|
+| `GET` | `/api/named-keys` | List all named keys |
+| `POST` | `/api/named-keys` | Create named key (encrypted) |
+| `PUT` | `/api/named-keys/:id` | Update named key |
+| `DELETE` | `/api/named-keys/:id` | Delete named key |
+
+#### User Profile
+
+| Method | Route | Role |
+|---|---|---|
+| `GET` | `/api/profile` | Read current user profile |
+| `PATCH` | `/api/profile` | Update profile preferences |
 
 ### WebSocket Monitor
 
@@ -640,4 +696,4 @@ Separate SQLite FTS5 index in `memory-index.db`. Chunks MEMORY.md and memory/*.m
 
 ---
 
-*Updated: 2026-03-21 — v0.42.0: schema v16, 9 repositories, 72 API endpoints, 26 bus events, TS 5.8, parallel CI, logger.child() scoped logging*
+*Updated: 2026-04-03 — v0.61.11: schema v26, 15 repositories, ~105 API endpoints, 26 bus events, TS 6.0, named API keys, user profiles, agent archetypes*

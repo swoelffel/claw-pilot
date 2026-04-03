@@ -2,9 +2,9 @@
 
 **CLI + web dashboard to orchestrate multi-agent clusters on a Linux or macOS server**
 
-`claw-pilot` v0.49.1 manages the full lifecycle of **claw-runtime** agent instances: provisioning,
-service integration, visual Agent Builder, inter-agent messaging, middleware pipeline, and a
-real-time dashboard to monitor and interact with multi-agent teams.
+`claw-pilot` v0.61.11 manages the full lifecycle of **claw-runtime** agent instances: provisioning,
+service integration, visual Agent Builder, inter-agent messaging, middleware pipeline, named API keys,
+user profiles, and a real-time dashboard to monitor and interact with multi-agent teams.
 
 All instances use the **claw-runtime** engine — a native Node.js multi-agent runtime with built-in
 support for Agent-to-Agent (A2A) messaging, heartbeat scheduling, MCP integration, permissions system,
@@ -39,14 +39,21 @@ memory management, middleware chain, and plugin architecture.
 - **Permission system** — interactive approval for file access, bash execution, agent spawning
 - **Memory management** — context window compaction with FTS5 search on workspace files
 - **Plugin system** — extensible hooks for tool registration, session lifecycle, message interception
+- **Named API keys** — centralized AES-256-GCM encrypted key management, assignable to instances and agents
+- **User profiles** — per-user preferences (language, timezone, communication style, custom instructions)
+- **Agent archetypes** — 6 built-in templates (analyst, communicator, evaluator, generator, orchestrator, planner)
 
 ### Dashboard & Tooling
 - **Web dashboard** — real-time status dashboard, agent builder, settings, device pairing (port 19000)
-- **Runtime Pilot** — multi-agent chat with tool call visualization, token/cost tracking, context panel
+- **Runtime Pilot** — multi-agent chat with tool call visualization, token/cost tracking, context panel, session tree
 - **Cost dashboard** — per-agent cost tracking with SVG charts
 - **Activity console** — live event stream (SSE) with filters and floating widget
 - **Memory browser** — browse and search agent memory files with decay scores
 - **Heartbeat heatmap** — SVG heatmap of multi-agent heartbeat activity
+- **Agent templates** — standalone reusable agent templates with archetype system, import/export YAML
+- **Named keys panel** — manage encrypted API keys, assign to instances/agents
+- **Profile settings** — user preferences, communication style, custom instructions
+- **Permission overlay** — real-time permission request/approval from dashboard
 - **Inline file editor** — edit agent workspace files (SOUL.md, AGENTS.md, MEMORY.md…) in the UI
 - **Self-update** — update to latest release via CLI or dashboard banner
 - **i18n** — UI available in 6 languages (EN, FR, DE, ES, IT, PT)
@@ -58,7 +65,7 @@ memory management, middleware chain, and plugin architecture.
 - **Node.js >= 22.12.0**
 - **pnpm >= 9**
 - **Linux** (Ubuntu/Debian recommended) with systemd user services
-  - OR **macOS** with launchd integration (M1/M2/M3/M4 arm64 or Intel)
+  - OR **macOS** with launchd integration (M1/M2/M3/M4/M5 arm64 or Intel)
 - **Bash >= 5.0** for installation scripts
 
 ---
@@ -107,6 +114,10 @@ Tooling:
   update            Update claw-pilot to the latest release
   team              Export / import agent team configurations
 
+Authentication & Service:
+  auth              Setup / reset / check dashboard authentication
+  service           Install / uninstall / restart dashboard system service (systemd/launchd)
+
 Configuration:
   config get <key>  Get a global config value
   config set <key> <value>  Set a global config value
@@ -128,12 +139,15 @@ claw-pilot dashboard
 | **Instances** | Live status cards (health, port, agent count) with lifecycle actions |
 | **Agent Builder** | Visual canvas per instance — design teams with drag-and-drop, A2A/spawn links |
 | **Blueprints** | Create, edit, deploy reusable agent team templates |
+| **Agent Templates** | Standalone reusable agent templates with archetype system |
 | **Runtime Pilot** | Multi-agent chat — tool calls, token usage, context panel, session tree |
-| **Settings** | Per-instance configuration: general, agents, runtime, devices, MCP, permissions |
+| **Session Logs** | Browse session history, messages, system prompt snapshots |
+| **Settings** | Per-instance configuration: general, agents, runtime, devices, MCP, permissions, named keys |
 | **Cost Dashboard** | Per-agent cost tracking with SVG charts |
 | **Activity Console** | Live event stream with real-time filters |
 | **Memory Browser** | Browse and search agent memory files with decay scores |
 | **Heartbeat Heatmap** | SVG heatmap of multi-agent heartbeat activity and scheduling |
+| **Profile Settings** | User preferences, communication style, custom instructions |
 
 ---
 
@@ -141,10 +155,14 @@ claw-pilot dashboard
 
 ```
 src/
-  commands/         CLI commands — thin wrappers over core/
+  commands/         CLI commands — thin wrappers over core/ (17 commands incl. auth, service)
   core/             Business logic (registry, discovery, provisioner, agent-sync, blueprints, …)
+    repositories/   15 SQLite repositories (server, instance, agent, port, config, event,
+                    blueprint, agent-blueprint, runtime-session, rt-event, cost, heartbeat,
+                    named-key, runtime-config, user-profile)
   dashboard/        Hono HTTP server + WebSocket monitor + auth (sessions/cookies)
-  db/               SQLite schema and migrations (schema.ts) — current version: 16
+    routes/         REST API (~105 endpoints) + WebSocket
+  db/               SQLite schema and migrations (schema.ts) — current version: 26
   lib/              Utilities (logger, errors, constants, platform, xdg, shell, …)
   runtime/          claw-runtime engine
     bus/            Event bus (pub/sub)
@@ -152,6 +170,8 @@ src/
     config/         Runtime configuration types and loaders
     engine/         Engine bootstrap, config builder, plugin wiring
     middleware/     Pre/post middleware pipeline (guardrail, tool error recovery)
+    permission/     Permission ruleset (wildcard glob matching, last-match-wins)
+    profile/        User profile resolution (community resolver)
     provider/       LLM provider resolution and auth profiles
     session/        Prompt loop, message handling, compaction, system prompt
     tool/           Built-in tools + send_message + task delegation
@@ -163,31 +183,38 @@ src/
   server/           ServerConnection abstraction (LocalConnection; SSH planned)
   wizard/           Interactive creation wizard (@inquirer/prompts)
 ui/src/
-  components/       Lit web components (instance cards, agent builder, pilot, …)
+  components/       43 Lit web components (instance cards, agent builder, pilot, …)
+    pilot/          Runtime Pilot subcomponents (messages, parts, context, input, header)
   services/         Auth state, WS monitor, router, update poller
-  localization/     i18n via @lit/localize (6 languages)
+  locales/          i18n via @lit/localize (6 languages)
   styles/           Design tokens, shared CSS
-templates/          Workspace bootstrap files + systemd/nginx templates
+templates/
+  archetypes/       6 agent archetype templates (analyst, communicator, evaluator, …)
+  blueprints/       3 built-in team blueprints (design-studio, dev-harness, team-architect)
+  workspace/        Workspace bootstrap files (SOUL.md, IDENTITY.md, AGENTS.md, …)
 ```
 
 ### Data Model
 
-SQLite `~/.claw-pilot/registry.db` — schema v16. See [`docs/registry-db.md`](docs/registry-db.md).
+SQLite `~/.claw-pilot/registry.db` — schema v26. See [`docs/registry-db.md`](docs/registry-db.md).
 
 **claw-pilot registry** (instance management):
 | Table | Role |
 |-------|------|
 | `servers` | Physical servers (always 1 local row in v1) |
-| `instances` | Instances — slug, port, state, config path |
-| `agents` | Agents per instance/blueprint — canvas position, sync hash, skills, config_json |
+| `instances` | Instances — slug, port, state, config path, runtime_config_json, default_named_key_id |
+| `agents` | Agents per instance/blueprint — canvas position, sync hash, skills, config_json, named_key_id |
 | `agent_files` | Workspace file cache (SOUL.md, AGENTS.md, MEMORY.md…) |
 | `agent_links` | A2A spawn links and tool dependencies between agents |
 | `blueprints` | Reusable agent team templates with canvas layouts |
 | `agent_blueprints` | Standalone reusable agent templates |
+| `agent_blueprint_files` | Workspace files per agent blueprint |
+| `named_api_keys` | AES-256-GCM encrypted API keys (admin-global) |
 | `ports` | Port reservation registry (avoid conflicts) |
 | `config` | Global key-value configuration |
 | `events` | Audit log per instance (creation, modification, deletion) |
 | `users` / `sessions` | Dashboard user accounts + HTTP session auth |
+| `user_profiles` | Per-user preferences (language, timezone, communication style) |
 
 **claw-runtime persistence** (conversation history & state):
 | Table | Role |
@@ -195,9 +222,10 @@ SQLite `~/.claw-pilot/registry.db` — schema v16. See [`docs/registry-db.md`](d
 | `rt_sessions` | Permanent (one per primary agent, cross-channel) or ephemeral sessions |
 | `rt_messages` | Messages per session (user/assistant, model, tokens, cost) |
 | `rt_parts` | Message parts (text, tool-call, tool-result, error) |
-| `rt_events` | Runtime events (state changes, errors, LLM calls) |
+| `rt_events` | Runtime bus events per instance (activity console) |
 | `rt_permissions` | Permission rules approved by user (filesystem, bash, A2A) |
 | `rt_auth_profiles` | LLM provider auth profiles with failover chains |
+| `rt_system_prompts` | System prompt snapshots per session (deduplicated by hash) |
 
 ---
 
@@ -212,7 +240,8 @@ pnpm build         # Build CLI + UI (dist/)
 pnpm build:cli     # Build CLI only
 pnpm build:ui      # Build UI only (Vite)
 pnpm typecheck:all # tsc --noEmit (backend + UI)
-pnpm test:run      # Run unit/integration tests (1093 passing)
+pnpm test:run      # Run unit/integration tests (~1200 passing)
+pnpm test:ui       # Run UI tests
 pnpm test:e2e      # Run e2e tests (~100, real HTTP server, in-memory DB)
 pnpm lint:all      # oxlint src/ + ui/src/
 pnpm format:check  # Prettier check
@@ -228,17 +257,17 @@ Pre-push hooks: spellcheck + test:run. Commits follow conventional commits (comm
 
 | Layer | Stack |
 |-------|-------|
-| **Runtime** | Node.js >= 22.12.0, ESM modules, TypeScript 6.0 |
-| **CLI** | Commander.js + @inquirer/prompts (interactive wizard) |
-| **HTTP / WebSocket** | Hono + ws (real-time status + agent communication) |
-| **Database** | better-sqlite3 + SQLite WAL (schema v16) |
-| **UI** | Lit web components + Vite + @lit/localize (i18n, 6 languages) |
-| **Build** | tsdown (CLI), Vite (UI) |
-| **LLM Integration** | Vercel AI SDK v6 (Anthropic, OpenAI, Google, Ollama, custom…) |
-| **Tests** | Vitest (1093 unit/integration + ~100 e2e) |
-| **Lint / Format** | oxlint + Prettier + cspell + lefthook (pre-commit/push hooks) |
+| **Runtime** | Node.js >= 22.12.0, ESM modules, TypeScript ~6.0 |
+| **CLI** | Commander.js ^14 + @inquirer/prompts (interactive wizard) |
+| **HTTP / WebSocket** | Hono ^4.12 + ws ^8 (real-time status + agent communication) |
+| **Database** | better-sqlite3 ^12 + SQLite WAL (schema v26) |
+| **UI** | Lit ^3 web components + Vite ^8 + @lit/localize (i18n, 6 languages) |
+| **Build** | tsdown (CLI), Vite ^8 (UI) |
+| **LLM Integration** | Vercel AI SDK ^6.0 (@ai-sdk/anthropic, openai, google) |
+| **Tests** | Vitest ^4 (~1200 unit/integration + ~100 e2e) |
+| **Lint / Format** | oxlint ^1.56 + Prettier ^3.8 + cspell + lefthook (pre-commit/push hooks) |
 | **Plugin System** | Event bus + hook-based plugins for tool, session, and message lifecycle |
-| **MCP** | @modelcontextprotocol/sdk (stdio + HTTP transports) |
+| **MCP** | @modelcontextprotocol/sdk ^1.28 (stdio + HTTP transports) |
 
 ---
 
@@ -248,9 +277,11 @@ Pre-push hooks: spellcheck + test:run. Commits follow conventional commits (comm
 |----------|---------|
 | [`docs/main-doc.md`](docs/main-doc.md) | Architecture overview — read this before major changes |
 | [`docs/ux-design.md`](docs/ux-design.md) | Dashboard UX — all screens, components, interaction patterns |
+| [`docs/ux-screens/`](docs/ux-screens/) | Individual screen docs (13 screens) |
+| [`docs/ux-components/`](docs/ux-components/) | Individual component and dialog docs (26 components) |
 | [`docs/design-rules.md`](docs/design-rules.md) | Design system, anti-patterns, delivery checklist |
 | [`docs/i18n.md`](docs/i18n.md) | i18n architecture — adding languages, translation workflow |
-| [`docs/registry-db.md`](docs/registry-db.md) | Database schema (v16), migration history, recovery procedures |
+| [`docs/registry-db.md`](docs/registry-db.md) | Database schema (v26), migration history, recovery procedures |
 | [`CLAUDE.md`](CLAUDE.md) | Development conventions, key patterns, common pitfalls |
 | [`CHANGELOG.md`](CHANGELOG.md) | Detailed release notes |
 
@@ -260,7 +291,10 @@ Pre-push hooks: spellcheck + test:run. Commits follow conventional commits (comm
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 
-- **v0.49.1** (current) — Middleware chain, fire-and-forget fix, TypeScript 6.0, dependency bumps
+- **v0.61.11** (current) — Named API keys (AES-256-GCM), user profiles, agent archetypes, schema v26
+- **v0.58.0** — Dashboard service management, auth command, system prompt snapshots
+- **v0.55.0** — Agent templates, runtime config in DB, skills sync
+- **v0.49.1** — Middleware chain, fire-and-forget fix, TypeScript 6.0
 - **v0.48.0** — Heartbeat heatmap, memory browser, activity console, cost dashboard
 - **v0.45.0** — Cost tracking, send_message tool, multi-agent collaboration
 - **v0.30.0** — Workspace autodiscovery, runtime-specific features
@@ -274,4 +308,4 @@ MIT — see [LICENSE](LICENSE)
 
 ---
 
-*Updated: 2026-03-24 — v0.49.1, middleware chain, permanent sessions, inter-agent messaging*
+*Updated: 2026-04-03 — v0.61.11, schema v26, named API keys, user profiles, agent archetypes, ~105 REST endpoints*
