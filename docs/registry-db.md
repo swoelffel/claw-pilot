@@ -1,7 +1,7 @@
 # claw-pilot — Registry Database (`registry.db`)
 
 SQLite database at `~/.claw-pilot/registry.db`. WAL mode, foreign keys enforced.  
-Current schema version: **16**. Source of truth: `src/db/schema.ts`.
+Current schema version: **26**. Source of truth: `src/db/schema.ts`.
 
 ---
 
@@ -9,14 +9,18 @@ Current schema version: **16**. Source of truth: `src/db/schema.ts`.
 
 ```
 servers ──< instances ──< agents ──< agent_files
-                    │              └──< (skills column)
+                    │              └──< (skills, config_json, named_key_id)
                     ├──< agent_links
                     ├──< events
                     ├──< ports
                     ├──< rt_sessions ──< rt_messages ──< rt_parts
+                    │              └──< rt_system_prompts
+                    ├──< rt_events
                     ├──< rt_permissions
                     ├──< rt_auth_profiles
-                    └──< rt_pairing_codes
+                    ├──< rt_pairing_codes
+                    ├──< instance_named_keys ──> named_api_keys
+                    └──< (runtime_config_json, default_named_key_id)
 
 blueprints ──< agents ──< agent_files
            └──< agent_links
@@ -24,7 +28,9 @@ blueprints ──< agents ──< agent_files
 agent_blueprints ──< agent_blueprint_files
 
 users ──< sessions
+     └──< user_profiles
 
+named_api_keys  (admin-global encrypted keys)
 config  (global key-value)
 schema_version  (single row)
 ```
@@ -78,6 +84,8 @@ schema_version  (single row)
 | `created_at` | TEXT | | base |
 | `updated_at` | TEXT | | base |
 | `instance_type` | TEXT | NOT NULL DEFAULT 'openclaw' CHECK(IN openclaw,claw-runtime) | v8 |
+| `runtime_config_json` | TEXT | (full RuntimeConfig JSON blob — source of truth) | v21 |
+| `default_named_key_id` | INTEGER | REFERENCES named_api_keys(id) ON DELETE SET NULL | v25 |
 
 ### `agents`
 
@@ -100,6 +108,8 @@ schema_version  (single row)
 | `synced_at` | TEXT | | v2 |
 | `skills` | TEXT | (JSON array or NULL = all) | v7 |
 | `created_at` | TEXT | | v13 |
+| `config_json` | TEXT | (full RuntimeAgentConfig JSON blob) | v20 |
+| `named_key_id` | INTEGER | REFERENCES named_api_keys(id) ON DELETE SET NULL | v24 |
 
 CHECK: `instance_id` XOR `blueprint_id` must be set.  
 UNIQUE: `(instance_id, agent_id)` and `(blueprint_id, agent_id)`.
@@ -339,6 +349,103 @@ Workspace files per agent blueprint (SOUL.md, IDENTITY.md, AGENTS.md, etc.).
 UNIQUE: `(agent_blueprint_id, filename)`.
 Index: `idx_agent_blueprint_files_bp ON (agent_blueprint_id)`.
 
+### `user_profiles` (v17)
+
+Per-user preferences injected into agent system prompts.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `user_id` | INTEGER | NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE |
+| `display_name` | TEXT | |
+| `language` | TEXT | NOT NULL DEFAULT 'fr' |
+| `timezone` | TEXT | |
+| `communication_style` | TEXT | NOT NULL DEFAULT 'concise' CHECK(IN concise,detailed,technical) |
+| `custom_instructions` | TEXT | |
+| `default_model` | TEXT | |
+| `avatar_url` | TEXT | |
+| `ui_preferences` | TEXT | (JSON) |
+| `created_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+| `updated_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+
+### `user_providers` (v17, deprecated v24)
+
+Replaced by `named_api_keys` with encrypted storage. Auto-migrated at startup.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `user_id` | INTEGER | NOT NULL REFERENCES users(id) ON DELETE CASCADE |
+| `provider_id` | TEXT | NOT NULL |
+| `api_key_env_var` | TEXT | NOT NULL |
+| `base_url` | TEXT | |
+| `priority` | INTEGER | NOT NULL DEFAULT 0 |
+| `headers` | TEXT | |
+| `created_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+| `updated_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+
+UNIQUE: `(user_id, provider_id)`.
+
+### `rt_events` (v19)
+
+Runtime bus events per instance for the Activity Console.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `instance_slug` | TEXT | NOT NULL |
+| `event_type` | TEXT | NOT NULL |
+| `agent_id` | TEXT | |
+| `session_id` | TEXT | |
+| `level` | TEXT | NOT NULL DEFAULT 'info' CHECK(IN info,warn,error) |
+| `summary` | TEXT | |
+| `payload` | TEXT | (JSON) |
+| `created_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+
+Indexes: `idx_rt_events_slug_created`, `idx_rt_events_slug_type`, `idx_rt_events_slug_level`.
+
+### `named_api_keys` (v24)
+
+Admin-global named API keys. Encrypted with AES-256-GCM via `MASTER_ENCRYPTION_KEY` env var.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `name` | TEXT | NOT NULL UNIQUE |
+| `provider_id` | TEXT | NOT NULL |
+| `encrypted_api_key` | TEXT | NOT NULL |
+| `default_model` | TEXT | NOT NULL |
+| `base_url` | TEXT | |
+| `created_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+| `updated_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+
+### `instance_named_keys` (v24, deprecated v25)
+
+Junction table replaced by `instances.default_named_key_id` FK. Retained for additive-only policy.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `instance_id` | INTEGER | NOT NULL REFERENCES instances(id) ON DELETE CASCADE |
+| `named_key_id` | INTEGER | NOT NULL REFERENCES named_api_keys(id) ON DELETE RESTRICT |
+| `is_default` | INTEGER | NOT NULL DEFAULT 0 |
+
+UNIQUE: `(instance_id, named_key_id)`.
+
+### `rt_system_prompts` (v26)
+
+System prompt snapshots per session, deduplicated by content hash.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `session_id` | TEXT | NOT NULL REFERENCES rt_sessions(id) ON DELETE CASCADE |
+| `prompt_hash` | TEXT | NOT NULL |
+| `system_prompt` | TEXT | NOT NULL |
+| `built_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+
+Index: `idx_rt_system_prompts_session`.
+
 ---
 
 ## Migration history
@@ -361,12 +468,22 @@ Index: `idx_agent_blueprint_files_bp ON (agent_blueprint_id)`.
 | 14 | Index `idx_rt_messages_session_role` on `(session_id, role)`. **PLAN-16**: archives duplicate permanent sessions (keeps oldest per agent), recalculates permanent keys to `<slug>:<agentId>` (removes peerId). |
 | 15 | Relocated instance state directories from `~/.runtime-<slug>/` to `~/.claw-pilot/instances/<slug>/`. Recalculates `state_dir` and `config_path`. |
 | 16 | Added `agent_blueprints` and `agent_blueprint_files` tables for standalone reusable agent templates (independent of team blueprints and instances). |
+| 17 | Added `user_profiles`, `user_providers`, `user_model_aliases` tables for per-user preferences and provider configs. |
+| 18 | Dropped `user_model_aliases` — replaced by dynamic model discovery from provider APIs. |
+| 19 | Added `rt_events` table for runtime bus events (activity console). Indexes on slug+created, slug+type, slug+level. |
+| 20 | Added `agents.config_json` — full RuntimeAgentConfig as JSON blob. Backfilled from runtime.json. |
+| 21 | Added `instances.runtime_config_json` — full RuntimeConfig as JSON blob (source of truth, replaces runtime.json). Backfilled from runtime.json. |
+| 22 | Synced `agents.skills` whitelist into `runtime_config_json` — skills column was a dead store. |
+| 23 | Replaced vestigial gateway ports with actual web-chat derived ports (djb2 hash, range 19100–19199). Cleared old ports table. |
+| 24 | Added `named_api_keys` and `instance_named_keys` tables. Added `agents.named_key_id` FK. AES-256-GCM encrypted key storage. |
+| 25 | Added `instances.default_named_key_id` FK — simplifies key assignment (replaces junction table). |
+| 26 | Added `rt_system_prompts` table for system prompt snapshots per session (deduplicated by content hash). |
 
 ---
 
 ## Key access patterns
 
-All DB access goes through `src/core/registry.ts` facade (9 repositories) — never raw SQL in commands or routes.
+All DB access goes through `src/core/registry.ts` facade (15 repositories) — never raw SQL in commands or routes.
 
 ### Instance operations
 
@@ -421,7 +538,13 @@ All DB access goes through `src/core/registry.ts` facade (9 repositories) — ne
 | Log event | `EventRepository` | `logEvent(slug, type, detail?)` |
 | Local server | `ServerRepository` | `getLocalServer()`, `upsertLocalServer()` |
 | Enriched sessions | `RuntimeSessionRepository` | `listEnrichedSessions(db, slug, opts?)` |
+| Runtime events | `RtEventRepository` | `listEvents(slug, opts?)`, `insertEvent()` |
+| Cost aggregations | `CostRepository` | `getCostsByAgent(slug)`, `getCostsBySession()` |
+| Heartbeat history | `HeartbeatRepository` | `getHeartbeatHistory(slug, opts?)` |
+| Named keys CRUD | `NamedKeyRepository` | `list()`, `create()`, `update()`, `delete()` |
+| Runtime config | `RuntimeConfigRepository` | `getRuntimeConfig(slug)`, `updateRuntimeConfig()` |
+| User profile | `UserProfileRepository` | `getProfile(userId)`, `updateProfile()` |
 
 ---
 
-*Updated: 2026-03-21 — v0.42.0: schema v16, 9 repositories, migration history complete*
+*Updated: 2026-04-03 — v0.61.11: schema v26, 15 repositories, migration history v1–v26*

@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.61.12] — 2026-04-03
+
+### Changed
+
+- **Documentation overhaul** — Sync README, main-doc, and registry-db with current codebase state (v0.61.11). Updated version references (0.49.1/0.42.0 → 0.61.12), schema v16 → v26, 15 repositories (was 9), ~105 API endpoints (was 69). Added documentation for named API keys, user profiles, agent archetypes, 7 new DB tables, 10 new migrations, new CLI commands (auth, service), new dashboard screens, and updated tech stack versions.
+
+---
+
 ## [0.61.11] — 2026-04-03
 
 ### Added
