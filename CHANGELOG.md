@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.61.3] — 2026-04-03
+
+### Changed
+
+- **System prompt dirty-flag cache** — Prompt-loop optimization that avoids rebuilding the system prompt on every turn when no config has changed.
+
+---
+
 ## [0.61.2] — 2026-04-02
 
 ### Fixed
