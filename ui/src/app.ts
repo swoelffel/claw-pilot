@@ -598,8 +598,11 @@ export class CpApp extends LitElement {
       (msg) => this._handleWsMessage(msg),
       () => {
         this._wsConnected = true;
-        // If a self-update was running and WS just reconnected, server restarted → reload
-        if (this._selfUpdateStatus?.status === "running") {
+        // If a self-update was in progress and WS just reconnected, server restarted → reload
+        if (
+          this._selfUpdateStatus?.status === "running" ||
+          this._selfUpdateStatus?.status === "done"
+        ) {
           location.reload();
         }
       },
