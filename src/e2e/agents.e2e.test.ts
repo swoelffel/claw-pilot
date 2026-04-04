@@ -3,6 +3,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { startTestServer, type TestContext } from "./helpers/test-server.js";
 import { seedAdmin, seedLocalServer, seedInstance } from "./helpers/seed.js";
+import type { Json } from "./helpers/types.js";
 
 // Minimal runtime.json content for the MockConnection
 const MINIMAL_RUNTIME_JSON = JSON.stringify(
@@ -45,7 +46,7 @@ describe("Agents API", () => {
   it("GET /api/instances/:slug/agents (empty) → 200, []", async () => {
     const res = await ctx.client.withBearer().get(`/api/instances/${INSTANCE_SLUG}/agents`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(Array.isArray(body)).toBe(true);
     expect(body.length).toBe(0);
   });
@@ -60,11 +61,11 @@ describe("Agents API", () => {
       model: "claude-3-5-haiku-20241022",
     });
     expect(res.status).toBe(201);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.agents).toBeDefined();
     expect(Array.isArray(body.agents)).toBe(true);
     expect(body.agents.length).toBeGreaterThan(0);
-    const created = body.agents.find((a: any) => a.agent_id === "test-agent");
+    const created = body.agents.find((a: Json) => a.agent_id === "test-agent");
     expect(created).toBeDefined();
     expect(created.name).toBe("Test Agent");
   });
@@ -73,10 +74,10 @@ describe("Agents API", () => {
   it("GET /api/instances/:slug/agents → array with 1 agent", async () => {
     const res = await ctx.client.withBearer().get(`/api/instances/${INSTANCE_SLUG}/agents`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(Array.isArray(body)).toBe(true);
     expect(body.length).toBeGreaterThanOrEqual(1);
-    const found = body.find((a: any) => a.agent_id === "test-agent");
+    const found = body.find((a: Json) => a.agent_id === "test-agent");
     expect(found).toBeDefined();
   });
 
@@ -86,7 +87,7 @@ describe("Agents API", () => {
       .withBearer()
       .patch(`/api/instances/${INSTANCE_SLUG}/agents/test-agent/position`, { x: 100, y: 200 });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.ok).toBe(true);
   });
 
@@ -96,7 +97,7 @@ describe("Agents API", () => {
       .withBearer()
       .patch(`/api/instances/${INSTANCE_SLUG}/agents/test-agent/meta`, { role: "Updated Role" });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.ok).toBe(true);
   });
 
@@ -117,12 +118,12 @@ describe("Agents API", () => {
       .withBearer()
       .delete(`/api/instances/${INSTANCE_SLUG}/agents/agent-to-delete`);
     expect(deleteRes.status).toBe(200);
-    const body = (await deleteRes.json()) as any;
+    const body = (await deleteRes.json()) as Json;
     // Response contains instance + agents + links
     expect(body.instance).toBeDefined();
     expect(Array.isArray(body.agents)).toBe(true);
     // The deleted agent should not be in the list
-    const stillPresent = body.agents.find((a: any) => a.agent_id === "agent-to-delete");
+    const stillPresent = body.agents.find((a: Json) => a.agent_id === "agent-to-delete");
     expect(stillPresent).toBeUndefined();
   });
 
@@ -130,9 +131,9 @@ describe("Agents API", () => {
   it("After delete, GET .../agents → deleted agent not present", async () => {
     const res = await ctx.client.withBearer().get(`/api/instances/${INSTANCE_SLUG}/agents`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(Array.isArray(body)).toBe(true);
-    const deleted = body.find((a: any) => a.agent_id === "agent-to-delete");
+    const deleted = body.find((a: Json) => a.agent_id === "agent-to-delete");
     expect(deleted).toBeUndefined();
   });
 });

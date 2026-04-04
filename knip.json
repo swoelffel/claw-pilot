@@ -1,8 +1,7 @@
 {
-  "entry": ["src/index.ts", "ui/src/app.ts"],
+  "entry": ["ui/src/app.ts"],
   "project": ["src/**/*.ts", "ui/src/**/*.ts"],
   "ignore": [
-    "src/**/__tests__/**",
     "ui/src/locales/**",
     "ui/src/components/activity-console.ts",
     "ui/src/components/heartbeat-heatmap.ts",
@@ -11,11 +10,9 @@
     "ui/src/components/instance-skills.ts"
   ],
   "ignoreFiles": [
-    "src/e2e/helpers/mock-llm-server.ts",
-    "src/runtime/provider/index.ts"
+    "src/e2e/helpers/mock-llm-server.ts"
   ],
   "ignoreDependencies": [
-    "ora",
     "@types/dompurify"
   ],
   "ignoreExportsUsedInFile": true,

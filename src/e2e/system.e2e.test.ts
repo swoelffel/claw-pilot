@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { startTestServer, type TestContext } from "./helpers/test-server.js";
 import { seedAdmin } from "./helpers/seed.js";
+import type { Json } from "./helpers/types.js";
 
 describe("System API", () => {
   let ctx: TestContext;
@@ -19,8 +20,7 @@ describe("System API", () => {
   it("GET /health returns 200 with ok:true without auth", async () => {
     const res = await ctx.client.get("/health");
     expect(res.status).toBe(200);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.ok).toBe(true);
     expect(body.service).toBe("claw-pilot");
     expect(typeof body.uptime).toBe("number");
@@ -37,7 +37,7 @@ describe("System API", () => {
   it("GET /api/health (authenticated) → 200, has instances and db.sizeBytes", async () => {
     const res = await ctx.client.withBearer().get("/api/health");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.ok).toBe(true);
     expect(body.instances).toBeDefined();
     expect(typeof body.instances.total).toBe("number");

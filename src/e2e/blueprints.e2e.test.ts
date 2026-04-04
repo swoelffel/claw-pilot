@@ -18,6 +18,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { startTestServer, type TestContext } from "./helpers/test-server.js";
 import { seedAdmin } from "./helpers/seed.js";
+import type { Json } from "./helpers/types.js";
 
 describe("Blueprints API — full CRUD", () => {
   let ctx: TestContext;
@@ -51,7 +52,7 @@ describe("Blueprints API — full CRUD", () => {
       description: "A test blueprint",
     });
     expect(res.status).toBe(201);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(typeof body.id).toBe("number");
     expect(body.name).toBe("Test Blueprint");
     blueprintId = body.id;
@@ -62,7 +63,7 @@ describe("Blueprints API — full CRUD", () => {
       name: "Test Blueprint",
     });
     expect(res.status).toBe(409);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.code).toBe("BLUEPRINT_NAME_TAKEN");
   });
 
@@ -71,14 +72,14 @@ describe("Blueprints API — full CRUD", () => {
       description: "no name",
     });
     expect(res.status).toBe(400);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.code).toBe("BLUEPRINT_NAME_REQUIRED");
   });
 
   it("GET /api/blueprints/:id → 200, correct name", async () => {
     const res = await ctx.client.withBearer().get(`/api/blueprints/${blueprintId}`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.id).toBe(blueprintId);
     expect(body.name).toBe("Test Blueprint");
   });
@@ -86,7 +87,7 @@ describe("Blueprints API — full CRUD", () => {
   it("GET /api/blueprints/:id with unknown id → 404 NOT_FOUND", async () => {
     const res = await ctx.client.withBearer().get("/api/blueprints/99999");
     expect(res.status).toBe(404);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.code).toBe("NOT_FOUND");
   });
 
@@ -96,7 +97,7 @@ describe("Blueprints API — full CRUD", () => {
       description: "Updated description",
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.name).toBe("Updated Blueprint");
     expect(body.description).toBe("Updated description");
   });
@@ -104,7 +105,7 @@ describe("Blueprints API — full CRUD", () => {
   it("GET /api/blueprints/:id after PUT → reflects updated name", async () => {
     const res = await ctx.client.withBearer().get(`/api/blueprints/${blueprintId}`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.name).toBe("Updated Blueprint");
   });
 
@@ -113,20 +114,20 @@ describe("Blueprints API — full CRUD", () => {
   it("GET /api/blueprints/:id/builder → 200, has blueprint + agents[] + links[]", async () => {
     const res = await ctx.client.withBearer().get(`/api/blueprints/${blueprintId}/builder`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.blueprint).toBeDefined();
     expect(body.blueprint.id).toBe(blueprintId);
     expect(Array.isArray(body.agents)).toBe(true);
     expect(Array.isArray(body.links)).toBe(true);
     // Default "pilot" agent is seeded on creation
-    const pilot = body.agents.find((a: any) => a.agent_id === "pilot");
+    const pilot = body.agents.find((a: Json) => a.agent_id === "pilot");
     expect(pilot).toBeDefined();
   });
 
   it("GET /api/blueprints/:id/builder with unknown id → 404 NOT_FOUND", async () => {
     const res = await ctx.client.withBearer().get("/api/blueprints/99999/builder");
     expect(res.status).toBe(404);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.code).toBe("NOT_FOUND");
   });
 
@@ -139,9 +140,9 @@ describe("Blueprints API — full CRUD", () => {
       model: "anthropic/claude-3-5-haiku-20241022",
     });
     expect(res.status).toBe(201);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(Array.isArray(body.agents)).toBe(true);
-    const helper = body.agents.find((a: any) => a.agent_id === "helper");
+    const helper = body.agents.find((a: Json) => a.agent_id === "helper");
     expect(helper).toBeDefined();
     expect(helper.name).toBe("Helper Agent");
   });
@@ -152,7 +153,7 @@ describe("Blueprints API — full CRUD", () => {
       name: "Duplicate",
     });
     expect(res.status).toBe(409);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.code).toBe("AGENT_ID_TAKEN");
   });
 
@@ -162,7 +163,7 @@ describe("Blueprints API — full CRUD", () => {
       name: "Bad",
     });
     expect(res.status).toBe(400);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.code).toBe("INVALID_AGENT_ID");
   });
 
@@ -171,7 +172,7 @@ describe("Blueprints API — full CRUD", () => {
       name: "No ID",
     });
     expect(res.status).toBe(400);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.code).toBe("FIELD_REQUIRED");
   });
 
@@ -185,9 +186,9 @@ describe("Blueprints API — full CRUD", () => {
         notes: "Handles edge cases",
       });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(Array.isArray(body.agents)).toBe(true);
-    const helper = body.agents.find((a: any) => a.agent_id === "helper");
+    const helper = body.agents.find((a: Json) => a.agent_id === "helper");
     expect(helper).toBeDefined();
     expect(helper.role).toBe("Support specialist");
   });
@@ -197,7 +198,7 @@ describe("Blueprints API — full CRUD", () => {
       .withBearer()
       .patch(`/api/blueprints/${blueprintId}/agents/nonexistent/meta`, { role: "x" });
     expect(res.status).toBe(404);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.code).toBe("AGENT_NOT_FOUND");
   });
 
@@ -208,7 +209,7 @@ describe("Blueprints API — full CRUD", () => {
       .withBearer()
       .patch(`/api/blueprints/${blueprintId}/agents/helper/position`, { x: 200, y: 150 });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.ok).toBe(true);
   });
 
@@ -217,7 +218,7 @@ describe("Blueprints API — full CRUD", () => {
       .withBearer()
       .patch(`/api/blueprints/${blueprintId}/agents/ghost/position`, { x: 0, y: 0 });
     expect(res.status).toBe(404);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.code).toBe("AGENT_NOT_FOUND");
   });
 
@@ -229,7 +230,7 @@ describe("Blueprints API — full CRUD", () => {
       .withBearer()
       .get(`/api/blueprints/${blueprintId}/agents/pilot/files/AGENTS.md`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.filename).toBe("AGENTS.md");
     expect(typeof body.content).toBe("string");
     expect(typeof body.content_hash).toBe("string");
@@ -241,7 +242,7 @@ describe("Blueprints API — full CRUD", () => {
       .withBearer()
       .get(`/api/blueprints/${blueprintId}/agents/pilot/files/NONEXISTENT.md`);
     expect(res.status).toBe(404);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.code).toBe("FILE_NOT_FOUND");
   });
 
@@ -253,7 +254,7 @@ describe("Blueprints API — full CRUD", () => {
         content: newContent,
       });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.filename).toBe("AGENTS.md");
     expect(body.content).toBe(newContent);
     expect(typeof body.content_hash).toBe("string");
@@ -264,7 +265,7 @@ describe("Blueprints API — full CRUD", () => {
       .withBearer()
       .get(`/api/blueprints/${blueprintId}/agents/pilot/files/AGENTS.md`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.content).toBe("# AGENTS.md\n\nUpdated by e2e test.\n");
   });
 
@@ -277,11 +278,11 @@ describe("Blueprints API — full CRUD", () => {
         targets: ["helper"],
       });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.ok).toBe(true);
     expect(Array.isArray(body.links)).toBe(true);
     const link = body.links.find(
-      (l: any) => l.source_agent_id === "pilot" && l.target_agent_id === "helper",
+      (l: Json) => l.source_agent_id === "pilot" && l.target_agent_id === "helper",
     );
     expect(link).toBeDefined();
     expect(link.link_type).toBe("spawn");
@@ -294,10 +295,10 @@ describe("Blueprints API — full CRUD", () => {
         targets: [],
       });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.ok).toBe(true);
     const spawnLinks = body.links.filter(
-      (l: any) => l.source_agent_id === "pilot" && l.link_type === "spawn",
+      (l: Json) => l.source_agent_id === "pilot" && l.link_type === "spawn",
     );
     expect(spawnLinks.length).toBe(0);
   });
@@ -307,7 +308,7 @@ describe("Blueprints API — full CRUD", () => {
       .withBearer()
       .patch("/api/blueprints/99999/agents/pilot/spawn-links", { targets: [] });
     expect(res.status).toBe(404);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.code).toBe("NOT_FOUND");
   });
 
@@ -318,16 +319,16 @@ describe("Blueprints API — full CRUD", () => {
       .withBearer()
       .delete(`/api/blueprints/${blueprintId}/agents/helper`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(Array.isArray(body.agents)).toBe(true);
-    const stillPresent = body.agents.find((a: any) => a.agent_id === "helper");
+    const stillPresent = body.agents.find((a: Json) => a.agent_id === "helper");
     expect(stillPresent).toBeUndefined();
   });
 
   it("DELETE /api/blueprints/:id/agents/:agentId with unknown agent → 404 AGENT_NOT_FOUND", async () => {
     const res = await ctx.client.withBearer().delete(`/api/blueprints/${blueprintId}/agents/ghost`);
     expect(res.status).toBe(404);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.code).toBe("AGENT_NOT_FOUND");
   });
 
@@ -336,21 +337,21 @@ describe("Blueprints API — full CRUD", () => {
   it("DELETE /api/blueprints/:id → 200, { ok: true }", async () => {
     const res = await ctx.client.withBearer().delete(`/api/blueprints/${blueprintId}`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.ok).toBe(true);
   });
 
   it("GET /api/blueprints/:id after delete → 404 NOT_FOUND", async () => {
     const res = await ctx.client.withBearer().get(`/api/blueprints/${blueprintId}`);
     expect(res.status).toBe(404);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.code).toBe("NOT_FOUND");
   });
 
   it("DELETE /api/blueprints/:id already deleted → 404 NOT_FOUND", async () => {
     const res = await ctx.client.withBearer().delete(`/api/blueprints/${blueprintId}`);
     expect(res.status).toBe(404);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.code).toBe("NOT_FOUND");
   });
 });

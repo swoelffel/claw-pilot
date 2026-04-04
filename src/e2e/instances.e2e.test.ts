@@ -3,6 +3,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { startTestServer, type TestContext } from "./helpers/test-server.js";
 import { seedAdmin, seedLocalServer, seedInstance } from "./helpers/seed.js";
+import type { Json } from "./helpers/types.js";
 
 describe("Instances API", () => {
   let ctx: TestContext;
@@ -22,7 +23,7 @@ describe("Instances API", () => {
   it("GET /api/instances (empty) → 200, empty array", async () => {
     const res = await ctx.client.withBearer().get("/api/instances");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(Array.isArray(body)).toBe(true);
     expect(body.length).toBe(0);
   });
@@ -31,7 +32,7 @@ describe("Instances API", () => {
   it("GET /api/instances/:slug for non-existent slug → 404", async () => {
     const res = await ctx.client.withBearer().get("/api/instances/nonexistent-slug");
     expect(res.status).toBe(404);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     // instanceGuard returns code: "NOT_FOUND"
     expect(body.code).toBe("NOT_FOUND");
   });
@@ -47,10 +48,10 @@ describe("Instances API", () => {
 
     const res = await ctx.client.withBearer().get("/api/instances");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(Array.isArray(body)).toBe(true);
     expect(body.length).toBeGreaterThanOrEqual(1);
-    const found = body.find((i: any) => i.slug === "test-inst-list");
+    const found = body.find((i: Json) => i.slug === "test-inst-list");
     expect(found).toBeDefined();
   });
 
@@ -66,7 +67,7 @@ describe("Instances API", () => {
 
     const res = await ctx.client.withBearer().get("/api/instances/test-inst-detail");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.instance).toBeDefined();
     expect(body.instance.slug).toBe("test-inst-detail");
     expect(body.status).toBeDefined();
@@ -83,7 +84,7 @@ describe("Instances API", () => {
 
     const res = await ctx.client.withBearer().get("/api/instances/test-inst-config/config");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.general).toBeDefined();
     expect(typeof body.general.port).toBe("number");
     expect(body.general.port).toBe(18802);
@@ -103,7 +104,7 @@ describe("Instances API", () => {
       .withBearer()
       .patch("/api/instances/test-inst-patch/config", { general: { displayName: "Updated Name" } });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.ok).toBe(true);
   });
 
@@ -118,7 +119,7 @@ describe("Instances API", () => {
 
     const res = await ctx.client.withBearer().delete("/api/instances/test-inst-delete");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.ok).toBe(true);
     expect(body.slug).toBe("test-inst-delete");
   });
@@ -138,7 +139,7 @@ describe("Instances API", () => {
     // Now it should be 404
     const res = await ctx.client.withBearer().get("/api/instances/test-inst-gone");
     expect(res.status).toBe(404);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     // instanceGuard returns code: "NOT_FOUND"
     expect(body.code).toBe("NOT_FOUND");
   });
