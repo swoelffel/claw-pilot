@@ -2,7 +2,7 @@
 import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { AgentBuilderInfo, BuilderData, BudgetInfo } from "../types.js";
+import type { AgentBuilderInfo, BuilderData } from "../types.js";
 import { isArchetypeLink, getArchetypeFromLink } from "../types.js";
 import {
   syncAgents,
@@ -324,15 +324,19 @@ export class AgentsBuilder extends LitElement {
     this._error = "";
     try {
       await syncAgents(this.slug);
-      const [data, budgets] = await Promise.all([
-        fetchBuilderData(this.slug),
-        fetchBudgets(this.slug).catch(() => []),
-      ]);
+      const data = await fetchBuilderData(this.slug);
       this._data = data;
-      this._budgetExceeded = budgets.some(
-        (b) => b.enabled && b.limitUsd > 0 && b.spentUsd / b.limitUsd >= b.hardStopPct,
-      );
       this._recomputePositions();
+
+      // Budget check is non-blocking — builder works even if budget API fails
+      try {
+        const budgets = await fetchBudgets(this.slug);
+        this._budgetExceeded = budgets.some(
+          (b) => b.enabled && b.limitUsd > 0 && b.spentUsd / b.limitUsd >= b.hardStopPct,
+        );
+      } catch {
+        this._budgetExceeded = false;
+      }
     } catch (err) {
       this._error = userMessage(err);
     } finally {
