@@ -6,6 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.62.0] — 2026-04-04
+
+### Added
+
+- **Budget enforcement with auto-pause (BUDGET-001)** — Per-instance and per-agent budget limits with automatic enforcement. Pre/post-LLM budget checks in prompt loop, heartbeat tick blocking when budget exceeded. Monthly reset + periodic reconciliation. REST API (8 endpoints) for budget CRUD, override, and audit events. Telegram notifications on soft alert and hard stop. New DB migration v27 (rt_budgets + rt_budget_events). 55 new tests.
+- **Budget management UI** — New "Budgets" tab in Cost Dashboard (cp-budget-settings): budget CRUD with progress bars, create/edit dialog with agent selector, event history log. Budget alert banners (cp-budget-alert-banner) on all instance pages with override confirmation dialog. Budget exceeded indicator on instance cards and agent mini-cards. Full i18n support (6 languages, 54 keys each).
+- **CI on develop branch** — GitHub Actions CI now triggers on push to develop and PRs targeting develop (previously only main).
+
+### Changed
+
+- **Instance API rate limit** — Raised from 10 to 30 req/min to accommodate budget status polling across multiple instance pages.
+- **Audit bypass cleanup** — Remove dead code, tighten type safety (PR #42).
+
+---
+
 ## [0.61.12] — 2026-04-03
 
 ### Changed
