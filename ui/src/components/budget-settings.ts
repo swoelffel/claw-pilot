@@ -63,7 +63,7 @@ export class CpBudgetSettings extends LitElement {
 
   @state() private _budgets: BudgetInfo[] = [];
   @state() private _events: BudgetEvent[] = [];
-  @state() private _agentIds: string[] = [];
+  @state() private _agents: { id: string; name: string }[] = [];
   @state() private _loading = true;
   @state() private _error = "";
 
@@ -95,7 +95,7 @@ export class CpBudgetSettings extends LitElement {
       ]);
       this._budgets = budgets;
       this._events = events;
-      this._agentIds = builder.agents.map((a) => a.agent_id);
+      this._agents = builder.agents.map((a) => ({ id: a.agent_id, name: a.name }));
     } catch (err) {
       this._error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -122,7 +122,7 @@ export class CpBudgetSettings extends LitElement {
   private _openCreateAgent(): void {
     this._editId = null;
     this._dialogScope = "agent";
-    this._formScopeId = this._agentIds[0] ?? "";
+    this._formScopeId = this._agents[0]?.id ?? "";
     this._formPeriod = "monthly";
     this._formLimit = "20";
     this._formSoftPct = "80";
@@ -432,10 +432,10 @@ export class CpBudgetSettings extends LitElement {
                   @change=${(e: Event) =>
                     (this._formScopeId = (e.target as HTMLSelectElement).value)}
                 >
-                  ${this._agentIds.map(
-                    (id) =>
-                      html`<option value=${id} ?selected=${this._formScopeId === id}>
-                        ${id}
+                  ${this._agents.map(
+                    (a) =>
+                      html`<option value=${a.id} ?selected=${this._formScopeId === a.id}>
+                        ${a.name}
                       </option>`,
                   )}
                 </select>
