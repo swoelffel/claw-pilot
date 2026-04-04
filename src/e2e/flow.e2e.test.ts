@@ -23,6 +23,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { startTestServer, type TestContext } from "./helpers/test-server.js";
 import { seedAdmin, seedLocalServer } from "./helpers/seed.js";
 import { NamedKeyRepository } from "../core/repositories/named-key-repository.js";
+import type { Json } from "./helpers/types.js";
 
 const FLOW_SLUG = "flow-test-inst";
 const FLOW_PORT = 19165; // deriveWebChatPort("flow-test-inst")
@@ -95,7 +96,7 @@ describe("Flow: create instance → create agent → delete agent → delete ins
       namedKeyId,
     });
     expect(res.status).toBe(201);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.slug).toBe(FLOW_SLUG);
     expect(body.port).toBe(FLOW_PORT);
   });
@@ -104,7 +105,7 @@ describe("Flow: create instance → create agent → delete agent → delete ins
   it("GET /api/instances/:slug → 200, instance found after creation", async () => {
     const res = await ctx.client.withBearer().get(`/api/instances/${FLOW_SLUG}`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.instance).toBeDefined();
     expect(body.instance.slug).toBe(FLOW_SLUG);
   });
@@ -128,10 +129,10 @@ describe("Flow: create instance → create agent → delete agent → delete ins
       model: "claude-3-5-haiku-20241022",
     });
     expect(res.status).toBe(201);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.agents).toBeDefined();
     expect(Array.isArray(body.agents)).toBe(true);
-    const created = body.agents.find((a: any) => a.agent_id === "flow-agent");
+    const created = body.agents.find((a: Json) => a.agent_id === "flow-agent");
     expect(created).toBeDefined();
     expect(created.name).toBe("Flow Agent");
   });
@@ -140,9 +141,9 @@ describe("Flow: create instance → create agent → delete agent → delete ins
   it("GET /api/instances/:slug/agents → flow-agent present", async () => {
     const res = await ctx.client.withBearer().get(`/api/instances/${FLOW_SLUG}/agents`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(Array.isArray(body)).toBe(true);
-    const found = body.find((a: any) => a.agent_id === "flow-agent");
+    const found = body.find((a: Json) => a.agent_id === "flow-agent");
     expect(found).toBeDefined();
   });
 
@@ -152,10 +153,10 @@ describe("Flow: create instance → create agent → delete agent → delete ins
       .withBearer()
       .delete(`/api/instances/${FLOW_SLUG}/agents/flow-agent`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.instance).toBeDefined();
     expect(Array.isArray(body.agents)).toBe(true);
-    const stillPresent = body.agents.find((a: any) => a.agent_id === "flow-agent");
+    const stillPresent = body.agents.find((a: Json) => a.agent_id === "flow-agent");
     expect(stillPresent).toBeUndefined();
   });
 
@@ -163,9 +164,9 @@ describe("Flow: create instance → create agent → delete agent → delete ins
   it("GET /api/instances/:slug/agents → flow-agent no longer present", async () => {
     const res = await ctx.client.withBearer().get(`/api/instances/${FLOW_SLUG}/agents`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(Array.isArray(body)).toBe(true);
-    const deleted = body.find((a: any) => a.agent_id === "flow-agent");
+    const deleted = body.find((a: Json) => a.agent_id === "flow-agent");
     expect(deleted).toBeUndefined();
   });
 
@@ -173,7 +174,7 @@ describe("Flow: create instance → create agent → delete agent → delete ins
   it("DELETE /api/instances/:slug → 200, instance deleted", async () => {
     const res = await ctx.client.withBearer().delete(`/api/instances/${FLOW_SLUG}`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.ok).toBe(true);
     expect(body.slug).toBe(FLOW_SLUG);
   });
@@ -182,7 +183,7 @@ describe("Flow: create instance → create agent → delete agent → delete ins
   it("GET /api/instances/:slug → 404 after deletion", async () => {
     const res = await ctx.client.withBearer().get(`/api/instances/${FLOW_SLUG}`);
     expect(res.status).toBe(404);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.code).toBe("NOT_FOUND");
   });
 });

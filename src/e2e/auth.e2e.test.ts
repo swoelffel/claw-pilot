@@ -4,6 +4,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { startTestServer, type TestContext } from "./helpers/test-server.js";
 import { seedAdmin, SEED_PASSWORD } from "./helpers/seed.js";
 import { constants } from "../lib/constants.js";
+import type { Json } from "./helpers/types.js";
 
 // ---------------------------------------------------------------------------
 // Main auth suite
@@ -28,7 +29,7 @@ describe("Auth API", () => {
       password: SEED_PASSWORD,
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.ok).toBe(true);
     expect(typeof body.token).toBe("string");
     expect(body.token.length).toBeGreaterThan(0);
@@ -53,7 +54,7 @@ describe("Auth API", () => {
       password: "wrong-password",
     });
     expect(res.status).toBe(401);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.code).toBe("INVALID_CREDENTIALS");
   });
 
@@ -85,7 +86,7 @@ describe("Auth API", () => {
     await cookieClient.login();
     const res = await cookieClient.get("/api/auth/me");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.authenticated).toBe(true);
     expect(body.username).toBe(constants.ADMIN_USERNAME);
   });
@@ -94,7 +95,7 @@ describe("Auth API", () => {
   it("GET /api/auth/me with Bearer token → 200, authenticated: true", async () => {
     const res = await ctx.client.withBearer().get("/api/auth/me");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.authenticated).toBe(true);
   });
 
@@ -110,7 +111,7 @@ describe("Auth API", () => {
     // ctx.client already has a session cookie from tests 4/5/7 — use it directly
     const res = await ctx.client.post("/api/auth/logout");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.ok).toBe(true);
     // The Set-Cookie header should clear the session cookie (empty value or Max-Age=0)
     const setCookie = res.headers.get("set-cookie");
@@ -176,7 +177,7 @@ describe("Auth rate limiting", () => {
     // 6th attempt should be rate limited
     const res = await ctx.client.post("/api/auth/login", badCreds);
     expect(res.status).toBe(429);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.code).toBe("RATE_LIMITED");
   });
 });

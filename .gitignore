@@ -6,5 +6,5 @@ coverage/
 .env
 .env.local
 *.db
-~/.claw-pilot/
+.claw-pilot/
 docs/_work/

@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { serve } from "@hono/node-server";
 import { WebSocketServer } from "ws";
+import type { Server as HttpServer } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import * as fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
@@ -306,8 +307,7 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   // WebSocket server — auth via first applicative message { type: "auth", token: "..." }
   // This avoids exposing the token in the URL (query params appear in server logs,
   // browser history, and proxy logs).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const wss = new WebSocketServer({ server: server as any });
+  const wss = new WebSocketServer({ server: server as HttpServer });
   wss.on("connection", (ws) => {
     // Give the client 5 seconds to send the auth message
     const authTimeout = setTimeout(() => {
