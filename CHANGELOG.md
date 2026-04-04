@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.62.1] — 2026-04-04
+
+### Fixed
+
+- **Budget UI icons** — Replaced emoji icons (🛑, ⚠️, 🔄) with design-consistent Unicode symbols (●, ⚠, ↻) matching the existing app vocabulary. Event icons are now color-coded (red for hard_stop, amber for soft_alert).
+
+---
+
 ## [0.62.0] — 2026-04-04
 
 ### Added
