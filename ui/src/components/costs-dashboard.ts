@@ -7,6 +7,8 @@ import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
 import { fetchCostSummary, fetchDailyCosts, fetchCostsByAgent, fetchCostsByModel } from "../api.js";
 import type { CostSummary, DailyCost, AgentCost, ModelCost } from "../types.js";
+import "./budget-settings.js";
+import "./budget-alert-banner.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -98,6 +100,35 @@ export class CostsDashboard extends LitElement {
         font-weight: 700;
         color: var(--text-primary);
         flex: 1;
+      }
+
+      .tab-selector {
+        display: flex;
+        gap: 2px;
+        background: var(--bg-base);
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-md);
+        padding: 2px;
+      }
+
+      .tab-btn {
+        background: none;
+        border: none;
+        border-radius: var(--radius-sm);
+        color: var(--text-secondary);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 4px 12px;
+        font-family: inherit;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+
+      .tab-btn.active {
+        background: var(--accent);
+        color: #fff;
       }
 
       .period-selector {
@@ -309,6 +340,7 @@ export class CostsDashboard extends LitElement {
 
   @property({ type: String }) slug = "";
 
+  @state() private _tab: "analytics" | "budgets" = "analytics";
   @state() private _period: Period = "7d";
   @state() private _summary: CostSummary | null = null;
   @state() private _daily: DailyCost[] = [];
@@ -688,42 +720,66 @@ export class CostsDashboard extends LitElement {
     const periods: Period[] = ["7d", "30d", "all"];
 
     return html`
+      <cp-budget-alert-banner .slug=${this.slug}></cp-budget-alert-banner>
+
       <div class="header">
         <button class="btn-back" @click=${this._goBack}>
           ← ${msg("Back", { id: "costs-back" })}
         </button>
         <div class="title">${msg("Costs", { id: "costs-title" })} — ${this.slug}</div>
-        <div class="period-selector">
-          ${periods.map(
-            (p) => html`
-              <button
-                class="period-btn ${this._period === p ? "active" : ""}"
-                @click=${() => this._setPeriod(p)}
-              >
-                ${p === "all" ? msg("All", { id: "costs-period-all" }) : p}
-              </button>
-            `,
-          )}
+        <div class="tab-selector">
+          <button
+            class="tab-btn ${this._tab === "analytics" ? "active" : ""}"
+            @click=${() => (this._tab = "analytics")}
+          >
+            ${msg("Analytics", { id: "costs-tab-analytics" })}
+          </button>
+          <button
+            class="tab-btn ${this._tab === "budgets" ? "active" : ""}"
+            @click=${() => (this._tab = "budgets")}
+          >
+            ${msg("Budgets", { id: "costs-tab-budgets" })}
+          </button>
         </div>
+        ${this._tab === "analytics"
+          ? html`
+              <div class="period-selector">
+                ${periods.map(
+                  (p) => html`
+                    <button
+                      class="period-btn ${this._period === p ? "active" : ""}"
+                      @click=${() => this._setPeriod(p)}
+                    >
+                      ${p === "all" ? msg("All", { id: "costs-period-all" }) : p}
+                    </button>
+                  `,
+                )}
+              </div>
+            `
+          : nothing}
       </div>
 
-      ${this._renderSummaryCards()}
+      ${this._tab === "budgets"
+        ? html`<cp-budget-settings .slug=${this.slug}></cp-budget-settings>`
+        : html`
+            ${this._renderSummaryCards()}
 
-      <div class="chart-section">
-        <div class="section-title">${msg("Daily Costs", { id: "costs-daily" })}</div>
-        ${this._renderDailyChart()}
-      </div>
+            <div class="chart-section">
+              <div class="section-title">${msg("Daily Costs", { id: "costs-daily" })}</div>
+              ${this._renderDailyChart()}
+            </div>
 
-      <div class="two-cols">
-        <div class="chart-section">
-          <div class="section-title">${msg("By Agent", { id: "costs-by-agent" })}</div>
-          ${this._renderAgentTable()}
-        </div>
-        <div class="chart-section">
-          <div class="section-title">${msg("By Model", { id: "costs-by-model" })}</div>
-          ${this._renderModelDonut()}
-        </div>
-      </div>
+            <div class="two-cols">
+              <div class="chart-section">
+                <div class="section-title">${msg("By Agent", { id: "costs-by-agent" })}</div>
+                ${this._renderAgentTable()}
+              </div>
+              <div class="chart-section">
+                <div class="section-title">${msg("By Model", { id: "costs-by-model" })}</div>
+                ${this._renderModelDonut()}
+              </div>
+            </div>
+          `}
     `;
   }
 }
