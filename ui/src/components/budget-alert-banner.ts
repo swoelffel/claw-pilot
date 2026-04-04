@@ -149,18 +149,20 @@ export class CpBudgetAlertBanner extends LitElement {
       return html`
         <div class="banner exceeded">
           <div class="banner-text">
-            🛑 <strong>${label}</strong> ${msg("budget exceeded — agent paused")}
+            ⚠ <strong>${label}</strong> —
+            ${msg("budget exceeded, agent paused", { id: "budget-banner-exceeded" })}
             (${spent}/${limit})
           </div>
           <div class="banner-actions">
             <button class="btn-override" @click=${() => this._requestOverride(a.budgetId)}>
-              ${msg("Override")} +${Math.round(a.overridePct * 100)}%
+              ${msg("Override", { id: "budget-banner-override" })}
+              +${Math.round(a.overridePct * 100)}%
             </button>
             <button class="btn-link" @click=${() => this._goToBudgets()}>
-              ${msg("Budgets")} →
+              ${msg("Budgets", { id: "budget-banner-budgets" })}
             </button>
             <button class="btn-dismiss" @click=${() => this._dismiss(a.budgetId)}>
-              ${msg("Dismiss")}
+              ${msg("Dismiss", { id: "budget-banner-dismiss" })}
             </button>
           </div>
         </div>
@@ -170,14 +172,16 @@ export class CpBudgetAlertBanner extends LitElement {
     return html`
       <div class="banner warning">
         <div class="banner-text">
-          ⚠️ <strong>${label}</strong>
-          ${msg("has reached")} ${Math.round((a.spentUsd / a.limitUsd) * 100)}% ${msg("of budget")}
-          (${spent}/${limit})
+          ⚠ <strong>${label}</strong> — ${msg("has reached", { id: "budget-banner-reached" })}
+          ${Math.round((a.spentUsd / a.limitUsd) * 100)}%
+          ${msg("of budget", { id: "budget-banner-of-budget" })} (${spent}/${limit})
         </div>
         <div class="banner-actions">
-          <button class="btn-link" @click=${() => this._goToBudgets()}>${msg("Budgets")} →</button>
+          <button class="btn-link" @click=${() => this._goToBudgets()}>
+            ${msg("Budgets", { id: "budget-banner-budgets" })}
+          </button>
           <button class="btn-dismiss" @click=${() => this._dismiss(a.budgetId)}>
-            ${msg("Dismiss")}
+            ${msg("Dismiss", { id: "budget-banner-dismiss" })}
           </button>
         </div>
       </div>
@@ -191,21 +195,25 @@ export class CpBudgetAlertBanner extends LitElement {
     return html`
       <div class="dialog-backdrop" @click=${() => this._cancelOverride()}>
         <div class="dialog" @click=${(e: Event) => e.stopPropagation()}>
-          <h3>${msg("Confirm budget override")}</h3>
+          <h3>${msg("Confirm budget override", { id: "budget-confirm-title" })}</h3>
           <p class="dialog-body">
-            ${msg("You are about to add")} <strong>${addPct}%</strong> (${msg("i.e.")}
-            <strong>$${addUsd.toFixed(2)}</strong>) ${msg("to the budget to continue.")}
+            ${msg("You are about to add", { id: "budget-confirm-body" })}
+            <strong>${addPct}%</strong>
+            (${msg("i.e.", { id: "budget-confirm-ie" })}
+            <strong>$${addUsd.toFixed(2)}</strong>)
+            ${msg("to the budget to continue.", { id: "budget-confirm-body2" })}
           </p>
           <p class="dialog-detail">
-            ${msg("New limit:")}
+            ${msg("New limit:", { id: "budget-confirm-new-limit" })}
             <span class="mono">$${a.limitUsd.toFixed(2)} → $${newLimit.toFixed(2)}</span>
           </p>
           <div class="dialog-actions">
             <button class="btn-cancel" @click=${() => this._cancelOverride()}>
-              ${msg("Cancel")}
+              ${msg("Cancel", { id: "budget-confirm-cancel" })}
             </button>
             <button class="btn-confirm" @click=${() => void this._confirmOverride()}>
-              ${msg("Add")} $${addUsd.toFixed(2)} ${msg("and continue")}
+              ${msg("Add", { id: "budget-confirm-add" })} $${addUsd.toFixed(2)}
+              ${msg("and continue", { id: "budget-confirm-continue" })}
             </button>
           </div>
         </div>

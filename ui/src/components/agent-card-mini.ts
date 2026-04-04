@@ -187,20 +187,11 @@ export class AgentCardMini extends LitElement {
       }
 
       .badge-budget {
-        font-size: 12px;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--state-error);
         cursor: pointer;
         flex-shrink: 0;
-        filter: saturate(1.2);
-        animation: pulse-budget 2s ease-in-out infinite;
-      }
-      @keyframes pulse-budget {
-        0%,
-        100% {
-          opacity: 1;
-        }
-        50% {
-          opacity: 0.5;
-        }
       }
 
       .model-label {
@@ -295,7 +286,7 @@ export class AgentCardMini extends LitElement {
           ${this.budgetExceeded
             ? html`<span
                 class="badge-budget"
-                title=${msg("Budget exceeded — click to manage", { id: "acm-budget-exceeded" })}
+                title=${msg("Budget exceeded", { id: "acm-budget-exceeded" })}
                 @click=${(e: Event) => {
                   e.stopPropagation();
                   this.dispatchEvent(
@@ -306,7 +297,7 @@ export class AgentCardMini extends LitElement {
                     }),
                   );
                 }}
-                >🛑</span
+                >⚠</span
               >`
             : nothing}
           ${this.deletable

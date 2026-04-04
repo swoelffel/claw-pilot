@@ -202,7 +202,8 @@ export class CpBudgetSettings extends LitElement {
   // ---------------------------------------------------------------------------
 
   override render() {
-    if (this._loading) return html`<div class="center">${msg("Loading budgets...")}</div>`;
+    if (this._loading)
+      return html`<div class="center">${msg("Loading budgets...", { id: "budget-loading" })}</div>`;
     if (this._error) return html`<div class="center error">${this._error}</div>`;
 
     const instanceBudgets = this._budgets.filter((b) => b.scope === "instance");
@@ -223,16 +224,18 @@ export class CpBudgetSettings extends LitElement {
     return html`
       <section class="card">
         <div class="card-header">
-          <span class="card-title">${msg("Instance Budget")}</span>
+          <span class="card-title">${msg("Instance Budget", { id: "budget-instance-title" })}</span>
           ${!b
             ? html`<button class="btn-sm accent" @click=${() => this._openCreateInstance()}>
-                + ${msg("Add Budget")}
+                + ${msg("Add Budget", { id: "budget-add" })}
               </button>`
             : nothing}
         </div>
         ${b
           ? this._renderBudgetCard(b)
-          : html`<div class="empty">${msg("No instance budget configured.")}</div>`}
+          : html`<div class="empty">
+              ${msg("No instance budget configured.", { id: "budget-no-instance" })}
+            </div>`}
       </section>
     `;
   }
@@ -245,18 +248,21 @@ export class CpBudgetSettings extends LitElement {
         <div class="budget-card-header">
           <span class="budget-period">${b.period}</span>
           <div class="card-actions">
-            <button class="btn-sm" @click=${() => this._openEdit(b)}>${msg("Edit")}</button>
+            <button class="btn-sm" @click=${() => this._openEdit(b)}>
+              ${msg("Edit", { id: "budget-edit" })}
+            </button>
             <button class="btn-sm danger" @click=${() => this._delete(b.id)}>✕</button>
           </div>
         </div>
         <div class="budget-details">
-          ${msg("Limit:")} ${fmtUsd(b.limitUsd)} &nbsp; ${msg("Alert:")}
-          ${Math.round(b.softAlertPct * 100)}% &nbsp; ${msg("Stop:")}
-          ${Math.round(b.hardStopPct * 100)}% &nbsp; ${msg("Override:")}
-          +${Math.round(b.overridePct * 100)}%
+          ${msg("Limit:", { id: "budget-limit" })} ${fmtUsd(b.limitUsd)} &nbsp;
+          ${msg("Alert:", { id: "budget-alert" })} ${Math.round(b.softAlertPct * 100)}% &nbsp;
+          ${msg("Stop:", { id: "budget-stop" })} ${Math.round(b.hardStopPct * 100)}% &nbsp;
+          ${msg("Override:")} +${Math.round(b.overridePct * 100)}%
         </div>
         <div class="budget-spent">
-          ${msg("Spent:")} ${fmtUsd(b.spentUsd)} / ${fmtUsd(b.limitUsd)} (${p}%)
+          ${msg("Spent:", { id: "budget-spent" })} ${fmtUsd(b.spentUsd)} / ${fmtUsd(b.limitUsd)}
+          (${p}%)
         </div>
         <div class="bar-track">
           <div
@@ -272,10 +278,13 @@ export class CpBudgetSettings extends LitElement {
           <span
             >${b.period === "monthly" ? `Period: ${b.periodStart.slice(0, 7)}` : "Lifetime"}</span
           >
-          <span>${msg("Remaining:")} ${fmtUsd(Math.max(0, b.limitUsd - b.spentUsd))}</span>
+          <span
+            >${msg("Remaining:", { id: "budget-remaining" })}
+            ${fmtUsd(Math.max(0, b.limitUsd - b.spentUsd))}</span
+          >
           ${status === "exceeded"
             ? html`<button class="btn-sm warning" @click=${() => this._override(b.id)}>
-                ${msg("Override")} +${Math.round(b.overridePct * 100)}%
+                ${msg("Override", { id: "budget-override" })} +${Math.round(b.overridePct * 100)}%
               </button>`
             : nothing}
         </div>
@@ -291,22 +300,24 @@ export class CpBudgetSettings extends LitElement {
     return html`
       <section class="card">
         <div class="card-header">
-          <span class="card-title">${msg("Agent Budgets")}</span>
+          <span class="card-title">${msg("Agent Budgets", { id: "budget-agents-title" })}</span>
           <button class="btn-sm accent" @click=${() => this._openCreateAgent()}>
-            + ${msg("Add Budget")}
+            + ${msg("Add Budget", { id: "budget-add" })}
           </button>
         </div>
         ${budgets.length === 0
-          ? html`<div class="empty">${msg("No agent budgets configured.")}</div>`
+          ? html`<div class="empty">
+              ${msg("No agent budgets configured.", { id: "budget-no-agents" })}
+            </div>`
           : html`
               <table class="budget-table">
                 <thead>
                   <tr>
-                    <th>${msg("Agent")}</th>
-                    <th>${msg("Period")}</th>
-                    <th>${msg("Limit")}</th>
-                    <th>${msg("Spent")}</th>
-                    <th>${msg("Status")}</th>
+                    <th>${msg("Agent", { id: "budget-col-agent" })}</th>
+                    <th>${msg("Period", { id: "budget-col-period" })}</th>
+                    <th>${msg("Limit", { id: "budget-col-limit" })}</th>
+                    <th>${msg("Spent", { id: "budget-col-spent" })}</th>
+                    <th>${msg("Status", { id: "budget-col-status" })}</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -355,7 +366,7 @@ export class CpBudgetSettings extends LitElement {
                               </button>`
                             : nothing}
                           <button class="btn-sm" @click=${() => this._openEdit(b)}>
-                            ${msg("Edit")}
+                            ${msg("Edit", { id: "budget-edit" })}
                           </button>
                           <button class="btn-sm danger" @click=${() => this._delete(b.id)}>
                             ✕
@@ -379,10 +390,12 @@ export class CpBudgetSettings extends LitElement {
     return html`
       <section class="card">
         <div class="card-header">
-          <span class="card-title">${msg("Budget History")}</span>
+          <span class="card-title">${msg("Budget History", { id: "budget-history-title" })}</span>
         </div>
         ${this._events.length === 0
-          ? html`<div class="empty">${msg("No budget events yet.")}</div>`
+          ? html`<div class="empty">
+              ${msg("No budget events yet.", { id: "budget-no-events" })}
+            </div>`
           : html`
               <div class="event-list">
                 ${this._events.slice(0, 20).map(
@@ -413,11 +426,11 @@ export class CpBudgetSettings extends LitElement {
     const isAgent = this._dialogScope === "agent";
     const title = isEdit
       ? isAgent
-        ? msg("Edit Agent Budget")
-        : msg("Edit Instance Budget")
+        ? msg("Edit Agent Budget", { id: "budget-edit-agent" })
+        : msg("Edit Instance Budget", { id: "budget-edit-instance" })
       : isAgent
-        ? msg("New Agent Budget")
-        : msg("New Instance Budget");
+        ? msg("New Agent Budget", { id: "budget-new-agent" })
+        : msg("New Instance Budget", { id: "budget-new-instance" });
 
     return html`
       <div class="dialog-backdrop" @click=${() => this._closeDialog()}>
@@ -426,7 +439,7 @@ export class CpBudgetSettings extends LitElement {
 
           ${!isEdit && isAgent
             ? html`
-                <label>${msg("Agent")}</label>
+                <label>${msg("Agent", { id: "budget-col-agent" })}</label>
                 <select
                   .value=${this._formScopeId}
                   @change=${(e: Event) =>
@@ -443,7 +456,7 @@ export class CpBudgetSettings extends LitElement {
             : nothing}
           ${!isEdit
             ? html`
-                <label>${msg("Period")}</label>
+                <label>${msg("Period", { id: "budget-col-period" })}</label>
                 <div class="radio-group">
                   <label>
                     <input
@@ -453,7 +466,7 @@ export class CpBudgetSettings extends LitElement {
                       .checked=${this._formPeriod === "monthly"}
                       @change=${() => (this._formPeriod = "monthly")}
                     />
-                    ${msg("Monthly")}
+                    ${msg("Monthly", { id: "budget-monthly" })}
                   </label>
                   <label>
                     <input
@@ -463,13 +476,13 @@ export class CpBudgetSettings extends LitElement {
                       .checked=${this._formPeriod === "lifetime"}
                       @change=${() => (this._formPeriod = "lifetime")}
                     />
-                    ${msg("Lifetime")}
+                    ${msg("Lifetime", { id: "budget-lifetime" })}
                   </label>
                 </div>
               `
             : nothing}
 
-          <label>${msg("Limit (USD)")}</label>
+          <label>${msg("Limit (USD)", { id: "budget-limit-usd" })}</label>
           <input
             type="number"
             min="0.01"
@@ -478,7 +491,7 @@ export class CpBudgetSettings extends LitElement {
             @input=${(e: Event) => (this._formLimit = (e.target as HTMLInputElement).value)}
           />
 
-          <label>${msg("Alert threshold (%)")}</label>
+          <label>${msg("Alert threshold (%)", { id: "budget-alert-threshold" })}</label>
           <input
             type="number"
             min="0"
@@ -487,7 +500,7 @@ export class CpBudgetSettings extends LitElement {
             @input=${(e: Event) => (this._formSoftPct = (e.target as HTMLInputElement).value)}
           />
 
-          <label>${msg("Stop threshold (%)")}</label>
+          <label>${msg("Stop threshold (%)", { id: "budget-stop-threshold" })}</label>
           <input
             type="number"
             min="0"
@@ -496,7 +509,7 @@ export class CpBudgetSettings extends LitElement {
             @input=${(e: Event) => (this._formHardPct = (e.target as HTMLInputElement).value)}
           />
 
-          <label>${msg("Override increase (%)")}</label>
+          <label>${msg("Override increase (%)", { id: "budget-override-increase" })}</label>
           <input
             type="number"
             min="0"
@@ -506,9 +519,13 @@ export class CpBudgetSettings extends LitElement {
           />
 
           <div class="dialog-actions">
-            <button class="btn-sm" @click=${() => this._closeDialog()}>${msg("Cancel")}</button>
+            <button class="btn-sm" @click=${() => this._closeDialog()}>
+              ${msg("Cancel", { id: "budget-cancel" })}
+            </button>
             <button class="btn-sm accent" @click=${() => void this._submitDialog()}>
-              ${isEdit ? msg("Save") : msg("Create Budget")}
+              ${isEdit
+                ? msg("Save", { id: "budget-save" })
+                : msg("Create Budget", { id: "budget-create" })}
             </button>
           </div>
         </div>
