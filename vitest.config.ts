@@ -10,12 +10,13 @@ export default defineConfig({
       exclude: ["src/**/__tests__/**", "src/index.ts"],
       reporter: ["text", "html", "json-summary"],
       thresholds: {
-        // Phase 3 test coverage: +44 tests covering CLI withContext, schema v24-v26,
-        // shell, errors, platform utilities.
-        lines: 51,
-        statements: 50,
-        functions: 53,
-        branches: 44,
+        // Phase 5 test coverage: +230 tests covering agent defaults, model catalog,
+        // provider resolution, usage tracker, message builder, workspace cache,
+        // and 4 repository modules.
+        lines: 54,
+        statements: 53,
+        functions: 57,
+        branches: 47,
       },
     },
   },
