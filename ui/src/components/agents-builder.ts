@@ -258,7 +258,8 @@ export class AgentsBuilder extends LitElement {
   @state() private _justCreatedAgentId: string | null = null;
   @state() private _agentToDelete: AgentBuilderInfo | null = null;
   @state() private _showImportDialog = false;
-  @state() private _budgetExceeded = false;
+  /** Set of agent_ids with exceeded budgets, plus "__instance__" if the instance budget is exceeded */
+  @state() private _exceededBudgetScopes = new Set<string>();
 
   // Drag state — not @state, updated directly during pointer events
   private _drag: {
@@ -331,11 +332,17 @@ export class AgentsBuilder extends LitElement {
       // Budget check is non-blocking — builder works even if budget API fails
       try {
         const budgets = await fetchBudgets(this.slug);
-        this._budgetExceeded = budgets.some(
-          (b) => b.enabled && b.limitUsd > 0 && b.spentUsd / b.limitUsd >= b.hardStopPct,
-        );
+        const exceeded = new Set<string>();
+        for (const b of budgets) {
+          if (!b.enabled || b.limitUsd <= 0) continue;
+          if (b.spentUsd / b.limitUsd >= b.hardStopPct) {
+            if (b.scope === "instance") exceeded.add("__instance__");
+            else if (b.scopeId) exceeded.add(b.scopeId);
+          }
+        }
+        this._exceededBudgetScopes = exceeded;
       } catch {
-        this._budgetExceeded = false;
+        this._exceededBudgetScopes = new Set();
       }
     } catch (err) {
       this._error = userMessage(err);
@@ -723,7 +730,8 @@ export class AgentsBuilder extends LitElement {
                         .isNew=${this._justCreatedAgentId === agent.agent_id}
                         .deletable=${!agent.is_default}
                         .archetypeSpawns=${archetypeSpawnMap.get(agent.agent_id) ?? []}
-                        .budgetExceeded=${this._budgetExceeded}
+                        .budgetExceeded=${this._exceededBudgetScopes.has("__instance__") ||
+                        this._exceededBudgetScopes.has(agent.agent_id)}
                         .instanceSlug=${this.slug}
                         style="left: ${pos.x}px; top: ${pos.y}px;"
                         @agent-delete-requested=${(e: CustomEvent<{ agentId: string }>) =>
