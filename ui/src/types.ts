@@ -688,6 +688,37 @@ export interface ModelCost {
 }
 
 // ---------------------------------------------------------------------------
+// Budget Enforcement
+// ---------------------------------------------------------------------------
+
+export interface BudgetInfo {
+  id: number;
+  scope: "agent" | "instance";
+  scopeId: string | null;
+  period: "monthly" | "lifetime";
+  limitUsd: number;
+  spentUsd: number;
+  softAlertPct: number;
+  hardStopPct: number;
+  overridePct: number;
+  enabled: boolean;
+  periodStart: string;
+  createdAt: string;
+}
+
+export interface BudgetEvent {
+  id: number;
+  budgetId: number;
+  eventType: string;
+  currentUsd: number;
+  limitUsd: number;
+  message: string | null;
+  scope?: string;
+  scopeId?: string | null;
+  createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
 // Activity Console / Events
 // ---------------------------------------------------------------------------
 

@@ -37,6 +37,8 @@ import type {
   HeartbeatHourBucket,
   HeartbeatAgentStats,
   NamedApiKey,
+  BudgetInfo,
+  BudgetEvent,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 import { getToken } from "./services/auth-state.js";
@@ -771,6 +773,70 @@ export async function fetchCostsByAgent(slug: string, period = "7d"): Promise<Ag
 
 export async function fetchCostsByModel(slug: string, period = "7d"): Promise<ModelCost[]> {
   return apiFetch<ModelCost[]>(`/instances/${slug}/costs/by-model?period=${period}`);
+}
+
+// ---------------------------------------------------------------------------
+// Budget Enforcement
+// ---------------------------------------------------------------------------
+
+export async function fetchBudgets(slug: string): Promise<BudgetInfo[]> {
+  return apiFetch<BudgetInfo[]>(`/instances/${slug}/budgets`);
+}
+
+export async function createBudgetApi(
+  slug: string,
+  input: {
+    scope: "agent" | "instance";
+    scopeId?: string | null;
+    period?: "monthly" | "lifetime";
+    limitUsd: number;
+    softAlertPct?: number;
+    hardStopPct?: number;
+    overridePct?: number;
+  },
+): Promise<BudgetInfo> {
+  return apiFetch<BudgetInfo>(`/instances/${slug}/budgets`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateBudgetApi(
+  slug: string,
+  id: number,
+  input: {
+    limitUsd?: number;
+    softAlertPct?: number;
+    hardStopPct?: number;
+    overridePct?: number;
+    enabled?: boolean;
+  },
+): Promise<BudgetInfo> {
+  return apiFetch<BudgetInfo>(`/instances/${slug}/budgets/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteBudgetApi(slug: string, id: number): Promise<void> {
+  await apiFetch<{ ok: boolean }>(`/instances/${slug}/budgets/${id}`, { method: "DELETE" });
+}
+
+export async function overrideBudgetApi(
+  slug: string,
+  id: number,
+): Promise<{ id: number; limitUsd: number; spentUsd: number; overridePct: number }> {
+  return apiFetch(`/instances/${slug}/budgets/${id}/override`, { method: "POST" });
+}
+
+export async function fetchBudgetEvents(slug: string, id: number): Promise<BudgetEvent[]> {
+  return apiFetch<BudgetEvent[]>(`/instances/${slug}/budgets/${id}/events`);
+}
+
+export async function fetchAllBudgetEvents(slug: string): Promise<BudgetEvent[]> {
+  return apiFetch<BudgetEvent[]>(`/instances/${slug}/budgets/events`);
 }
 
 // ---------------------------------------------------------------------------

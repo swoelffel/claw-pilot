@@ -48,6 +48,7 @@ import {
   clearDirty,
 } from "./system-prompt-dirty.js";
 import { buildCoreMessages, applyCaching } from "./message-builder.js";
+import { preBudgetCheck, postBudgetCheck } from "./budget-check.js";
 import { normalizeTokenUsage } from "./usage-tracker.js";
 import { buildToolSet } from "./tool-set-builder.js";
 import { shouldCompact, compact } from "./compaction.js";
@@ -373,6 +374,9 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
 
     // message.sending hook now fires via bus on assistant MessageCreated (see plugin-wiring.ts)
 
+    // Budget pre-check (belt) — block if any budget is exceeded
+    preBudgetCheck(db, instanceSlug, agentConfig.id);
+
     const llmCallStart = Date.now();
     const streamResult = streamText({
       model: resolvedModel.languageModel,
@@ -517,6 +521,9 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       finishReason: await finalResult.finishReason,
     });
     bus.publish(MessageUpdated, { sessionId, messageId: assistantMsg.id });
+
+    // 8b. Budget post-check (suspenders) — increment counter + check thresholds
+    postBudgetCheck(db, instanceSlug, agentConfig.id, costUsd);
 
     // 9. Auto-compaction
     const effectiveCompaction = compactionConfig ?? {
