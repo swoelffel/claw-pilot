@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 # ── Shared setup anchor (YAML merge key) ─────────────────────────────────────
 # GitHub Actions doesn't support YAML anchors, so we use a reusable setup

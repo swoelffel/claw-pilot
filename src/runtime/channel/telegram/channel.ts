@@ -25,7 +25,12 @@ import { markdownToTelegramV2 } from "./formatter.js";
 import { createPairingCode } from "../pairing.js";
 import { logger } from "../../../lib/logger.js";
 import { getBus } from "../../bus/index.js";
-import { QuestionAsked, SuggestionsGenerated } from "../../bus/events.js";
+import {
+  QuestionAsked,
+  SuggestionsGenerated,
+  BudgetSoftAlert,
+  BudgetHardStop,
+} from "../../bus/events.js";
 import { resolveQuestion } from "../../tool/built-in/question.js";
 import type { OutboundArtifact } from "../../types.js";
 
@@ -57,6 +62,8 @@ export class TelegramChannel implements Channel {
   private readonly options: TelegramChannelOptions;
   private busUnsub: (() => void) | undefined;
   private suggestionsUnsub: (() => void) | undefined;
+  private budgetSoftUnsub: (() => void) | undefined;
+  private budgetHardUnsub: (() => void) | undefined;
   /** Track last known chatId for sending question keyboards */
   private lastChatId: number | undefined;
 
@@ -98,6 +105,25 @@ export class TelegramChannel implements Channel {
       });
       this.suggestionsUnsub = bus.subscribe(SuggestionsGenerated, (payload) => {
         void this.handleSuggestionsGenerated(payload);
+      });
+      this.budgetSoftUnsub = bus.subscribe(BudgetSoftAlert, (payload) => {
+        if (this.lastChatId && this.poller) {
+          const pct = Math.round(payload.pct * 100);
+          const label = payload.scopeId ? `${payload.scope} (${payload.scopeId})` : payload.scope;
+          void this.poller.sendMessage(
+            this.lastChatId,
+            `\u26a0\ufe0f Budget alert: ${label} at ${pct}% — $${payload.spentUsd.toFixed(2)} / $${payload.limitUsd.toFixed(2)}`,
+          );
+        }
+      });
+      this.budgetHardUnsub = bus.subscribe(BudgetHardStop, (payload) => {
+        if (this.lastChatId && this.poller) {
+          const label = payload.scopeId ? `${payload.scope} (${payload.scopeId})` : payload.scope;
+          void this.poller.sendMessage(
+            this.lastChatId,
+            `\ud83d\uded1 Budget exceeded: ${label} — agent paused. $${payload.spentUsd.toFixed(2)} / $${payload.limitUsd.toFixed(2)}. Override via dashboard.`,
+          );
+        }
       });
     }
   }
@@ -158,6 +184,10 @@ export class TelegramChannel implements Channel {
     this.busUnsub = undefined;
     this.suggestionsUnsub?.();
     this.suggestionsUnsub = undefined;
+    this.budgetSoftUnsub?.();
+    this.budgetSoftUnsub = undefined;
+    this.budgetHardUnsub?.();
+    this.budgetHardUnsub = undefined;
     this.poller?.stop();
     this.poller = undefined;
   }

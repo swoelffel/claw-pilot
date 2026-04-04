@@ -312,6 +312,7 @@ export class InstanceCard extends LitElement {
   ];
 
   @property({ type: Object }) instance!: InstanceInfo;
+  @property({ type: Boolean }) budgetExceeded = false;
 
   @state() private _loading = false;
   @state() private _error = "";
@@ -430,6 +431,22 @@ export class InstanceCard extends LitElement {
           }}
         >
           ⚠ PERM
+        </button>
+      `);
+    }
+
+    // Budget exceeded
+    if (this.budgetExceeded) {
+      items.push(html`
+        <button
+          class="perm-pill"
+          title=${msg("Budget exceeded", { id: "card-budget-exceeded" })}
+          @click=${(e: Event) => {
+            e.stopPropagation();
+            this._navigate("costs");
+          }}
+        >
+          ⚠ BUDGET
         </button>
       `);
     }

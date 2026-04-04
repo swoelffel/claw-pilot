@@ -23,6 +23,7 @@ import { createSession, listSessions } from "../session/session.js";
 import { runPromptLoop } from "../session/prompt-loop.js";
 import { resolveModelForAgent } from "../channel/router.js";
 import { parseInterval, isWithinActiveHours } from "./interval.js";
+import { preBudgetCheck, BudgetExceededError } from "../session/budget-check.js";
 import { logger } from "../../lib/logger.js";
 
 const HEARTBEAT_CHANNEL = "internal";
@@ -91,6 +92,21 @@ async function runHeartbeatTick(
     )
   )
     return;
+
+  // Check budget before starting tick
+  try {
+    preBudgetCheck(db, instanceSlug, agent.id);
+  } catch (err) {
+    if (err instanceof BudgetExceededError) {
+      logger.info("heartbeat_budget_blocked", {
+        event: "heartbeat_budget_blocked",
+        slug: instanceSlug,
+        agentId: agent.id,
+      });
+      return;
+    }
+    throw err;
+  }
 
   // Publish tick event
   bus.publish(HeartbeatTick, { agentId: agent.id, instanceSlug });

@@ -1139,6 +1139,46 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 27,
+    up(db) {
+      db.exec(`
+        CREATE TABLE rt_budgets (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          instance_slug   TEXT NOT NULL REFERENCES instances(slug) ON DELETE CASCADE,
+          scope           TEXT NOT NULL CHECK (scope IN ('agent', 'instance')),
+          scope_id        TEXT,
+          period          TEXT NOT NULL DEFAULT 'monthly'
+            CHECK (period IN ('monthly', 'lifetime')),
+          limit_usd       REAL NOT NULL,
+          spent_usd       REAL NOT NULL DEFAULT 0,
+          soft_alert_pct  REAL DEFAULT 0.8,
+          hard_stop_pct   REAL DEFAULT 1.0,
+          override_pct    REAL DEFAULT 0.2,
+          enabled         INTEGER DEFAULT 1,
+          period_start    TEXT NOT NULL DEFAULT (datetime('now','start of month')),
+          created_at      TEXT DEFAULT (datetime('now')),
+          updated_at      TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE UNIQUE INDEX idx_rt_budgets_scope
+          ON rt_budgets(instance_slug, scope, COALESCE(scope_id, ''), period);
+
+        CREATE TABLE rt_budget_events (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          budget_id       INTEGER NOT NULL REFERENCES rt_budgets(id) ON DELETE CASCADE,
+          event_type      TEXT NOT NULL
+            CHECK (event_type IN ('soft_alert','hard_stop','reset','override','reconcile')),
+          current_usd     REAL NOT NULL,
+          limit_usd       REAL NOT NULL,
+          message         TEXT,
+          created_at      TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX idx_rt_budget_events_budget ON rt_budget_events(budget_id);
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

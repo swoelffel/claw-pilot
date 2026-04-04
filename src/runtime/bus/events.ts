@@ -186,6 +186,35 @@ export const HeartbeatAlert = defineEvent<
 >("heartbeat.alert");
 
 // ---------------------------------------------------------------------------
+// Budget events
+// ---------------------------------------------------------------------------
+
+export const BudgetSoftAlert = defineEvent<
+  "budget.soft_alert",
+  {
+    instanceSlug: InstanceSlug;
+    budgetId: number;
+    scope: string;
+    scopeId: string | null;
+    spentUsd: number;
+    limitUsd: number;
+    pct: number;
+  }
+>("budget.soft_alert");
+
+export const BudgetHardStop = defineEvent<
+  "budget.hard_stop",
+  {
+    instanceSlug: InstanceSlug;
+    budgetId: number;
+    scope: string;
+    scopeId: string | null;
+    spentUsd: number;
+    limitUsd: number;
+  }
+>("budget.hard_stop");
+
+// ---------------------------------------------------------------------------
 // MCP events
 // ---------------------------------------------------------------------------
 
@@ -299,6 +328,8 @@ export type AnyEventDef =
   | typeof AgentTimeout
   | typeof HeartbeatTick
   | typeof HeartbeatAlert
+  | typeof BudgetSoftAlert
+  | typeof BudgetHardStop
   | typeof McpServerReconnected
   | typeof McpToolsChanged
   | typeof LLMChunkTimeout

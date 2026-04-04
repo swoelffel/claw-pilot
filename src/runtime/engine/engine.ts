@@ -41,6 +41,11 @@ import { createSuggestionMiddleware } from "../middleware/built-in/suggestions.j
 import { cleanupEphemeralSessions } from "../session/cleanup.js";
 import { wireEventPersistence } from "./event-persistence.js";
 import { pruneRtEvents } from "../../core/repositories/rt-event-repository.js";
+import {
+  resetExpiredMonthlyBudgets,
+  getBudgetsForInstance,
+  reconcileBudget,
+} from "../../core/repositories/budget-repository.js";
 import { logger, type Logger } from "../../lib/logger.js";
 import type { ProfileResolver } from "../profile/types.js";
 
@@ -397,6 +402,33 @@ export class ClawRuntime {
       } catch (err) {
         this.log.error("rt_events_prune_error", {
           event: "rt_events_prune_error",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      // 3. Budget monthly reset + reconciliation
+      try {
+        const resets = resetExpiredMonthlyBudgets(this.db, this.instanceSlug);
+        if (resets > 0) {
+          this.log.info("budget_monthly_reset", {
+            event: "budget_monthly_reset",
+            budgetsReset: resets,
+          });
+        }
+        const budgets = getBudgetsForInstance(this.db, this.instanceSlug);
+        for (const budget of budgets) {
+          const { drift, corrected } = reconcileBudget(this.db, budget.id);
+          if (corrected) {
+            this.log.info("budget_reconciled", {
+              event: "budget_reconciled",
+              budgetId: budget.id,
+              drift: Math.round(drift * 10_000) / 10_000,
+            });
+          }
+        }
+      } catch (err) {
+        this.log.error("budget_cleanup_error", {
+          event: "budget_cleanup_error",
           error: err instanceof Error ? err.message : String(err),
         });
       }

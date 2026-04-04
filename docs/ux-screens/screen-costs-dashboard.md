@@ -131,3 +131,81 @@ All 4 endpoints called in parallel on mount and when `slug` or `_period` changes
 ## i18n
 
 All strings use `msg("...", { id: "costs-*" })` prefix. 12 keys across 6 locales.
+
+---
+
+## Tab Switcher (v0.62 — BUDGET-001)
+
+The header now includes a segmented tab control: `[ Analytics | Budgets ]`. The Analytics tab shows the existing cost dashboard. The Budgets tab renders `cp-budget-settings`.
+
+```
+┌─ Header ────────────────────────────────────────────────────────────┐
+│  ← Back   Costs — my-instance           [ Analytics | Budgets ]     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+## Budgets Tab (`cp-budget-settings`)
+
+> **Source**: `ui/src/components/budget-settings.ts`
+
+### Mockup
+
+```
+┌─ Instance Budget ───────────────────────────────────────────────────┐
+│  INSTANCE BUDGET (monthly)                              [Edit] [✕]  │
+│  Limit: $50.00   Alert: 80%   Stop: 100%   Override: +20%          │
+│  Spent: $32.40 / $50.00 (64.8%)                                    │
+│  ████████████████████████████████░░░░░░░░░░░░░░░░░░░               │
+│  Period: Apr 2026                           Remaining: $17.60       │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─ Agent Budgets ─────────────────────────────────────────────────────┐
+│  AGENT         PERIOD     LIMIT     SPENT        STATUS      ACT.  │
+│  pilot         monthly    $20.00    $12.30 (62%) ████████░░  [Edit] │
+│  build-agent   monthly    $15.00    $14.80 (99%) ████████████ ⚠ [O] │
+│  explore       lifetime   $10.00    $ 5.30 (53%) ██████░░░░  [Edit] │
+│                                                    [+ Add Budget]   │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─ Budget History ────────────────────────────────────────────────────┐
+│  EVENT LOG (latest 20)                                              │
+│  Apr 03 14:32  ⚠ soft_alert   build-agent   $14.80/$15.00 (99%)    │
+│  Apr 02 08:00  ↻ reset        pilot         $0.00 (monthly reset)  │
+│  Apr 01 00:01  ↻ reset        instance      $0.00 (monthly reset)  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Budget Dialog (create/edit)
+
+```
+┌─ Create Budget ─────────────────────────────────────────┐
+│  Scope:    (●) Instance    ( ) Agent                     │
+│  Agent:    [ pilot           ▾ ]   (if scope=agent)      │
+│  Period:   (●) Monthly      ( ) Lifetime                 │
+│  Limit:    [ $50.00         ]                            │
+│  Alert threshold:   [ 80  ] %                            │
+│  Stop threshold:    [ 100 ] %                            │
+│  Override increase: [ 20  ] %                            │
+│                            [Cancel]  [Create Budget]     │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Progress Bar Colors
+
+| Range | Color |
+|---|---|
+| < soft_alert_pct | `--state-running` (green) |
+| soft_alert_pct to hard_stop_pct | `--state-warning` (amber) |
+| >= hard_stop_pct | `--state-error` (red) |
+
+### Budget Data Fetching
+
+| Endpoint | Response type |
+|---|---|
+| `GET /api/instances/:slug/budgets` | `BudgetInfo[]` |
+| `POST /api/instances/:slug/budgets` | `BudgetInfo` |
+| `PUT /api/instances/:slug/budgets/:id` | `BudgetInfo` |
+| `DELETE /api/instances/:slug/budgets/:id` | `{ ok: boolean }` |
+| `POST /api/instances/:slug/budgets/:id/override` | `{ id, limitUsd, spentUsd, overridePct }` |
+| `GET /api/instances/:slug/budgets/:id/events` | `BudgetEvent[]` |
+| `GET /api/instances/:slug/budgets/events` | `BudgetEvent[]` |
