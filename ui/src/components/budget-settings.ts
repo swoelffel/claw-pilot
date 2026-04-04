@@ -45,11 +45,11 @@ function statusLabel(spent: number, limit: number, softPct: number, hardPct: num
 }
 
 const EVENT_ICONS: Record<string, string> = {
-  soft_alert: "\u26a0\ufe0f",
-  hard_stop: "\ud83d\uded1",
+  soft_alert: "\u26a0",
+  hard_stop: "\u25cf",
   reset: "\u21bb",
   override: "\u2b06",
-  reconcile: "\ud83d\udd04",
+  reconcile: "\u21bb",
 };
 
 // ---------------------------------------------------------------------------
@@ -349,9 +349,9 @@ export class CpBudgetSettings extends LitElement {
                           </div>
                           <span class="status-${status}"
                             >${status === "warning"
-                              ? "\u26a0\ufe0f"
+                              ? "\u26a0"
                               : status === "exceeded"
-                                ? "\ud83d\uded1"
+                                ? "\u25cf"
                                 : ""}</span
                           >
                         </td>
@@ -402,7 +402,14 @@ export class CpBudgetSettings extends LitElement {
                   (e) => html`
                     <div class="event-row">
                       <span class="event-date">${e.createdAt.slice(5, 16)}</span>
-                      <span class="event-icon">${EVENT_ICONS[e.eventType] ?? "?"}</span>
+                      <span
+                        class="event-icon ${e.eventType === "hard_stop"
+                          ? "error"
+                          : e.eventType === "soft_alert"
+                            ? "warn"
+                            : ""}"
+                        >${EVENT_ICONS[e.eventType] ?? "?"}</span
+                      >
                       <span class="event-type">${e.eventType}</span>
                       <span class="event-scope">${e.scopeId ?? "instance"}</span>
                       <span class="event-msg mono"
@@ -687,6 +694,12 @@ export class CpBudgetSettings extends LitElement {
       }
       .event-icon {
         min-width: 20px;
+      }
+      .event-icon.error {
+        color: var(--state-error);
+      }
+      .event-icon.warn {
+        color: var(--state-warning);
       }
       .event-type {
         min-width: 80px;
