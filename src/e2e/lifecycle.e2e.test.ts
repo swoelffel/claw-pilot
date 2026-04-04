@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { startTestServer, type TestContext } from "./helpers/test-server.js";
 import { seedAdmin, seedLocalServer, seedInstance } from "./helpers/seed.js";
+import type { Json } from "./helpers/types.js";
 
 describe("Lifecycle API", () => {
   let ctx: TestContext;
@@ -47,7 +48,7 @@ describe("Lifecycle API", () => {
   it("POST /api/instances/:slug/stop → 200, { ok: true }", async () => {
     const res = await ctx.client.withBearer().post("/api/instances/lifecycle-rt/stop");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.ok).toBe(true);
   });
 
@@ -57,7 +58,7 @@ describe("Lifecycle API", () => {
   it("POST /api/instances/:slug/stop (claw-runtime) → 200, conn.commands recorded", async () => {
     const res = await ctx.client.withBearer().post("/api/instances/lifecycle-test/stop");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.ok).toBe(true);
   });
 

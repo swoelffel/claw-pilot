@@ -2,7 +2,7 @@ import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { InstanceInfo } from "../types.js";
-import { fetchInstances } from "../api.js";
+import { fetchInstances, fetchBudgets } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { sectionLabelStyles, errorBannerStyles, buttonStyles } from "../styles/shared.js";
@@ -95,6 +95,7 @@ export class ClusterView extends LitElement {
   @state() private _showCreateDialog = false;
   @state() private _deleteTarget: InstanceInfo | null = null;
   @state() private _showDiscoverDialog = false;
+  @state() private _exceededSlugs = new Set<string>();
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -115,11 +116,32 @@ export class ClusterView extends LitElement {
           composed: true,
         }),
       );
+      // Non-blocking: check budget status for running instances
+      void this._checkBudgets(data);
     } catch (err) {
       this._error = userMessage(err);
     } finally {
       this._loading = false;
     }
+  }
+
+  private async _checkBudgets(instances: InstanceInfo[]): Promise<void> {
+    const running = instances.filter((i) => i.state === "running");
+    const exceeded = new Set<string>();
+    await Promise.all(
+      running.map(async (inst) => {
+        try {
+          const budgets = await fetchBudgets(inst.slug);
+          const hasExceeded = budgets.some(
+            (b) => b.enabled && b.limitUsd > 0 && b.spentUsd / b.limitUsd >= b.hardStopPct,
+          );
+          if (hasExceeded) exceeded.add(inst.slug);
+        } catch {
+          // Silent — budget check is best-effort
+        }
+      }),
+    );
+    this._exceededSlugs = exceeded;
   }
 
   private _onNavigate(e: Event): void {
@@ -183,6 +205,7 @@ export class ClusterView extends LitElement {
                 (inst) => html`
                   <cp-instance-card
                     .instance=${inst}
+                    .budgetExceeded=${this._exceededSlugs.has(inst.slug)}
                     @navigate=${this._onNavigate}
                     @request-delete=${(e: CustomEvent<{ slug: string }>) => {
                       this._deleteTarget =

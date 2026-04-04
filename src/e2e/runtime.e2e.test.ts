@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { startTestServer, type TestContext } from "./helpers/test-server.js";
 import { seedAdmin, seedLocalServer, seedInstance } from "./helpers/seed.js";
+import type { Json } from "./helpers/types.js";
 
 describe("Runtime API", () => {
   let ctx: TestContext;
@@ -35,7 +36,7 @@ describe("Runtime API", () => {
       .withBearer()
       .get(`/api/instances/${INSTANCE_SLUG}/runtime/sessions`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.sessions).toBeDefined();
     expect(Array.isArray(body.sessions)).toBe(true);
     expect(body.sessions.length).toBe(0);
@@ -48,7 +49,7 @@ describe("Runtime API", () => {
       .get(`/api/instances/${INSTANCE_SLUG}/runtime/sessions/nonexistent-session-id/messages`);
     // The route returns 200 with empty messages (no session existence check)
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     expect(body.messages).toBeDefined();
     expect(Array.isArray(body.messages)).toBe(true);
     expect(body.messages.length).toBe(0);
@@ -60,7 +61,7 @@ describe("Runtime API", () => {
       .withBearer()
       .get("/api/instances/nonexistent-runtime-inst/runtime/sessions");
     expect(res.status).toBe(404);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as Json;
     // instanceGuard returns code: "NOT_FOUND"
     expect(body.code).toBe("NOT_FOUND");
   });

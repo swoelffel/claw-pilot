@@ -116,7 +116,7 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 | 1 | Instances | `cp-cluster-view` | `#/instances` | instance-card, create-dialog, delete-instance-dialog, discover-dialog | [screen-instances.md](ux-screens/screen-instances.md) |
 | 2b | Instance Settings | `cp-instance-settings` | `#/instances/:slug/settings` | channels, mcp, permissions, config (inline) | [screen-instance-settings.md](ux-screens/screen-instance-settings.md) |
 | 2c | Runtime Pilot | `cp-runtime-pilot` | `#/instances/:slug/pilot` | 22 sub-components (inline) | [screen-runtime-pilot.md](ux-screens/screen-runtime-pilot.md) |
-| 2d | Cost Dashboard | `cp-costs-dashboard` | `#/instances/:slug/costs` | — (self-contained: summary cards, SVG chart, table, donut) | [screen-costs-dashboard.md](ux-screens/screen-costs-dashboard.md) |
+| 2d | Cost Dashboard | `cp-costs-dashboard` | `#/instances/:slug/costs` | cp-budget-settings, cp-budget-alert-banner (Analytics tab: summary cards, SVG chart, table, donut; Budgets tab: budget management) | [screen-costs-dashboard.md](ux-screens/screen-costs-dashboard.md) |
 | 2e | Activity Console | `cp-activity-console` | `#/instances/:slug/activity` | — (self-contained: filters, event table, detail panel) | [screen-activity-console.md](ux-screens/screen-activity-console.md) |
 | 3 | Agent Builder | `cp-agents-builder` | `#/instances/:slug/builder` | agent-card-mini, agent-detail-panel, agent-links-svg | [screen-agent-builder.md](ux-screens/screen-agent-builder.md) |
 | 4 | Blueprints | `cp-blueprints-view` | `#/blueprints` | blueprint-card | [screen-blueprints.md](ux-screens/screen-blueprints.md) |
@@ -144,6 +144,7 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 | Permission Overlay | `cp-permission-request-overlay` | [comp-permission-overlay.md](ux-components/comp-permission-overlay.md) |
 | Bus Alerts | `cp-bus-alerts` | [comp-bus-alerts.md](ux-components/comp-bus-alerts.md) |
 | Canvas Legend | `cp-canvas-legend` | [comp-canvas-legend.md](ux-components/comp-canvas-legend.md) |
+| Budget Alert Banner | `cp-budget-alert-banner` | [comp-budget-alert-banner.md](ux-components/comp-budget-alert-banner.md) |
 
 ---
 
@@ -184,3 +185,5 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 *Updated: 2026-03-26 - v0.51.0: Runtime Pilot expanded to 22 components. Added 4 part components: cp-pilot-part-artifact (rich card for create_artifact tool), cp-pilot-part-suggestion (follow-up chips), cp-pilot-part-image (image viewer), cp-pilot-part-question (interactive question). Input enhanced with file upload (📎 button + drag & drop), Send/Stop toggle (streaming abort). Suggestions generated via post-middleware + SuggestionsGenerated SSE event. Artifacts delivered as Telegram documents, suggestions as inline keyboard buttons.*
 
 *Updated: 2026-03-28 - Builder UX harness design overhaul. Agent cards: archetype color stripe (6 colors), persistence-based backgrounds (permanent=surface, ephemeral=base, default=accent), inline @archetype spawn capsules (row 4), fixed card dimensions (186×80px). SVG links: spawn=dotted with arrow, A2A messaging=dashed without arrow (bidirectional merged), ray-rectangle clipping to card edges. Canvas legend (cp-canvas-legend, collapsible). Multi-select: rubber-band rectangle selection, group drag with position persistence. Persistence guard in task.ts: permanent agents cannot be spawned. 6 archetype CSS tokens added.*
+
+*Updated: 2026-04-03 - BUDGET-001: Budget enforcement (auto-pause). Cost Dashboard now has Analytics/Budgets tabs. New components: cp-budget-settings (budget CRUD, progress bars, event log, create/edit dialog), cp-budget-alert-banner (warning/exceeded banners on all instance pages with override button). Backend: rt_budgets + rt_budget_events tables, pre/post-LLM budget checks, heartbeat budget blocking, monthly reset, reconciliation, Telegram notifications.*

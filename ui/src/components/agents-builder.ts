@@ -10,6 +10,7 @@ import {
   updateAgentPosition,
   exportInstanceTeam,
   saveAgentAsBlueprint,
+  fetchBudgets,
 } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import "./delete-agent-dialog.js";
@@ -257,6 +258,8 @@ export class AgentsBuilder extends LitElement {
   @state() private _justCreatedAgentId: string | null = null;
   @state() private _agentToDelete: AgentBuilderInfo | null = null;
   @state() private _showImportDialog = false;
+  /** Set of agent_ids with exceeded budgets, plus "__instance__" if the instance budget is exceeded */
+  @state() private _exceededBudgetScopes = new Set<string>();
 
   // Drag state — not @state, updated directly during pointer events
   private _drag: {
@@ -325,6 +328,22 @@ export class AgentsBuilder extends LitElement {
       const data = await fetchBuilderData(this.slug);
       this._data = data;
       this._recomputePositions();
+
+      // Budget check is non-blocking — builder works even if budget API fails
+      try {
+        const budgets = await fetchBudgets(this.slug);
+        const exceeded = new Set<string>();
+        for (const b of budgets) {
+          if (!b.enabled || b.limitUsd <= 0) continue;
+          if (b.spentUsd / b.limitUsd >= b.hardStopPct) {
+            if (b.scope === "instance") exceeded.add("__instance__");
+            else if (b.scopeId) exceeded.add(b.scopeId);
+          }
+        }
+        this._exceededBudgetScopes = exceeded;
+      } catch {
+        this._exceededBudgetScopes = new Set();
+      }
     } catch (err) {
       this._error = userMessage(err);
     } finally {
@@ -711,6 +730,9 @@ export class AgentsBuilder extends LitElement {
                         .isNew=${this._justCreatedAgentId === agent.agent_id}
                         .deletable=${!agent.is_default}
                         .archetypeSpawns=${archetypeSpawnMap.get(agent.agent_id) ?? []}
+                        .budgetExceeded=${this._exceededBudgetScopes.has("__instance__") ||
+                        this._exceededBudgetScopes.has(agent.agent_id)}
+                        .instanceSlug=${this.slug}
                         style="left: ${pos.x}px; top: ${pos.y}px;"
                         @agent-delete-requested=${(e: CustomEvent<{ agentId: string }>) =>
                           this._onDeleteRequested(e.detail.agentId)}
