@@ -8,7 +8,6 @@ import { tokenStyles } from "../styles/tokens.js";
 import { fetchCostSummary, fetchDailyCosts, fetchCostsByAgent, fetchCostsByModel } from "../api.js";
 import type { CostSummary, DailyCost, AgentCost, ModelCost } from "../types.js";
 import "./budget-settings.js";
-import "./budget-alert-banner.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -720,8 +719,6 @@ export class CostsDashboard extends LitElement {
     const periods: Period[] = ["7d", "30d", "all"];
 
     return html`
-      <cp-budget-alert-banner .slug=${this.slug}></cp-budget-alert-banner>
-
       <div class="header">
         <button class="btn-back" @click=${this._goBack}>
           ← ${msg("Back", { id: "costs-back" })}

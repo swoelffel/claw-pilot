@@ -2,7 +2,7 @@
 import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { AgentBuilderInfo, BuilderData } from "../types.js";
+import type { AgentBuilderInfo, BuilderData, BudgetInfo } from "../types.js";
 import { isArchetypeLink, getArchetypeFromLink } from "../types.js";
 import {
   syncAgents,
@@ -10,6 +10,7 @@ import {
   updateAgentPosition,
   exportInstanceTeam,
   saveAgentAsBlueprint,
+  fetchBudgets,
 } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import "./delete-agent-dialog.js";
@@ -257,6 +258,7 @@ export class AgentsBuilder extends LitElement {
   @state() private _justCreatedAgentId: string | null = null;
   @state() private _agentToDelete: AgentBuilderInfo | null = null;
   @state() private _showImportDialog = false;
+  @state() private _budgetExceeded = false;
 
   // Drag state — not @state, updated directly during pointer events
   private _drag: {
@@ -322,8 +324,14 @@ export class AgentsBuilder extends LitElement {
     this._error = "";
     try {
       await syncAgents(this.slug);
-      const data = await fetchBuilderData(this.slug);
+      const [data, budgets] = await Promise.all([
+        fetchBuilderData(this.slug),
+        fetchBudgets(this.slug).catch(() => []),
+      ]);
       this._data = data;
+      this._budgetExceeded = budgets.some(
+        (b) => b.enabled && b.limitUsd > 0 && b.spentUsd / b.limitUsd >= b.hardStopPct,
+      );
       this._recomputePositions();
     } catch (err) {
       this._error = userMessage(err);
@@ -711,6 +719,8 @@ export class AgentsBuilder extends LitElement {
                         .isNew=${this._justCreatedAgentId === agent.agent_id}
                         .deletable=${!agent.is_default}
                         .archetypeSpawns=${archetypeSpawnMap.get(agent.agent_id) ?? []}
+                        .budgetExceeded=${this._budgetExceeded}
+                        .instanceSlug=${this.slug}
                         style="left: ${pos.x}px; top: ${pos.y}px;"
                         @agent-delete-requested=${(e: CustomEvent<{ agentId: string }>) =>
                           this._onDeleteRequested(e.detail.agentId)}

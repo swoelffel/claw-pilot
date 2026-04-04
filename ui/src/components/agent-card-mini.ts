@@ -186,6 +186,23 @@ export class AgentCardMini extends LitElement {
         flex-shrink: 0;
       }
 
+      .badge-budget {
+        font-size: 12px;
+        cursor: pointer;
+        flex-shrink: 0;
+        filter: saturate(1.2);
+        animation: pulse-budget 2s ease-in-out infinite;
+      }
+      @keyframes pulse-budget {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+
       .model-label {
         font-size: 9px;
         color: var(--text-muted);
@@ -226,6 +243,10 @@ export class AgentCardMini extends LitElement {
   @property({ type: Boolean }) deletable = false;
   /** @archetype spawn targets for this agent (e.g. ["generator", "evaluator"]) */
   @property({ type: Array }) archetypeSpawns: string[] = [];
+  /** Whether the instance has an exceeded budget (shown as a warning badge) */
+  @property({ type: Boolean }) budgetExceeded = false;
+  /** Instance slug — needed for budget link navigation */
+  @property({ type: String }) instanceSlug = "";
 
   private _truncate(str: string, max: number): string {
     return str.length > max ? str.slice(0, max) + "…" : str;
@@ -266,9 +287,28 @@ export class AgentCardMini extends LitElement {
             }),
           )}
       >
-        <!-- row 1 : name + delete -->
+        <!-- row 1 : name + budget warning + delete -->
         <div class="card-top">
-          <span class="agent-name" title=${a.name}>${this._truncate(a.name, 22)}</span>
+          <span class="agent-name" title=${a.name}
+            >${this._truncate(a.name, this.budgetExceeded ? 18 : 22)}</span
+          >
+          ${this.budgetExceeded
+            ? html`<span
+                class="badge-budget"
+                title=${msg("Budget exceeded — click to manage", { id: "acm-budget-exceeded" })}
+                @click=${(e: Event) => {
+                  e.stopPropagation();
+                  this.dispatchEvent(
+                    new CustomEvent("navigate", {
+                      detail: { view: "costs", slug: this.instanceSlug },
+                      bubbles: true,
+                      composed: true,
+                    }),
+                  );
+                }}
+                >🛑</span
+              >`
+            : nothing}
           ${this.deletable
             ? html`
                 <button

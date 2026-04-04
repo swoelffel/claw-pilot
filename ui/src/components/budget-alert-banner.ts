@@ -1,6 +1,6 @@
 // ui/src/components/budget-alert-banner.ts
 // Budget alert banners — displayed at the top of instance pages when budgets
-// are in warning or exceeded state.
+// approach or exceed their limits. Includes override confirmation dialog.
 
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
@@ -33,12 +33,12 @@ export class CpBudgetAlertBanner extends LitElement {
   @property({ type: String }) slug = "";
 
   @state() private _alerts: BannerAlert[] = [];
+  @state() private _confirmId: number | null = null;
   private _pollTimer: number | undefined;
 
   override connectedCallback(): void {
     super.connectedCallback();
     void this._checkBudgets();
-    // Poll every 60 seconds for budget status
     this._pollTimer = window.setInterval(() => void this._checkBudgets(), 60_000);
   }
 
@@ -99,21 +99,45 @@ export class CpBudgetAlertBanner extends LitElement {
     this._alerts = this._alerts.map((a) => (a.budgetId === id ? { ...a, dismissed: true } : a));
   }
 
-  private async _override(id: number): Promise<void> {
+  private _requestOverride(id: number): void {
+    this._confirmId = id;
+  }
+
+  private _cancelOverride(): void {
+    this._confirmId = null;
+  }
+
+  private async _confirmOverride(): Promise<void> {
+    if (this._confirmId === null) return;
     try {
-      await overrideBudgetApi(this.slug, id);
-      this._dismissedIds.add(id);
+      await overrideBudgetApi(this.slug, this._confirmId);
+      this._dismissedIds.add(this._confirmId);
+      this._confirmId = null;
       void this._checkBudgets();
     } catch {
       // Silent
     }
   }
 
+  private _goToBudgets(): void {
+    this.dispatchEvent(
+      new CustomEvent("navigate", {
+        detail: { view: "costs", slug: this.slug },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
   override render() {
     const visible = this._alerts.filter((a) => !a.dismissed).slice(0, 3);
-    if (visible.length === 0) return nothing;
+    const confirm =
+      this._confirmId !== null ? this._alerts.find((a) => a.budgetId === this._confirmId) : null;
 
-    return html`${visible.map((a) => this._renderBanner(a))}`;
+    return html`
+      ${visible.map((a) => this._renderBanner(a))}
+      ${confirm ? this._renderConfirmDialog(confirm) : nothing}
+    `;
   }
 
   private _renderBanner(a: BannerAlert) {
@@ -129,8 +153,11 @@ export class CpBudgetAlertBanner extends LitElement {
             (${spent}/${limit})
           </div>
           <div class="banner-actions">
-            <button class="btn-override" @click=${() => void this._override(a.budgetId)}>
+            <button class="btn-override" @click=${() => this._requestOverride(a.budgetId)}>
               ${msg("Override")} +${Math.round(a.overridePct * 100)}%
+            </button>
+            <button class="btn-link" @click=${() => this._goToBudgets()}>
+              ${msg("Budgets")} →
             </button>
             <button class="btn-dismiss" @click=${() => this._dismiss(a.budgetId)}>
               ${msg("Dismiss")}
@@ -148,9 +175,39 @@ export class CpBudgetAlertBanner extends LitElement {
           (${spent}/${limit})
         </div>
         <div class="banner-actions">
+          <button class="btn-link" @click=${() => this._goToBudgets()}>${msg("Budgets")} →</button>
           <button class="btn-dismiss" @click=${() => this._dismiss(a.budgetId)}>
             ${msg("Dismiss")}
           </button>
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderConfirmDialog(a: BannerAlert) {
+    const addPct = Math.round(a.overridePct * 100);
+    const addUsd = a.limitUsd * a.overridePct;
+    const newLimit = a.limitUsd + addUsd;
+    return html`
+      <div class="dialog-backdrop" @click=${() => this._cancelOverride()}>
+        <div class="dialog" @click=${(e: Event) => e.stopPropagation()}>
+          <h3>${msg("Confirm budget override")}</h3>
+          <p class="dialog-body">
+            ${msg("You are about to add")} <strong>${addPct}%</strong> (${msg("i.e.")}
+            <strong>$${addUsd.toFixed(2)}</strong>) ${msg("to the budget to continue.")}
+          </p>
+          <p class="dialog-detail">
+            ${msg("New limit:")}
+            <span class="mono">$${a.limitUsd.toFixed(2)} → $${newLimit.toFixed(2)}</span>
+          </p>
+          <div class="dialog-actions">
+            <button class="btn-cancel" @click=${() => this._cancelOverride()}>
+              ${msg("Cancel")}
+            </button>
+            <button class="btn-confirm" @click=${() => void this._confirmOverride()}>
+              ${msg("Add")} $${addUsd.toFixed(2)} ${msg("and continue")}
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -191,6 +248,7 @@ export class CpBudgetAlertBanner extends LitElement {
         display: flex;
         gap: 8px;
         margin-left: 16px;
+        flex-shrink: 0;
       }
       .btn-override {
         padding: 4px 10px;
@@ -204,6 +262,18 @@ export class CpBudgetAlertBanner extends LitElement {
       .btn-override:hover {
         background: rgba(245, 158, 11, 0.15);
       }
+      .btn-link {
+        padding: 4px 10px;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--accent-border);
+        background: transparent;
+        color: var(--accent);
+        cursor: pointer;
+        font-size: 12px;
+      }
+      .btn-link:hover {
+        background: var(--accent-subtle);
+      }
       .btn-dismiss {
         padding: 4px 10px;
         border-radius: var(--radius-md);
@@ -215,6 +285,74 @@ export class CpBudgetAlertBanner extends LitElement {
       }
       .btn-dismiss:hover {
         background: var(--bg-hover);
+      }
+      /* Confirmation dialog */
+      .dialog-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+      }
+      .dialog {
+        background: var(--bg-surface);
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-lg);
+        padding: 24px;
+        max-width: 420px;
+        width: 90%;
+      }
+      .dialog h3 {
+        margin: 0 0 12px;
+        font-size: 16px;
+        color: var(--text-primary);
+      }
+      .dialog-body {
+        color: var(--text-secondary);
+        font-size: 14px;
+        margin: 0 0 8px;
+        line-height: 1.5;
+      }
+      .dialog-detail {
+        color: var(--text-muted);
+        font-size: 13px;
+        margin: 0 0 20px;
+      }
+      .mono {
+        font-family: var(--font-mono);
+        color: var(--text-primary);
+      }
+      .dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      .btn-cancel {
+        padding: 6px 14px;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--bg-border);
+        background: transparent;
+        color: var(--text-secondary);
+        cursor: pointer;
+        font-size: 13px;
+      }
+      .btn-cancel:hover {
+        background: var(--bg-hover);
+      }
+      .btn-confirm {
+        padding: 6px 14px;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--state-warning);
+        background: var(--state-warning);
+        color: #000;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .btn-confirm:hover {
+        opacity: 0.9;
       }
     `,
   ];

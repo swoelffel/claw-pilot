@@ -36,6 +36,7 @@ import "./components/live-stream-widget.js";
 import "./components/memory-browser.js";
 import "./components/heartbeat-heatmap.js";
 import "./components/session-logs.js";
+import "./components/budget-alert-banner.js";
 
 // Initialize locale — resolved before first render via localeReady promise
 export const localeReady = initLocale();
@@ -782,6 +783,10 @@ export class CpApp extends LitElement {
     }
     if (this._route.view === "agents-builder") {
       return html`
+        <cp-budget-alert-banner
+          .slug=${this._route.slug}
+          @navigate=${this._navigate}
+        ></cp-budget-alert-banner>
         <cp-agents-builder
           .slug=${this._route.slug}
           @navigate=${this._navigate}
@@ -828,6 +833,10 @@ export class CpApp extends LitElement {
     }
     if (this._route.view === "instance-settings") {
       return html`
+        <cp-budget-alert-banner
+          .slug=${this._route.slug}
+          @navigate=${this._navigate}
+        ></cp-budget-alert-banner>
         <cp-instance-settings
           .slug=${this._route.slug}
           .initialSection=${this._route.initialSection ?? "general"}
@@ -841,6 +850,10 @@ export class CpApp extends LitElement {
     if (this._route.view === "pilot") {
       const pilotSlug = this._route.slug;
       return html`
+        <cp-budget-alert-banner
+          .slug=${pilotSlug}
+          @navigate=${this._navigate}
+        ></cp-budget-alert-banner>
         <cp-runtime-pilot
           .slug=${pilotSlug}
           style="height:100%;"
@@ -860,6 +873,10 @@ export class CpApp extends LitElement {
     }
     if (this._route.view === "activity") {
       return html`
+        <cp-budget-alert-banner
+          .slug=${this._route.slug}
+          @navigate=${this._navigate}
+        ></cp-budget-alert-banner>
         <cp-activity-console
           .slug=${this._route.slug}
           @navigate=${this._navigate}
@@ -868,6 +885,10 @@ export class CpApp extends LitElement {
     }
     if (this._route.view === "memory") {
       return html`
+        <cp-budget-alert-banner
+          .slug=${this._route.slug}
+          @navigate=${this._navigate}
+        ></cp-budget-alert-banner>
         <cp-memory-browser
           .slug=${this._route.slug}
           @navigate=${this._navigate}
@@ -876,6 +897,10 @@ export class CpApp extends LitElement {
     }
     if (this._route.view === "heartbeat") {
       return html`
+        <cp-budget-alert-banner
+          .slug=${this._route.slug}
+          @navigate=${this._navigate}
+        ></cp-budget-alert-banner>
         <cp-heartbeat-heatmap
           .slug=${this._route.slug}
           @navigate=${this._navigate}
@@ -884,6 +909,10 @@ export class CpApp extends LitElement {
     }
     if (this._route.view === "session-logs") {
       return html`
+        <cp-budget-alert-banner
+          .slug=${this._route.slug}
+          @navigate=${this._navigate}
+        ></cp-budget-alert-banner>
         <cp-session-logs .slug=${this._route.slug} @navigate=${this._navigate}></cp-session-logs>
       `;
     }
