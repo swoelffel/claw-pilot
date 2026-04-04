@@ -12,6 +12,7 @@ import {
   deleteBudgetApi,
   overrideBudgetApi,
   fetchAllBudgetEvents,
+  fetchBuilderData,
 } from "../api.js";
 import type { BudgetInfo, BudgetEvent } from "../types.js";
 
@@ -62,13 +63,14 @@ export class CpBudgetSettings extends LitElement {
 
   @state() private _budgets: BudgetInfo[] = [];
   @state() private _events: BudgetEvent[] = [];
+  @state() private _agentIds: string[] = [];
   @state() private _loading = true;
   @state() private _error = "";
 
   // Dialog state
   @state() private _dialogOpen = false;
+  @state() private _dialogScope: "instance" | "agent" = "instance";
   @state() private _editId: number | null = null;
-  @state() private _formScope: "instance" | "agent" = "instance";
   @state() private _formScopeId = "";
   @state() private _formPeriod: "monthly" | "lifetime" = "monthly";
   @state() private _formLimit = "50";
@@ -86,12 +88,14 @@ export class CpBudgetSettings extends LitElement {
     this._loading = true;
     this._error = "";
     try {
-      const [budgets, events] = await Promise.all([
+      const [budgets, events, builder] = await Promise.all([
         fetchBudgets(this.slug),
         fetchAllBudgetEvents(this.slug),
+        fetchBuilderData(this.slug),
       ]);
       this._budgets = budgets;
       this._events = events;
+      this._agentIds = builder.agents.map((a) => a.agent_id);
     } catch (err) {
       this._error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -103,9 +107,9 @@ export class CpBudgetSettings extends LitElement {
   // Dialog
   // ---------------------------------------------------------------------------
 
-  private _openCreate(): void {
+  private _openCreateInstance(): void {
     this._editId = null;
-    this._formScope = "instance";
+    this._dialogScope = "instance";
     this._formScopeId = "";
     this._formPeriod = "monthly";
     this._formLimit = "50";
@@ -115,9 +119,21 @@ export class CpBudgetSettings extends LitElement {
     this._dialogOpen = true;
   }
 
+  private _openCreateAgent(): void {
+    this._editId = null;
+    this._dialogScope = "agent";
+    this._formScopeId = this._agentIds[0] ?? "";
+    this._formPeriod = "monthly";
+    this._formLimit = "20";
+    this._formSoftPct = "80";
+    this._formHardPct = "100";
+    this._formOverridePct = "20";
+    this._dialogOpen = true;
+  }
+
   private _openEdit(b: BudgetInfo): void {
     this._editId = b.id;
-    this._formScope = b.scope;
+    this._dialogScope = b.scope;
     this._formScopeId = b.scopeId ?? "";
     this._formPeriod = b.period;
     this._formLimit = String(b.limitUsd);
@@ -147,8 +163,8 @@ export class CpBudgetSettings extends LitElement {
         });
       } else {
         await createBudgetApi(this.slug, {
-          scope: this._formScope,
-          ...(this._formScope === "agent" ? { scopeId: this._formScopeId } : {}),
+          scope: this._dialogScope,
+          ...(this._dialogScope === "agent" ? { scopeId: this._formScopeId } : {}),
           period: this._formPeriod,
           limitUsd: limit,
           softAlertPct: softPct,
@@ -193,19 +209,41 @@ export class CpBudgetSettings extends LitElement {
     const agentBudgets = this._budgets.filter((b) => b.scope === "agent");
 
     return html`
-      ${instanceBudgets.length > 0 ? this._renderInstanceBudget(instanceBudgets[0]!) : nothing}
-      ${this._renderAgentBudgets(agentBudgets)} ${this._renderEventLog()}
-      ${this._dialogOpen ? this._renderDialog() : nothing}
+      ${this._renderInstanceSection(instanceBudgets)} ${this._renderAgentSection(agentBudgets)}
+      ${this._renderEventLog()} ${this._dialogOpen ? this._renderDialog() : nothing}
     `;
   }
 
-  private _renderInstanceBudget(b: BudgetInfo) {
-    const p = pct(b.spentUsd, b.limitUsd);
-    const status = statusLabel(b.spentUsd, b.limitUsd, b.softAlertPct, b.hardStopPct);
+  // ---------------------------------------------------------------------------
+  // Instance Budget section
+  // ---------------------------------------------------------------------------
+
+  private _renderInstanceSection(budgets: BudgetInfo[]) {
+    const b = budgets[0];
     return html`
       <section class="card">
         <div class="card-header">
-          <span class="card-title">${msg("Instance Budget")} (${b.period})</span>
+          <span class="card-title">${msg("Instance Budget")}</span>
+          ${!b
+            ? html`<button class="btn-sm accent" @click=${() => this._openCreateInstance()}>
+                + ${msg("Add Budget")}
+              </button>`
+            : nothing}
+        </div>
+        ${b
+          ? this._renderBudgetCard(b)
+          : html`<div class="empty">${msg("No instance budget configured.")}</div>`}
+      </section>
+    `;
+  }
+
+  private _renderBudgetCard(b: BudgetInfo) {
+    const p = pct(b.spentUsd, b.limitUsd);
+    const status = statusLabel(b.spentUsd, b.limitUsd, b.softAlertPct, b.hardStopPct);
+    return html`
+      <div class="budget-card">
+        <div class="budget-card-header">
+          <span class="budget-period">${b.period}</span>
           <div class="card-actions">
             <button class="btn-sm" @click=${() => this._openEdit(b)}>${msg("Edit")}</button>
             <button class="btn-sm danger" @click=${() => this._delete(b.id)}>✕</button>
@@ -241,16 +279,20 @@ export class CpBudgetSettings extends LitElement {
               </button>`
             : nothing}
         </div>
-      </section>
+      </div>
     `;
   }
 
-  private _renderAgentBudgets(budgets: BudgetInfo[]) {
+  // ---------------------------------------------------------------------------
+  // Agent Budgets section
+  // ---------------------------------------------------------------------------
+
+  private _renderAgentSection(budgets: BudgetInfo[]) {
     return html`
       <section class="card">
         <div class="card-header">
           <span class="card-title">${msg("Agent Budgets")}</span>
-          <button class="btn-sm accent" @click=${() => this._openCreate()}>
+          <button class="btn-sm accent" @click=${() => this._openCreateAgent()}>
             + ${msg("Add Budget")}
           </button>
         </div>
@@ -329,6 +371,10 @@ export class CpBudgetSettings extends LitElement {
     `;
   }
 
+  // ---------------------------------------------------------------------------
+  // Budget History section
+  // ---------------------------------------------------------------------------
+
   private _renderEventLog() {
     return html`
       <section class="card">
@@ -358,52 +404,45 @@ export class CpBudgetSettings extends LitElement {
     `;
   }
 
+  // ---------------------------------------------------------------------------
+  // Dialog (create / edit)
+  // ---------------------------------------------------------------------------
+
   private _renderDialog() {
     const isEdit = this._editId !== null;
+    const isAgent = this._dialogScope === "agent";
+    const title = isEdit
+      ? isAgent
+        ? msg("Edit Agent Budget")
+        : msg("Edit Instance Budget")
+      : isAgent
+        ? msg("New Agent Budget")
+        : msg("New Instance Budget");
+
     return html`
       <div class="dialog-backdrop" @click=${() => this._closeDialog()}>
         <div class="dialog" @click=${(e: Event) => e.stopPropagation()}>
-          <h3>${isEdit ? msg("Edit Budget") : msg("Create Budget")}</h3>
+          <h3>${title}</h3>
 
+          ${!isEdit && isAgent
+            ? html`
+                <label>${msg("Agent")}</label>
+                <select
+                  .value=${this._formScopeId}
+                  @change=${(e: Event) =>
+                    (this._formScopeId = (e.target as HTMLSelectElement).value)}
+                >
+                  ${this._agentIds.map(
+                    (id) =>
+                      html`<option value=${id} ?selected=${this._formScopeId === id}>
+                        ${id}
+                      </option>`,
+                  )}
+                </select>
+              `
+            : nothing}
           ${!isEdit
             ? html`
-                <label>${msg("Scope")}</label>
-                <div class="radio-group">
-                  <label>
-                    <input
-                      type="radio"
-                      name="scope"
-                      value="instance"
-                      .checked=${this._formScope === "instance"}
-                      @change=${() => (this._formScope = "instance")}
-                    />
-                    ${msg("Instance")}
-                  </label>
-                  <label>
-                    <input
-                      type="radio"
-                      name="scope"
-                      value="agent"
-                      .checked=${this._formScope === "agent"}
-                      @change=${() => (this._formScope = "agent")}
-                    />
-                    ${msg("Agent")}
-                  </label>
-                </div>
-
-                ${this._formScope === "agent"
-                  ? html`
-                      <label>${msg("Agent ID")}</label>
-                      <input
-                        type="text"
-                        .value=${this._formScopeId}
-                        @input=${(e: Event) =>
-                          (this._formScopeId = (e.target as HTMLInputElement).value)}
-                        placeholder="e.g. pilot"
-                      />
-                    `
-                  : nothing}
-
                 <label>${msg("Period")}</label>
                 <div class="radio-group">
                   <label>
@@ -523,6 +562,21 @@ export class CpBudgetSettings extends LitElement {
       .card-actions {
         display: flex;
         gap: 6px;
+      }
+      .budget-card {
+        padding: 4px 0;
+      }
+      .budget-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      .budget-period {
+        font-size: 12px;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
       }
       .budget-details {
         color: var(--text-secondary);
@@ -689,7 +743,8 @@ export class CpBudgetSettings extends LitElement {
         margin: 10px 0 4px;
       }
       .dialog input[type="text"],
-      .dialog input[type="number"] {
+      .dialog input[type="number"],
+      .dialog select {
         width: 100%;
         padding: 6px 10px;
         border: 1px solid var(--bg-border);
