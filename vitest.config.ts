@@ -10,13 +10,13 @@ export default defineConfig({
       exclude: ["src/**/__tests__/**", "src/index.ts"],
       reporter: ["text", "html", "json-summary"],
       thresholds: {
-        // Phase 5 test coverage: +230 tests covering agent defaults, model catalog,
-        // provider resolution, usage tracker, message builder, workspace cache,
-        // and 4 repository modules.
-        lines: 54,
-        statements: 53,
-        functions: 57,
-        branches: 47,
+        // Phase 6 test coverage: +104 tests covering mime, log-rotate, process,
+        // search-tool, channel-factory, request-id, profile routes,
+        // agent-blueprint routes, and key-migration.
+        lines: 57,
+        statements: 56,
+        functions: 60,
+        branches: 50,
       },
     },
   },
