@@ -215,6 +215,31 @@ export const BudgetHardStop = defineEvent<
 >("budget.hard_stop");
 
 // ---------------------------------------------------------------------------
+// Task board events
+// ---------------------------------------------------------------------------
+
+export const TaskCreated = defineEvent<
+  "task.created",
+  { instanceSlug: InstanceSlug; taskId: number; title: string; createdBy: string }
+>("task.created");
+
+export const TaskStatusChanged = defineEvent<
+  "task.status_changed",
+  {
+    instanceSlug: InstanceSlug;
+    taskId: number;
+    oldStatus: string;
+    newStatus: string;
+    agentId?: string;
+  }
+>("task.status_changed");
+
+export const TaskAssigned = defineEvent<
+  "task.assigned",
+  { instanceSlug: InstanceSlug; taskId: number; assigneeId: string; sessionId?: string }
+>("task.assigned");
+
+// ---------------------------------------------------------------------------
 // MCP events
 // ---------------------------------------------------------------------------
 
@@ -330,6 +355,9 @@ export type AnyEventDef =
   | typeof HeartbeatAlert
   | typeof BudgetSoftAlert
   | typeof BudgetHardStop
+  | typeof TaskCreated
+  | typeof TaskStatusChanged
+  | typeof TaskAssigned
   | typeof McpServerReconnected
   | typeof McpToolsChanged
   | typeof LLMChunkTimeout

@@ -48,6 +48,7 @@ export interface InstanceInfo {
   transitioning?: "starting" | "stopping";
   // gateway token for zero-friction Control UI login
   gatewayToken?: string | null;
+  taskCounts?: { pending: number; inProgress: number; blocked: number };
 }
 
 export interface HealthUpdate {
@@ -716,6 +717,38 @@ export interface BudgetEvent {
   scope?: string;
   scopeId?: string | null;
   createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Task Board
+// ---------------------------------------------------------------------------
+
+export interface TaskInfo {
+  id: number;
+  title: string;
+  description: string | null;
+  status: "pending" | "in_progress" | "completed" | "blocked" | "cancelled";
+  priority: "low" | "medium" | "high" | "critical";
+  assigneeId: string | null;
+  labels: string[] | null;
+  createdBy: string;
+  sessionId: string | null;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+}
+
+export interface TaskComment {
+  id: number;
+  taskId: number;
+  authorId: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface TaskDetail extends TaskInfo {
+  comments: TaskComment[];
 }
 
 // ---------------------------------------------------------------------------

@@ -34,7 +34,15 @@ import type { PluginInput } from "../plugin/types.js";
 
 export const TOOL_PROFILES: Record<string, string[]> = {
   sentinel: ["question"],
-  pilot: ["question", "webfetch", "send_message", "task", "create_artifact", "send_file"],
+  pilot: [
+    "question",
+    "webfetch",
+    "send_message",
+    "task",
+    "task_board",
+    "create_artifact",
+    "send_file",
+  ],
   executor: [
     "read",
     "write",
@@ -49,6 +57,7 @@ export const TOOL_PROFILES: Record<string, string[]> = {
     "todoread",
     "skill",
     "send_message",
+    "task_board",
     "create_artifact",
     "send_file",
   ],
@@ -67,6 +76,7 @@ export const TOOL_PROFILES: Record<string, string[]> = {
     "skill",
     "send_message",
     "task",
+    "task_board",
     "create_artifact",
     "send_file",
   ],
@@ -91,6 +101,7 @@ export const ALL_TOOL_IDS = [
   "skill",
   "send_message",
   "task",
+  "task_board",
   "create_artifact",
   "send_file",
 ] as const;

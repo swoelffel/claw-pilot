@@ -24,6 +24,8 @@ export interface HealthStatus {
   heartbeatAgents?: number;
   /** Number of heartbeat alerts in the last 24h */
   heartbeatAlerts?: number;
+  /** Active task counts */
+  taskCounts?: { pending: number; inProgress: number; blocked: number };
 }
 
 /** Minimal interface for a runtime that exposes channel statuses. */

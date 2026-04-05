@@ -38,6 +38,7 @@ import {
 import { createMemorySearchTool } from "../memory/search-tool.js";
 import { rebuildMemoryIndex } from "../memory/index.js";
 import { createTaskTool } from "../tool/task.js";
+import { createTaskBoardTool } from "../tool/task-board.js";
 import { createSendMessageTool } from "../tool/send-message.js";
 import { TOOL_PROFILES } from "../tool/registry.js";
 import { invalidateWorkspaceCache } from "./workspace-cache.js";
@@ -312,6 +313,42 @@ export async function buildToolSet(
           const part = getOrCreateToolCallPart(db, messageId, options.toolCallId, "task", args);
           try {
             const result = await taskDef.execute(args as never, ctx);
+            updatePartState(db, part.id, "completed", result.output);
+            bus.publish(MessageUpdated, { sessionId, messageId });
+            return result.output;
+          } catch (err) {
+            updatePartState(db, part.id, "error", err instanceof Error ? err.message : String(err));
+            bus.publish(MessageUpdated, { sessionId, messageId });
+            throw err;
+          }
+        },
+      });
+    }
+
+    if (allowedTools.has("task_board")) {
+      // task_board — shared task board management
+      const taskBoardToolInfo = createTaskBoardTool({ db, instanceSlug });
+      const taskBoardDef = await applyToolDefinitionHooks(
+        await taskBoardToolInfo.init(),
+        pluginInput,
+      );
+      const normalizedTaskBoardParams = normalizeForProvider(
+        taskBoardDef.parameters,
+        resolvedModel.providerId,
+      );
+      set["task_board"] = aiTool({
+        description: taskBoardDef.description,
+        inputSchema: zodSchema(normalizedTaskBoardParams),
+        execute: async (args: unknown, options: { toolCallId: string }) => {
+          const part = getOrCreateToolCallPart(
+            db,
+            messageId,
+            options.toolCallId,
+            "task_board",
+            args,
+          );
+          try {
+            const result = await taskBoardDef.execute(args as never, ctx);
             updatePartState(db, part.id, "completed", result.output);
             bus.publish(MessageUpdated, { sessionId, messageId });
             return result.output;
