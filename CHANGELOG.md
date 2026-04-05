@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.62.2] — 2026-04-05
+
+### Added
+
+- **Phase 5 test coverage** — 10 test files, +230 tests: agent defaults, model catalog, provider resolution, usage tracker, message builder, workspace cache, and 4 repository modules (agent, agent-blueprint, blueprint, runtime-session).
+- **Phase 6 test coverage** — 9 test files, +104 tests: mime, log-rotate, process, request-id, search-tool, channel-factory, profile routes, agent-blueprint routes, key-migration.
+- **Coverage totals** — 1901 backend tests, 57.78% lines (up from 53.05%). CI thresholds raised: lines 57%, stmts 56%, funcs 60%, branches 50%.
+
+### Fixed
+
+- **Security: defu prototype pollution** (GHSA-737v-mqg7-c878) — Override `defu@<=6.1.4` to `>=6.1.5` via pnpm overrides. Fixes CI security audit failure.
+
+---
+
 ## [0.62.1] — 2026-04-04
 
 ### Fixed
