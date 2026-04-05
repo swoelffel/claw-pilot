@@ -63,6 +63,7 @@ Since v0.7.1, navigation uses hash URLs (`#/...`). Browser back/forward and page
 | `#/blueprints/:id/builder` | Blueprint builder | `cp-blueprint-builder` |
 | `#/agent-templates` | Agent templates (reusable agent blueprints) | `cp-agent-templates-view` |
 | `#/agent-templates/:id` | Agent template detail + file editing | `cp-agent-template-detail` |
+| `#/instances/:slug/tasks` | Task board (Kanban) | `cp-task-board` |
 | `#/profile` | User profile settings | `cp-profile-settings` |
 
 Navigation between views emits `navigate { view, slug?, blueprintId?, templateId? }` events captured by `app.ts`, which updates the hash URL and renders the corresponding component.
@@ -123,6 +124,7 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 | 5 | Blueprint Builder | `cp-blueprint-builder` | `#/blueprints/:id/builder` | agent-card-mini, agent-detail-panel, agent-links-svg | [screen-blueprint-builder.md](ux-screens/screen-blueprint-builder.md) |
 | — | Agent Templates | `cp-agent-templates-view` | `#/agent-templates` | — | [screen-agent-templates.md](ux-screens/screen-agent-templates.md) |
 | — | Agent Template Detail | `cp-agent-template-detail` | `#/agent-templates/:id` | agent-file-editor | [screen-agent-template-detail.md](ux-screens/screen-agent-template-detail.md) |
+| — | Task Board | `cp-task-board` | `#/instances/:slug/tasks` | task-card, task-detail | [screen-task-board.md](ux-screens/screen-task-board.md) |
 | — | Profile Settings | `cp-profile-settings` | `#/profile` | — (standalone) | [screen-profile-settings.md](ux-screens/screen-profile-settings.md) |
 
 ---
@@ -145,6 +147,8 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 | Bus Alerts | `cp-bus-alerts` | [comp-bus-alerts.md](ux-components/comp-bus-alerts.md) |
 | Canvas Legend | `cp-canvas-legend` | [comp-canvas-legend.md](ux-components/comp-canvas-legend.md) |
 | Budget Alert Banner | `cp-budget-alert-banner` | [comp-budget-alert-banner.md](ux-components/comp-budget-alert-banner.md) |
+| Task Card | `cp-task-card` | — (inline in task-board) |
+| Task Detail | `cp-task-detail` | — (inline in task-board) |
 
 ---
 

@@ -526,4 +526,45 @@ export const templates = {
   "budget-confirm-continue": "y continuar",
   "acm-budget-exceeded": "Presupuesto excedido",
   "card-budget-exceeded": "Presupuesto excedido",
+
+  // instance-card.ts — task counts
+  "meta-task": "tarea",
+  "meta-tasks": "tareas",
+  "btn-tasks": "Tareas",
+
+  // task-board.ts
+  "task-board-loading": "Cargando tareas…",
+  "task-board-back": "Volver",
+  "task-board-title": "Tareas",
+  "task-board-new": "Nueva tarea",
+  "task-board-empty-col": "Sin tareas",
+  "task-board-title-placeholder": "Título de la tarea…",
+  "task-board-create": "Crear",
+  "task-board-cancel": "Cancelar",
+
+  // task-board.ts / task-detail.ts — shared priorities
+  "task-priority-low": "Baja",
+  "task-priority-medium": "Media",
+  "task-priority-high": "Alta",
+  "task-priority-critical": "Crítica",
+
+  // task-detail.ts
+  "task-loading": "Cargando…",
+  "task-not-found": "Tarea no encontrada",
+  "task-field-title": "Título",
+  "task-field-status": "Estado",
+  "task-status-pending": "Pendiente",
+  "task-status-in-progress": "En curso",
+  "task-status-blocked": "Bloqueada",
+  "task-status-completed": "Completada",
+  "task-status-cancelled": "Cancelada",
+  "task-field-priority": "Prioridad",
+  "task-field-assignee": "Asignado a",
+  "task-view-session": "Ver sesión",
+  "task-field-description": "Descripción",
+  "task-field-created": "Creada el",
+  "task-by": "por",
+  "task-field-comments": "Comentarios",
+  "task-comment-placeholder": "Añadir un comentario…",
+  "task-comment-send": "Enviar",
 };
