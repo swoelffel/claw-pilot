@@ -155,10 +155,10 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
     );
   });
 
-  // Rate limiting on API routes (60 req/min per IP)
-  app.use("/api/*", createRateLimiter({ maxRequests: 60, windowMs: 60_000 }));
-  // Stricter rate limit on expensive operations
-  app.use("/api/instances", createRateLimiter({ maxRequests: 30, windowMs: 60_000 }));
+  // Rate limiting on API routes — generous for admin dashboard (single-user)
+  app.use("/api/*", createRateLimiter({ maxRequests: 300, windowMs: 60_000 }));
+  // Moderate limit on instance operations
+  app.use("/api/instances", createRateLimiter({ maxRequests: 120, windowMs: 60_000 }));
   app.use(
     "/api/self/update",
     createRateLimiter({ maxRequests: 1, windowMs: constants.SELF_UPDATE_RATE_LIMIT_MS }),
