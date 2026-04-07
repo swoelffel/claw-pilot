@@ -6,7 +6,7 @@
 //
 // Émet cp-update-action (bubbles + composed) → capturé par cp-app.
 
-import { LitElement, html } from "lit";
+import { LitElement, html, css } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { SelfUpdateStatus } from "../types.js";
@@ -15,6 +15,14 @@ import "./update-banner-base.js";
 @localized()
 @customElement("cp-self-update-banner")
 export class SelfUpdateBanner extends LitElement {
+  static override styles = css`
+    :host {
+      display: block;
+      max-width: 100%;
+      overflow: hidden;
+    }
+  `;
+
   @property({ attribute: false }) status: SelfUpdateStatus | null = null;
 
   override render() {

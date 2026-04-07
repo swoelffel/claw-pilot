@@ -54,7 +54,6 @@ export class CpApp extends LitElement {
       :host {
         display: block;
         width: 100%;
-        max-width: 100vw;
         overflow-x: hidden;
         min-height: 100vh;
         background: var(--bg-base);
@@ -103,6 +102,7 @@ export class CpApp extends LitElement {
         display: flex;
         align-items: center;
         gap: 10px;
+        flex-shrink: 0;
       }
 
       main {
@@ -276,7 +276,8 @@ export class CpApp extends LitElement {
         align-items: center;
         gap: 2px;
         margin-left: 8px;
-        flex-shrink: 0;
+        min-width: 0;
+        overflow-x: auto;
       }
 
       .nav-tab {

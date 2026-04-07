@@ -23,6 +23,9 @@ export class UpdateBannerBase extends LitElement {
     css`
       :host {
         display: block;
+        max-width: 100%;
+        overflow: hidden;
+        box-sizing: border-box;
       }
 
       .banner {
