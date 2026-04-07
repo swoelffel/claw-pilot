@@ -76,6 +76,7 @@
     "@commitlint/config-conventional": "^20.5.0",
     "@cspell/dict-fr-fr": "^2.3.2",
     "@hono/node-server": "^1.19.12",
+    "@lit/localize": "^0.12.2",
     "@types/better-sqlite3": "^7",
     "@types/dompurify": "^3.0.0",
     "@types/node": "^25",
@@ -84,14 +85,13 @@
     "cspell": "^9.7.0",
     "knip": "^6.1.0",
     "lefthook": "^2.1.4",
-    "@lit/localize": "^0.12.2",
     "lit": "^3",
     "madge": "^8.0.0",
     "oxlint": "^1.56.0",
     "prettier": "^3.8.1",
     "tsdown": "^0.21.7",
     "typescript": "~6.0",
-    "vite": "^8",
+    "vite": "^8.0.5",
     "vitest": "^4"
   }
 }
