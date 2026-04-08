@@ -25,7 +25,6 @@ import { AgentMessageSent } from "../bus/events.js";
 import type { InstanceSlug, SessionId } from "../types.js";
 import type { ResolvedModel } from "../provider/provider.js";
 import type { RuntimeConfig, RuntimeAgentConfig, ModelAlias } from "../config/index.js";
-import { resolveModelForAgent } from "../channel/router.js";
 import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -64,7 +63,8 @@ export function createSendMessageTool(options: {
   callerAgentConfig: RuntimeAgentConfig;
   runtimeAgentConfigs?: RuntimeAgentConfig[];
   modelAliases?: ModelAlias[];
-  runtimeConfig?: RuntimeConfig;
+  /** Injected model resolver — breaks circular dependency with channel/router. */
+  resolveTargetModel?: (agentConfig: RuntimeAgentConfig) => ResolvedModel;
   compactionConfig?: RuntimeConfig["compaction"];
   runPromptLoop: (input: SendMessagePromptLoopInput) => Promise<SendMessagePromptLoopResult>;
 }): Tool.Info {
@@ -76,7 +76,7 @@ export function createSendMessageTool(options: {
     callerAgentConfig,
     runtimeAgentConfigs,
     modelAliases,
-    runtimeConfig,
+    resolveTargetModel,
     compactionConfig,
     runPromptLoop,
   } = options;
@@ -182,11 +182,11 @@ export function createSendMessageTool(options: {
 
       // 7. Resolve target model (named keys first, then legacy fallback)
       let targetModel: ResolvedModel;
-      if (runtimeConfig) {
+      if (resolveTargetModel) {
         try {
-          targetModel = resolveModelForAgent(db, instanceSlug, targetConfig, runtimeConfig);
+          targetModel = resolveTargetModel(targetConfig);
         } catch {
-          targetModel = resolvedModel; // fallback to caller's model
+          targetModel = resolvedModel;
         }
       } else {
         targetModel = targetConfig.model

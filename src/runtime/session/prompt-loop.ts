@@ -85,6 +85,8 @@ export interface PromptLoopInput {
   mcpRegistry?: McpRegistry;
   internalResolvedModel?: ResolvedModel;
   runtimeConfig?: RuntimeConfig;
+  /** Injected model resolver for inter-agent calls (named key support). */
+  resolveTargetModel?: (agentConfig: RuntimeAgentConfig) => ResolvedModel;
   /** User profile for dynamic injection into system prompt */
   userProfile?: import("../profile/types.js").UserProfile;
   /** Image attachments (validated by multimodal middleware) to include in user message */
@@ -139,6 +141,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
     mcpRegistry,
     internalResolvedModel,
     runtimeConfig,
+    resolveTargetModel,
     userProfile,
   } = input;
 
@@ -339,6 +342,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       runPromptLoop,
       runtimeConfig?.agents,
       runtimeConfig,
+      resolveTargetModel,
     );
 
     // 6. Stream the response

@@ -696,6 +696,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
             ...(imageAttachments !== undefined && imageAttachments.length > 0
               ? { imageAttachments }
               : {}),
+            resolveTargetModel: (targetCfg) => resolveModelForAgent(db, slug, targetCfg, config),
           }),
       });
 

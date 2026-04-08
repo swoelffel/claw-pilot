@@ -1,7 +1,7 @@
 # claw-pilot — Registry Database (`registry.db`)
 
 SQLite database at `~/.claw-pilot/registry.db`. WAL mode, foreign keys enforced.  
-Current schema version: **26**. Source of truth: `src/db/schema.ts`.
+Current schema version: **28**. Source of truth: `src/db/schema.ts`.
 
 ---
 
@@ -19,8 +19,12 @@ servers ──< instances ──< agents ──< agent_files
                     ├──< rt_permissions
                     ├──< rt_auth_profiles
                     ├──< rt_pairing_codes
+                    ├──< rt_budgets ──< rt_budget_events
                     ├──< instance_named_keys ──> named_api_keys
                     └──< (runtime_config_json, default_named_key_id)
+
+discovered_models  (provider_id + model_id composite PK)
+discovery_status   (provider_id PK)
 
 blueprints ──< agents ──< agent_files
            └──< agent_links
@@ -446,6 +450,72 @@ System prompt snapshots per session, deduplicated by content hash.
 
 Index: `idx_rt_system_prompts_session`.
 
+### `rt_budgets` (v27)
+
+Per-instance and per-agent budget limits with auto-enforcement.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `instance_slug` | TEXT | NOT NULL REFERENCES instances(slug) ON DELETE CASCADE |
+| `scope` | TEXT | NOT NULL CHECK(IN agent,instance) |
+| `scope_id` | TEXT | (agent_id when scope=agent, NULL for instance) |
+| `period` | TEXT | NOT NULL CHECK(IN monthly,lifetime) |
+| `limit_usd` | REAL | NOT NULL |
+| `spent_usd` | REAL | NOT NULL DEFAULT 0 |
+| `soft_alert_pct` | REAL | NOT NULL DEFAULT 0.8 |
+| `hard_stop_pct` | REAL | NOT NULL DEFAULT 1.0 |
+| `override_pct` | REAL | NOT NULL DEFAULT 0.2 |
+| `enabled` | INTEGER | NOT NULL DEFAULT 1 |
+| `period_start` | TEXT | |
+| `created_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+| `updated_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+
+UNIQUE: `(instance_slug, scope, scope_id, period)`.
+
+### `rt_budget_events` (v27)
+
+Budget audit trail for alerts, overrides, and resets.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `budget_id` | INTEGER | NOT NULL REFERENCES rt_budgets(id) ON DELETE CASCADE |
+| `event_type` | TEXT | NOT NULL CHECK(IN soft_alert,hard_stop,reset,override,reconcile) |
+| `current_usd` | REAL | |
+| `limit_usd` | REAL | |
+| `message` | TEXT | |
+| `created_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+
+Index: `idx_rt_budget_events_budget`.
+
+### `discovered_models` (v28)
+
+Models discovered from provider APIs. Cached for cold-start persistence.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `provider_id` | TEXT | NOT NULL |
+| `model_id` | TEXT | NOT NULL |
+| `name` | TEXT | |
+| `api` | TEXT | |
+| `capabilities` | TEXT | (JSON) |
+| `cost` | TEXT | (JSON) |
+| `discovered_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+
+PRIMARY KEY: `(provider_id, model_id)`.
+
+### `discovery_status` (v28)
+
+Provider discovery status for error tracking and polling.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `provider_id` | TEXT | PRIMARY KEY |
+| `last_success` | TEXT | |
+| `last_error` | TEXT | |
+| `model_count` | INTEGER | |
+
 ---
 
 ## Migration history
@@ -478,12 +548,14 @@ Index: `idx_rt_system_prompts_session`.
 | 24 | Added `named_api_keys` and `instance_named_keys` tables. Added `agents.named_key_id` FK. AES-256-GCM encrypted key storage. |
 | 25 | Added `instances.default_named_key_id` FK — simplifies key assignment (replaces junction table). |
 | 26 | Added `rt_system_prompts` table for system prompt snapshots per session (deduplicated by content hash). |
+| 27 | Added `rt_budgets` and `rt_budget_events` tables for budget enforcement. Per-instance/agent, monthly/lifetime, soft alert, hard stop, override. |
+| 28 | Added `discovered_models` and `discovery_status` tables for dynamic model discovery from provider APIs. Composite PK (provider_id, model_id). |
 
 ---
 
 ## Key access patterns
 
-All DB access goes through `src/core/registry.ts` facade (15 repositories) — never raw SQL in commands or routes.
+All DB access goes through `src/core/registry.ts` facade (16 repositories) — never raw SQL in commands or routes.
 
 ### Instance operations
 
@@ -544,7 +616,9 @@ All DB access goes through `src/core/registry.ts` facade (15 repositories) — n
 | Named keys CRUD | `NamedKeyRepository` | `list()`, `create()`, `update()`, `delete()` |
 | Runtime config | `RuntimeConfigRepository` | `getRuntimeConfig(slug)`, `updateRuntimeConfig()` |
 | User profile | `UserProfileRepository` | `getProfile(userId)`, `updateProfile()` |
+| Budget CRUD | `BudgetRepository` | `listBudgets(slug)`, `createBudget()`, `updateBudget()`, `deleteBudget()` |
+| Budget events | `BudgetRepository` | `listBudgetEvents(budgetId)`, `insertBudgetEvent()` |
 
 ---
 
-*Updated: 2026-04-03 — v0.61.11: schema v26, 15 repositories, migration history v1–v26*
+*Updated: 2026-04-08 — v0.63.0: schema v28, 16 repositories, migration history v1–v28*
