@@ -107,15 +107,16 @@ export function buildTimeline(messages: PilotMessage[], currentAgentId?: string)
       }
 
       // 3. Check for target-side A2A pattern: [message_from:agentId] content
+      // fromMatch[1] = sender agent ID, currentAgentId = receiver (this session's agent)
       const fromMatch = A2A_FROM_RE.exec(text);
       if (fromMatch && fromMatch[1] && fromMatch[2] !== undefined) {
         entries.push({
           id: msg.id,
           kind: "a2a_received",
           timestamp: msg.createdAt,
-          source: currentAgentId ?? "agent",
+          source: fromMatch[1],
           message: msg,
-          a2aTarget: fromMatch[1],
+          a2aTarget: currentAgentId ?? "agent",
           a2aContent: fromMatch[2],
           ...(channel !== undefined ? { channel } : {}),
         });
