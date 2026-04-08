@@ -70,35 +70,35 @@ function extractApiErrorDetail(err: unknown): ApiErrorDetail {
   // Walk the cause chain looking for an error with statusCode + responseBody
   // (AI SDK's APICallError shape).
   let current: unknown = err;
-  for (let depth = 0; depth < 5 && current; depth++) {
-    if (
-      current instanceof Error &&
-      "statusCode" in current &&
-      typeof (current as Record<string, unknown>).statusCode === "number"
-    ) {
-      const apiErr = current as Error & {
-        statusCode: number;
-        responseBody?: string;
-        url?: string;
-        data?: { error?: { message?: string } };
-      };
+  for (let depth = 0; depth < 10 && current; depth++) {
+    const rec = current as Record<string, unknown>;
+    if (typeof rec.statusCode === "number") {
+      const statusCode = rec.statusCode as number;
+      const responseBody = typeof rec.responseBody === "string" ? rec.responseBody : undefined;
+      const url = typeof rec.url === "string" ? rec.url : undefined;
+      const data = rec.data as { error?: { message?: string } } | undefined;
 
-      // Try to extract the provider's error message
-      const providerMessage =
-        apiErr.data?.error?.message ?? parseResponseBodyMessage(apiErr.responseBody);
+      const providerMessage = data?.error?.message ?? parseResponseBodyMessage(responseBody);
 
       const userMessage = providerMessage
-        ? `Provider error (${apiErr.statusCode}): ${providerMessage}`
-        : `Provider returned HTTP ${apiErr.statusCode}`;
+        ? `Provider error (${statusCode}): ${providerMessage}`
+        : `Provider returned HTTP ${statusCode}`;
 
       const logMessage =
-        `statusCode=${apiErr.statusCode}` +
-        (apiErr.url ? ` url=${apiErr.url}` : "") +
-        (apiErr.responseBody ? ` body=${apiErr.responseBody}` : "");
+        `statusCode=${statusCode}` +
+        (url ? ` url=${url}` : "") +
+        (responseBody ? ` body=${responseBody}` : "");
 
       return { userMessage, logMessage, httpStatus: 502 };
     }
-    current = current instanceof Error ? current.cause : undefined;
+    // Walk: cause property (standard Error chain) or errors array (RetryError)
+    if (current instanceof Error) {
+      current = current.cause;
+    } else if (Array.isArray(rec.errors) && rec.errors.length > 0) {
+      current = rec.errors[rec.errors.length - 1];
+    } else {
+      break;
+    }
   }
 
   // No APICallError found — return the original message
@@ -724,8 +724,9 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
         return c.json({ sessionId: session.id, aborted: true, text: "" }, 200);
       }
 
-      // Extract a useful error message from AI SDK errors (APICallError, NoOutputGeneratedError).
-      // These wrap the actual provider error in a cause chain.
+      // Extract a useful error message from AI SDK errors (APICallError).
+      // The prompt loop now re-throws the underlying APICallError (captured via onError)
+      // instead of the generic NoOutputGeneratedError wrapper.
       const detail = extractApiErrorDetail(err);
       logger.error(`[POST /runtime/chat] prompt loop failed: ${detail.logMessage}`);
       return apiError(c, detail.httpStatus, "PROMPT_LOOP_FAILED", detail.userMessage);

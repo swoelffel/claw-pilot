@@ -190,6 +190,10 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
     }
   });
 
+  // Captures the underlying API error from streamText's onError callback
+  // so we can surface it instead of the generic "No output generated" message.
+  let lastStreamError: Error | undefined;
+
   try {
     // 1. Create user message (+ image parts if attachments present)
     const userMsg = createUserMessage(db, { sessionId, text: userText });
@@ -386,6 +390,12 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       stopWhen: stepCountIs(agentConfig.maxSteps),
       abortSignal: fullAbort,
       ...(providerOptions !== undefined ? { providerOptions } : {}),
+      onError: ({ error }) => {
+        // Capture the underlying API error (e.g. APICallError with statusCode/responseBody)
+        // so we can surface it in the error response instead of the generic
+        // "No output generated. Check the stream for errors." message.
+        if (error instanceof Error) lastStreamError = error;
+      },
       onStepFinish: (step) => {
         completedSteps++;
 
@@ -590,7 +600,9 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       updateMessageMetadata(db, assistantMsgId, { finishReason: "error" });
       bus.publish(MessageUpdated, { sessionId, messageId: assistantMsgId });
     }
-    throw err;
+    // If the stream captured an underlying API error (e.g. APICallError with statusCode),
+    // prefer it over the generic "No output generated" wrapper.
+    throw lastStreamError ?? err;
   } finally {
     clearTimeout(watchdogTimer);
     clearInterval(chunkWatchdogTimer);
