@@ -12,7 +12,17 @@ vi.mock("@ai-sdk/anthropic", () => ({
   createAnthropic: vi.fn(() => vi.fn(() => ({ modelId: "mock-anthropic" }))),
 }));
 vi.mock("@ai-sdk/openai", () => ({
-  createOpenAI: vi.fn(() => vi.fn(() => ({ modelId: "mock-openai" }))),
+  createOpenAI: vi.fn(() => {
+    const mockModel = { modelId: "mock-openai" };
+    const provider = Object.assign(
+      vi.fn(() => mockModel),
+      {
+        chat: vi.fn(() => mockModel),
+        responses: vi.fn(() => mockModel),
+      },
+    );
+    return provider;
+  }),
 }));
 vi.mock("@ai-sdk/google", () => ({
   createGoogleGenerativeAI: vi.fn(() => vi.fn(() => ({ modelId: "mock-google" }))),

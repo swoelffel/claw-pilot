@@ -53,14 +53,25 @@ export function resolveLanguageModel(config: ProviderConfig, modelId: ModelId): 
       return client(modelId);
     }
 
-    case "openai-completions":
+    case "openai-completions": {
+      // Force Chat Completions API (/chat/completions) — required for
+      // OpenAI-compatible providers (Mistral, xAI, OpenCode, etc.)
+      // that don't support the Responses API (/responses).
+      const client = createOpenAI({
+        ...(config.apiKey !== undefined && { apiKey: config.apiKey }),
+        ...(config.baseUrl !== undefined && { baseURL: config.baseUrl }),
+        ...(config.headers !== undefined && { headers: config.headers }),
+      });
+      return client.chat(modelId);
+    }
+
     case "openai-responses": {
       const client = createOpenAI({
         ...(config.apiKey !== undefined && { apiKey: config.apiKey }),
         ...(config.baseUrl !== undefined && { baseURL: config.baseUrl }),
         ...(config.headers !== undefined && { headers: config.headers }),
       });
-      return client(modelId);
+      return client.responses(modelId);
     }
 
     case "google-generative-ai": {
