@@ -49,6 +49,85 @@ import { resolveModelForAgent } from "../../../runtime/channel/router.js";
 // Created in POST /runtime/chat, cleaned up in finally block.
 const activeAbortControllers = new Map<string, AbortController>();
 
+// ---------------------------------------------------------------------------
+// AI SDK error extraction
+// ---------------------------------------------------------------------------
+
+interface ApiErrorDetail {
+  /** Human-readable message for the API client (shown in UI). */
+  userMessage: string;
+  /** Detailed message for server logs (includes statusCode, responseBody). */
+  logMessage: string;
+  /** HTTP status code to return (502 for upstream provider errors, 500 otherwise). */
+  httpStatus: number;
+}
+
+/**
+ * Walk the error cause chain to find an AI SDK APICallError and extract
+ * the provider's actual error message, status code, and response body.
+ */
+function extractApiErrorDetail(err: unknown): ApiErrorDetail {
+  // Walk the cause chain looking for an error with statusCode + responseBody
+  // (AI SDK's APICallError shape).
+  let current: unknown = err;
+  for (let depth = 0; depth < 5 && current; depth++) {
+    if (
+      current instanceof Error &&
+      "statusCode" in current &&
+      typeof (current as Record<string, unknown>).statusCode === "number"
+    ) {
+      const apiErr = current as Error & {
+        statusCode: number;
+        responseBody?: string;
+        url?: string;
+        data?: { error?: { message?: string } };
+      };
+
+      // Try to extract the provider's error message
+      const providerMessage =
+        apiErr.data?.error?.message ?? parseResponseBodyMessage(apiErr.responseBody);
+
+      const userMessage = providerMessage
+        ? `Provider error (${apiErr.statusCode}): ${providerMessage}`
+        : `Provider returned HTTP ${apiErr.statusCode}`;
+
+      const logMessage =
+        `statusCode=${apiErr.statusCode}` +
+        (apiErr.url ? ` url=${apiErr.url}` : "") +
+        (apiErr.responseBody ? ` body=${apiErr.responseBody}` : "");
+
+      return { userMessage, logMessage, httpStatus: 502 };
+    }
+    current = current instanceof Error ? current.cause : undefined;
+  }
+
+  // No APICallError found — return the original message
+  const message = err instanceof Error ? err.message : String(err);
+  return {
+    userMessage: message || "Agent execution failed",
+    logMessage: message || "unknown error",
+    httpStatus: 500,
+  };
+}
+
+/** Try to parse a JSON response body and extract an error message. */
+function parseResponseBodyMessage(body: string | undefined): string | undefined {
+  if (!body) return undefined;
+  try {
+    const parsed = JSON.parse(body) as Record<string, unknown>;
+    // Common patterns: { error: { message: "..." } } or { error: "..." }
+    if (typeof parsed.error === "object" && parsed.error !== null) {
+      return (parsed.error as Record<string, unknown>).message as string | undefined;
+    }
+    if (typeof parsed.error === "string") return parsed.error;
+    if (typeof parsed.message === "string") return parsed.message;
+  } catch {
+    // Not JSON — return as-is if short enough
+    if (body.length < 200) return body;
+  }
+  return undefined;
+}
+
 export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, db } = deps;
 
@@ -644,13 +723,12 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       if (abortController.signal.aborted) {
         return c.json({ sessionId: session.id, aborted: true, text: "" }, 200);
       }
-      logger.error("[POST /runtime/chat] prompt loop failed:", err as Record<string, unknown>);
-      return apiError(
-        c,
-        500,
-        "PROMPT_LOOP_FAILED",
-        err instanceof Error ? err.message : "Agent execution failed",
-      );
+
+      // Extract a useful error message from AI SDK errors (APICallError, NoOutputGeneratedError).
+      // These wrap the actual provider error in a cause chain.
+      const detail = extractApiErrorDetail(err);
+      logger.error(`[POST /runtime/chat] prompt loop failed: ${detail.logMessage}`);
+      return apiError(c, detail.httpStatus, "PROMPT_LOOP_FAILED", detail.userMessage);
     } finally {
       activeAbortControllers.delete(session.id);
     }
