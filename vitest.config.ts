@@ -10,9 +10,8 @@ export default defineConfig({
       exclude: ["src/**/__tests__/**", "src/index.ts"],
       reporter: ["text", "html", "json-summary"],
       thresholds: {
-        // Phase 6 test coverage: +104 tests covering mime, log-rotate, process,
-        // search-tool, channel-factory, request-id, profile routes,
-        // agent-blueprint routes, and key-migration.
+        // Engineering excellence: 1972 tests, coverage ~57.5% lines.
+        // Enforced by CI — raise after adding tests, never lower.
         lines: 57,
         statements: 56,
         functions: 60,

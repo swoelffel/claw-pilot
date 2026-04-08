@@ -16,6 +16,10 @@ pre-push:
       run: pnpm test:run
     spellcheck:
       run: pnpm spellcheck
+    no-silent-catches:
+      run: |
+        count=$(grep -rn "catch {" src/ --include="*.ts" | grep -v __tests__ | grep -v e2e | wc -l | tr -d ' ')
+        if [ "$count" -gt 0 ]; then echo "Found $count silent catches in production code"; exit 1; fi
 
 commit-msg:
   commands:
