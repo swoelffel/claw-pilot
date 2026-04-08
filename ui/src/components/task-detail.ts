@@ -24,6 +24,7 @@ export class TaskDetailPanel extends LitElement {
   @state() private _loading = true;
   @state() private _newComment = "";
   @state() private _agents: Array<{ agent_id: string; name: string }> = [];
+  @state() private _selectedAgent = "";
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -44,6 +45,7 @@ export class TaskDetailPanel extends LitElement {
       ]);
       this._task = task;
       this._agents = agents;
+      this._selectedAgent = task.assigneeId ?? "";
     } catch {
       this._task = null;
     } finally {
@@ -170,22 +172,31 @@ export class TaskDetailPanel extends LitElement {
 
         <div class="field">
           <label>${msg("Assignee", { id: "task-field-assignee" })}</label>
-          <select
-            @change=${(e: Event) => {
-              const val = (e.target as HTMLSelectElement).value;
-              void this._updateField("assigneeId", val || null);
-            }}
-          >
-            <option value="" ?selected=${!t.assigneeId}>
-              ${msg("Unassigned", { id: "task-unassigned" })}
-            </option>
-            ${this._agents.map(
-              (a) =>
-                html`<option value=${a.agent_id} ?selected=${t.assigneeId === a.agent_id}>
-                  ${a.name} (${a.agent_id})
-                </option>`,
-            )}
-          </select>
+          <div class="assign-row">
+            <select
+              @change=${(e: Event) => {
+                this._selectedAgent = (e.target as HTMLSelectElement).value;
+              }}
+            >
+              <option value="" ?selected=${!this._selectedAgent}>
+                ${msg("Unassigned", { id: "task-unassigned" })}
+              </option>
+              ${this._agents.map(
+                (a) =>
+                  html`<option value=${a.agent_id} ?selected=${this._selectedAgent === a.agent_id}>
+                    ${a.name} (${a.agent_id})
+                  </option>`,
+              )}
+            </select>
+            ${this._selectedAgent !== (t.assigneeId ?? "")
+              ? html`<button
+                  class="btn-assign"
+                  @click=${() => void this._updateField("assigneeId", this._selectedAgent || null)}
+                >
+                  ${msg("Assign", { id: "task-assign" })}
+                </button>`
+              : nothing}
+          </div>
           ${t.sessionId
             ? html`<a
                 class="session-link"
@@ -294,6 +305,29 @@ export class TaskDetailPanel extends LitElement {
       }
       .btn-delete:hover {
         color: var(--state-error);
+      }
+      .assign-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .assign-row select {
+        flex: 1;
+      }
+      .btn-assign {
+        padding: 6px 14px;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--accent-border);
+        background: var(--accent-subtle);
+        color: var(--accent);
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .btn-assign:hover {
+        background: var(--accent);
+        color: var(--bg-base);
       }
       .btn-close {
         background: none;

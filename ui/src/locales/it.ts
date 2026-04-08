@@ -561,6 +561,7 @@ export const templates = {
   "task-field-assignee": "Assegnato a",
   "task-unassigned": "Non assegnato",
   "task-delete": "Elimina attività",
+  "task-assign": "Assegna",
   "task-view-session": "Visualizza sessione",
   "task-field-description": "Descrizione",
   "task-field-created": "Creata il",

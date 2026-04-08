@@ -594,6 +594,7 @@ export const templates = {
   "task-field-assignee": "Assignee",
   "task-unassigned": "Unassigned",
   "task-delete": "Delete task",
+  "task-assign": "Assign",
   "task-view-session": "View session",
   "task-field-description": "Description",
   "task-field-created": "Created",
