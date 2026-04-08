@@ -6,6 +6,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.64.2] — 2026-04-07
+
+### Added
+
+- **Zod input validation** on all mutation routes: blueprints (8 schemas), budgets (2), tasks (5), auth (1) — all POST/PUT/PATCH handlers now validate input before processing
+- **Silent-catch gate** in pre-push hook: rejects any `catch {}` without logging in production code
+
+### Changed
+
+- **Observability**: all 211 silent catches in production code now log via the project logger (debug/warn/error by severity)
+- **Lint zero-warning enforcement**: `oxlint --deny-warnings` blocks any new warning in CI
+- **apiError consistency**: all API error responses use the standardized `apiError()` helper (3 remaining sites migrated)
+- **Knip config cleanup**: 5 stale ignore entries removed, dead `DiscoveryStatusRow` type deleted
+- **19 lint warnings fixed**: unused imports/variables in production and test code
+
+---
+
 ## [0.64.1] — 2026-04-07
 
 ### Changed
