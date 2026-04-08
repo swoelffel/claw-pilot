@@ -19,7 +19,7 @@ import type { ResolvedModel } from "../../provider/provider.js";
 import { createSession } from "../session.js";
 import { createUserMessage, createAssistantMessage } from "../message.js";
 import { createPart, listParts } from "../part.js";
-import { getBus, disposeBus } from "../../bus/index.js";
+import { disposeBus } from "../../bus/index.js";
 
 // ---------------------------------------------------------------------------
 // Mock ONLY the LLM — everything else is real
@@ -34,16 +34,11 @@ import { generateText } from "ai";
 
 // Real memory modules — no mocks
 import { appendToMemoryFile } from "../../memory/writer.js";
-import { openMemoryIndex, rebuildMemoryIndex, searchMemory } from "../../memory/index.js";
-import {
-  applyDecayToFile,
-  extractReferencedContents,
-  parseMemoryEntry,
-} from "../../memory/decay.js";
+import { rebuildMemoryIndex, searchMemory } from "../../memory/index.js";
+import { applyDecayToFile, parseMemoryEntry } from "../../memory/decay.js";
 
 // Module under test
 import { compact } from "../compaction.js";
-import type { CompactionInput } from "../compaction.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -296,7 +291,7 @@ describe("compaction → memory integration", () => {
     rebuildMemoryIndex(memoryDb, tmpDir, "agent-1");
 
     // Searching for the score pattern should not match
-    const results = searchMemory(memoryDb, "0.8");
+    const _results = searchMemory(memoryDb, "0.8");
     // FTS5 strips scores, so "0.8" should not be indexed as content
     // (it might still match as a number in the text — let's check the actual content)
     const allChunks = memoryDb.prepare("SELECT chunk FROM memory_chunks").all() as Array<{

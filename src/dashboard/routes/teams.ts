@@ -86,7 +86,7 @@ export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
         details.length > 0
           ? details.map((d) => `${d.path ? `[${d.path}] ` : ""}${d.message}`).join(" | ")
           : "Invalid team file format";
-      return c.json({ ok: false, error: "VALIDATION_FAILED", message: humanMessage, details }, 400);
+      return apiError(c, 400, "VALIDATION_FAILED", humanMessage);
     }
 
     logger.info(
@@ -182,7 +182,7 @@ export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
         details.length > 0
           ? details.map((d) => `${d.path ? `[${d.path}] ` : ""}${d.message}`).join(" | ")
           : "Invalid team file format";
-      return c.json({ ok: false, error: "VALIDATION_FAILED", message: humanMessage, details }, 400);
+      return apiError(c, 400, "VALIDATION_FAILED", humanMessage);
     }
 
     logger.info(

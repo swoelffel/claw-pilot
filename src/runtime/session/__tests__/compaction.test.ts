@@ -128,7 +128,7 @@ function seedSessionWithMessages(db: Database.Database): string {
     channel: "web",
   });
 
-  const userMsg = createUserMessage(db, {
+  const _userMsg = createUserMessage(db, {
     sessionId: session.id,
     text: "Hello, can you help me?",
   });

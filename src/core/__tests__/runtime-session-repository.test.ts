@@ -52,7 +52,7 @@ function createSessionWithMessage(opts: {
     channel: opts.channel ?? "web",
     persistent: opts.persistent ?? false,
   });
-  const userMsg = createUserMessage(db, { sessionId: session.id, text: "hello" });
+  const _userMsg = createUserMessage(db, { sessionId: session.id, text: "hello" });
   const assistantMsg = createAssistantMessage(db, {
     sessionId: session.id,
     agentId: opts.agentId ?? "agent-1",

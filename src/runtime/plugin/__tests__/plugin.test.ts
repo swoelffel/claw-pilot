@@ -166,7 +166,7 @@ describe("loadPluginFromFile", () => {
   });
 
   it("throws on invalid export (not a function)", async () => {
-    const { writeFileSync, mkdirSync, rmSync } = await import("node:fs");
+    const { writeFileSync, rmSync } = await import("node:fs");
     const { join } = await import("node:path");
     const { tmpdir } = await import("node:os");
     const { mkdtempSync } = await import("node:fs");

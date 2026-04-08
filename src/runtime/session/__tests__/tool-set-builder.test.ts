@@ -146,7 +146,7 @@ vi.mock("../../tool/registry.js", () => ({
 
 // Import the module under test AFTER all mocks are set up
 import { buildToolSet } from "../tool-set-builder.js";
-import { createPart, listParts, updatePartState } from "../part.js";
+import { updatePartState } from "../part.js";
 import { triggerToolBeforeCall, triggerToolAfterCall } from "../../plugin/hooks.js";
 import { invalidateWorkspaceCache } from "../workspace-cache.js";
 import { markDirty } from "../system-prompt-dirty.js";

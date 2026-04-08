@@ -308,7 +308,7 @@ describe("GET /api/instances/:slug/config — namedKeys + defaultNamedKeyId", ()
       apiKey: "sk-ant-prod",
       defaultModel: "claude-3-5-sonnet",
     });
-    const key2 = ctx.namedKeyRepo.create({
+    const _key2 = ctx.namedKeyRepo.create({
       name: "Dev Key",
       providerId: "openai",
       apiKey: "sk-openai-dev",

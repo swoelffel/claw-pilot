@@ -67,10 +67,3 @@ export interface DiscoveredModelRow {
   cost: string; // JSON
   discovered_at: string;
 }
-
-export interface DiscoveryStatusRow {
-  provider_id: string;
-  last_success: string | null;
-  last_error: string | null;
-  model_count: number;
-}

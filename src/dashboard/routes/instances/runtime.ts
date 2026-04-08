@@ -15,7 +15,6 @@ import { UserProfileRepository } from "../../../core/repositories/user-profile-r
 import {
   listMessages,
   listParts,
-  resolveModel,
   runPromptLoop,
   createSession,
   getOrCreatePermanentSession,
@@ -749,7 +748,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     const sessionId = c.req.param("sessionId");
     const controller = activeAbortControllers.get(sessionId);
     if (!controller) {
-      return c.json({ aborted: false, reason: "No active prompt loop for this session" }, 404);
+      return apiError(c, 404, "NO_ACTIVE_PROMPT_LOOP", "No active prompt loop for this session");
     }
 
     controller.abort();

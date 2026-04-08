@@ -2,13 +2,7 @@
 import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type {
-  BuilderData,
-  CreateAgentRequest,
-  InstanceInfo,
-  ProviderInfo,
-  ProvidersResponse,
-} from "../types.js";
+import type { BuilderData, CreateAgentRequest, InstanceInfo, ProviderInfo } from "../types.js";
 import { fetchProviders, fetchInstances, createAgent, createAgentFromTemplate } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { DialogMixin } from "../lib/dialog-mixin.js";

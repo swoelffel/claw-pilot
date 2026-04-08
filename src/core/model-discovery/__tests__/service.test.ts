@@ -2,9 +2,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import Database from "better-sqlite3";
 import { ModelDiscoveryService } from "../service.js";
-import type { ProviderAdapter, DiscoveredModel } from "../types.js";
+import type { DiscoveredModel } from "../types.js";
 import { PROVIDER_CATALOG } from "../../../lib/provider-catalog.js";
-import { MODEL_CATALOG } from "../../../runtime/provider/models.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

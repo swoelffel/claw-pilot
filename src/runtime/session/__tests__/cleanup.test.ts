@@ -2,7 +2,6 @@ import type Database from "better-sqlite3";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { initDatabase } from "../../../db/schema.js";
 import { cleanupEphemeralSessions } from "../cleanup.js";
-import type { CleanupResult } from "../cleanup.js";
 
 vi.mock("../system-prompt-dirty.js", () => ({ clearSessionDirtyState: vi.fn() }));
 vi.mock("../system-prompt-cache.js", () => ({ clearCachedSystemPrompt: vi.fn() }));

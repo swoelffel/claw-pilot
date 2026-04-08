@@ -1,5 +1,5 @@
 // src/dashboard/__tests__/task-routes.test.ts
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Hono } from "hono";
 import * as os from "node:os";
 import * as path from "node:path";

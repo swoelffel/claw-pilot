@@ -19,7 +19,6 @@ import type { ProviderInfo } from "../../lib/provider-catalog.js";
 import type {
   DiscoveredModel,
   DiscoveredModelRow,
-  DiscoveryStatusRow,
   ProviderAdapter,
   ProviderDiscoveryResult,
 } from "./types.js";
@@ -261,7 +260,7 @@ export class ModelDiscoveryService {
 
   /** Lookup a single model, checking discovery cache first, then static catalog. */
   findModel(providerId: ProviderId, modelId: string): ModelInfo | undefined {
-    const key = `${providerId}/${modelId}`;
+    const _key = `${providerId}/${modelId}`;
 
     // Check discovered
     const discovery = this.cache.get(providerId);
