@@ -22,6 +22,7 @@ import {
 import { getOrCreatePermanentSession } from "../../../runtime/session/session.js";
 import { createUserMessage } from "../../../runtime/session/message.js";
 import type { InstanceSlug } from "../../../runtime/types.js";
+import { wakeupAgent } from "../_wakeup-agent.js";
 
 const VALID_STATUSES = new Set<TaskStatus>([
   "pending",
@@ -159,21 +160,9 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
       createdBy: body.createdBy ?? "user",
     });
 
-    // Inject notification if task was created with an assignee
+    // Inject notification + trigger prompt loop if task was created with an assignee
     if (body.assigneeId) {
-      try {
-        const session = getOrCreatePermanentSession(db, {
-          instanceSlug: slug as InstanceSlug,
-          agentId: body.assigneeId,
-          channel: "internal",
-        });
-        const lines = [`[task_assigned:#${row.id}] "${row.title}" has been assigned to you.`];
-        if (row.description) lines.push(`Description: ${row.description}`);
-        lines.push("Use the task_board tool to checkout and work on this task.");
-        createUserMessage(db, { sessionId: session.id, text: lines.join("\n") });
-      } catch {
-        // Non-critical — agent may not have a permanent session yet
-      }
+      notifyAndWakeAgent(db, registry, slug, body.assigneeId, row.id, row.title, row.description);
     }
 
     return c.json(toJson(row), 201);
@@ -211,27 +200,21 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
     });
     if (!updated) return apiError(c, 404, "NOT_FOUND", "Task not found");
 
-    // Inject notification message into agent's permanent session when assignee changes.
-    // Written directly to DB (not via bus) because dashboard and runtime are separate processes.
-    // The runtime will pick up the message on the agent's next prompt loop activation.
+    // Inject notification + trigger prompt loop when assignee changes
     if (
       body.assigneeId !== undefined &&
       body.assigneeId !== null &&
       body.assigneeId !== existing.assignee_id
     ) {
-      try {
-        const session = getOrCreatePermanentSession(db, {
-          instanceSlug: slug as InstanceSlug,
-          agentId: body.assigneeId,
-          channel: "internal",
-        });
-        const lines = [`[task_assigned:#${id}] "${updated.title}" has been assigned to you.`];
-        if (updated.description) lines.push(`Description: ${updated.description}`);
-        lines.push("Use the task_board tool to checkout and work on this task.");
-        createUserMessage(db, { sessionId: session.id, text: lines.join("\n") });
-      } catch {
-        // Non-critical — agent may not have a permanent session yet
-      }
+      notifyAndWakeAgent(
+        db,
+        registry,
+        slug,
+        body.assigneeId,
+        id,
+        updated.title,
+        updated.description,
+      );
     }
 
     return c.json(toJson(updated));
@@ -341,4 +324,38 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
       201,
     );
   });
+}
+
+// ---------------------------------------------------------------------------
+// Helper: inject notification message + trigger prompt loop
+// ---------------------------------------------------------------------------
+
+function notifyAndWakeAgent(
+  db: Parameters<typeof createUserMessage>[0],
+  registry: RouteDeps["registry"],
+  slug: string,
+  agentId: string,
+  taskId: number,
+  title: string,
+  description: string | null,
+): void {
+  const lines = [`[task_assigned:#${taskId}] "${title}" has been assigned to you.`];
+  if (description) lines.push(`Description: ${description}`);
+  lines.push("Use the task_board tool to checkout and work on this task.");
+  const text = lines.join("\n");
+
+  try {
+    const session = getOrCreatePermanentSession(db, {
+      instanceSlug: slug as InstanceSlug,
+      agentId,
+      channel: "internal",
+    });
+    createUserMessage(db, { sessionId: session.id, text });
+  } catch {
+    // Non-critical — agent may not have a permanent session yet
+    return;
+  }
+
+  // Fire-and-forget: trigger the agent's prompt loop
+  wakeupAgent({ db, registry, slug, agentId, messageText: text });
 }
