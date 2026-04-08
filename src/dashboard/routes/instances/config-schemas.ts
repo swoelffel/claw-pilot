@@ -203,6 +203,7 @@ export const RuntimeConfigPatchSchema = z.object({
           })
           .nullable()
           .optional(),
+        namedKeyId: z.number().int().positive().nullable().optional(),
       }),
     )
     .optional(),

@@ -82,7 +82,27 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
         config,
         stateDir,
       );
-      return c.json({ ...payload, namedKeys: allNamedKeys, defaultNamedKeyId });
+
+      // Enrich agents with named_key_id from the agents DB table
+      const agentKeyRows = deps.db
+        .prepare(
+          `SELECT a.agent_id, a.named_key_id
+           FROM agents a JOIN instances i ON a.instance_id = i.id
+           WHERE i.slug = ? AND a.named_key_id IS NOT NULL`,
+        )
+        .all(slug) as Array<{ agent_id: string; named_key_id: number }>;
+      const keyMap = new Map(agentKeyRows.map((r) => [r.agent_id, r.named_key_id]));
+      const enrichedAgents = payload.agents.map((a) => ({
+        ...a,
+        namedKeyId: keyMap.get(a.id) ?? null,
+      }));
+
+      return c.json({
+        ...payload,
+        agents: enrichedAgents,
+        namedKeys: allNamedKeys,
+        defaultNamedKeyId,
+      });
     } catch (err) {
       logger.error(
         `[config] GET /config error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
@@ -332,6 +352,18 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
                 } else {
                   agent.heartbeat = agentPatch.heartbeat as typeof agent.heartbeat;
                 }
+              }
+
+              // named_key_id lives in the agents SQL table, not in runtime_config_json
+              if (agentPatch.namedKeyId !== undefined) {
+                deps.db
+                  .prepare(
+                    `UPDATE agents SET named_key_id = ?
+                     WHERE agent_id = ? AND instance_id = (
+                       SELECT id FROM instances WHERE slug = ?
+                     )`,
+                  )
+                  .run(agentPatch.namedKeyId, agentPatch.id, slug);
               }
             }
           }
