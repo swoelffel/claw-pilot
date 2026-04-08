@@ -57,8 +57,8 @@ export class TaskDetailPanel extends LitElement {
       await updateTaskApi(this.slug, this._task.id, { [field]: value });
       void this._load();
       this.dispatchEvent(new CustomEvent("task-updated", { bubbles: true, composed: true }));
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("[cp-task-detail] _updateField failed:", field, value, err);
     }
   }
 

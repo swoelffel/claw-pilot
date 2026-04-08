@@ -158,6 +158,24 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
       ...(body.labels !== undefined ? { labels: body.labels } : {}),
       createdBy: body.createdBy ?? "user",
     });
+
+    // Inject notification if task was created with an assignee
+    if (body.assigneeId) {
+      try {
+        const session = getOrCreatePermanentSession(db, {
+          instanceSlug: slug as InstanceSlug,
+          agentId: body.assigneeId,
+          channel: "internal",
+        });
+        const lines = [`[task_assigned:#${row.id}] "${row.title}" has been assigned to you.`];
+        if (row.description) lines.push(`Description: ${row.description}`);
+        lines.push("Use the task_board tool to checkout and work on this task.");
+        createUserMessage(db, { sessionId: session.id, text: lines.join("\n") });
+      } catch {
+        // Non-critical — agent may not have a permanent session yet
+      }
+    }
+
     return c.json(toJson(row), 201);
   });
 
