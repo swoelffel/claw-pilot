@@ -560,6 +560,7 @@ export const templates = {
   "task-field-priority": "Priorità",
   "task-field-assignee": "Assegnato a",
   "task-unassigned": "Non assegnato",
+  "task-delete": "Elimina attività",
   "task-view-session": "Visualizza sessione",
   "task-field-description": "Descrizione",
   "task-field-created": "Creata il",

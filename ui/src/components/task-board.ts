@@ -179,6 +179,10 @@ export class TaskBoard extends LitElement {
                   .taskId=${this._selectedTaskId}
                   @close=${() => (this._selectedTaskId = null)}
                   @task-updated=${() => void this._load()}
+                  @task-deleted=${() => {
+                    this._selectedTaskId = null;
+                    void this._load();
+                  }}
                   @task-status-change=${(e: CustomEvent<{ taskId: number; status: string }>) => {
                     void changeTaskStatusApi(this.slug, e.detail.taskId, e.detail.status).then(
                       () => void this._load(),

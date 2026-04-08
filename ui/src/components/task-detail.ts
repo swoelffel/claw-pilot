@@ -5,7 +5,13 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
-import { fetchTaskDetail, updateTaskApi, addTaskCommentApi, fetchAgents } from "../api.js";
+import {
+  fetchTaskDetail,
+  updateTaskApi,
+  addTaskCommentApi,
+  fetchAgents,
+  deleteTaskApi,
+} from "../api.js";
 import type { TaskDetail as TaskDetailType, TaskComment } from "../types.js";
 
 @localized()
@@ -67,6 +73,16 @@ export class TaskDetailPanel extends LitElement {
     }
   }
 
+  private async _delete(): Promise<void> {
+    if (!this._task) return;
+    try {
+      await deleteTaskApi(this.slug, this._task.id);
+      this.dispatchEvent(new CustomEvent("task-deleted", { bubbles: true, composed: true }));
+    } catch {
+      // silent
+    }
+  }
+
   override render() {
     if (this._loading)
       return html`<div class="center">${msg("Loading...", { id: "task-loading" })}</div>`;
@@ -78,13 +94,24 @@ export class TaskDetailPanel extends LitElement {
       <div class="panel">
         <div class="panel-header">
           <span class="task-id">#${t.id}</span>
-          <button
-            class="btn-close"
-            @click=${() =>
-              this.dispatchEvent(new CustomEvent("close", { bubbles: true, composed: true }))}
-          >
-            ✕
-          </button>
+          <div class="header-actions">
+            ${t.status === "pending" || t.status === "cancelled"
+              ? html`<button
+                  class="btn-delete"
+                  @click=${() => void this._delete()}
+                  title=${msg("Delete task", { id: "task-delete" })}
+                >
+                  🗑
+                </button>`
+              : nothing}
+            <button
+              class="btn-close"
+              @click=${() =>
+                this.dispatchEvent(new CustomEvent("close", { bubbles: true, composed: true }))}
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         <div class="field">
@@ -144,15 +171,19 @@ export class TaskDetailPanel extends LitElement {
         <div class="field">
           <label>${msg("Assignee", { id: "task-field-assignee" })}</label>
           <select
-            .value=${t.assigneeId ?? ""}
             @change=${(e: Event) => {
               const val = (e.target as HTMLSelectElement).value;
               void this._updateField("assigneeId", val || null);
             }}
           >
-            <option value="">${msg("Unassigned", { id: "task-unassigned" })}</option>
+            <option value="" ?selected=${!t.assigneeId}>
+              ${msg("Unassigned", { id: "task-unassigned" })}
+            </option>
             ${this._agents.map(
-              (a) => html`<option value=${a.agent_id}>${a.name} (${a.agent_id})</option>`,
+              (a) =>
+                html`<option value=${a.agent_id} ?selected=${t.assigneeId === a.agent_id}>
+                  ${a.name} (${a.agent_id})
+                </option>`,
             )}
           </select>
           ${t.sessionId
@@ -241,12 +272,28 @@ export class TaskDetailPanel extends LitElement {
         display: flex;
         justify-content: space-between;
         align-items: center;
+      }
+      .header-actions {
+        display: flex;
+        gap: 4px;
+        align-items: center;
         margin-bottom: 16px;
       }
       .task-id {
         font-family: var(--font-mono);
         font-size: 14px;
         color: var(--text-muted);
+      }
+      .btn-delete {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        font-size: 14px;
+        padding: 4px 8px;
+      }
+      .btn-delete:hover {
+        color: var(--state-error);
       }
       .btn-close {
         background: none;
