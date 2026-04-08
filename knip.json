@@ -10,6 +10,9 @@
     "ui/src/components/instance-skills.ts",
     "ui/src/components/budget-settings.ts",
     "ui/src/components/budget-alert-banner.ts",
+    "ui/src/components/task-board.ts",
+    "ui/src/components/task-card.ts",
+    "ui/src/components/task-detail.ts",
     "ui/src/api.ts"
   ],
   "ignoreFiles": [

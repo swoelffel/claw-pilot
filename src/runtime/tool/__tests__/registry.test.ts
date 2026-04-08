@@ -74,8 +74,8 @@ describe("TOOL_PROFILES", () => {
 // ---------------------------------------------------------------------------
 
 describe("ALL_TOOL_IDS", () => {
-  it("contains 16 tool IDs", () => {
-    expect(ALL_TOOL_IDS).toHaveLength(16);
+  it("contains 17 tool IDs", () => {
+    expect(ALL_TOOL_IDS).toHaveLength(17);
   });
 });
 

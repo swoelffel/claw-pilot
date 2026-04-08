@@ -524,4 +524,48 @@ export const templates = {
   "budget-confirm-continue": "und fortfahren",
   "acm-budget-exceeded": "Budget überschritten",
   "card-budget-exceeded": "Budget überschritten",
+
+  // instance-card.ts — task counts
+  "meta-task": "Aufgabe",
+  "meta-tasks": "Aufgaben",
+  "btn-tasks": "Aufgaben",
+
+  // task-board.ts
+  "task-board-loading": "Aufgaben werden geladen…",
+  "task-board-back": "Zurück",
+  "task-board-title": "Aufgaben",
+  "task-board-new": "Neue Aufgabe",
+  "task-board-empty-col": "Keine Aufgaben",
+  "task-board-title-placeholder": "Aufgabentitel…",
+  "task-board-create": "Erstellen",
+  "task-board-cancel": "Abbrechen",
+
+  // task-board.ts / task-detail.ts — shared priorities
+  "task-priority-low": "Niedrig",
+  "task-priority-medium": "Mittel",
+  "task-priority-high": "Hoch",
+  "task-priority-critical": "Kritisch",
+
+  // task-detail.ts
+  "task-loading": "Laden…",
+  "task-not-found": "Aufgabe nicht gefunden",
+  "task-field-title": "Titel",
+  "task-field-status": "Status",
+  "task-status-pending": "Ausstehend",
+  "task-status-in-progress": "In Bearbeitung",
+  "task-status-blocked": "Blockiert",
+  "task-status-completed": "Abgeschlossen",
+  "task-status-cancelled": "Abgebrochen",
+  "task-field-priority": "Priorität",
+  "task-field-assignee": "Zugewiesen an",
+  "task-unassigned": "Nicht zugewiesen",
+  "task-delete": "Aufgabe löschen",
+  "task-assign": "Zuweisen",
+  "task-view-session": "Sitzung anzeigen",
+  "task-field-description": "Beschreibung",
+  "task-field-created": "Erstellt am",
+  "task-by": "von",
+  "task-field-comments": "Kommentare",
+  "task-comment-placeholder": "Kommentar hinzufügen…",
+  "task-comment-send": "Senden",
 };

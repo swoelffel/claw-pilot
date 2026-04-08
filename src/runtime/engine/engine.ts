@@ -40,6 +40,7 @@ import { toolErrorRecoveryMiddleware } from "../middleware/built-in/tool-error-r
 import { createSuggestionMiddleware } from "../middleware/built-in/suggestions.js";
 import { cleanupEphemeralSessions } from "../session/cleanup.js";
 import { wireEventPersistence } from "./event-persistence.js";
+import { wireTaskNotifications } from "./task-wiring.js";
 import { pruneRtEvents } from "../../core/repositories/rt-event-repository.js";
 import {
   resetExpiredMonthlyBudgets,
@@ -61,6 +62,7 @@ export class ClawRuntime {
   private _subagentUnsubscribe: (() => void) | undefined;
   private _stopHeartbeat: (() => void) | undefined;
   private _eventPersistenceUnsub: (() => void) | undefined;
+  private _taskWiringUnsub: (() => void) | undefined;
   private _cleanupTimer: ReturnType<typeof setInterval> | undefined;
   private _error: string | undefined;
   readonly log: Logger;
@@ -175,6 +177,14 @@ export class ClawRuntime {
       // 3d. Wire event persistence to rt_events table
       this._eventPersistenceUnsub = wireEventPersistence(this.db, this.instanceSlug);
 
+      // 3e. Wire task assignment notifications
+      this._taskWiringUnsub = wireTaskNotifications({
+        db: this.db,
+        instanceSlug: this.instanceSlug,
+        config: this.config,
+        workDir: this.workDir,
+      });
+
       // 4. Create and connect channels
       this._channels = createChannels(this.config, this.instanceSlug, this.db);
       const messageHandler = this._buildMessageHandler();
@@ -274,7 +284,13 @@ export class ClawRuntime {
       this._eventPersistenceUnsub = undefined;
     }
 
-    // 3e. Clear middleware registry
+    // 3e. Unsubscribe task wiring
+    if (this._taskWiringUnsub) {
+      this._taskWiringUnsub();
+      this._taskWiringUnsub = undefined;
+    }
+
+    // 3f. Clear middleware registry
     clearMiddlewares();
 
     this._setState("stopped");

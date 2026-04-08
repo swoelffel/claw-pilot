@@ -39,6 +39,9 @@ import type {
   NamedApiKey,
   BudgetInfo,
   BudgetEvent,
+  TaskInfo,
+  TaskDetail,
+  TaskComment,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 import { getToken } from "./services/auth-state.js";
@@ -837,6 +840,84 @@ export async function fetchBudgetEvents(slug: string, id: number): Promise<Budge
 
 export async function fetchAllBudgetEvents(slug: string): Promise<BudgetEvent[]> {
   return apiFetch<BudgetEvent[]>(`/instances/${slug}/budgets/events`);
+}
+
+// ---------------------------------------------------------------------------
+// Task Board
+// ---------------------------------------------------------------------------
+
+export async function fetchAgents(
+  slug: string,
+): Promise<Array<{ agent_id: string; name: string }>> {
+  return apiFetch<Array<{ agent_id: string; name: string }>>(`/instances/${slug}/agents`);
+}
+
+export async function fetchTasks(slug: string, status?: string): Promise<TaskInfo[]> {
+  const qs = status ? `?status=${status}` : "";
+  return apiFetch<TaskInfo[]>(`/instances/${slug}/tasks${qs}`);
+}
+
+export async function fetchTaskDetail(slug: string, id: number): Promise<TaskDetail> {
+  return apiFetch<TaskDetail>(`/instances/${slug}/tasks/${id}`);
+}
+
+export async function createTaskApi(
+  slug: string,
+  body: { title: string; description?: string; priority?: string; labels?: string[] },
+): Promise<TaskInfo> {
+  return apiFetch<TaskInfo>(`/instances/${slug}/tasks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateTaskApi(
+  slug: string,
+  id: number,
+  body: {
+    title?: string;
+    description?: string;
+    priority?: string;
+    assigneeId?: string | null;
+    labels?: string[];
+  },
+): Promise<TaskInfo> {
+  return apiFetch<TaskInfo>(`/instances/${slug}/tasks/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function changeTaskStatusApi(
+  slug: string,
+  id: number,
+  status: string,
+  position?: number,
+): Promise<TaskInfo> {
+  return apiFetch<TaskInfo>(`/instances/${slug}/tasks/${id}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status, ...(position !== undefined ? { position } : {}) }),
+  });
+}
+
+export async function deleteTaskApi(slug: string, id: number): Promise<void> {
+  await apiFetch<{ ok: boolean }>(`/instances/${slug}/tasks/${id}`, { method: "DELETE" });
+}
+
+export async function addTaskCommentApi(
+  slug: string,
+  taskId: number,
+  content: string,
+  authorId = "user",
+): Promise<TaskComment> {
+  return apiFetch<TaskComment>(`/instances/${slug}/tasks/${taskId}/comments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ authorId, content }),
+  });
 }
 
 // ---------------------------------------------------------------------------

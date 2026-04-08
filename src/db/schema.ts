@@ -1203,6 +1203,44 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 29,
+    up(db) {
+      db.exec(`
+        CREATE TABLE rt_tasks (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          instance_slug TEXT NOT NULL REFERENCES instances(slug) ON DELETE CASCADE,
+          title         TEXT NOT NULL,
+          description   TEXT,
+          status        TEXT NOT NULL DEFAULT 'pending'
+            CHECK (status IN ('pending', 'in_progress', 'completed', 'blocked', 'cancelled')),
+          priority      TEXT DEFAULT 'medium'
+            CHECK (priority IN ('low', 'medium', 'high', 'critical')),
+          assignee_id   TEXT,
+          labels        TEXT,
+          created_by    TEXT NOT NULL,
+          session_id    TEXT,
+          position      INTEGER NOT NULL DEFAULT 0,
+          created_at    TEXT DEFAULT (datetime('now')),
+          updated_at    TEXT DEFAULT (datetime('now')),
+          completed_at  TEXT
+        );
+
+        CREATE INDEX idx_rt_tasks_instance ON rt_tasks(instance_slug, status);
+        CREATE INDEX idx_rt_tasks_assignee ON rt_tasks(instance_slug, assignee_id);
+
+        CREATE TABLE rt_task_comments (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          task_id     INTEGER NOT NULL REFERENCES rt_tasks(id) ON DELETE CASCADE,
+          author_id   TEXT NOT NULL,
+          content     TEXT NOT NULL,
+          created_at  TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX idx_rt_task_comments_task ON rt_task_comments(task_id);
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
