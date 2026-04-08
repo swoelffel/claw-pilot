@@ -38,8 +38,8 @@ export function createTaskBoardTool(options: {
   return Tool.define("task_board", {
     description:
       "Manage the shared task board for this instance. " +
-      "Actions: list (view tasks), create (add a task), checkout (claim a pending task), " +
-      "complete/block/cancel (change status), comment (add a note).",
+      "Actions: list (view tasks), create (add a task, optionally assign to another agent), " +
+      "checkout (claim a pending task), complete/block/cancel (change status), comment (add a note).",
     parameters,
     async execute(params, ctx) {
       const bus = getBus(instanceSlug);
@@ -66,6 +66,7 @@ export function createTaskBoardTool(options: {
             title: params.title,
             ...(params.description !== undefined ? { description: params.description } : {}),
             ...(params.priority !== undefined ? { priority: params.priority as TaskPriority } : {}),
+            ...(params.assigneeId !== undefined ? { assigneeId: params.assigneeId } : {}),
             createdBy: ctx.agentId,
           });
           bus.publish(TaskCreated, {
@@ -74,9 +75,18 @@ export function createTaskBoardTool(options: {
             title: task.title,
             createdBy: ctx.agentId,
           });
+          if (params.assigneeId) {
+            bus.publish(TaskAssigned, {
+              instanceSlug,
+              taskId: task.id,
+              assigneeId: params.assigneeId,
+              assignedBy: ctx.agentId,
+            });
+          }
+          const assigneeSuffix = params.assigneeId ? ` → ${params.assigneeId}` : "";
           return ok(
             "task_board.create",
-            `Task #${task.id} created: "${task.title}" [${task.priority}]`,
+            `Task #${task.id} created: "${task.title}" [${task.priority}]${assigneeSuffix}`,
           );
         }
 
@@ -103,6 +113,7 @@ export function createTaskBoardTool(options: {
             taskId: claimed.id,
             assigneeId: ctx.agentId,
             sessionId: ctx.sessionId,
+            assignedBy: ctx.agentId,
           });
           return ok(
             "task_board.checkout",
@@ -199,6 +210,10 @@ const parameters = z.object({
     .enum(["low", "medium", "high", "critical"])
     .optional()
     .describe("Task priority (for 'create' action). Defaults to 'medium'."),
+  assigneeId: z
+    .string()
+    .optional()
+    .describe("Agent ID to assign the task to (for 'create' action)."),
   taskId: z.number().optional().describe("Task ID (for checkout/complete/block/cancel/comment)."),
   comment: z.string().optional().describe("Comment text (for 'comment' or 'block' action)."),
   status: z

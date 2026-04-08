@@ -558,6 +558,7 @@ export const templates = {
   "task-status-cancelled": "Abgebrochen",
   "task-field-priority": "Priorität",
   "task-field-assignee": "Zugewiesen an",
+  "task-unassigned": "Nicht zugewiesen",
   "task-view-session": "Sitzung anzeigen",
   "task-field-description": "Beschreibung",
   "task-field-created": "Erstellt am",

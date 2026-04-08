@@ -17,6 +17,7 @@ import {
   getTaskCountsByStatus,
   addComment,
   getComments,
+  getActiveTasksForAgent,
 } from "../repositories/task-repository.js";
 
 let tmpDir: string;
@@ -268,5 +269,81 @@ describe("comments", () => {
       addComment(db, { taskId: t.id, authorId: "user", content: `Comment ${i}` });
     }
     expect(getComments(db, t.id, 3)).toHaveLength(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Active tasks for agent
+// ---------------------------------------------------------------------------
+
+describe("getActiveTasksForAgent", () => {
+  it("returns pending and in_progress tasks assigned to agent", () => {
+    const t1 = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Task A",
+      createdBy: "user",
+      assigneeId: "builder",
+    });
+    checkoutTask(db, t1.id, "sess-1", "builder");
+    createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Task B",
+      createdBy: "user",
+      assigneeId: "builder",
+    });
+    // Completed task — should NOT appear
+    const t3 = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Task C",
+      createdBy: "user",
+      assigneeId: "builder",
+    });
+    changeStatus(db, t3.id, "completed");
+    // Different agent — should NOT appear
+    createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Task D",
+      createdBy: "user",
+      assigneeId: "pilot",
+    });
+
+    const active = getActiveTasksForAgent(db, "test-inst", "builder");
+    expect(active).toHaveLength(2);
+    const titles = active.map((t) => t.title);
+    expect(titles).toContain("Task A");
+    expect(titles).toContain("Task B");
+  });
+
+  it("returns empty for agent with no tasks", () => {
+    expect(getActiveTasksForAgent(db, "test-inst", "nobody")).toEqual([]);
+  });
+
+  it("orders by priority (critical first) then position", () => {
+    createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Low priority task",
+      createdBy: "user",
+      assigneeId: "builder",
+      priority: "low",
+    });
+    createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Critical priority task",
+      createdBy: "user",
+      assigneeId: "builder",
+      priority: "critical",
+    });
+    createTask(db, {
+      instanceSlug: "test-inst",
+      title: "High priority task",
+      createdBy: "user",
+      assigneeId: "builder",
+      priority: "high",
+    });
+
+    const active = getActiveTasksForAgent(db, "test-inst", "builder");
+    expect(active[0]!.title).toBe("Critical priority task");
+    expect(active[1]!.title).toBe("High priority task");
+    expect(active[2]!.title).toBe("Low priority task");
   });
 });

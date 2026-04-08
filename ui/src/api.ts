@@ -846,6 +846,12 @@ export async function fetchAllBudgetEvents(slug: string): Promise<BudgetEvent[]>
 // Task Board
 // ---------------------------------------------------------------------------
 
+export async function fetchAgents(
+  slug: string,
+): Promise<Array<{ agent_id: string; name: string }>> {
+  return apiFetch<Array<{ agent_id: string; name: string }>>(`/instances/${slug}/agents`);
+}
+
 export async function fetchTasks(slug: string, status?: string): Promise<TaskInfo[]> {
   const qs = status ? `?status=${status}` : "";
   return apiFetch<TaskInfo[]>(`/instances/${slug}/tasks${qs}`);

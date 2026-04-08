@@ -19,6 +19,9 @@ import {
   type TaskStatus,
   type TaskPriority,
 } from "../../../core/repositories/task-repository.js";
+import { getBus } from "../../../runtime/bus/index.js";
+import { TaskAssigned } from "../../../runtime/bus/events.js";
+import type { InstanceSlug } from "../../../runtime/types.js";
 
 const VALID_STATUSES = new Set<TaskStatus>([
   "pending",
@@ -189,6 +192,22 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
       ...(body.labels !== undefined ? { labels: body.labels } : {}),
     });
     if (!updated) return apiError(c, 404, "NOT_FOUND", "Task not found");
+
+    // Publish TaskAssigned when assignee changes to a non-null agent
+    if (
+      body.assigneeId !== undefined &&
+      body.assigneeId !== null &&
+      body.assigneeId !== existing.assignee_id
+    ) {
+      const bus = getBus(slug as InstanceSlug);
+      bus.publish(TaskAssigned, {
+        instanceSlug: slug as InstanceSlug,
+        taskId: id,
+        assigneeId: body.assigneeId,
+        assignedBy: "user",
+      });
+    }
+
     return c.json(toJson(updated));
   });
 

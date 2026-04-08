@@ -1,5 +1,5 @@
 // src/dashboard/__tests__/task-routes.test.ts
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Hono } from "hono";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -12,6 +12,9 @@ import { SessionStore } from "../session-store.js";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { registerTaskRoutes } from "../routes/instances/tasks.js";
+import { getBus, disposeBus } from "../../runtime/bus/index.js";
+import { TaskAssigned } from "../../runtime/bus/events.js";
+import type { InstanceSlug } from "../../runtime/types.js";
 
 const TEST_TOKEN = "test-task-token-64chars-hex-0123456789abcdef0123456789abcdef00";
 
@@ -60,6 +63,13 @@ beforeEach(() => {
     tokenCache,
     xdgRuntimeDir: "/run/user/1000",
     sessionStore: new SessionStore(db),
+    modelDiscovery: {
+      invalidateProvider: () => {},
+      getProviders: () => [],
+      getModelsForProvider: () => [],
+      start: () => {},
+      stop: () => {},
+    } as unknown as RouteDeps["modelDiscovery"],
   };
 
   registerTaskRoutes(app, deps);
@@ -76,6 +86,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  disposeBus("demo" as InstanceSlug);
   db.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
@@ -214,5 +225,84 @@ describe("GET /api/instances/:slug/tasks/:id", () => {
     expect(data.title).toBe("T1");
     expect(data.comments).toHaveLength(1);
     expect(data.comments[0].content).toBe("Hello");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PATCH assigneeId → TaskAssigned event
+// ---------------------------------------------------------------------------
+
+describe("PATCH /api/instances/:slug/tasks/:id (assignee change)", () => {
+  it("publishes TaskAssigned when assigneeId changes to a non-null value", async () => {
+    const createRes = await app.request("/api/instances/demo/tasks", {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Assign test" }),
+    });
+    const { id } = await json(createRes);
+
+    const handler = vi.fn();
+    const bus = getBus("demo" as InstanceSlug);
+    bus.subscribe(TaskAssigned, handler);
+
+    const res = await app.request(`/api/instances/demo/tasks/${id}`, {
+      method: "PATCH",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ assigneeId: "builder" }),
+    });
+    expect(res.status).toBe(200);
+    const data = await json(res);
+    expect(data.assigneeId).toBe("builder");
+
+    expect(handler).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: id,
+        assigneeId: "builder",
+        assignedBy: "user",
+      }),
+    );
+  });
+
+  it("does not publish TaskAssigned when assigneeId stays the same", async () => {
+    const createRes = await app.request("/api/instances/demo/tasks", {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Same test", assigneeId: "builder" }),
+    });
+    const { id } = await json(createRes);
+
+    const handler = vi.fn();
+    const bus = getBus("demo" as InstanceSlug);
+    bus.subscribe(TaskAssigned, handler);
+
+    const res = await app.request(`/api/instances/demo/tasks/${id}`, {
+      method: "PATCH",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ assigneeId: "builder" }),
+    });
+    expect(res.status).toBe(200);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("does not publish TaskAssigned when assigneeId set to null", async () => {
+    const createRes = await app.request("/api/instances/demo/tasks", {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Null test", assigneeId: "builder" }),
+    });
+    const { id } = await json(createRes);
+
+    const handler = vi.fn();
+    const bus = getBus("demo" as InstanceSlug);
+    bus.subscribe(TaskAssigned, handler);
+
+    const res = await app.request(`/api/instances/demo/tasks/${id}`, {
+      method: "PATCH",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ assigneeId: null }),
+    });
+    expect(res.status).toBe(200);
+    expect(handler).not.toHaveBeenCalled();
   });
 });

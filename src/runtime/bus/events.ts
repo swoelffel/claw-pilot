@@ -236,7 +236,13 @@ export const TaskStatusChanged = defineEvent<
 
 export const TaskAssigned = defineEvent<
   "task.assigned",
-  { instanceSlug: InstanceSlug; taskId: number; assigneeId: string; sessionId?: string }
+  {
+    instanceSlug: InstanceSlug;
+    taskId: number;
+    assigneeId: string;
+    sessionId?: string;
+    assignedBy?: string;
+  }
 >("task.assigned");
 
 // ---------------------------------------------------------------------------

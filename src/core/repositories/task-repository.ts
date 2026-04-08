@@ -250,6 +250,25 @@ export function getTaskCountsByStatus(
   return counts;
 }
 
+/** Get active tasks (pending + in_progress) assigned to a specific agent. */
+export function getActiveTasksForAgent(
+  db: Database.Database,
+  slug: string,
+  agentId: string,
+): TaskRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM rt_tasks
+       WHERE instance_slug = ? AND assignee_id = ?
+       AND status IN ('pending', 'in_progress')
+       ORDER BY
+         CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1
+                       WHEN 'medium' THEN 2 ELSE 3 END,
+         position ASC`,
+    )
+    .all(slug, agentId) as TaskRow[];
+}
+
 // ---------------------------------------------------------------------------
 // Comments
 // ---------------------------------------------------------------------------

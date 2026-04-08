@@ -5,7 +5,7 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
-import { fetchTaskDetail, updateTaskApi, addTaskCommentApi } from "../api.js";
+import { fetchTaskDetail, updateTaskApi, addTaskCommentApi, fetchAgents } from "../api.js";
 import type { TaskDetail as TaskDetailType, TaskComment } from "../types.js";
 
 @localized()
@@ -17,6 +17,7 @@ export class TaskDetailPanel extends LitElement {
   @state() private _task: TaskDetailType | null = null;
   @state() private _loading = true;
   @state() private _newComment = "";
+  @state() private _agents: Array<{ agent_id: string; name: string }> = [];
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -31,7 +32,12 @@ export class TaskDetailPanel extends LitElement {
     if (!this.slug || !this.taskId) return;
     this._loading = true;
     try {
-      this._task = await fetchTaskDetail(this.slug, this.taskId);
+      const [task, agents] = await Promise.all([
+        fetchTaskDetail(this.slug, this.taskId),
+        this._agents.length === 0 ? fetchAgents(this.slug) : Promise.resolve(this._agents),
+      ]);
+      this._task = task;
+      this._agents = agents;
     } catch {
       this._task = null;
     } finally {
@@ -135,27 +141,36 @@ export class TaskDetailPanel extends LitElement {
           </div>
         </div>
 
-        ${t.assigneeId
-          ? html`<div class="field">
-              <label>${msg("Assignee", { id: "task-field-assignee" })}</label>
-              <span class="mono">${t.assigneeId}</span>
-              ${t.sessionId
-                ? html`<a
-                    class="session-link"
-                    @click=${() =>
-                      this.dispatchEvent(
-                        new CustomEvent("navigate", {
-                          detail: { view: "session-logs", slug: this.slug },
-                          bubbles: true,
-                          composed: true,
-                        }),
-                      )}
-                  >
-                    ${msg("View session", { id: "task-view-session" })}
-                  </a>`
-                : nothing}
-            </div>`
-          : nothing}
+        <div class="field">
+          <label>${msg("Assignee", { id: "task-field-assignee" })}</label>
+          <select
+            .value=${t.assigneeId ?? ""}
+            @change=${(e: Event) => {
+              const val = (e.target as HTMLSelectElement).value;
+              void this._updateField("assigneeId", val || null);
+            }}
+          >
+            <option value="">${msg("Unassigned", { id: "task-unassigned" })}</option>
+            ${this._agents.map(
+              (a) => html`<option value=${a.agent_id}>${a.name} (${a.agent_id})</option>`,
+            )}
+          </select>
+          ${t.sessionId
+            ? html`<a
+                class="session-link"
+                @click=${() =>
+                  this.dispatchEvent(
+                    new CustomEvent("navigate", {
+                      detail: { view: "session-logs", slug: this.slug },
+                      bubbles: true,
+                      composed: true,
+                    }),
+                  )}
+              >
+                ${msg("View session", { id: "task-view-session" })}
+              </a>`
+            : nothing}
+        </div>
 
         <div class="field">
           <label>${msg("Description", { id: "task-field-description" })}</label>
