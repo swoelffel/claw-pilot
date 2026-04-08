@@ -145,6 +145,9 @@ export async function buildToolSet(
   }>,
   runtimeAgentConfigs?: import("../config/index.js").RuntimeAgentConfig[],
   runtimeConfig?: RuntimeConfig,
+  resolveTargetModel?: (
+    agentConfig: import("../config/index.js").RuntimeAgentConfig,
+  ) => ResolvedModel,
 ): Promise<ToolSet> {
   const set: ToolSet = {};
   const bus = getBus(instanceSlug);
@@ -293,7 +296,7 @@ export async function buildToolSet(
         callerAgentConfig,
         ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
         ...(runtimeConfig?.models !== undefined ? { modelAliases: runtimeConfig.models } : {}),
-        ...(runtimeConfig !== undefined ? { runtimeConfig } : {}),
+        ...(resolveTargetModel !== undefined ? { resolveTargetModel } : {}),
         ...(env !== undefined ? { env } : {}),
         runPromptLoop: runPromptLoopFn,
       });
@@ -331,7 +334,7 @@ export async function buildToolSet(
         callerAgentConfig,
         ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
         ...(runtimeConfig?.models !== undefined ? { modelAliases: runtimeConfig.models } : {}),
-        ...(runtimeConfig !== undefined ? { runtimeConfig } : {}),
+        ...(resolveTargetModel !== undefined ? { resolveTargetModel } : {}),
         ...(compactionConfig !== undefined ? { compactionConfig } : {}),
         runPromptLoop: runPromptLoopFn,
       });

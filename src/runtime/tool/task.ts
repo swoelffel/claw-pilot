@@ -32,7 +32,6 @@ import { createUserMessage } from "../session/message.js";
 import type { InstanceSlug, PermissionRuleset, SessionId } from "../types.js";
 import { resolveModel } from "../provider/provider.js";
 import type { ResolvedModel } from "../provider/provider.js";
-import { resolveModelForAgent } from "../channel/router.js";
 import type {
   SubagentsConfig,
   RuntimeConfig,
@@ -96,8 +95,8 @@ export function createTaskTool(options: {
    * Model aliases from the runtime config — used to resolve the model of a primary peer agent.
    */
   modelAliases?: ModelAlias[];
-  /** Full runtime config — used for resolveModelForAgent (named key support) */
-  runtimeConfig?: RuntimeConfig;
+  /** Injected model resolver — breaks circular dependency with channel/router. */
+  resolveTargetModel?: (agentConfig: RuntimeAgentConfig) => ResolvedModel;
   /** Merged env map (global + instance .env) — used to resolve API keys for target agents */
   env?: Record<string, string>;
   /** Injected prompt loop runner — breaks circular dependency with session/prompt-loop */
@@ -114,7 +113,7 @@ export function createTaskTool(options: {
     callerAgentConfig,
     runtimeAgentConfigs,
     modelAliases,
-    runtimeConfig,
+    resolveTargetModel,
     env,
     runPromptLoop,
   } = options;
@@ -306,9 +305,9 @@ export function createTaskTool(options: {
 
         // Resolve the target agent's model (named keys first, then legacy fallback)
         let targetModel: ResolvedModel;
-        if (runtimeConfig) {
+        if (resolveTargetModel) {
           try {
-            targetModel = resolveModelForAgent(db, instanceSlug, primaryPeerConfig, runtimeConfig);
+            targetModel = resolveTargetModel(primaryPeerConfig);
           } catch {
             targetModel = resolvedModel;
           }

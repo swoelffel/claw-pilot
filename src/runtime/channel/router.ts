@@ -167,6 +167,9 @@ export class ChannelRouter {
             ...(message.attachments !== undefined && message.attachments.length > 0
               ? { imageAttachments: message.attachments }
               : {}),
+            // Inject model resolver for inter-agent calls (send_message/task)
+            resolveTargetModel: (targetCfg) =>
+              resolveModelForAgent(db, instanceSlug, targetCfg, config),
           }),
       });
 
