@@ -99,7 +99,7 @@ export function buildTimeline(messages: PilotMessage[], currentAgentId?: string)
           timestamp: msg.createdAt,
           source: recvMatch[1],
           message: msg,
-          a2aTarget: recvMatch[1],
+          a2aTarget: currentAgentId ?? "agent",
           a2aContent: recvMatch[2],
           ...(channel !== undefined ? { channel } : {}),
         });
