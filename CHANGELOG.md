@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.63.1] — 2026-04-08
+
+### Changed
+
+- **Documentation overhaul** — Sync all docs to v0.63.0 state: schema v28, 8 providers, budget enforcement (v0.62.0), dynamic model discovery (v0.63.0), 16 repositories, ~113 API endpoints. Updated README, main-doc, registry-db, CLAUDE.md, CHANGELOG.md.
+
+---
+
 ## [0.63.0] — 2026-04-08
 
 ### Added
