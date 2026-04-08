@@ -32,6 +32,7 @@ import { createUserMessage } from "../session/message.js";
 import type { InstanceSlug, PermissionRuleset, SessionId } from "../types.js";
 import { resolveModel } from "../provider/provider.js";
 import type { ResolvedModel } from "../provider/provider.js";
+import { resolveModelForAgent } from "../channel/router.js";
 import type {
   SubagentsConfig,
   RuntimeConfig,
@@ -95,6 +96,8 @@ export function createTaskTool(options: {
    * Model aliases from the runtime config — used to resolve the model of a primary peer agent.
    */
   modelAliases?: ModelAlias[];
+  /** Full runtime config — used for resolveModelForAgent (named key support) */
+  runtimeConfig?: RuntimeConfig;
   /** Merged env map (global + instance .env) — used to resolve API keys for target agents */
   env?: Record<string, string>;
   /** Injected prompt loop runner — breaks circular dependency with session/prompt-loop */
@@ -111,6 +114,7 @@ export function createTaskTool(options: {
     callerAgentConfig,
     runtimeAgentConfigs,
     modelAliases,
+    runtimeConfig,
     env,
     runPromptLoop,
   } = options;
@@ -300,10 +304,19 @@ export function createTaskTool(options: {
           "Respond with your result — it will be forwarded back to the delegating agent.",
         ].join("\n");
 
-        // Resolve the target agent's model. Fall back to caller's model if unavailable.
-        const targetModel: ResolvedModel = primaryPeerConfig.model
-          ? resolveAgentModel(primaryPeerConfig.model, modelAliases ?? [], resolvedModel, env)
-          : resolvedModel;
+        // Resolve the target agent's model (named keys first, then legacy fallback)
+        let targetModel: ResolvedModel;
+        if (runtimeConfig) {
+          try {
+            targetModel = resolveModelForAgent(db, instanceSlug, primaryPeerConfig, runtimeConfig);
+          } catch {
+            targetModel = resolvedModel;
+          }
+        } else {
+          targetModel = primaryPeerConfig.model
+            ? resolveAgentModel(primaryPeerConfig.model, modelAliases ?? [], resolvedModel, env)
+            : resolvedModel;
+        }
 
         if (params.mode === "async") {
           const bus = getBus(instanceSlug);

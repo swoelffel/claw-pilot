@@ -293,6 +293,7 @@ export async function buildToolSet(
         callerAgentConfig,
         ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
         ...(runtimeConfig?.models !== undefined ? { modelAliases: runtimeConfig.models } : {}),
+        ...(runtimeConfig !== undefined ? { runtimeConfig } : {}),
         ...(env !== undefined ? { env } : {}),
         runPromptLoop: runPromptLoopFn,
       });
@@ -330,6 +331,7 @@ export async function buildToolSet(
         callerAgentConfig,
         ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
         ...(runtimeConfig?.models !== undefined ? { modelAliases: runtimeConfig.models } : {}),
+        ...(runtimeConfig !== undefined ? { runtimeConfig } : {}),
         ...(compactionConfig !== undefined ? { compactionConfig } : {}),
         runPromptLoop: runPromptLoopFn,
       });

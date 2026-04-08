@@ -25,6 +25,7 @@ import { AgentMessageSent } from "../bus/events.js";
 import type { InstanceSlug, SessionId } from "../types.js";
 import type { ResolvedModel } from "../provider/provider.js";
 import type { RuntimeConfig, RuntimeAgentConfig, ModelAlias } from "../config/index.js";
+import { resolveModelForAgent } from "../channel/router.js";
 import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -63,6 +64,7 @@ export function createSendMessageTool(options: {
   callerAgentConfig: RuntimeAgentConfig;
   runtimeAgentConfigs?: RuntimeAgentConfig[];
   modelAliases?: ModelAlias[];
+  runtimeConfig?: RuntimeConfig;
   compactionConfig?: RuntimeConfig["compaction"];
   runPromptLoop: (input: SendMessagePromptLoopInput) => Promise<SendMessagePromptLoopResult>;
 }): Tool.Info {
@@ -74,6 +76,7 @@ export function createSendMessageTool(options: {
     callerAgentConfig,
     runtimeAgentConfigs,
     modelAliases,
+    runtimeConfig,
     compactionConfig,
     runPromptLoop,
   } = options;
@@ -177,10 +180,19 @@ export function createSendMessageTool(options: {
         instanceSlug,
       });
 
-      // 7. Resolve target model (needed for both fire-and-forget and expect-reply)
-      const targetModel: ResolvedModel = targetConfig.model
-        ? resolveAgentModel(targetConfig.model, modelAliases ?? [], resolvedModel)
-        : resolvedModel;
+      // 7. Resolve target model (named keys first, then legacy fallback)
+      let targetModel: ResolvedModel;
+      if (runtimeConfig) {
+        try {
+          targetModel = resolveModelForAgent(db, instanceSlug, targetConfig, runtimeConfig);
+        } catch {
+          targetModel = resolvedModel; // fallback to caller's model
+        }
+      } else {
+        targetModel = targetConfig.model
+          ? resolveAgentModel(targetConfig.model, modelAliases ?? [], resolvedModel)
+          : resolvedModel;
+      }
 
       // 8. Fire-and-forget mode — trigger async prompt loop without waiting
       if (!params.expect_reply) {
