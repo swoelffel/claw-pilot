@@ -6,6 +6,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.64.0] — 2026-04-08
+
+### Added
+
+- **Task Board (Kanban)** — Full task management with drag & drop between 5 status columns (pending, in_progress, blocked, completed, cancelled). New route `#/instances/:slug/tasks`.
+- **Agent tool `task_board`** — Agents can list, create, checkout, complete, block, cancel tasks and add comments. Available to pilot, executor, and manager profiles.
+- **Agent-to-agent task assignment** — `assigneeId` parameter on tool `create` action lets agents create tasks for other agents.
+- **Task assignment notifications** — Assigning a task (via UI or agent tool) injects a `[task_assigned]` message into the agent's permanent session and triggers an immediate prompt loop via `wakeupAgent` helper.
+- **System prompt enrichment** — `<task_backlog>` block injected into agent system prompts showing pending/in_progress tasks, priority-ordered.
+- **Explicit Assign button** — Task detail panel shows agent dropdown + "Assign" button (no auto-save), allowing users to fill in task details before triggering assignment.
+- **Task delete** — Delete button (trash icon) for pending/cancelled tasks in task detail panel.
+- **DB schema v29** — `rt_tasks` and `rt_task_comments` tables with indexes.
+- **Bus events** — `TaskCreated`, `TaskStatusChanged`, `TaskAssigned` (with `assignedBy` field).
+- **REST API** — 9 endpoints for task CRUD, status changes, reordering, comments, and counts.
+- **Task count on instance card** — Badge showing task counts in instance card status bar + "Tasks" menu item.
+- **i18n** — 37 task-related keys across 6 locales (en, fr, de, es, it, pt).
+- **UX documentation** — `docs/ux-screens/screen-task-board.md` with ASCII mockups.
+
+---
+
 ## [0.63.1] — 2026-04-08
 
 ### Changed
