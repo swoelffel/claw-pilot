@@ -27,7 +27,8 @@ let _clawPilotVersion = "unknown";
 try {
   const pkg = JSON.parse(readFileSync(_pkgPath, "utf-8")) as { version?: string };
   _clawPilotVersion = pkg.version ?? "unknown";
-} catch {
+} catch (err) {
+  logger.debug("[system-prompt] package.json read failed", { error: String(err) });
   /* intentionally ignored — version stays "unknown" */
 }
 
@@ -55,7 +56,8 @@ function loadArchetypeBlock(archetype: string): string | undefined {
     const content = readFileSync(filePath, "utf-8").trim();
     _archetypeCache.set(archetype, content);
     return content;
-  } catch {
+  } catch (err) {
+    logger.debug("[system-prompt] archetype file not found", { error: String(err) });
     // File not found or read error — cache empty string to avoid repeated I/O
     _archetypeCache.set(archetype, "");
     return undefined;
@@ -382,7 +384,8 @@ function archiveBootstrapContent(wsDir: string, bootstrapContent: string): void 
       bootstrapContent;
 
     writeFileSync(historyPath, entry, { flag: "a", encoding: "utf-8" });
-  } catch {
+  } catch (err) {
+    logger.debug("[system-prompt] bootstrap archive failed", { error: String(err) });
     // Silently ignore — bootstrap archiving must not block session startup
   }
 }
@@ -500,9 +503,9 @@ async function fetchInstructionUrls(agentConfig: RuntimeAgentConfig): Promise<st
       if (content?.trim()) {
         parts.push(content.trim());
       }
-    } catch {
+    } catch (err) {
+      logger.debug("[system-prompt] instructionUrl fetch failed", { error: String(err) });
       // Silently ignore — a missing URL must not block session startup
-      logger.debug(`Failed to fetch instructionUrl: ${url}`);
     }
   }
 
@@ -625,7 +628,8 @@ function discoverWorkspaceInstructions(
             }
           }
         }
-      } catch {
+      } catch (err) {
+        logger.debug("[system-prompt] memory directory inaccessible", { error: String(err) });
         // memory/ directory inaccessible — skip silently
       }
     }
@@ -693,7 +697,8 @@ function expandSimpleGlob(baseDir: string, pattern: string): string[] {
       .filter((f) => regex.test(f))
       .sort()
       .map((f) => prefix + f);
-  } catch {
+  } catch (err) {
+    logger.debug("[system-prompt] expandSimpleGlob readdir failed", { error: String(err) });
     return [];
   }
 }
@@ -703,8 +708,8 @@ function readSystemPromptFile(filePath: string, workDir: string): string | undef
     const absPath = resolve(workDir, filePath);
     // Use cached read — systemPromptFile rarely changes during runtime
     return readWorkspaceFileCached(absPath);
-  } catch {
-    logger.warn(`Could not read systemPromptFile: ${filePath}`);
+  } catch (err) {
+    logger.warn("[system-prompt] systemPromptFile read failed", { error: String(err) });
     return undefined;
   }
 }
@@ -795,7 +800,8 @@ export async function buildSkillsBlock(
   let skills;
   try {
     skills = await listAvailableSkills(workDir, agentConfig);
-  } catch {
+  } catch (err) {
+    logger.debug("[system-prompt] listAvailableSkills failed", { error: String(err) });
     // Silently ignore errors — a missing skills directory must not block session startup
     return undefined;
   }

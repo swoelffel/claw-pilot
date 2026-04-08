@@ -13,6 +13,7 @@ import type { ModelMessage, ToolResultPart } from "ai";
 import type { MessageInfo } from "./message.js";
 import type { PartInfo } from "./part.js";
 import type { MessageId } from "../types.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Part row type (local — mirrors PartInfo DB row)
@@ -249,7 +250,10 @@ export function buildCoreMessages(db: Database.Database, messages: MessageInfo[]
             try {
               const meta = JSON.parse(imgPart.metadata) as { mimeType?: string };
               if (meta.mimeType) mimeType = meta.mimeType;
-            } catch {
+            } catch (err) {
+              logger.warn("[message-builder] JSON.parse of image metadata failed", {
+                error: String(err),
+              });
               // Use default mimeType
             }
           }
@@ -296,7 +300,10 @@ export function buildCoreMessages(db: Database.Database, messages: MessageInfo[]
                   input: meta.args ?? {},
                 });
               }
-            } catch {
+            } catch (err) {
+              logger.warn("[message-builder] JSON.parse of tool_call metadata failed", {
+                error: String(err),
+              });
               // Skip malformed metadata
             }
           }
@@ -331,7 +338,10 @@ export function buildCoreMessages(db: Database.Database, messages: MessageInfo[]
               toolName: meta.toolName,
               output: { type: "text", value: output },
             });
-          } catch {
+          } catch (err) {
+            logger.warn("[message-builder] JSON.parse of tool_result metadata failed", {
+              error: String(err),
+            });
             // Skip malformed metadata
           }
         }

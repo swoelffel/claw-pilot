@@ -58,7 +58,10 @@ export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
     let yamlContent: string;
     try {
       yamlContent = await c.req.text();
-    } catch {
+    } catch (err) {
+      logger.warn("[route:teams] request body read failed for instance import", {
+        error: String(err),
+      });
       return apiError(c, 400, "INVALID_BODY", "Could not read request body");
     }
 
@@ -155,7 +158,10 @@ export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
     let yamlContent: string;
     try {
       yamlContent = await c.req.text();
-    } catch {
+    } catch (err) {
+      logger.warn("[route:teams] request body read failed for blueprint import", {
+        error: String(err),
+      });
       return apiError(c, 400, "INVALID_BODY", "Could not read request body");
     }
 

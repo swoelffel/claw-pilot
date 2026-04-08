@@ -4,6 +4,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { logger } from "./logger.js";
 
 // ---------------------------------------------------------------------------
 // Template directory resolution
@@ -80,7 +81,8 @@ export async function loadWorkspaceTemplate(
   let content: string;
   try {
     content = await fs.readFile(path.join(dir, filename), "utf-8");
-  } catch {
+  } catch (err) {
+    logger.debug("[workspace-templates] template file missing", { error: String(err) });
     // intentionally ignored — template file missing, use minimal fallback content
     content = `# ${filename}\n`;
   }

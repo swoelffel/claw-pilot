@@ -3,6 +3,7 @@ import type { WebSocket } from "ws";
 import type Database from "better-sqlite3";
 import type { HealthChecker, HealthStatus } from "../core/health.js";
 import { constants } from "../lib/constants.js";
+import { logger } from "../lib/logger.js";
 import { getRuntimeStateDir } from "../lib/platform.js";
 import { runtimeConfigExists, loadRuntimeConfig } from "../runtime/index.js";
 
@@ -57,7 +58,8 @@ export class Monitor {
         )
         .get(slug) as { cnt: number } | undefined;
       return row?.cnt ?? 0;
-    } catch {
+    } catch (err) {
+      logger.debug("[monitor] countPendingPermissions query failed", { error: String(err) });
       // Table may not exist on older DBs — degrade gracefully
       return 0;
     }
@@ -73,7 +75,8 @@ export class Monitor {
       if (!runtimeConfigExists(stateDir)) return 0;
       const config = loadRuntimeConfig(stateDir);
       return config.agents.filter((a) => a.heartbeat?.every !== undefined).length;
-    } catch {
+    } catch (err) {
+      logger.debug("[monitor] countHeartbeatAgents failed", { error: String(err) });
       return 0;
     }
   }
@@ -100,7 +103,8 @@ export class Monitor {
         )
         .get(slug, since) as { cnt: number } | undefined;
       return row?.cnt ?? 0;
-    } catch {
+    } catch (err) {
+      logger.debug("[monitor] countHeartbeatAlerts query failed", { error: String(err) });
       return 0;
     }
   }
@@ -125,7 +129,8 @@ export class Monitor {
         else if (row.status === "blocked") result.blocked = row.cnt;
       }
       return result;
-    } catch {
+    } catch (err) {
+      logger.debug("[monitor] getTaskCounts query failed", { error: String(err) });
       return undefined;
     }
   }
@@ -177,7 +182,8 @@ export class Monitor {
       const serialized = JSON.stringify(msg);
       this.previousState = serialized;
       this.broadcast(msg);
-    } catch {
+    } catch (err) {
+      logger.debug("[monitor] broadcastNow health check failed", { error: String(err) });
       // Expected: health check can fail transiently
     }
   }
@@ -199,7 +205,8 @@ export class Monitor {
           this.previousState = serialized;
           this.broadcast(msg);
         }
-      } catch {
+      } catch (err) {
+        logger.debug("[monitor] periodic health check failed", { error: String(err) });
         // Expected: health check can fail transiently
       }
     }, this.intervalMs);

@@ -7,6 +7,7 @@ import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
 import { instanceGuard } from "../../../lib/guards.js";
 import { resolveAgentWorkspacePath } from "../../../core/agent-workspace.js";
+import { logger } from "../../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -40,7 +41,8 @@ async function listMemoryFiles(conn: RouteDeps["conn"], wsDir: string): Promise<
     try {
       const content = await conn.readFile(memoryMdPath);
       files.push({ path: "MEMORY.md", size: Buffer.byteLength(content, "utf-8") });
-    } catch {
+    } catch (err) {
+      logger.debug("[route:memory] MEMORY.md read failed", { error: String(err) });
       // File unreadable — skip
     }
   }
@@ -58,11 +60,13 @@ async function listMemoryFiles(conn: RouteDeps["conn"], wsDir: string): Promise<
             path: `memory/${filename}`,
             size: Buffer.byteLength(content, "utf-8"),
           });
-        } catch {
+        } catch (err) {
+          logger.debug("[route:memory] memory file read failed", { error: String(err) });
           // File unreadable — skip
         }
       }
-    } catch {
+    } catch (err) {
+      logger.debug("[route:memory] memory directory read failed", { error: String(err) });
       // Directory unreadable — skip
     }
   }
@@ -97,7 +101,8 @@ async function getLastModified(
         return new Date(timestamp * 1000).toISOString();
       }
     }
-  } catch {
+  } catch (err) {
+    logger.debug("[route:memory] stat mtime retrieval failed", { error: String(err) });
     // Fallback — no mtime available
   }
 
@@ -211,7 +216,8 @@ export function registerMemoryRoutes(app: Hono, deps: RouteDeps): void {
         content,
         size: Buffer.byteLength(content, "utf-8"),
       });
-    } catch {
+    } catch (err) {
+      logger.warn("[route:memory] memory file read error", { error: String(err) });
       return apiError(c, 500, "READ_ERROR", "Failed to read memory file");
     }
   });
@@ -279,7 +285,8 @@ export function registerMemoryRoutes(app: Hono, deps: RouteDeps): void {
               });
             }
           }
-        } catch {
+        } catch (err) {
+          logger.debug("[route:memory] search file read failed", { error: String(err) });
           // File unreadable — skip
         }
       }

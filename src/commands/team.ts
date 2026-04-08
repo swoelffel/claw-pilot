@@ -41,7 +41,8 @@ async function handleImport(
   let yamlContent: string;
   try {
     yamlContent = await fs.readFile(path.resolve(filePath), "utf-8");
-  } catch {
+  } catch (err) {
+    logger.warn("[team-cmd] could not read team file", { error: String(err) });
     throw new CliError(`Could not read file: ${filePath}`);
   }
 

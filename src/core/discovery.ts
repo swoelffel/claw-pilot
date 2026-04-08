@@ -66,8 +66,8 @@ export class InstanceDiscovery {
 
     try {
       entries = await this.conn.readdir(this.instancesDir);
-    } catch {
-      // Directory not accessible — skip
+    } catch (err) {
+      logger.debug("[discovery] instances directory not accessible", { error: String(err) });
       return;
     }
 

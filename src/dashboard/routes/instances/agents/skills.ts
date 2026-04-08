@@ -12,6 +12,7 @@ import { instanceGuard } from "../../../../lib/guards.js";
 import { getRuntimeStateDir } from "../../../../lib/platform.js";
 import { listAvailableSkills, type SkillEntry } from "../../../../runtime/tool/built-in/skill.js";
 import { constants } from "../../../../lib/constants.js";
+import { logger } from "../../../../lib/logger.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -169,7 +170,8 @@ export function registerAgentSkillsRoutes(app: Hono, deps: RouteDeps): void {
       const entries = await listAvailableSkills(stateDir);
       const skills = entries.map((e) => toSkillInfo(e, stateDir));
       return c.json({ available: true, skills } satisfies SkillsListResponse);
-    } catch {
+    } catch (err) {
+      logger.debug("[route:skills] listAvailableSkills failed", { error: String(err) });
       // Filesystem or runtime error — return empty list
       return c.json({ available: false, skills: [] } satisfies SkillsListResponse);
     }
@@ -226,7 +228,8 @@ export function registerAgentSkillsRoutes(app: Hono, deps: RouteDeps): void {
             skillRoot = subPath;
             found = true;
             break;
-          } catch {
+          } catch (err) {
+            logger.debug("[route:skills] SKILL.md not in subfolder", { error: String(err) });
             // Not in this subfolder
           }
         }
@@ -342,7 +345,8 @@ export function registerAgentSkillsRoutes(app: Hono, deps: RouteDeps): void {
         await fs.mkdir(path.dirname(destPath), { recursive: true });
         await fs.writeFile(destPath, content, "utf-8");
         filesWritten++;
-      } catch {
+      } catch (err) {
+        logger.warn("[route:skills] GitHub file download failed", { error: String(err) });
         // Skip individual file errors — best-effort download
       }
     }
@@ -375,7 +379,8 @@ export function registerAgentSkillsRoutes(app: Hono, deps: RouteDeps): void {
     // Verify the directory exists and is under workspace
     try {
       await fs.access(skillDir);
-    } catch {
+    } catch (err) {
+      logger.debug("[route:skills] skill access check failed", { error: String(err) });
       return apiError(c, 404, "NOT_FOUND", `Skill '${skillName}' not found in workspace`);
     }
 

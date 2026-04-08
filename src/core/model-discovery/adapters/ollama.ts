@@ -6,6 +6,7 @@
 
 import type { ProviderAdapter, DiscoveredModel } from "../types.js";
 import { fetchJson, makeDiscoveredModel } from "./base.js";
+import { logger } from "../../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // API response shapes (native /api/tags endpoint)
@@ -48,8 +49,8 @@ export class OllamaAdapter implements ProviderAdapter {
     let response: OllamaTagsResponse;
     try {
       response = await fetchJson<OllamaTagsResponse>(`${base}/api/tags`);
-    } catch {
-      // Ollama not running or unreachable — return empty (not an error)
+    } catch (err) {
+      logger.warn("[ollama] Ollama not running or unreachable", { error: String(err) });
       return [];
     }
 

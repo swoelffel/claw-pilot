@@ -93,8 +93,10 @@ export class AgentProvisioner {
         try {
           const content = fs.readFileSync(templatePath, "utf-8");
           await this.conn.writeFile(destPath, content);
-        } catch {
-          // Template absent — skip silently (non-blocking)
+        } catch (err) {
+          logger.debug("[agent-provisioner] memory template file not found", {
+            error: String(err),
+          });
         }
       }
     }

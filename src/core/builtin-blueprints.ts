@@ -14,6 +14,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseAndValidateTeam } from "./team-import.js";
 import type { TeamFile } from "./team-schema.js";
+import { logger } from "../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -77,8 +78,11 @@ export async function listBuiltinBlueprints(): Promise<BuiltinBlueprint[]> {
   let entries: string[];
   try {
     entries = await fs.readdir(dir);
-  } catch {
-    return []; // templates/blueprints/ does not exist
+  } catch (err) {
+    logger.debug("[builtin-blueprints] templates/blueprints/ directory not found", {
+      error: String(err),
+    });
+    return [];
   }
 
   const yamlFiles = entries.filter((f) => f.endsWith(".team.yaml")).sort();

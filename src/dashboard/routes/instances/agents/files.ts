@@ -8,6 +8,7 @@ import { instanceGuard } from "../../../../lib/guards.js";
 import { AgentProvisioner } from "../../../../core/agent-provisioner.js";
 import { EDITABLE_FILES } from "../../../../core/agent-sync.js";
 import { ClawPilotError, InstanceNotFoundError } from "../../../../lib/errors.js";
+import { logger } from "../../../../lib/logger.js";
 
 export function registerAgentFileRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, conn, lifecycle } = deps;
@@ -57,7 +58,8 @@ export function registerAgentFileRoutes(app: Hono, deps: RouteDeps): void {
     let body: { content?: string };
     try {
       body = await c.req.json<{ content?: string }>();
-    } catch {
+    } catch (err) {
+      logger.warn("[route:agents-files] JSON parse failed", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
     if (typeof body.content !== "string") {

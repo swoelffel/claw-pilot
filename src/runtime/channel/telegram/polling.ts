@@ -8,6 +8,7 @@
  */
 
 import * as https from "node:https";
+import { logger } from "../../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Telegram API types (minimal subset)
@@ -160,7 +161,8 @@ export class TelegramPoller {
           }
           backoffMs = this.options.intervalMs; // reset backoff on success
         }
-      } catch {
+      } catch (err) {
+        logger.warn("[telegram] polling error", { error: String(err) });
         if (!this._running) break;
         // Exponential backoff, cap at 30s
         backoffMs = Math.min(backoffMs * 2, 30_000);

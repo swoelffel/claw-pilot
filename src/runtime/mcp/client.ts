@@ -20,6 +20,7 @@ import { z } from "zod";
 import type { RuntimeMcpServerConfig } from "../config/index.js";
 import { Tool } from "../tool/tool.js";
 import { getDescendants } from "../../lib/process.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Status
@@ -160,11 +161,15 @@ export class McpClient {
           for (const p of [pid, ...descendants]) {
             try {
               process.kill(p, "SIGTERM");
-            } catch {
+            } catch (err) {
+              logger.debug("[mcp-client] process kill failed (already dead)", {
+                error: String(err),
+              });
               // Process may already be dead — ignore
             }
           }
-        } catch {
+        } catch (err) {
+          logger.warn("[mcp-client] getDescendants failed", { error: String(err) });
           // getDescendants failed — ignore, proceed with close
         }
       }
@@ -177,7 +182,8 @@ export class McpClient {
     }
     try {
       await this._client.close();
-    } catch {
+    } catch (err) {
+      logger.warn("[mcp-client] close failed", { error: String(err) });
       // ignore close errors
     }
     this._client = undefined;
@@ -269,11 +275,13 @@ export class McpClient {
           const result = await this._client.listTools();
           this._cachedTools = result.tools.map((def) => this._convertTool(def));
           this._onToolsChanged?.(this.id, this._cachedTools.length);
-        } catch {
+        } catch (err) {
+          logger.warn("[mcp-client] tool list refresh failed", { error: String(err) });
           // Silently ignore — cached list remains valid
         }
       });
-    } catch {
+    } catch (err) {
+      logger.warn("[mcp-client] setNotificationHandler failed", { error: String(err) });
       // setNotificationHandler may not be available in all SDK versions — ignore
     }
   }

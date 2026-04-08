@@ -29,8 +29,10 @@ export class Destroyer {
       logger.dim(`[destroyer] Stopping claw-runtime for "${slug}" (PID ${pid})...`);
       try {
         process.kill(pid, "SIGTERM");
-      } catch {
-        // Process may have already exited
+      } catch (err) {
+        logger.debug("[destroyer] SIGTERM failed, process may have already exited", {
+          error: String(err),
+        });
       }
 
       // Poll until stopped (up to 8 s)
@@ -43,8 +45,8 @@ export class Destroyer {
       // Clean up stale PID file
       try {
         fs.unlinkSync(getRuntimePidPath(stateDir));
-      } catch {
-        /* already gone */
+      } catch (err) {
+        logger.debug("[destroyer] PID file already removed", { error: String(err) });
       }
     }
 

@@ -7,6 +7,7 @@
 import { z } from "zod";
 import { spawn } from "node:child_process";
 import { Tool } from "../tool.js";
+import { logger } from "../../../lib/logger.js";
 
 const DEFAULT_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
@@ -90,7 +91,8 @@ export const BashTool = Tool.define("bash", {
         } else {
           proc.kill("SIGTERM");
         }
-      } catch {
+      } catch (err) {
+        logger.debug("[tool:bash] kill failed", { error: String(err) });
         // ignore kill errors
       }
     };

@@ -1,6 +1,7 @@
 // src/lib/xdg.ts
 import type { ServerConnection } from "../server/connection.js";
 import { isDarwin } from "./platform.js";
+import { logger } from "./logger.js";
 
 /**
  * Resolve the XDG_RUNTIME_DIR for the current user by querying `id -u`.
@@ -22,7 +23,8 @@ export async function resolveXdgRuntimeDir(conn: ServerConnection): Promise<stri
     const result = await conn.exec("id -u");
     const uid = parseInt(result.stdout.trim(), 10);
     if (!isNaN(uid) && uid > 0) return `/run/user/${uid}`;
-  } catch {
+  } catch (err) {
+    logger.debug("[xdg] failed to resolve UID", { error: String(err) });
     // fall through
   }
   return "/run/user/1000";

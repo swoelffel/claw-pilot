@@ -12,6 +12,7 @@ import { getRuntimeStateDir } from "../../../lib/platform.js";
 import { readEnvFileSync } from "../../../lib/env-reader.js";
 import { McpRegistry } from "../../../runtime/mcp/registry.js";
 import { loadConfigDbFirst } from "../_config-helpers.js";
+import { logger } from "../../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // In-process MCP registry cache
@@ -52,7 +53,8 @@ async function getMcpRegistryForSlug(
     await registry.init(enabledServers);
     _mcpRegistryCache.set(slug, registry);
     return registry;
-  } catch {
+  } catch (err) {
+    logger.warn("[route:mcp] MCP registry init failed", { error: String(err) });
     return undefined;
   }
 }
@@ -82,7 +84,8 @@ export function registerMcpRoutes(app: Hono, deps: RouteDeps): void {
     let toolInfos;
     try {
       toolInfos = await mcpRegistry.getTools();
-    } catch {
+    } catch (err) {
+      logger.warn("[route:mcp] MCP tools fetch failed", { error: String(err) });
       return apiError(c, 500, "MCP_TOOLS_FETCH_FAILED", "Failed to fetch MCP tools");
     }
 

@@ -28,6 +28,7 @@ import { appendToMemoryFile, consolidateMemoryFileIfNeeded } from "../memory/wri
 import { openMemoryIndex, rebuildMemoryIndex } from "../memory/index.js";
 import { applyDecayToFile, extractReferencedContents } from "../memory/decay.js";
 import { markDirty } from "./system-prompt-dirty.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -358,7 +359,8 @@ async function extractKnowledge(
         },
       ],
     });
-  } catch {
+  } catch (err) {
+    logger.warn("[compaction] knowledge extraction LLM call failed", { error: String(err) });
     // LLM failure — do not block compaction
     return { facts: [], decisions: [], preferences: [], timeline: [], knowledge: [] };
   }
@@ -377,7 +379,8 @@ async function extractKnowledge(
       timeline: parsed.timeline ?? [],
       knowledge: parsed.knowledge ?? [],
     };
-  } catch {
+  } catch (err) {
+    logger.warn("[compaction] JSON.parse of extracted knowledge failed", { error: String(err) });
     // Malformed JSON — ignore silently
     return { facts: [], decisions: [], preferences: [], timeline: [], knowledge: [] };
   }
@@ -395,7 +398,8 @@ function readCurrentMemory(workspaceDir: string): string {
     try {
       const content = fs.readFileSync(path.join(memoryDir, file), "utf-8").trim();
       if (content) sections.push(`### ${file}\n${content}`);
-    } catch {
+    } catch (err) {
+      logger.debug("[compaction] memory file read failed", { error: String(err) });
       // File absent — ok
     }
   }

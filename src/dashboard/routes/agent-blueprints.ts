@@ -331,7 +331,8 @@ export function registerAgentBlueprintRoutes(app: Hono, deps: RouteDeps): void {
     let yamlContent: string;
     try {
       yamlContent = await c.req.text();
-    } catch {
+    } catch (err) {
+      logger.warn("[route:agent-blueprints] request body read failed", { error: String(err) });
       return apiError(c, 400, "INVALID_BODY", "Cannot read request body");
     }
 

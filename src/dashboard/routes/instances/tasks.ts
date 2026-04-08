@@ -23,6 +23,7 @@ import { getOrCreatePermanentSession } from "../../../runtime/session/session.js
 import { createUserMessage } from "../../../runtime/session/message.js";
 import type { InstanceSlug } from "../../../runtime/types.js";
 import { wakeupAgent } from "../_wakeup-agent.js";
+import { logger } from "../../../lib/logger.js";
 
 const VALID_STATUSES = new Set<TaskStatus>([
   "pending",
@@ -351,7 +352,8 @@ function notifyAndWakeAgent(
       channel: "internal",
     });
     createUserMessage(db, { sessionId: session.id, text });
-  } catch {
+  } catch (err) {
+    logger.debug("[route:tasks] task notification session creation failed", { error: String(err) });
     // Non-critical — agent may not have a permanent session yet
     return;
   }

@@ -1,4 +1,5 @@
 // src/lib/poll.ts
+import { logger } from "./logger.js";
 
 export interface PollOptions {
   /** Check function — returns true when the condition is met */
@@ -22,7 +23,8 @@ export async function pollUntilReady(opts: PollOptions): Promise<void> {
   while (Date.now() < deadline) {
     try {
       if (await check()) return;
-    } catch {
+    } catch (err) {
+      logger.debug("[poll] check failed, retrying", { error: String(err) });
       // check() may throw if the service is not ready yet — treat as false
     }
     await new Promise<void>((r) => setTimeout(r, intervalMs));

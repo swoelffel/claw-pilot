@@ -9,6 +9,7 @@ import { instanceGuard } from "../../../../lib/guards.js";
 import { AgentProvisioner } from "../../../../core/agent-provisioner.js";
 import type { CreateAgentData } from "../../../../core/agent-provisioner.js";
 import { buildAgentPayload } from "../../_helpers.js";
+import { logger } from "../../../../lib/logger.js";
 
 const FromTemplateSchema = z.object({
   blueprintId: z.string().min(1),
@@ -54,7 +55,8 @@ export function registerAgentCreateRoutes(app: Hono, deps: RouteDeps): void {
           "Invalid agentSlug: must be 2-30 lowercase alphanumeric chars with hyphens",
         );
       }
-    } catch {
+    } catch (err) {
+      logger.warn("[route:agents-create] JSON parse failed", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
@@ -154,7 +156,8 @@ export function registerAgentCreateRoutes(app: Hono, deps: RouteDeps): void {
               bpFile.filename,
               bpFile.content,
             );
-          } catch {
+          } catch (err) {
+            logger.debug("[route:agents-create] template file copy failed", { error: String(err) });
             // Non-editable file or write failure — skip silently
           }
         }

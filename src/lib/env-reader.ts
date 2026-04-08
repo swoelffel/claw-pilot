@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import type { ServerConnection } from "../server/connection.js";
 import { getDataDir } from "./platform.js";
+import { logger } from "./logger.js";
 
 /**
  * Read all environment variables from an instance's .env file (synchronously).
@@ -26,7 +27,8 @@ export function readEnvFileSync(stateDir: string): Record<string, string> {
         result[key] = value;
       }
     }
-  } catch {
+  } catch (err) {
+    logger.debug("[env-reader] env file read failed", { error: String(err) });
     // .env missing or unreadable — return empty object
   }
   return result;
@@ -62,7 +64,8 @@ export async function readEnvValue(
         if (value.length > 0) return value;
       }
     }
-  } catch {
+  } catch (err) {
+    logger.debug("[env-reader] env value read failed", { error: String(err) });
     // .env missing or unreadable
   }
   return null;

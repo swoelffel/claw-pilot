@@ -2,6 +2,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import { constants } from "./constants.js";
+import { logger } from "./logger.js";
 
 export function getDataDir(): string {
   return path.join(os.homedir(), constants.DATA_DIR);
@@ -102,7 +103,8 @@ export function getRuntimePid(stateDir: string): number | null {
     // Probe the process — kill(pid, 0) throws if it does not exist
     process.kill(pid, 0);
     return pid;
-  } catch {
+  } catch (err) {
+    logger.debug("[platform] getRuntimePid failed", { error: String(err) });
     return null;
   }
 }

@@ -5,6 +5,7 @@
 // Enterprise edition replaces this module with RBAC + SSO support.
 
 import type { ProfileResolver, UserProfile, UserProviderConfig } from "./types.js";
+import { logger } from "../../lib/logger.js";
 import type { UserProfileRepository } from "../../core/repositories/user-profile-repository.js";
 import type { UserProfileRecord, UserProviderRecord } from "../../core/registry-types.js";
 
@@ -17,7 +18,8 @@ function toUserProfile(record: UserProfileRecord): UserProfile {
   if (record.ui_preferences) {
     try {
       uiPreferences = JSON.parse(record.ui_preferences) as Record<string, unknown>;
-    } catch {
+    } catch (err) {
+      logger.warn("[profile] JSON.parse of ui_preferences failed", { error: String(err) });
       // Malformed JSON — treat as null
     }
   }
@@ -40,7 +42,8 @@ function toProviderConfig(record: UserProviderRecord): UserProviderConfig {
   if (record.headers) {
     try {
       headers = JSON.parse(record.headers) as Record<string, string>;
-    } catch {
+    } catch (err) {
+      logger.warn("[profile] JSON.parse of provider headers failed", { error: String(err) });
       // Malformed JSON — treat as null
     }
   }

@@ -95,7 +95,8 @@ export function doctorCommand(): Command {
               } else {
                 logger.success(`  Port ${inst.port}: available`);
               }
-            } catch {
+            } catch (err) {
+              logger.debug("[doctor-cmd] port check failed", { error: String(err) });
               logger.dim(`  Port ${inst.port}: could not check`);
             }
           }

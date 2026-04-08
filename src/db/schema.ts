@@ -2,6 +2,7 @@
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import * as path from "node:path";
+import { logger } from "../lib/logger.js";
 
 // Base schema version — bump only when adding new migrations (migrations tracked separately)
 const BASE_SCHEMA_VERSION = 1;
@@ -457,8 +458,10 @@ const MIGRATIONS: Migration[] = [
         try {
           // Try to parse as JSON — if it works, it's already in the right format
           JSON.parse(bp.tags);
-        } catch {
-          // If JSON parse fails, it's a plain string — convert to JSON array
+        } catch (err) {
+          logger.warn("[schema] blueprint tags not valid JSON, normalizing", {
+            error: String(err),
+          });
           const normalizedTags = JSON.stringify([bp.tags]);
           updateStmt.run(normalizedTags, bp.id);
         }
@@ -899,8 +902,11 @@ const MIGRATIONS: Migration[] = [
               update.run(JSON.stringify(agent), inst.id, agent.id);
             }
           }
-        } catch {
-          // Non-critical: skip instances with missing or malformed runtime.json
+        } catch (err) {
+          logger.error(
+            "[schema] v20 backfill: skip instance with missing or malformed runtime.json",
+            { error: String(err) },
+          );
         }
       }
     },
@@ -931,8 +937,11 @@ const MIGRATIONS: Migration[] = [
           // Validate it is parsable JSON before storing
           JSON.parse(raw);
           update.run(raw, inst.id);
-        } catch {
-          // Non-critical: skip instances with missing or malformed runtime.json
+        } catch (err) {
+          logger.error(
+            "[schema] v21 backfill: skip instance with missing or malformed runtime.json",
+            { error: String(err) },
+          );
         }
       }
     },
@@ -972,7 +981,8 @@ const MIGRATIONS: Migration[] = [
         try {
           parsed = JSON.parse(row.skills) as string[];
           if (!Array.isArray(parsed)) continue;
-        } catch {
+        } catch (err) {
+          logger.warn("[schema] v22: invalid JSON in agent skills column", { error: String(err) });
           continue;
         }
         let entry = byInstance.get(row.instance_id);
@@ -998,8 +1008,8 @@ const MIGRATIONS: Migration[] = [
           }
 
           update.run(JSON.stringify(config), instanceId);
-        } catch {
-          // Non-critical: skip malformed configs
+        } catch (err) {
+          logger.error("[schema] v22: skip malformed runtime_config_json", { error: String(err) });
         }
       }
     },
@@ -1252,8 +1262,10 @@ export function initDatabase(dbPath: string): Database.Database {
   const dirPath = path.dirname(dbPath);
   try {
     mkdirSync(dirPath, { recursive: true, mode: 0o700 });
-  } catch {
-    // Directory already exists
+  } catch (err) {
+    logger.debug("[schema] DB parent directory already exists or mkdir failed", {
+      error: String(err),
+    });
   }
 
   const db = new Database(dbPath);

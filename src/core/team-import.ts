@@ -8,6 +8,7 @@ import type Database from "better-sqlite3";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
 import { TeamFileSchema, type TeamFile } from "./team-schema.js";
+import { logger } from "../lib/logger.js";
 import { now } from "../lib/date.js";
 import { constants } from "../lib/constants.js";
 import { loadWorkspaceTemplate, type TemplateVars } from "../lib/workspace-templates.js";
@@ -402,8 +403,8 @@ export async function importInstanceTeam(
   try {
     const lifecycle = new Lifecycle(conn, registry, xdgRuntimeDir);
     await lifecycle.restart(instance.slug);
-  } catch {
-    // Best-effort restart — import is still successful
+  } catch (err) {
+    logger.warn("[team-import] best-effort restart failed after import", { error: String(err) });
   }
 
   return {

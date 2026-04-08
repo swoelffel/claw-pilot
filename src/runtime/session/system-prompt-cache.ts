@@ -16,6 +16,7 @@
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import type { SessionId } from "../types.js";
+import { logger } from "../../lib/logger.js";
 
 /** Stored entry with timestamp for freshness tracking */
 export interface CachedPrompt {
@@ -77,7 +78,8 @@ export function persistSystemPromptSnapshot(
       `INSERT INTO rt_system_prompts (session_id, prompt_hash, system_prompt, built_at)
        VALUES (?, ?, ?, datetime('now'))`,
     ).run(sessionId, hash, systemPrompt);
-  } catch {
+  } catch (err) {
+    logger.warn("[system-prompt-cache] persist snapshot failed", { error: String(err) });
     // Non-critical — older DB schemas may not have the table yet
   }
 }
@@ -100,7 +102,8 @@ export function getPersistedSystemPrompt(
 
     if (!row) return undefined;
     return { systemPrompt: row.system_prompt, builtAt: row.built_at };
-  } catch {
+  } catch (err) {
+    logger.warn("[system-prompt-cache] get persisted prompt failed", { error: String(err) });
     return undefined; // Table may not exist on older schemas
   }
 }

@@ -185,7 +185,8 @@ export function createSendMessageTool(options: {
       if (resolveTargetModel) {
         try {
           targetModel = resolveTargetModel(targetConfig);
-        } catch {
+        } catch (err) {
+          logger.warn("[tool:send-message] target model resolution failed", { error: String(err) });
           targetModel = resolvedModel;
         }
       } else {

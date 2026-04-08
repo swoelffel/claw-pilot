@@ -21,7 +21,8 @@ function readLastLines(filePath: string, n: number): string {
     const content = fs.readFileSync(filePath, "utf8");
     const lines = content.trimEnd().split("\n");
     return lines.slice(-n).join("\n");
-  } catch {
+  } catch (err) {
+    logger.debug("[lifecycle] readLastLines failed", { error: String(err) });
     return "";
   }
 }
@@ -171,8 +172,10 @@ export class Lifecycle {
 
     try {
       process.kill(pid, "SIGTERM");
-    } catch {
-      // Process may have already exited
+    } catch (err) {
+      logger.debug("[lifecycle] SIGTERM failed, process may have already exited", {
+        error: String(err),
+      });
     }
 
     const deadline = Date.now() + 8_000;
@@ -182,8 +185,8 @@ export class Lifecycle {
         // Clean up stale PID file if still present
         try {
           fs.unlinkSync(getRuntimePidPath(stateDir));
-        } catch {
-          /* already gone */
+        } catch (err) {
+          logger.debug("[lifecycle] PID file already removed", { error: String(err) });
         }
         logger.dim(`[lifecycle] claw-runtime stopped (slug: ${slug})`);
         return;

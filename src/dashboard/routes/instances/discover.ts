@@ -61,7 +61,8 @@ export function registerDiscoverRoutes(app: Hono, deps: RouteDeps): void {
         );
       }
       body = parsed.data;
-    } catch {
+    } catch (err) {
+      logger.warn("[route:discover] JSON parse failed on adopt", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 

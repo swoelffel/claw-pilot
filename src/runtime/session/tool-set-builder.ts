@@ -65,7 +65,10 @@ function getOrCreateToolCallPart(
     try {
       const meta = JSON.parse(p.metadata) as { toolCallId?: string };
       return meta.toolCallId === toolCallId;
-    } catch {
+    } catch (err) {
+      logger.warn("[tool-set-builder] JSON.parse of tool_call metadata failed", {
+        error: String(err),
+      });
       return false;
     }
   });
@@ -241,7 +244,10 @@ export async function buildToolSet(
                 void Promise.resolve().then(() => {
                   try {
                     rebuildMemoryIndex(memoryDb, workDir, ctx.agentId);
-                  } catch {
+                  } catch (err) {
+                    logger.debug("[tool-set-builder] memory re-indexation failed", {
+                      error: String(err),
+                    });
                     // Silently ignore re-indexation errors
                   }
                 });

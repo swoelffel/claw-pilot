@@ -13,6 +13,7 @@ import {
   extractIds,
   insertRtEvent,
 } from "../../core/repositories/rt-event-repository.js";
+import { logger } from "../../lib/logger.js";
 
 /**
  * Wire bus event persistence for an instance.
@@ -42,7 +43,8 @@ export function wireEventPersistence(
         summary,
         payload: JSON.stringify(payload),
       });
-    } catch {
+    } catch (err) {
+      logger.warn("[event-persistence] event insert failed", { error: String(err) });
       // Silently ignore persistence errors to avoid disrupting the runtime.
       // The bus handler must never throw.
     }

@@ -262,7 +262,8 @@ async function loadCustomTools(dir: string): Promise<Tool.Info[]> {
   let entries: string[];
   try {
     entries = readdirSync(dir);
-  } catch {
+  } catch (err) {
+    logger.debug("[tool:registry] custom tools directory read failed", { error: String(err) });
     return [];
   }
 

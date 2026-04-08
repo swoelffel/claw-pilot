@@ -31,7 +31,8 @@ export function loadConfigDbFirst(
   );
   try {
     return loadRuntimeConfig(stateDir);
-  } catch {
+  } catch (err) {
+    logger.debug("[config-helpers] runtime.json fallback load failed", { error: String(err) });
     return null;
   }
 }

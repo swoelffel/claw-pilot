@@ -10,6 +10,7 @@ import { Provisioner } from "../../../core/provisioner.js";
 import { NamedKeyRepository } from "../../../core/repositories/named-key-repository.js";
 import { deriveWebChatPort } from "../../../lib/platform.js";
 import { ClawPilotError, InstanceNotFoundError } from "../../../lib/errors.js";
+import { logger } from "../../../lib/logger.js";
 
 export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, conn, health, lifecycle, monitor, tokenCache, xdgRuntimeDir } = deps;
@@ -160,7 +161,8 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
     let body: Record<string, unknown>;
     try {
       body = await c.req.json();
-    } catch {
+    } catch (err) {
+      logger.warn("[route:lifecycle] JSON parse failed on instance create", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
@@ -288,7 +290,8 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
         .slice(0, limit);
 
       return c.json({ entries });
-    } catch {
+    } catch (err) {
+      logger.debug("[route:lifecycle] agent-log read failed", { error: String(err) });
       return c.json({ entries: [] });
     }
   });

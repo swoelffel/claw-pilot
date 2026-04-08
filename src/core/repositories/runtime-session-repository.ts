@@ -7,6 +7,7 @@
 
 import type Database from "better-sqlite3";
 import { listSessions } from "../../runtime/index.js";
+import { logger } from "../../lib/logger.js";
 
 export interface PurgeResult {
   sessionsDeleted: number;
@@ -157,8 +158,10 @@ export function listEnrichedSessions(
   let rows: EnrichedSessionRow[];
   try {
     rows = db.prepare(sql).all(...params) as EnrichedSessionRow[];
-  } catch {
-    // Fallback to listSessions if enriched query fails (e.g. missing columns on older DB)
+  } catch (err) {
+    logger.error("[runtime-session-repository] enriched query failed, falling back", {
+      error: String(err),
+    });
     const fallback = listSessions(db, instanceSlug, {
       ...(resolvedState !== "all" ? { state: resolvedState } : {}),
       limit: safeLimit,

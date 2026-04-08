@@ -12,6 +12,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { logger } from "../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,8 +49,8 @@ export function readWorkspaceState(workspaceDir: string): WorkspaceState {
   try {
     const raw = readFileSync(statePath, "utf-8");
     return JSON.parse(raw) as WorkspaceState;
-  } catch {
-    // File absent, unreadable, or invalid JSON — return empty state
+  } catch (err) {
+    logger.debug("[workspace-state] failed to read workspace state", { error: String(err) });
     return {};
   }
 }
@@ -68,7 +69,7 @@ export function writeWorkspaceState(workspaceDir: string, state: WorkspaceState)
       mkdirSync(stateDir, { recursive: true });
     }
     writeFileSync(statePath, JSON.stringify(state, null, 2), "utf-8");
-  } catch {
-    // Silently ignore — write failures must not block session startup
+  } catch (err) {
+    logger.debug("[workspace-state] failed to write workspace state", { error: String(err) });
   }
 }

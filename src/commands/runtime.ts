@@ -201,7 +201,8 @@ function loadEnvFile(stateDir: string): void {
         process.env[key] = value;
       }
     }
-  } catch {
+  } catch (err) {
+    logger.debug("[runtime-cmd] .env file read failed", { error: String(err) });
     // .env missing or unreadable — not fatal
   }
 }
@@ -352,7 +353,8 @@ function runtimeStartCommand(): Command {
           // Remove PID file on clean exit
           try {
             fs.unlinkSync(pidPath);
-          } catch {
+          } catch (err) {
+            logger.debug("[runtime-cmd] PID file cleanup failed", { error: String(err) });
             /* already gone */
           }
           db.close();
@@ -465,7 +467,8 @@ function runtimeRestartCommand(): Command {
         logger.info(`Stopping claw-runtime for "${slug}" (PID ${pid})...`);
         try {
           process.kill(pid, "SIGTERM");
-        } catch {
+        } catch (err) {
+          logger.debug("[runtime-cmd] SIGTERM send failed", { error: String(err) });
           // Process may have already exited
         }
 

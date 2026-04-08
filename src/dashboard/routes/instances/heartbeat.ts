@@ -6,6 +6,7 @@ import type { RouteDeps } from "../../route-deps.js";
 import { instanceGuard } from "../../../lib/guards.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
 import { loadConfigDbFirst } from "../_config-helpers.js";
+import { logger } from "../../../lib/logger.js";
 import {
   getHeartbeatHeatmapData,
   getHeartbeatAgentStats,
@@ -50,7 +51,8 @@ export function registerHeartbeatRoutes(app: Hono, deps: RouteDeps): void {
             : {}),
         }));
       return c.json({ agents });
-    } catch {
+    } catch (err) {
+      logger.debug("[route:heartbeat] schedule load failed", { error: String(err) });
       return c.json({ agents: [] });
     }
   });

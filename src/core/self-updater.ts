@@ -205,7 +205,10 @@ export class SelfUpdater {
       const distDir = path.dirname(thisFile);
       const candidate = path.resolve(distDir, "..");
       return candidate;
-    } catch {
+    } catch (err) {
+      logger.debug("[self-updater] failed to resolve install dir from import.meta.url", {
+        error: String(err),
+      });
       return "/opt/claw-pilot";
     }
   }

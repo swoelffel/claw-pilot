@@ -1,5 +1,6 @@
 // src/dashboard/routes/_helpers.ts
 import type { AgentFileRecord } from "../../core/registry.js";
+import { logger } from "../../lib/logger.js";
 import { BUILTIN_AGENTS } from "../../runtime/agent/defaults.js";
 import type { Agent } from "../../runtime/agent/agent.js";
 
@@ -70,7 +71,8 @@ export function buildAgentPayload(agent: AgentLike, files: AgentFileRecord[]): A
   if (agent.skills) {
     try {
       skills = JSON.parse(agent.skills) as string[];
-    } catch {
+    } catch (err) {
+      logger.warn("[route:helpers] skills JSON parse failed", { error: String(err) });
       skills = null;
     }
   }

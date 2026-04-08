@@ -4,6 +4,7 @@
 import * as fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
+import { logger } from "./logger.js";
 
 /**
  * Read a single variable from a .env file (synchronous).
@@ -16,7 +17,8 @@ export function readEnvVar(envPath: string, varName: string): string | null {
     const regex = new RegExp(`^${varName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=(.*)$`, "m");
     const match = content.match(regex);
     return match?.[1]?.trim() ?? null;
-  } catch {
+  } catch (err) {
+    logger.debug("[dotenv] env file read failed", { error: String(err) });
     // File doesn't exist or can't be read
     return null;
   }
@@ -36,7 +38,8 @@ export async function writeEnvVar(envPath: string, varName: string, value: strin
   let content = "";
   try {
     content = await fs.readFile(envPath, "utf-8");
-  } catch {
+  } catch (err) {
+    logger.debug("[dotenv] env file not found", { error: String(err) });
     // File doesn't exist yet
   }
 
@@ -79,7 +82,8 @@ export async function removeEnvVar(envPath: string, varName: string): Promise<vo
     await fs.writeFile(envPath, newContent.trim() + (newContent.trim() ? "\n" : ""), {
       mode: 0o600,
     });
-  } catch {
+  } catch (err) {
+    logger.debug("[dotenv] env file remove failed", { error: String(err) });
     // File doesn't exist or can't be read — no-op
   }
 }

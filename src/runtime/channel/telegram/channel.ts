@@ -150,7 +150,10 @@ export class TelegramChannel implements Channel {
     const formatted = markdownToTelegramV2(message.text);
     try {
       await this.poller.sendMessage(chatId, formatted, "MarkdownV2");
-    } catch {
+    } catch (err) {
+      logger.warn("[telegram] MarkdownV2 send failed, falling back to plain text", {
+        error: String(err),
+      });
       // Fallback: send as plain text (no parse_mode)
       await this.poller.sendMessage(chatId, message.text);
     }
@@ -305,7 +308,8 @@ export class TelegramChannel implements Channel {
 
     try {
       await this.poller!.sendMessage(chatId, text, "MarkdownV2");
-    } catch {
+    } catch (err) {
+      logger.warn("[telegram] pairing message MarkdownV2 send failed", { error: String(err) });
       // Fallback plain text
       const plainText = `Hello! To connect to this assistant, send this code to your admin: ${formatted}\n\nThis code expires in 60 minutes.`;
       await this.poller!.sendMessage(chatId, plainText);
@@ -395,7 +399,8 @@ export class TelegramChannel implements Channel {
     // Acknowledge the callback to remove the loading spinner in Telegram
     try {
       await this.poller.answerCallbackQuery(query.id);
-    } catch {
+    } catch (err) {
+      logger.warn("[telegram] answerCallbackQuery failed", { error: String(err) });
       // Non-critical — continue processing
     }
 

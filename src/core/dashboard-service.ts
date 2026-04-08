@@ -45,8 +45,8 @@ function resolveClawPilotBin(): string {
     try {
       statSync(c);
       return c;
-    } catch {
-      // Candidate path not found
+    } catch (err) {
+      logger.debug("[dashboard-service] candidate binary path not found", { error: String(err) });
     }
   }
   throw new Error("Cannot find claw-pilot binary. Ensure it is installed.");
@@ -60,8 +60,8 @@ async function isPortResponding(port: number): Promise<boolean> {
     });
     // Any response (including 401 Unauthorized) means the server is up
     return true;
-  } catch {
-    // intentionally ignored — any network error means the port is not responding
+  } catch (err) {
+    logger.debug("[dashboard-service] port health check failed", { error: String(err) });
     return false;
   }
 }
@@ -187,8 +187,10 @@ export async function installDashboardService(
       label: `dashboard port ${port}`,
     });
     logger.success(`Dashboard is ready at http://localhost:${port}`);
-  } catch {
-    logger.warn(`Dashboard service started but port ${port} is not responding yet.`);
+  } catch (err) {
+    logger.warn(`[dashboard-service] port ${port} not responding after install`, {
+      error: String(err),
+    });
     if (sm === "launchd") {
       logger.dim(`Check logs: tail -f ${home}/.claw-pilot/dashboard.log`);
     } else {

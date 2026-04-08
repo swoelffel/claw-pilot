@@ -1,5 +1,6 @@
 // src/core/auth.ts
 import { scrypt, randomBytes, timingSafeEqual } from "node:crypto";
+import { logger } from "../lib/logger.js";
 
 const SCRYPT_KEYLEN = 64;
 const SCRYPT_COST = 16384; // N=2^14, OWASP recommendation
@@ -63,8 +64,8 @@ export async function verifyPassword(password: string, stored: string): Promise<
     });
 
     return timingSafeEqual(expectedHash, computedHash);
-  } catch {
-    // intentionally ignored — any crypto error (invalid hash format, buffer mismatch) → deny access
+  } catch (err) {
+    logger.warn("[auth] password verification failed (crypto error)", { error: String(err) });
     return false;
   }
 }

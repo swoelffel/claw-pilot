@@ -61,7 +61,8 @@ export function registerTelegramRoutes(app: Hono, deps: RouteDeps): void {
         return apiError(c, 400, "INVALID_BODY", "code must be a non-empty string");
       }
       code = raw.code.trim().toUpperCase().replace(/-/g, "");
-    } catch {
+    } catch (err) {
+      logger.warn("[route:telegram] JSON parse failed on approve", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 

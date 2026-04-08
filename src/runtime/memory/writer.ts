@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { generateText } from "ai";
 import type { ResolvedModel } from "../provider/provider.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -61,7 +62,8 @@ export function appendToMemoryFile(
   let existingContent = "";
   try {
     existingContent = fs.readFileSync(filePath, "utf-8");
-  } catch {
+  } catch (err) {
+    logger.debug("[memory:writer] file read failed (will create)", { error: String(err) });
     // Fichier absent — ok, sera cree
   }
 
@@ -100,7 +102,8 @@ export async function consolidateMemoryFileIfNeeded(
   let content: string;
   try {
     content = fs.readFileSync(filePath, "utf-8");
-  } catch {
+  } catch (err) {
+    logger.debug("[memory:writer] consolidation source file missing", { error: String(err) });
     return false; // Fichier absent
   }
 
@@ -133,7 +136,8 @@ export async function consolidateMemoryFileIfNeeded(
       fs.unlinkSync(backupPath);
       return true;
     }
-  } catch {
+  } catch (err) {
+    logger.debug("[memory:writer] consolidation LLM call failed", { error: String(err) });
     // Echec de consolidation — conserver le fichier original
   }
 

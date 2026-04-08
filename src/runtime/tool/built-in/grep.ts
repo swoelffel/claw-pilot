@@ -11,6 +11,7 @@ import * as fs from "node:fs";
 import { createInterface } from "node:readline";
 import { spawn } from "node:child_process";
 import { Tool } from "../tool.js";
+import { logger } from "../../../lib/logger.js";
 
 const RESULT_LIMIT = 100;
 const MAX_LINE_LENGTH = 2000;
@@ -145,7 +146,8 @@ async function nativeGrep(
   let regex: RegExp;
   try {
     regex = new RegExp(pattern);
-  } catch {
+  } catch (err) {
+    logger.debug("[tool:grep] invalid regex pattern", { error: String(err) });
     throw new Error(`Invalid regex pattern: ${pattern}`);
   }
 
@@ -167,7 +169,8 @@ async function nativeGrep(
           matches.push({ path: filePath, mtime, lineNum, lineText: line });
         }
       }
-    } catch {
+    } catch (err) {
+      logger.debug("[tool:grep] file unreadable", { error: String(err) });
       // skip unreadable files
     } finally {
       rl.close();
@@ -193,7 +196,8 @@ async function walkDir(
   let entries: fs.Dirent[];
   try {
     entries = await fs.promises.readdir(dir, { withFileTypes: true });
-  } catch {
+  } catch (err) {
+    logger.debug("[tool:grep] readdir failed", { error: String(err) });
     return;
   }
 

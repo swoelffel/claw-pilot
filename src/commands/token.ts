@@ -36,7 +36,8 @@ export function tokenCommand(): Command {
         let dashboardToken: string | null = null;
         try {
           dashboardToken = (await fs.readFile(getDashboardTokenPath(), "utf-8")).trim();
-        } catch {
+        } catch (err) {
+          logger.debug("[token-cmd] dashboard token file missing", { error: String(err) });
           // Token file missing — not fatal
         }
 

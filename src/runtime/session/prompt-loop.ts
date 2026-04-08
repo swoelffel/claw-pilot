@@ -112,7 +112,8 @@ function _getRuntimeVersion(): string {
   try {
     const pkg = _moduleRequire("../../../../package.json") as { version?: string };
     version = pkg.version ?? "unknown";
-  } catch {
+  } catch (err) {
+    logger.debug("[prompt-loop] package.json read failed", { error: String(err) });
     // intentionally ignored
   }
   _cachedRuntimeVersion = version;
@@ -416,7 +417,10 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
             try {
               const meta = JSON.parse(p.metadata) as { toolCallId?: string };
               return meta.toolCallId === part.toolCallId;
-            } catch {
+            } catch (err) {
+              logger.warn("[prompt-loop] JSON.parse of tool_call metadata failed", {
+                error: String(err),
+              });
               return false;
             }
           });
@@ -474,7 +478,10 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
             try {
               const meta = JSON.parse(p.metadata) as { toolCallId?: string };
               return meta.toolCallId === chunk.toolCallId;
-            } catch {
+            } catch (err) {
+              logger.warn("[prompt-loop] JSON.parse of tool_result metadata failed", {
+                error: String(err),
+              });
               return false;
             }
           });

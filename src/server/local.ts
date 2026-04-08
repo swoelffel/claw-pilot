@@ -6,6 +6,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import type { ServerConnection, ExecResult, ExecOptions } from "./connection.js";
 import { shellEscape } from "../lib/shell.js";
+import { logger } from "../lib/logger.js";
 
 const isLinux = os.platform() === "linux";
 
@@ -102,8 +103,8 @@ export class LocalConnection implements ServerConnection {
     try {
       await fs.access(filePath);
       return true;
-    } catch {
-      // intentionally ignored — any access error means the path does not exist (ENOENT, EACCES, etc.)
+    } catch (err) {
+      logger.debug("[local] path access check failed", { error: String(err) });
       return false;
     }
   }

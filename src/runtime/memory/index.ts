@@ -19,6 +19,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import Database from "better-sqlite3";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -120,7 +121,8 @@ export function rebuildMemoryIndex(
           });
         }
       }
-    } catch {
+    } catch (err) {
+      logger.debug("[memory:index] directory inaccessible", { error: String(err) });
       // Directory inaccessible — skip
     }
   }
@@ -153,7 +155,8 @@ export function rebuildMemoryIndex(
       if (chunks.length > 0) {
         entries.push({ source, chunks });
       }
-    } catch {
+    } catch (err) {
+      logger.debug("[memory:index] file unreadable", { error: String(err) });
       // File unreadable — skip silently
     }
   }
@@ -192,7 +195,8 @@ export function searchMemory(
       .all(query, limit) as Array<{ source: string; chunk: string; rank: number }>;
 
     return rows;
-  } catch {
+  } catch (err) {
+    logger.debug("[memory:index] FTS5 search failed", { error: String(err) });
     // FTS5 query syntax error or other issue — return empty results
     return [];
   }

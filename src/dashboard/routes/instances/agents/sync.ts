@@ -6,6 +6,7 @@ import type { RouteDeps } from "../../../route-deps.js";
 import { apiError } from "../../../route-deps.js";
 import { instanceGuard } from "../../../../lib/guards.js";
 import { constants } from "../../../../lib/constants.js";
+import { logger } from "../../../../lib/logger.js";
 
 export function registerAgentSyncRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, conn } = deps;
@@ -33,7 +34,8 @@ export function registerAgentSyncRoutes(app: Hono, deps: RouteDeps): void {
           let content: string;
           try {
             content = await conn.readFile(`${wp}/${filename}`);
-          } catch {
+          } catch (err) {
+            logger.debug("[route:agents-sync] workspace file read failed", { error: String(err) });
             // File absent — remove from DB if cached
             if (dbFiles.has(filename)) {
               registry.deleteAgentFile(agent.id, filename);

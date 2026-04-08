@@ -11,6 +11,7 @@ import * as fsSync from "node:fs";
 import * as path from "node:path";
 import { createInterface } from "node:readline";
 import { Tool } from "../tool.js";
+import { logger } from "../../../lib/logger.js";
 
 const DEFAULT_LIMIT = 2000;
 const MAX_LINE_LENGTH = 2000;
@@ -76,7 +77,8 @@ export const ReadTool = Tool.define("read", {
     let stat: fsSync.Stats;
     try {
       stat = await fs.stat(filePath);
-    } catch {
+    } catch (err) {
+      logger.debug("[tool:read] stat failed", { error: String(err) });
       // Try to suggest similar files
       const dir = path.dirname(filePath);
       const base = path.basename(filePath).toLowerCase();
@@ -87,7 +89,8 @@ export const ReadTool = Tool.define("read", {
           .filter((e) => e.toLowerCase().includes(base) || base.includes(e.toLowerCase()))
           .slice(0, 3)
           .map((e) => path.join(dir, e));
-      } catch {
+      } catch (err) {
+        logger.debug("[tool:read] readdir for suggestions failed", { error: String(err) });
         // ignore
       }
       if (suggestions.length > 0) {

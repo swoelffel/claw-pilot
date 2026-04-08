@@ -9,6 +9,7 @@ import { z } from "zod";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Tool } from "../tool.js";
+import { logger } from "../../../lib/logger.js";
 
 export const EditTool = Tool.define("edit", {
   ownerOnly: true,
@@ -40,7 +41,8 @@ export const EditTool = Tool.define("edit", {
     let content: string;
     try {
       content = await fs.readFile(filePath, "utf-8");
-    } catch {
+    } catch (err) {
+      logger.debug("[tool:edit] file read failed", { error: String(err) });
       throw new Error(`File not found: ${filePath}`);
     }
 

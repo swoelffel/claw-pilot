@@ -20,6 +20,7 @@
  */
 
 import { readFileSync, statSync } from "node:fs";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -66,7 +67,8 @@ export function readWorkspaceFileCached(filePath: string): string | undefined {
         }
         // mtime changed — invalidate and re-read below
         _cache.delete(filePath);
-      } catch {
+      } catch (err) {
+        logger.debug("[workspace-cache] stat failed, file removed", { error: String(err) });
         // File no longer exists
         _cache.delete(filePath);
         return undefined;
@@ -92,7 +94,8 @@ export function readWorkspaceFileCached(filePath: string): string | undefined {
     });
 
     return content;
-  } catch {
+  } catch (err) {
+    logger.debug("[workspace-cache] file read failed", { error: String(err) });
     return undefined;
   }
 }

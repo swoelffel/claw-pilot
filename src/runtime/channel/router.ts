@@ -485,7 +485,10 @@ function extractArtifacts(db: Database.Database, messageId: string): OutboundArt
     let meta: { toolName?: string; toolCallId?: string; args?: Record<string, unknown> };
     try {
       meta = JSON.parse(part.metadata ?? "{}") as typeof meta;
-    } catch {
+    } catch (err) {
+      logger.warn("[channel-router] JSON.parse of tool_call metadata failed", {
+        error: String(err),
+      });
       continue;
     }
     if (meta.toolName !== "create_artifact") continue;
@@ -496,7 +499,10 @@ function extractArtifacts(db: Database.Database, messageId: string): OutboundArt
       try {
         const rm = JSON.parse(p.metadata ?? "{}") as { toolCallId?: string };
         return rm.toolCallId === meta.toolCallId;
-      } catch {
+      } catch (err) {
+        logger.warn("[channel-router] JSON.parse of tool_result metadata failed", {
+          error: String(err),
+        });
         return false;
       }
     });
@@ -532,7 +538,10 @@ function extractFileDeliveries(db: Database.Database, messageId: string): Outbou
     let meta: { toolName?: string; toolCallId?: string };
     try {
       meta = JSON.parse(part.metadata ?? "{}") as typeof meta;
-    } catch {
+    } catch (err) {
+      logger.warn("[channel-router] JSON.parse of send_file metadata failed", {
+        error: String(err),
+      });
       continue;
     }
     if (meta.toolName !== "send_file") continue;
@@ -543,7 +552,10 @@ function extractFileDeliveries(db: Database.Database, messageId: string): Outbou
       try {
         const rm = JSON.parse(p.metadata ?? "{}") as { toolCallId?: string };
         return rm.toolCallId === meta.toolCallId;
-      } catch {
+      } catch (err) {
+        logger.warn("[channel-router] JSON.parse of send_file result metadata failed", {
+          error: String(err),
+        });
         return false;
       }
     });
@@ -555,7 +567,10 @@ function extractFileDeliveries(db: Database.Database, messageId: string): Outbou
       if (data.path && data.filename) {
         files.push(data);
       }
-    } catch {
+    } catch (err) {
+      logger.warn("[channel-router] JSON.parse of file delivery content failed", {
+        error: String(err),
+      });
       continue;
     }
   }

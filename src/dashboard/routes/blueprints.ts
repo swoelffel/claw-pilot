@@ -9,6 +9,7 @@ import { apiError } from "../route-deps.js";
 import { buildAgentPayload } from "./_helpers.js";
 import { constants } from "../../lib/constants.js";
 import { listBuiltinBlueprints } from "../../core/builtin-blueprints.js";
+import { logger } from "../../lib/logger.js";
 
 /**
  * Seed workspace files (AGENTS.md, SOUL.md, etc.) for a blueprint agent.
@@ -40,7 +41,8 @@ async function seedBlueprintAgentFiles(
     let content: string;
     try {
       content = await fs.readFile(path.join(templateDir, filename), "utf-8");
-    } catch {
+    } catch (err) {
+      logger.debug("[route:blueprints] template file read failed", { error: String(err) });
       content = `# ${filename}\n`;
     }
 
@@ -134,7 +136,8 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
       if (!body.name || typeof body.name !== "string" || body.name.trim() === "") {
         return apiError(c, 400, "BLUEPRINT_NAME_REQUIRED", "name is required");
       }
-    } catch {
+    } catch (err) {
+      logger.warn("[route:blueprints] JSON parse failed on create", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
     try {
@@ -145,7 +148,10 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
           // If it's already valid JSON, keep it as is
           JSON.parse(body.tags);
           normalizedTags = body.tags;
-        } catch {
+        } catch (err) {
+          logger.debug("[route:blueprints] tags JSON parse fallback on create", {
+            error: String(err),
+          });
           // If it's a plain string, convert to JSON array
           normalizedTags = JSON.stringify([body.tags]);
         }
@@ -227,7 +233,8 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     }>;
     try {
       body = (await c.req.json()) as typeof body;
-    } catch {
+    } catch (err) {
+      logger.warn("[route:blueprints] JSON parse failed on update", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
@@ -238,7 +245,10 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
         try {
           // If it's already valid JSON, keep it as is
           JSON.parse(normalizedBody.tags);
-        } catch {
+        } catch (err) {
+          logger.debug("[route:blueprints] tags JSON parse fallback on update", {
+            error: String(err),
+          });
           // If it's a plain string, convert to JSON array
           normalizedBody.tags = JSON.stringify([normalizedBody.tags]);
         }
@@ -303,7 +313,8 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
           "Invalid agent_id: must be 2-30 lowercase alphanumeric chars with hyphens",
         );
       }
-    } catch {
+    } catch (err) {
+      logger.warn("[route:blueprints] JSON parse failed on agent create", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
@@ -353,7 +364,8 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     }>;
     try {
       body = (await c.req.json()) as typeof body;
-    } catch {
+    } catch (err) {
+      logger.warn("[route:blueprints] JSON parse failed on agent meta", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
@@ -395,7 +407,8 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
       if (typeof body.x !== "number" || typeof body.y !== "number") {
         return apiError(c, 400, "FIELD_INVALID", "x and y must be numbers");
       }
-    } catch {
+    } catch (err) {
+      logger.warn("[route:blueprints] JSON parse failed on agent position", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
@@ -439,7 +452,8 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
       body = (await c.req.json()) as { content: string };
       if (typeof body.content !== "string")
         return apiError(c, 400, "FIELD_INVALID", "content must be a string");
-    } catch {
+    } catch (err) {
+      logger.warn("[route:blueprints] JSON parse failed on file write", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
@@ -491,7 +505,8 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
       body = (await c.req.json()) as { targets: string[] };
       if (!Array.isArray(body.targets))
         return apiError(c, 400, "FIELD_INVALID", "targets must be an array");
-    } catch {
+    } catch (err) {
+      logger.warn("[route:blueprints] JSON parse failed on spawn-links", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 

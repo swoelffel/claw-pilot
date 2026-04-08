@@ -59,7 +59,8 @@ try {
   const pkgPath = path.resolve(__dirname, "../../package.json");
   const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version?: string };
   _serverVersion = pkg.version ?? "unknown";
-} catch {
+} catch (err) {
+  logger.debug("[server] failed to read package.json version", { error: String(err) });
   /* intentionally ignored — version stays "unknown" */
 }
 
@@ -274,7 +275,8 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
       return new Response(data, {
         headers: { "content-type": mime, "cache-control": "public, max-age=31536000, immutable" },
       });
-    } catch {
+    } catch (err) {
+      logger.debug("[server] static asset not found", { error: String(err) });
       return c.text("Not found", 404);
     }
   });
@@ -284,7 +286,8 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
     try {
       c.header("Cache-Control", "no-cache");
       return c.html(await serveIndex());
-    } catch {
+    } catch (err) {
+      logger.debug("[server] SPA fallback failed", { error: String(err) });
       return c.redirect("/");
     }
   });
@@ -333,7 +336,8 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
         } else {
           ws.close(4001, "Unauthorized");
         }
-      } catch {
+      } catch (err) {
+        logger.warn("[server] WebSocket auth message parse failed", { error: String(err) });
         ws.close(4001, "Invalid auth message");
       }
     };

@@ -284,8 +284,10 @@ export class Provisioner {
     if (portAllocated) {
       try {
         this.registry.releasePort(serverId, port);
-      } catch {
-        /* intentionally ignored — rollback is best-effort, DB may already be clean */
+      } catch (err) {
+        logger.debug("[provisioner] rollback releasePort failed (best-effort)", {
+          error: String(err),
+        });
       }
     }
     if (instanceRegistered) {
@@ -293,8 +295,10 @@ export class Provisioner {
         const inst = this.registry.getInstance(slug);
         if (inst) this.registry.deleteAgents(inst.id);
         this.registry.deleteInstance(slug);
-      } catch {
-        /* intentionally ignored — rollback is best-effort, DB may already be clean */
+      } catch (err) {
+        logger.debug("[provisioner] rollback deleteInstance failed (best-effort)", {
+          error: String(err),
+        });
       }
     }
 
@@ -340,8 +344,10 @@ export class Provisioner {
       let content: string;
       try {
         content = await fs.readFile(templatePath, "utf-8");
-      } catch {
-        // Use minimal fallback if template not found
+      } catch (err) {
+        logger.debug("[provisioner] template file not found, using fallback", {
+          error: String(err),
+        });
         content = `# ${file}\n`;
       }
 

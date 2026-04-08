@@ -9,6 +9,7 @@ import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
 import { instanceGuard } from "../../../lib/guards.js";
 import { mimeFromExtension } from "../../../lib/mime.js";
+import { logger } from "../../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -41,7 +42,8 @@ export function registerWorkspaceDownloadRoutes(app: Hono, deps: RouteDeps): voi
     let real: string;
     try {
       real = await fs.realpath(resolved);
-    } catch {
+    } catch (err) {
+      logger.debug("[route:workspace-download] realpath failed", { error: String(err) });
       return apiError(c, 404, "FILE_NOT_FOUND", "File not found");
     }
 
@@ -54,7 +56,8 @@ export function registerWorkspaceDownloadRoutes(app: Hono, deps: RouteDeps): voi
     let stat: Awaited<ReturnType<typeof fs.stat>>;
     try {
       stat = await fs.stat(real);
-    } catch {
+    } catch (err) {
+      logger.debug("[route:workspace-download] stat failed", { error: String(err) });
       return apiError(c, 404, "FILE_NOT_FOUND", "File not found");
     }
 

@@ -6,6 +6,7 @@
 
 import { execSync } from "node:child_process";
 import * as os from "node:os";
+import { logger } from "./logger.js";
 
 /**
  * Returns the PIDs of all descendant processes of the given PID.
@@ -27,7 +28,8 @@ export async function getDescendants(pid: number): Promise<number[]> {
     }
     // Unsupported platform — return empty (best-effort)
     return [];
-  } catch {
+  } catch (err) {
+    logger.debug("[process] getDescendants failed", { error: String(err) });
     return [];
   }
 }
@@ -65,7 +67,8 @@ function collectLinux(pid: number, acc: number[]): void {
         collectLinux(childPid, acc);
       }
     }
-  } catch {
+  } catch (err) {
+    logger.debug("[process] collectLinux failed", { error: String(err) });
     // Process may have exited — ignore
   }
 }
@@ -97,7 +100,8 @@ function collectDarwin(pid: number, acc: number[]): void {
       acc.push(childPid);
       collectDarwin(childPid, acc);
     }
-  } catch {
+  } catch (err) {
+    logger.debug("[process] pgrep failed", { error: String(err) });
     // pgrep exits with code 1 when no children found — ignore
   }
 }
@@ -110,7 +114,8 @@ function readdirSafe(dir: string): string[] {
   try {
     const { readdirSync } = require("node:fs") as typeof import("node:fs");
     return readdirSync(dir);
-  } catch {
+  } catch (err) {
+    logger.debug("[process] readdirSafe failed", { error: String(err) });
     return [];
   }
 }
@@ -119,7 +124,8 @@ function readFileSafe(filePath: string): string | undefined {
   try {
     const { readFileSync } = require("node:fs") as typeof import("node:fs");
     return readFileSync(filePath, "utf-8");
-  } catch {
+  } catch (err) {
+    logger.debug("[process] readFileSafe failed", { error: String(err) });
     return undefined;
   }
 }

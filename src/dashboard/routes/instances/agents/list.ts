@@ -4,6 +4,7 @@ import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { instanceGuard } from "../../../../lib/guards.js";
 import { buildAgentPayload } from "../../_helpers.js";
+import { logger } from "../../../../lib/logger.js";
 
 export function registerAgentListRoutes(app: Hono, deps: RouteDeps): void {
   const { registry } = deps;
@@ -38,7 +39,10 @@ export function registerAgentListRoutes(app: Hono, deps: RouteDeps): void {
           if (a.archetype) archetypeMap.set(a.id, a.archetype);
           if (a.persistence) persistenceMap.set(a.id, a.persistence);
         }
-      } catch {
+      } catch (err) {
+        logger.debug("[route:agents-list] runtime config JSON parse failed", {
+          error: String(err),
+        });
         /* intentionally ignored — enrichment is best-effort */
       }
     }

@@ -52,7 +52,8 @@ export function startHeartbeatRunner(
     let intervalMs: number;
     try {
       intervalMs = parseInterval(agent.heartbeat.every);
-    } catch {
+    } catch (err) {
+      logger.warn("[heartbeat] invalid interval for agent", { error: String(err) });
       // Skip agents with invalid interval (should not happen if schema is validated)
       continue;
     }

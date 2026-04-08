@@ -14,6 +14,7 @@ import * as fs from "node:fs/promises";
 import { z } from "zod";
 import { Tool } from "../tool.js";
 import { mimeFromExtension } from "../../../lib/mime.js";
+import { logger } from "../../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -49,7 +50,8 @@ export const SendFileTool = Tool.define("send_file", {
     let real: string;
     try {
       real = await fs.realpath(resolved);
-    } catch {
+    } catch (err) {
+      logger.debug("[tool:send-file] realpath failed", { error: String(err) });
       throw new Error(`File not found: ${filePath}`);
     }
 

@@ -7,6 +7,7 @@ import { constants } from "../../lib/constants.js";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { createRateLimiter } from "../rate-limit.js";
+import { logger } from "../../lib/logger.js";
 
 /** Timing-safe Bearer token comparison */
 function safeTokenCompare(a: string, b: string): boolean {
@@ -36,7 +37,8 @@ export function registerAuthRoutes(app: Hono, deps: RouteDeps, token: string): v
     let body: { username?: unknown; password?: unknown };
     try {
       body = await c.req.json();
-    } catch {
+    } catch (err) {
+      logger.warn("[route:auth] JSON parse failed on login", { error: String(err) });
       return apiError(c, 400, "INVALID_BODY", "Invalid JSON body");
     }
 

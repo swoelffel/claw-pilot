@@ -300,8 +300,10 @@ export class ModelDiscoveryService {
           apiKey = repo.decryptApiKey(providerKey.id);
           baseUrl = providerKey.baseUrl ?? undefined;
         }
-      } catch {
-        // Silent — fallback to env vars
+      } catch (err) {
+        logger.debug("[service] named key resolution failed, falling back to env vars", {
+          error: String(err),
+        });
       }
     }
 
@@ -353,8 +355,10 @@ export class ModelDiscoveryService {
       if (rows.length > 0) {
         logger.debug(`Model discovery: loaded ${rows.length} models from DB cache`);
       }
-    } catch {
-      // Table might not exist yet (migration pending) — silent
+    } catch (err) {
+      logger.debug("[service] failed to load discovered models from DB (migration pending?)", {
+        error: String(err),
+      });
     }
   }
 
@@ -380,8 +384,8 @@ export class ModelDiscoveryService {
           );
         }
       })();
-    } catch {
-      // Non-critical — in-memory cache is primary
+    } catch (err) {
+      logger.error("[service] failed to persist discovered models to DB", { error: String(err) });
     }
   }
 
@@ -401,8 +405,8 @@ export class ModelDiscoveryService {
              model_count = COALESCE(excluded.model_count, model_count)`,
         )
         .run(providerId, error === null ? new Date().toISOString() : null, error, modelCount);
-    } catch {
-      // Non-critical
+    } catch (err) {
+      logger.error("[service] failed to update discovery status in DB", { error: String(err) });
     }
   }
 

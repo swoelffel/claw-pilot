@@ -8,6 +8,7 @@ import { z } from "zod";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { isCryptoAvailable } from "../../lib/crypto.js";
+import { logger } from "../../lib/logger.js";
 import { NamedKeyRepository } from "../../core/repositories/named-key-repository.js";
 
 // ---------------------------------------------------------------------------
@@ -75,7 +76,8 @@ export function registerNamedKeyRoutes(app: Hono, deps: RouteDeps): void {
     let body: unknown;
     try {
       body = await c.req.json();
-    } catch {
+    } catch (err) {
+      logger.warn("[route:named-keys] JSON parse failed on create", { error: String(err) });
       return apiError(c, 400, "INVALID_BODY", "Invalid JSON body");
     }
 
@@ -123,7 +125,8 @@ export function registerNamedKeyRoutes(app: Hono, deps: RouteDeps): void {
     let body: unknown;
     try {
       body = await c.req.json();
-    } catch {
+    } catch (err) {
+      logger.warn("[route:named-keys] JSON parse failed on update", { error: String(err) });
       return apiError(c, 400, "INVALID_BODY", "Invalid JSON body");
     }
 

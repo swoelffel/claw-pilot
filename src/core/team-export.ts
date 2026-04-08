@@ -3,6 +3,7 @@
 
 import { stringify } from "yaml";
 import type { ServerConnection } from "../server/connection.js";
+import { logger } from "../lib/logger.js";
 import type { Registry, InstanceRecord, AgentRecord, BlueprintAgentRecord } from "./registry.js";
 import { AgentSync } from "./agent-sync.js";
 import {
@@ -37,8 +38,8 @@ function extractConfigFromJson(configJson: string | null): Record<string, unknow
       }
     }
     return hasKey ? result : undefined;
-  } catch {
-    // intentionally ignored — invalid JSON in config_json
+  } catch (err) {
+    logger.warn("[team-export] invalid JSON in config_json", { error: String(err) });
     return undefined;
   }
 }
@@ -97,8 +98,8 @@ function buildTeamAgent(
   if (agent.tags) {
     try {
       tags = JSON.parse(agent.tags) as string[];
-    } catch {
-      // intentionally ignored — tags stored as invalid JSON, treat as empty
+    } catch (err) {
+      logger.warn("[team-export] invalid JSON in agent tags", { error: String(err) });
       tags = null;
     }
   }
@@ -151,8 +152,8 @@ export async function exportInstanceTeam(
   try {
     const configRaw = await conn.readFile(instance.config_path);
     runtimeConfig = JSON.parse(configRaw) as Record<string, unknown>;
-  } catch {
-    // intentionally ignored — runtime.json may not exist for new instances
+  } catch (err) {
+    logger.debug("[team-export] runtime.json not found or unreadable", { error: String(err) });
   }
 
   // 3. Load agents
@@ -217,8 +218,8 @@ export function exportBlueprintTeam(registry: Registry, blueprintId: number): Te
       try {
         const parsed = JSON.parse(agent.model);
         config = { model: parsed };
-      } catch {
-        // intentionally ignored — model is a bare string, not JSON; use it as-is
+      } catch (err) {
+        logger.warn("[team-export] agent model is not JSON, using as-is", { error: String(err) });
         config = { model: agent.model };
       }
     }
@@ -242,8 +243,10 @@ export function exportBlueprintTeam(registry: Registry, blueprintId: number): Te
     if (!defaultModel && defaultAgent.model) {
       try {
         defaultModel = JSON.parse(defaultAgent.model) as string;
-      } catch {
-        // intentionally ignored — model is a bare string
+      } catch (err) {
+        logger.warn("[team-export] default agent model is not JSON, using as-is", {
+          error: String(err),
+        });
         defaultModel = defaultAgent.model;
       }
     }

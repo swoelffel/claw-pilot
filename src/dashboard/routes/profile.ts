@@ -10,6 +10,7 @@ import type { RouteDeps } from "../route-deps.js";
 import { constants } from "../../lib/constants.js";
 import { UserProfilePatchSchema } from "./profile-schema.js";
 import { markAllDirty } from "../../runtime/session/system-prompt-dirty.js";
+import { logger } from "../../lib/logger.js";
 
 /**
  * Extract the authenticated userId from the session cookie.
@@ -47,7 +48,8 @@ export function registerProfileRoutes(app: Hono, deps: RouteDeps): void {
     if (profile.ui_preferences) {
       try {
         uiPreferences = JSON.parse(profile.ui_preferences) as Record<string, unknown>;
-      } catch {
+      } catch (err) {
+        logger.warn("[route:profile] uiPreferences JSON parse failed", { error: String(err) });
         /* malformed JSON */
       }
     }
@@ -76,7 +78,8 @@ export function registerProfileRoutes(app: Hono, deps: RouteDeps): void {
     let body: unknown;
     try {
       body = await c.req.json();
-    } catch {
+    } catch (err) {
+      logger.warn("[route:profile] JSON parse failed", { error: String(err) });
       return apiError(c, 400, "INVALID_BODY", "Invalid JSON body");
     }
 

@@ -42,7 +42,10 @@ export function dashboardCommand(): Command {
       let token: string;
       try {
         token = (await fs.readFile(tokenPath, "utf-8")).trim();
-      } catch {
+      } catch (err) {
+        logger.debug("[dashboard-cmd] token file not found, generating new", {
+          error: String(err),
+        });
         token = generateDashboardToken();
         await fs.mkdir(path.dirname(tokenPath), { recursive: true });
         await fs.writeFile(tokenPath, token, { mode: 0o600 });

@@ -6,6 +6,7 @@ import type { RouteDeps } from "../../../route-deps.js";
 import { apiError } from "../../../route-deps.js";
 import { instanceGuard } from "../../../../lib/guards.js";
 import { z } from "zod";
+import { logger } from "../../../../lib/logger.js";
 
 const AgentMetaPatchSchema = z
   .object({
@@ -33,7 +34,8 @@ export function registerAgentUpdateRoutes(app: Hono, deps: RouteDeps): void {
       if (typeof body.x !== "number" || typeof body.y !== "number") {
         return apiError(c, 400, "FIELD_INVALID", "x and y must be numbers");
       }
-    } catch {
+    } catch (err) {
+      logger.warn("[route:agents-update] JSON parse failed on position", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
@@ -55,7 +57,8 @@ export function registerAgentUpdateRoutes(app: Hono, deps: RouteDeps): void {
     let raw: unknown;
     try {
       raw = await c.req.json();
-    } catch {
+    } catch (err) {
+      logger.warn("[route:agents-update] JSON parse failed on meta", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 

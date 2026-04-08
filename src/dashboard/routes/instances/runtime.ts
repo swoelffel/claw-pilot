@@ -120,7 +120,8 @@ function parseResponseBodyMessage(body: string | undefined): string | undefined 
     }
     if (typeof parsed.error === "string") return parsed.error;
     if (typeof parsed.message === "string") return parsed.message;
-  } catch {
+  } catch (err) {
+    logger.debug("[route:runtime] response body JSON parse failed", { error: String(err) });
     // Not JSON — return as-is if short enough
     if (body.length < 200) return body;
   }
@@ -315,7 +316,10 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     const messagesSinceCompaction = (() => {
       try {
         return countMessagesSinceLastCompaction(db, sessionId);
-      } catch {
+      } catch (err) {
+        logger.debug("[route:runtime] countMessagesSinceLastCompaction failed", {
+          error: String(err),
+        });
         return 0;
       }
     })();
@@ -346,7 +350,8 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
         return db
           .prepare("SELECT server_id, tool_name FROM rt_mcp_tools WHERE instance_slug = ?")
           .all(slug) as Array<{ server_id: string; tool_name: string }>;
-      } catch {
+      } catch (err) {
+        logger.debug("[route:runtime] rt_mcp_tools query failed", { error: String(err) });
         return [];
       }
     })();
@@ -391,7 +396,8 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       const workspaceDir = workspaceDirs.find((d) => {
         try {
           return fs.existsSync(d);
-        } catch {
+        } catch (err) {
+          logger.debug("[route:runtime] workspace dir check failed", { error: String(err) });
           return false;
         }
       });
@@ -399,7 +405,8 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       return [...candidates, ...memoryFiles].filter((f) => {
         try {
           return fs.existsSync(path.join(workspaceDir, f));
-        } catch {
+        } catch (err) {
+          logger.debug("[route:runtime] workspace file check failed", { error: String(err) });
           return false;
         }
       });
@@ -514,7 +521,8 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     };
     try {
       body = await c.req.json();
-    } catch {
+    } catch (err) {
+      logger.warn("[route:runtime] JSON parse failed on chat", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Request body must be valid JSON");
     }
 
@@ -867,7 +875,8 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     let body: { answer?: string };
     try {
       body = await c.req.json();
-    } catch {
+    } catch (err) {
+      logger.warn("[route:runtime] JSON parse failed on question answer", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Request body must be valid JSON");
     }
 
@@ -947,7 +956,8 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
           LIMIT ?`,
         )
         .all(slug, agentId, limit) as HeartbeatRow[];
-    } catch {
+    } catch (err) {
+      logger.debug("[route:runtime] heartbeat history query failed", { error: String(err) });
       return c.json({ ticks: [] });
     }
 

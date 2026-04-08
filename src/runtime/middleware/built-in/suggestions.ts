@@ -100,7 +100,8 @@ async function generateSuggestions(
       : agentConfig;
     try {
       resolved = resolveModelForAgent(db, instanceSlug, tempAgentConfig, opts.runtimeConfig);
-    } catch {
+    } catch (err) {
+      logger.warn("[suggestions] named key model resolution failed", { error: String(err) });
       resolved = resolveModelFromString(
         opts.suggestionsModel ?? agentConfig.model,
         opts.modelAliases,
@@ -161,7 +162,8 @@ function parseSuggestions(text: string, max: number): string[] {
     return parsed
       .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
       .slice(0, max);
-  } catch {
+  } catch (err) {
+    logger.warn("[suggestions] JSON.parse of suggestions failed", { error: String(err) });
     return [];
   }
 }

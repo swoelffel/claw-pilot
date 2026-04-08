@@ -38,6 +38,7 @@ import type {
   RuntimeAgentConfig,
   ModelAlias,
 } from "../config/index.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Prompt loop injection types (avoids circular dependency with session/prompt-loop)
@@ -308,7 +309,8 @@ export function createTaskTool(options: {
         if (resolveTargetModel) {
           try {
             targetModel = resolveTargetModel(primaryPeerConfig);
-          } catch {
+          } catch (err) {
+            logger.warn("[tool:task] target model resolution failed", { error: String(err) });
             targetModel = resolvedModel;
           }
         } else {
@@ -986,7 +988,8 @@ export function resolveAgentModel(
     const providerId = modelRef.slice(0, slashIdx);
     const modelId = modelRef.slice(slashIdx + 1);
     return resolveModel(providerId, modelId, env !== undefined ? { env } : {});
-  } catch {
+  } catch (err) {
+    logger.debug("[tool:task] model resolution failed, using fallback", { error: String(err) });
     // If model resolution fails (e.g. missing API key at task-build time),
     // fall back to the caller's model silently — the actual key is resolved
     // at prompt-loop time from process.env, so this is safe.

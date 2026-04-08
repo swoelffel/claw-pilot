@@ -4,6 +4,7 @@ import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { apiError } from "../../../route-deps.js";
 import { instanceGuard } from "../../../../lib/guards.js";
+import { logger } from "../../../../lib/logger.js";
 
 export function registerAgentSpawnLinkRoutes(app: Hono, deps: RouteDeps): void {
   const { registry } = deps;
@@ -25,7 +26,8 @@ export function registerAgentSpawnLinkRoutes(app: Hono, deps: RouteDeps): void {
       ) {
         return apiError(c, 400, "FIELD_INVALID", "targets must be an array of strings");
       }
-    } catch {
+    } catch (err) {
+      logger.warn("[route:spawn-links] JSON parse failed", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 

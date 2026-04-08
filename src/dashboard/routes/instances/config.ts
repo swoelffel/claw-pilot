@@ -131,7 +131,8 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
         return apiError(c, 400, "INVALID_BODY", "Invalid config patch");
       }
       patch = result.data;
-    } catch {
+    } catch (err) {
+      logger.warn("[route:config] JSON parse failed on config patch", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
@@ -455,7 +456,8 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
         return apiError(c, 400, "INVALID_BODY", "token must be a string or null");
       }
       token = (raw.token as string | null | undefined) ?? null;
-    } catch {
+    } catch (err) {
+      logger.warn("[route:config] JSON parse failed on telegram token", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
@@ -472,7 +474,8 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
         try {
           const fileConfig = loadRuntimeConfig(stateDir);
           varName = fileConfig.telegram.botTokenEnvVar;
-        } catch {
+        } catch (err) {
+          logger.debug("[route:config] runtime.json fallback load failed", { error: String(err) });
           /* use default */
         }
       }

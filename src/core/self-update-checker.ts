@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import { constants } from "../lib/constants.js";
+import { logger } from "../lib/logger.js";
 
 export interface SelfUpdateStatus {
   currentVersion: string;
@@ -62,8 +63,8 @@ export class SelfUpdateChecker {
       const pkgPath = path.resolve(path.dirname(thisFile), "../package.json");
       const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version?: string };
       return pkg.version ?? "0.0.0";
-    } catch {
-      // intentionally ignored — package.json unreadable at runtime, fall back to 0.0.0
+    } catch (err) {
+      logger.debug("[self-update-checker] failed to read package.json", { error: String(err) });
       return "0.0.0";
     }
   }

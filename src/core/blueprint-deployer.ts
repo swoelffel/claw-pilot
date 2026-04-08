@@ -69,8 +69,10 @@ export class BlueprintDeployer {
         try {
           const parsed = JSON.parse(bpAgent.model) as Record<string, unknown>;
           modelStr = typeof parsed["primary"] === "string" ? parsed["primary"] : bpAgent.model;
-        } catch {
-          // intentionally ignored — model is a bare string, not JSON
+        } catch (err) {
+          logger.warn("[blueprint-deployer] agent model is not JSON, using as-is", {
+            error: String(err),
+          });
           modelStr = bpAgent.model;
         }
       } else {

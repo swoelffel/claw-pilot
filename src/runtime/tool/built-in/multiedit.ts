@@ -10,6 +10,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Tool } from "../tool.js";
 import { replace } from "./edit.js";
+import { logger } from "../../../lib/logger.js";
 
 const EditSchema = z.object({
   oldString: z.string().describe("Exact string to find (must be unique in the file)"),
@@ -41,7 +42,8 @@ export const MultiEditTool = Tool.define("multiedit", {
     let content: string;
     try {
       content = await fs.readFile(filePath, "utf-8");
-    } catch {
+    } catch (err) {
+      logger.debug("[tool:multiedit] file read failed", { error: String(err) });
       throw new Error(`File not found: ${filePath}`);
     }
 

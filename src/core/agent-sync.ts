@@ -250,8 +250,8 @@ export class AgentSync {
 
         try {
           content = await this.conn.readFile(filePath);
-        } catch {
-          // File absent or unreadable — remove from DB if it was cached
+        } catch (err) {
+          logger.debug("[agent-sync] file absent or unreadable", { error: String(err) });
           if (dbFiles.has(filename)) {
             this.registry.deleteAgentFile(agentDbId, filename);
             totalFilesChanged++;

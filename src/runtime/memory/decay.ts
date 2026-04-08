@@ -13,6 +13,7 @@
  */
 
 import * as fs from "node:fs";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -84,7 +85,8 @@ export function applyDecayToFile(
   let content: string;
   try {
     content = fs.readFileSync(filePath, "utf-8");
-  } catch {
+  } catch (err) {
+    logger.debug("[memory:decay] file read failed", { error: String(err) });
     return { updated: 0, removed: 0 };
   }
 

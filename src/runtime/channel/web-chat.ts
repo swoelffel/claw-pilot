@@ -23,6 +23,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { Channel } from "./channel.js";
 import type { InboundMessage, OutboundMessage } from "../types.js";
 import { ChannelError } from "./channel.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -159,7 +160,8 @@ export class WebChatChannel implements Channel {
     let parsed: ClientMessage;
     try {
       parsed = JSON.parse(raw) as ClientMessage;
-    } catch {
+    } catch (err) {
+      logger.warn("[web-chat] JSON.parse of client message failed", { error: String(err) });
       this.sendError(peerId, "Invalid JSON");
       return;
     }
@@ -201,7 +203,8 @@ export class WebChatChannel implements Channel {
       if (provided.length === expected.length) {
         try {
           return timingSafeEqual(provided, expected);
-        } catch {
+        } catch (err) {
+          logger.warn("[web-chat] auth header comparison failed", { error: String(err) });
           return false;
         }
       }
@@ -215,7 +218,8 @@ export class WebChatChannel implements Channel {
       if (provided.length === expected.length) {
         try {
           return timingSafeEqual(provided, expected);
-        } catch {
+        } catch (err) {
+          logger.warn("[web-chat] auth token comparison failed", { error: String(err) });
           return false;
         }
       }

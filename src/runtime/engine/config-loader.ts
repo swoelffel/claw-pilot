@@ -114,7 +114,8 @@ export function exportRuntimeJsonSnapshot(stateDir: string, config: RuntimeConfi
     const filePath = runtimeConfigPath(stateDir);
     const content = JSON.stringify(config, null, 2) + "\n";
     fs.writeFileSync(filePath, content, "utf-8");
-  } catch {
+  } catch (err) {
+    logger.debug("[config-loader] snapshot export failed", { error: String(err) });
     // Non-critical: the DB is the source of truth, the file is for debugging
   }
 }

@@ -20,6 +20,7 @@ import { promisify } from "node:util";
 import { Tool } from "../tool.js";
 import { evaluateRuleset } from "../../permission/index.js";
 import type { RuntimeAgentConfig } from "../../config/index.js";
+import { logger } from "../../../lib/logger.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -96,7 +97,8 @@ async function fetchRemoteSkills(skillUrls: string[]): Promise<SkillEntry[]> {
       if (!response.ok) continue;
       const raw = await response.json();
       index = raw as RemoteSkillIndex;
-    } catch {
+    } catch (err) {
+      logger.debug("[tool:skill] remote index fetch failed", { error: String(err) });
       // Network error, timeout, or JSON parse failure — skip silently
       continue;
     }
@@ -123,7 +125,8 @@ async function fetchRemoteSkills(skillUrls: string[]): Promise<SkillEntry[]> {
           ...(skill.description !== undefined ? { description: skill.description } : {}),
         });
         continue;
-      } catch {
+      } catch (err) {
+        logger.debug("[tool:skill] cache miss for skill", { error: String(err) });
         // Cache miss — proceed to download
       }
 
@@ -150,7 +153,8 @@ async function fetchRemoteSkills(skillUrls: string[]): Promise<SkillEntry[]> {
           path: localPath,
           ...(skill.description !== undefined ? { description: skill.description } : {}),
         });
-      } catch {
+      } catch (err) {
+        logger.debug("[tool:skill] remote skill download failed", { error: String(err) });
         // Download or write error — skip this skill silently
       }
     }
@@ -321,7 +325,8 @@ function parseFrontmatter(content: string): SkillFrontmatter {
     if (requires.bins !== undefined || requires.env !== undefined) {
       result.requires = requires;
     }
-  } catch {
+  } catch (err) {
+    logger.debug("[tool:skill] frontmatter parse error", { error: String(err) });
     // Parse error — return what we have so far
   }
 
@@ -353,7 +358,8 @@ async function isBinAvailable(bin: string): Promise<boolean> {
   try {
     await execFileAsync(cmd, [bin]);
     return true;
-  } catch {
+  } catch (err) {
+    logger.debug("[tool:skill] bin availability check failed", { error: String(err) });
     return false;
   }
 }
@@ -404,7 +410,8 @@ async function listSkillResources(skillDir: string): Promise<string[]> {
     let entries;
     try {
       entries = await fs.readdir(dir, { withFileTypes: true });
-    } catch {
+    } catch (err) {
+      logger.debug("[tool:skill] readdir for resources failed", { error: String(err) });
       return;
     }
     // Sort entries for deterministic output
@@ -461,7 +468,8 @@ export async function listAvailableSkills(
     let entries;
     try {
       entries = await fs.readdir(dir, { withFileTypes: true });
-    } catch {
+    } catch (err) {
+      logger.debug("[tool:skill] skill directory inaccessible", { error: String(err) });
       // Directory doesn't exist or is inaccessible — skip silently
       continue;
     }
@@ -477,7 +485,8 @@ export async function listAvailableSkills(
       let content: string;
       try {
         content = await fs.readFile(skillFile, "utf-8");
-      } catch {
+      } catch (err) {
+        logger.debug("[tool:skill] SKILL.md not found in directory", { error: String(err) });
         // No SKILL.md — not a valid skill
         continue;
       }
@@ -487,7 +496,8 @@ export async function listAvailableSkills(
       let eligible: boolean;
       try {
         eligible = await checkEligibility(frontmatter);
-      } catch {
+      } catch (err) {
+        logger.debug("[tool:skill] eligibility check failed", { error: String(err) });
         eligible = true; // On error, assume eligible
       }
       if (!eligible) continue;
@@ -573,7 +583,8 @@ export const SkillTool = Tool.define("skill", {
       let content: string;
       try {
         content = await fs.readFile(skillFile, "utf-8");
-      } catch {
+      } catch (err) {
+        logger.debug("[tool:skill] skill file not found in directory", { error: String(err) });
         // Try next directory
         continue;
       }

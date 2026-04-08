@@ -12,6 +12,7 @@ import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
 import { instanceGuard } from "../../../lib/guards.js";
 import { getBus, PermissionReplied } from "../../../runtime/index.js";
+import { logger } from "../../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Zod schema — body de POST /reply
@@ -65,7 +66,8 @@ export function registerPermissionRoutes(app: Hono, deps: RouteDeps): void {
            ORDER BY created_at DESC`,
         )
         .all(slug) as RtPermissionRow[];
-    } catch {
+    } catch (err) {
+      logger.debug("[route:permissions] permissions query failed", { error: String(err) });
       // Table may not exist on older DBs — return empty list gracefully
       rules = [];
     }
@@ -90,7 +92,8 @@ export function registerPermissionRoutes(app: Hono, deps: RouteDeps): void {
         .prepare(`DELETE FROM rt_permissions WHERE id = ? AND instance_slug = ?`)
         .run(id, slug);
       deleted = result.changes > 0;
-    } catch {
+    } catch (err) {
+      logger.warn("[route:permissions] delete permission rule failed", { error: String(err) });
       return apiError(c, 500, "DB_ERROR", "Failed to delete permission rule");
     }
 
@@ -116,7 +119,8 @@ export function registerPermissionRoutes(app: Hono, deps: RouteDeps): void {
     let rawBody: unknown;
     try {
       rawBody = await c.req.json();
-    } catch {
+    } catch (err) {
+      logger.warn("[route:permissions] JSON parse failed on reply", { error: String(err) });
       return apiError(c, 400, "INVALID_JSON", "Request body must be valid JSON");
     }
 
