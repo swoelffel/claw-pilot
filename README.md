@@ -2,9 +2,9 @@
 
 **CLI + web dashboard to orchestrate multi-agent clusters on a Linux or macOS server**
 
-`claw-pilot` v0.61.12 manages the full lifecycle of **claw-runtime** agent instances: provisioning,
+`claw-pilot` v0.63.0 manages the full lifecycle of **claw-runtime** agent instances: provisioning,
 service integration, visual Agent Builder, inter-agent messaging, middleware pipeline, named API keys,
-user profiles, and a real-time dashboard to monitor and interact with multi-agent teams.
+user profiles, budget enforcement, dynamic model discovery, and a real-time dashboard to monitor and interact with multi-agent teams.
 
 All instances use the **claw-runtime** engine — a native Node.js multi-agent runtime with built-in
 support for Agent-to-Agent (A2A) messaging, heartbeat scheduling, MCP integration, permissions system,
@@ -42,11 +42,13 @@ memory management, middleware chain, and plugin architecture.
 - **Named API keys** — centralized AES-256-GCM encrypted key management, assignable to instances and agents
 - **User profiles** — per-user preferences (language, timezone, communication style, custom instructions)
 - **Agent archetypes** — 6 built-in templates (analyst, communicator, evaluator, generator, orchestrator, planner)
+- **Budget enforcement** — per-instance/agent monthly or lifetime limits, soft alert (80%), hard stop (100%), auto-pause, Telegram notifications
+- **Dynamic model discovery** — real-time model discovery from 8 provider APIs with polling, caching, and DB persistence
 
 ### Dashboard & Tooling
 - **Web dashboard** — real-time status dashboard, agent builder, settings, device pairing (port 19000)
 - **Runtime Pilot** — multi-agent chat with tool call visualization, token/cost tracking, context panel, session tree
-- **Cost dashboard** — per-agent cost tracking with SVG charts
+- **Cost dashboard** — per-agent cost tracking with SVG charts + budget management tab
 - **Activity console** — live event stream (SSE) with filters and floating widget
 - **Memory browser** — browse and search agent memory files with decay scores
 - **Heartbeat heatmap** — SVG heatmap of multi-agent heartbeat activity
@@ -143,7 +145,7 @@ claw-pilot dashboard
 | **Runtime Pilot** | Multi-agent chat — tool calls, token usage, context panel, session tree |
 | **Session Logs** | Browse session history, messages, system prompt snapshots |
 | **Settings** | Per-instance configuration: general, agents, runtime, devices, MCP, permissions, named keys |
-| **Cost Dashboard** | Per-agent cost tracking with SVG charts |
+| **Cost Dashboard** | Per-agent cost tracking with SVG charts + budget management |
 | **Activity Console** | Live event stream with real-time filters |
 | **Memory Browser** | Browse and search agent memory files with decay scores |
 | **Heartbeat Heatmap** | SVG heatmap of multi-agent heartbeat activity and scheduling |
@@ -157,12 +159,13 @@ claw-pilot dashboard
 src/
   commands/         CLI commands — thin wrappers over core/ (17 commands incl. auth, service)
   core/             Business logic (registry, discovery, provisioner, agent-sync, blueprints, …)
-    repositories/   15 SQLite repositories (server, instance, agent, port, config, event,
+    repositories/   16 SQLite repositories (server, instance, agent, port, config, event,
                     blueprint, agent-blueprint, runtime-session, rt-event, cost, heartbeat,
-                    named-key, runtime-config, user-profile)
+                    named-key, runtime-config, user-profile, budget)
+    model-discovery/ Dynamic model discovery service (8 provider adapters, polling, DB persistence)
   dashboard/        Hono HTTP server + WebSocket monitor + auth (sessions/cookies)
-    routes/         REST API (~105 endpoints) + WebSocket
-  db/               SQLite schema and migrations (schema.ts) — current version: 26
+    routes/         REST API (~113 endpoints) + WebSocket
+  db/               SQLite schema and migrations (schema.ts) — current version: 28
   lib/              Utilities (logger, errors, constants, platform, xdg, shell, …)
   runtime/          claw-runtime engine
     bus/            Event bus (pub/sub)
@@ -196,14 +199,14 @@ templates/
 
 ### Data Model
 
-SQLite `~/.claw-pilot/registry.db` — schema v26. See [`docs/registry-db.md`](docs/registry-db.md).
+SQLite `~/.claw-pilot/registry.db` — schema v28. See [`docs/registry-db.md`](docs/registry-db.md).
 
 **claw-pilot registry** (instance management):
 | Table | Role |
 |-------|------|
 | `servers` | Physical servers (always 1 local row in v1) |
-| `instances` | Instances — slug, port, state, config path, runtime_config_json, default_named_key_id |
-| `agents` | Agents per instance/blueprint — canvas position, sync hash, skills, config_json, named_key_id |
+| `instances` | Instances — slug, port, state, runtime_config_json, default_named_key_id |
+| `agents` | Agents per instance/blueprint — canvas position, skills, config_json, named_key_id |
 | `agent_files` | Workspace file cache (SOUL.md, AGENTS.md, MEMORY.md…) |
 | `agent_links` | A2A spawn links and tool dependencies between agents |
 | `blueprints` | Reusable agent team templates with canvas layouts |
@@ -215,6 +218,10 @@ SQLite `~/.claw-pilot/registry.db` — schema v26. See [`docs/registry-db.md`](d
 | `events` | Audit log per instance (creation, modification, deletion) |
 | `users` / `sessions` | Dashboard user accounts + HTTP session auth |
 | `user_profiles` | Per-user preferences (language, timezone, communication style) |
+| `rt_budgets` | Per-instance/agent budget limits (monthly/lifetime, soft alert, hard stop) |
+| `rt_budget_events` | Budget audit trail (alerts, overrides, resets) |
+| `discovered_models` | Models discovered from provider APIs (cached, with capabilities + cost) |
+| `discovery_status` | Provider discovery status (last success/error, model count) |
 
 **claw-runtime persistence** (conversation history & state):
 | Table | Role |
@@ -240,7 +247,7 @@ pnpm build         # Build CLI + UI (dist/)
 pnpm build:cli     # Build CLI only
 pnpm build:ui      # Build UI only (Vite)
 pnpm typecheck:all # tsc --noEmit (backend + UI)
-pnpm test:run      # Run unit/integration tests (~1200 passing)
+pnpm test:run      # Run unit/integration tests (~1900 passing)
 pnpm test:ui       # Run UI tests
 pnpm test:e2e      # Run e2e tests (~100, real HTTP server, in-memory DB)
 pnpm lint:all      # oxlint src/ + ui/src/
@@ -260,11 +267,11 @@ Pre-push hooks: spellcheck + test:run. Commits follow conventional commits (comm
 | **Runtime** | Node.js >= 22.12.0, ESM modules, TypeScript ~6.0 |
 | **CLI** | Commander.js ^14 + @inquirer/prompts (interactive wizard) |
 | **HTTP / WebSocket** | Hono ^4.12 + ws ^8 (real-time status + agent communication) |
-| **Database** | better-sqlite3 ^12 + SQLite WAL (schema v26) |
+| **Database** | better-sqlite3 ^12 + SQLite WAL (schema v28) |
 | **UI** | Lit ^3 web components + Vite ^8 + @lit/localize (i18n, 6 languages) |
 | **Build** | tsdown (CLI), Vite ^8 (UI) |
 | **LLM Integration** | Vercel AI SDK ^6.0 (@ai-sdk/anthropic, openai, google) |
-| **Tests** | Vitest ^4 (~1200 unit/integration + ~100 e2e) |
+| **Tests** | Vitest ^4 (~1900 unit/integration + ~100 e2e) |
 | **Lint / Format** | oxlint ^1.56 + Prettier ^3.8 + cspell + lefthook (pre-commit/push hooks) |
 | **Plugin System** | Event bus + hook-based plugins for tool, session, and message lifecycle |
 | **MCP** | @modelcontextprotocol/sdk ^1.28 (stdio + HTTP transports) |
@@ -281,7 +288,7 @@ Pre-push hooks: spellcheck + test:run. Commits follow conventional commits (comm
 | [`docs/ux-components/`](docs/ux-components/) | Individual component and dialog docs (26 components) |
 | [`docs/design-rules.md`](docs/design-rules.md) | Design system, anti-patterns, delivery checklist |
 | [`docs/i18n.md`](docs/i18n.md) | i18n architecture — adding languages, translation workflow |
-| [`docs/registry-db.md`](docs/registry-db.md) | Database schema (v26), migration history, recovery procedures |
+| [`docs/registry-db.md`](docs/registry-db.md) | Database schema (v28), migration history, recovery procedures |
 | [`CLAUDE.md`](CLAUDE.md) | Development conventions, key patterns, common pitfalls |
 | [`CHANGELOG.md`](CHANGELOG.md) | Detailed release notes |
 
@@ -291,7 +298,9 @@ Pre-push hooks: spellcheck + test:run. Commits follow conventional commits (comm
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 
-- **v0.61.11** (current) — Named API keys (AES-256-GCM), user profiles, agent archetypes, schema v26
+- **v0.63.0** (current) — Dynamic model discovery, 8 providers, circular dependency fix
+- **v0.62.0** — Budget enforcement with auto-pause, Telegram alerts, 55 new tests
+- **v0.61.12** — Documentation overhaul (README, main-doc, registry-db)
 - **v0.58.0** — Dashboard service management, auth command, system prompt snapshots
 - **v0.55.0** — Agent templates, runtime config in DB, skills sync
 - **v0.49.1** — Middleware chain, fire-and-forget fix, TypeScript 6.0
@@ -308,4 +317,4 @@ MIT — see [LICENSE](LICENSE)
 
 ---
 
-*Updated: 2026-04-03 — v0.61.11, schema v26, named API keys, user profiles, agent archetypes, ~105 REST endpoints*
+*Updated: 2026-04-08 — v0.63.0, schema v28, 8 providers, budget enforcement, dynamic model discovery, ~113 REST endpoints*

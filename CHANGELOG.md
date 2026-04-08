@@ -6,6 +6,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.63.0] — 2026-04-08
+
+### Added
+
+- **Dynamic model discovery** — Real-time model discovery from provider APIs with polling (24h default), DB persistence (`discovered_models` + `discovery_status` tables, migration v28), and stale cache fallback. 8 provider adapters: Anthropic, OpenAI, Google, OpenRouter, Ollama, Mistral, xAI, OpenCode Zen. Discovery triggered on named key CRUD.
+- **3 new providers** — Mistral (`mistral`), xAI/Grok (`xai`), OpenCode Zen (`opencode`). All use OpenAI-compatible Chat Completions API.
+
+### Fixed
+
+- **Circular dependency** in model resolver injection — broke cycle between provider resolution and model discovery.
+- **A2A messaging labels** — Fixed sender/receiver swap in `message_from` label and wrong direction in received messages.
+- **Named API key resolution** for inter-agent messaging (`send_message`/`task` tools).
+- **Chat Completions API** — Use correct API for OpenAI-compatible providers (Mistral, xAI, OpenCode).
+- **Provider error details** — Extract and surface provider error details in chat error responses.
+- **Agent namedKeyId** — Persist agent's named key ID on save in agent detail panel.
+
+---
+
+## [0.62.3] — 2026-04-05
+
+### Fixed
+
+- **Security: Vite update** — 8.0.3 → 8.0.5 (GHSA-v2wj, GHSA-p9ff).
+- **API rate limits** — Raised instance rate limit from 10 to 30 req/min for multi-instance dashboards.
+- **CSS layout overflow** — Defensive CSS for dashboard layout overflow.
+
+---
+
 ## [0.62.2] — 2026-04-05
 
 ### Added

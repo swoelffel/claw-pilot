@@ -1,7 +1,7 @@
 # claw-pilot — Functional Architecture
 
-> **Version**: 0.61.11
-> **Stack**: TypeScript ~6.0 / Node.js ESM, Lit ^3, SQLite (schema v26), Hono ^4.12
+> **Version**: 0.63.0
+> **Stack**: TypeScript ~6.0 / Node.js ESM, Lit ^3, SQLite (schema v28), Hono ^4.12
 > **Repo**: https://github.com/swoelffel/claw-pilot
 > **Detailed References**: [ux-design.md](./ux-design.md) (index) · [ux-screens/](./ux-screens/) · [ux-components/](./ux-components/) · [agents.md](./agents.md) · [registry-db.md](./registry-db.md) · [i18n.md](./i18n.md) · [design-rules.md](./design-rules.md) · `CLAUDE.md`
 
@@ -77,6 +77,10 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
 | `named_api_keys` | v24 | AES-256-GCM encrypted API keys (admin-global, provider_id, default_model) |
 | `instance_named_keys` | v24 (deprecated v25) | Junction: instance ↔ named key (replaced by FK on instances) |
 | `rt_system_prompts` | v26 | System prompt snapshots per session (deduplicated by content hash) |
+| `rt_budgets` | v27 | Per-instance/agent budget limits (monthly/lifetime, soft alert 80%, hard stop 100%, override +20%) |
+| `rt_budget_events` | v27 | Budget audit trail (soft_alert, hard_stop, reset, override, reconcile) |
+| `discovered_models` | v28 | Models discovered from provider APIs (provider_id + model_id PK, capabilities JSON, cost JSON) |
+| `discovery_status` | v28 | Provider discovery status (last_success, last_error, model_count) |
 
 **Added columns (v17–v26)**:
 - `agents.config_json` (v20) — full RuntimeAgentConfig as JSON blob
@@ -84,7 +88,7 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
 - `instances.runtime_config_json` (v21) — full RuntimeConfig as JSON blob (source of truth)
 - `instances.default_named_key_id` (v25) — default named key FK
 
-**Current migration version: 26**
+**Current migration version: 28**
 
 **Default port range**: 18789–18838 (50 ports, 10 instances at 5-port intervals). Dashboard: 19000.
 
@@ -130,9 +134,9 @@ lifecycle.ts              start/stop/restart — PID file daemon
 health.ts                 health check — PID file
 provisioner.ts            instance creation (wizard)
 agent-provisioner.ts      add agents to existing instance
-registry.ts               facade over 15 repositories
+registry.ts               facade over 16 repositories
 registry-types.ts         types InstanceRecord, AgentRecord, BlueprintRecord, AgentBlueprintRecord, etc.
-repositories/             15 SQLite repositories:
+repositories/             16 SQLite repositories:
   server-repository.ts      — servers table
   instance-repository.ts    — instances table
   agent-repository.ts       — agents + agent_files + agent_links tables
@@ -148,6 +152,11 @@ repositories/             15 SQLite repositories:
   named-key-repository.ts   — named_api_keys CRUD
   runtime-config-repository.ts — instances.runtime_config_json operations
   user-profile-repository.ts — user_profiles CRUD
+  budget-repository.ts      — rt_budgets + rt_budget_events CRUD
+model-discovery/          Dynamic model discovery from provider APIs:
+  service.ts                — ModelDiscoveryService (polling 24h, DB persistence, stale cache fallback)
+  types.ts                  — DiscoveredModel, ProviderAdapter interfaces
+  adapters/                 — 8 provider adapters (anthropic, openai, google, openrouter, ollama, mistral, xai, opencode)
 agent-sync.ts             sync agents from runtime.json
 agent-workspace.ts        resolve agent workspace paths
 blueprint-deployer.ts     deploy blueprint on creation
@@ -177,8 +186,8 @@ engine/       ClawRuntime(config, db, slug, workDir?) — state machine, channel
               plugin-wiring: wirePluginsToBus()
               channel-factory: creates channel instances from config
 bus/          getBus(slug), disposeBus(), 26 event types (typed EventDef<T, P>)
-provider/     resolveModel(providerId, modelId), 5 providers, auth-profiles rotation
-              MODEL_CATALOG: 10 models (Anthropic, OpenAI, Google, Ollama)
+provider/     resolveModel(providerId, modelId), 8 providers, auth-profiles rotation
+              MODEL_CATALOG: 12 static models + dynamic discovery from provider APIs
 permission/   ruleset last-match-wins, allow/deny/ask, wildcard glob matching (index.ts, wildcard.ts)
 profile/      user profile resolution for system prompt injection (community-resolver.ts, types.ts)
 config/       RuntimeConfig Zod schema, parseRuntimeConfig(), createDefaultRuntimeConfig()
@@ -187,6 +196,7 @@ session/      createSession(), getOrCreatePermanentSession(), runPromptLoop()
               auto compaction, system-prompt builder, workspace-cache
               message-builder: converts DB messages → ModelMessage[] (AI SDK v6)
               usage-tracker: cost and token tracking
+              budget-check: pre/post-LLM budget enforcement (soft alert, hard stop, override)
               cleanup: ephemeral session cleanup (configurable retention)
               tool-set-builder: builds agent tool set from profile + MCP + plugins
               system-prompt-cache: getCachedSystemPrompt()
@@ -217,7 +227,7 @@ server.ts          Hono entry point — auth middleware (session cookie + Bearer
                    rate limiting, security headers, SPA fallback, WebSocket
 monitor.ts         WebSocket monitor (health_update every 10s, delta-compressed)
                    enriches with: pendingPermissions, heartbeat agents/alerts, MCP count
-rate-limit.ts      Rate limiter per IP (60/min API, 10/min instances, 1/5min self-update)
+rate-limit.ts      Rate limiter per IP (60/min API, 30/min instances, 1/5min self-update)
 request-id.ts      X-Request-Id middleware
 route-deps.ts      RouteDeps interface + apiError helper
 session-store.ts   Server session store (TTL, sliding window, periodic cleanup)
@@ -236,10 +246,12 @@ routes/
     lifecycle.ts   CRUD instances + start/stop/restart + discover/adopt
     config.ts      GET/PATCH config + providers catalog + telegram token
     runtime.ts     GET runtime status/sessions/messages/context, POST chat, GET stream SSE
+    budgets.ts     Budget CRUD, override, reset, audit events (8 endpoints)
     costs.ts       GET cost aggregations per agent/session
     events.ts      GET rt_events (activity console)
     heartbeat.ts   GET heartbeat history and analytics
     memory.ts      GET memory files with decay scores
+    config-schemas.ts  Schema validation helpers for config patches
     mcp.ts         GET mcp tools/status
     permissions.ts GET permissions, DELETE rule, POST reply
     telegram.ts    GET pairing, POST approve, DELETE reject
@@ -378,7 +390,7 @@ Hono HTTP/WS server on port 19000. Dual auth: session cookie (priority) or Beare
 | **Session auth** | `POST /api/auth/login` → HttpOnly cookie, server session store with TTL |
 | **Token auth** | `Authorization: Bearer <token>` — timing-safe comparison |
 | **WebSocket auth** | First message authenticated via token |
-| **Rate limiting** | 60 req/min per IP on `/api/*` · 10 req/min on `POST /api/instances` · 1/5min self-update |
+| **Rate limiting** | 60 req/min per IP on `/api/*` · 30 req/min on `POST /api/instances` · 1/5min self-update |
 | **Security headers** | CSP, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` |
 | **Validation** | Zod `.strict()` on config patches |
 | **TokenCache** | In-memory token cache |
@@ -400,7 +412,7 @@ Hono HTTP/WS server on port 19000. Dual auth: session cookie (priority) or Beare
 | `#/agent-templates/:id` | Agent template detail + files | `cp-agent-template-detail` |
 | `#/profile` | User profile settings | `cp-profile-settings` |
 
-### REST API (~105 endpoints)
+### REST API (~113 endpoints)
 
 #### Auth
 
@@ -468,6 +480,19 @@ Hono HTTP/WS server on port 19000. Dual auth: session cookie (priority) or Beare
 | `GET` | `/api/instances/:slug/runtime/sessions/:id/context` | LLM context |
 | `POST` | `/api/instances/:slug/runtime/chat` | Send message |
 | `GET` | `/api/instances/:slug/runtime/chat/stream` | SSE real-time streaming |
+
+#### Instances — Budgets (8 endpoints)
+
+| Method | Route | Role |
+|---|---|---|
+| `GET` | `/api/instances/:slug/budgets` | List budgets |
+| `POST` | `/api/instances/:slug/budgets` | Create budget (instance or agent scope) |
+| `GET` | `/api/instances/:slug/budgets/:budgetId` | Get single budget |
+| `PATCH` | `/api/instances/:slug/budgets/:budgetId` | Update budget |
+| `DELETE` | `/api/instances/:slug/budgets/:budgetId` | Delete budget |
+| `GET` | `/api/instances/:slug/budgets/:budgetId/events` | Budget audit events |
+| `POST` | `/api/instances/:slug/budgets/:budgetId/override` | Apply override (+20% above limit) |
+| `POST` | `/api/instances/:slug/budgets/:budgetId/reset` | Manual reset |
 
 #### Instances — Costs, Events, Heartbeat, Memory
 
@@ -594,15 +619,20 @@ Full reference for agent fields: [agents.md](./agents.md)
 
 ### Supported providers
 
-10 models across 5 providers (see `src/runtime/provider/models.ts`):
+12 static models across 8 providers + dynamic model discovery (see `src/runtime/provider/models.ts` + `src/core/model-discovery/`):
 
-| Provider | ID | Models |
-|---|---|---|
-| Anthropic | `anthropic` | claude-opus-4-5, claude-sonnet-4-5, claude-haiku-3-5 |
-| OpenAI | `openai` | gpt-4o, gpt-4o-mini, o3-mini |
-| Google | `google` | gemini-2.0-flash, gemini-2.5-pro |
-| Ollama | `ollama` | llama3.2, qwen2.5-coder (local, no cost) |
-| OpenRouter | `openrouter` | any OpenRouter model (pass-through) |
+| Provider | ID | API | Static Models |
+|---|---|---|---|
+| Anthropic | `anthropic` | anthropic-messages | claude-opus-4-5, claude-sonnet-4-5, claude-haiku-3-5 |
+| OpenAI | `openai` | openai-completions | gpt-4o, gpt-4o-mini, o3-mini |
+| Google | `google` | google-generative-ai | gemini-2.0-flash, gemini-2.5-pro |
+| Ollama | `ollama` | ollama | llama3.2, qwen2.5-coder (local, no cost) |
+| OpenRouter | `openrouter` | openrouter | any OpenRouter model (pass-through) |
+| Mistral | `mistral` | openai-completions | (dynamic discovery only) |
+| xAI / Grok | `xai` | openai-completions | (dynamic discovery only) |
+| OpenCode Zen | `opencode` | openai-completions | (dynamic discovery only, no auth) |
+
+**Dynamic model discovery** (v0.63.0): `ModelDiscoveryService` polls provider APIs every 24h to discover available models. Results are cached in `discovered_models` table and merged with the static catalog. Stale cache is kept on error (better than empty list). Discovery is triggered on named key CRUD.
 
 ### Daemon lifecycle
 
@@ -696,4 +726,4 @@ Separate SQLite FTS5 index in `memory-index.db`. Chunks MEMORY.md and memory/*.m
 
 ---
 
-*Updated: 2026-04-03 — v0.61.11: schema v26, 15 repositories, ~105 API endpoints, 26 bus events, TS 6.0, named API keys, user profiles, agent archetypes*
+*Updated: 2026-04-08 — v0.63.0: schema v28, 16 repositories, ~113 API endpoints, 8 providers, budget enforcement, dynamic model discovery*
