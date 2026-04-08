@@ -561,4 +561,48 @@ export const templates = {
   // agent-card-mini.ts / instance-card.ts
   "acm-budget-exceeded": "Budget dépassé",
   "card-budget-exceeded": "Budget dépassé",
+
+  // instance-card.ts — task counts
+  "meta-task": "tâche",
+  "meta-tasks": "tâches",
+  "btn-tasks": "Tâches",
+
+  // task-board.ts
+  "task-board-loading": "Chargement des tâches…",
+  "task-board-back": "Retour",
+  "task-board-title": "Tâches",
+  "task-board-new": "Nouvelle tâche",
+  "task-board-empty-col": "Aucune tâche",
+  "task-board-title-placeholder": "Titre de la tâche…",
+  "task-board-create": "Créer",
+  "task-board-cancel": "Annuler",
+
+  // task-board.ts / task-detail.ts — shared priorities
+  "task-priority-low": "Basse",
+  "task-priority-medium": "Moyenne",
+  "task-priority-high": "Haute",
+  "task-priority-critical": "Critique",
+
+  // task-detail.ts
+  "task-loading": "Chargement…",
+  "task-not-found": "Tâche introuvable",
+  "task-field-title": "Titre",
+  "task-field-status": "Statut",
+  "task-status-pending": "En attente",
+  "task-status-in-progress": "En cours",
+  "task-status-blocked": "Bloquée",
+  "task-status-completed": "Terminée",
+  "task-status-cancelled": "Annulée",
+  "task-field-priority": "Priorité",
+  "task-field-assignee": "Assigné à",
+  "task-unassigned": "Non assigné",
+  "task-delete": "Supprimer la tâche",
+  "task-assign": "Assigner",
+  "task-view-session": "Voir la session",
+  "task-field-description": "Description",
+  "task-field-created": "Créée le",
+  "task-by": "par",
+  "task-field-comments": "Commentaires",
+  "task-comment-placeholder": "Ajouter un commentaire…",
+  "task-comment-send": "Envoyer",
 };

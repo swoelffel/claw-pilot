@@ -451,6 +451,24 @@ export class InstanceCard extends LitElement {
       `);
     }
 
+    // Task counts
+    const tc = inst.taskCounts;
+    if (tc && (tc.pending > 0 || tc.inProgress > 0 || tc.blocked > 0)) {
+      const total = tc.pending + tc.inProgress + tc.blocked;
+      items.push(html`
+        <button
+          class="status-item ${tc.blocked > 0 ? "warn" : ""}"
+          @click=${(e: Event) => {
+            e.stopPropagation();
+            this._navigate("tasks");
+          }}
+        >
+          ☐ ${total}
+          ${total === 1 ? msg("task", { id: "meta-task" }) : msg("tasks", { id: "meta-tasks" })}
+        </button>
+      `);
+    }
+
     if (items.length === 0) {
       // Rien à afficher — on masque la barre
       return nothing;
@@ -506,6 +524,18 @@ export class InstanceCard extends LitElement {
               </button>
             `
           : nothing}
+
+        <button
+          class="menu-item"
+          @click=${(e: Event) => {
+            e.stopPropagation();
+            this._menuOpen = false;
+            this._navigate("tasks");
+          }}
+        >
+          <span class="menu-icon">☐</span>
+          ${msg("Tasks", { id: "btn-tasks" })}
+        </button>
 
         <button
           class="menu-item"

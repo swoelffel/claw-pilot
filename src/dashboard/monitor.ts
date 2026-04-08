@@ -105,6 +105,31 @@ export class Monitor {
     }
   }
 
+  private _getTaskCounts(
+    slug: string,
+  ): { pending: number; inProgress: number; blocked: number } | undefined {
+    if (!this.db) return undefined;
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT status, COUNT(*) AS cnt FROM rt_tasks
+           WHERE instance_slug = ? AND status IN ('pending', 'in_progress', 'blocked')
+           GROUP BY status`,
+        )
+        .all(slug) as { status: string; cnt: number }[];
+      if (rows.length === 0) return undefined;
+      const result = { pending: 0, inProgress: 0, blocked: 0 };
+      for (const row of rows) {
+        if (row.status === "pending") result.pending = row.cnt;
+        else if (row.status === "in_progress") result.inProgress = row.cnt;
+        else if (row.status === "blocked") result.blocked = row.cnt;
+      }
+      return result;
+    } catch {
+      return undefined;
+    }
+  }
+
   /**
    * Enrich a HealthStatus with pendingPermissions, heartbeat, mcp counts and transitioning state.
    */
@@ -116,6 +141,10 @@ export class Monitor {
       heartbeatAgents: this.countHeartbeatAgents(status.slug),
       heartbeatAlerts: this.countHeartbeatAlerts(status.slug),
       mcpConnected: this._getMcpConnectedCount(status.slug),
+      ...(() => {
+        const tc = this._getTaskCounts(status.slug);
+        return tc !== undefined ? { taskCounts: tc } : {};
+      })(),
       ...(transitioning !== undefined ? { transitioning } : {}),
     };
   }

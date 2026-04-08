@@ -525,4 +525,48 @@ export const templates = {
   "budget-confirm-continue": "e continua",
   "acm-budget-exceeded": "Budget superato",
   "card-budget-exceeded": "Budget superato",
+
+  // instance-card.ts — task counts
+  "meta-task": "attività",
+  "meta-tasks": "attività",
+  "btn-tasks": "Attività",
+
+  // task-board.ts
+  "task-board-loading": "Caricamento attività…",
+  "task-board-back": "Indietro",
+  "task-board-title": "Attività",
+  "task-board-new": "Nuova attività",
+  "task-board-empty-col": "Nessuna attività",
+  "task-board-title-placeholder": "Titolo attività…",
+  "task-board-create": "Crea",
+  "task-board-cancel": "Annulla",
+
+  // task-board.ts / task-detail.ts — shared priorities
+  "task-priority-low": "Bassa",
+  "task-priority-medium": "Media",
+  "task-priority-high": "Alta",
+  "task-priority-critical": "Critica",
+
+  // task-detail.ts
+  "task-loading": "Caricamento…",
+  "task-not-found": "Attività non trovata",
+  "task-field-title": "Titolo",
+  "task-field-status": "Stato",
+  "task-status-pending": "In attesa",
+  "task-status-in-progress": "In corso",
+  "task-status-blocked": "Bloccata",
+  "task-status-completed": "Completata",
+  "task-status-cancelled": "Annullata",
+  "task-field-priority": "Priorità",
+  "task-field-assignee": "Assegnato a",
+  "task-unassigned": "Non assegnato",
+  "task-delete": "Elimina attività",
+  "task-assign": "Assegna",
+  "task-view-session": "Visualizza sessione",
+  "task-field-description": "Descrizione",
+  "task-field-created": "Creata il",
+  "task-by": "da",
+  "task-field-comments": "Commenti",
+  "task-comment-placeholder": "Aggiungi un commento…",
+  "task-comment-send": "Invia",
 };

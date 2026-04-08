@@ -36,6 +36,7 @@ import "./components/live-stream-widget.js";
 import "./components/memory-browser.js";
 import "./components/heartbeat-heatmap.js";
 import "./components/session-logs.js";
+import "./components/task-board.js";
 import "./components/budget-alert-banner.js";
 
 // Initialize locale — resolved before first render via localeReady promise
@@ -711,6 +712,8 @@ export class CpApp extends LitElement {
       this._route = { view: "heartbeat", slug: detail.slug };
     } else if (detail.view === "session-logs" && detail.slug) {
       this._route = { view: "session-logs", slug: detail.slug };
+    } else if (detail.view === "tasks" && detail.slug) {
+      this._route = { view: "tasks", slug: detail.slug };
     } else if (detail.view === "agents-builder" && detail.slug) {
       this._route = { view: "agents-builder", slug: detail.slug };
     } else if (detail.view === "blueprints") {
@@ -915,6 +918,15 @@ export class CpApp extends LitElement {
           @navigate=${this._navigate}
         ></cp-budget-alert-banner>
         <cp-session-logs .slug=${this._route.slug} @navigate=${this._navigate}></cp-session-logs>
+      `;
+    }
+    if (this._route.view === "tasks") {
+      return html`
+        <cp-budget-alert-banner
+          .slug=${this._route.slug}
+          @navigate=${this._navigate}
+        ></cp-budget-alert-banner>
+        <cp-task-board .slug=${this._route.slug} @navigate=${this._navigate}></cp-task-board>
       `;
     }
     return html``;

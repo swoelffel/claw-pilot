@@ -558,4 +558,48 @@ export const templates = {
   // agent-card-mini.ts / instance-card.ts
   "acm-budget-exceeded": "Budget exceeded",
   "card-budget-exceeded": "Budget exceeded",
+
+  // instance-card.ts — task counts
+  "meta-task": "task",
+  "meta-tasks": "tasks",
+  "btn-tasks": "Tasks",
+
+  // task-board.ts
+  "task-board-loading": "Loading tasks...",
+  "task-board-back": "Back",
+  "task-board-title": "Tasks",
+  "task-board-new": "New Task",
+  "task-board-empty-col": "No tasks",
+  "task-board-title-placeholder": "Task title...",
+  "task-board-create": "Create",
+  "task-board-cancel": "Cancel",
+
+  // task-board.ts / task-detail.ts — shared priorities
+  "task-priority-low": "Low",
+  "task-priority-medium": "Medium",
+  "task-priority-high": "High",
+  "task-priority-critical": "Critical",
+
+  // task-detail.ts
+  "task-loading": "Loading...",
+  "task-not-found": "Task not found",
+  "task-field-title": "Title",
+  "task-field-status": "Status",
+  "task-status-pending": "Pending",
+  "task-status-in-progress": "In Progress",
+  "task-status-blocked": "Blocked",
+  "task-status-completed": "Completed",
+  "task-status-cancelled": "Cancelled",
+  "task-field-priority": "Priority",
+  "task-field-assignee": "Assignee",
+  "task-unassigned": "Unassigned",
+  "task-delete": "Delete task",
+  "task-assign": "Assign",
+  "task-view-session": "View session",
+  "task-field-description": "Description",
+  "task-field-created": "Created",
+  "task-by": "by",
+  "task-field-comments": "Comments",
+  "task-comment-placeholder": "Add a comment...",
+  "task-comment-send": "Send",
 };
