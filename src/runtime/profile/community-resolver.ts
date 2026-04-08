@@ -4,10 +4,10 @@
 // Single-user mode: all operations target the admin user's profile.
 // Enterprise edition replaces this module with RBAC + SSO support.
 
-import type { ProfileResolver, UserProfile, UserProviderConfig } from "./types.js";
+import type { ProfileResolver, UserProfile } from "./types.js";
 import { logger } from "../../lib/logger.js";
 import type { UserProfileRepository } from "../../core/repositories/user-profile-repository.js";
-import type { UserProfileRecord, UserProviderRecord } from "../../core/registry-types.js";
+import type { UserProfileRecord } from "../../core/registry-types.js";
 
 // ---------------------------------------------------------------------------
 // Record → Domain mapping helpers
@@ -34,26 +34,6 @@ function toUserProfile(record: UserProfileRecord): UserProfile {
     defaultModel: record.default_model,
     avatarUrl: record.avatar_url,
     uiPreferences,
-  };
-}
-
-function toProviderConfig(record: UserProviderRecord): UserProviderConfig {
-  let headers: Record<string, string> | null = null;
-  if (record.headers) {
-    try {
-      headers = JSON.parse(record.headers) as Record<string, string>;
-    } catch (err) {
-      logger.warn("[profile] JSON.parse of provider headers failed", { error: String(err) });
-      // Malformed JSON — treat as null
-    }
-  }
-
-  return {
-    providerId: record.provider_id,
-    apiKeyEnvVar: record.api_key_env_var,
-    baseUrl: record.base_url,
-    priority: record.priority,
-    headers,
   };
 }
 
@@ -85,12 +65,6 @@ export class CommunityProfileResolver implements ProfileResolver {
     return record ? toUserProfile(record) : undefined;
   }
 
-  getProviders(userId?: number): UserProviderConfig[] {
-    const uid = this.resolveUserId(userId);
-    if (uid === undefined) return [];
-    return this.repo.getProviders(uid).map(toProviderConfig);
-  }
-
   updateProfile(data: Partial<Omit<UserProfile, "userId">>, userId?: number): UserProfile {
     const uid = this.resolveUserId(userId);
     if (uid === undefined) {
@@ -112,26 +86,5 @@ export class CommunityProfileResolver implements ProfileResolver {
 
     const record = this.repo.upsertProfile(uid, dbData);
     return toUserProfile(record);
-  }
-
-  upsertProvider(data: UserProviderConfig, userId?: number): void {
-    const uid = this.resolveUserId(userId);
-    if (uid === undefined) {
-      throw new Error("No user found to update provider for");
-    }
-
-    this.repo.upsertProvider(uid, {
-      provider_id: data.providerId,
-      api_key_env_var: data.apiKeyEnvVar,
-      base_url: data.baseUrl,
-      priority: data.priority,
-      headers: data.headers ? JSON.stringify(data.headers) : null,
-    });
-  }
-
-  removeProvider(providerId: string, userId?: number): void {
-    const uid = this.resolveUserId(userId);
-    if (uid === undefined) return;
-    this.repo.removeProvider(uid, providerId);
   }
 }

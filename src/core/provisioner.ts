@@ -5,12 +5,11 @@ import { createHash } from "node:crypto";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry } from "./registry.js";
 import type { WizardAnswers } from "./config-generator.js";
-import { generateEnv, PROVIDER_ENV_VARS } from "./config-generator.js";
-import { PROVIDER_CATALOG } from "../lib/provider-catalog.js";
+import { generateEnv } from "./config-generator.js";
 import { generateGatewayToken } from "../lib/crypto.js";
 import { constants } from "../lib/constants.js";
 import { getInstancesDir, getRuntimeStateDir, deriveWebChatPort } from "../lib/platform.js";
-import { InstanceAlreadyExistsError, ClawPilotError } from "../lib/errors.js";
+import { InstanceAlreadyExistsError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
 import { shellEscape } from "../lib/shell.js";
 
@@ -25,62 +24,6 @@ export interface ProvisionResult {
   gatewayToken: string;
   agentCount: number;
   telegramBot?: string;
-}
-
-// TODO(cleanup): remove after v0.62 — instance .env API keys are deprecated.
-// Provisioner writes plaintext API keys to .env; should be replaced by
-// direct named key reference from the DB at runtime.
-/** Exported for testing: resolve the API key from answers, reading from existing instance if needed */
-export async function resolveApiKey(
-  answers: Pick<WizardAnswers, "provider" | "apiKey">,
-  registry: Registry,
-  conn: ServerConnection,
-): Promise<string> {
-  let resolvedApiKey = answers.apiKey;
-
-  if (resolvedApiKey === "reuse") {
-    const envVar = PROVIDER_ENV_VARS[answers.provider] ?? "";
-    const catalogEntry = PROVIDER_CATALOG.find((p) => p.id === answers.provider);
-    const requiresKey = catalogEntry?.requiresKey ?? true;
-
-    if (!envVar) {
-      // Provider needs no API key and has no env var — nothing to reuse
-      return "";
-    }
-
-    const existing = registry.listInstances();
-    if (existing.length === 0) {
-      if (!requiresKey) return ""; // Optional key, no existing instance — OK
-      throw new ClawPilotError(
-        "No existing instance to reuse API key from",
-        "NO_EXISTING_INSTANCE",
-      );
-    }
-    const existingInst = existing[0]!;
-    const existingEnvPath = path.join(existingInst.state_dir, ".env");
-
-    let envContent: string;
-    try {
-      envContent = await conn.readFile(existingEnvPath);
-    } catch (err) {
-      if (!requiresKey) return ""; // Optional key, .env unreadable — OK
-      throw new ClawPilotError(
-        `Could not read .env from existing instance "${existingInst.slug}": ${err instanceof Error ? err.message : String(err)}`,
-        "ENV_READ_FAILED",
-      );
-    }
-
-    const match = envContent.match(new RegExp(`${envVar}=(.+)`));
-    resolvedApiKey = match?.[1]?.trim() ?? "";
-    if (!resolvedApiKey && requiresKey) {
-      throw new ClawPilotError(
-        `Could not find ${envVar} in existing instance "${existingInst.slug}" .env`,
-        "API_KEY_READ_FAILED",
-      );
-    }
-  }
-
-  return resolvedApiKey;
 }
 
 export class Provisioner {
@@ -125,12 +68,7 @@ export class Provisioner {
       logger.step("Generating secrets...");
       const gatewayToken = generateGatewayToken();
 
-      // Resolve API key
-      const resolvedApiKey = await resolveApiKey(answers, this.registry, this.conn);
-
       const envContent = generateEnv({
-        provider: answers.provider,
-        apiKey: resolvedApiKey,
         gatewayToken,
         ...(answers.telegram.botToken !== undefined && {
           telegramBotToken: answers.telegram.botToken,

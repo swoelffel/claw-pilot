@@ -3,7 +3,7 @@
 // CRUD operations for user_profiles and user_providers tables.
 
 import type Database from "better-sqlite3";
-import type { UserProfileRecord, UserProviderRecord } from "../registry-types.js";
+import type { UserProfileRecord } from "../registry-types.js";
 
 // ---------------------------------------------------------------------------
 // Input types for upsert operations
@@ -19,15 +19,6 @@ export interface UserProfileUpsertData {
   avatar_url?: string | null;
   /** Raw JSON string for ui_preferences */
   ui_preferences?: string | null;
-}
-
-export interface UserProviderUpsertData {
-  provider_id: string;
-  api_key_env_var: string;
-  base_url?: string | null;
-  priority?: number;
-  /** Raw JSON string for headers */
-  headers?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,44 +92,5 @@ export class UserProfileRepository {
     }
 
     return this.getProfile(userId)!;
-  }
-
-  // --- Providers ---
-  // TODO(cleanup): remove after v0.62 — user_providers is deprecated.
-  // These methods are still used by community-resolver.ts at runtime.
-  // Once community-resolver migrates to named_api_keys, remove these.
-
-  getProviders(userId: number): UserProviderRecord[] {
-    return this.db
-      .prepare("SELECT * FROM user_providers WHERE user_id = ? ORDER BY priority ASC")
-      .all(userId) as UserProviderRecord[];
-  }
-
-  upsertProvider(userId: number, data: UserProviderUpsertData): void {
-    this.db
-      .prepare(
-        `INSERT INTO user_providers (user_id, provider_id, api_key_env_var, base_url, priority, headers, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-         ON CONFLICT(user_id, provider_id) DO UPDATE SET
-           api_key_env_var = excluded.api_key_env_var,
-           base_url = excluded.base_url,
-           priority = excluded.priority,
-           headers = excluded.headers,
-           updated_at = datetime('now')`,
-      )
-      .run(
-        userId,
-        data.provider_id,
-        data.api_key_env_var,
-        data.base_url ?? null,
-        data.priority ?? 0,
-        data.headers ?? null,
-      );
-  }
-
-  removeProvider(userId: number, providerId: string): void {
-    this.db
-      .prepare("DELETE FROM user_providers WHERE user_id = ? AND provider_id = ?")
-      .run(userId, providerId);
   }
 }

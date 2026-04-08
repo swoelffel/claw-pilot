@@ -1,7 +1,0 @@
-// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
-
-exports[`generateEnv > matches full .env snapshot for anthropic 1`] = `
-"ANTHROPIC_API_KEY=sk-ant-test123
-OPENCLAW_GW_AUTH_TOKEN=abcdef123456
-"
-`;

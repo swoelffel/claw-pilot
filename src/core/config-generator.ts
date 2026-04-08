@@ -29,25 +29,12 @@ export interface WizardAnswers {
   blueprintTeamFile?: import("./team-schema.js").TeamFile;
 }
 
-// Re-export for backward compatibility with callers that import from config-generator.
-// Also used locally in generateEnv().
+// Re-export for callers that import from config-generator (wizard, provisioner).
 export { PROVIDER_ENV_VARS } from "../lib/providers.js";
-import { PROVIDER_ENV_VARS } from "../lib/providers.js";
 
-// TODO(cleanup): remove after v0.62 — instance .env API keys are deprecated.
-// The runtime should read named keys directly from the DB instead of .env files.
-/** Generate .env content */
-export function generateEnv(options: {
-  provider: string;
-  apiKey: string;
-  gatewayToken: string;
-  telegramBotToken?: string;
-}): string {
+/** Generate .env content (gateway token + optional telegram bot token) */
+export function generateEnv(options: { gatewayToken: string; telegramBotToken?: string }): string {
   const lines: string[] = [];
-  const envVar = PROVIDER_ENV_VARS[options.provider] ?? "";
-  if (envVar && options.apiKey) {
-    lines.push(`${envVar}=${options.apiKey}`);
-  }
   lines.push(`OPENCLAW_GW_AUTH_TOKEN=${options.gatewayToken}`);
   if (options.telegramBotToken) {
     lines.push(`TELEGRAM_BOT_TOKEN=${options.telegramBotToken}`);

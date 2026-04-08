@@ -60,53 +60,12 @@ describe("CommunityProfileResolver", () => {
     expect(updated.customInstructions).toBe("Be concise");
   });
 
-  it("upsertProvider and getProviders work correctly", () => {
-    resolver.upsertProvider({
-      providerId: "anthropic",
-      apiKeyEnvVar: "ANTHROPIC_API_KEY",
-      baseUrl: null,
-      priority: 0,
-      headers: null,
-    });
-
-    const providers = resolver.getProviders();
-    expect(providers).toHaveLength(1);
-    expect(providers[0]!.providerId).toBe("anthropic");
-  });
-
-  it("removeProvider removes provider", () => {
-    resolver.upsertProvider({
-      providerId: "openai",
-      apiKeyEnvVar: "OPENAI_API_KEY",
-      baseUrl: null,
-      priority: 0,
-      headers: null,
-    });
-
-    resolver.removeProvider("openai");
-    expect(resolver.getProviders()).toHaveLength(0);
-  });
-
   it("handles JSON uiPreferences roundtrip", () => {
     const prefs = { theme: "dark", fontSize: 14 };
     resolver.updateProfile({ uiPreferences: prefs });
 
     const profile = resolver.getActiveProfile();
     expect(profile!.uiPreferences).toEqual(prefs);
-  });
-
-  it("handles JSON headers roundtrip on providers", () => {
-    const headers = { "X-Custom": "value" };
-    resolver.upsertProvider({
-      providerId: "custom",
-      apiKeyEnvVar: "CUSTOM_KEY",
-      baseUrl: null,
-      priority: 0,
-      headers,
-    });
-
-    const providers = resolver.getProviders();
-    expect(providers[0]!.headers).toEqual(headers);
   });
 
   it("returns undefined for empty DB (no users)", () => {
@@ -117,7 +76,6 @@ describe("CommunityProfileResolver", () => {
     const freshResolver = new CommunityProfileResolver(freshRepo);
 
     expect(freshResolver.getActiveProfile()).toBeUndefined();
-    expect(freshResolver.getProviders()).toEqual([]);
 
     freshDb.close();
   });

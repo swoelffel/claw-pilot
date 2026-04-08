@@ -160,16 +160,3 @@ export interface UserProfileRecord {
   created_at: string;
   updated_at: string;
 }
-
-export interface UserProviderRecord {
-  id: number;
-  user_id: number;
-  provider_id: string;
-  api_key_env_var: string;
-  base_url: string | null;
-  priority: number;
-  /** JSON blob stored as TEXT in SQLite */
-  headers: string | null;
-  created_at: string;
-  updated_at: string;
-}

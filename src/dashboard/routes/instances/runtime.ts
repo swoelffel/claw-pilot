@@ -10,8 +10,6 @@ import { logger } from "../../../lib/logger.js";
 import { instanceGuard } from "../../../lib/guards.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
 import { buildResolvedEnv } from "../../../lib/env-reader.js";
-import { CommunityProfileResolver } from "../../../runtime/profile/community-resolver.js";
-import { UserProfileRepository } from "../../../core/repositories/user-profile-repository.js";
 import {
   listMessages,
   listParts,
@@ -142,8 +140,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     if (guard) return guard;
 
     const stateDir = getRuntimeStateDir(slug);
-    const profileResolver = new CommunityProfileResolver(new UserProfileRepository(db));
-    const config = loadMergedConfigDbFirst(registry, slug, stateDir, profileResolver);
+    const config = loadMergedConfigDbFirst(registry, slug, stateDir);
 
     if (!config) {
       return c.json({ slug, hasConfig: false, config: null });
@@ -272,8 +269,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     if (guard) return guard;
 
     const stateDir = getRuntimeStateDir(slug);
-    const profileResolver = new CommunityProfileResolver(new UserProfileRepository(db));
-    const config = loadMergedConfigDbFirst(registry, slug, stateDir, profileResolver);
+    const config = loadMergedConfigDbFirst(registry, slug, stateDir);
     if (!config) {
       return apiError(c, 404, "RUNTIME_CONFIG_NOT_FOUND", "No runtime config found");
     }
@@ -531,8 +527,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     }
 
     const stateDir = getRuntimeStateDir(slug);
-    const profileResolver = new CommunityProfileResolver(new UserProfileRepository(db));
-    const config = loadMergedConfigDbFirst(registry, slug, stateDir, profileResolver);
+    const config = loadMergedConfigDbFirst(registry, slug, stateDir);
     if (!config) {
       return apiError(
         c,

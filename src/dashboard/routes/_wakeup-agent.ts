@@ -14,8 +14,6 @@ import type Database from "better-sqlite3";
 import type { Registry } from "../../core/registry.js";
 import { getRuntimeStateDir } from "../../lib/platform.js";
 import { buildResolvedEnv } from "../../lib/env-reader.js";
-import { CommunityProfileResolver } from "../../runtime/profile/community-resolver.js";
-import { UserProfileRepository } from "../../core/repositories/user-profile-repository.js";
 import {
   runPromptLoop,
   getOrCreatePermanentSession,
@@ -51,8 +49,7 @@ export function wakeupAgent(options: {
 
   const run = async (): Promise<void> => {
     const stateDir = getRuntimeStateDir(slug);
-    const profileResolver = new CommunityProfileResolver(new UserProfileRepository(db));
-    const config = loadMergedConfigDbFirst(registry, slug, stateDir, profileResolver);
+    const config = loadMergedConfigDbFirst(registry, slug, stateDir);
     if (!config) return;
 
     initAgentRegistry(config.agents);

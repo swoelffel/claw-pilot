@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-`claw-pilot` v0.63.1 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, permanent cross-channel sessions, and extensible middleware pipeline.
+`claw-pilot` v0.64.2 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, permanent cross-channel sessions, and extensible middleware pipeline.
 
 All instances use the **claw-runtime** engine — a native Node.js engine (`src/runtime/`), managed via PID file daemon.
 
@@ -55,7 +55,7 @@ pnpm vitest run -t "POST /api/instances/:slug/start"
 ```
 
 Pre-commit hooks (lefthook): format:check + lint:all + typecheck:all.
-Pre-push hooks: test:run. Commits must follow conventional commits (commitlint).
+Pre-push hooks: test:run + spellcheck + no-silent-catches gate. Commits must follow conventional commits (commitlint).
 
 ## Architecture
 
@@ -65,7 +65,7 @@ src/
   commands/         # CLI commands — thin wrappers over core/
   core/             # All business logic
   dashboard/        # HTTP server (Hono) + WebSocket monitor
-  db/               # SQLite schema + migrations (schema.ts) — current version: 16
+  db/               # SQLite schema + migrations (schema.ts) — current version: 29
   lib/              # Shared utilities (logger, constants, errors, platform, poll, xdg, shell...)
   runtime/          # claw-runtime engine (bus, provider, session, tool, agent, plugin, middleware, mcp, channel, engine)
   server/           # ServerConnection interface + LocalConnection impl
@@ -85,8 +85,8 @@ docs/main-doc.md    # Functional architecture — read this before major changes
 | Table | Role |
 |---|---|
 | `servers` | Physical servers (V1: always 1 local row) |
-| `instances` | Instances — slug, port, state, config_path |
-| `agents` | Agents per instance or blueprint |
+| `instances` | Instances — slug, port, state, config_path, default_named_key_id |
+| `agents` | Agents per instance or blueprint (named_key_id override) |
 | `ports` | Port reservation registry (anti-conflict) |
 | `config` | Global key-value config |
 | `events` | Audit log per instance |
@@ -95,12 +95,16 @@ docs/main-doc.md    # Functional architecture — read this before major changes
 | `blueprints` | Reusable team templates |
 | `agent_blueprints` | Standalone reusable agent templates (id TEXT PK, config_json, category) |
 | `agent_blueprint_files` | Workspace files per agent blueprint |
-| `rt_sessions` | claw-runtime sessions — permanent (one per agent, cross-channel) or ephemeral (per conversation). Key format: `<slug>:<agentId>` (permanent) or `<slug>:<agentId>:<channel>:<peerId>` (ephemeral) |
+| `named_api_keys` | Encrypted API keys (AES-256-GCM), global scope |
+| `rt_sessions` | claw-runtime sessions — permanent (one per agent, cross-channel) or ephemeral. Key: `<slug>:<agentId>` (permanent) or `<slug>:<agentId>:<channel>:<peerId>` (ephemeral) |
 | `rt_messages` | Messages per session |
 | `rt_parts` | Message parts (text, tool-call, tool-result) |
+| `rt_events` | Runtime events (bus events persisted for dashboard) |
 | `rt_permissions` | Persisted permission rules (allow/deny/ask per scope+pattern) |
 | `rt_auth_profiles` | API key rotation per provider (priority, cooldown, failure tracking) |
 | `rt_pairing_codes` | Device pairing codes (legacy, table retained for additive-only policy) |
+| `user_profiles` | User preferences (language, timezone, style, custom instructions) |
+| `user_model_aliases` | Per-user model aliases |
 | `users` | Dashboard auth (admin/operator/viewer roles) |
 | `sessions` | Server-side dashboard sessions with TTL |
 
@@ -144,7 +148,7 @@ Schema lives in `src/db/schema.ts`. Migrations run on DB open. **Always additive
 - `CliError` for CLI exit codes
 - Route handlers: `try/catch` with `instanceof` checks, return `apiError(c, status, code, msg)`
 - Resource cleanup: `try/finally` or `withContext()` pattern
-- Silent catch only for non-critical operations, with inline comment explaining why
+- **No silent catches** — every `catch` must log via `logger.debug/warn/error` with `{ error: String(err) }`. Enforced by pre-push hook.
 
 ### Comments
 - JSDoc `/** */` on exported functions and types
@@ -163,6 +167,15 @@ Schema lives in `src/db/schema.ts`. Migrations run on DB open. **Always additive
 - Route modules export `register*Routes(app, deps)` functions
 - Dependency injection via options objects (`RouteDeps`, `PromptLoopInput`, `CommandContext`)
 - No barrel `index.ts` files except for CLI entry and a few subsystem entry points
+
+### Route input validation
+All mutation routes (POST/PATCH/PUT/DELETE with body) use Zod schemas for validation:
+```typescript
+const CreateFooSchema = z.object({ ... });
+const parsed = CreateFooSchema.safeParse(body);
+if (!parsed.success) return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+```
+Schemas are co-located in the route file or in a `*-schemas.ts` sibling.
 
 ## Important conventions
 
@@ -190,7 +203,7 @@ isRuntimeRunning(stateDir)    // boolean
 Default range: **18789–18838** (50 ports, 10 instances at min step 5). Dashboard: **19000**. Always allocate via `src/core/port-allocator.ts`.
 
 ### Secrets
-Dashboard tokens are auto-generated (`src/core/secrets.ts`). API keys go in `.env` per instance (never in `runtime.json`). Never commit secrets.
+Dashboard tokens are auto-generated (`src/core/secrets.ts`). API keys are stored encrypted in `named_api_keys` (AES-256-GCM via `MASTER_ENCRYPTION_KEY`). Instance `.env` files only contain gateway token + optional Telegram bot token. Never commit secrets.
 
 ### Vercel AI SDK v6
 Breaking changes vs v5:
@@ -228,7 +241,7 @@ STARTING/STOPPING state on instance cards is tracked in `Monitor._transitioning`
 
 ## Test coverage
 
-~1100 tests passing (+ ~100 e2e). Tests are under `src/core/__tests__/`, `src/db/__tests__/`, `src/runtime/__tests__/`, `src/runtime/session/__tests__/`, `src/runtime/heartbeat/__tests__/`, `src/dashboard/__tests__/`, `src/lib/__tests__/`, `src/commands/__tests__/`. Run with `pnpm test:run` before submitting changes.
+~2040 tests passing, ~62% line coverage (+ ~100 e2e). Coverage thresholds enforced in `vitest.config.ts` (lines 61%, stmts 60%, funcs 63%, branches 53%). Tests are under `src/**/__tests__/`. Run with `pnpm test:run` before submitting changes.
 
 ## UI development
 

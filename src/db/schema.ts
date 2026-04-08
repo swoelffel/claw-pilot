@@ -748,10 +748,8 @@ const MIGRATIONS: Migration[] = [
     //   (language, timezone, communication style, custom instructions) and user-level defaults
     //   (default model, avatar, UI preferences).
     //
-    // TODO(cleanup): remove after v0.62 — user_providers table is deprecated.
-    // Replaced by named_api_keys (v24) with encrypted storage. Rows are auto-migrated
-    // at dashboard startup via migrateUserProvidersToNamedKeys(). Table kept for
-    // additive-only policy; community-resolver.ts still reads it at runtime.
+    // user_providers table is deprecated (replaced by named_api_keys v24).
+    // Table retained for additive-only schema policy.
     //
     // user_providers: user-level provider configs shared across all instances.
     //   Instance-level providers (in runtime.json) override user-level by provider_id.
@@ -1071,7 +1069,6 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
-    // TODO(cleanup): remove after v0.62 — instance_named_keys table is unused
     // v24: Named API keys — centralized key management at admin level.
     // Keys are encrypted with AES-256-GCM (MASTER_ENCRYPTION_KEY env var).
     // Assigned to instances via junction table, overridable per agent.
@@ -1111,7 +1108,6 @@ const MIGRATIONS: Migration[] = [
   {
     // v25: Simplify named keys — all keys are global, instances reference default key directly.
     // Replaces instance_named_keys junction table with a simple FK on instances.
-    // TODO(cleanup): remove after v0.62 — instance_named_keys table is unused
     version: 25,
     up(db) {
       db.exec(

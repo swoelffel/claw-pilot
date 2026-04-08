@@ -5,9 +5,7 @@
 
 import type { Registry } from "../../core/registry.js";
 import type { RuntimeConfig } from "../../runtime/config/index.js";
-import type { ProfileResolver } from "../../runtime/profile/types.js";
 import { runtimeConfigExists, loadRuntimeConfig } from "../../runtime/index.js";
-import { mergeProviderConfig } from "../../runtime/provider/config-merge.js";
 import { logger } from "../../lib/logger.js";
 
 /**
@@ -38,26 +36,13 @@ export function loadConfigDbFirst(
 }
 
 /**
- * Load RuntimeConfig from DB first, falling back to runtime.json,
- * then merge with user profile providers/models.
+ * Load RuntimeConfig from DB first, falling back to runtime.json.
  * Returns null if no config found.
  */
 export function loadMergedConfigDbFirst(
   registry: Registry,
   slug: string,
   stateDir: string,
-  profileResolver?: ProfileResolver,
 ): RuntimeConfig | null {
-  const config = loadConfigDbFirst(registry, slug, stateDir);
-  if (!config) return null;
-
-  if (!profileResolver) return config;
-
-  const profile = profileResolver.getActiveProfile();
-  if (!profile) return config;
-
-  const userProviders = profileResolver.getProviders();
-  if (userProviders.length === 0 && !profile.defaultModel) return config;
-
-  return mergeProviderConfig(config, userProviders, profile.defaultModel ?? undefined);
+  return loadConfigDbFirst(registry, slug, stateDir);
 }

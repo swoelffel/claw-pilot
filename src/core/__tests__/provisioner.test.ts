@@ -129,7 +129,7 @@ describe("Provisioner.provision()", () => {
     expect(conn.dirs.has(result.stateDir)).toBe(true);
   });
 
-  it("happy path — .env is written with gateway token and API key", async () => {
+  it("happy path — .env is written with gateway token (no API key)", async () => {
     const { provisioner, serverId } = makeProvisioner();
 
     const result = await provisioner.provision(BASE_ANSWERS, serverId);
@@ -138,10 +138,10 @@ describe("Provisioner.provision()", () => {
 
     expect(conn.files.has(envPath)).toBe(true);
 
-    // Verify .env contains the gateway token
+    // Verify .env contains the gateway token but no API key
     const envContent = conn.files.get(envPath)!;
     expect(envContent).toContain(`OPENCLAW_GW_AUTH_TOKEN=${"aabbccdd".repeat(6)}`);
-    expect(envContent).toContain("ANTHROPIC_API_KEY=sk-test-key");
+    expect(envContent).not.toContain("API_KEY");
   });
 
   it("happy path — instance is registered in registry", async () => {

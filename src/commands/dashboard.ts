@@ -5,10 +5,6 @@ import { initDatabase } from "../db/schema.js";
 import { Registry } from "../core/registry.js";
 import { logger } from "../lib/logger.js";
 import { generateDashboardToken, ensureMasterEncryptionKey } from "../lib/crypto.js";
-import {
-  migrateUserProvidersToNamedKeys,
-  migrateInstanceProvidersToNamedKeys,
-} from "../lib/key-migration.js";
 import { constants } from "../lib/constants.js";
 import { LocalConnection } from "../server/local.js";
 import { SessionStore } from "../dashboard/session-store.js";
@@ -56,16 +52,6 @@ export function dashboardCommand(): Command {
       const keyGenerated = await ensureMasterEncryptionKey();
       if (keyGenerated) {
         logger.info("Generated master encryption key → ~/.claw-pilot/.env");
-      }
-
-      // Migrate legacy providers to named_api_keys (idempotent)
-      const userMigrated = await migrateUserProvidersToNamedKeys(db);
-      if (userMigrated > 0) {
-        logger.info(`Migrated ${userMigrated} user provider key(s) to named API keys`);
-      }
-      const instMigrated = await migrateInstanceProvidersToNamedKeys(db);
-      if (instMigrated > 0) {
-        logger.info(`Migrated ${instMigrated} instance provider key(s) to named API keys`);
       }
 
       const sessionStore = new SessionStore(db, constants.SESSION_TTL_MS);

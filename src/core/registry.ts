@@ -43,7 +43,6 @@ export type {
   AgentBlueprintRecord,
   AgentBlueprintFileRecord,
   UserProfileRecord,
-  UserProviderRecord,
 } from "./registry-types.js";
 
 // ---------------------------------------------------------------------------
