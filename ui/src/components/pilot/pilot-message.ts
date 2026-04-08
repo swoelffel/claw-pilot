@@ -451,7 +451,7 @@ export class PilotMessageEl extends LitElement {
 
       case "a2a_received":
         return html`
-          <div class="source-label">${e.a2aTarget} → ${e.source}</div>
+          <div class="source-label">${e.source} → ${e.a2aTarget}</div>
           <div
             class="a2a-content"
             .innerHTML=${DOMPurify.sanitize(marked.parse(e.a2aContent ?? "") as string)}
