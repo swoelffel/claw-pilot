@@ -144,6 +144,26 @@ export const PROVIDER_REGISTRY: ProviderDescriptor[] = [
     api: "openrouter",
     apiKeyEnvVar: "OPENROUTER_API_KEY",
   },
+  {
+    id: "mistral",
+    name: "Mistral",
+    api: "openai-completions",
+    apiKeyEnvVar: "MISTRAL_API_KEY",
+    defaultBaseUrl: "https://api.mistral.ai/v1",
+  },
+  {
+    id: "xai",
+    name: "xAI (Grok)",
+    api: "openai-completions",
+    apiKeyEnvVar: "XAI_API_KEY",
+    defaultBaseUrl: "https://api.x.ai/v1",
+  },
+  {
+    id: "opencode",
+    name: "OpenCode Zen",
+    api: "openai-completions",
+    defaultBaseUrl: "https://opencode.ai/zen/v1",
+  },
 ];
 
 /** Look up a provider descriptor by ID */

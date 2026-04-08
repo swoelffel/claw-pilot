@@ -41,8 +41,8 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("PROVIDER_REGISTRY", () => {
-  it("has 5 providers", () => {
-    expect(PROVIDER_REGISTRY).toHaveLength(5);
+  it("has 8 providers", () => {
+    expect(PROVIDER_REGISTRY).toHaveLength(8);
   });
 
   it("has unique IDs", () => {
