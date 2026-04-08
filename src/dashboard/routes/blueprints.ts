@@ -2,6 +2,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 import type { Hono } from "hono";
 import type { Registry } from "../../core/registry.js";
 import type { RouteDeps } from "../route-deps.js";
@@ -10,6 +11,59 @@ import { buildAgentPayload } from "./_helpers.js";
 import { constants } from "../../lib/constants.js";
 import { listBuiltinBlueprints } from "../../core/builtin-blueprints.js";
 import { logger } from "../../lib/logger.js";
+
+// ---------------------------------------------------------------------------
+// Zod schemas for request validation
+// ---------------------------------------------------------------------------
+
+const CreateBlueprintSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  description: z.string().max(500).optional(),
+  icon: z.string().max(10).optional(),
+  tags: z.string().max(500).optional(),
+  color: z.string().max(30).optional(),
+});
+
+const UpdateBlueprintSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  description: z.string().max(500).nullable().optional(),
+  icon: z.string().max(10).nullable().optional(),
+  tags: z.string().max(500).nullable().optional(),
+  color: z.string().max(30).nullable().optional(),
+});
+
+const CreateAgentSchema = z.object({
+  agent_id: z
+    .string()
+    .min(2)
+    .max(30)
+    .regex(
+      /^[a-z][a-z0-9-]*$/,
+      "must be lowercase alphanumeric with hyphens, starting with a letter",
+    ),
+  name: z.string().min(1).max(100),
+  model: z.string().max(100).optional(),
+});
+
+const UpdateAgentMetaSchema = z.object({
+  role: z.string().max(200).nullable().optional(),
+  tags: z.string().max(500).nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+  skills: z.array(z.string()).nullable().optional(),
+});
+
+const UpdateAgentPositionSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+});
+
+const WriteFileSchema = z.object({
+  content: z.string().max(1_048_576),
+});
+
+const UpdateSpawnLinksSchema = z.object({
+  targets: z.array(z.string()),
+});
 
 /**
  * Seed workspace files (AGENTS.md, SOUL.md, etc.) for a blueprint agent.
@@ -130,39 +184,36 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
 
   // POST /api/blueprints — créer un blueprint
   app.post("/api/blueprints", async (c) => {
-    let body: { name: string; description?: string; icon?: string; tags?: string; color?: string };
-    try {
-      body = (await c.req.json()) as typeof body;
-      if (!body.name || typeof body.name !== "string" || body.name.trim() === "") {
-        return apiError(c, 400, "BLUEPRINT_NAME_REQUIRED", "name is required");
-      }
-    } catch (err) {
-      logger.warn("[route:blueprints] JSON parse failed on create", { error: String(err) });
-      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+    const body = await c.req.json().catch(() => null);
+    const parsed = CreateBlueprintSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
     }
+    const data = parsed.data;
+
     try {
       // Normalize tags: convert to JSON array format if it's a plain string
       let normalizedTags: string | undefined;
-      if (body.tags !== undefined) {
+      if (data.tags !== undefined) {
         try {
           // If it's already valid JSON, keep it as is
-          JSON.parse(body.tags);
-          normalizedTags = body.tags;
+          JSON.parse(data.tags);
+          normalizedTags = data.tags;
         } catch (err) {
           logger.debug("[route:blueprints] tags JSON parse fallback on create", {
             error: String(err),
           });
           // If it's a plain string, convert to JSON array
-          normalizedTags = JSON.stringify([body.tags]);
+          normalizedTags = JSON.stringify([data.tags]);
         }
       }
 
       const blueprint = registry.createBlueprint({
-        name: body.name.trim(),
-        ...(body.description !== undefined && { description: body.description }),
-        ...(body.icon !== undefined && { icon: body.icon }),
-        ...(normalizedTags !== undefined && { tags: normalizedTags }),
-        ...(body.color !== undefined && { color: body.color }),
+        name: data.name.trim(),
+        ...(data.description !== undefined ? { description: data.description } : {}),
+        ...(data.icon !== undefined ? { icon: data.icon } : {}),
+        ...(normalizedTags !== undefined ? { tags: normalizedTags } : {}),
+        ...(data.color !== undefined ? { color: data.color } : {}),
       });
 
       // Seed default "main" agent — every blueprint starts with one
@@ -224,37 +275,36 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     const blueprint = registry.getBlueprint(id);
     if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
 
-    let body: Partial<{
-      name: string;
-      description: string | null;
-      icon: string | null;
-      tags: string | null;
-      color: string | null;
-    }>;
-    try {
-      body = (await c.req.json()) as typeof body;
-    } catch (err) {
-      logger.warn("[route:blueprints] JSON parse failed on update", { error: String(err) });
-      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+    const body = await c.req.json().catch(() => null);
+    const parsed = UpdateBlueprintSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
     }
+    const data = parsed.data;
 
     try {
       // Normalize tags if provided
-      const normalizedBody = { ...body };
-      if (normalizedBody.tags !== undefined && normalizedBody.tags !== null) {
+      let normalizedTags = data.tags;
+      if (normalizedTags !== undefined && normalizedTags !== null) {
         try {
           // If it's already valid JSON, keep it as is
-          JSON.parse(normalizedBody.tags);
+          JSON.parse(normalizedTags);
         } catch (err) {
           logger.debug("[route:blueprints] tags JSON parse fallback on update", {
             error: String(err),
           });
           // If it's a plain string, convert to JSON array
-          normalizedBody.tags = JSON.stringify([normalizedBody.tags]);
+          normalizedTags = JSON.stringify([normalizedTags]);
         }
       }
 
-      const updated = registry.updateBlueprint(id, normalizedBody);
+      const updated = registry.updateBlueprint(id, {
+        ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(data.description !== undefined ? { description: data.description } : {}),
+        ...(data.icon !== undefined ? { icon: data.icon } : {}),
+        ...(normalizedTags !== undefined ? { tags: normalizedTags } : {}),
+        ...(data.color !== undefined ? { color: data.color } : {}),
+      });
       return c.json(updated);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -295,35 +345,19 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     const blueprint = registry.getBlueprint(id);
     if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
 
-    let body: { agent_id: string; name: string; model?: string };
-    try {
-      body = (await c.req.json()) as typeof body;
-      if (!body.agent_id || !body.name) {
-        return apiError(c, 400, "FIELD_REQUIRED", "agent_id and name are required");
-      }
-      if (
-        !/^[a-z][a-z0-9-]*$/.test(body.agent_id) ||
-        body.agent_id.length < 2 ||
-        body.agent_id.length > 30
-      ) {
-        return apiError(
-          c,
-          400,
-          "INVALID_AGENT_ID",
-          "Invalid agent_id: must be 2-30 lowercase alphanumeric chars with hyphens",
-        );
-      }
-    } catch (err) {
-      logger.warn("[route:blueprints] JSON parse failed on agent create", { error: String(err) });
-      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+    const body = await c.req.json().catch(() => null);
+    const parsed = CreateAgentSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
     }
+    const data = parsed.data;
 
     let newAgent;
     try {
       newAgent = registry.createBlueprintAgent(id, {
-        agentId: body.agent_id,
-        name: body.name,
-        ...(body.model !== undefined && { model: body.model }),
+        agentId: data.agent_id,
+        name: data.name,
+        ...(data.model !== undefined ? { model: data.model } : {}),
       });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -338,7 +372,7 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     }
 
     // Seed workspace files for the new agent (same as for the default main agent)
-    await seedBlueprintAgentFiles(registry, newAgent.id, body.agent_id, body.name);
+    await seedBlueprintAgentFiles(registry, newAgent.id, data.agent_id, data.name);
 
     const payload = buildBlueprintPayload(id, registry);
     return c.json(payload, 201);
@@ -356,24 +390,18 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     const agent = registry.getBlueprintAgent(id, agentId);
     if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
-    let body: Partial<{
-      role: string | null;
-      tags: string | null;
-      notes: string | null;
-      skills: string[] | null;
-    }>;
-    try {
-      body = (await c.req.json()) as typeof body;
-    } catch (err) {
-      logger.warn("[route:blueprints] JSON parse failed on agent meta", { error: String(err) });
-      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+    const body = await c.req.json().catch(() => null);
+    const parsed = UpdateAgentMetaSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
     }
+    const data = parsed.data;
 
     const metaFields: Parameters<typeof registry.updateAgentMeta>[1] = {};
-    if ("role" in body) metaFields.role = body.role;
-    if ("tags" in body) metaFields.tags = body.tags;
-    if ("notes" in body) metaFields.notes = body.notes;
-    if ("skills" in body) metaFields.skills = body.skills;
+    if ("role" in data) metaFields.role = data.role;
+    if ("tags" in data) metaFields.tags = data.tags;
+    if ("notes" in data) metaFields.notes = data.notes;
+    if ("skills" in data) metaFields.skills = data.skills;
 
     registry.updateAgentMeta(agent.id, metaFields);
 
@@ -401,20 +429,16 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     const agentId = c.req.param("agentId");
     if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
 
-    let body: { x: number; y: number };
-    try {
-      body = (await c.req.json()) as { x: number; y: number };
-      if (typeof body.x !== "number" || typeof body.y !== "number") {
-        return apiError(c, 400, "FIELD_INVALID", "x and y must be numbers");
-      }
-    } catch (err) {
-      logger.warn("[route:blueprints] JSON parse failed on agent position", { error: String(err) });
-      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+    const body = await c.req.json().catch(() => null);
+    const parsed = UpdateAgentPositionSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
     }
+    const data = parsed.data;
 
     const agent = registry.getBlueprintAgent(id, agentId);
     if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
-    registry.updateBlueprintAgentPosition(agent.id, body.x, body.y);
+    registry.updateBlueprintAgentPosition(agent.id, data.x, data.y);
     return c.json({ ok: true });
   });
 
@@ -447,30 +471,22 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     const filename = c.req.param("filename");
     if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
 
-    let body: { content: string };
-    try {
-      body = (await c.req.json()) as { content: string };
-      if (typeof body.content !== "string")
-        return apiError(c, 400, "FIELD_INVALID", "content must be a string");
-    } catch (err) {
-      logger.warn("[route:blueprints] JSON parse failed on file write", { error: String(err) });
-      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+    const body = await c.req.json().catch(() => null);
+    const parsed = WriteFileSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
     }
-
-    // Prevent database bloat — reject files larger than 1MB
-    if (body.content.length > 1_048_576) {
-      return apiError(c, 413, "CONTENT_TOO_LARGE", "File content exceeds 1MB limit");
-    }
+    const data = parsed.data;
 
     const agent = registry.getBlueprintAgent(id, agentId);
     if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
     try {
       const { createHash } = await import("node:crypto");
-      const contentHash = createHash("sha256").update(body.content).digest("hex").slice(0, 16);
+      const contentHash = createHash("sha256").update(data.content).digest("hex").slice(0, 16);
       registry.upsertAgentFile(agent.id, {
         filename,
-        content: body.content,
+        content: data.content,
         contentHash,
       });
     } catch (err: unknown) {
@@ -487,7 +503,7 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     const saved = registry.getAgentFileContent(agent.id, filename);
     return c.json({
       filename,
-      content: body.content,
+      content: data.content,
       content_hash: saved?.content_hash ?? "",
       updated_at: saved?.updated_at ?? new Date().toISOString(),
       editable: true,
@@ -500,15 +516,12 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     const agentId = c.req.param("agentId");
     if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
 
-    let body: { targets: string[] };
-    try {
-      body = (await c.req.json()) as { targets: string[] };
-      if (!Array.isArray(body.targets))
-        return apiError(c, 400, "FIELD_INVALID", "targets must be an array");
-    } catch (err) {
-      logger.warn("[route:blueprints] JSON parse failed on spawn-links", { error: String(err) });
-      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+    const body = await c.req.json().catch(() => null);
+    const parsed = UpdateSpawnLinksSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
     }
+    const data = parsed.data;
 
     const blueprint = registry.getBlueprint(id);
     if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
@@ -518,7 +531,7 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     const otherLinks = allLinks.filter(
       (l) => !(l.source_agent_id === agentId && l.link_type === "spawn"),
     );
-    const newSpawnLinks = body.targets.map((target) => ({
+    const newSpawnLinks = data.targets.map((target) => ({
       sourceAgentId: agentId,
       targetAgentId: target,
       linkType: "spawn" as const,

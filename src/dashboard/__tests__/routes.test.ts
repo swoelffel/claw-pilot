@@ -531,7 +531,7 @@ describe("POST /api/blueprints", () => {
     });
     expect(res.status).toBe(400);
     const body = await json(res);
-    expect(body.code).toBe("BLUEPRINT_NAME_REQUIRED");
+    expect(body.code).toBe("INVALID_BODY");
   });
 
   it("rejects empty name", async () => {
@@ -647,7 +647,7 @@ describe("POST /api/blueprints/:id/agents", () => {
     });
     expect(res.status).toBe(400);
     const body = await json(res);
-    expect(body.code).toBe("INVALID_AGENT_ID");
+    expect(body.code).toBe("INVALID_BODY");
   });
 
   it("creates an agent and returns builder payload", async () => {
@@ -690,9 +690,9 @@ describe("PUT /api/blueprints/:id/agents/:agentId/files/:filename", () => {
       headers: jsonHeaders(),
       body: JSON.stringify({ content: "x".repeat(1_048_577) }),
     });
-    expect(res.status).toBe(413);
+    expect(res.status).toBe(400);
     const body = await json(res);
-    expect(body.code).toBe("CONTENT_TOO_LARGE");
+    expect(body.code).toBe("INVALID_BODY");
   });
 
   it("updates a file and returns content", async () => {

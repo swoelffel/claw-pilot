@@ -1,6 +1,7 @@
 // src/dashboard/routes/instances/tasks.ts
 // Routes: CRUD for task board + status changes + comments + counts
 
+import { z } from "zod";
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
@@ -17,7 +18,6 @@ import {
   getComments,
   getTaskCountsByStatus,
   type TaskStatus,
-  type TaskPriority,
 } from "../../../core/repositories/task-repository.js";
 import { getOrCreatePermanentSession } from "../../../runtime/session/session.js";
 import { createUserMessage } from "../../../runtime/session/message.js";
@@ -25,14 +25,45 @@ import type { InstanceSlug } from "../../../runtime/types.js";
 import { wakeupAgent } from "../_wakeup-agent.js";
 import { logger } from "../../../lib/logger.js";
 
-const VALID_STATUSES = new Set<TaskStatus>([
-  "pending",
-  "in_progress",
-  "completed",
-  "blocked",
-  "cancelled",
-]);
-const VALID_PRIORITIES = new Set<TaskPriority>(["low", "medium", "high", "critical"]);
+// ---------------------------------------------------------------------------
+// Zod schemas for request validation
+// ---------------------------------------------------------------------------
+
+const STATUSES = ["pending", "in_progress", "completed", "blocked", "cancelled"] as const;
+const PRIORITIES = ["low", "medium", "high", "critical"] as const;
+
+const VALID_STATUSES = new Set<TaskStatus>(STATUSES);
+
+const CreateTaskSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().optional(),
+  priority: z.enum(PRIORITIES).optional(),
+  assigneeId: z.string().optional(),
+  labels: z.array(z.string()).optional(),
+  createdBy: z.string().optional(),
+});
+
+const UpdateTaskSchema = z.object({
+  title: z.string().min(1).optional(),
+  description: z.string().optional(),
+  priority: z.enum(PRIORITIES).optional(),
+  assigneeId: z.string().nullable().optional(),
+  labels: z.array(z.string()).optional(),
+});
+
+const ChangeStatusSchema = z.object({
+  status: z.enum(STATUSES),
+  position: z.number().optional(),
+});
+
+const ReorderTaskSchema = z.object({
+  position: z.number(),
+});
+
+const AddCommentSchema = z.object({
+  authorId: z.string().optional(),
+  content: z.string().min(1),
+});
 
 function toJson(r: {
   id: number;
@@ -135,35 +166,26 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
 
-    const body = await c.req.json<{
-      title?: string;
-      description?: string;
-      priority?: string;
-      assigneeId?: string;
-      labels?: string[];
-      createdBy?: string;
-    }>();
-
-    if (!body.title || body.title.trim().length === 0) {
-      return apiError(c, 400, "MISSING_TITLE", "title is required");
+    const body = await c.req.json().catch(() => null);
+    const parsed = CreateTaskSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
     }
-    if (body.priority && !VALID_PRIORITIES.has(body.priority as TaskPriority)) {
-      return apiError(c, 400, "INVALID_PRIORITY", "Invalid priority");
-    }
+    const data = parsed.data;
 
     const row = createTask(db, {
       instanceSlug: slug,
-      title: body.title,
-      ...(body.description !== undefined ? { description: body.description } : {}),
-      ...(body.priority !== undefined ? { priority: body.priority as TaskPriority } : {}),
-      ...(body.assigneeId !== undefined ? { assigneeId: body.assigneeId } : {}),
-      ...(body.labels !== undefined ? { labels: body.labels } : {}),
-      createdBy: body.createdBy ?? "user",
+      title: data.title,
+      ...(data.description !== undefined ? { description: data.description } : {}),
+      ...(data.priority !== undefined ? { priority: data.priority } : {}),
+      ...(data.assigneeId !== undefined ? { assigneeId: data.assigneeId } : {}),
+      ...(data.labels !== undefined ? { labels: data.labels } : {}),
+      createdBy: data.createdBy ?? "user",
     });
 
     // Inject notification + trigger prompt loop if task was created with an assignee
-    if (body.assigneeId) {
-      notifyAndWakeAgent(db, registry, slug, body.assigneeId, row.id, row.title, row.description);
+    if (data.assigneeId) {
+      notifyAndWakeAgent(db, registry, slug, data.assigneeId, row.id, row.title, row.description);
     }
 
     return c.json(toJson(row), 201);
@@ -184,34 +206,33 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 404, "NOT_FOUND", "Task not found");
     }
 
-    const body = await c.req.json<{
-      title?: string;
-      description?: string;
-      priority?: string;
-      assigneeId?: string | null;
-      labels?: string[];
-    }>();
+    const body = await c.req.json().catch(() => null);
+    const parsed = UpdateTaskSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+    }
+    const data = parsed.data;
 
     const updated = updateTask(db, id, {
-      ...(body.title !== undefined ? { title: body.title } : {}),
-      ...(body.description !== undefined ? { description: body.description } : {}),
-      ...(body.priority !== undefined ? { priority: body.priority as TaskPriority } : {}),
-      ...(body.assigneeId !== undefined ? { assigneeId: body.assigneeId } : {}),
-      ...(body.labels !== undefined ? { labels: body.labels } : {}),
+      ...(data.title !== undefined ? { title: data.title } : {}),
+      ...(data.description !== undefined ? { description: data.description } : {}),
+      ...(data.priority !== undefined ? { priority: data.priority } : {}),
+      ...(data.assigneeId !== undefined ? { assigneeId: data.assigneeId } : {}),
+      ...(data.labels !== undefined ? { labels: data.labels } : {}),
     });
     if (!updated) return apiError(c, 404, "NOT_FOUND", "Task not found");
 
     // Inject notification + trigger prompt loop when assignee changes
     if (
-      body.assigneeId !== undefined &&
-      body.assigneeId !== null &&
-      body.assigneeId !== existing.assignee_id
+      data.assigneeId !== undefined &&
+      data.assigneeId !== null &&
+      data.assigneeId !== existing.assignee_id
     ) {
       notifyAndWakeAgent(
         db,
         registry,
         slug,
-        body.assigneeId,
+        data.assigneeId,
         id,
         updated.title,
         updated.description,
@@ -236,12 +257,14 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 404, "NOT_FOUND", "Task not found");
     }
 
-    const body = await c.req.json<{ status?: string; position?: number }>();
-    if (!body.status || !VALID_STATUSES.has(body.status as TaskStatus)) {
-      return apiError(c, 400, "INVALID_STATUS", "Valid status is required");
+    const body = await c.req.json().catch(() => null);
+    const parsed = ChangeStatusSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
     }
+    const data = parsed.data;
 
-    const updated = changeStatus(db, id, body.status as TaskStatus, body.position);
+    const updated = changeStatus(db, id, data.status, data.position);
     if (!updated) return apiError(c, 404, "NOT_FOUND", "Task not found");
     return c.json(toJson(updated));
   });
@@ -261,12 +284,14 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 404, "NOT_FOUND", "Task not found");
     }
 
-    const body = await c.req.json<{ position: number }>();
-    if (typeof body.position !== "number") {
-      return apiError(c, 400, "MISSING_POSITION", "position is required");
+    const body = await c.req.json().catch(() => null);
+    const parsed = ReorderTaskSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
     }
+    const data = parsed.data;
 
-    reorderTask(db, id, body.position);
+    reorderTask(db, id, data.position);
     return c.json(toJson(getTask(db, id)!));
   });
 
@@ -304,15 +329,17 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 404, "NOT_FOUND", "Task not found");
     }
 
-    const body = await c.req.json<{ authorId?: string; content?: string }>();
-    if (!body.content || body.content.trim().length === 0) {
-      return apiError(c, 400, "MISSING_CONTENT", "content is required");
+    const body = await c.req.json().catch(() => null);
+    const parsed = AddCommentSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
     }
+    const data = parsed.data;
 
     const comment = addComment(db, {
       taskId: id,
-      authorId: body.authorId ?? "user",
-      content: body.content,
+      authorId: data.authorId ?? "user",
+      content: data.content,
     });
     return c.json(
       {

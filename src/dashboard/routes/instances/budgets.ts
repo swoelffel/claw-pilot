@@ -1,6 +1,7 @@
 // src/dashboard/routes/instances/budgets.ts
 // Routes: CRUD for budget enforcement + override + events + reconcile
 
+import { z } from "zod";
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
@@ -15,12 +16,29 @@ import {
   reconcileBudget,
   getBudgetEvents,
   getBudgetEventsForInstance,
-  type BudgetScope,
-  type BudgetPeriod,
 } from "../../../core/repositories/budget-repository.js";
 
-const VALID_SCOPES = new Set<BudgetScope>(["agent", "instance"]);
-const VALID_PERIODS = new Set<BudgetPeriod>(["monthly", "lifetime"]);
+// ---------------------------------------------------------------------------
+// Zod schemas for request validation
+// ---------------------------------------------------------------------------
+
+const CreateBudgetSchema = z.object({
+  scope: z.enum(["agent", "instance"]),
+  scopeId: z.string().nullable().optional(),
+  period: z.enum(["monthly", "lifetime"]).optional(),
+  limitUsd: z.number().positive(),
+  softAlertPct: z.number().optional(),
+  hardStopPct: z.number().optional(),
+  overridePct: z.number().optional(),
+});
+
+const UpdateBudgetSchema = z.object({
+  limitUsd: z.number().positive().optional(),
+  softAlertPct: z.number().optional(),
+  hardStopPct: z.number().optional(),
+  overridePct: z.number().optional(),
+  enabled: z.boolean().optional(),
+});
 
 export function registerBudgetRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, db } = deps;
@@ -62,39 +80,27 @@ export function registerBudgetRoutes(app: Hono, deps: RouteDeps): void {
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
 
-    const body = await c.req.json<{
-      scope?: string;
-      scopeId?: string | null;
-      period?: string;
-      limitUsd?: number;
-      softAlertPct?: number;
-      hardStopPct?: number;
-      overridePct?: number;
-    }>();
+    const body = await c.req.json().catch(() => null);
+    const parsed = CreateBudgetSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+    }
+    const data = parsed.data;
 
-    if (!body.scope || !VALID_SCOPES.has(body.scope as BudgetScope)) {
-      return apiError(c, 400, "INVALID_SCOPE", "scope must be 'agent' or 'instance'");
-    }
-    if (body.scope === "agent" && !body.scopeId) {
+    if (data.scope === "agent" && !data.scopeId) {
       return apiError(c, 400, "MISSING_SCOPE_ID", "scopeId is required when scope is 'agent'");
-    }
-    if (body.period && !VALID_PERIODS.has(body.period as BudgetPeriod)) {
-      return apiError(c, 400, "INVALID_PERIOD", "period must be 'monthly' or 'lifetime'");
-    }
-    if (typeof body.limitUsd !== "number" || body.limitUsd <= 0) {
-      return apiError(c, 400, "INVALID_LIMIT", "limitUsd must be a positive number");
     }
 
     try {
       const row = createBudget(db, {
         instanceSlug: slug,
-        scope: body.scope as BudgetScope,
-        ...(body.scopeId !== undefined ? { scopeId: body.scopeId } : {}),
-        ...(body.period !== undefined ? { period: body.period as BudgetPeriod } : {}),
-        limitUsd: body.limitUsd,
-        ...(body.softAlertPct !== undefined ? { softAlertPct: body.softAlertPct } : {}),
-        ...(body.hardStopPct !== undefined ? { hardStopPct: body.hardStopPct } : {}),
-        ...(body.overridePct !== undefined ? { overridePct: body.overridePct } : {}),
+        scope: data.scope,
+        ...(data.scopeId !== undefined ? { scopeId: data.scopeId } : {}),
+        ...(data.period !== undefined ? { period: data.period } : {}),
+        limitUsd: data.limitUsd,
+        ...(data.softAlertPct !== undefined ? { softAlertPct: data.softAlertPct } : {}),
+        ...(data.hardStopPct !== undefined ? { hardStopPct: data.hardStopPct } : {}),
+        ...(data.overridePct !== undefined ? { overridePct: data.overridePct } : {}),
       });
       return c.json(
         {
@@ -141,15 +147,20 @@ export function registerBudgetRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 404, "NOT_FOUND", "Budget not found");
     }
 
-    const body = await c.req.json<{
-      limitUsd?: number;
-      softAlertPct?: number;
-      hardStopPct?: number;
-      overridePct?: number;
-      enabled?: boolean;
-    }>();
+    const body = await c.req.json().catch(() => null);
+    const parsed = UpdateBudgetSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+    }
+    const data = parsed.data;
 
-    const updated = updateBudget(db, id, body);
+    const updated = updateBudget(db, id, {
+      ...(data.limitUsd !== undefined ? { limitUsd: data.limitUsd } : {}),
+      ...(data.softAlertPct !== undefined ? { softAlertPct: data.softAlertPct } : {}),
+      ...(data.hardStopPct !== undefined ? { hardStopPct: data.hardStopPct } : {}),
+      ...(data.overridePct !== undefined ? { overridePct: data.overridePct } : {}),
+      ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
+    });
     if (!updated) return apiError(c, 404, "NOT_FOUND", "Budget not found");
 
     return c.json({

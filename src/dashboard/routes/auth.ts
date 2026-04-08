@@ -2,18 +2,23 @@
 import type { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { timingSafeEqual } from "node:crypto";
+import { z } from "zod";
 import { verifyPassword } from "../../core/auth.js";
 import { constants } from "../../lib/constants.js";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { createRateLimiter } from "../rate-limit.js";
-import { logger } from "../../lib/logger.js";
 
 /** Timing-safe Bearer token comparison */
 function safeTokenCompare(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   return timingSafeEqual(Buffer.from(a, "utf-8"), Buffer.from(b, "utf-8"));
 }
+
+const LoginSchema = z.object({
+  username: z.string().min(1),
+  password: z.string().min(1),
+});
 
 interface UserRow {
   id: number;
@@ -34,20 +39,12 @@ export function registerAuthRoutes(app: Hono, deps: RouteDeps, token: string): v
 
   // POST /api/auth/login — authenticate and create a session
   app.post("/api/auth/login", loginRateLimiter, async (c) => {
-    let body: { username?: unknown; password?: unknown };
-    try {
-      body = await c.req.json();
-    } catch (err) {
-      logger.warn("[route:auth] JSON parse failed on login", { error: String(err) });
-      return apiError(c, 400, "INVALID_BODY", "Invalid JSON body");
+    const body = await c.req.json().catch(() => null);
+    const parsed = LoginSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
     }
-
-    const username = typeof body.username === "string" ? body.username.trim() : "";
-    const password = typeof body.password === "string" ? body.password : "";
-
-    if (!username || !password) {
-      return apiError(c, 400, "MISSING_FIELDS", "username and password are required");
-    }
+    const { username, password } = parsed.data;
 
     // Lookup user
     const db = registry.getDb();
