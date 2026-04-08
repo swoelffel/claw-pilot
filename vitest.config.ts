@@ -10,12 +10,12 @@ export default defineConfig({
       exclude: ["src/**/__tests__/**", "src/index.ts"],
       reporter: ["text", "html", "json-summary"],
       thresholds: {
-        // Engineering excellence: 1972 tests, coverage ~57.5% lines.
+        // Phase 7 coverage: 2083 tests, coverage ~62% lines.
         // Enforced by CI — raise after adding tests, never lower.
-        lines: 57,
-        statements: 56,
-        functions: 60,
-        branches: 50,
+        lines: 61,
+        statements: 60,
+        functions: 63,
+        branches: 53,
       },
     },
   },
