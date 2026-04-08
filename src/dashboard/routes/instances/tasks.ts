@@ -19,8 +19,8 @@ import {
   type TaskStatus,
   type TaskPriority,
 } from "../../../core/repositories/task-repository.js";
-import { getBus } from "../../../runtime/bus/index.js";
-import { TaskAssigned } from "../../../runtime/bus/events.js";
+import { getOrCreatePermanentSession } from "../../../runtime/session/session.js";
+import { createUserMessage } from "../../../runtime/session/message.js";
 import type { InstanceSlug } from "../../../runtime/types.js";
 
 const VALID_STATUSES = new Set<TaskStatus>([
@@ -193,19 +193,27 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
     });
     if (!updated) return apiError(c, 404, "NOT_FOUND", "Task not found");
 
-    // Publish TaskAssigned when assignee changes to a non-null agent
+    // Inject notification message into agent's permanent session when assignee changes.
+    // Written directly to DB (not via bus) because dashboard and runtime are separate processes.
+    // The runtime will pick up the message on the agent's next prompt loop activation.
     if (
       body.assigneeId !== undefined &&
       body.assigneeId !== null &&
       body.assigneeId !== existing.assignee_id
     ) {
-      const bus = getBus(slug as InstanceSlug);
-      bus.publish(TaskAssigned, {
-        instanceSlug: slug as InstanceSlug,
-        taskId: id,
-        assigneeId: body.assigneeId,
-        assignedBy: "user",
-      });
+      try {
+        const session = getOrCreatePermanentSession(db, {
+          instanceSlug: slug as InstanceSlug,
+          agentId: body.assigneeId,
+          channel: "internal",
+        });
+        const lines = [`[task_assigned:#${id}] "${updated.title}" has been assigned to you.`];
+        if (updated.description) lines.push(`Description: ${updated.description}`);
+        lines.push("Use the task_board tool to checkout and work on this task.");
+        createUserMessage(db, { sessionId: session.id, text: lines.join("\n") });
+      } catch {
+        // Non-critical — agent may not have a permanent session yet
+      }
     }
 
     return c.json(toJson(updated));

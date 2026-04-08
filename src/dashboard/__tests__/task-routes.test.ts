@@ -12,8 +12,7 @@ import { SessionStore } from "../session-store.js";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { registerTaskRoutes } from "../routes/instances/tasks.js";
-import { getBus, disposeBus } from "../../runtime/bus/index.js";
-import { TaskAssigned } from "../../runtime/bus/events.js";
+import { disposeBus } from "../../runtime/bus/index.js";
 import type { InstanceSlug } from "../../runtime/types.js";
 
 const TEST_TOKEN = "test-task-token-64chars-hex-0123456789abcdef0123456789abcdef00";
@@ -229,21 +228,17 @@ describe("GET /api/instances/:slug/tasks/:id", () => {
 });
 
 // ---------------------------------------------------------------------------
-// PATCH assigneeId → TaskAssigned event
+// PATCH assigneeId → message injection
 // ---------------------------------------------------------------------------
 
 describe("PATCH /api/instances/:slug/tasks/:id (assignee change)", () => {
-  it("publishes TaskAssigned when assigneeId changes to a non-null value", async () => {
+  it("injects notification message when assigneeId changes to a non-null value", async () => {
     const createRes = await app.request("/api/instances/demo/tasks", {
       method: "POST",
       headers: { ...authHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify({ title: "Assign test" }),
     });
     const { id } = await json(createRes);
-
-    const handler = vi.fn();
-    const bus = getBus("demo" as InstanceSlug);
-    bus.subscribe(TaskAssigned, handler);
 
     const res = await app.request(`/api/instances/demo/tasks/${id}`, {
       method: "PATCH",
@@ -254,17 +249,22 @@ describe("PATCH /api/instances/:slug/tasks/:id (assignee change)", () => {
     const data = await json(res);
     expect(data.assigneeId).toBe("builder");
 
-    expect(handler).toHaveBeenCalledOnce();
-    expect(handler).toHaveBeenCalledWith(
-      expect.objectContaining({
-        taskId: id,
-        assigneeId: "builder",
-        assignedBy: "user",
-      }),
-    );
+    // Verify a notification message was injected into the agent's session
+    const msgs = db
+      .prepare(
+        `SELECT p.content FROM rt_messages m
+         JOIN rt_parts p ON p.message_id = m.id
+         JOIN rt_sessions s ON s.id = m.session_id
+         WHERE s.agent_id = 'builder' AND m.role = 'user'
+         ORDER BY m.created_at DESC LIMIT 1`,
+      )
+      .get() as { content: string } | undefined;
+    expect(msgs).toBeDefined();
+    expect(msgs!.content).toContain("[task_assigned:#");
+    expect(msgs!.content).toContain("Assign test");
   });
 
-  it("does not publish TaskAssigned when assigneeId stays the same", async () => {
+  it("does not inject message when assigneeId stays the same", async () => {
     const createRes = await app.request("/api/instances/demo/tasks", {
       method: "POST",
       headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -272,9 +272,9 @@ describe("PATCH /api/instances/:slug/tasks/:id (assignee change)", () => {
     });
     const { id } = await json(createRes);
 
-    const handler = vi.fn();
-    const bus = getBus("demo" as InstanceSlug);
-    bus.subscribe(TaskAssigned, handler);
+    const msgCountBefore = (
+      db.prepare("SELECT COUNT(*) as cnt FROM rt_messages").get() as { cnt: number }
+    ).cnt;
 
     const res = await app.request(`/api/instances/demo/tasks/${id}`, {
       method: "PATCH",
@@ -282,10 +282,14 @@ describe("PATCH /api/instances/:slug/tasks/:id (assignee change)", () => {
       body: JSON.stringify({ assigneeId: "builder" }),
     });
     expect(res.status).toBe(200);
-    expect(handler).not.toHaveBeenCalled();
+
+    const msgCountAfter = (
+      db.prepare("SELECT COUNT(*) as cnt FROM rt_messages").get() as { cnt: number }
+    ).cnt;
+    expect(msgCountAfter).toBe(msgCountBefore);
   });
 
-  it("does not publish TaskAssigned when assigneeId set to null", async () => {
+  it("does not inject message when assigneeId set to null", async () => {
     const createRes = await app.request("/api/instances/demo/tasks", {
       method: "POST",
       headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -293,9 +297,9 @@ describe("PATCH /api/instances/:slug/tasks/:id (assignee change)", () => {
     });
     const { id } = await json(createRes);
 
-    const handler = vi.fn();
-    const bus = getBus("demo" as InstanceSlug);
-    bus.subscribe(TaskAssigned, handler);
+    const msgCountBefore = (
+      db.prepare("SELECT COUNT(*) as cnt FROM rt_messages").get() as { cnt: number }
+    ).cnt;
 
     const res = await app.request(`/api/instances/demo/tasks/${id}`, {
       method: "PATCH",
@@ -303,6 +307,10 @@ describe("PATCH /api/instances/:slug/tasks/:id (assignee change)", () => {
       body: JSON.stringify({ assigneeId: null }),
     });
     expect(res.status).toBe(200);
-    expect(handler).not.toHaveBeenCalled();
+
+    const msgCountAfter = (
+      db.prepare("SELECT COUNT(*) as cnt FROM rt_messages").get() as { cnt: number }
+    ).cnt;
+    expect(msgCountAfter).toBe(msgCountBefore);
   });
 });
