@@ -13,6 +13,7 @@ import { initDatabase } from "../../db/schema.js";
 import { Registry } from "../../core/registry.js";
 import { MockConnection } from "../../core/__tests__/mock-connection.js";
 import { TokenCache } from "../token-cache.js";
+import { PROVIDER_CATALOG } from "../../lib/provider-catalog.js";
 import { SessionStore } from "../session-store.js";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
@@ -168,6 +169,14 @@ function createTestApp(): TestContext {
     tokenCache,
     xdgRuntimeDir: "/run/user/1000",
     sessionStore: new SessionStore(db),
+    modelDiscovery: {
+      invalidateProvider: () => {},
+      getProviders: () => PROVIDER_CATALOG.map((p) => ({ ...p, models: [...p.models] })),
+      getModelCatalog: () => [],
+      findModel: () => undefined,
+      start: () => {},
+      stop: () => {},
+    } as unknown as RouteDeps["modelDiscovery"],
   };
 
   registerInstanceRoutes(app, deps);

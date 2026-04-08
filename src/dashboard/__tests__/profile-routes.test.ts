@@ -98,6 +98,14 @@ beforeEach(() => {
     tokenCache: {} as unknown as RouteDeps["tokenCache"],
     xdgRuntimeDir: "/run/user/1000",
     sessionStore,
+    modelDiscovery: {
+      invalidateProvider: () => {},
+      getProviders: () => [],
+      getModelCatalog: () => [],
+      findModel: () => undefined,
+      start: () => {},
+      stop: () => {},
+    } as unknown as RouteDeps["modelDiscovery"],
   };
 
   registerProfileRoutes(app, deps);

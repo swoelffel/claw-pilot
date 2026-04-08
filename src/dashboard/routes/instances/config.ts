@@ -5,8 +5,6 @@ import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
 import { instanceGuard } from "../../../lib/guards.js";
 import { logger } from "../../../lib/logger.js";
-import { PROVIDER_CATALOG } from "../../../lib/provider-catalog.js";
-import type { ProviderInfo } from "../../../lib/provider-catalog.js";
 import { PROVIDER_ENV_VARS } from "../../../lib/providers.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
 import { writeEnvVar, removeEnvVar } from "../../../lib/dotenv.js";
@@ -465,11 +463,9 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
   });
 
   // GET /api/providers — list available providers with their model catalogs
+  // Uses dynamic discovery service (merges static catalog with discovered models).
   app.get("/api/providers", async (c) => {
-    const providers: ProviderInfo[] = PROVIDER_CATALOG.map((p) => ({
-      ...p,
-      models: [...p.models],
-    }));
+    const providers = deps.modelDiscovery.getProviders();
 
     if (!providers.some((p) => p.isDefault)) {
       providers[0]!.isDefault = true;

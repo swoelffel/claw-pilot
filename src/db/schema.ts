@@ -1179,6 +1179,30 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 28,
+    up(db) {
+      db.exec(`
+        CREATE TABLE discovered_models (
+          provider_id   TEXT NOT NULL,
+          model_id      TEXT NOT NULL,
+          name          TEXT NOT NULL,
+          api           TEXT NOT NULL,
+          capabilities  TEXT NOT NULL DEFAULT '{}',
+          cost          TEXT NOT NULL DEFAULT '{}',
+          discovered_at TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (provider_id, model_id)
+        );
+
+        CREATE TABLE discovery_status (
+          provider_id    TEXT PRIMARY KEY,
+          last_success   TEXT,
+          last_error     TEXT,
+          model_count    INTEGER DEFAULT 0
+        );
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

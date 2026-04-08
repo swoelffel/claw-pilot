@@ -74,6 +74,14 @@ function createTestApp(): TestContext {
     tokenCache,
     xdgRuntimeDir: "/run/user/1000",
     sessionStore: new SessionStore(db),
+    modelDiscovery: {
+      invalidateProvider: () => {},
+      getProviders: () => [],
+      getModelCatalog: () => [],
+      findModel: () => undefined,
+      start: () => {},
+      stop: () => {},
+    } as unknown as RouteDeps["modelDiscovery"],
   };
 
   registerNamedKeyRoutes(app, deps);

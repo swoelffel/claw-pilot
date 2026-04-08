@@ -10,6 +10,7 @@ import type { SelfUpdateChecker } from "../core/self-update-checker.js";
 import type { SelfUpdater } from "../core/self-updater.js";
 import type { TokenCache } from "./token-cache.js";
 import type { SessionStore } from "./session-store.js";
+import type { ModelDiscoveryService } from "../core/model-discovery/service.js";
 
 export interface RouteDeps {
   registry: Registry;
@@ -26,6 +27,8 @@ export interface RouteDeps {
   startedAt: number;
   /** SQLite database handle — used for DB size reporting in /api/health. */
   db: Database.Database;
+  /** Dynamic model discovery service — polls provider APIs for available models. */
+  modelDiscovery: ModelDiscoveryService;
 }
 
 // Structured error helper — all API error responses go through this function.

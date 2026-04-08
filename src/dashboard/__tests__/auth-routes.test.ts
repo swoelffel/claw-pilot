@@ -73,6 +73,14 @@ async function createTestApp(): Promise<TestCtx> {
     selfUpdateChecker: null as unknown as RouteDeps["selfUpdateChecker"],
     selfUpdater: null as unknown as RouteDeps["selfUpdater"],
     xdgRuntimeDir: "",
+    modelDiscovery: {
+      invalidateProvider: () => {},
+      getProviders: () => [],
+      getModelCatalog: () => [],
+      findModel: () => undefined,
+      start: () => {},
+      stop: () => {},
+    } as unknown as RouteDeps["modelDiscovery"],
   };
 
   const app = new Hono();

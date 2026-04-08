@@ -35,6 +35,7 @@ import { registerAuthRoutes } from "./routes/auth.js";
 import { registerAgentBlueprintRoutes } from "./routes/agent-blueprints.js";
 import { registerProfileRoutes } from "./routes/profile.js";
 import { registerNamedKeyRoutes } from "./routes/named-keys.js";
+import { ModelDiscoveryService } from "../core/model-discovery/service.js";
 
 /** Result returned by buildDashboardApp — contains the wired Hono app and cleanup helpers. */
 export interface DashboardAppResult {
@@ -120,6 +121,7 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   const selfUpdateChecker = new SelfUpdateChecker();
   const selfUpdater = new SelfUpdater(conn, lifecycle, registry);
   const tokenCache = new TokenCache(conn);
+  const modelDiscovery = new ModelDiscoveryService(db);
 
   // Periodic session cleanup (every 60s)
   const cleanupInterval = setInterval(() => {
@@ -178,6 +180,7 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
     sessionStore,
     startedAt,
     db,
+    modelDiscovery,
   };
 
   // Auth routes — registered BEFORE the auth middleware so /api/auth/login is public
@@ -289,6 +292,7 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   const cleanup = () => {
     clearInterval(cleanupInterval);
     monitor.stop();
+    modelDiscovery.stop();
   };
 
   return { app, deps, monitor, cleanup };
@@ -297,12 +301,13 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
 export async function startDashboard(options: DashboardOptions): Promise<void> {
   const { port, token, db } = options;
 
-  const { app, monitor, cleanup } = await buildDashboardApp(options);
+  const { app, deps, monitor, cleanup } = await buildDashboardApp(options);
 
   // Start HTTP server
   const server = serve({ fetch: app.fetch, port });
 
   monitor.start();
+  deps.modelDiscovery.start();
 
   // WebSocket server — auth via first applicative message { type: "auth", token: "..." }
   // This avoids exposing the token in the URL (query params appear in server logs,

@@ -79,4 +79,7 @@ export const constants = {
   AUTH_RATE_LIMIT_MAX: 5, // 5 attempts per window
   AUTH_RATE_LIMIT_WINDOW_MS: 60 * 1000, // 1 min window
   ADMIN_USERNAME: "admin",
+
+  // Model discovery
+  MODEL_DISCOVERY_POLL_INTERVAL_MS: 24 * 60 * 60 * 1000, // 24h
 } as const;

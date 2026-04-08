@@ -208,12 +208,39 @@ export const MODEL_CATALOG: ModelInfo[] = [
   },
 ];
 
-/** Look up a model by provider + model ID */
-export function findModel(providerId: string, modelId: string): ModelInfo | undefined {
+/**
+ * Look up a model by provider + model ID.
+ * Checks `discoveredModels` first (if provided), then falls back to the static catalog.
+ */
+export function findModel(
+  providerId: string,
+  modelId: string,
+  discoveredModels?: ModelInfo[],
+): ModelInfo | undefined {
+  if (discoveredModels) {
+    const found = discoveredModels.find((m) => m.providerId === providerId && m.id === modelId);
+    if (found) return found;
+  }
   return MODEL_CATALOG.find((m) => m.providerId === providerId && m.id === modelId);
 }
 
-/** @public Get all models for a given provider */
-export function getProviderModels(providerId: string): ModelInfo[] {
-  return MODEL_CATALOG.filter((m) => m.providerId === providerId);
+/**
+ * Get all models for a given provider.
+ * Merges `discoveredModels` (if provided) with the static catalog, deduplicating by id.
+ */
+export function getProviderModels(providerId: string, discoveredModels?: ModelInfo[]): ModelInfo[] {
+  if (!discoveredModels) {
+    return MODEL_CATALOG.filter((m) => m.providerId === providerId);
+  }
+
+  const result = new Map<string, ModelInfo>();
+  // Static first
+  for (const m of MODEL_CATALOG) {
+    if (m.providerId === providerId) result.set(m.id, m);
+  }
+  // Discovered override
+  for (const m of discoveredModels) {
+    if (m.providerId === providerId) result.set(m.id, m);
+  }
+  return [...result.values()];
 }

@@ -94,6 +94,8 @@ export function registerNamedKeyRoutes(app: Hono, deps: RouteDeps): void {
         defaultModel: data.defaultModel,
         baseUrl: data.baseUrl ?? null,
       });
+      // Trigger model re-discovery for this provider (non-blocking)
+      void deps.modelDiscovery.invalidateProvider(data.providerId);
       return c.json({ ok: true, key });
     } catch (err) {
       if (isUniqueConstraintError(err)) {
@@ -145,6 +147,10 @@ export function registerNamedKeyRoutes(app: Hono, deps: RouteDeps): void {
         ...(updateData.baseUrl !== undefined ? { baseUrl: updateData.baseUrl } : {}),
         ...(updateData.apiKey !== undefined ? { apiKey: updateData.apiKey } : {}),
       });
+      // Re-discover models if API key changed (non-blocking)
+      if (updateData.apiKey !== undefined) {
+        void deps.modelDiscovery.invalidateProvider(existing.providerId);
+      }
       return c.json({ ok: true, key });
     } catch (err) {
       if (isUniqueConstraintError(err)) {
@@ -171,6 +177,8 @@ export function registerNamedKeyRoutes(app: Hono, deps: RouteDeps): void {
 
     try {
       namedKeyRepo.delete(id);
+      // Re-discover models for the provider (may now have no key)
+      void deps.modelDiscovery.invalidateProvider(existing.providerId);
       return c.json({ ok: true });
     } catch (err) {
       if (isForeignKeyError(err)) {
