@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.64.1] — 2026-04-07
+
+### Changed
+
+- **Dependencies (prod)**: bump @ai-sdk/anthropic 3.0.67, @ai-sdk/google 3.0.59, @ai-sdk/openai 3.0.51, ai 6.0.149, @modelcontextprotocol/sdk 1.29.0, @openrouter/ai-sdk-provider 2.5.0, hono 4.12.12, marked 18.0.0
+- **Dependencies (dev)**: bump @vitest/coverage-v8 4.1.3, cspell 10.0.0, knip 6.3.0, lefthook 2.1.5, oxlint 1.59.0, @hono/node-server 1.19.13
+
+---
+
 ## [0.64.0] — 2026-04-08
 
 ### Added
