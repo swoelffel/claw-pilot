@@ -17,7 +17,10 @@ import { listAvailableSkills } from "../tool/built-in/skill.js";
 import { rankSkills } from "./skill-ranker.js";
 import { readWorkspaceState, writeWorkspaceState } from "../../core/workspace-state.js";
 import { getAgent, resolveEffectivePersistence } from "../agent/registry.js";
-import { getActiveTasksForAgent, type TaskRow } from "../../core/repositories/task-repository.js";
+import {
+  getActiveTasksForAgent,
+  type TaskRowWithEpic,
+} from "../../core/repositories/task-repository.js";
 import { logger } from "../../lib/logger.js";
 
 // Read claw-pilot version from package.json once at module load time
@@ -307,10 +310,12 @@ export async function buildSystemPrompt(ctx: SystemPromptContext): Promise<strin
 // ---------------------------------------------------------------------------
 
 /** Build the <task_backlog> block injected into the system prompt. */
-function buildTaskBacklogBlock(tasks: TaskRow[]): string {
+function buildTaskBacklogBlock(tasks: TaskRowWithEpic[]): string {
   const lines = ["<task_backlog>", "Your currently assigned tasks:"];
   for (const t of tasks) {
-    lines.push(`- #${t.id} [${t.status}] [${t.priority}] ${t.title}`);
+    let line = `- #${t.id} [${t.status}] [${t.priority}] ${t.title}`;
+    if (t.epic_title) line += ` (Epic: "${t.epic_title}")`;
+    lines.push(line);
   }
   lines.push("", "Use the task_board tool to manage these tasks.", "</task_backlog>");
   return lines.join("\n");

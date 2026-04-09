@@ -737,6 +737,8 @@ export interface TaskInfo {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+  type: "epic" | "task";
+  parentId: number | null;
 }
 
 export interface TaskComment {
@@ -747,8 +749,20 @@ export interface TaskComment {
   createdAt: string;
 }
 
+export interface EpicProgress {
+  total: number;
+  completed: number;
+}
+
+export interface EpicInfo extends TaskInfo {
+  progress: EpicProgress;
+}
+
 export interface TaskDetail extends TaskInfo {
   comments: TaskComment[];
+  parent?: { id: number; title: string } | null;
+  children?: TaskInfo[];
+  progress?: EpicProgress;
 }
 
 // ---------------------------------------------------------------------------
