@@ -6,6 +6,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.65.0] — 2026-04-09
+
+### Added
+- **Epic hierarchy (GOAL-001)**: enriched task board with epic/task type system and parent_id hierarchy
+- Schema v30: `type` (epic/task) and `parent_id` columns on `rt_tasks`
+- 6 new repository functions: getEpicsForInstance, getChildTasks, getEpicProgress, getAncestryChain, validateParentId, tryAutoCompleteEpic
+- API endpoints: `GET /epics`, `GET /epics/:id/children`, type filter on `GET /tasks`
+- Tool `task_board`: `list_epics` action, `type` and `parentId` parameters on `create`
+- System prompt: `<task_backlog>` now includes parent epic context via LEFT JOIN
+- UI: Board/Epics toggle in task board header
+- UI: `cp-epic-tree` component — collapsible tree view with progress bars
+- UI: Parent Epic field in task detail (dropdown + assign button)
+- UI: Subtasks section in task detail for epics
+- UI: Epic indicator `[E]` on Kanban task cards
+- Auto-complete: epic status transitions to completed when all children are done
+- 10 new i18n keys across 6 languages
+- 15 new tests for epic hierarchy
+
+---
+
 ## [0.64.2] — 2026-04-07
 
 ### Added
