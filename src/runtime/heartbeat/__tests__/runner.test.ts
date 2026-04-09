@@ -33,6 +33,21 @@ vi.mock("../../channel/router.js", () => ({
   }),
 }));
 
+// Mock agent registry for permanent session resolution
+vi.mock("../../agent/registry.js", () => ({
+  getAgent: vi.fn().mockReturnValue({
+    kind: "primary",
+    category: "user",
+    archetype: null,
+    name: "sentinel",
+    permission: [],
+    mode: "all",
+    options: {},
+  }),
+  resolveEffectivePersistence: vi.fn().mockReturnValue("ephemeral"),
+  initAgentRegistry: vi.fn(),
+}));
+
 import { initDatabase } from "../../../db/schema.js";
 import type Database from "better-sqlite3";
 import { getBus, disposeBus } from "../../bus/index.js";
@@ -40,6 +55,8 @@ import { HeartbeatTick, HeartbeatAlert } from "../../bus/events.js";
 import { startHeartbeatRunner } from "../runner.js";
 import { runPromptLoop } from "../../session/prompt-loop.js";
 import { resolveModelForAgent } from "../../channel/router.js";
+import { resolveEffectivePersistence } from "../../agent/registry.js";
+import { getOrCreatePermanentSession, listSessions } from "../../session/session.js";
 import type { RuntimeAgentConfig, RuntimeConfig } from "../../config/index.js";
 
 const INSTANCE_SLUG = "test-heartbeat-runner";
@@ -432,6 +449,225 @@ describe("startHeartbeatRunner — model resolution chain", () => {
       expect.objectContaining({ model: "anthropic/claude-sonnet-4-5" }),
       expect.anything(),
     );
+    cleanup();
+  });
+});
+
+describe("startHeartbeatRunner — permanent session reuse", () => {
+  it("[positive] uses permanent session for permanent agents", async () => {
+    const mockPersistence = vi.mocked(resolveEffectivePersistence);
+    mockPersistence.mockReturnValue("permanent");
+
+    const mockRunPromptLoop = vi.mocked(runPromptLoop);
+    mockRunPromptLoop.mockResolvedValue({
+      text: "HEARTBEAT_OK",
+      messageId: "m1",
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      costUsd: 0,
+      steps: 0,
+    });
+
+    const cleanup = startHeartbeatRunner([makeAgent({ heartbeat: { every: "5m" } })], {
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      runtimeConfig: makeRuntimeConfig(),
+      workDir: undefined,
+    });
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mockRunPromptLoop).toHaveBeenCalledTimes(1);
+    // Verify the session used is a permanent session (key format: slug:agentId)
+    const call = mockRunPromptLoop.mock.calls[0]!;
+    const sessionId = (call[0] as { sessionId: string }).sessionId;
+    // Permanent sessions exist and are reusable — find it
+    const permSession = getOrCreatePermanentSession(db, {
+      instanceSlug: INSTANCE_SLUG,
+      agentId: "sentinel",
+      channel: "internal",
+    });
+    expect(sessionId).toBe(permSession.id);
+    cleanup();
+  });
+
+  it("[positive] uses dedicated session for non-permanent agents", async () => {
+    const mockPersistence = vi.mocked(resolveEffectivePersistence);
+    mockPersistence.mockReturnValue("ephemeral");
+
+    const mockRunPromptLoop = vi.mocked(runPromptLoop);
+    mockRunPromptLoop.mockResolvedValue({
+      text: "HEARTBEAT_OK",
+      messageId: "m1",
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      costUsd: 0,
+      steps: 0,
+    });
+
+    const cleanup = startHeartbeatRunner([makeAgent({ heartbeat: { every: "5m" } })], {
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      runtimeConfig: makeRuntimeConfig(),
+      workDir: undefined,
+    });
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mockRunPromptLoop).toHaveBeenCalledTimes(1);
+    // Verify the session is an internal/heartbeat session (not permanent)
+    const sessions = listSessions(db, INSTANCE_SLUG, { state: "active" });
+    const hbSession = sessions.find(
+      (s) => s.channel === "internal" && s.peerId === "heartbeat:sentinel",
+    );
+    expect(hbSession).toBeDefined();
+    cleanup();
+  });
+});
+
+describe("startHeartbeatRunner — heartbeat status tagging", () => {
+  it("[positive] tags HEARTBEAT_OK message with heartbeat_status: ok", async () => {
+    const mockRunPromptLoop = vi.mocked(runPromptLoop);
+
+    // We need a real messageId that exists in the DB to tag
+    // Create a session and message first, then make runPromptLoop return that messageId
+    const { createSession } = await import("../../session/session.js");
+    const { createAssistantMessage } = await import("../../session/message.js");
+    const { createPart } = await import("../../session/part.js");
+
+    const session = createSession(db, {
+      instanceSlug: INSTANCE_SLUG,
+      agentId: "sentinel",
+      channel: "internal",
+      peerId: "heartbeat:sentinel",
+    });
+    const msg = createAssistantMessage(db, { sessionId: session.id, agentId: "sentinel" });
+    createPart(db, { messageId: msg.id, type: "text", content: "HEARTBEAT_OK" });
+
+    mockRunPromptLoop.mockResolvedValue({
+      text: "HEARTBEAT_OK",
+      messageId: msg.id,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      costUsd: 0,
+      steps: 0,
+    });
+
+    const cleanup = startHeartbeatRunner([makeAgent({ heartbeat: { every: "5m" } })], {
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      runtimeConfig: makeRuntimeConfig(),
+      workDir: undefined,
+    });
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Check finish_reason on the message
+    const row = db.prepare("SELECT finish_reason FROM rt_messages WHERE id = ?").get(msg.id) as {
+      finish_reason: string | null;
+    };
+    expect(row.finish_reason).toBe("heartbeat:ok");
+
+    // Check that the part metadata was also tagged
+    const part = db
+      .prepare("SELECT metadata FROM rt_parts WHERE message_id = ? AND type = 'text'")
+      .get(msg.id) as { metadata: string | null } | undefined;
+    expect(part).toBeDefined();
+    expect(JSON.parse(part!.metadata!)).toEqual({ heartbeat_status: "ok" });
+    cleanup();
+  });
+
+  it("[positive] tags alert message with heartbeat_status: alert", async () => {
+    const mockRunPromptLoop = vi.mocked(runPromptLoop);
+
+    const { createSession } = await import("../../session/session.js");
+    const { createAssistantMessage } = await import("../../session/message.js");
+    const { createPart } = await import("../../session/part.js");
+
+    const session = createSession(db, {
+      instanceSlug: INSTANCE_SLUG,
+      agentId: "sentinel",
+      channel: "internal",
+      peerId: "heartbeat:sentinel",
+    });
+    const msg = createAssistantMessage(db, { sessionId: session.id, agentId: "sentinel" });
+    createPart(db, { messageId: msg.id, type: "text", content: "Something is wrong" });
+
+    mockRunPromptLoop.mockResolvedValue({
+      text: "Something is wrong",
+      messageId: msg.id,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      costUsd: 0,
+      steps: 0,
+    });
+
+    const cleanup = startHeartbeatRunner([makeAgent({ heartbeat: { every: "5m" } })], {
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      runtimeConfig: makeRuntimeConfig(),
+      workDir: undefined,
+    });
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(0);
+
+    const row = db.prepare("SELECT finish_reason FROM rt_messages WHERE id = ?").get(msg.id) as {
+      finish_reason: string | null;
+    };
+    expect(row.finish_reason).toBe("heartbeat:alert");
+
+    const part = db
+      .prepare("SELECT metadata FROM rt_parts WHERE message_id = ? AND type = 'text'")
+      .get(msg.id) as { metadata: string | null } | undefined;
+    expect(part).toBeDefined();
+    expect(JSON.parse(part!.metadata!)).toEqual({ heartbeat_status: "alert" });
+    cleanup();
+  });
+
+  it("[positive] tags finish_reason even when no text part exists (tool-only response)", async () => {
+    const mockRunPromptLoop = vi.mocked(runPromptLoop);
+
+    const { createSession } = await import("../../session/session.js");
+    const { createAssistantMessage } = await import("../../session/message.js");
+
+    const session = createSession(db, {
+      instanceSlug: INSTANCE_SLUG,
+      agentId: "sentinel",
+      channel: "internal",
+      peerId: "heartbeat:sentinel",
+    });
+    // Create message with NO parts (simulates tool-only response)
+    const msg = createAssistantMessage(db, { sessionId: session.id, agentId: "sentinel" });
+
+    mockRunPromptLoop.mockResolvedValue({
+      text: "",
+      messageId: msg.id,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      costUsd: 0,
+      steps: 0,
+    });
+
+    const cleanup = startHeartbeatRunner([makeAgent({ heartbeat: { every: "5m" } })], {
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      runtimeConfig: makeRuntimeConfig(),
+      workDir: undefined,
+    });
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(0);
+
+    // finish_reason is always set, even without text parts
+    const row = db.prepare("SELECT finish_reason FROM rt_messages WHERE id = ?").get(msg.id) as {
+      finish_reason: string | null;
+    };
+    expect(row.finish_reason).toBe("heartbeat:alert");
+
+    // No text parts to tag
+    const parts = db
+      .prepare("SELECT * FROM rt_parts WHERE message_id = ? AND type = 'text'")
+      .all(msg.id);
+    expect(parts).toHaveLength(0);
     cleanup();
   });
 });

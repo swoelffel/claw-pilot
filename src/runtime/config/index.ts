@@ -13,6 +13,7 @@
 import { z } from "zod";
 import { DEFAULT_RULESET } from "../agent/defaults.js";
 import { PermissionRuleSchema } from "../../lib/schemas/permission.js";
+import { isValidTimezone } from "../heartbeat/interval.js";
 
 // Re-export schema (not the type — PermissionRule is already exported from runtime/types.ts)
 export { PermissionRuleSchema } from "../../lib/schemas/permission.js";
@@ -52,7 +53,11 @@ const HeartbeatConfigSchema = z.object({
     .object({
       start: z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:MM format"),
       end: z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:MM format"),
-      tz: z.string().min(1).optional(),
+      tz: z
+        .string()
+        .min(1)
+        .refine((v) => isValidTimezone(v), { message: "Must be a valid IANA timezone" })
+        .optional(),
     })
     .optional(),
   /** Model override for heartbeat runs (e.g. a cheaper/faster model) */

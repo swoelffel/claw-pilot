@@ -995,6 +995,17 @@ export class AgentDetailPanel extends LitElement {
                     />
                   </div>
                 </div>
+                ${(this._hbHoursStart && !this._hbHoursEnd) ||
+                (!this._hbHoursStart && this._hbHoursEnd)
+                  ? html`<div
+                      class="hb-warning"
+                      style="margin-top:4px;color:var(--warning-color,#e6a700);font-size:0.85em"
+                    >
+                      ${msg("Both start and end times are required for active hours", {
+                        id: "hb-partial-hours-warning",
+                      })}
+                    </div>`
+                  : nothing}
                 ${this._hbHoursStart || this._hbHoursEnd
                   ? html`
                       <div class="hb-field" style="margin-top:6px">

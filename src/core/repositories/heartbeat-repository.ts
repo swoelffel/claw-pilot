@@ -60,6 +60,7 @@ export function getHeartbeatHeatmapData(
     okCount: number;
   }
 
+  // Priority: finish_reason (always set on new ticks) → part metadata → text fallback.
   return db
     .prepare(
       `SELECT
@@ -67,16 +68,33 @@ export function getHeartbeatHeatmapData(
          date(m.created_at) AS day,
          CAST(strftime('%H', m.created_at) AS INTEGER) AS hour,
          COUNT(*) AS tickCount,
-         SUM(CASE WHEN p.content IS NOT NULL AND p.content != ''
-           AND LOWER(p.content) NOT LIKE 'heartbeat_ok%' THEN 1 ELSE 0 END) AS alertCount,
-         SUM(CASE WHEN p.content IS NULL OR p.content = ''
-           OR LOWER(p.content) LIKE 'heartbeat_ok%' THEN 1 ELSE 0 END) AS okCount
+         SUM(CASE
+           WHEN m.finish_reason IN ('heartbeat:alert', 'heartbeat:error') THEN 1
+           WHEN m.finish_reason = 'heartbeat:ok' THEN 0
+           WHEN json_extract(p.metadata, '$.heartbeat_status') IN ('alert', 'error') THEN 1
+           WHEN json_extract(p.metadata, '$.heartbeat_status') = 'ok' THEN 0
+           WHEN p.content IS NOT NULL AND p.content != ''
+             AND LOWER(p.content) NOT LIKE 'heartbeat_ok%' THEN 1
+           ELSE 0
+         END) AS alertCount,
+         SUM(CASE
+           WHEN m.finish_reason = 'heartbeat:ok' THEN 1
+           WHEN m.finish_reason IN ('heartbeat:alert', 'heartbeat:error') THEN 0
+           WHEN json_extract(p.metadata, '$.heartbeat_status') = 'ok' THEN 1
+           WHEN json_extract(p.metadata, '$.heartbeat_status') IN ('alert', 'error') THEN 0
+           WHEN p.content IS NULL OR p.content = ''
+             OR LOWER(p.content) LIKE 'heartbeat_ok%' THEN 1
+           ELSE 0
+         END) AS okCount
        FROM rt_messages m
        JOIN rt_sessions s ON s.id = m.session_id
        LEFT JOIN rt_parts p ON p.message_id = m.id AND p.type = 'text'
        WHERE s.instance_slug = ?
-         AND s.channel = 'internal'
-         AND s.peer_id LIKE 'heartbeat:%'
+         AND (
+           (s.channel = 'internal' AND s.peer_id LIKE 'heartbeat:%')
+           OR m.finish_reason LIKE 'heartbeat:%'
+           OR json_extract(p.metadata, '$.heartbeat_status') IS NOT NULL
+         )
          AND m.role = 'assistant'
          AND m.created_at >= ?
        GROUP BY s.agent_id, date(m.created_at), CAST(strftime('%H', m.created_at) AS INTEGER)
@@ -104,16 +122,26 @@ export function getHeartbeatAgentStats(
       `SELECT
          s.agent_id AS agentId,
          COUNT(*) AS totalTicks,
-         SUM(CASE WHEN p.content IS NOT NULL AND p.content != ''
-           AND LOWER(p.content) NOT LIKE 'heartbeat_ok%' THEN 1 ELSE 0 END) AS totalAlerts,
+         SUM(CASE
+           WHEN m.finish_reason IN ('heartbeat:alert', 'heartbeat:error') THEN 1
+           WHEN m.finish_reason = 'heartbeat:ok' THEN 0
+           WHEN json_extract(p.metadata, '$.heartbeat_status') IN ('alert', 'error') THEN 1
+           WHEN json_extract(p.metadata, '$.heartbeat_status') = 'ok' THEN 0
+           WHEN p.content IS NOT NULL AND p.content != ''
+             AND LOWER(p.content) NOT LIKE 'heartbeat_ok%' THEN 1
+           ELSE 0
+         END) AS totalAlerts,
          MIN(m.created_at) AS firstTick,
          MAX(m.created_at) AS lastTick
        FROM rt_messages m
        JOIN rt_sessions s ON s.id = m.session_id
        LEFT JOIN rt_parts p ON p.message_id = m.id AND p.type = 'text'
        WHERE s.instance_slug = ?
-         AND s.channel = 'internal'
-         AND s.peer_id LIKE 'heartbeat:%'
+         AND (
+           (s.channel = 'internal' AND s.peer_id LIKE 'heartbeat:%')
+           OR m.finish_reason LIKE 'heartbeat:%'
+           OR json_extract(p.metadata, '$.heartbeat_status') IS NOT NULL
+         )
          AND m.role = 'assistant'
          AND m.created_at >= ?
        GROUP BY s.agent_id
