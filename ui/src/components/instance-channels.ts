@@ -15,6 +15,7 @@ import {
   fetchWhatsAppPairing,
   approveWhatsAppPairing,
   rejectWhatsAppPairing,
+  fetchBaileysStatus,
 } from "../api.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { buttonStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
@@ -446,6 +447,15 @@ export class InstanceChannels extends LitElement {
   @state() private _waError = "";
   @state() private _waRequiresRestart = false;
 
+  // WhatsApp mode
+  @state() private _waMode: "cloud-api" | "baileys" = "cloud-api";
+
+  // Baileys status
+  @state() private _baileysConnected = false;
+  @state() private _baileysQrCode: string | null = null;
+  @state() private _baileysPhoneNumber: string | null = null;
+  private _baileysStatusPollTimer: ReturnType<typeof setInterval> | undefined;
+
   // WhatsApp pairing
   @state() private _waPairing: WhatsAppPairingList | null = null;
   @state() private _waPairingLoading = false;
@@ -462,6 +472,7 @@ export class InstanceChannels extends LitElement {
     super.disconnectedCallback();
     this._stopPairingPoll();
     this._stopWaPairingPoll();
+    this._stopBaileysStatusPoll();
   }
 
   override updated(changed: Map<string, unknown>): void {
@@ -1104,22 +1115,31 @@ export class InstanceChannels extends LitElement {
     this._waRequiresRestart = false;
     if (wa) {
       this._waEnabled = wa.enabled;
+      this._waMode = wa.mode ?? "cloud-api";
       this._waTokenMasked = wa.accessTokenMasked;
       this._waPhoneNumberId = wa.phoneNumberId ?? "";
       this._waDmPolicy = wa.dmPolicy ?? "pairing";
-      if (wa.enabled || wa.accessTokenMasked) {
+      if (wa.enabled || wa.accessTokenMasked || this._waMode === "baileys") {
         this._waPanelState = "configured";
       } else {
         this._waPanelState = "unconfigured";
       }
     } else {
       this._waEnabled = false;
+      this._waMode = "cloud-api";
       this._waTokenMasked = null;
       this._waPanelState = "unconfigured";
     }
 
     if (this._waPanelState === "configured" && this._waDmPolicy === "pairing") {
       void this._loadWaPairing();
+    }
+
+    // Start baileys status polling if in baileys mode
+    if (this._waPanelState === "configured" && this._waMode === "baileys") {
+      void this._loadBaileysStatus();
+    } else {
+      this._stopBaileysStatusPoll();
     }
   }
 
@@ -1193,6 +1213,7 @@ export class InstanceChannels extends LitElement {
       const result = await patchChannelsConfig(this.instanceSlug, {
         whatsapp: {
           enabled: true,
+          mode: this._waMode,
           phoneNumberId: this._waPhoneNumberId,
           dmPolicy: this._waDmPolicy,
         },
@@ -1228,6 +1249,7 @@ export class InstanceChannels extends LitElement {
       const result = await patchChannelsConfig(this.instanceSlug, {
         whatsapp: {
           enabled: this._waEnabled,
+          mode: this._waMode,
           phoneNumberId: this._waPhoneNumberId,
           dmPolicy: this._waDmPolicy,
         },
@@ -1258,6 +1280,42 @@ export class InstanceChannels extends LitElement {
       this._waTokenEditMode = false;
     } catch (err) {
       this._waError = err instanceof Error ? err.message : "Failed to remove token";
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // WhatsApp — Baileys status polling
+  // ---------------------------------------------------------------------------
+
+  private async _loadBaileysStatus(): Promise<void> {
+    if (!this.instanceSlug) return;
+    try {
+      const status = await fetchBaileysStatus(this.instanceSlug);
+      this._baileysConnected = status.connected;
+      this._baileysQrCode = status.qrCode;
+      this._baileysPhoneNumber = status.phoneNumber;
+      // Keep polling while not connected
+      if (!status.connected) {
+        this._startBaileysStatusPoll();
+      } else {
+        this._stopBaileysStatusPoll();
+      }
+    } catch {
+      // Ignore — runtime may not be running
+    }
+  }
+
+  private _startBaileysStatusPoll(): void {
+    if (this._baileysStatusPollTimer) return;
+    this._baileysStatusPollTimer = setInterval(() => {
+      void this._loadBaileysStatus();
+    }, 3_000);
+  }
+
+  private _stopBaileysStatusPoll(): void {
+    if (this._baileysStatusPollTimer) {
+      clearInterval(this._baileysStatusPollTimer);
+      this._baileysStatusPollTimer = undefined;
     }
   }
 
@@ -1311,47 +1369,22 @@ export class InstanceChannels extends LitElement {
           <div class="channel-title">📱 ${msg("WhatsApp", { id: "channels-whatsapp-title" })}</div>
         </div>
 
-        <!-- Access token -->
-        <div class="form-row">
-          <label class="form-label"
-            >${msg("Access token", { id: "channels-wa-token-label" })}</label
-          >
-          <input
-            type="password"
-            placeholder=${msg("Paste token from Meta Business...", {
-              id: "channels-wa-token-placeholder",
-            })}
-            .value=${this._waNewToken}
-            @input=${(e: Event) => {
-              this._waNewToken = (e.target as HTMLInputElement).value;
+        <!-- Mode selector -->
+        <div class="form-row-inline">
+          <label class="form-label">${msg("Mode", { id: "channels-wa-mode-label" })}</label>
+          <select
+            .value=${this._waMode}
+            @change=${(e: Event) => {
+              this._waMode = (e.target as HTMLSelectElement).value as typeof this._waMode;
             }}
-          />
-          <div class="form-hint">
-            ${msg("Long-lived access token from Meta Business dashboard", {
-              id: "channels-wa-token-hint",
-            })}
-          </div>
+            style="max-width: 220px;"
+          >
+            <option value="cloud-api">Cloud API (Meta Business)</option>
+            <option value="baileys">Baileys (Personal)</option>
+          </select>
         </div>
 
-        <!-- Phone number ID -->
-        <div class="form-row">
-          <label class="form-label"
-            >${msg("Phone Number ID", { id: "channels-wa-phone-label" })}</label
-          >
-          <input
-            type="text"
-            placeholder="123456789012345"
-            .value=${this._waPhoneNumberId}
-            @input=${(e: Event) => {
-              this._waPhoneNumberId = (e.target as HTMLInputElement).value;
-            }}
-          />
-          <div class="form-hint">
-            ${msg("From WhatsApp Business > Phone Numbers in Meta dashboard", {
-              id: "channels-wa-phone-hint",
-            })}
-          </div>
-        </div>
+        ${this._waMode === "cloud-api" ? this._renderCloudApiFields() : this._renderBaileysInfo()}
 
         <!-- DM policy -->
         <div class="form-row-inline">
@@ -1398,6 +1431,175 @@ export class InstanceChannels extends LitElement {
     `;
   }
 
+  /** Cloud API specific fields (token + phone number ID) */
+  private _renderCloudApiFields() {
+    return html`
+      <div class="form-row">
+        <label class="form-label">${msg("Access token", { id: "channels-wa-token-label" })}</label>
+        <input
+          type="password"
+          placeholder=${msg("Paste token from Meta Business...", {
+            id: "channels-wa-token-placeholder",
+          })}
+          .value=${this._waNewToken}
+          @input=${(e: Event) => {
+            this._waNewToken = (e.target as HTMLInputElement).value;
+          }}
+        />
+        <div class="form-hint">
+          ${msg("Long-lived access token from Meta Business dashboard", {
+            id: "channels-wa-token-hint",
+          })}
+        </div>
+      </div>
+      <div class="form-row">
+        <label class="form-label"
+          >${msg("Phone Number ID", { id: "channels-wa-phone-label" })}</label
+        >
+        <input
+          type="text"
+          placeholder="123456789012345"
+          .value=${this._waPhoneNumberId}
+          @input=${(e: Event) => {
+            this._waPhoneNumberId = (e.target as HTMLInputElement).value;
+          }}
+        />
+        <div class="form-hint">
+          ${msg("From WhatsApp Business > Phone Numbers in Meta dashboard", {
+            id: "channels-wa-phone-hint",
+          })}
+        </div>
+      </div>
+    `;
+  }
+
+  /** Baileys mode info section */
+  private _renderBaileysInfo() {
+    return html`
+      <div class="form-row">
+        <div class="form-hint" style="color: var(--state-warning); font-size: 12px;">
+          ⚠
+          ${msg(
+            "Baileys uses a reverse-engineered protocol. Your number may be banned by WhatsApp. Use a dedicated number.",
+            { id: "channels-wa-baileys-warning" },
+          )}
+        </div>
+        <div class="form-hint" style="margin-top: 8px;">
+          ${msg("QR code will appear after enabling and starting the runtime.", {
+            id: "channels-wa-baileys-qr-hint",
+          })}
+        </div>
+      </div>
+    `;
+  }
+
+  /** Cloud API fields for configured state (token management + phone number ID) */
+  private _renderCloudApiConfigured() {
+    return html`
+      <div class="form-row">
+        <label class="form-label">${msg("Access token", { id: "channels-wa-token-label" })}</label>
+        <div class="token-row">
+          ${this._waTokenMasked && !this._waTokenEditMode
+            ? html`
+                <input type="text" .value=${this._waTokenMasked} disabled />
+                <button
+                  class="btn btn-ghost"
+                  @click=${() => {
+                    this._waTokenEditMode = true;
+                  }}
+                >
+                  ${msg("Change", { id: "channels-token-change" })}
+                </button>
+                <button class="btn btn-ghost" @click=${this._removeWaToken}>×</button>
+              `
+            : html`
+                <input
+                  type="password"
+                  placeholder=${msg("Paste token from Meta Business...", {
+                    id: "channels-wa-token-placeholder",
+                  })}
+                  .value=${this._waNewToken}
+                  @input=${(e: Event) => {
+                    this._waNewToken = (e.target as HTMLInputElement).value;
+                  }}
+                />
+                ${this._waTokenEditMode
+                  ? html`<button
+                      class="btn btn-ghost"
+                      @click=${() => {
+                        this._waTokenEditMode = false;
+                        this._waNewToken = "";
+                      }}
+                    >
+                      ${msg("Cancel", { id: "settings-cancel" })}
+                    </button>`
+                  : nothing}
+              `}
+        </div>
+      </div>
+      <div class="form-row">
+        <label class="form-label"
+          >${msg("Phone Number ID", { id: "channels-wa-phone-label" })}</label
+        >
+        <input
+          type="text"
+          placeholder="123456789012345"
+          .value=${this._waPhoneNumberId}
+          @input=${(e: Event) => {
+            this._waPhoneNumberId = (e.target as HTMLInputElement).value;
+          }}
+        />
+      </div>
+    `;
+  }
+
+  /** Baileys status section for configured state (QR code + connection status) */
+  private _renderBaileysConfigured() {
+    return html`
+      <div class="form-row">
+        <div
+          class="form-hint"
+          style="color: var(--state-warning); font-size: 12px; margin-bottom: 12px;"
+        >
+          ⚠
+          ${msg(
+            "Baileys uses a reverse-engineered protocol. Your number may be banned by WhatsApp.",
+            { id: "channels-wa-baileys-warning" },
+          )}
+        </div>
+
+        ${this._baileysConnected
+          ? html`
+              <div class="status-badge connected" style="display: inline-flex; margin-bottom: 8px;">
+                ● ${msg("Connected", { id: "status-wa-baileys-connected" })}
+                ${this._baileysPhoneNumber ? html` — ${this._baileysPhoneNumber}` : nothing}
+              </div>
+            `
+          : this._baileysQrCode
+            ? html`
+                <div style="margin-bottom: 8px;">
+                  <div class="form-label" style="margin-bottom: 6px;">
+                    ${msg("Scan QR code with WhatsApp", { id: "channels-wa-baileys-scan" })}
+                  </div>
+                  <pre
+                    style="background: white; color: black; padding: 12px; border-radius: var(--radius-md); font-size: 4px; line-height: 4px; font-family: monospace; display: inline-block; white-space: pre;"
+                  >
+${this._baileysQrCode}</pre
+                  >
+                </div>
+              `
+            : html`
+                <div
+                  class="status-badge disconnected"
+                  style="display: inline-flex; margin-bottom: 8px;"
+                >
+                  ◎ ${msg("Waiting for connection...", { id: "status-wa-baileys-waiting" })}
+                </div>
+              `}
+      </div>
+    `;
+  }
+
   private _renderWaConfigured() {
     const pendingCount = this._waPairing?.pending.length ?? 0;
 
@@ -1426,65 +1628,24 @@ export class InstanceChannels extends LitElement {
           <span class="toggle-label">${msg("Enabled", { id: "channels-telegram-enabled" })}</span>
         </div>
 
-        <!-- Access token -->
-        <div class="form-row">
-          <label class="form-label"
-            >${msg("Access token", { id: "channels-wa-token-label" })}</label
+        <!-- Mode selector -->
+        <div class="form-row-inline">
+          <label class="form-label">${msg("Mode", { id: "channels-wa-mode-label" })}</label>
+          <select
+            .value=${this._waMode}
+            @change=${(e: Event) => {
+              this._waMode = (e.target as HTMLSelectElement).value as typeof this._waMode;
+            }}
+            style="max-width: 220px;"
           >
-          <div class="token-row">
-            ${this._waTokenMasked && !this._waTokenEditMode
-              ? html`
-                  <input type="text" .value=${this._waTokenMasked} disabled />
-                  <button
-                    class="btn btn-ghost"
-                    @click=${() => {
-                      this._waTokenEditMode = true;
-                    }}
-                  >
-                    ${msg("Change", { id: "channels-token-change" })}
-                  </button>
-                  <button class="btn btn-ghost" @click=${this._removeWaToken}>×</button>
-                `
-              : html`
-                  <input
-                    type="password"
-                    placeholder=${msg("Paste token from Meta Business...", {
-                      id: "channels-wa-token-placeholder",
-                    })}
-                    .value=${this._waNewToken}
-                    @input=${(e: Event) => {
-                      this._waNewToken = (e.target as HTMLInputElement).value;
-                    }}
-                  />
-                  ${this._waTokenEditMode
-                    ? html`<button
-                        class="btn btn-ghost"
-                        @click=${() => {
-                          this._waTokenEditMode = false;
-                          this._waNewToken = "";
-                        }}
-                      >
-                        ${msg("Cancel", { id: "settings-cancel" })}
-                      </button>`
-                    : nothing}
-                `}
-          </div>
+            <option value="cloud-api">Cloud API (Meta Business)</option>
+            <option value="baileys">Baileys (Personal)</option>
+          </select>
         </div>
 
-        <!-- Phone number ID -->
-        <div class="form-row">
-          <label class="form-label"
-            >${msg("Phone Number ID", { id: "channels-wa-phone-label" })}</label
-          >
-          <input
-            type="text"
-            placeholder="123456789012345"
-            .value=${this._waPhoneNumberId}
-            @input=${(e: Event) => {
-              this._waPhoneNumberId = (e.target as HTMLInputElement).value;
-            }}
-          />
-        </div>
+        ${this._waMode === "cloud-api"
+          ? this._renderCloudApiConfigured()
+          : this._renderBaileysConfigured()}
 
         <!-- DM policy -->
         <div class="form-row-inline">

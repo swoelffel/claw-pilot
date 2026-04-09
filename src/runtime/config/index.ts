@@ -227,14 +227,16 @@ const TelegramConfigSchema = z.object({
   groupPolicy: z.enum(["open", "allowlist", "disabled"]).default("allowlist"),
 });
 
-/** WhatsApp Business Cloud API channel config */
+/** WhatsApp channel config — supports Cloud API (official) and Baileys (personal) */
 const WhatsAppConfigSchema = z.object({
   enabled: z.boolean().default(false),
-  /** Env var name that holds the long-lived access token from Meta Business */
+  /** Transport: "cloud-api" (Meta Business, webhook) or "baileys" (personal, WebSocket) */
+  mode: z.enum(["cloud-api", "baileys"]).default("cloud-api"),
+  /** Env var name that holds the long-lived access token from Meta Business (cloud-api only) */
   accessTokenEnvVar: z.string().default("WHATSAPP_ACCESS_TOKEN"),
-  /** Meta phone number ID (from WhatsApp Business dashboard) */
+  /** Meta phone number ID (cloud-api only) */
   phoneNumberId: z.string().default(""),
-  /** Env var name that holds the webhook verify token */
+  /** Env var name that holds the webhook verify token (cloud-api only) */
   verifyTokenEnvVar: z.string().default("WHATSAPP_VERIFY_TOKEN"),
   /** Allowed phone numbers in E.164 format without + (empty = all paired users) */
   allowedPhoneNumbers: z.array(z.string()).default([]),
@@ -352,9 +354,10 @@ export const RuntimeConfigSchema = z.object({
     groupPolicy: "allowlist" as "open" | "allowlist" | "disabled",
   })),
 
-  /** WhatsApp Business channel */
+  /** WhatsApp channel (cloud-api or baileys) */
   whatsapp: WhatsAppConfigSchema.default(() => ({
     enabled: false as boolean,
+    mode: "cloud-api" as "cloud-api" | "baileys",
     accessTokenEnvVar: "WHATSAPP_ACCESS_TOKEN",
     phoneNumberId: "",
     verifyTokenEnvVar: "WHATSAPP_VERIFY_TOKEN",

@@ -460,6 +460,7 @@ export async function patchChannelsConfig(
     };
     whatsapp?: {
       enabled?: boolean;
+      mode?: "cloud-api" | "baileys";
       accessTokenEnvVar?: string;
       phoneNumberId?: string;
       verifyTokenEnvVar?: string;
@@ -501,6 +502,18 @@ export async function rejectWhatsAppPairing(slug: string, code: string): Promise
   return apiFetch<{ ok: boolean }>(`/instances/${slug}/whatsapp/pairing/${code}`, {
     method: "DELETE",
   });
+}
+
+// --- WhatsApp Baileys status API ---
+
+export async function fetchBaileysStatus(slug: string): Promise<{
+  connected: boolean;
+  qrCode: string | null;
+  phoneNumber: string | null;
+}> {
+  return apiFetch<{ connected: boolean; qrCode: string | null; phoneNumber: string | null }>(
+    `/instances/${slug}/whatsapp/baileys-status`,
+  );
 }
 
 // --- Discover instances API ---

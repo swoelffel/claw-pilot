@@ -496,6 +496,7 @@ describe("verifyWebhook (WhatsApp)", () => {
 describe("WhatsAppChannel", () => {
   it("has type 'whatsapp'", () => {
     const ch = new WhatsAppChannel({
+      mode: "cloud-api" as const,
       accessTokenEnvVar: "WHATSAPP_ACCESS_TOKEN",
       phoneNumberId: "123456",
       verifyTokenEnvVar: "WHATSAPP_VERIFY_TOKEN",
@@ -506,6 +507,7 @@ describe("WhatsAppChannel", () => {
 
   it("resolves silently when token env var not set (graceful degradation)", async () => {
     const ch = new WhatsAppChannel({
+      mode: "cloud-api" as const,
       accessTokenEnvVar: "NONEXISTENT_WA_TOKEN_VAR_XYZ",
       phoneNumberId: "123456",
       verifyTokenEnvVar: "NONEXISTENT_WA_VERIFY_VAR",
@@ -519,6 +521,7 @@ describe("WhatsAppChannel", () => {
     // Set token but no phone number ID
     process.env["TEST_WA_TOKEN_EMPTY_PHONE"] = "test-token";
     const ch = new WhatsAppChannel({
+      mode: "cloud-api" as const,
       accessTokenEnvVar: "TEST_WA_TOKEN_EMPTY_PHONE",
       phoneNumberId: "",
       verifyTokenEnvVar: "NONEXISTENT_VAR",
@@ -531,6 +534,7 @@ describe("WhatsAppChannel", () => {
 
   it("disconnect is idempotent when not connected", async () => {
     const ch = new WhatsAppChannel({
+      mode: "cloud-api" as const,
       accessTokenEnvVar: "WHATSAPP_ACCESS_TOKEN",
       phoneNumberId: "123456",
       verifyTokenEnvVar: "WHATSAPP_VERIFY_TOKEN",
@@ -541,6 +545,7 @@ describe("WhatsAppChannel", () => {
 
   it("accepts dmPolicy option", () => {
     const ch = new WhatsAppChannel({
+      mode: "cloud-api" as const,
       accessTokenEnvVar: "WHATSAPP_ACCESS_TOKEN",
       phoneNumberId: "123456",
       verifyTokenEnvVar: "WHATSAPP_VERIFY_TOKEN",
@@ -554,6 +559,7 @@ describe("WhatsAppChannel", () => {
     const db = makeTempDb();
     insertTestInstance(db);
     const ch = new WhatsAppChannel({
+      mode: "cloud-api" as const,
       accessTokenEnvVar: "WHATSAPP_ACCESS_TOKEN",
       phoneNumberId: "123456",
       verifyTokenEnvVar: "WHATSAPP_VERIFY_TOKEN",

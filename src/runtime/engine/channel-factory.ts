@@ -12,12 +12,14 @@
  * Base port: 19100 (above the dashboard at 19000).
  */
 
+import * as path from "node:path";
 import type Database from "better-sqlite3";
 import type { RuntimeConfig } from "../config/index.js";
 import type { InstanceSlug } from "../types.js";
 import type { Channel } from "../channel/channel.js";
 import { WebChatChannel } from "../channel/web-chat.js";
 import { TelegramChannel } from "../channel/telegram/channel.js";
+import { getRuntimeStateDir } from "../../lib/platform.js";
 import { WhatsAppChannel } from "../channel/whatsapp/channel.js";
 
 // ---------------------------------------------------------------------------
@@ -85,9 +87,14 @@ export function createChannels(
 
   // WhatsApp channel
   if (config.whatsapp.enabled) {
-    const webhookPort = deriveWhatsAppPort(slug);
+    const mode = config.whatsapp.mode ?? "cloud-api";
+    const webhookPort = mode === "cloud-api" ? deriveWhatsAppPort(slug) : 0;
+    const sessionDir =
+      mode === "baileys" ? path.join(getRuntimeStateDir(slug), "whatsapp-session") : undefined;
+
     channels.push(
       new WhatsAppChannel({
+        mode,
         accessTokenEnvVar: config.whatsapp.accessTokenEnvVar,
         phoneNumberId: config.whatsapp.phoneNumberId,
         verifyTokenEnvVar: config.whatsapp.verifyTokenEnvVar,
@@ -96,6 +103,7 @@ export function createChannels(
         dmPolicy: config.whatsapp.dmPolicy,
         db,
         instanceSlug: slug,
+        ...(sessionDir !== undefined ? { sessionDir } : {}),
       }),
     );
   }

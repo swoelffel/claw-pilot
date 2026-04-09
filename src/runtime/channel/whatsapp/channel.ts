@@ -1,27 +1,26 @@
 /**
  * runtime/channel/whatsapp/channel.ts
  *
- * WhatsAppChannel — implements the Channel interface using webhooks.
+ * WhatsAppChannel — implements the Channel interface with pluggable transports.
  *
- * Design:
- * - One default agent handles all messages (no per-user bindings)
- * - peerId = "whatsapp:<phone_number>"
- * - Responses are sent as WhatsApp-formatted text (plain-text fallback on error)
- * - Access token read from process.env[accessTokenEnvVar]
- * - Inbound messages arrive via webhook: the channel runs its own HTTP server
- *   (same pattern as WebChatChannel running its own WS server)
+ * Supported modes:
+ *   - "cloud-api": Meta Business Cloud API (webhook + REST) — official, no ban risk
+ *   - "baileys": Baileys WebSocket (reverse-engineered) — personal number, ban risk
  *
- * Pairing:
- * - dmPolicy: "pairing" generates a pairing code for unknown users
- * - No group policy — WhatsApp Business API is 1-to-1 only
+ * Shared logic (independent of transport):
+ *   - peerId = "whatsapp:<phone_number>"
+ *   - DM policy (pairing, open, allowlist, disabled)
+ *   - Pairing code flow
+ *   - Markdown → WhatsApp formatting
+ *   - QuestionAsked bus events
  */
 
-import * as http from "node:http";
 import type Database from "better-sqlite3";
 import type { Channel } from "../channel.js";
 import type { InboundMessage, OutboundMessage } from "../../types.js";
 import { ChannelError } from "../channel.js";
-import { WhatsAppApiClient, verifyWebhook, type WhatsAppWebhookPayload } from "./api-client.js";
+import type { WhatsAppTransport, TransportInboundMessage } from "./transport.js";
+import { CloudApiTransport } from "./cloud-api-transport.js";
 import { markdownToWhatsApp } from "./formatter.js";
 import { createPairingCode, listPairingCodes } from "../pairing.js";
 import { logger } from "../../../lib/logger.js";
@@ -33,19 +32,19 @@ import { QuestionAsked } from "../../bus/events.js";
 // ---------------------------------------------------------------------------
 
 export interface WhatsAppChannelOptions {
-  /** Env var name that holds the long-lived access token */
+  /** Transport mode */
+  mode: "cloud-api" | "baileys";
+  // Cloud API fields (used only when mode === "cloud-api")
   accessTokenEnvVar: string;
-  /** Meta phone number ID */
   phoneNumberId: string;
-  /** Env var name that holds the webhook verify token */
   verifyTokenEnvVar: string;
-  /** Port for the webhook HTTP server */
   webhookPort: number;
-  /** Allowed phone numbers in E.164 format without + (empty = all) */
+  // Baileys fields (used only when mode === "baileys")
+  sessionDir?: string;
+  onQrCode?: (qr: string) => void;
+  // Shared fields
   allowedPhoneNumbers?: string[];
-  /** DM policy: pairing (code approval), open (all), allowlist (static numbers), disabled */
   dmPolicy?: "pairing" | "open" | "allowlist" | "disabled";
-  /** DB + slug needed for pairing code generation */
   db?: Database.Database;
   instanceSlug?: string;
 }
@@ -53,8 +52,7 @@ export interface WhatsAppChannelOptions {
 export class WhatsAppChannel implements Channel {
   readonly type = "whatsapp";
 
-  private client: WhatsAppApiClient | undefined;
-  private server: http.Server | undefined;
+  private transport: WhatsAppTransport | undefined;
   private handler: ((msg: InboundMessage) => Promise<void>) | undefined;
   private readonly options: WhatsAppChannelOptions;
   private busUnsub: (() => void) | undefined;
@@ -70,39 +68,32 @@ export class WhatsAppChannel implements Channel {
   }
 
   async connect(): Promise<void> {
-    if (this.server) return; // idempotent
+    if (this.transport) return; // idempotent
 
-    const token = process.env[this.options.accessTokenEnvVar];
-    if (!token) {
-      logger.warn(
-        `[whatsapp] Access token env var "${this.options.accessTokenEnvVar}" is not set — WhatsApp channel disabled until token is configured.`,
-      );
-      return;
+    // Create the right transport based on mode
+    if (this.options.mode === "baileys") {
+      // Lazy import to avoid loading Baileys when not needed
+      const { BaileysTransport } = await import("./baileys-transport.js");
+      this.transport = new BaileysTransport({
+        sessionDir: this.options.sessionDir ?? "",
+        ...(this.options.onQrCode !== undefined ? { onQrCode: this.options.onQrCode } : {}),
+      });
+    } else {
+      this.transport = new CloudApiTransport({
+        accessTokenEnvVar: this.options.accessTokenEnvVar,
+        phoneNumberId: this.options.phoneNumberId,
+        verifyTokenEnvVar: this.options.verifyTokenEnvVar,
+        webhookPort: this.options.webhookPort,
+      });
     }
 
-    if (!this.options.phoneNumberId) {
-      logger.warn("[whatsapp] Phone number ID is not configured — WhatsApp channel disabled.");
-      return;
-    }
-
-    this.client = new WhatsAppApiClient({
-      accessToken: token,
-      phoneNumberId: this.options.phoneNumberId,
+    // Register transport message handler — transport is guaranteed to be set by the if/else above
+    const transport = this.transport!;
+    transport.onMessage((msg) => {
+      void this.processTransportMessage(msg);
     });
 
-    // Start webhook HTTP server
-    this.server = http.createServer((req, res) => {
-      void this.handleHttpRequest(req, res);
-    });
-
-    const srv = this.server;
-    await new Promise<void>((resolve, reject) => {
-      srv.once("listening", resolve);
-      srv.once("error", reject);
-      srv.listen(this.options.webhookPort);
-    });
-
-    logger.info(`[whatsapp] Webhook server listening on port ${this.options.webhookPort}`);
+    await transport.connect();
 
     // Subscribe to question events
     if (this.options.instanceSlug) {
@@ -114,7 +105,7 @@ export class WhatsAppChannel implements Channel {
   }
 
   async send(message: OutboundMessage): Promise<void> {
-    if (!this.client) {
+    if (!this.transport) {
       throw new ChannelError("whatsapp", "Channel not connected");
     }
 
@@ -123,146 +114,54 @@ export class WhatsAppChannel implements Channel {
       throw new ChannelError("whatsapp", `Invalid peerId: ${message.peerId}`);
     }
 
-    // Try WhatsApp formatting first, fall back to plain text
     const formatted = markdownToWhatsApp(message.text);
     try {
-      await this.client.sendTextMessage(phoneNumber, formatted);
+      await this.transport.sendTextMessage(phoneNumber, formatted);
     } catch {
-      await this.client.sendTextMessage(phoneNumber, message.text);
+      // Fallback: send as plain text
+      await this.transport.sendTextMessage(phoneNumber, message.text);
     }
   }
 
   async disconnect(): Promise<void> {
     this.busUnsub?.();
     this.busUnsub = undefined;
-
-    if (this.server) {
-      const srv = this.server;
-      this.server = undefined;
-      await new Promise<void>((resolve) => {
-        srv.close(() => resolve());
-      });
-    }
-
-    this.client = undefined;
+    await this.transport?.disconnect();
+    this.transport = undefined;
   }
 
   getStatus(): "connected" | "disconnected" | "not_configured" {
-    if (!this.client) return "not_configured";
-    if (!this.server) return "disconnected";
-    return "connected";
+    return this.transport?.getStatus() ?? "not_configured";
   }
 
   // ---------------------------------------------------------------------------
-  // HTTP webhook handler
+  // Transport message processing (shared logic for both modes)
   // ---------------------------------------------------------------------------
 
-  private async handleHttpRequest(
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-  ): Promise<void> {
-    // GET — Meta webhook verification
-    if (req.method === "GET") {
-      const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
-      const mode = url.searchParams.get("hub.mode");
-      const token = url.searchParams.get("hub.verify_token");
-      const challenge = url.searchParams.get("hub.challenge");
-
-      const expectedToken = process.env[this.options.verifyTokenEnvVar];
-      if (!expectedToken) {
-        res.writeHead(503).end("Verify token not configured");
-        return;
-      }
-
-      const result = verifyWebhook(
-        {
-          ...(mode !== null ? { mode } : {}),
-          ...(token !== null ? { verify_token: token } : {}),
-          ...(challenge !== null ? { challenge } : {}),
-        },
-        expectedToken,
-      );
-      if (result !== undefined) {
-        res.writeHead(200, { "Content-Type": "text/plain" }).end(result);
-        return;
-      }
-
-      res.writeHead(403).end("Forbidden");
-      return;
-    }
-
-    // POST — Inbound messages from Meta
-    if (req.method === "POST") {
-      const body = await readBody(req);
-      let payload: WhatsAppWebhookPayload;
-      try {
-        payload = JSON.parse(body) as WhatsAppWebhookPayload;
-      } catch {
-        res.writeHead(400).end("Bad Request");
-        return;
-      }
-
-      // Respond immediately — process async
-      res.writeHead(200).end("OK");
-      void this.processWebhookPayload(payload);
-      return;
-    }
-
-    res.writeHead(405).end("Method Not Allowed");
-  }
-
-  // ---------------------------------------------------------------------------
-  // Webhook payload processing
-  // ---------------------------------------------------------------------------
-
-  private async processWebhookPayload(payload: WhatsAppWebhookPayload): Promise<void> {
+  private async processTransportMessage(msg: TransportInboundMessage): Promise<void> {
     if (!this.handler) return;
-
-    for (const entry of payload.entry) {
-      for (const change of entry.changes) {
-        if (change.field !== "messages") continue;
-
-        const messages = change.value.messages ?? [];
-        const contacts = change.value.contacts ?? [];
-
-        for (const msg of messages) {
-          if (msg.type !== "text" || !msg.text?.body) continue;
-          await this.processInboundMessage(msg, contacts);
-        }
-      }
-    }
-  }
-
-  private async processInboundMessage(
-    msg: { from: string; id: string; text?: { body: string } },
-    contacts: Array<{ profile: { name: string }; wa_id: string }>,
-  ): Promise<void> {
-    if (!this.handler || !msg.text?.body) return;
 
     const phoneNumber = msg.from;
     const peerId = `whatsapp:${phoneNumber}`;
     this.lastPhoneNumber = phoneNumber;
 
-    const contact = contacts.find((c) => c.wa_id === phoneNumber);
-    const contactName = contact?.profile.name;
-
     if (!this.isUserAllowed(phoneNumber)) {
       const policy = this.options.dmPolicy ?? "pairing";
       if (policy === "pairing" && this.options.db && this.options.instanceSlug) {
-        await this.handlePairingRequest(phoneNumber, contactName);
+        await this.handlePairingRequest(phoneNumber, msg.contactName);
       }
       return;
     }
 
     // Mark as read (fire-and-forget)
-    if (this.client) {
-      void this.client.markMessageAsRead(msg.id).catch(() => {});
+    if (this.transport) {
+      void this.transport.markMessageAsRead(msg.id).catch(() => {});
     }
 
     const inbound: InboundMessage = {
       channelType: "whatsapp",
       peerId,
-      text: msg.text.body,
+      text: msg.text,
     };
 
     await this.handler(inbound);
@@ -283,7 +182,7 @@ export class WhatsAppChannel implements Channel {
   }
 
   private async handlePairingRequest(phoneNumber: string, contactName?: string): Promise<void> {
-    if (!this.options.db || !this.options.instanceSlug || !this.client) return;
+    if (!this.options.db || !this.options.instanceSlug || !this.transport) return;
 
     const peerId = `whatsapp:${phoneNumber}`;
     const existingCode = this.getExistingPairingCode(peerId);
@@ -308,7 +207,7 @@ export class WhatsAppChannel implements Channel {
       `This code expires in 60 minutes.`;
 
     try {
-      await this.client.sendTextMessage(phoneNumber, text);
+      await this.transport.sendTextMessage(phoneNumber, text);
     } catch (err) {
       logger.warn(`[whatsapp] Failed to send pairing message: ${err}`);
     }
@@ -327,7 +226,7 @@ export class WhatsAppChannel implements Channel {
     question: string;
     options?: string[];
   }): Promise<void> {
-    if (!this.client || !this.lastPhoneNumber) return;
+    if (!this.transport || !this.lastPhoneNumber) return;
 
     const options = payload.options ?? [];
     let text = `❓ ${payload.question}`;
@@ -338,7 +237,7 @@ export class WhatsAppChannel implements Channel {
     }
 
     try {
-      await this.client.sendTextMessage(this.lastPhoneNumber, text);
+      await this.transport.sendTextMessage(this.lastPhoneNumber, text);
     } catch (err) {
       logger.warn(`[whatsapp] Failed to send question: ${err}`);
     }
@@ -353,13 +252,4 @@ function parsePhoneNumber(peerId: string): string | undefined {
   const match = /^whatsapp:(\d+)$/.exec(peerId);
   if (!match) return undefined;
   return match[1];
-}
-
-function readBody(req: http.IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
-  });
 }

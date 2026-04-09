@@ -79,6 +79,7 @@ interface InstanceConfig {
     } | null;
     whatsapp: {
       enabled: boolean;
+      mode: "cloud-api" | "baileys";
       accessTokenMasked: string | null;
       phoneNumberId: string;
       dmPolicy: string;
@@ -146,6 +147,7 @@ const RuntimeConfigPatchSchema = z.object({
       whatsapp: z
         .object({
           enabled: z.boolean().optional(),
+          mode: z.enum(["cloud-api", "baileys"]).optional(),
           accessTokenEnvVar: z.string().optional(),
           phoneNumberId: z.string().optional(),
           verifyTokenEnvVar: z.string().optional(),
@@ -355,6 +357,7 @@ function buildInstanceConfig(
         const waRaw = readEnvVar(envPath, waVarName);
         return {
           enabled: config.whatsapp.enabled,
+          mode: config.whatsapp.mode ?? "cloud-api",
           accessTokenMasked: waRaw ? maskSecret(waRaw) : null,
           phoneNumberId: config.whatsapp.phoneNumberId ?? "",
           dmPolicy: config.whatsapp.dmPolicy ?? "pairing",
@@ -799,6 +802,7 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
         }
         const wa = patch.channels.whatsapp;
         if (wa.enabled !== undefined) config.whatsapp.enabled = wa.enabled;
+        if (wa.mode !== undefined) config.whatsapp.mode = wa.mode;
         if (wa.accessTokenEnvVar !== undefined)
           config.whatsapp.accessTokenEnvVar = wa.accessTokenEnvVar;
         if (wa.phoneNumberId !== undefined) config.whatsapp.phoneNumberId = wa.phoneNumberId;

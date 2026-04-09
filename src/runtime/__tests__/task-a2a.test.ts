@@ -142,6 +142,7 @@ function makeRuntimeConfig(): RuntimeConfig {
     },
     whatsapp: {
       enabled: false,
+      mode: "cloud-api" as const,
       accessTokenEnvVar: "WHATSAPP_ACCESS_TOKEN",
       phoneNumberId: "",
       verifyTokenEnvVar: "WHATSAPP_VERIFY_TOKEN",

@@ -279,6 +279,7 @@ export interface InstanceConfig {
     } | null;
     whatsapp: {
       enabled: boolean;
+      mode: "cloud-api" | "baileys";
       accessTokenMasked: string | null;
       phoneNumberId: string;
       dmPolicy: "pairing" | "open" | "allowlist" | "disabled";

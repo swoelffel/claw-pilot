@@ -1,5 +1,7 @@
 // src/dashboard/routes/instances/whatsapp.ts
-// Routes: GET pairing, POST pairing/approve, DELETE pairing/:code
+// Routes: GET pairing, POST pairing/approve, DELETE pairing/:code, GET baileys-status
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
@@ -116,5 +118,32 @@ export function registerWhatsAppRoutes(app: Hono, deps: RouteDeps): void {
     const code = c.req.param("code").toUpperCase().replace(/-/g, "");
     deletePairingCode(db, code);
     return c.json({ ok: true });
+  });
+
+  // -------------------------------------------------------------------------
+  // Baileys status (polled by UI when mode === "baileys")
+  // -------------------------------------------------------------------------
+
+  // GET /api/instances/:slug/whatsapp/baileys-status
+  app.get("/api/instances/:slug/whatsapp/baileys-status", (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
+
+    const stateDir = getRuntimeStateDir(slug);
+    const statusPath = path.join(stateDir, "whatsapp-session", "status.json");
+
+    try {
+      const raw = fs.readFileSync(statusPath, "utf8");
+      const status = JSON.parse(raw) as {
+        connected: boolean;
+        qrCode: string | null;
+        phoneNumber: string | null;
+      };
+      return c.json(status);
+    } catch {
+      return c.json({ connected: false, qrCode: null, phoneNumber: null });
+    }
   });
 }
