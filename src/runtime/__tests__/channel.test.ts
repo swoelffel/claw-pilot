@@ -29,6 +29,9 @@ import { getBus, disposeBus } from "../bus/index.js";
 import { ChannelError } from "../channel/channel.js";
 import { WebChatChannel } from "../channel/web-chat.js";
 import { TelegramChannel } from "../channel/telegram/channel.js";
+import { WhatsAppChannel } from "../channel/whatsapp/channel.js";
+import { markdownToWhatsApp } from "../channel/whatsapp/formatter.js";
+import { verifyWebhook } from "../channel/whatsapp/api-client.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -393,11 +396,215 @@ describe("TelegramChannel pairing", () => {
       channel: "telegram",
       peerId: "telegram:100",
     });
+    createPairingCode(db, "test-instance", {
+      channel: "whatsapp",
+      peerId: "whatsapp:33612345678",
+    });
     const all = listPairingCodes(db, "test-instance");
     const tg = all.filter((c) => c.channel === "telegram");
     const web = all.filter((c) => c.channel === "web");
+    const wa = all.filter((c) => c.channel === "whatsapp");
     expect(tg).toHaveLength(1);
     expect(web).toHaveLength(1);
+    expect(wa).toHaveLength(1);
     expect(tg[0]!.peerId).toBe("telegram:100");
+    expect(wa[0]!.peerId).toBe("whatsapp:33612345678");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WhatsApp formatter
+// ---------------------------------------------------------------------------
+
+describe("markdownToWhatsApp", () => {
+  it("converts bold **text**", () => {
+    const result = markdownToWhatsApp("Hello **world**!");
+    expect(result).toContain("*world*");
+  });
+
+  it("converts strikethrough ~~text~~", () => {
+    const result = markdownToWhatsApp("Hello ~~world~~!");
+    expect(result).toContain("~world~");
+  });
+
+  it("converts inline code", () => {
+    const result = markdownToWhatsApp("Use `npm install`");
+    expect(result).toContain("`npm install`");
+  });
+
+  it("converts fenced code block", () => {
+    const md = "```ts\nconst x = 1;\n```";
+    const result = markdownToWhatsApp(md);
+    expect(result).toContain("```");
+    expect(result).toContain("const x = 1;");
+  });
+
+  it("converts headers to bold", () => {
+    const result = markdownToWhatsApp("# My Title");
+    expect(result).toContain("*My Title*");
+  });
+
+  it("handles empty string", () => {
+    expect(markdownToWhatsApp("")).toBe("");
+  });
+
+  it("handles plain text without special chars", () => {
+    const result = markdownToWhatsApp("Hello world");
+    expect(result).toBe("Hello world");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WhatsApp webhook verification
+// ---------------------------------------------------------------------------
+
+describe("verifyWebhook (WhatsApp)", () => {
+  it("returns challenge on valid verification", () => {
+    const result = verifyWebhook(
+      { mode: "subscribe", verify_token: "my-secret", challenge: "abc123" },
+      "my-secret",
+    );
+    expect(result).toBe("abc123");
+  });
+
+  it("returns undefined on wrong token", () => {
+    const result = verifyWebhook(
+      { mode: "subscribe", verify_token: "wrong", challenge: "abc123" },
+      "my-secret",
+    );
+    expect(result).toBeUndefined();
+  });
+
+  it("returns undefined on wrong mode", () => {
+    const result = verifyWebhook(
+      { mode: "unsubscribe", verify_token: "my-secret", challenge: "abc123" },
+      "my-secret",
+    );
+    expect(result).toBeUndefined();
+  });
+
+  it("returns undefined when fields are missing", () => {
+    const result = verifyWebhook({}, "my-secret");
+    expect(result).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WhatsAppChannel — basic lifecycle
+// ---------------------------------------------------------------------------
+
+describe("WhatsAppChannel", () => {
+  it("has type 'whatsapp'", () => {
+    const ch = new WhatsAppChannel({
+      accessTokenEnvVar: "WHATSAPP_ACCESS_TOKEN",
+      phoneNumberId: "123456",
+      verifyTokenEnvVar: "WHATSAPP_VERIFY_TOKEN",
+      webhookPort: 0,
+    });
+    expect(ch.type).toBe("whatsapp");
+  });
+
+  it("resolves silently when token env var not set (graceful degradation)", async () => {
+    const ch = new WhatsAppChannel({
+      accessTokenEnvVar: "NONEXISTENT_WA_TOKEN_VAR_XYZ",
+      phoneNumberId: "123456",
+      verifyTokenEnvVar: "NONEXISTENT_WA_VERIFY_VAR",
+      webhookPort: 0,
+    });
+    await expect(ch.connect()).resolves.toBeUndefined();
+    expect(ch.getStatus()).toBe("not_configured");
+  });
+
+  it("resolves silently when phoneNumberId is empty", async () => {
+    // Set token but no phone number ID
+    process.env["TEST_WA_TOKEN_EMPTY_PHONE"] = "test-token";
+    const ch = new WhatsAppChannel({
+      accessTokenEnvVar: "TEST_WA_TOKEN_EMPTY_PHONE",
+      phoneNumberId: "",
+      verifyTokenEnvVar: "NONEXISTENT_VAR",
+      webhookPort: 0,
+    });
+    await expect(ch.connect()).resolves.toBeUndefined();
+    expect(ch.getStatus()).toBe("not_configured");
+    delete process.env["TEST_WA_TOKEN_EMPTY_PHONE"];
+  });
+
+  it("disconnect is idempotent when not connected", async () => {
+    const ch = new WhatsAppChannel({
+      accessTokenEnvVar: "WHATSAPP_ACCESS_TOKEN",
+      phoneNumberId: "123456",
+      verifyTokenEnvVar: "WHATSAPP_VERIFY_TOKEN",
+      webhookPort: 0,
+    });
+    await expect(ch.disconnect()).resolves.toBeUndefined();
+  });
+
+  it("accepts dmPolicy option", () => {
+    const ch = new WhatsAppChannel({
+      accessTokenEnvVar: "WHATSAPP_ACCESS_TOKEN",
+      phoneNumberId: "123456",
+      verifyTokenEnvVar: "WHATSAPP_VERIFY_TOKEN",
+      webhookPort: 0,
+      dmPolicy: "pairing",
+    });
+    expect(ch.type).toBe("whatsapp");
+  });
+
+  it("accepts db and instanceSlug options for pairing", () => {
+    const db = makeTempDb();
+    insertTestInstance(db);
+    const ch = new WhatsAppChannel({
+      accessTokenEnvVar: "WHATSAPP_ACCESS_TOKEN",
+      phoneNumberId: "123456",
+      verifyTokenEnvVar: "WHATSAPP_VERIFY_TOKEN",
+      webhookPort: 0,
+      dmPolicy: "pairing",
+      db,
+      instanceSlug: "test-instance",
+    });
+    expect(ch.type).toBe("whatsapp");
+    db.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WhatsAppChannel — pairing
+// ---------------------------------------------------------------------------
+
+describe("WhatsAppChannel pairing", () => {
+  let db: Database.Database;
+
+  beforeEach(() => {
+    db = makeTempDb();
+    insertTestInstance(db);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("createPairingCode with whatsapp channel stores peerId", () => {
+    const code = createPairingCode(db, "test-instance", {
+      channel: "whatsapp",
+      ttlMinutes: 60,
+      peerId: "whatsapp:33612345678",
+      meta: { name: "Alice" },
+    });
+    expect(code.channel).toBe("whatsapp");
+    expect(code.peerId).toBe("whatsapp:33612345678");
+    expect(code.meta?.name).toBe("Alice");
+    expect(code.used).toBe(false);
+  });
+
+  it("listPairingCodes filters whatsapp codes", () => {
+    createPairingCode(db, "test-instance", { channel: "web" });
+    createPairingCode(db, "test-instance", {
+      channel: "whatsapp",
+      peerId: "whatsapp:33699887766",
+    });
+    const all = listPairingCodes(db, "test-instance");
+    const wa = all.filter((c) => c.channel === "whatsapp");
+    expect(wa).toHaveLength(1);
+    expect(wa[0]!.peerId).toBe("whatsapp:33699887766");
   });
 });

@@ -227,6 +227,21 @@ const TelegramConfigSchema = z.object({
   groupPolicy: z.enum(["open", "allowlist", "disabled"]).default("allowlist"),
 });
 
+/** WhatsApp Business Cloud API channel config */
+const WhatsAppConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  /** Env var name that holds the long-lived access token from Meta Business */
+  accessTokenEnvVar: z.string().default("WHATSAPP_ACCESS_TOKEN"),
+  /** Meta phone number ID (from WhatsApp Business dashboard) */
+  phoneNumberId: z.string().default(""),
+  /** Env var name that holds the webhook verify token */
+  verifyTokenEnvVar: z.string().default("WHATSAPP_VERIFY_TOKEN"),
+  /** Allowed phone numbers in E.164 format without + (empty = all paired users) */
+  allowedPhoneNumbers: z.array(z.string()).default([]),
+  /** DM policy: pairing (code approval), open (all), allowlist (static numbers), disabled */
+  dmPolicy: z.enum(["pairing", "open", "allowlist", "disabled"]).default("pairing"),
+});
+
 /** Web chat config (built-in dashboard channel) */
 const WebChatConfigSchema = z.object({
   enabled: z.boolean().default(true),
@@ -337,6 +352,16 @@ export const RuntimeConfigSchema = z.object({
     groupPolicy: "allowlist" as "open" | "allowlist" | "disabled",
   })),
 
+  /** WhatsApp Business channel */
+  whatsapp: WhatsAppConfigSchema.default(() => ({
+    enabled: false as boolean,
+    accessTokenEnvVar: "WHATSAPP_ACCESS_TOKEN",
+    phoneNumberId: "",
+    verifyTokenEnvVar: "WHATSAPP_VERIFY_TOKEN",
+    allowedPhoneNumbers: [] as string[],
+    dmPolicy: "pairing" as "pairing" | "open" | "allowlist" | "disabled",
+  })),
+
   /** Web chat channel */
   webChat: WebChatConfigSchema.default(() => ({
     enabled: true,
@@ -414,6 +439,8 @@ export type RuntimeProviderConfig = z.infer<typeof ProviderConfigSchema>;
 export type RuntimeAuthProfileConfig = z.infer<typeof AuthProfileConfigSchema>;
 /** @public */
 export type RuntimeTelegramConfig = z.infer<typeof TelegramConfigSchema>;
+/** @public */
+export type RuntimeWhatsAppConfig = z.infer<typeof WhatsAppConfigSchema>;
 export type RuntimeMcpServerConfig = RuntimeConfig["mcpServers"][number];
 export type SubagentsConfig = z.infer<typeof SubagentsConfigSchema>;
 
@@ -470,6 +497,9 @@ export function createDefaultRuntimeConfig(options: {
     ],
     telegram: {
       enabled: options.telegramEnabled ?? false,
+    },
+    whatsapp: {
+      enabled: false,
     },
   });
 }

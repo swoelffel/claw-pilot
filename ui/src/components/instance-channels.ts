@@ -3,7 +3,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
-import type { InstanceConfig, TelegramPairingList } from "../types.js";
+import type { InstanceConfig, TelegramPairingList, WhatsAppPairingList } from "../types.js";
 import {
   fetchInstanceConfig,
   patchChannelsConfig,
@@ -11,6 +11,10 @@ import {
   fetchTelegramPairing,
   approveTelegramPairing,
   rejectTelegramPairing,
+  patchWhatsAppToken,
+  fetchWhatsAppPairing,
+  approveWhatsAppPairing,
+  rejectWhatsAppPairing,
 } from "../api.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { buttonStyles, spinnerStyles, errorBannerStyles } from "../styles/shared.js";
@@ -425,6 +429,29 @@ export class InstanceChannels extends LitElement {
   @state() private _pairingError = "";
   private _pairingPollTimer: ReturnType<typeof setInterval> | undefined;
 
+  // WhatsApp panel state
+  @state() private _waPanelState: PanelState = "unconfigured";
+  @state() private _waEnabled = false;
+  @state() private _waPhoneNumberId = "";
+  @state() private _waDmPolicy: "pairing" | "open" | "allowlist" | "disabled" = "pairing";
+
+  // WhatsApp token
+  @state() private _waTokenMasked: string | null = null;
+  @state() private _waTokenEditMode = false;
+  @state() private _waNewToken = "";
+  @state() private _waNewVerifyToken = "";
+
+  // WhatsApp save state
+  @state() private _waSaving = false;
+  @state() private _waError = "";
+  @state() private _waRequiresRestart = false;
+
+  // WhatsApp pairing
+  @state() private _waPairing: WhatsAppPairingList | null = null;
+  @state() private _waPairingLoading = false;
+  @state() private _waPairingError = "";
+  private _waPairingPollTimer: ReturnType<typeof setInterval> | undefined;
+
   override connectedCallback(): void {
     super.connectedCallback();
     // Note: config prop is not yet set at this point — _syncFromConfig() is called
@@ -434,11 +461,13 @@ export class InstanceChannels extends LitElement {
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this._stopPairingPoll();
+    this._stopWaPairingPoll();
   }
 
   override updated(changed: Map<string, unknown>): void {
     if (changed.has("config")) {
       this._syncFromConfig();
+      this._syncWaFromConfig();
     }
   }
 
@@ -654,7 +683,7 @@ export class InstanceChannels extends LitElement {
       <div class="channels-panel">
         <div class="section-header">${msg("Channels", { id: "settings-channels" })}</div>
 
-        ${this._renderTelegramCard()} ${this._renderComingSoonCard("WhatsApp")}
+        ${this._renderTelegramCard()} ${this._renderWhatsAppCard()}
         ${this._renderComingSoonCard("Slack")}
       </div>
     `;
@@ -1063,6 +1092,540 @@ export class InstanceChannels extends LitElement {
     }
     return html`<span class="status-badge connected">
       ● ${msg("Configured", { id: "status-telegram-configured" })}
+    </span>`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // WhatsApp — Config sync
+  // ---------------------------------------------------------------------------
+
+  private _syncWaFromConfig(): void {
+    const wa = this.config?.channels?.whatsapp;
+    this._waRequiresRestart = false;
+    if (wa) {
+      this._waEnabled = wa.enabled;
+      this._waTokenMasked = wa.accessTokenMasked;
+      this._waPhoneNumberId = wa.phoneNumberId ?? "";
+      this._waDmPolicy = wa.dmPolicy ?? "pairing";
+      if (wa.enabled || wa.accessTokenMasked) {
+        this._waPanelState = "configured";
+      } else {
+        this._waPanelState = "unconfigured";
+      }
+    } else {
+      this._waEnabled = false;
+      this._waTokenMasked = null;
+      this._waPanelState = "unconfigured";
+    }
+
+    if (this._waPanelState === "configured" && this._waDmPolicy === "pairing") {
+      void this._loadWaPairing();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // WhatsApp — Pairing
+  // ---------------------------------------------------------------------------
+
+  private async _loadWaPairing(): Promise<void> {
+    if (!this.instanceSlug) return;
+    this._waPairingLoading = true;
+    this._waPairingError = "";
+    try {
+      this._waPairing = await fetchWhatsAppPairing(this.instanceSlug);
+      if ((this._waPairing?.pending.length ?? 0) > 0) {
+        this._startWaPairingPoll();
+      } else {
+        this._stopWaPairingPoll();
+      }
+    } catch (err) {
+      this._waPairingError = err instanceof Error ? err.message : "Failed to load pairing";
+    } finally {
+      this._waPairingLoading = false;
+    }
+  }
+
+  private _startWaPairingPoll(): void {
+    if (this._waPairingPollTimer) return;
+    this._waPairingPollTimer = setInterval(() => {
+      void this._loadWaPairing();
+    }, 10_000);
+  }
+
+  private _stopWaPairingPoll(): void {
+    if (this._waPairingPollTimer) {
+      clearInterval(this._waPairingPollTimer);
+      this._waPairingPollTimer = undefined;
+    }
+  }
+
+  private async _approveWaPairing(code: string): Promise<void> {
+    try {
+      await approveWhatsAppPairing(this.instanceSlug, code);
+      await this._loadWaPairing();
+    } catch (err) {
+      this._waPairingError = err instanceof Error ? err.message : "Approve failed";
+    }
+  }
+
+  private async _rejectWaPairing(code: string): Promise<void> {
+    try {
+      await rejectWhatsAppPairing(this.instanceSlug, code);
+      await this._loadWaPairing();
+    } catch (err) {
+      this._waPairingError = err instanceof Error ? err.message : "Reject failed";
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // WhatsApp — Save logic
+  // ---------------------------------------------------------------------------
+
+  private async _saveWaInit(): Promise<void> {
+    this._waSaving = true;
+    this._waError = "";
+    try {
+      if (this._waNewToken.trim()) {
+        await patchWhatsAppToken(this.instanceSlug, this._waNewToken.trim());
+        this._waNewToken = "";
+      }
+
+      const result = await patchChannelsConfig(this.instanceSlug, {
+        whatsapp: {
+          enabled: true,
+          phoneNumberId: this._waPhoneNumberId,
+          dmPolicy: this._waDmPolicy,
+        },
+      });
+
+      if (result.requiresRestart) {
+        this._waRequiresRestart = true;
+      }
+
+      const fresh = await fetchInstanceConfig(this.instanceSlug);
+      this.config = fresh;
+      this._syncWaFromConfig();
+      this.dispatchEvent(
+        new CustomEvent("channels-config-saved", { bubbles: true, composed: true, detail: fresh }),
+      );
+    } catch (err) {
+      this._waError = err instanceof Error ? err.message : "Save failed";
+    } finally {
+      this._waSaving = false;
+    }
+  }
+
+  private async _saveWaEdit(): Promise<void> {
+    this._waSaving = true;
+    this._waError = "";
+    try {
+      if (this._waNewToken.trim()) {
+        await patchWhatsAppToken(this.instanceSlug, this._waNewToken.trim());
+        this._waTokenEditMode = false;
+        this._waNewToken = "";
+      }
+
+      const result = await patchChannelsConfig(this.instanceSlug, {
+        whatsapp: {
+          enabled: this._waEnabled,
+          phoneNumberId: this._waPhoneNumberId,
+          dmPolicy: this._waDmPolicy,
+        },
+      });
+
+      if (result.requiresRestart) {
+        this._waRequiresRestart = true;
+      }
+
+      const fresh = await fetchInstanceConfig(this.instanceSlug);
+      this.config = fresh;
+      this._syncWaFromConfig();
+      this.dispatchEvent(
+        new CustomEvent("channels-config-saved", { bubbles: true, composed: true, detail: fresh }),
+      );
+    } catch (err) {
+      this._waError = err instanceof Error ? err.message : "Save failed";
+    } finally {
+      this._waSaving = false;
+    }
+  }
+
+  private async _removeWaToken(): Promise<void> {
+    if (!confirm(msg("Remove access token?", { id: "channels-wa-token-confirm-remove" }))) return;
+    try {
+      await patchWhatsAppToken(this.instanceSlug, null);
+      this._waTokenMasked = null;
+      this._waTokenEditMode = false;
+    } catch (err) {
+      this._waError = err instanceof Error ? err.message : "Failed to remove token";
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // WhatsApp — Render
+  // ---------------------------------------------------------------------------
+
+  private _renderWhatsAppCard() {
+    switch (this._waPanelState) {
+      case "unconfigured":
+        return this._renderWaUnconfigured();
+      case "init-form":
+        return this._renderWaInitForm();
+      case "configured":
+        return this._renderWaConfigured();
+    }
+  }
+
+  private _renderWaUnconfigured() {
+    return html`
+      <div class="channel-card">
+        <div class="channel-card-header">
+          <div class="channel-title">📱 ${msg("WhatsApp", { id: "channels-whatsapp-title" })}</div>
+          <span class="status-badge inactive"
+            >○ ${msg("Inactive", { id: "status-wa-inactive" })}</span
+          >
+        </div>
+        <div class="unconfigured-body">
+          <span class="unconfigured-text">
+            ${msg("WhatsApp is not configured for this instance.", {
+              id: "channels-wa-not-configured",
+            })}
+          </span>
+          <button
+            class="btn btn-primary"
+            @click=${() => {
+              this._waPanelState = "init-form";
+            }}
+          >
+            ${msg("Configure WhatsApp", { id: "channels-wa-configure-btn" })}
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderWaInitForm() {
+    return html`
+      <div class="channel-card">
+        <div class="channel-card-header">
+          <div class="channel-title">📱 ${msg("WhatsApp", { id: "channels-whatsapp-title" })}</div>
+        </div>
+
+        <!-- Access token -->
+        <div class="form-row">
+          <label class="form-label"
+            >${msg("Access token", { id: "channels-wa-token-label" })}</label
+          >
+          <input
+            type="password"
+            placeholder=${msg("Paste token from Meta Business...", {
+              id: "channels-wa-token-placeholder",
+            })}
+            .value=${this._waNewToken}
+            @input=${(e: Event) => {
+              this._waNewToken = (e.target as HTMLInputElement).value;
+            }}
+          />
+          <div class="form-hint">
+            ${msg("Long-lived access token from Meta Business dashboard", {
+              id: "channels-wa-token-hint",
+            })}
+          </div>
+        </div>
+
+        <!-- Phone number ID -->
+        <div class="form-row">
+          <label class="form-label"
+            >${msg("Phone Number ID", { id: "channels-wa-phone-label" })}</label
+          >
+          <input
+            type="text"
+            placeholder="123456789012345"
+            .value=${this._waPhoneNumberId}
+            @input=${(e: Event) => {
+              this._waPhoneNumberId = (e.target as HTMLInputElement).value;
+            }}
+          />
+          <div class="form-hint">
+            ${msg("From WhatsApp Business > Phone Numbers in Meta dashboard", {
+              id: "channels-wa-phone-hint",
+            })}
+          </div>
+        </div>
+
+        <!-- DM policy -->
+        <div class="form-row-inline">
+          <label class="form-label">${msg("DM policy", { id: "channels-dmPolicy-label" })}</label>
+          <select
+            .value=${this._waDmPolicy}
+            @change=${(e: Event) => {
+              this._waDmPolicy = (e.target as HTMLSelectElement).value as typeof this._waDmPolicy;
+            }}
+            style="max-width: 220px;"
+          >
+            <option value="pairing">
+              ${msg("Pairing (code approval)", { id: "channels-dmPolicy-pairing" })}
+            </option>
+            <option value="open">${msg("Allow all", { id: "channels-dmPolicy-allowAll" })}</option>
+            <option value="allowlist">
+              ${msg("Allowlist", { id: "channels-dmPolicy-allowlist" })}
+            </option>
+            <option value="disabled">
+              ${msg("Disabled", { id: "channels-dmPolicy-disabled" })}
+            </option>
+          </select>
+        </div>
+
+        ${this._waError ? html`<div class="error-banner">${this._waError}</div>` : nothing}
+
+        <div class="form-actions">
+          <button
+            class="btn btn-ghost"
+            @click=${() => {
+              this._waPanelState = "unconfigured";
+              this._waNewToken = "";
+              this._waError = "";
+            }}
+            ?disabled=${this._waSaving}
+          >
+            ${msg("Cancel", { id: "settings-cancel" })}
+          </button>
+          <button class="btn btn-primary" @click=${this._saveWaInit} ?disabled=${this._waSaving}>
+            ${this._waSaving ? "…" : msg("Add", { id: "channels-add-btn" })}
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderWaConfigured() {
+    const pendingCount = this._waPairing?.pending.length ?? 0;
+
+    return html`
+      <div class="channel-card">
+        <div class="channel-card-header">
+          <div class="channel-title">
+            📱 ${msg("WhatsApp", { id: "channels-whatsapp-title" })}
+            ${pendingCount > 0 ? html`<span class="pending-badge">${pendingCount}</span>` : nothing}
+          </div>
+          ${this._renderWaStatusBadge()}
+        </div>
+
+        <!-- Enable toggle -->
+        <div class="toggle-row">
+          <label class="toggle">
+            <input
+              type="checkbox"
+              .checked=${this._waEnabled}
+              @change=${(e: Event) => {
+                this._waEnabled = (e.target as HTMLInputElement).checked;
+              }}
+            />
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-label">${msg("Enabled", { id: "channels-telegram-enabled" })}</span>
+        </div>
+
+        <!-- Access token -->
+        <div class="form-row">
+          <label class="form-label"
+            >${msg("Access token", { id: "channels-wa-token-label" })}</label
+          >
+          <div class="token-row">
+            ${this._waTokenMasked && !this._waTokenEditMode
+              ? html`
+                  <input type="text" .value=${this._waTokenMasked} disabled />
+                  <button
+                    class="btn btn-ghost"
+                    @click=${() => {
+                      this._waTokenEditMode = true;
+                    }}
+                  >
+                    ${msg("Change", { id: "channels-token-change" })}
+                  </button>
+                  <button class="btn btn-ghost" @click=${this._removeWaToken}>×</button>
+                `
+              : html`
+                  <input
+                    type="password"
+                    placeholder=${msg("Paste token from Meta Business...", {
+                      id: "channels-wa-token-placeholder",
+                    })}
+                    .value=${this._waNewToken}
+                    @input=${(e: Event) => {
+                      this._waNewToken = (e.target as HTMLInputElement).value;
+                    }}
+                  />
+                  ${this._waTokenEditMode
+                    ? html`<button
+                        class="btn btn-ghost"
+                        @click=${() => {
+                          this._waTokenEditMode = false;
+                          this._waNewToken = "";
+                        }}
+                      >
+                        ${msg("Cancel", { id: "settings-cancel" })}
+                      </button>`
+                    : nothing}
+                `}
+          </div>
+        </div>
+
+        <!-- Phone number ID -->
+        <div class="form-row">
+          <label class="form-label"
+            >${msg("Phone Number ID", { id: "channels-wa-phone-label" })}</label
+          >
+          <input
+            type="text"
+            placeholder="123456789012345"
+            .value=${this._waPhoneNumberId}
+            @input=${(e: Event) => {
+              this._waPhoneNumberId = (e.target as HTMLInputElement).value;
+            }}
+          />
+        </div>
+
+        <!-- DM policy -->
+        <div class="form-row-inline">
+          <label class="form-label">${msg("DM policy", { id: "channels-dmPolicy-label" })}</label>
+          <select
+            .value=${this._waDmPolicy}
+            @change=${(e: Event) => {
+              this._waDmPolicy = (e.target as HTMLSelectElement).value as typeof this._waDmPolicy;
+              if (this._waDmPolicy === "pairing") {
+                void this._loadWaPairing();
+              } else {
+                this._stopWaPairingPoll();
+              }
+            }}
+            style="max-width: 220px;"
+          >
+            <option value="pairing">
+              ${msg("Pairing (code approval)", { id: "channels-dmPolicy-pairing" })}
+            </option>
+            <option value="open">${msg("Allow all", { id: "channels-dmPolicy-allowAll" })}</option>
+            <option value="allowlist">
+              ${msg("Allowlist", { id: "channels-dmPolicy-allowlist" })}
+            </option>
+            <option value="disabled">
+              ${msg("Disabled", { id: "channels-dmPolicy-disabled" })}
+            </option>
+          </select>
+        </div>
+
+        <!-- Pairing section -->
+        ${this._waDmPolicy === "pairing" ? this._renderWaPairingSection() : nothing}
+        ${this._waError ? html`<div class="error-banner">${this._waError}</div>` : nothing}
+        ${this._waRequiresRestart
+          ? html`
+              <div class="restart-banner">
+                <span>
+                  ${msg("Changes require a runtime restart to take effect.", {
+                    id: "channels-restartWarning",
+                  })}
+                </span>
+              </div>
+            `
+          : nothing}
+
+        <div class="form-actions">
+          <button
+            class="btn btn-ghost"
+            @click=${this._syncWaFromConfig}
+            ?disabled=${this._waSaving}
+          >
+            ${msg("Cancel", { id: "settings-cancel" })}
+          </button>
+          <button class="btn btn-primary" @click=${this._saveWaEdit} ?disabled=${this._waSaving}>
+            ${this._waSaving ? "…" : msg("Save", { id: "settings-save" })}
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderWaPairingSection() {
+    const pending = this._waPairing?.pending ?? [];
+    const approvedCount = this._waPairing?.approved.length ?? 0;
+
+    return html`
+      <div class="pairing-section">
+        <div class="pairing-header">
+          <span class="pairing-title">
+            ${msg("Pairing requests", { id: "channels-pairing-title" })}
+          </span>
+          <button
+            class="btn btn-ghost"
+            style="font-size: 12px; padding: 3px 8px;"
+            @click=${() => void this._loadWaPairing()}
+            ?disabled=${this._waPairingLoading}
+          >
+            ${this._waPairingLoading ? "…" : msg("Refresh", { id: "channels-pairing-refresh" })}
+          </button>
+        </div>
+
+        ${this._waPairingError
+          ? html`<div class="error-banner" style="margin-bottom: 8px;">
+              ${this._waPairingError}
+            </div>`
+          : nothing}
+
+        <div class="pairing-list">
+          ${pending.length === 0
+            ? html`<div class="pairing-empty">
+                ${msg("No pending pairing requests.", { id: "channels-pairing-empty" })}
+              </div>`
+            : pending.map(
+                (req) => html`
+                  <div class="pairing-item">
+                    <span class="pairing-username"> ${req.meta?.name ?? req.id} </span>
+                    <span class="pairing-code">
+                      ${msg("Code", { id: "channels-pairing-code-label" })}:
+                      ${req.code.slice(0, 4)}-${req.code.slice(4)}
+                    </span>
+                    <span class="pairing-time">${this._relativeTime(req.createdAt)}</span>
+                    <div class="pairing-actions">
+                      <button
+                        class="btn btn-primary"
+                        style="font-size: 12px; padding: 3px 10px;"
+                        @click=${() => void this._approveWaPairing(req.code)}
+                      >
+                        ${msg("Approve", { id: "channels-pairing-approve" })}
+                      </button>
+                      <button
+                        class="btn btn-ghost"
+                        style="font-size: 12px; padding: 3px 8px;"
+                        @click=${() => void this._rejectWaPairing(req.code)}
+                      >
+                        ${msg("Reject", { id: "channels-pairing-reject" })}
+                      </button>
+                    </div>
+                  </div>
+                `,
+              )}
+        </div>
+
+        <div class="approved-count">
+          ${msg("Approved senders", { id: "channels-pairing-approved-count" })}: ${approvedCount}
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderWaStatusBadge() {
+    if (!this._waEnabled) {
+      return html`<span class="status-badge inactive">
+        ○ ${msg("Inactive", { id: "status-wa-inactive" })}
+      </span>`;
+    }
+    if (!this._waTokenMasked) {
+      return html`<span class="status-badge disconnected">
+        ◎ ${msg("No token", { id: "status-wa-no-token" })}
+      </span>`;
+    }
+    return html`<span class="status-badge connected">
+      ● ${msg("Configured", { id: "status-wa-configured" })}
     </span>`;
   }
 

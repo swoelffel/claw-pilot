@@ -13,6 +13,7 @@ import type {
   InstanceConfig,
   ConfigPatchResult,
   TelegramPairingList,
+  WhatsAppPairingList,
   AgentMetaPatch,
   DiscoverResult,
   AdoptResult,
@@ -457,11 +458,48 @@ export async function patchChannelsConfig(
       dmPolicy?: "pairing" | "open" | "allowlist" | "disabled";
       groupPolicy?: "open" | "allowlist" | "disabled";
     };
+    whatsapp?: {
+      enabled?: boolean;
+      accessTokenEnvVar?: string;
+      phoneNumberId?: string;
+      verifyTokenEnvVar?: string;
+      allowedPhoneNumbers?: string[];
+      dmPolicy?: "pairing" | "open" | "allowlist" | "disabled";
+    };
   },
 ): Promise<ConfigPatchResult> {
   return apiFetch<ConfigPatchResult>(`/instances/${slug}/config`, {
     method: "PATCH",
     body: JSON.stringify({ channels }),
+  });
+}
+
+// --- WhatsApp DM pairing API ---
+
+export async function fetchWhatsAppPairing(slug: string): Promise<WhatsAppPairingList> {
+  return apiFetch<WhatsAppPairingList>(`/instances/${slug}/whatsapp/pairing`);
+}
+
+export async function approveWhatsAppPairing(slug: string, code: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/instances/${slug}/whatsapp/pairing/approve`, {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+}
+
+export async function patchWhatsAppToken(
+  slug: string,
+  token: string | null,
+): Promise<{ configured: boolean }> {
+  return apiFetch<{ configured: boolean }>(`/instances/${slug}/config/whatsapp/token`, {
+    method: "PATCH",
+    body: JSON.stringify({ token }),
+  });
+}
+
+export async function rejectWhatsAppPairing(slug: string, code: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/instances/${slug}/whatsapp/pairing/${code}`, {
+    method: "DELETE",
   });
 }
 

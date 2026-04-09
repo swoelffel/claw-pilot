@@ -112,6 +112,8 @@ export class CpApp extends LitElement {
       }
 
       main.pilot {
+        display: flex;
+        flex-direction: column;
         height: calc(100vh - 56px - 48px);
         min-height: unset;
         overflow: hidden;
@@ -837,7 +839,7 @@ export class CpApp extends LitElement {
       return html`
         <cp-runtime-pilot
           .slug=${pilotSlug}
-          style="height:100%;"
+          style="flex:1;min-height:0;"
           @back=${() => {
             this._route = { view: "cluster" };
           }}

@@ -15,6 +15,7 @@ import { registerCostsRoutes } from "./costs.js";
 import { registerEventsRoutes } from "./events.js";
 import { registerMemoryRoutes } from "./memory.js";
 import { registerHeartbeatRoutes } from "./heartbeat.js";
+import { registerWhatsAppRoutes } from "./whatsapp.js";
 
 export function registerInstanceRoutes(app: Hono, deps: RouteDeps): void {
   // /discover must be registered before /:slug to avoid Hono route collision
@@ -30,4 +31,5 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps): void {
   registerEventsRoutes(app, deps);
   registerMemoryRoutes(app, deps);
   registerHeartbeatRoutes(app, deps);
+  registerWhatsAppRoutes(app, deps);
 }

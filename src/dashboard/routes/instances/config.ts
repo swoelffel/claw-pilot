@@ -77,6 +77,12 @@ interface InstanceConfig {
       groupPolicy: string;
       streamMode?: string;
     } | null;
+    whatsapp: {
+      enabled: boolean;
+      accessTokenMasked: string | null;
+      phoneNumberId: string;
+      dmPolicy: string;
+    } | null;
   };
   plugins: {
     mem0: {
@@ -135,6 +141,16 @@ const RuntimeConfigPatchSchema = z.object({
           allowedUserIds: z.array(z.number().int()).optional(),
           dmPolicy: z.enum(["pairing", "open", "allowlist", "disabled"]).optional(),
           groupPolicy: z.enum(["open", "allowlist", "disabled"]).optional(),
+        })
+        .optional(),
+      whatsapp: z
+        .object({
+          enabled: z.boolean().optional(),
+          accessTokenEnvVar: z.string().optional(),
+          phoneNumberId: z.string().optional(),
+          verifyTokenEnvVar: z.string().optional(),
+          allowedPhoneNumbers: z.array(z.string()).optional(),
+          dmPolicy: z.enum(["pairing", "open", "allowlist", "disabled"]).optional(),
         })
         .optional(),
     })
@@ -334,6 +350,16 @@ function buildInstanceConfig(
         dmPolicy: config.telegram.dmPolicy ?? "pairing",
         groupPolicy: config.telegram.groupPolicy ?? "allowlist",
       },
+      whatsapp: (() => {
+        const waVarName = config.whatsapp.accessTokenEnvVar;
+        const waRaw = readEnvVar(envPath, waVarName);
+        return {
+          enabled: config.whatsapp.enabled,
+          accessTokenMasked: waRaw ? maskSecret(waRaw) : null,
+          phoneNumberId: config.whatsapp.phoneNumberId ?? "",
+          dmPolicy: config.whatsapp.dmPolicy ?? "pairing",
+        };
+      })(),
     },
     plugins: {
       mem0: null,
@@ -368,7 +394,7 @@ function buildInstanceConfigStub(instance: {
       models: [],
     },
     agents: [],
-    channels: { telegram: null },
+    channels: { telegram: null, whatsapp: null },
     plugins: { mem0: null },
     gateway: { port: instance.port },
   };
@@ -757,6 +783,45 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
       }
     }
 
+    // Update whatsapp config in runtime.json
+    if (patch.channels?.whatsapp !== undefined) {
+      const stateDir = getRuntimeStateDir(slug);
+      try {
+        let config: RuntimeConfig;
+        if (runtimeConfigExists(stateDir)) {
+          config = loadRuntimeConfig(stateDir);
+        } else {
+          config = createDefaultRuntimeConfig(
+            instance!.default_model !== null && instance!.default_model !== undefined
+              ? { defaultModel: instance!.default_model }
+              : {},
+          );
+        }
+        const wa = patch.channels.whatsapp;
+        if (wa.enabled !== undefined) config.whatsapp.enabled = wa.enabled;
+        if (wa.accessTokenEnvVar !== undefined)
+          config.whatsapp.accessTokenEnvVar = wa.accessTokenEnvVar;
+        if (wa.phoneNumberId !== undefined) config.whatsapp.phoneNumberId = wa.phoneNumberId;
+        if (wa.verifyTokenEnvVar !== undefined)
+          config.whatsapp.verifyTokenEnvVar = wa.verifyTokenEnvVar;
+        if (wa.allowedPhoneNumbers !== undefined)
+          config.whatsapp.allowedPhoneNumbers = wa.allowedPhoneNumbers;
+        if (wa.dmPolicy !== undefined) config.whatsapp.dmPolicy = wa.dmPolicy;
+        saveRuntimeConfig(stateDir, config);
+        requiresRestart = true;
+      } catch (err) {
+        logger.error(
+          `[config] PATCH whatsapp error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return apiError(
+          c,
+          500,
+          "CONFIG_PATCH_FAILED",
+          err instanceof Error ? err.message : "Failed to update whatsapp config",
+        );
+      }
+    }
+
     // Restart if needed and instance is running
     let autoRestarted = false;
     if (requiresRestart && instance!.state === "running") {
@@ -826,6 +891,54 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
     } catch (err) {
       logger.error(
         `[config] PATCH telegram/token error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return apiError(c, 500, "TOKEN_WRITE_FAILED", "Failed to write token to .env");
+    }
+  });
+
+  // PATCH /api/instances/:slug/config/whatsapp/token — write/remove access token in .env
+  app.patch("/api/instances/:slug/config/whatsapp/token", async (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
+
+    let token: string | null;
+    try {
+      const raw = (await c.req.json()) as { token?: unknown };
+      if (raw.token !== undefined && raw.token !== null && typeof raw.token !== "string") {
+        return apiError(c, 400, "INVALID_BODY", "token must be a string or null");
+      }
+      token = (raw.token as string | null | undefined) ?? null;
+    } catch {
+      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+    }
+
+    const stateDir = getRuntimeStateDir(slug);
+    const envPath = `${stateDir}/.env`;
+
+    try {
+      let varName = "WHATSAPP_ACCESS_TOKEN";
+      if (runtimeConfigExists(stateDir)) {
+        try {
+          const config = loadRuntimeConfig(stateDir);
+          varName = config.whatsapp.accessTokenEnvVar;
+        } catch {
+          /* use default */
+        }
+      }
+
+      if (token !== null) {
+        await writeEnvVar(envPath, varName, token);
+      } else {
+        await removeEnvVar(envPath, varName);
+      }
+
+      logger.info(`[config] PATCH whatsapp/token slug=${slug} configured=${token !== null}`);
+      return c.json({ configured: token !== null });
+    } catch (err) {
+      logger.error(
+        `[config] PATCH whatsapp/token error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
       );
       return apiError(c, 500, "TOKEN_WRITE_FAILED", "Failed to write token to .env");
     }

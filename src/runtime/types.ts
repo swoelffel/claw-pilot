@@ -138,7 +138,7 @@ export interface PermissionResult {
 // ---------------------------------------------------------------------------
 
 /** Supported messaging channels */
-export type ChannelType = "web" | "telegram" | "discord" | "slack";
+export type ChannelType = "web" | "telegram" | "whatsapp" | "discord" | "slack";
 
 /** Inbound message from a channel */
 export interface InboundMessage {

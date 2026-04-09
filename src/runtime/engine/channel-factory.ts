@@ -18,6 +18,7 @@ import type { InstanceSlug } from "../types.js";
 import type { Channel } from "../channel/channel.js";
 import { WebChatChannel } from "../channel/web-chat.js";
 import { TelegramChannel } from "../channel/telegram/channel.js";
+import { WhatsAppChannel } from "../channel/whatsapp/channel.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -28,6 +29,12 @@ const WEB_CHAT_BASE_PORT = 19100;
 
 /** Number of ports reserved for web-chat (max instances) */
 const WEB_CHAT_PORT_RANGE = 100;
+
+/** Base port for WhatsApp webhook servers (above web-chat range) */
+const WHATSAPP_BASE_PORT = 19200;
+
+/** Number of ports reserved for WhatsApp webhooks (max instances) */
+const WHATSAPP_PORT_RANGE = 100;
 
 // ---------------------------------------------------------------------------
 // createChannels
@@ -76,6 +83,23 @@ export function createChannels(
     );
   }
 
+  // WhatsApp channel
+  if (config.whatsapp.enabled) {
+    const webhookPort = deriveWhatsAppPort(slug);
+    channels.push(
+      new WhatsAppChannel({
+        accessTokenEnvVar: config.whatsapp.accessTokenEnvVar,
+        phoneNumberId: config.whatsapp.phoneNumberId,
+        verifyTokenEnvVar: config.whatsapp.verifyTokenEnvVar,
+        webhookPort,
+        allowedPhoneNumbers: config.whatsapp.allowedPhoneNumbers,
+        dmPolicy: config.whatsapp.dmPolicy,
+        db,
+        instanceSlug: slug,
+      }),
+    );
+  }
+
   return channels;
 }
 
@@ -94,6 +118,19 @@ function deriveWebChatPort(slug: InstanceSlug): number {
     hash = hash >>> 0; // keep unsigned 32-bit
   }
   return WEB_CHAT_BASE_PORT + (hash % WEB_CHAT_PORT_RANGE);
+}
+
+/**
+ * Derive a deterministic WhatsApp webhook port from the instance slug.
+ * Same hash algorithm as web-chat but in a separate port range.
+ */
+function deriveWhatsAppPort(slug: InstanceSlug): number {
+  let hash = 5381;
+  for (let i = 0; i < slug.length; i++) {
+    hash = ((hash << 5) + hash) ^ slug.codePointAt(i)!;
+    hash = hash >>> 0;
+  }
+  return WHATSAPP_BASE_PORT + (hash % WHATSAPP_PORT_RANGE);
 }
 
 /**

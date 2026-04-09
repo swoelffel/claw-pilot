@@ -19,6 +19,9 @@ export type {
   TelegramUser,
   TelegramChat,
 } from "./telegram/polling.js";
+export { WhatsAppChannel } from "./whatsapp/channel.js";
+export type { WhatsAppChannelOptions } from "./whatsapp/channel.js";
+
 export {
   createPairingCode,
   validatePairingCode,

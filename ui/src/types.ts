@@ -277,6 +277,12 @@ export interface InstanceConfig {
       groupPolicy: "open" | "allowlist" | "disabled";
       streamMode?: string;
     } | null;
+    whatsapp: {
+      enabled: boolean;
+      accessTokenMasked: string | null;
+      phoneNumberId: string;
+      dmPolicy: "pairing" | "open" | "allowlist" | "disabled";
+    } | null;
   };
   plugins: {
     mem0: {
@@ -318,6 +324,27 @@ export interface TelegramPairingRequest {
 export interface TelegramPairingList {
   pending: TelegramPairingRequest[];
   /** Array of approved Telegram user IDs */
+  approved: string[];
+}
+
+// WhatsApp DM pairing types
+
+export interface WhatsAppPairingRequest {
+  /** Phone number (E.164 without +) */
+  id: string;
+  /** 8-char uppercase pairing code */
+  code: string;
+  /** ISO timestamp — request created */
+  createdAt: string;
+  /** ISO timestamp — last contact from this user */
+  lastSeenAt: string;
+  /** Channel-specific metadata */
+  meta: { name?: string; phoneNumber?: string };
+}
+
+export interface WhatsAppPairingList {
+  pending: WhatsAppPairingRequest[];
+  /** Array of approved phone numbers */
   approved: string[];
 }
 
