@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { parseInterval, isWithinActiveHours } from "../interval.js";
+import { parseInterval, isWithinActiveHours, isValidTimezone } from "../interval.js";
 
 describe("parseInterval", () => {
   it('[positive] "30m" → 1_800_000 ms', () => {
@@ -65,5 +65,28 @@ describe("isWithinActiveHours", () => {
     // 12:00 Paris = outside window
     vi.setSystemTime(new Date("2024-01-15T11:00:00Z")); // Paris = 12:00
     expect(isWithinActiveHours({ start: "22:00", end: "06:00", tz: "Europe/Paris" })).toBe(false);
+  });
+
+  it("[edge] falls back to local time when timezone is invalid (does not throw)", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2024-01-15T10:00:00Z"));
+    // Invalid tz should not throw — falls back to local time
+    expect(() =>
+      isWithinActiveHours({ start: "09:00", end: "17:00", tz: "Invalid/Timezone" }),
+    ).not.toThrow();
+  });
+});
+
+describe("isValidTimezone", () => {
+  it("[positive] valid IANA timezone", () => {
+    expect(isValidTimezone("Europe/Paris")).toBe(true);
+    expect(isValidTimezone("America/New_York")).toBe(true);
+    expect(isValidTimezone("UTC")).toBe(true);
+  });
+
+  it("[negative] invalid timezone", () => {
+    expect(isValidTimezone("Invalid/Timezone")).toBe(false);
+    expect(isValidTimezone("")).toBe(false);
+    expect(isValidTimezone("Foo")).toBe(false);
   });
 });

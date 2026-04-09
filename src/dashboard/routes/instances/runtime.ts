@@ -913,11 +913,14 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     const limitParam = c.req.query("limit");
     const limit = Math.min(parseInt(limitParam ?? "20", 10) || 20, 100);
 
-    function detectHeartbeatStatus(text: string): "ok" | "alert" {
+    /** Fallback keyword matching for historical messages without structured metadata. */
+    function detectHeartbeatStatusFallback(text: string): "ok" | "alert" {
       if (!text) return "ok";
+      if (text.startsWith("HEARTBEAT_OK")) return "ok";
+      // Check for known alert patterns
       const lower = text.toLowerCase();
-      const alertKeywords = ["heartbeat_alert", "alert", "retard", "bloqué", "erreur", "error"];
-      return alertKeywords.some((k) => lower.includes(k)) ? "alert" : "ok";
+      const alertPatterns = ["heartbeat_alert", "heartbeat error:", "error:", "failed"];
+      return alertPatterns.some((p) => lower.includes(p)) ? "alert" : "ok";
     }
 
     interface HeartbeatRow {
@@ -926,6 +929,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       agentId: string;
       responseText: string | null;
       tokensOut: number | null;
+      partMetadata: string | null;
     }
 
     let rows: HeartbeatRow[] = [];
@@ -939,13 +943,17 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
             m.created_at as createdAt,
             s.agent_id as agentId,
             p.content as responseText,
-            m.tokens_out as tokensOut
+            m.tokens_out as tokensOut,
+            p.metadata as partMetadata
           FROM rt_messages m
           JOIN rt_sessions s ON s.id = m.session_id
           LEFT JOIN rt_parts p ON p.message_id = m.id AND p.type = 'text'
           WHERE s.instance_slug = ?
             AND s.agent_id = ?
-            AND s.channel = 'internal'
+            AND (
+              s.channel = 'internal'
+              OR json_extract(p.metadata, '$.heartbeat_status') IS NOT NULL
+            )
             AND m.role = 'assistant'
           ORDER BY m.created_at DESC
           LIMIT ?`,
@@ -956,14 +964,34 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       return c.json({ ticks: [] });
     }
 
-    const ticks = rows.map((row) => ({
-      messageId: row.messageId,
-      createdAt: row.createdAt,
-      agentId: row.agentId,
-      responseText: row.responseText ?? "",
-      tokensOut: row.tokensOut ?? 0,
-      status: detectHeartbeatStatus(row.responseText ?? ""),
-    }));
+    const ticks = rows.map((row) => {
+      // Prefer structured status from part metadata, fall back to text analysis
+      let status: "ok" | "alert" = "ok";
+      if (row.partMetadata) {
+        try {
+          const meta = JSON.parse(row.partMetadata) as { heartbeat_status?: string };
+          if (meta.heartbeat_status === "alert" || meta.heartbeat_status === "error") {
+            status = "alert";
+          } else if (meta.heartbeat_status === "ok") {
+            status = "ok";
+          } else {
+            status = detectHeartbeatStatusFallback(row.responseText ?? "");
+          }
+        } catch {
+          status = detectHeartbeatStatusFallback(row.responseText ?? "");
+        }
+      } else {
+        status = detectHeartbeatStatusFallback(row.responseText ?? "");
+      }
+      return {
+        messageId: row.messageId,
+        createdAt: row.createdAt,
+        agentId: row.agentId,
+        responseText: row.responseText ?? "",
+        tokensOut: row.tokensOut ?? 0,
+        status,
+      };
+    });
 
     return c.json({ ticks });
   });

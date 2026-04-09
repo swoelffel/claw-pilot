@@ -19,7 +19,8 @@ import type { RuntimeAgentConfig, RuntimeConfig } from "../config/index.js";
 import type { InstanceSlug } from "../types.js";
 import { getBus } from "../bus/index.js";
 import { HeartbeatTick, HeartbeatAlert } from "../bus/events.js";
-import { createSession, listSessions } from "../session/session.js";
+import { createSession, listSessions, getOrCreatePermanentSession } from "../session/session.js";
+import { getAgent, resolveEffectivePersistence } from "../agent/registry.js";
 import { runPromptLoop } from "../session/prompt-loop.js";
 import { resolveModelForAgent } from "../channel/router.js";
 import { parseInterval, isWithinActiveHours } from "./interval.js";
@@ -117,21 +118,35 @@ async function runHeartbeatTick(
     agentId: agent.id,
   });
 
-  // Find or create the dedicated heartbeat session for this agent
-  const peerId = `${HEARTBEAT_PEER_PREFIX}${agent.id}`;
-  const existingSessions = listSessions(db, instanceSlug, { state: "active" });
-  const existingSession = existingSessions.find(
-    (s) => s.channel === HEARTBEAT_CHANNEL && s.peerId === peerId,
-  );
+  // Find or create the heartbeat session for this agent.
+  // For permanent agents, reuse the permanent session so the heartbeat shares
+  // conversational context with the agent's main session.
+  const agentInfo = getAgent(agent.id);
+  const isPermanent =
+    agentInfo !== undefined && resolveEffectivePersistence(agentInfo, agent) === "permanent";
 
-  const session =
-    existingSession ??
-    createSession(db, {
+  let session;
+  if (isPermanent) {
+    session = getOrCreatePermanentSession(db, {
       instanceSlug,
       agentId: agent.id,
       channel: HEARTBEAT_CHANNEL,
-      peerId,
     });
+  } else {
+    const peerId = `${HEARTBEAT_PEER_PREFIX}${agent.id}`;
+    const existingSessions = listSessions(db, instanceSlug, { state: "active" });
+    const existingSession = existingSessions.find(
+      (s) => s.channel === HEARTBEAT_CHANNEL && s.peerId === peerId,
+    );
+    session =
+      existingSession ??
+      createSession(db, {
+        instanceSlug,
+        agentId: agent.id,
+        channel: HEARTBEAT_CHANNEL,
+        peerId,
+      });
+  }
 
   // Build the heartbeat prompt
   const prompt =
@@ -161,8 +176,14 @@ async function runHeartbeatTick(
     const text = result.text.trim();
     const durationMs = Date.now() - heartbeatStart;
 
-    // Silent if HEARTBEAT_OK
-    if (text === "HEARTBEAT_OK" || text.startsWith("HEARTBEAT_OK")) {
+    // Determine structured status
+    const isOk = text === "HEARTBEAT_OK" || text.startsWith("HEARTBEAT_OK");
+    const heartbeatStatus: "ok" | "alert" = isOk ? "ok" : "alert";
+
+    // Tag the text part with structured heartbeat status
+    tagHeartbeatStatus(db, result.messageId, heartbeatStatus);
+
+    if (isOk) {
       logger.info("heartbeat_ok", {
         event: "heartbeat_ok",
         slug: instanceSlug,
@@ -198,5 +219,25 @@ async function runHeartbeatTick(
       instanceSlug,
       text: `Heartbeat error: ${err instanceof Error ? err.message : String(err)}`,
     });
+  }
+}
+
+/**
+ * Tag the text part of a heartbeat message with a structured status.
+ * Stores `{"heartbeat_status": "ok"|"alert"|"error"}` in `rt_parts.metadata`.
+ */
+function tagHeartbeatStatus(
+  db: Database.Database,
+  messageId: string,
+  status: "ok" | "alert" | "error",
+): void {
+  try {
+    db.prepare(
+      `UPDATE rt_parts
+       SET metadata = ?, updated_at = datetime('now')
+       WHERE message_id = ? AND type = 'text'`,
+    ).run(JSON.stringify({ heartbeat_status: status }), messageId);
+  } catch {
+    // Best-effort — don't crash the runner for metadata tagging
   }
 }

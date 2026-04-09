@@ -15,6 +15,19 @@ export function parseInterval(every: string): number {
   return unit === "m" ? n * 60_000 : n * 3_600_000;
 }
 
+/**
+ * Validate that a timezone string is a valid IANA timezone.
+ * Returns true if valid, false otherwise.
+ */
+export function isValidTimezone(tz: string): boolean {
+  try {
+    Intl.DateTimeFormat("en-GB", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Check if the current time is within the active hours window. */
 export function isWithinActiveHours(
   activeHours: { start: string; end: string; tz?: string } | undefined,
@@ -26,8 +39,16 @@ export function isWithinActiveHours(
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-    ...(activeHours.tz ? { timeZone: activeHours.tz } : {}),
   };
+
+  // Validate and apply timezone — fall back to local time if invalid
+  if (activeHours.tz) {
+    if (isValidTimezone(activeHours.tz)) {
+      tzOptions.timeZone = activeHours.tz;
+    }
+    // Invalid tz: silently fall back to local time (logged at config validation level)
+  }
+
   const formatter = new Intl.DateTimeFormat("en-GB", tzOptions);
   const current = formatter.format(now); // "HH:MM"
 
