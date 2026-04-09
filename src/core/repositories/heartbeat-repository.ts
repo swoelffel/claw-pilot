@@ -60,8 +60,7 @@ export function getHeartbeatHeatmapData(
     okCount: number;
   }
 
-  // Use structured heartbeat_status from part metadata when available,
-  // falling back to text content matching for historical data.
+  // Priority: finish_reason (always set on new ticks) → part metadata → text fallback.
   return db
     .prepare(
       `SELECT
@@ -70,6 +69,8 @@ export function getHeartbeatHeatmapData(
          CAST(strftime('%H', m.created_at) AS INTEGER) AS hour,
          COUNT(*) AS tickCount,
          SUM(CASE
+           WHEN m.finish_reason IN ('heartbeat:alert', 'heartbeat:error') THEN 1
+           WHEN m.finish_reason = 'heartbeat:ok' THEN 0
            WHEN json_extract(p.metadata, '$.heartbeat_status') IN ('alert', 'error') THEN 1
            WHEN json_extract(p.metadata, '$.heartbeat_status') = 'ok' THEN 0
            WHEN p.content IS NOT NULL AND p.content != ''
@@ -77,6 +78,8 @@ export function getHeartbeatHeatmapData(
            ELSE 0
          END) AS alertCount,
          SUM(CASE
+           WHEN m.finish_reason = 'heartbeat:ok' THEN 1
+           WHEN m.finish_reason IN ('heartbeat:alert', 'heartbeat:error') THEN 0
            WHEN json_extract(p.metadata, '$.heartbeat_status') = 'ok' THEN 1
            WHEN json_extract(p.metadata, '$.heartbeat_status') IN ('alert', 'error') THEN 0
            WHEN p.content IS NULL OR p.content = ''
@@ -89,6 +92,7 @@ export function getHeartbeatHeatmapData(
        WHERE s.instance_slug = ?
          AND (
            (s.channel = 'internal' AND s.peer_id LIKE 'heartbeat:%')
+           OR m.finish_reason LIKE 'heartbeat:%'
            OR json_extract(p.metadata, '$.heartbeat_status') IS NOT NULL
          )
          AND m.role = 'assistant'
@@ -119,6 +123,8 @@ export function getHeartbeatAgentStats(
          s.agent_id AS agentId,
          COUNT(*) AS totalTicks,
          SUM(CASE
+           WHEN m.finish_reason IN ('heartbeat:alert', 'heartbeat:error') THEN 1
+           WHEN m.finish_reason = 'heartbeat:ok' THEN 0
            WHEN json_extract(p.metadata, '$.heartbeat_status') IN ('alert', 'error') THEN 1
            WHEN json_extract(p.metadata, '$.heartbeat_status') = 'ok' THEN 0
            WHEN p.content IS NOT NULL AND p.content != ''
@@ -133,6 +139,7 @@ export function getHeartbeatAgentStats(
        WHERE s.instance_slug = ?
          AND (
            (s.channel = 'internal' AND s.peer_id LIKE 'heartbeat:%')
+           OR m.finish_reason LIKE 'heartbeat:%'
            OR json_extract(p.metadata, '$.heartbeat_status') IS NOT NULL
          )
          AND m.role = 'assistant'

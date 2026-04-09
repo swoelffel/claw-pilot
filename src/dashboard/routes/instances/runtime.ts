@@ -929,6 +929,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       agentId: string;
       responseText: string | null;
       tokensOut: number | null;
+      finishReason: string | null;
       partMetadata: string | null;
     }
 
@@ -944,6 +945,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
             s.agent_id as agentId,
             p.content as responseText,
             m.tokens_out as tokensOut,
+            m.finish_reason as finishReason,
             p.metadata as partMetadata
           FROM rt_messages m
           JOIN rt_sessions s ON s.id = m.session_id
@@ -952,6 +954,7 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
             AND s.agent_id = ?
             AND (
               s.channel = 'internal'
+              OR m.finish_reason LIKE 'heartbeat:%'
               OR json_extract(p.metadata, '$.heartbeat_status') IS NOT NULL
             )
             AND m.role = 'assistant'
@@ -965,9 +968,12 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
     }
 
     const ticks = rows.map((row) => {
-      // Prefer structured status from part metadata, fall back to text analysis
+      // Priority: finish_reason (always set) → part metadata → text fallback
       let status: "ok" | "alert" = "ok";
-      if (row.partMetadata) {
+      if (row.finishReason?.startsWith("heartbeat:")) {
+        const hbStatus = row.finishReason.slice("heartbeat:".length);
+        status = hbStatus === "ok" ? "ok" : "alert";
+      } else if (row.partMetadata) {
         try {
           const meta = JSON.parse(row.partMetadata) as { heartbeat_status?: string };
           if (meta.heartbeat_status === "alert" || meta.heartbeat_status === "error") {

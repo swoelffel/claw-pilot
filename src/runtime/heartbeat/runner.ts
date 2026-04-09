@@ -223,8 +223,13 @@ async function runHeartbeatTick(
 }
 
 /**
- * Tag the text part of a heartbeat message with a structured status.
- * Stores `{"heartbeat_status": "ok"|"alert"|"error"}` in `rt_parts.metadata`.
+ * Tag a heartbeat message with a structured status.
+ *
+ * Primary: sets `finish_reason` on `rt_messages` to `"heartbeat:ok"` / `"heartbeat:alert"`.
+ * This column always exists, even when the assistant produced no text part (e.g. tool-only responses).
+ *
+ * Secondary (best-effort): also tags `rt_parts.metadata` on text parts when they exist,
+ * for backwards compatibility with older query patterns.
  */
 function tagHeartbeatStatus(
   db: Database.Database,
@@ -232,6 +237,12 @@ function tagHeartbeatStatus(
   status: "ok" | "alert" | "error",
 ): void {
   try {
+    // Primary: always-available column on the message itself
+    db.prepare(`UPDATE rt_messages SET finish_reason = ? WHERE id = ?`).run(
+      `heartbeat:${status}`,
+      messageId,
+    );
+    // Secondary: tag text part metadata if it exists
     db.prepare(
       `UPDATE rt_parts
        SET metadata = ?, updated_at = datetime('now')

@@ -562,7 +562,13 @@ describe("startHeartbeatRunner — heartbeat status tagging", () => {
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
     await vi.advanceTimersByTimeAsync(0);
 
-    // Check that the part metadata was tagged
+    // Check finish_reason on the message
+    const row = db.prepare("SELECT finish_reason FROM rt_messages WHERE id = ?").get(msg.id) as {
+      finish_reason: string | null;
+    };
+    expect(row.finish_reason).toBe("heartbeat:ok");
+
+    // Check that the part metadata was also tagged
     const part = db
       .prepare("SELECT metadata FROM rt_parts WHERE message_id = ? AND type = 'text'")
       .get(msg.id) as { metadata: string | null } | undefined;
@@ -605,11 +611,63 @@ describe("startHeartbeatRunner — heartbeat status tagging", () => {
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
     await vi.advanceTimersByTimeAsync(0);
 
+    const row = db.prepare("SELECT finish_reason FROM rt_messages WHERE id = ?").get(msg.id) as {
+      finish_reason: string | null;
+    };
+    expect(row.finish_reason).toBe("heartbeat:alert");
+
     const part = db
       .prepare("SELECT metadata FROM rt_parts WHERE message_id = ? AND type = 'text'")
       .get(msg.id) as { metadata: string | null } | undefined;
     expect(part).toBeDefined();
     expect(JSON.parse(part!.metadata!)).toEqual({ heartbeat_status: "alert" });
+    cleanup();
+  });
+
+  it("[positive] tags finish_reason even when no text part exists (tool-only response)", async () => {
+    const mockRunPromptLoop = vi.mocked(runPromptLoop);
+
+    const { createSession } = await import("../../session/session.js");
+    const { createAssistantMessage } = await import("../../session/message.js");
+
+    const session = createSession(db, {
+      instanceSlug: INSTANCE_SLUG,
+      agentId: "sentinel",
+      channel: "internal",
+      peerId: "heartbeat:sentinel",
+    });
+    // Create message with NO parts (simulates tool-only response)
+    const msg = createAssistantMessage(db, { sessionId: session.id, agentId: "sentinel" });
+
+    mockRunPromptLoop.mockResolvedValue({
+      text: "",
+      messageId: msg.id,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      costUsd: 0,
+      steps: 0,
+    });
+
+    const cleanup = startHeartbeatRunner([makeAgent({ heartbeat: { every: "5m" } })], {
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      runtimeConfig: makeRuntimeConfig(),
+      workDir: undefined,
+    });
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(0);
+
+    // finish_reason is always set, even without text parts
+    const row = db.prepare("SELECT finish_reason FROM rt_messages WHERE id = ?").get(msg.id) as {
+      finish_reason: string | null;
+    };
+    expect(row.finish_reason).toBe("heartbeat:alert");
+
+    // No text parts to tag
+    const parts = db
+      .prepare("SELECT * FROM rt_parts WHERE message_id = ? AND type = 'text'")
+      .all(msg.id);
+    expect(parts).toHaveLength(0);
     cleanup();
   });
 });
