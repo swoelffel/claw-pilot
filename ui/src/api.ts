@@ -42,6 +42,7 @@ import type {
   TaskInfo,
   TaskDetail,
   TaskComment,
+  EpicInfo,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 import { getToken } from "./services/auth-state.js";
@@ -863,7 +864,14 @@ export async function fetchTaskDetail(slug: string, id: number): Promise<TaskDet
 
 export async function createTaskApi(
   slug: string,
-  body: { title: string; description?: string; priority?: string; labels?: string[] },
+  body: {
+    title: string;
+    description?: string;
+    priority?: string;
+    labels?: string[];
+    type?: "epic" | "task";
+    parentId?: number;
+  },
 ): Promise<TaskInfo> {
   return apiFetch<TaskInfo>(`/instances/${slug}/tasks`, {
     method: "POST",
@@ -881,6 +889,7 @@ export async function updateTaskApi(
     priority?: string;
     assigneeId?: string | null;
     labels?: string[];
+    parentId?: number | null;
   },
 ): Promise<TaskInfo> {
   return apiFetch<TaskInfo>(`/instances/${slug}/tasks/${id}`, {
@@ -918,6 +927,14 @@ export async function addTaskCommentApi(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ authorId, content }),
   });
+}
+
+export async function fetchEpics(slug: string): Promise<EpicInfo[]> {
+  return apiFetch<EpicInfo[]>(`/instances/${slug}/epics`);
+}
+
+export async function fetchEpicChildren(slug: string, epicId: number): Promise<TaskInfo[]> {
+  return apiFetch<TaskInfo[]>(`/instances/${slug}/epics/${epicId}/children`);
 }
 
 // ---------------------------------------------------------------------------

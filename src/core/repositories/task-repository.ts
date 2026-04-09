@@ -11,6 +11,7 @@ import type Database from "better-sqlite3";
 
 export type TaskStatus = "pending" | "in_progress" | "completed" | "blocked" | "cancelled";
 export type TaskPriority = "low" | "medium" | "high" | "critical";
+export type TaskType = "epic" | "task";
 
 export interface TaskRow {
   id: number;
@@ -27,6 +28,14 @@ export interface TaskRow {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  type: TaskType;
+  parent_id: number | null;
+}
+
+/** Extended row returned by getActiveTasksForAgent — includes parent epic context. */
+export interface TaskRowWithEpic extends TaskRow {
+  epic_id: number | null;
+  epic_title: string | null;
 }
 
 export interface TaskCommentRow {
@@ -45,6 +54,8 @@ export interface CreateTaskInput {
   assigneeId?: string;
   labels?: string[];
   createdBy: string;
+  type?: TaskType;
+  parentId?: number;
 }
 
 export interface UpdateTaskInput {
@@ -53,14 +64,21 @@ export interface UpdateTaskInput {
   priority?: TaskPriority;
   assigneeId?: string | null;
   labels?: string[];
+  parentId?: number | null;
 }
 
 // ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
 
-/** Create a task. Position is set to MAX+100 within the pending column. */
+/** Create a task or epic. Position is set to MAX+100 within the pending column. */
 export function createTask(db: Database.Database, input: CreateTaskInput): TaskRow {
+  const parentId = input.parentId ?? null;
+  if (parentId !== null) {
+    const err = validateParentId(db, null, parentId, input.instanceSlug);
+    if (err) throw new Error(err);
+  }
+
   const maxPos = db
     .prepare(
       `SELECT COALESCE(MAX(position), 0) AS max_pos FROM rt_tasks
@@ -70,8 +88,8 @@ export function createTask(db: Database.Database, input: CreateTaskInput): TaskR
 
   const result = db
     .prepare(
-      `INSERT INTO rt_tasks (instance_slug, title, description, priority, assignee_id, labels, created_by, position)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO rt_tasks (instance_slug, title, description, priority, assignee_id, labels, created_by, position, type, parent_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       input.instanceSlug,
@@ -82,6 +100,8 @@ export function createTask(db: Database.Database, input: CreateTaskInput): TaskR
       input.labels ? JSON.stringify(input.labels) : null,
       input.createdBy,
       maxPos.max_pos + 100,
+      input.type ?? "task",
+      parentId,
     );
   return getTask(db, Number(result.lastInsertRowid))!;
 }
@@ -138,6 +158,15 @@ export function updateTask(
     sets.push("labels = ?");
     params.push(JSON.stringify(updates.labels));
   }
+  if (updates.parentId !== undefined) {
+    if (updates.parentId !== null) {
+      const task = getTask(db, id);
+      const err = validateParentId(db, id, updates.parentId, task?.instance_slug);
+      if (err) throw new Error(err);
+    }
+    sets.push("parent_id = ?");
+    params.push(updates.parentId);
+  }
 
   if (sets.length === 0) return getTask(db, id);
 
@@ -187,7 +216,12 @@ export function changeStatus(
      SET status = ?, position = ?, updated_at = datetime('now'), completed_at = ${completedAt}
      WHERE id = ?`,
   ).run(status, pos, id);
-  return getTask(db, id);
+  const updated = getTask(db, id);
+  // Auto-complete parent epic if all children are done
+  if (updated?.parent_id) {
+    tryAutoCompleteEpic(db, updated.parent_id);
+  }
+  return updated;
 }
 
 /** Reorder a task within the same status column. */
@@ -250,23 +284,146 @@ export function getTaskCountsByStatus(
   return counts;
 }
 
-/** Get active tasks (pending + in_progress) assigned to a specific agent. */
+/** Get active tasks (pending + in_progress) assigned to a specific agent, with epic context. */
 export function getActiveTasksForAgent(
   db: Database.Database,
   slug: string,
   agentId: string,
-): TaskRow[] {
+): TaskRowWithEpic[] {
   return db
     .prepare(
-      `SELECT * FROM rt_tasks
-       WHERE instance_slug = ? AND assignee_id = ?
-       AND status IN ('pending', 'in_progress')
+      `SELECT t.*, p.id AS epic_id, p.title AS epic_title
+       FROM rt_tasks t
+       LEFT JOIN rt_tasks p ON t.parent_id = p.id
+       WHERE t.instance_slug = ? AND t.assignee_id = ?
+       AND t.status IN ('pending', 'in_progress')
+       AND t.type = 'task'
+       ORDER BY
+         CASE t.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1
+                         WHEN 'medium' THEN 2 ELSE 3 END,
+         t.position ASC`,
+    )
+    .all(slug, agentId) as TaskRowWithEpic[];
+}
+
+// ---------------------------------------------------------------------------
+// Epic hierarchy
+// ---------------------------------------------------------------------------
+
+/** List all epics for an instance, ordered by position. */
+export function getEpicsForInstance(db: Database.Database, slug: string): TaskRow[] {
+  return db
+    .prepare(
+      "SELECT * FROM rt_tasks WHERE instance_slug = ? AND type = 'epic' ORDER BY position ASC",
+    )
+    .all(slug) as TaskRow[];
+}
+
+/** List child tasks of an epic, ordered by priority then position. */
+export function getChildTasks(db: Database.Database, epicId: number): TaskRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM rt_tasks WHERE parent_id = ?
        ORDER BY
          CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1
                        WHEN 'medium' THEN 2 ELSE 3 END,
          position ASC`,
     )
-    .all(slug, agentId) as TaskRow[];
+    .all(epicId) as TaskRow[];
+}
+
+/** Get completion progress for an epic: total children and completed+cancelled count. */
+export function getEpicProgress(
+  db: Database.Database,
+  epicId: number,
+): { total: number; completed: number } {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN status IN ('completed', 'cancelled') THEN 1 ELSE 0 END) AS completed
+       FROM rt_tasks WHERE parent_id = ?`,
+    )
+    .get(epicId) as { total: number; completed: number };
+  return { total: row.total, completed: row.completed ?? 0 };
+}
+
+/**
+ * Walk up parent_id from a task to build the ancestry chain.
+ * Returns ancestors from immediate parent to root (max 10 levels).
+ */
+export function getAncestryChain(db: Database.Database, taskId: number): TaskRow[] {
+  const chain: TaskRow[] = [];
+  let current = getTask(db, taskId);
+  let depth = 0;
+  while (current?.parent_id && depth < 10) {
+    const parent = getTask(db, current.parent_id);
+    if (!parent) break;
+    chain.push(parent);
+    current = parent;
+    depth++;
+  }
+  return chain;
+}
+
+/**
+ * Validate a proposed parent_id assignment.
+ * Returns an error message string if invalid, null if valid.
+ * @param taskId — the task being updated (null for new tasks)
+ * @param parentId — the proposed parent
+ * @param instanceSlug — the instance scope (for cross-instance check)
+ */
+export function validateParentId(
+  db: Database.Database,
+  taskId: number | null,
+  parentId: number,
+  instanceSlug?: string,
+): string | null {
+  if (taskId !== null && parentId === taskId) {
+    return "A task cannot be its own parent";
+  }
+  const parent = getTask(db, parentId);
+  if (!parent) {
+    return `Parent task #${parentId} not found`;
+  }
+  if (parent.type !== "epic") {
+    return `Parent #${parentId} is not an epic (type: ${parent.type})`;
+  }
+  if (instanceSlug && parent.instance_slug !== instanceSlug) {
+    return "Parent epic belongs to a different instance";
+  }
+  // Cycle detection: walk up from parent to ensure we don't reach taskId
+  if (taskId !== null) {
+    let current: TaskRow | undefined = parent;
+    let depth = 0;
+    while (current?.parent_id && depth < 10) {
+      if (current.parent_id === taskId) {
+        return "Assigning this parent would create a cycle";
+      }
+      current = getTask(db, current.parent_id);
+      depth++;
+    }
+  }
+  return null;
+}
+
+/**
+ * If all children of an epic are completed or cancelled, auto-complete the epic.
+ * Returns the updated epic row if auto-completed, undefined otherwise.
+ */
+export function tryAutoCompleteEpic(db: Database.Database, epicId: number): TaskRow | undefined {
+  const epic = getTask(db, epicId);
+  if (!epic || epic.type !== "epic") return undefined;
+  if (epic.status === "completed" || epic.status === "cancelled") return undefined;
+
+  const progress = getEpicProgress(db, epicId);
+  if (progress.total === 0) return undefined;
+  if (progress.completed < progress.total) return undefined;
+
+  db.prepare(
+    `UPDATE rt_tasks SET status = 'completed', completed_at = datetime('now'),
+     updated_at = datetime('now') WHERE id = ?`,
+  ).run(epicId);
+  return getTask(db, epicId);
 }
 
 // ---------------------------------------------------------------------------

@@ -10,9 +10,10 @@ import {
   updateTaskApi,
   addTaskCommentApi,
   fetchAgents,
+  fetchEpics,
   deleteTaskApi,
 } from "../api.js";
-import type { TaskDetail as TaskDetailType, TaskComment } from "../types.js";
+import type { TaskDetail as TaskDetailType, TaskComment, EpicInfo, TaskInfo } from "../types.js";
 
 @localized()
 @customElement("cp-task-detail")
@@ -25,6 +26,8 @@ export class TaskDetailPanel extends LitElement {
   @state() private _newComment = "";
   @state() private _agents: Array<{ agent_id: string; name: string }> = [];
   @state() private _selectedAgent = "";
+  @state() private _epics: EpicInfo[] = [];
+  @state() private _selectedParentId: string = "";
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -39,13 +42,16 @@ export class TaskDetailPanel extends LitElement {
     if (!this.slug || !this.taskId) return;
     this._loading = true;
     try {
-      const [task, agents] = await Promise.all([
+      const [task, agents, epics] = await Promise.all([
         fetchTaskDetail(this.slug, this.taskId),
         this._agents.length === 0 ? fetchAgents(this.slug) : Promise.resolve(this._agents),
+        this._epics.length === 0 ? fetchEpics(this.slug) : Promise.resolve(this._epics),
       ]);
       this._task = task;
       this._agents = agents;
+      this._epics = epics;
       this._selectedAgent = task.assigneeId ?? "";
+      this._selectedParentId = task.parentId !== null ? String(task.parentId) : "";
     } catch {
       this._task = null;
     } finally {
@@ -223,6 +229,83 @@ export class TaskDetailPanel extends LitElement {
               void this._updateField("description", (e.target as HTMLTextAreaElement).value)}
           ></textarea>
         </div>
+
+        ${t.type === "task" && this._epics.length > 0
+          ? html`
+              <div class="field">
+                <label>${msg("Parent Epic", { id: "task-field-parent-epic" })}</label>
+                <div class="assign-row">
+                  <select
+                    @change=${(e: Event) => {
+                      this._selectedParentId = (e.target as HTMLSelectElement).value;
+                    }}
+                  >
+                    <option value="" ?selected=${!this._selectedParentId}>
+                      ${msg("None", { id: "task-no-parent" })}
+                    </option>
+                    ${this._epics.map(
+                      (ep) => html`
+                        <option
+                          value=${ep.id}
+                          ?selected=${this._selectedParentId === String(ep.id)}
+                        >
+                          ${ep.title}
+                        </option>
+                      `,
+                    )}
+                  </select>
+                  ${this._selectedParentId !== (t.parentId !== null ? String(t.parentId) : "")
+                    ? html`<button
+                        class="btn-assign"
+                        @click=${() =>
+                          void this._updateField(
+                            "parentId",
+                            this._selectedParentId ? Number(this._selectedParentId) : null,
+                          )}
+                      >
+                        ${msg("Assign", { id: "task-assign" })}
+                      </button>`
+                    : nothing}
+                </div>
+              </div>
+            `
+          : nothing}
+        ${t.type === "epic" && t.children && t.children.length > 0
+          ? html`
+              <div class="field">
+                <label>
+                  ${msg("Subtasks", { id: "task-field-subtasks" })}
+                  (${t.progress?.completed ?? 0}/${t.progress?.total ?? 0})
+                </label>
+                <div class="subtasks-list">
+                  ${t.children.map(
+                    (child: TaskInfo) => html`
+                      <div
+                        class="subtask-row"
+                        @click=${() =>
+                          this.dispatchEvent(
+                            new CustomEvent("task-selected", {
+                              detail: { taskId: child.id },
+                              bubbles: true,
+                              composed: true,
+                            }),
+                          )}
+                      >
+                        <span class="subtask-status"
+                          >${child.status === "completed"
+                            ? "✓"
+                            : child.status === "in_progress"
+                              ? "●"
+                              : "○"}</span
+                        >
+                        <span class="subtask-title">${child.title}</span>
+                      </div>
+                    `,
+                  )}
+                </div>
+              </div>
+            `
+          : nothing}
 
         <div class="field">
           <label>${msg("Created", { id: "task-field-created" })}</label>
@@ -454,6 +537,39 @@ export class TaskDetailPanel extends LitElement {
       }
       .btn-send:hover {
         background: var(--accent-subtle);
+      }
+      .subtasks-list {
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-md);
+        overflow: hidden;
+      }
+      .subtask-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        cursor: pointer;
+        font-size: 12px;
+        border-bottom: 1px solid var(--bg-border);
+      }
+      .subtask-row:last-child {
+        border-bottom: none;
+      }
+      .subtask-row:hover {
+        background: var(--bg-hover);
+      }
+      .subtask-status {
+        font-size: 11px;
+        width: 14px;
+        text-align: center;
+        flex-shrink: 0;
+      }
+      .subtask-title {
+        flex: 1;
+        color: var(--text-primary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
     `,
   ];

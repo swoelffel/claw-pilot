@@ -43,6 +43,7 @@ export class TaskCard extends LitElement {
             ${t.priority}
           </span>
           ${t.assigneeId ? html`<span class="assignee">${t.assigneeId}</span>` : nothing}
+          ${t.parentId ? html`<span class="epic-tag">E</span>` : nothing}
         </div>
         ${labels.length > 0
           ? html`<div class="labels">
@@ -124,6 +125,16 @@ export class TaskCard extends LitElement {
         background: var(--accent-subtle);
         color: var(--accent);
         border: 1px solid var(--accent-border);
+      }
+      .epic-tag {
+        font-size: 9px;
+        font-weight: 700;
+        padding: 0 4px;
+        border-radius: var(--radius-sm);
+        background: var(--accent-subtle);
+        color: var(--accent);
+        border: 1px solid var(--accent-border);
+        margin-left: auto;
       }
     `,
   ];

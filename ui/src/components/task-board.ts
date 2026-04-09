@@ -5,10 +5,11 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
-import { fetchTasks, createTaskApi, changeTaskStatusApi } from "../api.js";
-import type { TaskInfo } from "../types.js";
+import { fetchTasks, fetchEpics, createTaskApi, changeTaskStatusApi } from "../api.js";
+import type { TaskInfo, EpicInfo } from "../types.js";
 import "./task-card.js";
 import "./task-detail.js";
+import "./epic-tree.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -43,6 +44,10 @@ export class TaskBoard extends LitElement {
   @state() private _showCreateForm = false;
   @state() private _newTitle = "";
   @state() private _newPriority = "medium";
+  @state() private _newType: "epic" | "task" = "task";
+  @state() private _newParentId: number | null = null;
+  @state() private _viewMode: "board" | "epics" = "board";
+  @state() private _epics: EpicInfo[] = [];
 
   private _refreshTimer: number | undefined;
 
@@ -60,7 +65,9 @@ export class TaskBoard extends LitElement {
   private async _load(): Promise<void> {
     if (!this.slug) return;
     try {
-      this._tasks = await fetchTasks(this.slug);
+      const [tasks, epics] = await Promise.all([fetchTasks(this.slug), fetchEpics(this.slug)]);
+      this._tasks = tasks;
+      this._epics = epics;
       if (this._loading) this._loading = false;
     } catch (err) {
       this._error = err instanceof Error ? err.message : String(err);
@@ -120,9 +127,13 @@ export class TaskBoard extends LitElement {
       await createTaskApi(this.slug, {
         title: this._newTitle.trim(),
         priority: this._newPriority,
+        type: this._newType,
+        ...(this._newParentId !== null ? { parentId: this._newParentId } : {}),
       });
       this._newTitle = "";
       this._newPriority = "medium";
+      this._newType = "task";
+      this._newParentId = null;
       this._showCreateForm = false;
       void this._load();
     } catch {
@@ -161,6 +172,20 @@ export class TaskBoard extends LitElement {
           ← ${msg("Back", { id: "task-board-back" })}
         </button>
         <div class="title">${msg("Tasks", { id: "task-board-title" })} — ${this.slug}</div>
+        <div class="view-toggle">
+          <button
+            class="btn-toggle ${this._viewMode === "board" ? "active" : ""}"
+            @click=${() => (this._viewMode = "board")}
+          >
+            ${msg("Board", { id: "task-board-view-board" })}
+          </button>
+          <button
+            class="btn-toggle ${this._viewMode === "epics" ? "active" : ""}"
+            @click=${() => (this._viewMode = "epics")}
+          >
+            ${msg("Epics", { id: "task-board-view-epics" })}
+          </button>
+        </div>
         <button class="btn-new" @click=${() => (this._showCreateForm = !this._showCreateForm)}>
           + ${msg("New Task", { id: "task-board-new" })}
         </button>
@@ -170,7 +195,19 @@ export class TaskBoard extends LitElement {
       ${this._showCreateForm ? this._renderCreateForm() : nothing}
 
       <div class="board ${this._selectedTaskId !== null ? "with-detail" : ""}">
-        <div class="columns">${COLUMNS.map((col) => this._renderColumn(col.id, col.label))}</div>
+        ${this._viewMode === "board"
+          ? html`<div class="columns">
+              ${COLUMNS.map((col) => this._renderColumn(col.id, col.label))}
+            </div>`
+          : html`<div class="epics-container">
+              <cp-epic-tree
+                .slug=${this.slug}
+                .epics=${this._epics}
+                @task-selected=${(e: CustomEvent<{ taskId: number }>) =>
+                  (this._selectedTaskId = e.detail.taskId)}
+                @refresh=${() => void this._load()}
+              ></cp-epic-tree>
+            </div>`}
         ${this._selectedTaskId !== null
           ? html`
               <div class="detail-pane">
@@ -206,7 +243,7 @@ export class TaskBoard extends LitElement {
 
   private _renderColumn(columnId: ColumnId, label: string) {
     const tasks = this._tasks
-      .filter((t) => t.status === columnId)
+      .filter((t) => t.status === columnId && t.type === "task")
       .sort((a, b) => a.position - b.position);
     const isDragOver = this._dragOverColumn === columnId;
 
@@ -242,6 +279,19 @@ export class TaskBoard extends LitElement {
   private _renderCreateForm() {
     return html`
       <div class="create-form">
+        <select
+          @change=${(e: Event) => {
+            this._newType = (e.target as HTMLSelectElement).value as "epic" | "task";
+            if (this._newType === "epic") this._newParentId = null;
+          }}
+        >
+          <option value="task" ?selected=${this._newType === "task"}>
+            ${msg("Task", { id: "task-type-task" })}
+          </option>
+          <option value="epic" ?selected=${this._newType === "epic"}>
+            ${msg("Epic", { id: "task-type-epic" })}
+          </option>
+        </select>
         <input
           type="text"
           placeholder=${msg("Task title...", { id: "task-board-title-placeholder" })}
@@ -260,6 +310,27 @@ export class TaskBoard extends LitElement {
           <option value="high">${msg("High", { id: "task-priority-high" })}</option>
           <option value="critical">${msg("Critical", { id: "task-priority-critical" })}</option>
         </select>
+        ${this._newType === "task" && this._epics.length > 0
+          ? html`
+              <select
+                @change=${(e: Event) => {
+                  const val = (e.target as HTMLSelectElement).value;
+                  this._newParentId = val ? Number(val) : null;
+                }}
+              >
+                <option value="" ?selected=${this._newParentId === null}>
+                  ${msg("None", { id: "task-no-parent" })}
+                </option>
+                ${this._epics.map(
+                  (ep) => html`
+                    <option value=${ep.id} ?selected=${this._newParentId === ep.id}>
+                      ${ep.title}
+                    </option>
+                  `,
+                )}
+              </select>
+            `
+          : nothing}
         <button class="btn-create" @click=${() => void this._createTask()}>
           ${msg("Create", { id: "task-board-create" })}
         </button>
@@ -323,6 +394,33 @@ export class TaskBoard extends LitElement {
       }
       .btn-new:hover {
         background: var(--accent-subtle);
+      }
+      .view-toggle {
+        display: flex;
+        gap: 0;
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-md);
+        overflow: hidden;
+      }
+      .btn-toggle {
+        padding: 4px 12px;
+        border: none;
+        background: transparent;
+        color: var(--text-muted);
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .btn-toggle.active {
+        background: var(--accent);
+        color: #fff;
+      }
+      .btn-toggle:not(.active):hover {
+        background: var(--bg-hover);
+      }
+      .epics-container {
+        flex: 1;
+        overflow-y: auto;
       }
       .loading {
         text-align: center;

@@ -17,7 +17,12 @@ import {
   addComment,
   getComments,
   getTaskCountsByStatus,
+  getEpicsForInstance,
+  getChildTasks,
+  getEpicProgress,
   type TaskStatus,
+  type TaskType,
+  type TaskRow,
 } from "../../../core/repositories/task-repository.js";
 import { getOrCreatePermanentSession } from "../../../runtime/session/session.js";
 import { createUserMessage } from "../../../runtime/session/message.js";
@@ -31,8 +36,10 @@ import { logger } from "../../../lib/logger.js";
 
 const STATUSES = ["pending", "in_progress", "completed", "blocked", "cancelled"] as const;
 const PRIORITIES = ["low", "medium", "high", "critical"] as const;
+const TASK_TYPES = ["epic", "task"] as const;
 
 const VALID_STATUSES = new Set<TaskStatus>(STATUSES);
+const VALID_TYPES = new Set<TaskType>(TASK_TYPES);
 
 const CreateTaskSchema = z.object({
   title: z.string().min(1),
@@ -41,6 +48,8 @@ const CreateTaskSchema = z.object({
   assigneeId: z.string().optional(),
   labels: z.array(z.string()).optional(),
   createdBy: z.string().optional(),
+  type: z.enum(TASK_TYPES).optional(),
+  parentId: z.number().optional(),
 });
 
 const UpdateTaskSchema = z.object({
@@ -49,6 +58,7 @@ const UpdateTaskSchema = z.object({
   priority: z.enum(PRIORITIES).optional(),
   assigneeId: z.string().nullable().optional(),
   labels: z.array(z.string()).optional(),
+  parentId: z.number().nullable().optional(),
 });
 
 const ChangeStatusSchema = z.object({
@@ -65,22 +75,7 @@ const AddCommentSchema = z.object({
   content: z.string().min(1),
 });
 
-function toJson(r: {
-  id: number;
-  instance_slug: string;
-  title: string;
-  description: string | null;
-  status: string;
-  priority: string;
-  assignee_id: string | null;
-  labels: string | null;
-  created_by: string;
-  session_id: string | null;
-  position: number;
-  created_at: string;
-  updated_at: string;
-  completed_at: string | null;
-}) {
+function toJson(r: TaskRow) {
   return {
     id: r.id,
     title: r.title,
@@ -95,6 +90,8 @@ function toJson(r: {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     completedAt: r.completed_at,
+    type: r.type,
+    parentId: r.parent_id,
   };
 }
 
@@ -114,7 +111,14 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
     if (status && !VALID_STATUSES.has(status)) {
       return apiError(c, 400, "INVALID_STATUS", "Invalid status filter");
     }
-    const rows = getTasksForInstance(db, slug, status);
+    const type = c.req.query("type") as TaskType | undefined;
+    if (type && !VALID_TYPES.has(type)) {
+      return apiError(c, 400, "INVALID_TYPE", "Invalid type filter");
+    }
+    let rows = getTasksForInstance(db, slug, status);
+    if (type) {
+      rows = rows.filter((r) => r.type === type);
+    }
     return c.json(rows.map(toJson));
   });
 
@@ -145,7 +149,7 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 404, "NOT_FOUND", "Task not found");
     }
     const comments = getComments(db, id);
-    return c.json({
+    const json: Record<string, unknown> = {
       ...toJson(task),
       comments: comments.map((cm) => ({
         id: cm.id,
@@ -154,7 +158,21 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
         content: cm.content,
         createdAt: cm.created_at,
       })),
-    });
+    };
+
+    // If child task, include parent info
+    if (task.parent_id) {
+      const parent = getTask(db, task.parent_id);
+      if (parent) json.parent = { id: parent.id, title: parent.title };
+    }
+    // If epic, include children + progress
+    if (task.type === "epic") {
+      const children = getChildTasks(db, id);
+      json.children = children.map(toJson);
+      json.progress = getEpicProgress(db, id);
+    }
+
+    return c.json(json);
   });
 
   // ---------------------------------------------------------------------------
@@ -173,15 +191,22 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
     }
     const data = parsed.data;
 
-    const row = createTask(db, {
-      instanceSlug: slug,
-      title: data.title,
-      ...(data.description !== undefined ? { description: data.description } : {}),
-      ...(data.priority !== undefined ? { priority: data.priority } : {}),
-      ...(data.assigneeId !== undefined ? { assigneeId: data.assigneeId } : {}),
-      ...(data.labels !== undefined ? { labels: data.labels } : {}),
-      createdBy: data.createdBy ?? "user",
-    });
+    let row: TaskRow;
+    try {
+      row = createTask(db, {
+        instanceSlug: slug,
+        title: data.title,
+        ...(data.description !== undefined ? { description: data.description } : {}),
+        ...(data.priority !== undefined ? { priority: data.priority } : {}),
+        ...(data.assigneeId !== undefined ? { assigneeId: data.assigneeId } : {}),
+        ...(data.labels !== undefined ? { labels: data.labels } : {}),
+        createdBy: data.createdBy ?? "user",
+        ...(data.type !== undefined ? { type: data.type } : {}),
+        ...(data.parentId !== undefined ? { parentId: data.parentId } : {}),
+      });
+    } catch (err) {
+      return apiError(c, 400, "INVALID_PARENT", String(err));
+    }
 
     // Inject notification + trigger prompt loop if task was created with an assignee
     if (data.assigneeId) {
@@ -213,13 +238,19 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
     }
     const data = parsed.data;
 
-    const updated = updateTask(db, id, {
-      ...(data.title !== undefined ? { title: data.title } : {}),
-      ...(data.description !== undefined ? { description: data.description } : {}),
-      ...(data.priority !== undefined ? { priority: data.priority } : {}),
-      ...(data.assigneeId !== undefined ? { assigneeId: data.assigneeId } : {}),
-      ...(data.labels !== undefined ? { labels: data.labels } : {}),
-    });
+    let updated: TaskRow | undefined;
+    try {
+      updated = updateTask(db, id, {
+        ...(data.title !== undefined ? { title: data.title } : {}),
+        ...(data.description !== undefined ? { description: data.description } : {}),
+        ...(data.priority !== undefined ? { priority: data.priority } : {}),
+        ...(data.assigneeId !== undefined ? { assigneeId: data.assigneeId } : {}),
+        ...(data.labels !== undefined ? { labels: data.labels } : {}),
+        ...(data.parentId !== undefined ? { parentId: data.parentId } : {}),
+      });
+    } catch (err) {
+      return apiError(c, 400, "INVALID_PARENT", String(err));
+    }
     if (!updated) return apiError(c, 404, "NOT_FOUND", "Task not found");
 
     // Inject notification + trigger prompt loop when assignee changes
@@ -351,6 +382,43 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
       },
       201,
     );
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /api/instances/:slug/epics
+  // ---------------------------------------------------------------------------
+  app.get("/api/instances/:slug/epics", (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
+
+    const epics = getEpicsForInstance(db, slug);
+    return c.json(
+      epics.map((e) => ({
+        ...toJson(e),
+        progress: getEpicProgress(db, e.id),
+      })),
+    );
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /api/instances/:slug/epics/:id/children
+  // ---------------------------------------------------------------------------
+  app.get("/api/instances/:slug/epics/:id/children", (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
+
+    const id = Number(c.req.param("id"));
+    const epic = getTask(db, id);
+    if (!epic || epic.instance_slug !== slug || epic.type !== "epic") {
+      return apiError(c, 404, "NOT_FOUND", "Epic not found");
+    }
+
+    const children = getChildTasks(db, id);
+    return c.json(children.map(toJson));
   });
 }
 

@@ -18,6 +18,12 @@ import {
   addComment,
   getComments,
   getActiveTasksForAgent,
+  getEpicsForInstance,
+  getChildTasks,
+  getEpicProgress,
+  getAncestryChain,
+  validateParentId,
+  tryAutoCompleteEpic,
 } from "../repositories/task-repository.js";
 
 let tmpDir: string;
@@ -345,5 +351,347 @@ describe("getActiveTasksForAgent", () => {
     expect(active[0]!.title).toBe("Critical priority task");
     expect(active[1]!.title).toBe("High priority task");
     expect(active[2]!.title).toBe("Low priority task");
+  });
+
+  it("includes epic context via LEFT JOIN", () => {
+    const epic = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Reliability",
+      createdBy: "user",
+      type: "epic",
+    });
+    createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Write tests",
+      createdBy: "user",
+      assigneeId: "builder",
+      parentId: epic.id,
+    });
+    const active = getActiveTasksForAgent(db, "test-inst", "builder");
+    expect(active).toHaveLength(1);
+    expect(active[0]!.epic_id).toBe(epic.id);
+    expect(active[0]!.epic_title).toBe("Reliability");
+  });
+
+  it("excludes epics from active tasks", () => {
+    createTask(db, {
+      instanceSlug: "test-inst",
+      title: "My Epic",
+      createdBy: "user",
+      assigneeId: "builder",
+      type: "epic",
+    });
+    const active = getActiveTasksForAgent(db, "test-inst", "builder");
+    expect(active).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Epic hierarchy
+// ---------------------------------------------------------------------------
+
+describe("createTask with type", () => {
+  it("creates an epic", () => {
+    const epic = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Reliability",
+      createdBy: "user",
+      type: "epic",
+    });
+    expect(epic.type).toBe("epic");
+    expect(epic.parent_id).toBeNull();
+  });
+
+  it("creates a task with parentId", () => {
+    const epic = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Epic",
+      createdBy: "user",
+      type: "epic",
+    });
+    const task = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Child",
+      createdBy: "user",
+      parentId: epic.id,
+    });
+    expect(task.parent_id).toBe(epic.id);
+    expect(task.type).toBe("task");
+  });
+
+  it("rejects parentId pointing to a non-epic", () => {
+    const task = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Task",
+      createdBy: "user",
+    });
+    expect(() =>
+      createTask(db, {
+        instanceSlug: "test-inst",
+        title: "Child",
+        createdBy: "user",
+        parentId: task.id,
+      }),
+    ).toThrow(/not an epic/);
+  });
+
+  it("rejects parentId pointing to non-existent task", () => {
+    expect(() =>
+      createTask(db, {
+        instanceSlug: "test-inst",
+        title: "Child",
+        createdBy: "user",
+        parentId: 9999,
+      }),
+    ).toThrow(/not found/);
+  });
+});
+
+describe("getEpicsForInstance", () => {
+  it("returns only epics", () => {
+    createTask(db, { instanceSlug: "test-inst", title: "E1", createdBy: "user", type: "epic" });
+    createTask(db, { instanceSlug: "test-inst", title: "T1", createdBy: "user" });
+    createTask(db, { instanceSlug: "test-inst", title: "E2", createdBy: "user", type: "epic" });
+    const epics = getEpicsForInstance(db, "test-inst");
+    expect(epics).toHaveLength(2);
+    expect(epics.every((e) => e.type === "epic")).toBe(true);
+  });
+});
+
+describe("getChildTasks", () => {
+  it("returns children of an epic", () => {
+    const epic = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Epic",
+      createdBy: "user",
+      type: "epic",
+    });
+    createTask(db, {
+      instanceSlug: "test-inst",
+      title: "C1",
+      createdBy: "user",
+      parentId: epic.id,
+    });
+    createTask(db, {
+      instanceSlug: "test-inst",
+      title: "C2",
+      createdBy: "user",
+      parentId: epic.id,
+    });
+    createTask(db, { instanceSlug: "test-inst", title: "Orphan", createdBy: "user" });
+    const children = getChildTasks(db, epic.id);
+    expect(children).toHaveLength(2);
+  });
+});
+
+describe("getEpicProgress", () => {
+  it("counts completed children", () => {
+    const epic = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Epic",
+      createdBy: "user",
+      type: "epic",
+    });
+    const c1 = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "C1",
+      createdBy: "user",
+      parentId: epic.id,
+    });
+    createTask(db, {
+      instanceSlug: "test-inst",
+      title: "C2",
+      createdBy: "user",
+      parentId: epic.id,
+    });
+    changeStatus(db, c1.id, "completed");
+    const progress = getEpicProgress(db, epic.id);
+    expect(progress.total).toBe(2);
+    expect(progress.completed).toBe(1);
+  });
+
+  it("returns zeros for epic with no children", () => {
+    const epic = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Empty Epic",
+      createdBy: "user",
+      type: "epic",
+    });
+    const progress = getEpicProgress(db, epic.id);
+    expect(progress.total).toBe(0);
+    expect(progress.completed).toBe(0);
+  });
+});
+
+describe("getAncestryChain", () => {
+  it("returns ancestry from immediate parent to root", () => {
+    const root = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Root Epic",
+      createdBy: "user",
+      type: "epic",
+    });
+    const child = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Sub Epic",
+      createdBy: "user",
+      type: "epic",
+      parentId: root.id,
+    });
+    const leaf = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Task",
+      createdBy: "user",
+      parentId: child.id,
+    });
+    const chain = getAncestryChain(db, leaf.id);
+    expect(chain).toHaveLength(2);
+    expect(chain[0]!.title).toBe("Sub Epic");
+    expect(chain[1]!.title).toBe("Root Epic");
+  });
+
+  it("returns empty for task with no parent", () => {
+    const t = createTask(db, { instanceSlug: "test-inst", title: "T", createdBy: "user" });
+    expect(getAncestryChain(db, t.id)).toEqual([]);
+  });
+});
+
+describe("validateParentId", () => {
+  it("rejects self-reference", () => {
+    const t = createTask(db, { instanceSlug: "test-inst", title: "T", createdBy: "user" });
+    expect(validateParentId(db, t.id, t.id)).toMatch(/own parent/);
+  });
+
+  it("rejects non-epic parent", () => {
+    const t = createTask(db, { instanceSlug: "test-inst", title: "T", createdBy: "user" });
+    expect(validateParentId(db, null, t.id)).toMatch(/not an epic/);
+  });
+
+  it("accepts valid epic parent", () => {
+    const epic = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "E",
+      createdBy: "user",
+      type: "epic",
+    });
+    expect(validateParentId(db, null, epic.id, "test-inst")).toBeNull();
+  });
+});
+
+describe("tryAutoCompleteEpic", () => {
+  it("auto-completes epic when all children are done (direct call)", () => {
+    const epic = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Epic",
+      createdBy: "user",
+      type: "epic",
+    });
+    const c1 = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "C1",
+      createdBy: "user",
+      parentId: epic.id,
+    });
+    const c2 = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "C2",
+      createdBy: "user",
+      parentId: epic.id,
+    });
+    // Use direct SQL to complete children without triggering auto-complete
+    db.prepare("UPDATE rt_tasks SET status = 'completed' WHERE id = ?").run(c1.id);
+    db.prepare("UPDATE rt_tasks SET status = 'cancelled' WHERE id = ?").run(c2.id);
+    const updated = tryAutoCompleteEpic(db, epic.id);
+    expect(updated).toBeDefined();
+    expect(updated!.status).toBe("completed");
+  });
+
+  it("does NOT auto-complete when children are still pending", () => {
+    const epic = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Epic",
+      createdBy: "user",
+      type: "epic",
+    });
+    const c1 = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "C1",
+      createdBy: "user",
+      parentId: epic.id,
+    });
+    createTask(db, {
+      instanceSlug: "test-inst",
+      title: "C2",
+      createdBy: "user",
+      parentId: epic.id,
+    });
+    db.prepare("UPDATE rt_tasks SET status = 'completed' WHERE id = ?").run(c1.id);
+    expect(tryAutoCompleteEpic(db, epic.id)).toBeUndefined();
+  });
+
+  it("does NOT auto-complete epic with no children", () => {
+    const epic = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Epic",
+      createdBy: "user",
+      type: "epic",
+    });
+    expect(tryAutoCompleteEpic(db, epic.id)).toBeUndefined();
+  });
+});
+
+describe("changeStatus triggers auto-complete", () => {
+  it("auto-completes parent epic when last child is completed", () => {
+    const epic = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Epic",
+      createdBy: "user",
+      type: "epic",
+    });
+    const c1 = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "C1",
+      createdBy: "user",
+      parentId: epic.id,
+    });
+    changeStatus(db, c1.id, "completed");
+    const epicNow = getTask(db, epic.id);
+    expect(epicNow!.status).toBe("completed");
+  });
+});
+
+describe("updateTask with parentId", () => {
+  it("assigns a parent epic", () => {
+    const epic = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Epic",
+      createdBy: "user",
+      type: "epic",
+    });
+    const task = createTask(db, { instanceSlug: "test-inst", title: "T", createdBy: "user" });
+    const updated = updateTask(db, task.id, { parentId: epic.id });
+    expect(updated!.parent_id).toBe(epic.id);
+  });
+
+  it("unlinks from parent with null", () => {
+    const epic = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "Epic",
+      createdBy: "user",
+      type: "epic",
+    });
+    const task = createTask(db, {
+      instanceSlug: "test-inst",
+      title: "T",
+      createdBy: "user",
+      parentId: epic.id,
+    });
+    const updated = updateTask(db, task.id, { parentId: null });
+    expect(updated!.parent_id).toBeNull();
+  });
+
+  it("rejects invalid parentId", () => {
+    const task = createTask(db, { instanceSlug: "test-inst", title: "T", createdBy: "user" });
+    expect(() => updateTask(db, task.id, { parentId: task.id })).toThrow(/own parent/);
   });
 });

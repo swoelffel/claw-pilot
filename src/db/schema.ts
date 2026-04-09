@@ -1247,6 +1247,20 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 30,
+    up(db) {
+      db.exec(`
+        ALTER TABLE rt_tasks ADD COLUMN type TEXT NOT NULL DEFAULT 'task'
+          CHECK (type IN ('epic', 'task'));
+        ALTER TABLE rt_tasks ADD COLUMN parent_id INTEGER
+          REFERENCES rt_tasks(id) ON DELETE SET NULL;
+
+        CREATE INDEX idx_rt_tasks_parent ON rt_tasks(parent_id);
+        CREATE INDEX idx_rt_tasks_type ON rt_tasks(instance_slug, type);
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

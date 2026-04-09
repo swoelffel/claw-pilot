@@ -17,8 +17,11 @@ import {
   changeStatus,
   checkoutTask,
   addComment,
+  getEpicsForInstance,
+  getEpicProgress,
   type TaskStatus,
   type TaskPriority,
+  type TaskType,
 } from "../../core/repositories/task-repository.js";
 import { getBus } from "../bus/index.js";
 import { TaskCreated, TaskStatusChanged, TaskAssigned } from "../bus/events.js";
@@ -38,7 +41,8 @@ export function createTaskBoardTool(options: {
   return Tool.define("task_board", {
     description:
       "Manage the shared task board for this instance. " +
-      "Actions: list (view tasks), create (add a task, optionally assign to another agent), " +
+      "Actions: list (view tasks), list_epics (view epics with progress), " +
+      "create (add a task or epic, optionally assign and/or nest under an epic), " +
       "checkout (claim a pending task), complete/block/cancel (change status), comment (add a note).",
     parameters,
     async execute(params, ctx) {
@@ -50,25 +54,50 @@ export function createTaskBoardTool(options: {
           const status = params.status as TaskStatus | undefined;
           const tasks = getTasksForInstance(db, instanceSlug, status);
           if (tasks.length === 0) return ok("task_board.list", "No tasks found.");
-          const lines = tasks.map(
-            (t) =>
-              `#${t.id} [${t.status}] ${t.priority} — ${t.title}` +
-              (t.assignee_id ? ` (→ ${t.assignee_id})` : ""),
-          );
+          const lines = tasks.map((t) => {
+            let line = `#${t.id} [${t.status}] ${t.priority} — ${t.title}`;
+            if (t.assignee_id) line += ` (→ ${t.assignee_id})`;
+            if (t.parent_id) {
+              const parent = getTask(db, t.parent_id);
+              if (parent) line += ` (Epic: "${parent.title}")`;
+            }
+            if (t.type === "epic") line += " [EPIC]";
+            return line;
+          });
           return ok("task_board.list", lines.join("\n"));
+        }
+
+        // ── List Epics ───────────────────────────────────────────
+        case "list_epics": {
+          const epics = getEpicsForInstance(db, instanceSlug);
+          if (epics.length === 0) return ok("task_board.list_epics", "No epics found.");
+          const lines = epics.map((e) => {
+            const p = getEpicProgress(db, e.id);
+            return `#${e.id} [${e.status}] ${e.priority} — ${e.title} (${p.completed}/${p.total} done)`;
+          });
+          return ok("task_board.list_epics", lines.join("\n"));
         }
 
         // ── Create ───────────────────────────────────────────────
         case "create": {
           if (!params.title) return ok("task_board.create", "Error: title is required.");
-          const task = createTask(db, {
-            instanceSlug,
-            title: params.title,
-            ...(params.description !== undefined ? { description: params.description } : {}),
-            ...(params.priority !== undefined ? { priority: params.priority as TaskPriority } : {}),
-            ...(params.assigneeId !== undefined ? { assigneeId: params.assigneeId } : {}),
-            createdBy: ctx.agentId,
-          });
+          let task;
+          try {
+            task = createTask(db, {
+              instanceSlug,
+              title: params.title,
+              ...(params.description !== undefined ? { description: params.description } : {}),
+              ...(params.priority !== undefined
+                ? { priority: params.priority as TaskPriority }
+                : {}),
+              ...(params.assigneeId !== undefined ? { assigneeId: params.assigneeId } : {}),
+              ...(params.type !== undefined ? { type: params.type as TaskType } : {}),
+              ...(params.parentId !== undefined ? { parentId: params.parentId } : {}),
+              createdBy: ctx.agentId,
+            });
+          } catch (err) {
+            return ok("task_board.create", `Error: ${String(err)}`);
+          }
           bus.publish(TaskCreated, {
             instanceSlug,
             taskId: task.id,
@@ -202,7 +231,7 @@ export function createTaskBoardTool(options: {
 
 const parameters = z.object({
   action: z
-    .enum(["list", "create", "checkout", "complete", "block", "cancel", "comment"])
+    .enum(["list", "list_epics", "create", "checkout", "complete", "block", "cancel", "comment"])
     .describe("The action to perform on the task board."),
   title: z.string().optional().describe("Task title (for 'create' action)."),
   description: z.string().optional().describe("Task description (for 'create' action)."),
@@ -214,6 +243,16 @@ const parameters = z.object({
     .string()
     .optional()
     .describe("Agent ID to assign the task to (for 'create' action)."),
+  type: z
+    .enum(["epic", "task"])
+    .optional()
+    .describe(
+      "Type: 'epic' for a high-level objective, 'task' for a work item (for 'create'). Defaults to 'task'.",
+    ),
+  parentId: z
+    .number()
+    .optional()
+    .describe("Parent epic ID to nest under (for 'create'). Only epics can be parents."),
   taskId: z.number().optional().describe("Task ID (for checkout/complete/block/cancel/comment)."),
   comment: z.string().optional().describe("Comment text (for 'comment' or 'block' action)."),
   status: z
