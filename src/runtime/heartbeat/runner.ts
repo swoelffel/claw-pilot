@@ -237,7 +237,7 @@ function tagHeartbeatStatus(
        SET metadata = ?, updated_at = datetime('now')
        WHERE message_id = ? AND type = 'text'`,
     ).run(JSON.stringify({ heartbeat_status: status }), messageId);
-  } catch {
-    // Best-effort — don't crash the runner for metadata tagging
+  } catch (err) {
+    logger.debug("heartbeat_tag_status_failed", { error: String(err) });
   }
 }

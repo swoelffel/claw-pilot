@@ -21,9 +21,10 @@ export function parseInterval(every: string): number {
  */
 export function isValidTimezone(tz: string): boolean {
   try {
-    Intl.DateTimeFormat("en-GB", { timeZone: tz });
+    new Intl.DateTimeFormat("en-GB", { timeZone: tz });
     return true;
-  } catch {
+  } catch (err) {
+    void err; // Expected for invalid timezone strings
     return false;
   }
 }

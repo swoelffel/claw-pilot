@@ -977,7 +977,8 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
           } else {
             status = detectHeartbeatStatusFallback(row.responseText ?? "");
           }
-        } catch {
+        } catch (err) {
+          logger.debug("[route:runtime] heartbeat metadata parse failed", { error: String(err) });
           status = detectHeartbeatStatusFallback(row.responseText ?? "");
         }
       } else {
