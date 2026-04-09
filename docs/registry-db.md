@@ -1,7 +1,7 @@
 # claw-pilot — Registry Database (`registry.db`)
 
 SQLite database at `~/.claw-pilot/registry.db`. WAL mode, foreign keys enforced.  
-Current schema version: **28**. Source of truth: `src/db/schema.ts`.
+Current schema version: **30**. Source of truth: `src/db/schema.ts`.
 
 ---
 
@@ -25,6 +25,9 @@ servers ──< instances ──< agents ──< agent_files
 
 discovered_models  (provider_id + model_id composite PK)
 discovery_status   (provider_id PK)
+
+rt_tasks ──< rt_task_comments
+         └──< rt_tasks (self-referential via parent_id for epic hierarchy)
 
 blueprints ──< agents ──< agent_files
            └──< agent_links
@@ -516,6 +519,45 @@ Provider discovery status for error tracking and polling.
 | `last_error` | TEXT | |
 | `model_count` | INTEGER | |
 
+### `rt_tasks` (v29 + v30)
+
+Task board with Kanban status, priority, agent assignment, and epic hierarchy.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `instance_slug` | TEXT | NOT NULL, FK → instances(slug) |
+| `title` | TEXT | NOT NULL |
+| `description` | TEXT | |
+| `status` | TEXT | NOT NULL DEFAULT 'pending' (pending/in_progress/completed/blocked/cancelled) |
+| `priority` | TEXT | NOT NULL DEFAULT 'medium' (low/medium/high/critical) |
+| `assignee_id` | TEXT | (agent ID) |
+| `labels` | TEXT | (JSON array) |
+| `created_by` | TEXT | |
+| `session_id` | TEXT | |
+| `position` | REAL | NOT NULL DEFAULT 0 |
+| `type` | TEXT | NOT NULL DEFAULT 'task' (task/epic) — added v30 |
+| `parent_id` | INTEGER | FK → rt_tasks(id) ON DELETE SET NULL — added v30 |
+| `created_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+| `updated_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+| `completed_at` | TEXT | |
+
+Indexes: `idx_rt_tasks_instance` (instance_slug, status), `idx_rt_tasks_assignee` (instance_slug, assignee_id), `idx_rt_tasks_parent` (parent_id) — v30, `idx_rt_tasks_type` (instance_slug, type) — v30.
+
+### `rt_task_comments` (v29)
+
+Discussion threads per task.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `task_id` | INTEGER | NOT NULL, FK → rt_tasks(id) ON DELETE CASCADE |
+| `author_id` | TEXT | |
+| `content` | TEXT | NOT NULL |
+| `created_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+
+Index: `idx_rt_task_comments_task` (task_id).
+
 ---
 
 ## Migration history
@@ -550,12 +592,14 @@ Provider discovery status for error tracking and polling.
 | 26 | Added `rt_system_prompts` table for system prompt snapshots per session (deduplicated by content hash). |
 | 27 | Added `rt_budgets` and `rt_budget_events` tables for budget enforcement. Per-instance/agent, monthly/lifetime, soft alert, hard stop, override. |
 | 28 | Added `discovered_models` and `discovery_status` tables for dynamic model discovery from provider APIs. Composite PK (provider_id, model_id). |
+| 29 | Added `rt_tasks` and `rt_task_comments` tables for task board (Kanban). 5 statuses, 4 priorities, agent assignment, labels JSON, position for drag & drop. Indexes on instance+status and instance+assignee. |
+| 30 | Added `type` (task/epic) and `parent_id` (self-referential FK) columns to `rt_tasks` for epic hierarchy (GOAL-001). Indexes on parent_id and instance+type. |
 
 ---
 
 ## Key access patterns
 
-All DB access goes through `src/core/registry.ts` facade (16 repositories) — never raw SQL in commands or routes.
+All DB access goes through `src/core/registry.ts` facade (17 repositories) — never raw SQL in commands or routes.
 
 ### Instance operations
 
@@ -618,7 +662,12 @@ All DB access goes through `src/core/registry.ts` facade (16 repositories) — n
 | User profile | `UserProfileRepository` | `getProfile(userId)`, `updateProfile()` |
 | Budget CRUD | `BudgetRepository` | `listBudgets(slug)`, `createBudget()`, `updateBudget()`, `deleteBudget()` |
 | Budget events | `BudgetRepository` | `listBudgetEvents(budgetId)`, `insertBudgetEvent()` |
+| Task CRUD | `TaskRepository` | `createTask()`, `getTask()`, `getTasksForInstance()`, `updateTask()`, `deleteTask()` |
+| Task status | `TaskRepository` | `changeStatus()`, `reorderTask()`, `checkoutTask()` |
+| Epic hierarchy | `TaskRepository` | `getEpicsForInstance()`, `getChildTasks()`, `getEpicProgress()`, `getAncestryChain()`, `validateParentId()` |
+| Task comments | `TaskRepository` | `addComment()`, `getComments()` |
+| Agent task context | `TaskRepository` | `getActiveTasksForAgent()`, `getTaskCountsByStatus()` |
 
 ---
 
-*Updated: 2026-04-08 — v0.63.0: schema v28, 16 repositories, migration history v1–v28*
+*Updated: 2026-04-09 — v0.65.1: schema v30, 17 repositories, migration history v1–v30*

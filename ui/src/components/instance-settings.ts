@@ -329,28 +329,34 @@ export class InstanceSettings extends LitElement {
     `;
   }
 
+  /** Resolve the provider and filtered model list from the instance's default API key. */
+  private _getSelectedProviderModels(): { providerId: string; models: string[] } {
+    const c = this._config!;
+    const namedKeys = c.namedKeys ?? [];
+    const defaultNamedKeyId = c.defaultNamedKeyId ?? null;
+    const defaultKey = namedKeys.find((k) => k.id === defaultNamedKeyId);
+    const selectedProviderId =
+      defaultKey?.providerId ?? c.general.defaultModel.split("/")[0] ?? "";
+    const selectedProviderCatalog = this._providerCatalog.find((p) => p.id === selectedProviderId);
+    return { providerId: selectedProviderId, models: selectedProviderCatalog?.models ?? [] };
+  }
+
   private _renderGeneralSection() {
     const c = this._config!;
     const currentDefaultModel = this._getDirty("general.defaultModel", c.general.defaultModel);
 
-    // All named keys (global) and instance default key ID
     const namedKeys = c.namedKeys ?? [];
     const defaultNamedKeyId = c.defaultNamedKeyId ?? null;
-    const defaultKey = namedKeys.find((k) => k.id === defaultNamedKeyId);
 
-    // Determine the provider from the default named key (or from the model string as fallback)
-    const selectedProviderId = defaultKey?.providerId ?? currentDefaultModel.split("/")[0] ?? "";
+    const { models: modelsForSelectedProvider } = this._getSelectedProviderModels();
 
     // Detect provider mismatch between default key and default model
     const defaultModelProvider = currentDefaultModel?.includes("/")
       ? currentDefaultModel.split("/")[0]
       : null;
+    const defaultKey = (c.namedKeys ?? []).find((k) => k.id === (c.defaultNamedKeyId ?? null));
     const hasProviderMismatch =
       defaultKey && defaultModelProvider && defaultKey.providerId !== defaultModelProvider;
-
-    // Get models for the selected provider from the catalog
-    const selectedProviderCatalog = this._providerCatalog.find((p) => p.id === selectedProviderId);
-    const modelsForSelectedProvider = selectedProviderCatalog?.models ?? [];
     const currentModelInList = modelsForSelectedProvider.includes(currentDefaultModel);
     const modelSelectValue = currentDefaultModel;
     const isModelDirty = this._isDirty("general.defaultModel");
@@ -523,21 +529,19 @@ export class InstanceSettings extends LitElement {
               >
                 — ${msg("Same as agent model", { id: "settings-heartbeat-model-default" })} —
               </option>
-              ${this._providerCatalog.flatMap((p) =>
-                p.models.map(
-                  (m) => html`
-                    <option
-                      value="${p.id}/${m}"
-                      ?selected=${`${p.id}/${m}` ===
-                      this._getDirty(
-                        "agentDefaults.heartbeat.model",
-                        c.agentDefaults.heartbeat.model ?? "",
-                      )}
-                    >
-                      ${p.id}/${m}
-                    </option>
-                  `,
-                ),
+              ${this._getSelectedProviderModels().models.map(
+                (m) => html`
+                  <option
+                    value="${m}"
+                    ?selected=${m ===
+                    this._getDirty(
+                      "agentDefaults.heartbeat.model",
+                      c.agentDefaults.heartbeat.model ?? "",
+                    )}
+                  >
+                    ${m}
+                  </option>
+                `,
               )}
             </select>
           </div>
