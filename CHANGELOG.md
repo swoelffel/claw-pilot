@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.65.1] — 2026-04-09
+
+### Fixed
+- **Heartbeat overhaul**: permanent sessions, timezone validation, structured status in `finish_reason` for tool-only responses
+- **Blueprint validation**: return specific error codes (`BLUEPRINT_NAME_REQUIRED`, `INVALID_AGENT_ID`, `FIELD_REQUIRED`) instead of generic `INVALID_BODY`
+
+---
+
 ## [0.65.0] — 2026-04-09
 
 ### Added
