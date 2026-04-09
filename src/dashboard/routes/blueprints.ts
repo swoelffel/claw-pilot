@@ -187,6 +187,10 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     const body = await c.req.json().catch(() => null);
     const parsed = CreateBlueprintSchema.safeParse(body);
     if (!parsed.success) {
+      const nameIssue = parsed.error.issues.find((i) => i.path[0] === "name");
+      if (nameIssue) {
+        return apiError(c, 400, "BLUEPRINT_NAME_REQUIRED", "Blueprint name is required");
+      }
       return apiError(c, 400, "INVALID_BODY", parsed.error.message);
     }
     const data = parsed.data;
@@ -348,6 +352,16 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     const body = await c.req.json().catch(() => null);
     const parsed = CreateAgentSchema.safeParse(body);
     if (!parsed.success) {
+      const idIssue = parsed.error.issues.find((i) => i.path[0] === "agent_id");
+      if (idIssue) {
+        const isMissing = idIssue.code === "invalid_type";
+        return apiError(
+          c,
+          400,
+          isMissing ? "FIELD_REQUIRED" : "INVALID_AGENT_ID",
+          isMissing ? "agent_id is required" : "Invalid agent_id format",
+        );
+      }
       return apiError(c, 400, "INVALID_BODY", parsed.error.message);
     }
     const data = parsed.data;

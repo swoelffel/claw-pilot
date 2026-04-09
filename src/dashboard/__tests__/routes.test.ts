@@ -531,7 +531,7 @@ describe("POST /api/blueprints", () => {
     });
     expect(res.status).toBe(400);
     const body = await json(res);
-    expect(body.code).toBe("INVALID_BODY");
+    expect(body.code).toBe("BLUEPRINT_NAME_REQUIRED");
   });
 
   it("rejects empty name", async () => {
@@ -647,7 +647,7 @@ describe("POST /api/blueprints/:id/agents", () => {
     });
     expect(res.status).toBe(400);
     const body = await json(res);
-    expect(body.code).toBe("INVALID_BODY");
+    expect(body.code).toBe("INVALID_AGENT_ID");
   });
 
   it("creates an agent and returns builder payload", async () => {
