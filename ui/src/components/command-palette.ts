@@ -91,11 +91,18 @@ export class CpCommandPalette extends DialogMixin(LitElement) {
         height: 44px;
         border: none;
         outline: none;
+        box-shadow: none;
+        -webkit-appearance: none;
         background: transparent;
         color: var(--text-primary);
         font-size: 15px;
         font-family: var(--font-ui);
         padding: 0 10px;
+      }
+
+      .palette-input input:focus {
+        outline: none;
+        box-shadow: none;
       }
 
       .palette-input input::placeholder {
