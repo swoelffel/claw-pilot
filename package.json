@@ -1,6 +1,6 @@
 {
   "name": "claw-pilot",
-  "version": "0.66.0",
+  "version": "0.67.0",
   "description": "Orchestrator for claw-runtime multi-agent instances",
   "type": "module",
   "license": "MIT",

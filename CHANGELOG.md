@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.67.0] — 2026-04-10
+
+### Added
+- **Command Palette (SEARCH-001)**: global search via Cmd+K / Ctrl+K across all entities
+- Schema v32: `search_index` (FTS5 contentless) + `search_index_map` (shadow table for rowid tracking)
+- Search repository: `upsertSearchEntry`, `removeSearchEntry`, `searchEntities` (BM25 ranking, prefix matching), `rebuildSearchIndex`
+- API endpoint: `GET /api/search?q=<term>&limit=<n>` with Zod validation
+- Incremental index hooks on all entity mutation paths (instances, agents, tasks, blueprints, templates, team imports)
+- UI: `cp-command-palette` component with keyboard navigation (arrows, Enter, Escape), grouped results, debounced input
+- Search button with ⌘K hint in dashboard header
+- i18n: 8 new search keys × 6 languages
+
+---
+
 ## [0.66.0] — 2026-04-10
 
 ### Added
