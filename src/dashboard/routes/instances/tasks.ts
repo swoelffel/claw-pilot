@@ -24,6 +24,12 @@ import {
   type TaskType,
   type TaskRow,
 } from "../../../core/repositories/task-repository.js";
+import {
+  insertActivity,
+  getActivities,
+  getActivityCount,
+  recordFieldChanges,
+} from "../../../core/repositories/task-activity-repository.js";
 import { getOrCreatePermanentSession } from "../../../runtime/session/session.js";
 import { createUserMessage } from "../../../runtime/session/message.js";
 import type { InstanceSlug } from "../../../runtime/types.js";
@@ -208,6 +214,14 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 400, "INVALID_PARENT", String(err));
     }
 
+    // Log activity
+    insertActivity(db, {
+      taskId: row.id,
+      activityType: "created",
+      actorId: data.createdBy ?? "user",
+      details: { status: row.status, priority: row.priority },
+    });
+
     // Inject notification + trigger prompt loop if task was created with an assignee
     if (data.assigneeId) {
       notifyAndWakeAgent(db, registry, slug, data.assigneeId, row.id, row.title, row.description);
@@ -253,6 +267,16 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
     }
     if (!updated) return apiError(c, 404, "NOT_FOUND", "Task not found");
 
+    // Log field changes
+    recordFieldChanges(db, id, "user", existing, {
+      ...(data.title !== undefined ? { title: data.title } : {}),
+      ...(data.description !== undefined ? { description: data.description } : {}),
+      ...(data.priority !== undefined ? { priority: data.priority } : {}),
+      ...(data.assigneeId !== undefined ? { assigneeId: data.assigneeId } : {}),
+      ...(data.labels !== undefined ? { labels: data.labels } : {}),
+      ...(data.parentId !== undefined ? { parentId: data.parentId } : {}),
+    });
+
     // Inject notification + trigger prompt loop when assignee changes
     if (
       data.assigneeId !== undefined &&
@@ -297,6 +321,17 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
 
     const updated = changeStatus(db, id, data.status, data.position);
     if (!updated) return apiError(c, 404, "NOT_FOUND", "Task not found");
+
+    // Log activity
+    if (existing.status !== data.status) {
+      insertActivity(db, {
+        taskId: id,
+        activityType: "status_changed",
+        actorId: "user",
+        details: { from: existing.status, to: data.status },
+      });
+    }
+
     return c.json(toJson(updated));
   });
 
@@ -372,6 +407,15 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
       authorId: data.authorId ?? "user",
       content: data.content,
     });
+
+    // Log activity
+    insertActivity(db, {
+      taskId: id,
+      activityType: "comment",
+      actorId: data.authorId ?? "user",
+      details: { commentId: comment.id },
+    });
+
     return c.json(
       {
         id: comment.id,
@@ -382,6 +426,39 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
       },
       201,
     );
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /api/instances/:slug/tasks/:id/timeline
+  // ---------------------------------------------------------------------------
+  app.get("/api/instances/:slug/tasks/:id/timeline", (c) => {
+    const slug = c.req.param("slug");
+    const instance = registry.getInstance(slug);
+    const guard = instanceGuard(c, instance);
+    if (guard) return guard;
+
+    const id = Number(c.req.param("id"));
+    const task = getTask(db, id);
+    if (!task || task.instance_slug !== slug) {
+      return apiError(c, 404, "NOT_FOUND", "Task not found");
+    }
+
+    const limit = Math.min(Number(c.req.query("limit") ?? 50), 500);
+    const offset = Number(c.req.query("offset") ?? 0);
+    const activities = getActivities(db, id, { limit, offset });
+    const total = getActivityCount(db, id);
+
+    return c.json({
+      activities: activities.map((a) => ({
+        id: a.id,
+        taskId: a.task_id,
+        activityType: a.activity_type,
+        actorId: a.actor_id,
+        details: a.details_json ? (JSON.parse(a.details_json) as Record<string, unknown>) : null,
+        createdAt: a.created_at,
+      })),
+      total,
+    });
   });
 
   // ---------------------------------------------------------------------------

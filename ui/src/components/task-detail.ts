@@ -1,5 +1,5 @@
 // ui/src/components/task-detail.ts
-// Task detail slide-in panel — full task info + comments.
+// Task detail slide-in panel — full task info + activity timeline.
 
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
@@ -7,13 +7,20 @@ import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
 import {
   fetchTaskDetail,
+  fetchTaskTimeline,
   updateTaskApi,
   addTaskCommentApi,
   fetchAgents,
   fetchEpics,
   deleteTaskApi,
 } from "../api.js";
-import type { TaskDetail as TaskDetailType, TaskComment, EpicInfo, TaskInfo } from "../types.js";
+import type {
+  TaskDetail as TaskDetailType,
+  TaskComment,
+  TaskActivity,
+  EpicInfo,
+  TaskInfo,
+} from "../types.js";
 
 @localized()
 @customElement("cp-task-detail")
@@ -28,6 +35,7 @@ export class TaskDetailPanel extends LitElement {
   @state() private _selectedAgent = "";
   @state() private _epics: EpicInfo[] = [];
   @state() private _selectedParentId: string = "";
+  @state() private _activities: TaskActivity[] = [];
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -42,14 +50,16 @@ export class TaskDetailPanel extends LitElement {
     if (!this.slug || !this.taskId) return;
     this._loading = true;
     try {
-      const [task, agents, epics] = await Promise.all([
+      const [task, agents, epics, timeline] = await Promise.all([
         fetchTaskDetail(this.slug, this.taskId),
         this._agents.length === 0 ? fetchAgents(this.slug) : Promise.resolve(this._agents),
         this._epics.length === 0 ? fetchEpics(this.slug) : Promise.resolve(this._epics),
+        fetchTaskTimeline(this.slug, this.taskId),
       ]);
       this._task = task;
       this._agents = agents;
       this._epics = epics;
+      this._activities = timeline.activities;
       this._selectedAgent = task.assigneeId ?? "";
       this._selectedParentId = task.parentId !== null ? String(task.parentId) : "";
     } catch {
@@ -88,6 +98,55 @@ export class TaskDetailPanel extends LitElement {
       this.dispatchEvent(new CustomEvent("task-deleted", { bubbles: true, composed: true }));
     } catch {
       // silent
+    }
+  }
+
+  private _renderActivity(a: TaskActivity, t: TaskDetailType) {
+    if (a.activityType === "comment") {
+      // Find matching comment from task detail
+      const comment = t.comments.find(
+        (c: TaskComment) => c.id === (a.details?.commentId as number),
+      );
+      return html`
+        <div class="comment">
+          <span class="comment-author">${a.actorId}</span>
+          <span class="comment-date">${a.createdAt.slice(5, 16)}</span>
+          <div class="comment-content">${comment?.content ?? ""}</div>
+        </div>
+      `;
+    }
+    return html`
+      <div class="activity-entry">
+        <span class="activity-date">${a.createdAt.slice(5, 16)}</span>
+        <span class="activity-actor">${a.actorId}</span>
+        <span class="activity-text">${this._describeActivity(a)}</span>
+      </div>
+    `;
+  }
+
+  private _describeActivity(a: TaskActivity): string {
+    const d = a.details;
+    switch (a.activityType) {
+      case "created":
+        return msg("created this task", { id: "task-activity-created" });
+      case "status_changed":
+        return `${msg("changed status", { id: "task-activity-status-changed" })} ${d?.from ?? "?"} → ${d?.to ?? "?"}`;
+      case "assigned":
+        if (d?.to) return `${msg("assigned to", { id: "task-activity-assigned" })} ${d.to}`;
+        return msg("removed assignment", { id: "task-activity-unassigned" });
+      case "priority_changed":
+        return `${msg("changed priority", { id: "task-activity-priority-changed" })} ${d?.from ?? "?"} → ${d?.to ?? "?"}`;
+      case "title_changed":
+        return msg("changed the title", { id: "task-activity-title-changed" });
+      case "description_changed":
+        return msg("updated the description", { id: "task-activity-description-changed" });
+      case "labels_changed":
+        return msg("updated labels", { id: "task-activity-labels-changed" });
+      case "parent_changed":
+        if (d?.to) return msg("set parent epic", { id: "task-activity-parent-set" });
+        return msg("removed parent epic", { id: "task-activity-parent-removed" });
+      default:
+        return a.activityType;
     }
   }
 
@@ -314,18 +373,16 @@ export class TaskDetailPanel extends LitElement {
           >
         </div>
 
-        <div class="comments-section">
-          <label>${msg("Comments", { id: "task-field-comments" })} (${t.comments.length})</label>
-          <div class="comments-list">
-            ${t.comments.map(
-              (c: TaskComment) => html`
-                <div class="comment">
-                  <span class="comment-author">${c.authorId}</span>
-                  <span class="comment-date">${c.createdAt.slice(5, 16)}</span>
-                  <div class="comment-content">${c.content}</div>
-                </div>
-              `,
-            )}
+        <div class="activity-section">
+          <label>
+            ${msg("Activity", { id: "task-timeline-title" })} (${this._activities.length})
+          </label>
+          <div class="activity-list">
+            ${this._activities.length === 0
+              ? html`<div class="activity-empty">
+                  ${msg("No activity yet", { id: "task-timeline-empty" })}
+                </div>`
+              : this._activities.map((a) => this._renderActivity(a, t))}
           </div>
           <div class="comment-input">
             <input
@@ -475,12 +532,12 @@ export class TaskDetailPanel extends LitElement {
       .session-link:hover {
         text-decoration: underline;
       }
-      .comments-section {
+      .activity-section {
         margin-top: 16px;
         border-top: 1px solid var(--bg-border);
         padding-top: 12px;
       }
-      .comments-section > label {
+      .activity-section > label {
         display: block;
         font-size: 11px;
         color: var(--text-muted);
@@ -488,10 +545,37 @@ export class TaskDetailPanel extends LitElement {
         letter-spacing: 0.5px;
         margin-bottom: 8px;
       }
-      .comments-list {
-        max-height: 200px;
+      .activity-list {
+        max-height: 300px;
         overflow-y: auto;
         margin-bottom: 8px;
+      }
+      .activity-empty {
+        font-size: 12px;
+        color: var(--text-muted);
+        padding: 8px 0;
+      }
+      .activity-entry {
+        display: flex;
+        gap: 6px;
+        align-items: baseline;
+        padding: 4px 0;
+        font-size: 11px;
+        color: var(--text-muted);
+        border-bottom: 1px solid var(--bg-border);
+      }
+      .activity-date {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        flex-shrink: 0;
+      }
+      .activity-actor {
+        font-weight: 600;
+        color: var(--text-secondary);
+        flex-shrink: 0;
+      }
+      .activity-text {
+        color: var(--text-muted);
       }
       .comment {
         padding: 6px 0;

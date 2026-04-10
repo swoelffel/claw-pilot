@@ -42,6 +42,7 @@ import type {
   TaskInfo,
   TaskDetail,
   TaskComment,
+  TaskActivity,
   EpicInfo,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
@@ -860,6 +861,17 @@ export async function fetchTasks(slug: string, status?: string): Promise<TaskInf
 
 export async function fetchTaskDetail(slug: string, id: number): Promise<TaskDetail> {
   return apiFetch<TaskDetail>(`/instances/${slug}/tasks/${id}`);
+}
+
+export async function fetchTaskTimeline(
+  slug: string,
+  taskId: number,
+  limit = 50,
+  offset = 0,
+): Promise<{ activities: TaskActivity[]; total: number }> {
+  return apiFetch<{ activities: TaskActivity[]; total: number }>(
+    `/instances/${slug}/tasks/${taskId}/timeline?limit=${limit}&offset=${offset}`,
+  );
 }
 
 export async function createTaskApi(

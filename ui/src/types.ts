@@ -758,6 +758,15 @@ export interface EpicInfo extends TaskInfo {
   progress: EpicProgress;
 }
 
+export interface TaskActivity {
+  id: number;
+  taskId: number;
+  activityType: string;
+  actorId: string;
+  details: Record<string, unknown> | null;
+  createdAt: string;
+}
+
 export interface TaskDetail extends TaskInfo {
   comments: TaskComment[];
   parent?: { id: number; title: string } | null;
