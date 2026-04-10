@@ -1261,6 +1261,23 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 31,
+    up(db) {
+      db.exec(`
+        CREATE TABLE rt_task_activities (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          task_id       INTEGER NOT NULL REFERENCES rt_tasks(id) ON DELETE CASCADE,
+          activity_type TEXT NOT NULL,
+          actor_id      TEXT NOT NULL,
+          details_json  TEXT,
+          created_at    TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX idx_rt_task_activities_task ON rt_task_activities(task_id, created_at);
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

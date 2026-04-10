@@ -23,6 +23,7 @@ import {
   type TaskPriority,
   type TaskType,
 } from "../../core/repositories/task-repository.js";
+import { insertActivity } from "../../core/repositories/task-activity-repository.js";
 import { getBus } from "../bus/index.js";
 import { TaskCreated, TaskStatusChanged, TaskAssigned } from "../bus/events.js";
 
@@ -98,6 +99,12 @@ export function createTaskBoardTool(options: {
           } catch (err) {
             return ok("task_board.create", `Error: ${String(err)}`);
           }
+          insertActivity(db, {
+            taskId: task.id,
+            activityType: "created",
+            actorId: ctx.agentId,
+            details: { status: task.status, priority: task.priority },
+          });
           bus.publish(TaskCreated, {
             instanceSlug,
             taskId: task.id,
@@ -130,6 +137,18 @@ export function createTaskBoardTool(options: {
               "task_board.checkout",
               `Error: task #${params.taskId} is not pending (status: ${before.status}).`,
             );
+          insertActivity(db, {
+            taskId: claimed.id,
+            activityType: "status_changed",
+            actorId: ctx.agentId,
+            details: { from: "pending", to: "in_progress" },
+          });
+          insertActivity(db, {
+            taskId: claimed.id,
+            activityType: "assigned",
+            actorId: ctx.agentId,
+            details: { from: before.assignee_id, to: ctx.agentId },
+          });
           bus.publish(TaskStatusChanged, {
             instanceSlug,
             taskId: claimed.id,
@@ -156,6 +175,12 @@ export function createTaskBoardTool(options: {
           const before = getTask(db, params.taskId);
           if (!before) return ok("task_board.complete", `Error: task #${params.taskId} not found.`);
           const updated = changeStatus(db, params.taskId, "completed");
+          insertActivity(db, {
+            taskId: params.taskId,
+            activityType: "status_changed",
+            actorId: ctx.agentId,
+            details: { from: before.status, to: "completed" },
+          });
           bus.publish(TaskStatusChanged, {
             instanceSlug,
             taskId: params.taskId,
@@ -172,6 +197,12 @@ export function createTaskBoardTool(options: {
           const before = getTask(db, params.taskId);
           if (!before) return ok("task_board.block", `Error: task #${params.taskId} not found.`);
           changeStatus(db, params.taskId, "blocked");
+          insertActivity(db, {
+            taskId: params.taskId,
+            activityType: "status_changed",
+            actorId: ctx.agentId,
+            details: { from: before.status, to: "blocked" },
+          });
           bus.publish(TaskStatusChanged, {
             instanceSlug,
             taskId: params.taskId,
@@ -180,10 +211,16 @@ export function createTaskBoardTool(options: {
             agentId: ctx.agentId,
           });
           if (params.comment) {
-            addComment(db, {
+            const bc = addComment(db, {
               taskId: params.taskId,
               authorId: ctx.agentId,
               content: params.comment,
+            });
+            insertActivity(db, {
+              taskId: params.taskId,
+              activityType: "comment",
+              actorId: ctx.agentId,
+              details: { commentId: bc.id },
             });
           }
           return ok(
@@ -198,6 +235,12 @@ export function createTaskBoardTool(options: {
           const before = getTask(db, params.taskId);
           if (!before) return ok("task_board.cancel", `Error: task #${params.taskId} not found.`);
           changeStatus(db, params.taskId, "cancelled");
+          insertActivity(db, {
+            taskId: params.taskId,
+            activityType: "status_changed",
+            actorId: ctx.agentId,
+            details: { from: before.status, to: "cancelled" },
+          });
           bus.publish(TaskStatusChanged, {
             instanceSlug,
             taskId: params.taskId,
@@ -214,7 +257,17 @@ export function createTaskBoardTool(options: {
           if (!params.comment) return ok("task_board.comment", "Error: comment is required.");
           if (!getTask(db, params.taskId))
             return ok("task_board.comment", `Error: task #${params.taskId} not found.`);
-          addComment(db, { taskId: params.taskId, authorId: ctx.agentId, content: params.comment });
+          const cm = addComment(db, {
+            taskId: params.taskId,
+            authorId: ctx.agentId,
+            content: params.comment,
+          });
+          insertActivity(db, {
+            taskId: params.taskId,
+            activityType: "comment",
+            actorId: ctx.agentId,
+            details: { commentId: cm.id },
+          });
           return ok("task_board.comment", `Comment added to task #${params.taskId}.`);
         }
 
