@@ -4,7 +4,6 @@
 // position management for Kanban drag & drop, and comments.
 
 import type Database from "better-sqlite3";
-import { insertActivity } from "./task-activity-repository.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -425,12 +424,11 @@ export function tryAutoCompleteEpic(db: Database.Database, epicId: number): Task
     `UPDATE rt_tasks SET status = 'completed', completed_at = datetime('now'),
      updated_at = datetime('now') WHERE id = ?`,
   ).run(epicId);
-  insertActivity(db, {
-    taskId: epicId,
-    activityType: "status_changed",
-    actorId: "system",
-    details: { from: oldStatus, to: "completed" },
-  });
+  // Inline INSERT to avoid circular dependency with task-activity-repository
+  db.prepare(
+    `INSERT INTO rt_task_activities (task_id, activity_type, actor_id, details_json)
+     VALUES (?, ?, ?, ?)`,
+  ).run(epicId, "status_changed", "system", JSON.stringify({ from: oldStatus, to: "completed" }));
   return getTask(db, epicId);
 }
 
