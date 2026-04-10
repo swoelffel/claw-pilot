@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.66.0] — 2026-04-10
+
+### Added
+- **Activity timeline (TIMELINE-001)**: chronological log of all task mutations per task
+- Schema v31: `rt_task_activities` table with cascade delete, indexed by task + date
+- Repository: `insertActivity`, `getActivities`, `getActivityCount`, `recordFieldChanges` (field-level diff detection)
+- API endpoint: `GET /tasks/:id/timeline` with pagination
+- Activity capture on all mutation paths: dashboard routes, agent tool actions, auto-complete epic (system actor)
+- UI: Comments section replaced by unified Activity timeline (mutations + comments interleaved)
+- i18n: 12 new activity description keys × 6 languages
+
+---
+
 ## [0.65.1] — 2026-04-09
 
 ### Fixed
