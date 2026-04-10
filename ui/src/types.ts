@@ -767,6 +767,15 @@ export interface TaskActivity {
   createdAt: string;
 }
 
+export interface SearchResult {
+  type: string;
+  id: string;
+  title: string;
+  subtitle: string;
+  route: string;
+  rank: number;
+}
+
 export interface TaskDetail extends TaskInfo {
   comments: TaskComment[];
   parent?: { id: number; title: string } | null;

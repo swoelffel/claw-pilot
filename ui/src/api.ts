@@ -44,6 +44,7 @@ import type {
   TaskComment,
   TaskActivity,
   EpicInfo,
+  SearchResult,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 import { getToken } from "./services/auth-state.js";
@@ -1132,4 +1133,15 @@ export async function updateNamedKey(
 
 export async function deleteNamedKey(id: number): Promise<{ ok: boolean }> {
   return apiFetch<{ ok: boolean }>(`/named-keys/${id}`, { method: "DELETE" });
+}
+
+// ---------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------
+
+export async function searchEntities(query: string, limit = 15): Promise<SearchResult[]> {
+  const data = await apiFetch<{ results: SearchResult[] }>(
+    `/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+  );
+  return data.results;
 }

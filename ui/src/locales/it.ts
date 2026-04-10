@@ -591,4 +591,14 @@ export const templates = {
   "task-activity-labels-changed": "ha aggiornato le etichette",
   "task-activity-parent-set": "ha impostato l'epic genitore",
   "task-activity-parent-removed": "ha rimosso l'epic genitore",
+
+  // command-palette.ts
+  "search-placeholder": "Cerca istanze, agenti, attività...",
+  "search-no-results": "Nessun risultato",
+  "search-group-instances": "Istanze",
+  "search-group-agents": "Agenti",
+  "search-group-tasks": "Attività",
+  "search-group-blueprints": "Blueprint",
+  "search-group-templates": "Modelli",
+  "search-hint": "Cerca",
 };

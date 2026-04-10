@@ -592,4 +592,14 @@ export const templates = {
   "task-activity-labels-changed": "atualizou as etiquetas",
   "task-activity-parent-set": "definiu o epic pai",
   "task-activity-parent-removed": "removeu o epic pai",
+
+  // command-palette.ts
+  "search-placeholder": "Pesquisar instâncias, agentes, tarefas...",
+  "search-no-results": "Nenhum resultado",
+  "search-group-instances": "Instâncias",
+  "search-group-agents": "Agentes",
+  "search-group-tasks": "Tarefas",
+  "search-group-blueprints": "Blueprints",
+  "search-group-templates": "Modelos",
+  "search-hint": "Pesquisar",
 };

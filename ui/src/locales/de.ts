@@ -590,4 +590,14 @@ export const templates = {
   "task-activity-labels-changed": "hat die Labels aktualisiert",
   "task-activity-parent-set": "hat das übergeordnete Epic gesetzt",
   "task-activity-parent-removed": "hat das übergeordnete Epic entfernt",
+
+  // command-palette.ts
+  "search-placeholder": "Instanzen, Agenten, Aufgaben suchen...",
+  "search-no-results": "Keine Ergebnisse gefunden",
+  "search-group-instances": "Instanzen",
+  "search-group-agents": "Agenten",
+  "search-group-tasks": "Aufgaben",
+  "search-group-blueprints": "Blueprints",
+  "search-group-templates": "Vorlagen",
+  "search-hint": "Suchen",
 };

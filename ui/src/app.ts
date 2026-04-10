@@ -38,6 +38,7 @@ import "./components/heartbeat-heatmap.js";
 import "./components/session-logs.js";
 import "./components/task-board.js";
 import "./components/budget-alert-banner.js";
+import "./components/command-palette.js";
 
 // Initialize locale — resolved before first render via localeReady promise
 export const localeReady = initLocale();
@@ -347,6 +348,33 @@ export class CpApp extends LitElement {
         color: var(--state-error);
       }
 
+      .btn-search {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: none;
+        border: 1px solid var(--bg-border);
+        border-radius: 5px;
+        color: var(--text-muted);
+        font-size: 12px;
+        cursor: pointer;
+        padding: 4px 10px;
+        font-family: inherit;
+        transition:
+          border-color 0.15s,
+          color 0.15s;
+      }
+
+      .btn-search:hover {
+        border-color: var(--accent-border);
+        color: var(--text-primary);
+      }
+
+      .search-kbd {
+        font-size: 11px;
+        opacity: 0.6;
+      }
+
       .btn-profile {
         display: inline-flex;
         align-items: center;
@@ -449,6 +477,8 @@ export class CpApp extends LitElement {
   @state() private _langOpen = false;
   @state() private _selfUpdateStatus: SelfUpdateStatus | null = null;
 
+  @state() private _commandPaletteOpen = false;
+
   // --- "Use template" dialog state ---
   @state() private _useTemplateId = "";
   @state() private _useTemplateName = "";
@@ -496,9 +526,17 @@ export class CpApp extends LitElement {
   // Lifecycle
   // ---------------------------------------------------------------------------
 
+  private _onGlobalKeydown = (e: KeyboardEvent): void => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      e.preventDefault();
+      this._commandPaletteOpen = true;
+    }
+  };
+
   override connectedCallback(): void {
     super.connectedCallback();
     document.addEventListener("click", this._onDocClick);
+    window.addEventListener("keydown", this._onGlobalKeydown);
     window.addEventListener("lit-localize-status", this._onLocaleStatus);
     window.addEventListener("cp:session-expired", this._onSessionExpired);
     void this._boot();
@@ -507,6 +545,7 @@ export class CpApp extends LitElement {
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     window.removeEventListener("hashchange", this._onHashChange);
+    window.removeEventListener("keydown", this._onGlobalKeydown);
     window.removeEventListener("cp:session-expired", this._onSessionExpired);
     window.removeEventListener("lit-localize-status", this._onLocaleStatus);
     document.removeEventListener("click", this._onDocClick);
@@ -1005,6 +1044,28 @@ export class CpApp extends LitElement {
         </div>
         <div class="header-right">
           <button
+            class="btn-search"
+            title=${msg("Search", { id: "search-hint" })}
+            @click=${() => {
+              this._commandPaletteOpen = true;
+            }}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <span class="search-kbd">${navigator.platform?.includes("Mac") ? "⌘K" : "Ctrl+K"}</span>
+          </button>
+          <button
             class="btn-profile ${this._route.view === "profile" ? "active" : ""}"
             title=${msg("Profile", { id: "nav-profile" })}
             @click=${() => {
@@ -1052,6 +1113,13 @@ export class CpApp extends LitElement {
         : nothing}
 
       <cp-bus-alerts></cp-bus-alerts>
+      ${this._commandPaletteOpen
+        ? html`<cp-command-palette
+            @close-dialog=${() => {
+              this._commandPaletteOpen = false;
+            }}
+          ></cp-command-palette>`
+        : nothing}
       ${this._useTemplateId
         ? html`<cp-create-agent-dialog
             .templateId=${this._useTemplateId}

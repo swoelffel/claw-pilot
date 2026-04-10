@@ -35,6 +35,8 @@ import { registerAuthRoutes } from "./routes/auth.js";
 import { registerAgentBlueprintRoutes } from "./routes/agent-blueprints.js";
 import { registerProfileRoutes } from "./routes/profile.js";
 import { registerNamedKeyRoutes } from "./routes/named-keys.js";
+import { registerSearchRoutes } from "./routes/search.js";
+import { rebuildSearchIndex } from "../core/repositories/search-repository.js";
 import { ModelDiscoveryService } from "../core/model-discovery/service.js";
 
 /** Result returned by buildDashboardApp — contains the wired Hono app and cleanup helpers. */
@@ -222,6 +224,10 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   registerSystemRoutes(app, deps);
   registerProfileRoutes(app, deps);
   registerNamedKeyRoutes(app, deps);
+  registerSearchRoutes(app, deps);
+
+  // Rebuild search index on startup
+  rebuildSearchIndex(deps.db);
 
   // Global error handler — catches unhandled errors that bubble up through route handlers.
   // ClawPilotError subclasses are mapped to structured API responses; unknown errors → 500.

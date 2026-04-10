@@ -14,6 +14,7 @@ import {
   importBlueprintTeam,
 } from "../../core/team-import.js";
 import { logger } from "../../lib/logger.js";
+import { rebuildSearchIndex } from "../../core/repositories/search-repository.js";
 
 export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
   const { registry, conn, xdgRuntimeDir } = deps;
@@ -107,6 +108,7 @@ export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
         dryRun,
       );
       logger.info(`[team-import] ${dryRun ? "Dry-run" : "Import"} complete for instance=${slug}`);
+      rebuildSearchIndex(deps.db);
       return c.json(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Import failed";
@@ -198,6 +200,7 @@ export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
     try {
       const result = await importBlueprintTeam(registry.getDb(), registry, id, parsed.data, dryRun);
       logger.info(`[team-import] ${dryRun ? "Dry-run" : "Import"} complete for blueprint=${id}`);
+      rebuildSearchIndex(deps.db);
       return c.json(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Import failed";

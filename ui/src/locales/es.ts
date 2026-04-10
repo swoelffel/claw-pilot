@@ -592,4 +592,14 @@ export const templates = {
   "task-activity-labels-changed": "actualizó las etiquetas",
   "task-activity-parent-set": "estableció el epic padre",
   "task-activity-parent-removed": "eliminó el epic padre",
+
+  // command-palette.ts
+  "search-placeholder": "Buscar instancias, agentes, tareas...",
+  "search-no-results": "Sin resultados",
+  "search-group-instances": "Instancias",
+  "search-group-agents": "Agentes",
+  "search-group-tasks": "Tareas",
+  "search-group-blueprints": "Blueprints",
+  "search-group-templates": "Plantillas",
+  "search-hint": "Buscar",
 };
