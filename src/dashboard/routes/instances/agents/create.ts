@@ -8,6 +8,7 @@ import { apiError } from "../../../route-deps.js";
 import { instanceGuard } from "../../../../lib/guards.js";
 import { AgentProvisioner } from "../../../../core/agent-provisioner.js";
 import type { CreateAgentData } from "../../../../core/agent-provisioner.js";
+import { upsertSearchEntry } from "../../../../core/repositories/search-repository.js";
 import { buildAgentPayload } from "../../_helpers.js";
 import { logger } from "../../../../lib/logger.js";
 
@@ -71,6 +72,14 @@ export function registerAgentCreateRoutes(app: Hono, deps: RouteDeps): void {
         err instanceof Error ? err.message : "Agent create failed",
       );
     }
+
+    upsertSearchEntry(deps.db, {
+      entityType: "agent",
+      entityId: `${slug}:${body.agentSlug}`,
+      title: body.name || body.agentSlug,
+      subtitle: slug,
+      routeHash: `/instances/${slug}/builder`,
+    });
 
     // Restart daemon fire-and-forget
     lifecycle.restart(slug).catch(() => {
@@ -163,6 +172,14 @@ export function registerAgentCreateRoutes(app: Hono, deps: RouteDeps): void {
         }
       }
     }
+
+    upsertSearchEntry(deps.db, {
+      entityType: "agent",
+      entityId: `${slug}:${agentSlug}`,
+      title: agentData.name || agentSlug,
+      subtitle: slug,
+      routeHash: `/instances/${slug}/builder`,
+    });
 
     // Restart daemon fire-and-forget
     lifecycle.restart(slug).catch(() => {

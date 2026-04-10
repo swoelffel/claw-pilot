@@ -11,6 +11,7 @@ import { buildAgentPayload } from "./_helpers.js";
 import { constants } from "../../lib/constants.js";
 import { listBuiltinBlueprints } from "../../core/builtin-blueprints.js";
 import { logger } from "../../lib/logger.js";
+import { upsertSearchEntry, removeSearchEntry } from "../../core/repositories/search-repository.js";
 
 // ---------------------------------------------------------------------------
 // Zod schemas for request validation
@@ -223,6 +224,14 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
       // Seed default "main" agent — every blueprint starts with one
       await seedBlueprintPilotAgent(registry, blueprint.id);
 
+      upsertSearchEntry(deps.db, {
+        entityType: "blueprint",
+        entityId: String(blueprint.id),
+        title: blueprint.name,
+        subtitle: blueprint.description ?? "",
+        routeHash: `/blueprints/${blueprint.id}/builder`,
+      });
+
       return c.json(blueprint, 201);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -255,6 +264,14 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
 
       const { importBlueprintTeam } = await import("../../core/team-import.js");
       await importBlueprintTeam(deps.db, registry, blueprint.id, builtin.teamFile);
+
+      upsertSearchEntry(deps.db, {
+        entityType: "blueprint",
+        entityId: String(blueprint.id),
+        title: blueprint.name,
+        subtitle: blueprint.description ?? "",
+        routeHash: `/blueprints/${blueprint.id}/builder`,
+      });
 
       return c.json(blueprint, 201);
     } catch (err) {
@@ -309,6 +326,17 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
         ...(normalizedTags !== undefined ? { tags: normalizedTags } : {}),
         ...(data.color !== undefined ? { color: data.color } : {}),
       });
+
+      if (updated) {
+        upsertSearchEntry(deps.db, {
+          entityType: "blueprint",
+          entityId: String(id),
+          title: updated.name,
+          subtitle: updated.description ?? "",
+          routeHash: `/blueprints/${id}/builder`,
+        });
+      }
+
       return c.json(updated);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -330,6 +358,7 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     const blueprint = registry.getBlueprint(id);
     if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
     registry.deleteBlueprint(id);
+    removeSearchEntry(deps.db, "blueprint", String(id));
     return c.json({ ok: true });
   });
 

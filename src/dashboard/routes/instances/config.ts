@@ -8,6 +8,7 @@ import { logger } from "../../../lib/logger.js";
 import { PROVIDER_ENV_VARS } from "../../../lib/providers.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
 import { writeEnvVar, removeEnvVar } from "../../../lib/dotenv.js";
+import { upsertSearchEntry } from "../../../core/repositories/search-repository.js";
 import {
   runtimeConfigExists,
   loadRuntimeConfig,
@@ -143,6 +144,16 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
     // Update display name in DB (instance-level, not part of RuntimeConfig)
     if (patch.general?.displayName !== undefined) {
       registry.updateInstance(slug, { displayName: patch.general.displayName });
+      const inst = registry.getInstance(slug);
+      if (inst) {
+        upsertSearchEntry(deps.db, {
+          entityType: "instance",
+          entityId: slug,
+          title: inst.display_name ?? slug,
+          subtitle: inst.state ?? "",
+          routeHash: `/instances/${slug}/builder`,
+        });
+      }
     }
 
     // --- Pre-validation: check provider removal conflicts ---

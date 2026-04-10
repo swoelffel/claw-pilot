@@ -35,6 +35,10 @@ import { createUserMessage } from "../../../runtime/session/message.js";
 import type { InstanceSlug } from "../../../runtime/types.js";
 import { wakeupAgent } from "../_wakeup-agent.js";
 import { logger } from "../../../lib/logger.js";
+import {
+  upsertSearchEntry,
+  removeSearchEntry,
+} from "../../../core/repositories/search-repository.js";
 
 // ---------------------------------------------------------------------------
 // Zod schemas for request validation
@@ -222,6 +226,14 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
       details: { status: row.status, priority: row.priority },
     });
 
+    upsertSearchEntry(db, {
+      entityType: "task",
+      entityId: String(row.id),
+      title: row.title,
+      subtitle: `${slug} · ${row.status}`,
+      routeHash: `/instances/${slug}/tasks`,
+    });
+
     // Inject notification + trigger prompt loop if task was created with an assignee
     if (data.assigneeId) {
       notifyAndWakeAgent(db, registry, slug, data.assigneeId, row.id, row.title, row.description);
@@ -277,6 +289,14 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
       ...(data.parentId !== undefined ? { parentId: data.parentId } : {}),
     });
 
+    upsertSearchEntry(db, {
+      entityType: "task",
+      entityId: String(id),
+      title: updated.title,
+      subtitle: `${slug} · ${updated.status}`,
+      routeHash: `/instances/${slug}/tasks`,
+    });
+
     // Inject notification + trigger prompt loop when assignee changes
     if (
       data.assigneeId !== undefined &&
@@ -330,6 +350,14 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
         actorId: "user",
         details: { from: existing.status, to: data.status },
       });
+
+      upsertSearchEntry(db, {
+        entityType: "task",
+        entityId: String(id),
+        title: updated.title,
+        subtitle: `${slug} · ${updated.status}`,
+        routeHash: `/instances/${slug}/tasks`,
+      });
     }
 
     return c.json(toJson(updated));
@@ -377,6 +405,7 @@ export function registerTaskRoutes(app: Hono, deps: RouteDeps): void {
     }
 
     deleteTask(db, id);
+    removeSearchEntry(db, "task", String(id));
     return c.json({ ok: true });
   });
 

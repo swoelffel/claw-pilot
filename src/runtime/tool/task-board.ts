@@ -24,6 +24,7 @@ import {
   type TaskType,
 } from "../../core/repositories/task-repository.js";
 import { insertActivity } from "../../core/repositories/task-activity-repository.js";
+import { upsertSearchEntry } from "../../core/repositories/search-repository.js";
 import { getBus } from "../bus/index.js";
 import { TaskCreated, TaskStatusChanged, TaskAssigned } from "../bus/events.js";
 
@@ -110,6 +111,13 @@ export function createTaskBoardTool(options: {
             taskId: task.id,
             title: task.title,
             createdBy: ctx.agentId,
+          });
+          upsertSearchEntry(db, {
+            entityType: "task",
+            entityId: String(task.id),
+            title: task.title,
+            subtitle: `${instanceSlug} · ${task.status}`,
+            routeHash: `/instances/${instanceSlug}/tasks`,
           });
           if (params.assigneeId) {
             bus.publish(TaskAssigned, {

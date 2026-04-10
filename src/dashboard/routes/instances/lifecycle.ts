@@ -8,6 +8,10 @@ import type { WizardAnswers } from "../../../core/config-generator.js";
 import { Destroyer } from "../../../core/destroyer.js";
 import { Provisioner } from "../../../core/provisioner.js";
 import { NamedKeyRepository } from "../../../core/repositories/named-key-repository.js";
+import {
+  upsertSearchEntry,
+  removeSearchEntry,
+} from "../../../core/repositories/search-repository.js";
 import { deriveWebChatPort } from "../../../lib/platform.js";
 import { ClawPilotError, InstanceNotFoundError } from "../../../lib/errors.js";
 import { logger } from "../../../lib/logger.js";
@@ -123,6 +127,7 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
       const destroyer = new Destroyer(conn, registry, xdgRuntimeDir);
       await destroyer.destroy(slug);
       tokenCache.invalidate(slug);
+      removeSearchEntry(deps.db, "instance", slug);
       return c.json({ ok: true, slug });
     } catch (err) {
       if (err instanceof InstanceNotFoundError) {
@@ -233,6 +238,14 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
           .prepare("UPDATE instances SET default_named_key_id = ? WHERE id = ?")
           .run(namedKeyId, instance.id);
       }
+
+      upsertSearchEntry(deps.db, {
+        entityType: "instance",
+        entityId: slug,
+        title: answers.displayName || slug,
+        subtitle: "stopped",
+        routeHash: `/instances/${slug}/builder`,
+      });
 
       return c.json(result, 201);
     } catch (err) {

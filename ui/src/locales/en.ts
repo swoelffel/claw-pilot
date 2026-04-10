@@ -624,4 +624,14 @@ export const templates = {
   "task-activity-labels-changed": "updated labels",
   "task-activity-parent-set": "set parent epic",
   "task-activity-parent-removed": "removed parent epic",
+
+  // command-palette.ts
+  "search-placeholder": "Search instances, agents, tasks...",
+  "search-no-results": "No results found",
+  "search-group-instances": "Instances",
+  "search-group-agents": "Agents",
+  "search-group-tasks": "Tasks",
+  "search-group-blueprints": "Blueprints",
+  "search-group-templates": "Templates",
+  "search-hint": "Search",
 };

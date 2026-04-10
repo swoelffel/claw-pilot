@@ -25,6 +25,7 @@ import { apiError } from "../route-deps.js";
 import { constants } from "../../lib/constants.js";
 import { logger } from "../../lib/logger.js";
 import { loadWorkspaceTemplate } from "../../lib/workspace-templates.js";
+import { upsertSearchEntry, removeSearchEntry } from "../../core/repositories/search-repository.js";
 
 // ---------------------------------------------------------------------------
 // Zod schemas for request validation
@@ -105,6 +106,14 @@ export function registerAgentBlueprintRoutes(app: Hono, deps: RouteDeps): void {
       }
     }
 
+    upsertSearchEntry(deps.db, {
+      entityType: "agent_blueprint",
+      entityId: blueprint.id,
+      title: blueprint.name,
+      subtitle: blueprint.category ?? "",
+      routeHash: `/agent-templates/${blueprint.id}`,
+    });
+
     const files = registry.listAgentBlueprintFiles(blueprint.id);
     return c.json({ ...blueprint, files }, 201);
   });
@@ -149,6 +158,17 @@ export function registerAgentBlueprintRoutes(app: Hono, deps: RouteDeps): void {
       ...("icon" in d ? { icon: d.icon ?? null } : {}),
       ...("tags" in d ? { tags: d.tags ?? null } : {}),
     });
+
+    if (updated) {
+      upsertSearchEntry(deps.db, {
+        entityType: "agent_blueprint",
+        entityId: updated.id,
+        title: updated.name,
+        subtitle: updated.category ?? "",
+        routeHash: `/agent-templates/${updated.id}`,
+      });
+    }
+
     return c.json(updated);
   });
 
@@ -159,6 +179,7 @@ export function registerAgentBlueprintRoutes(app: Hono, deps: RouteDeps): void {
     if (!existing) return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
 
     registry.deleteAgentBlueprint(id);
+    removeSearchEntry(deps.db, "agent_blueprint", id);
     return c.json({ ok: true });
   });
 
@@ -171,6 +192,14 @@ export function registerAgentBlueprintRoutes(app: Hono, deps: RouteDeps): void {
 
     const clone = registry.cloneAgentBlueprint(id, newName);
     if (!clone) return apiError(c, 404, "NOT_FOUND", "Source agent blueprint not found");
+
+    upsertSearchEntry(deps.db, {
+      entityType: "agent_blueprint",
+      entityId: clone.id,
+      title: clone.name,
+      subtitle: clone.category ?? "",
+      routeHash: `/agent-templates/${clone.id}`,
+    });
 
     const files = registry.listAgentBlueprintFiles(clone.id);
     return c.json(
@@ -278,6 +307,14 @@ export function registerAgentBlueprintRoutes(app: Hono, deps: RouteDeps): void {
       }
     }
 
+    upsertSearchEntry(deps.db, {
+      entityType: "agent_blueprint",
+      entityId: blueprint.id,
+      title: blueprint.name,
+      subtitle: blueprint.category ?? "",
+      routeHash: `/agent-templates/${blueprint.id}`,
+    });
+
     const files = registry.listAgentBlueprintFiles(blueprint.id);
     return c.json(
       {
@@ -379,6 +416,14 @@ export function registerAgentBlueprintRoutes(app: Hono, deps: RouteDeps): void {
         registry.upsertAgentBlueprintFile(blueprint.id, filename, content);
       }
     }
+
+    upsertSearchEntry(deps.db, {
+      entityType: "agent_blueprint",
+      entityId: blueprint.id,
+      title: blueprint.name,
+      subtitle: blueprint.category ?? "",
+      routeHash: `/agent-templates/${blueprint.id}`,
+    });
 
     const createdFiles = registry.listAgentBlueprintFiles(blueprint.id);
     return c.json(

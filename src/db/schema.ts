@@ -1278,6 +1278,31 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 32,
+    up(db) {
+      db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
+          entity_type,
+          entity_id,
+          title,
+          subtitle,
+          route_hash,
+          content=''
+        );
+
+        CREATE TABLE IF NOT EXISTS search_index_map (
+          entity_type TEXT NOT NULL,
+          entity_id   TEXT NOT NULL,
+          fts_rowid   INTEGER NOT NULL,
+          title       TEXT NOT NULL,
+          subtitle    TEXT NOT NULL DEFAULT '',
+          route_hash  TEXT NOT NULL,
+          PRIMARY KEY (entity_type, entity_id)
+        );
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

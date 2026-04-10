@@ -7,6 +7,7 @@ import { instanceGuard } from "../../../../lib/guards.js";
 import { AgentProvisioner } from "../../../../core/agent-provisioner.js";
 import { InstanceNotFoundError } from "../../../../lib/errors.js";
 import { buildAgentPayload } from "../../_helpers.js";
+import { removeSearchEntry } from "../../../../core/repositories/search-repository.js";
 
 export function registerAgentDeleteRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, conn, lifecycle } = deps;
@@ -32,6 +33,8 @@ export function registerAgentDeleteRoutes(app: Hono, deps: RouteDeps): void {
         err instanceof Error ? err.message : "Agent delete failed",
       );
     }
+
+    removeSearchEntry(deps.db, "agent", `${slug}:${agentId}`);
 
     // Restart daemon fire-and-forget
     lifecycle.restart(slug).catch(() => {
