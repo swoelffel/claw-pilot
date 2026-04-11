@@ -7,7 +7,6 @@ import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
 import { listFlows, runFlow, deleteFlow, updateFlow } from "../api.js";
 import type { FlowDefinitionWithLastRun, FlowStepDef } from "../types.js";
-import "./flow-editor.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -67,8 +66,6 @@ export class FlowList extends LitElement {
   @state() private _loading = true;
   @state() private _error = "";
   @state() private _runningIds: Set<number> = new Set();
-  @state() private _editorOpen = false;
-  @state() private _editFlowId: number | undefined;
 
   private _refreshTimer: number | undefined;
 
@@ -134,23 +131,22 @@ export class FlowList extends LitElement {
   }
 
   private _editFlow(id: number): void {
-    this._editFlowId = id;
-    this._editorOpen = true;
+    this.dispatchEvent(
+      new CustomEvent("navigate", {
+        detail: { view: "flow-detail", slug: this.slug, flowId: id },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   private _openNewFlowEditor(): void {
-    this._editFlowId = undefined;
-    this._editorOpen = true;
-  }
-
-  private _closeEditor(): void {
-    this._editorOpen = false;
-    this._editFlowId = undefined;
-  }
-
-  private _onFlowSaved(): void {
-    this._closeEditor();
-    void this._load();
+    this.dispatchEvent(
+      new CustomEvent("open-flow-editor", {
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   private async _toggleEnabled(flow: FlowDefinitionWithLastRun): Promise<void> {
@@ -185,14 +181,6 @@ export class FlowList extends LitElement {
       ${this._flows.length === 0
         ? html`<div class="empty">${msg("No flows defined yet.", { id: "flow-list-empty" })}</div>`
         : html`<div class="flow-table">${this._flows.map((f) => this._renderRow(f))}</div>`}
-      ${this._editorOpen
-        ? html`<cp-flow-editor
-            .slug=${this.slug}
-            .flowId=${this._editFlowId}
-            @close-dialog=${this._closeEditor}
-            @flow-saved=${this._onFlowSaved}
-          ></cp-flow-editor>`
-        : nothing}
     `;
   }
 

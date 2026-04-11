@@ -8,7 +8,6 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { DialogMixin } from "../lib/dialog-mixin.js";
 import { userMessage } from "../lib/error-messages.js";
-import { fetchAgents } from "../api.js";
 import { tokenStyles } from "../styles/tokens.js";
 import {
   sectionLabelStyles,
@@ -30,6 +29,24 @@ interface FlowStep {
 }
 
 type TriggerType = "manual" | "bus";
+
+interface FlowPayload {
+  name: string;
+  description: string;
+  triggerType: TriggerType;
+  steps: Array<{
+    id: string;
+    agentId: string;
+    prompt: string;
+    dependencies: string[];
+    timeout: number;
+    retries: number;
+  }>;
+}
+
+interface FlowResponse extends FlowPayload {
+  flowId: number;
+}
 
 // --- Helpers ---
 
@@ -307,7 +324,6 @@ export class FlowEditor extends DialogMixin(LitElement) {
   @state() private _description = "";
   @state() private _steps: FlowStep[] = [createEmptyStep()];
   @state() private _triggerType: TriggerType = "manual";
-  @state() private _agents: Array<{ agent_id: string; name: string }> = [];
   @state() private _saving = false;
   @state() private _loading = false;
   @state() private _error = "";
@@ -316,17 +332,8 @@ export class FlowEditor extends DialogMixin(LitElement) {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    void this._loadAgents();
     if (this.flowId !== undefined) {
       void this._loadFlow();
-    }
-  }
-
-  private async _loadAgents(): Promise<void> {
-    try {
-      this._agents = await fetchAgents(this.slug);
-    } catch (err) {
-      this._error = userMessage(err);
     }
   }
 
@@ -352,37 +359,20 @@ export class FlowEditor extends DialogMixin(LitElement) {
         }
         throw new Error(message);
       }
-      const body = (await res.json()) as {
-        flow: {
-          name: string;
-          description: string | null;
-          steps_json: string;
-          trigger_json: string;
-        };
-      };
-      const flow = body.flow;
-      const steps = JSON.parse(flow.steps_json) as Array<{
-        id: string;
-        agentId: string;
-        prompt: string;
-        dependsOn?: string[];
-        timeoutMs?: number;
-        retries?: number;
-      }>;
-      const trigger = JSON.parse(flow.trigger_json) as { type: string };
-
+      const flow = (await res.json()) as FlowResponse;
       this._name = flow.name;
       this._description = flow.description ?? "";
-      this._triggerType = (trigger.type === "bus" ? "bus" : "manual") as TriggerType;
-      this._steps = steps.map((s, i) => ({
+      this._triggerType = flow.triggerType ?? "manual";
+      this._steps = flow.steps.map((s, i) => ({
         id: s.id ?? `step-${i + 1}`,
         agentId: s.agentId ?? "",
         prompt: s.prompt ?? "",
-        dependencies: Array.isArray(s.dependsOn) ? s.dependsOn.join(", ") : "",
-        timeout: s.timeoutMs ? Math.round(s.timeoutMs / 1000) : 60,
+        dependencies: Array.isArray(s.dependencies) ? s.dependencies.join(", ") : "",
+        timeout: s.timeout ?? 60,
         retries: s.retries ?? 0,
         _advancedOpen: false,
       }));
+      // Update counter so new steps don't collide
       _stepCounter = this._steps.length;
     } catch (err) {
       this._error = userMessage(err);
@@ -423,9 +413,10 @@ export class FlowEditor extends DialogMixin(LitElement) {
   }
 
   private _isFormValid(): boolean {
-    if (!(this._name ?? "").trim()) return false;
-    if (!this._steps || this._steps.length === 0) return false;
-    return this._steps.every((s) => (s.id ?? "").trim() && (s.agentId ?? "").trim());
+    if (!this._name.trim()) return false;
+    if (this._steps.length === 0) return false;
+    // Every step must have an ID and an agent ID
+    return this._steps.every((s) => s.id.trim() && s.agentId.trim());
   }
 
   private async _save(): Promise<void> {
@@ -433,20 +424,20 @@ export class FlowEditor extends DialogMixin(LitElement) {
     this._saving = true;
     this._error = "";
 
-    const payload = {
-      name: (this._name ?? "").trim(),
-      description: (this._description ?? "").trim(),
-      trigger: { type: this._triggerType },
+    const payload: FlowPayload = {
+      name: this._name.trim(),
+      description: this._description.trim(),
+      triggerType: this._triggerType,
       steps: this._steps.map((s) => ({
         id: s.id.trim(),
         agentId: s.agentId.trim(),
         prompt: s.prompt.trim(),
-        dependsOn: (s.dependencies ?? "")
+        dependencies: s.dependencies
           .split(",")
           .map((d) => d.trim())
           .filter(Boolean),
-        ...(s.timeout && s.timeout !== 60 ? { timeoutMs: s.timeout * 1000 } : {}),
-        ...(s.retries ? { retries: s.retries } : {}),
+        timeout: s.timeout,
+        retries: s.retries,
       })),
     };
 
@@ -513,21 +504,14 @@ export class FlowEditor extends DialogMixin(LitElement) {
             />
           </div>
           <div class="field">
-            <label>${msg("Agent", { id: "fe-label-agent" })}</label>
-            <select
-              @change=${(e: Event) =>
-                this._updateStep(index, "agentId", (e.target as HTMLSelectElement).value)}
-            >
-              <option value="" ?selected=${!step.agentId}>
-                ${msg("Select an agent...", { id: "fe-select-agent" })}
-              </option>
-              ${this._agents.map(
-                (a) =>
-                  html`<option value=${a.agent_id} ?selected=${step.agentId === a.agent_id}>
-                    ${a.name} (${a.agent_id})
-                  </option>`,
-              )}
-            </select>
+            <label>${msg("Agent ID", { id: "fe-label-agent-id" })}</label>
+            <input
+              type="text"
+              .value=${step.agentId}
+              placeholder=${msg("e.g. researcher", { id: "fe-placeholder-agent" })}
+              @input=${(e: Event) =>
+                this._updateStep(index, "agentId", (e.target as HTMLInputElement).value)}
+            />
           </div>
         </div>
 

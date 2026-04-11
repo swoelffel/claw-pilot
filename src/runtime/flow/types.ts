@@ -24,6 +24,14 @@ export interface FlowStepDef {
 }
 
 // ---------------------------------------------------------------------------
+// Trigger definition (stored as JSON in rt_flow_definitions.trigger_json)
+// ---------------------------------------------------------------------------
+
+export type FlowTriggerDef =
+  | { type: "manual" }
+  | { type: "bus"; event: string; filter?: Record<string, unknown> };
+
+// ---------------------------------------------------------------------------
 // SITREP result (structured extraction from agent response)
 // ---------------------------------------------------------------------------
 
