@@ -8,6 +8,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { DialogMixin } from "../lib/dialog-mixin.js";
 import { userMessage } from "../lib/error-messages.js";
+import { fetchAgents } from "../api.js";
 import { tokenStyles } from "../styles/tokens.js";
 import {
   sectionLabelStyles,
@@ -324,6 +325,7 @@ export class FlowEditor extends DialogMixin(LitElement) {
   @state() private _description = "";
   @state() private _steps: FlowStep[] = [createEmptyStep()];
   @state() private _triggerType: TriggerType = "manual";
+  @state() private _agents: Array<{ agent_id: string; name: string }> = [];
   @state() private _saving = false;
   @state() private _loading = false;
   @state() private _error = "";
@@ -332,8 +334,17 @@ export class FlowEditor extends DialogMixin(LitElement) {
 
   override connectedCallback(): void {
     super.connectedCallback();
+    void this._loadAgents();
     if (this.flowId !== undefined) {
       void this._loadFlow();
+    }
+  }
+
+  private async _loadAgents(): Promise<void> {
+    try {
+      this._agents = await fetchAgents(this.slug);
+    } catch (err) {
+      this._error = userMessage(err);
     }
   }
 
@@ -504,14 +515,21 @@ export class FlowEditor extends DialogMixin(LitElement) {
             />
           </div>
           <div class="field">
-            <label>${msg("Agent ID", { id: "fe-label-agent-id" })}</label>
-            <input
-              type="text"
-              .value=${step.agentId}
-              placeholder=${msg("e.g. researcher", { id: "fe-placeholder-agent" })}
-              @input=${(e: Event) =>
-                this._updateStep(index, "agentId", (e.target as HTMLInputElement).value)}
-            />
+            <label>${msg("Agent", { id: "fe-label-agent" })}</label>
+            <select
+              @change=${(e: Event) =>
+                this._updateStep(index, "agentId", (e.target as HTMLSelectElement).value)}
+            >
+              <option value="" ?selected=${!step.agentId}>
+                ${msg("Select an agent...", { id: "fe-select-agent" })}
+              </option>
+              ${this._agents.map(
+                (a) =>
+                  html`<option value=${a.agent_id} ?selected=${step.agentId === a.agent_id}>
+                    ${a.name} (${a.agent_id})
+                  </option>`,
+              )}
+            </select>
           </div>
         </div>
 
