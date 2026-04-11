@@ -1,7 +1,7 @@
 # claw-pilot — Functional Architecture
 
-> **Version**: 0.63.0
-> **Stack**: TypeScript ~6.0 / Node.js ESM, Lit ^3, SQLite (schema v28), Hono ^4.12
+> **Version**: 0.65.1
+> **Stack**: TypeScript ~6.0 / Node.js ESM, Lit ^3, SQLite (schema v30), Hono ^4.12
 > **Repo**: https://github.com/swoelffel/claw-pilot
 > **Detailed References**: [ux-design.md](./ux-design.md) (index) · [ux-screens/](./ux-screens/) · [ux-components/](./ux-components/) · [agents.md](./agents.md) · [registry-db.md](./registry-db.md) · [i18n.md](./i18n.md) · [design-rules.md](./design-rules.md) · `CLAUDE.md`
 
@@ -31,7 +31,7 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
 │   Provisioner · Lifecycle · Health · Discovery · AgentSync      │
 │   BlueprintDeployer · AgentProvisioner · TeamExport/Import      │
 │                        │                                        │
-│              Registry (facade) → 15 Repositories                │
+│              Registry (facade) → 17 Repositories                │
 │                        │                                        │
 │              ServerConnection (abstraction)                     │
 │              LocalConnection (local shell/fs)                   │
@@ -81,6 +81,8 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
 | `rt_budget_events` | v27 | Budget audit trail (soft_alert, hard_stop, reset, override, reconcile) |
 | `discovered_models` | v28 | Models discovered from provider APIs (provider_id + model_id PK, capabilities JSON, cost JSON) |
 | `discovery_status` | v28 | Provider discovery status (last_success, last_error, model_count) |
+| `rt_tasks` | v29 + v30 | Task board — title, status (pending/in_progress/completed/blocked/cancelled), priority, assignee, labels JSON, position, type (task/epic), parent_id (epic hierarchy) |
+| `rt_task_comments` | v29 | Task discussion threads (author_id, content, FK CASCADE on task delete) |
 
 **Added columns (v17–v26)**:
 - `agents.config_json` (v20) — full RuntimeAgentConfig as JSON blob
@@ -88,7 +90,7 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
 - `instances.runtime_config_json` (v21) — full RuntimeConfig as JSON blob (source of truth)
 - `instances.default_named_key_id` (v25) — default named key FK
 
-**Current migration version: 28**
+**Current migration version: 30**
 
 **Default port range**: 18789–18838 (50 ports, 10 instances at 5-port intervals). Dashboard: 19000.
 
@@ -134,9 +136,9 @@ lifecycle.ts              start/stop/restart — PID file daemon
 health.ts                 health check — PID file
 provisioner.ts            instance creation (wizard)
 agent-provisioner.ts      add agents to existing instance
-registry.ts               facade over 16 repositories
+registry.ts               facade over 17 repositories
 registry-types.ts         types InstanceRecord, AgentRecord, BlueprintRecord, AgentBlueprintRecord, etc.
-repositories/             16 SQLite repositories:
+repositories/             17 SQLite repositories:
   server-repository.ts      — servers table
   instance-repository.ts    — instances table
   agent-repository.ts       — agents + agent_files + agent_links tables
@@ -153,6 +155,7 @@ repositories/             16 SQLite repositories:
   runtime-config-repository.ts — instances.runtime_config_json operations
   user-profile-repository.ts — user_profiles CRUD
   budget-repository.ts      — rt_budgets + rt_budget_events CRUD
+  task-repository.ts        — rt_tasks + rt_task_comments CRUD, epic hierarchy, agent checkout
 model-discovery/          Dynamic model discovery from provider APIs:
   service.ts                — ModelDiscoveryService (polling 24h, DB persistence, stale cache fallback)
   types.ts                  — DiscoveredModel, ProviderAdapter interfaces
@@ -216,8 +219,9 @@ channel/      Channel interface, ChannelRouter (per-session serialization queue)
               telegram: polling + webhook + MarkdownV2 formatter, pairing flow
 memory/       FTS5 full-text search index (memory-index.db), decay scoring
               search-tool: memory_search for agents, writer: memory file writing
-heartbeat/    HeartbeatRunner, intervals 5m-24h, active hours (timezone-aware)
-              HeartbeatTick, HeartbeatAlert, ack pattern "HEARTBEAT_OK"
+heartbeat/    HeartbeatRunner, intervals 5m-24h, active hours (timezone-aware, IANA validation)
+              permanent session reuse (primary agents), structured finish_reason tagging
+              HeartbeatTick, HeartbeatAlert, budget gate (skip if exceeded)
 ```
 
 ### Dashboard (`src/dashboard/`)
@@ -247,6 +251,7 @@ routes/
     config.ts      GET/PATCH config + providers catalog + telegram token
     runtime.ts     GET runtime status/sessions/messages/context, POST chat, GET stream SSE
     budgets.ts     Budget CRUD, override, reset, audit events (8 endpoints)
+    tasks.ts       Task board CRUD, status changes, reorder, comments, epics (11 endpoints)
     costs.ts       GET cost aggregations per agent/session
     events.ts      GET rt_events (activity console)
     heartbeat.ts   GET heartbeat history and analytics
@@ -392,7 +397,7 @@ Hono HTTP/WS server on port 19000. Dual auth: session cookie (priority) or Beare
 | **WebSocket auth** | First message authenticated via token |
 | **Rate limiting** | 60 req/min per IP on `/api/*` · 30 req/min on `POST /api/instances` · 1/5min self-update |
 | **Security headers** | CSP, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` |
-| **Validation** | Zod `.strict()` on config patches |
+| **Validation** | Zod schemas on all mutation routes (config patches, tasks, budgets, blueprints) |
 | **TokenCache** | In-memory token cache |
 | **Public healthcheck** | `GET /health` without auth |
 
@@ -406,13 +411,17 @@ Hono HTTP/WS server on port 19000. Dual auth: session cookie (priority) or Beare
 | `#/instances/:slug/pilot` | Interactive chat + LLM context panel | `cp-runtime-pilot` |
 | `#/instances/:slug/costs` | Cost analytics dashboard | `cp-costs-dashboard` |
 | `#/instances/:slug/activity` | Event browser + filters | `cp-activity-console` |
+| `#/instances/:slug/memory` | Memory file browser + search | `cp-memory-browser` |
+| `#/instances/:slug/heartbeat` | Heartbeat heatmap visualization | `cp-heartbeat-heatmap` |
+| `#/instances/:slug/session-logs` | Session log viewer | `cp-session-logs` |
+| `#/instances/:slug/tasks` | Task board (Kanban) | `cp-task-board` |
 | `#/blueprints` | Blueprints view | `cp-blueprints-view` |
 | `#/blueprints/:id/builder` | Blueprint builder | `cp-blueprint-builder` |
 | `#/agent-templates` | Agent templates (reusable) | `cp-agent-templates-view` |
 | `#/agent-templates/:id` | Agent template detail + files | `cp-agent-template-detail` |
 | `#/profile` | User profile settings | `cp-profile-settings` |
 
-### REST API (~113 endpoints)
+### REST API (~126 endpoints)
 
 #### Auth
 
@@ -493,6 +502,22 @@ Hono HTTP/WS server on port 19000. Dual auth: session cookie (priority) or Beare
 | `GET` | `/api/instances/:slug/budgets/:budgetId/events` | Budget audit events |
 | `POST` | `/api/instances/:slug/budgets/:budgetId/override` | Apply override (+20% above limit) |
 | `POST` | `/api/instances/:slug/budgets/:budgetId/reset` | Manual reset |
+
+#### Instances — Task Board (11 endpoints)
+
+| Method | Route | Role |
+|---|---|---|
+| `GET` | `/api/instances/:slug/tasks` | List tasks (optional status filter) |
+| `GET` | `/api/instances/:slug/tasks/counts` | Task counts by status |
+| `GET` | `/api/instances/:slug/tasks/:id` | Get single task |
+| `POST` | `/api/instances/:slug/tasks` | Create task or epic (Zod validated) |
+| `PATCH` | `/api/instances/:slug/tasks/:id` | Update task fields (Zod validated) |
+| `PATCH` | `/api/instances/:slug/tasks/:id/status` | Change status + drag & drop position |
+| `PATCH` | `/api/instances/:slug/tasks/:id/reorder` | Reorder within column |
+| `DELETE` | `/api/instances/:slug/tasks/:id` | Delete task (pending/cancelled only) |
+| `POST` | `/api/instances/:slug/tasks/:id/comments` | Add comment |
+| `GET` | `/api/instances/:slug/epics` | List epics |
+| `GET` | `/api/instances/:slug/epics/:id/children` | Get epic's child tasks |
 
 #### Instances — Costs, Events, Heartbeat, Memory
 
@@ -726,4 +751,4 @@ Separate SQLite FTS5 index in `memory-index.db`. Chunks MEMORY.md and memory/*.m
 
 ---
 
-*Updated: 2026-04-08 — v0.63.0: schema v28, 16 repositories, ~113 API endpoints, 8 providers, budget enforcement, dynamic model discovery*
+*Updated: 2026-04-09 — v0.65.1: schema v30, 17 repositories, ~126 API endpoints, 8 providers, task board + epic hierarchy, budget enforcement, dynamic model discovery, heartbeat overhaul*

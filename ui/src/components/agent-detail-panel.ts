@@ -1046,16 +1046,40 @@ export class AgentDetailPanel extends LitElement {
                 </div>
                 <div class="hb-field">
                   <label class="hb-label">${msg("Model override", { id: "hb-model" })}</label>
-                  <input
-                    type="text"
-                    class="hb-input"
-                    placeholder="provider/model-id"
-                    .value=${this._hbModel}
-                    @change=${(e: Event) => {
-                      this._hbModel = (e.target as HTMLInputElement).value;
-                      this._hbDirty = true;
-                    }}
-                  />
+                  ${(() => {
+                    const hbProvider = (this._providers ?? []).find(
+                      (p) => p.id === this._editProvider,
+                    );
+                    const hbModels = hbProvider?.models ?? [];
+                    const currentHbModel = this._hbModel;
+                    return html`
+                      <select
+                        class="hb-input"
+                        @change=${(e: Event) => {
+                          this._hbModel = (e.target as HTMLSelectElement).value;
+                          this._hbDirty = true;
+                        }}
+                      >
+                        <option value="" ?selected=${!currentHbModel}>
+                          —
+                          ${msg("Same as agent model", {
+                            id: "hb-model-default",
+                          })}
+                          —
+                        </option>
+                        ${hbModels.map(
+                          (m) => html`
+                            <option value=${m} ?selected=${m === currentHbModel}>${m}</option>
+                          `,
+                        )}
+                        ${currentHbModel && !hbModels.includes(currentHbModel)
+                          ? html`<option value=${currentHbModel} selected>
+                              ${currentHbModel}
+                            </option>`
+                          : nothing}
+                      </select>
+                    `;
+                  })()}
                 </div>
               </div>
 
