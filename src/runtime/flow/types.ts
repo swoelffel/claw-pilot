@@ -4,6 +4,7 @@
 
 import type Database from "better-sqlite3";
 import type { Registry } from "../../core/registry.js";
+import type { RuntimeConfig } from "../config/index.js";
 import type { InstanceSlug } from "../types.js";
 
 // ---------------------------------------------------------------------------
@@ -41,5 +42,7 @@ export interface FlowEngineContext {
   db: Database.Database;
   instanceSlug: InstanceSlug;
   registry: Registry;
+  config: RuntimeConfig;
+  workDir: string | undefined;
   abort?: AbortController;
 }

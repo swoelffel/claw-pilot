@@ -9,16 +9,10 @@ import { apiError } from "../../route-deps.js";
 import { logger } from "../../../lib/logger.js";
 import { instanceGuard } from "../../../lib/guards.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
-import { buildResolvedEnv } from "../../../lib/env-reader.js";
 import {
   listMessages,
   listParts,
-  runPromptLoop,
-  createSession,
-  getOrCreatePermanentSession,
-  resolveEffectivePersistence,
   initAgentRegistry,
-  defaultAgentName,
   getAgent,
   listAgents,
   getBus,
@@ -26,25 +20,14 @@ import {
   countMessagesSinceLastCompaction,
   getCachedSystemPrompt,
   getPersistedSystemPrompt,
-  type RuntimeAgentConfig,
 } from "../../../runtime/index.js";
-import { resolveAgentWorkspacePath } from "../../../core/agent-workspace.js";
-import { runMiddlewarePipeline } from "../../../runtime/middleware/pipeline.js";
-import { registerMiddleware, clearMiddlewares } from "../../../runtime/middleware/registry.js";
-import { guardrailMiddleware } from "../../../runtime/middleware/built-in/guardrail.js";
-import { multimodalMiddleware } from "../../../runtime/middleware/built-in/multimodal.js";
-import { toolErrorRecoveryMiddleware } from "../../../runtime/middleware/built-in/tool-error-recovery.js";
-import { createSuggestionMiddleware } from "../../../runtime/middleware/built-in/suggestions.js";
 import {
   listEnrichedSessions,
   purgeArchivedSessions,
 } from "../../../core/repositories/runtime-session-repository.js";
 import { loadMergedConfigDbFirst } from "../_config-helpers.js";
-import { resolveModelForAgent } from "../../../runtime/channel/router.js";
-
-// Active prompt-loop AbortControllers, keyed by sessionId.
-// Created in POST /runtime/chat, cleaned up in finally block.
-const activeAbortControllers = new Map<string, AbortController>();
+import { callRuntimeApi } from "../_internal-api-client.js";
+import { runtimeGuard } from "../_runtime-guard.js";
 
 // ---------------------------------------------------------------------------
 // AI SDK error extraction
@@ -526,215 +509,17 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 400, "MISSING_MESSAGE", "Field 'message' is required");
     }
 
-    const stateDir = getRuntimeStateDir(slug);
-    const config = loadMergedConfigDbFirst(registry, slug, stateDir);
-    if (!config) {
-      return apiError(
-        c,
-        404,
-        "RUNTIME_CONFIG_NOT_FOUND",
-        `No runtime config found for instance "${slug}".`,
-      );
-    }
+    // Runtime must be running for chat
+    const rtGuard = runtimeGuard(c, slug);
+    if (rtGuard) return rtGuard;
 
-    // Init agent registry
-    initAgentRegistry(config.agents);
-
-    // Register built-in middlewares (dashboard runs in a separate process from
-    // the runtime daemon, so the module-level registry is empty here)
-    clearMiddlewares();
-    registerMiddleware(guardrailMiddleware);
-    registerMiddleware(multimodalMiddleware);
-    registerMiddleware(toolErrorRecoveryMiddleware);
-    if (config.artifacts?.suggestionsEnabled !== false) {
-      registerMiddleware(
-        createSuggestionMiddleware({
-          ...(config.artifacts?.suggestionsModel !== undefined
-            ? { suggestionsModel: config.artifacts.suggestionsModel }
-            : {}),
-          maxSuggestions: config.artifacts?.maxSuggestions ?? 3,
-          ...(config.models !== undefined && config.models.length > 0
-            ? { modelAliases: config.models }
-            : {}),
-        }),
-      );
-    }
-
-    // Resolve agent
-    const agentId = body.agentId ?? defaultAgentName();
-    const agentInfo = getAgent(agentId);
-    if (!agentInfo) {
-      return apiError(c, 404, "AGENT_NOT_FOUND", `Agent "${agentId}" not found`);
-    }
-
-    // Build RuntimeAgentConfig
-    const agentCfg: RuntimeAgentConfig = config.agents.find((a) => a.id === agentId) ?? {
-      id: agentInfo.name,
-      name: agentInfo.name,
-      model: body.model ?? agentInfo.model ?? config.defaultModel,
-      permissions: agentInfo.permission ?? [],
-      maxSteps: agentInfo.steps ?? 20,
-      allowSubAgents: true,
-      toolProfile: "executor",
-      isDefault: false,
-      inheritWorkspace: true,
-    };
-
-    // Load merged env (global ~/.claw-pilot/.env + instance .env) for API key resolution.
-    // Inject into process.env so downstream resolveModel calls (e.g. A2A model resolution
-    // inside the task tool) can also find them — mirrors what the runtime daemon does at startup.
-    const mergedEnv = buildResolvedEnv(stateDir);
-    for (const [key, value] of Object.entries(mergedEnv)) {
-      if (process.env[key] === undefined) {
-        process.env[key] = value;
-      }
-    }
-
-    // Resolve model — named keys first, then legacy env-based
-    // Note: ensureMasterEncryptionKey() is called at dashboard startup (commands/dashboard.ts)
-    const chatAgentCfg = body.model ? { ...agentCfg, model: body.model } : agentCfg;
-    let resolvedModelObj;
     try {
-      resolvedModelObj = resolveModelForAgent(db, slug, chatAgentCfg, config);
+      const result = await callRuntimeApi<Record<string, unknown>>(slug, "/internal/chat", body);
+      return c.json(result);
     } catch (err) {
-      return apiError(
-        c,
-        400,
-        "MODEL_RESOLUTION_FAILED",
-        err instanceof Error ? err.message : `Cannot resolve model "${chatAgentCfg.model}"`,
-      );
-    }
-
-    // Create or resume session
-    let session;
-    if (body.sessionId) {
-      const { getSession } = await import("../../../runtime/session/session.js");
-      session = getSession(db, body.sessionId);
-      if (!session || session.instanceSlug !== slug) {
-        return apiError(c, 404, "SESSION_NOT_FOUND", `Session "${body.sessionId}" not found`);
-      }
-
-      // For permanent agents, ignore the provided sessionId and use the permanent session
-      const isPermanent =
-        resolveEffectivePersistence(
-          agentInfo,
-          config.agents.find((a) => a.id === agentId),
-        ) === "permanent";
-
-      if (isPermanent) {
-        session = getOrCreatePermanentSession(db, {
-          instanceSlug: slug,
-          agentId,
-          channel: "web",
-        });
-      }
-    } else {
-      // Resolve persistence for this agent
-      const isPermanent =
-        resolveEffectivePersistence(
-          agentInfo,
-          config.agents.find((a) => a.id === agentId),
-        ) === "permanent";
-
-      if (isPermanent) {
-        // Permanent agents: single session per agent (cross-channel, cross-peer).
-        // No peerId derivation — the session is truly unique per agent.
-        session = getOrCreatePermanentSession(db, {
-          instanceSlug: slug,
-          agentId,
-          channel: "web",
-        });
-      } else {
-        session = createSession(db, { instanceSlug: slug, agentId, channel: "api" });
-      }
-    }
-
-    // Convert uploaded files to InboundAttachment[] for vision models
-    const imageAttachments =
-      body.files && body.files.length > 0
-        ? body.files
-            .filter((f) => f.mimeType.startsWith("image/"))
-            .map((f) => ({
-              id: `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-              type: "image" as const,
-              mimeType: f.mimeType,
-              data: f.data,
-              ...(f.name ? { filename: f.name } : {}),
-            }))
-        : undefined;
-
-    // Run middleware pipeline + prompt loop with abort support
-    const agentWorkDir = resolveAgentWorkspacePath(stateDir, agentId, undefined);
-    const abortController = new AbortController();
-    activeAbortControllers.set(session.id, abortController);
-    try {
-      const pipelineOutput = await runMiddlewarePipeline({
-        ctx: {
-          db,
-          instanceSlug: slug,
-          sessionId: session.id,
-          agentConfig: agentCfg,
-          message: {
-            text: body.message!.trim(),
-            channelType: "web",
-            peerId: "dashboard",
-          },
-        },
-        runLoop: () =>
-          runPromptLoop({
-            db,
-            instanceSlug: slug,
-            sessionId: session.id,
-            userText: body.message!.trim(),
-            agentConfig: agentCfg,
-            resolvedModel: resolvedModelObj,
-            workDir: stateDir,
-            agentWorkDir,
-            runtimeAgents: config.agents.map((a) => ({ id: a.id, name: a.name })),
-            runtimeConfig: config,
-            compactionConfig: config.compaction,
-            subagentsConfig: config.subagents,
-            abort: abortController.signal,
-            ...(imageAttachments !== undefined && imageAttachments.length > 0
-              ? { imageAttachments }
-              : {}),
-            resolveTargetModel: (targetCfg) => resolveModelForAgent(db, slug, targetCfg, config),
-          }),
-      });
-
-      if (pipelineOutput.aborted) {
-        return c.json({
-          sessionId: session.id,
-          aborted: true,
-          text: "",
-          ...(pipelineOutput.abortReason !== undefined
-            ? { reason: pipelineOutput.abortReason }
-            : {}),
-        });
-      }
-
-      const result = pipelineOutput.result!;
-      return c.json({
-        sessionId: session.id,
-        messageId: result.messageId,
-        text: result.text,
-        tokens: result.tokens,
-        costUsd: result.costUsd,
-        steps: result.steps,
-      });
-    } catch (err) {
-      if (abortController.signal.aborted) {
-        return c.json({ sessionId: session.id, aborted: true, text: "" }, 200);
-      }
-
-      // Extract a useful error message from AI SDK errors (APICallError).
-      // The prompt loop now re-throws the underlying APICallError (captured via onError)
-      // instead of the generic NoOutputGeneratedError wrapper.
       const detail = extractApiErrorDetail(err);
-      logger.error(`[POST /runtime/chat] prompt loop failed: ${detail.logMessage}`);
+      logger.error(`[POST /runtime/chat] proxy failed: ${detail.logMessage}`);
       return apiError(c, detail.httpStatus, "PROMPT_LOOP_FAILED", detail.userMessage);
-    } finally {
-      activeAbortControllers.delete(session.id);
     }
   });
 
@@ -742,21 +527,31 @@ export function registerRuntimeRoutes(app: Hono, deps: RouteDeps): void {
   // POST /api/instances/:slug/runtime/sessions/:sessionId/abort
   // Abort an active prompt loop for a session.
   // ---------------------------------------------------------------------------
-  app.post("/api/instances/:slug/runtime/sessions/:sessionId/abort", (c) => {
+  app.post("/api/instances/:slug/runtime/sessions/:sessionId/abort", async (c) => {
     const slug = c.req.param("slug");
     const instance = registry.getInstance(slug);
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
 
-    const sessionId = c.req.param("sessionId");
-    const controller = activeAbortControllers.get(sessionId);
-    if (!controller) {
-      return apiError(c, 404, "NO_ACTIVE_PROMPT_LOOP", "No active prompt loop for this session");
-    }
+    const rtGuard = runtimeGuard(c, slug);
+    if (rtGuard) return rtGuard;
 
-    controller.abort();
-    activeAbortControllers.delete(sessionId);
-    return c.json({ aborted: true });
+    const sessionId = c.req.param("sessionId");
+    try {
+      const result = await callRuntimeApi<{ ok: boolean; aborted: boolean }>(
+        slug,
+        `/internal/sessions/${sessionId}/abort`,
+        {},
+        { timeoutMs: 5000 },
+      );
+      if (!result.aborted) {
+        return apiError(c, 404, "NO_ACTIVE_PROMPT_LOOP", "No active prompt loop for this session");
+      }
+      return c.json({ aborted: true });
+    } catch (err) {
+      logger.error("abort_proxy_failed", { error: String(err) });
+      return apiError(c, 502, "RUNTIME_UNREACHABLE", "Could not reach runtime daemon");
+    }
   });
 
   // ---------------------------------------------------------------------------

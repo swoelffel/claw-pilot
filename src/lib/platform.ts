@@ -126,10 +126,45 @@ const WEB_CHAT_PORT_RANGE = 100;
  * Uses a djb2-style hash to spread ports across the 19100–19199 range.
  */
 export function deriveWebChatPort(slug: string): number {
+  return WEB_CHAT_BASE_PORT + (djb2Hash(slug) % WEB_CHAT_PORT_RANGE);
+}
+
+// ---------------------------------------------------------------------------
+// Internal API port (runtime daemon ← dashboard IPC)
+// ---------------------------------------------------------------------------
+
+/** Base port for the internal API HTTP server used by dashboard→runtime IPC. */
+const INTERNAL_API_BASE_PORT = 19200;
+
+/** Number of ports in the internal API range. */
+const INTERNAL_API_PORT_RANGE = 100;
+
+/**
+ * Derive a deterministic internal API port from the instance slug.
+ * Uses the same djb2 hash to spread ports across the 19200–19299 range.
+ */
+export function deriveInternalApiPort(slug: string): number {
+  return INTERNAL_API_BASE_PORT + (djb2Hash(slug) % INTERNAL_API_PORT_RANGE);
+}
+
+/**
+ * Resolve the internal API token for dashboard→runtime IPC.
+ * Checks env `CLAW_RUNTIME_INTERNAL_TOKEN`, falls back to dev token.
+ */
+export function resolveInternalApiToken(slug: string): string {
+  return process.env["CLAW_RUNTIME_INTERNAL_TOKEN"] ?? `internal-dev-${slug}`;
+}
+
+// ---------------------------------------------------------------------------
+// djb2 hash helper
+// ---------------------------------------------------------------------------
+
+/** djb2-style hash — deterministic, fast, good distribution. */
+function djb2Hash(str: string): number {
   let hash = 5381;
-  for (let i = 0; i < slug.length; i++) {
-    hash = ((hash << 5) + hash) ^ slug.charCodeAt(i);
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash) ^ str.charCodeAt(i);
     hash = hash >>> 0; // keep unsigned 32-bit
   }
-  return WEB_CHAT_BASE_PORT + (hash % WEB_CHAT_PORT_RANGE);
+  return hash;
 }

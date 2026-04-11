@@ -18,11 +18,12 @@ import {
   updateFlowRunStatus,
   updateStepRun,
 } from "../../../core/repositories/flow-repository.js";
-import { startFlowRun } from "../../../runtime/flow/index.js";
 import {
   upsertSearchEntry,
   removeSearchEntry,
 } from "../../../core/repositories/search-repository.js";
+import { callRuntimeApi } from "../_internal-api-client.js";
+import { runtimeGuard } from "../_runtime-guard.js";
 import { logger } from "../../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -306,12 +307,16 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
   // -------------------------------------------------------------------------
   // POST /api/instances/:slug/flows/:id/run — trigger manual execution
   // -------------------------------------------------------------------------
-  app.post("/api/instances/:slug/flows/:id/run", (c) => {
+  app.post("/api/instances/:slug/flows/:id/run", async (c) => {
     const slug = c.req.param("slug");
     const id = Number(c.req.param("id"));
     const instance = registry.getInstance(slug);
     const guard = instanceGuard(c, instance);
     if (guard) return guard;
+
+    // Runtime must be running to execute flows
+    const rtGuard = runtimeGuard(c, slug);
+    if (rtGuard) return rtGuard;
 
     const flow = getFlowDefinition(db, id);
     if (!flow || flow.instance_slug !== slug) {
@@ -329,8 +334,10 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
     }
 
     try {
-      const runId = startFlowRun({ db, instanceSlug: slug, registry }, id, "manual");
-      return c.json({ runId }, 202);
+      const result = await callRuntimeApi<{ runId: number }>(slug, `/internal/flows/${id}/run`, {
+        triggerType: "manual",
+      });
+      return c.json({ runId: result.runId }, 202);
     } catch (startErr: unknown) {
       logger.error("flow_start_failed", {
         event: "flow_start_failed",
