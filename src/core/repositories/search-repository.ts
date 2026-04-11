@@ -9,7 +9,13 @@ import { logger } from "../../lib/logger.js";
 // Types
 // ---------------------------------------------------------------------------
 
-export type SearchEntityType = "instance" | "agent" | "task" | "blueprint" | "agent_blueprint";
+export type SearchEntityType =
+  | "instance"
+  | "agent"
+  | "task"
+  | "blueprint"
+  | "agent_blueprint"
+  | "flow";
 
 export interface SearchEntry {
   entityType: SearchEntityType;
@@ -288,6 +294,21 @@ export function rebuildSearchIndex(db: Database.Database): void {
         title: ab.name,
         subtitle: ab.category ?? "",
         routeHash: `/agent-templates/${ab.id}`,
+      });
+    }
+
+    // 6. Flow definitions
+    const flows = db
+      .prepare("SELECT id, instance_slug, name, steps_json FROM rt_flow_definitions")
+      .all() as Array<{ id: number; instance_slug: string; name: string; steps_json: string }>;
+    for (const flow of flows) {
+      const stepCount = (JSON.parse(flow.steps_json) as unknown[]).length;
+      insertAndMap(db, {
+        entityType: "flow",
+        entityId: String(flow.id),
+        title: flow.name,
+        subtitle: `${flow.instance_slug} · ${stepCount} steps`,
+        routeHash: `/instances/${flow.instance_slug}/flows`,
       });
     }
   });

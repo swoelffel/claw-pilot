@@ -890,3 +890,69 @@ export interface NamedApiKey {
   createdAt: string;
   updatedAt: string;
 }
+
+// ---------------------------------------------------------------------------
+// Flow orchestration
+// ---------------------------------------------------------------------------
+
+export interface FlowDefinition {
+  id: number;
+  instance_slug: string;
+  name: string;
+  description: string | null;
+  steps_json: string;
+  trigger_json: string;
+  enabled: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FlowDefinitionWithLastRun extends FlowDefinition {
+  lastRun: FlowRun | null;
+}
+
+export interface FlowRun {
+  id: number;
+  flow_id: number;
+  instance_slug: string;
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  trigger_type: string;
+  trigger_detail: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  error: string | null;
+}
+
+export interface FlowStepRun {
+  id: number;
+  run_id: number;
+  step_id: string;
+  agent_id: string;
+  status: "pending" | "running" | "completed" | "failed" | "skipped";
+  session_id: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  sitrep_json: string | null;
+  result_text: string | null;
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number;
+  error: string | null;
+  retry_count: number;
+}
+
+export interface FlowStepDef {
+  id: string;
+  agentId: string;
+  prompt: string;
+  dependsOn: string[];
+  timeoutMs?: number;
+  retries?: number;
+}
+
+export interface FlowSitrep {
+  outcome: "success" | "failure" | "partial";
+  summary: string;
+  keyFindings: string[];
+}

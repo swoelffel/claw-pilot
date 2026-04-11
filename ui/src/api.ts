@@ -28,6 +28,11 @@ import type {
   AgentCost,
   SkillsListResponse,
   ModelCost,
+  FlowDefinition,
+  FlowDefinitionWithLastRun,
+  FlowRun,
+  FlowStepRun,
+  FlowStepDef,
   RtEventsPage,
   MemoryAgentSummary,
   MemoryFileInfo,
@@ -1144,4 +1149,63 @@ export async function searchEntities(query: string, limit = 15): Promise<SearchR
     `/search?q=${encodeURIComponent(query)}&limit=${limit}`,
   );
   return data.results;
+}
+
+// ---------------------------------------------------------------------------
+// Flows
+// ---------------------------------------------------------------------------
+
+export async function listFlows(slug: string): Promise<FlowDefinitionWithLastRun[]> {
+  const data = await apiFetch<{ flows: FlowDefinitionWithLastRun[] }>(`/instances/${slug}/flows`);
+  return data.flows;
+}
+
+export async function getFlow(
+  slug: string,
+  flowId: number,
+): Promise<{ flow: FlowDefinition; runs: FlowRun[] }> {
+  return apiFetch(`/instances/${slug}/flows/${flowId}`);
+}
+
+export async function createFlow(
+  slug: string,
+  body: {
+    name: string;
+    description?: string;
+    steps: FlowStepDef[];
+    trigger?: unknown;
+    enabled?: boolean;
+  },
+): Promise<{ flow: FlowDefinition }> {
+  return apiFetch(`/instances/${slug}/flows`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateFlow(
+  slug: string,
+  flowId: number,
+  body: Record<string, unknown>,
+): Promise<{ flow: FlowDefinition }> {
+  return apiFetch(`/instances/${slug}/flows/${flowId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteFlow(slug: string, flowId: number): Promise<void> {
+  await apiFetch(`/instances/${slug}/flows/${flowId}`, { method: "DELETE" });
+}
+
+export async function runFlow(slug: string, flowId: number): Promise<{ runId: number }> {
+  return apiFetch(`/instances/${slug}/flows/${flowId}/run`, { method: "POST" });
+}
+
+export async function getFlowRun(
+  slug: string,
+  runId: number,
+): Promise<{ run: FlowRun; steps: FlowStepRun[] }> {
+  return apiFetch(`/instances/${slug}/flow-runs/${runId}`);
+}
+
+export async function cancelFlowRun(slug: string, runId: number): Promise<void> {
+  await apiFetch(`/instances/${slug}/flow-runs/${runId}/cancel`, { method: "POST" });
 }

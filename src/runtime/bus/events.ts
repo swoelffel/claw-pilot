@@ -317,6 +317,25 @@ export const SuggestionsGenerated = defineEvent<
 >("suggestions.generated");
 
 // ---------------------------------------------------------------------------
+// Flow orchestration events
+// ---------------------------------------------------------------------------
+
+export const FlowRunStarted = defineEvent<
+  "flow.run.started",
+  { instanceSlug: InstanceSlug; runId: number; flowId: number; flowName: string }
+>("flow.run.started");
+
+export const FlowStepCompleted = defineEvent<
+  "flow.step.completed",
+  { instanceSlug: InstanceSlug; runId: number; stepId: string; agentId: AgentId; outcome: string }
+>("flow.step.completed");
+
+export const FlowRunCompleted = defineEvent<
+  "flow.run.completed",
+  { instanceSlug: InstanceSlug; runId: number; flowId: number; status: string }
+>("flow.run.completed");
+
+// ---------------------------------------------------------------------------
 // Channel events
 // ---------------------------------------------------------------------------
 
@@ -370,7 +389,10 @@ export type AnyEventDef =
   | typeof GuardrailBlocked
   | typeof ToolErrorRecovered
   | typeof QuestionAsked
-  | typeof SuggestionsGenerated;
+  | typeof SuggestionsGenerated
+  | typeof FlowRunStarted
+  | typeof FlowStepCompleted
+  | typeof FlowRunCompleted;
 
 export type AnyEvent = {
   [K in AnyEventDef["type"]]: {

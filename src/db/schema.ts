@@ -1303,6 +1303,61 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v33: Flow orchestration tables — declarative workflow definitions, run tracking, step execution
+    version: 33,
+    up(db) {
+      db.exec(`
+        CREATE TABLE rt_flow_definitions (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          instance_slug   TEXT NOT NULL,
+          name            TEXT NOT NULL,
+          description     TEXT,
+          steps_json      TEXT NOT NULL,
+          trigger_json    TEXT NOT NULL DEFAULT '{"type":"manual"}',
+          enabled         INTEGER NOT NULL DEFAULT 1,
+          created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(instance_slug, name)
+        );
+
+        CREATE TABLE rt_flow_runs (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          flow_id         INTEGER NOT NULL REFERENCES rt_flow_definitions(id) ON DELETE CASCADE,
+          instance_slug   TEXT NOT NULL,
+          status          TEXT NOT NULL DEFAULT 'pending'
+                          CHECK(status IN ('pending','running','completed','failed','cancelled')),
+          trigger_type    TEXT NOT NULL DEFAULT 'manual',
+          trigger_detail  TEXT,
+          started_at      TEXT,
+          finished_at     TEXT,
+          created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+          error           TEXT
+        );
+        CREATE INDEX idx_flow_runs_instance ON rt_flow_runs(instance_slug, status);
+
+        CREATE TABLE rt_flow_step_runs (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          run_id          INTEGER NOT NULL REFERENCES rt_flow_runs(id) ON DELETE CASCADE,
+          step_id         TEXT NOT NULL,
+          agent_id        TEXT NOT NULL,
+          status          TEXT NOT NULL DEFAULT 'pending'
+                          CHECK(status IN ('pending','running','completed','failed','skipped')),
+          session_id      TEXT,
+          started_at      TEXT,
+          finished_at     TEXT,
+          sitrep_json     TEXT,
+          result_text     TEXT,
+          tokens_in       INTEGER DEFAULT 0,
+          tokens_out      INTEGER DEFAULT 0,
+          cost_usd        REAL DEFAULT 0,
+          error           TEXT,
+          retry_count     INTEGER DEFAULT 0,
+          UNIQUE(run_id, step_id)
+        );
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

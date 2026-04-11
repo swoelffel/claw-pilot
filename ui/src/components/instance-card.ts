@@ -542,6 +542,18 @@ export class InstanceCard extends LitElement {
           @click=${(e: Event) => {
             e.stopPropagation();
             this._menuOpen = false;
+            this._navigate("flows");
+          }}
+        >
+          <span class="menu-icon">⟁</span>
+          ${msg("Flows", { id: "btn-flows" })}
+        </button>
+
+        <button
+          class="menu-item"
+          @click=${(e: Event) => {
+            e.stopPropagation();
+            this._menuOpen = false;
             this._navigate("instance-settings");
           }}
         >
