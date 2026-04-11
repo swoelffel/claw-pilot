@@ -1,0 +1,102 @@
+// src/runtime/flow/sitrep.ts
+//
+// SITREP extraction from agent response and injection into permanent session.
+// SITREP = Situation Report (military term) — structured summary of mission results.
+
+import type Database from "better-sqlite3";
+import type { InstanceSlug, AgentId } from "../types.js";
+import { getOrCreatePermanentSession, createUserMessage } from "../session/index.js";
+import type { SitrepResult } from "./types.js";
+
+// ---------------------------------------------------------------------------
+// SITREP extraction (regex-based MVP)
+// ---------------------------------------------------------------------------
+
+const OUTCOME_RE = /OUTCOME:\s*(success|failure|partial)/i;
+const SUMMARY_RE = /SUMMARY:\s*(.+?)(?:\n|$)/i;
+const FINDINGS_RE = /KEY FINDINGS:\s*([\s\S]*?)(?:\n\n|$)/i;
+
+/** Extract a structured SITREP from an agent's raw response text. */
+export function extractSitrep(rawText: string): SitrepResult {
+  const outcomeMatch = OUTCOME_RE.exec(rawText);
+  const summaryMatch = SUMMARY_RE.exec(rawText);
+  const findingsMatch = FINDINGS_RE.exec(rawText);
+
+  const outcome = (outcomeMatch?.[1]?.toLowerCase() ?? "partial") as SitrepResult["outcome"];
+  const summary = summaryMatch?.[1]?.trim() ?? rawText.slice(0, 500).trim();
+
+  const keyFindings: string[] = [];
+  if (findingsMatch?.[1]) {
+    const lines = findingsMatch[1].split("\n");
+    for (const line of lines) {
+      const trimmed = line.replace(/^[-*•]\s*/, "").trim();
+      if (trimmed) keyFindings.push(trimmed);
+    }
+  }
+
+  return { outcome, summary, keyFindings };
+}
+
+// ---------------------------------------------------------------------------
+// SITREP injection into permanent session
+// ---------------------------------------------------------------------------
+
+/**
+ * Inject a SITREP message into the agent's permanent session.
+ * This enriches the strategic (permanent) context with tactical results.
+ */
+export function injectSitrep(
+  db: Database.Database,
+  opts: {
+    instanceSlug: InstanceSlug;
+    agentId: AgentId;
+    flowName: string;
+    stepId: string;
+    sitrep: SitrepResult;
+  },
+): void {
+  const session = getOrCreatePermanentSession(db, {
+    instanceSlug: opts.instanceSlug,
+    agentId: opts.agentId,
+    channel: "internal",
+  });
+
+  const findings =
+    opts.sitrep.keyFindings.length > 0
+      ? `\nKey findings:\n${opts.sitrep.keyFindings.map((f) => `- ${f}`).join("\n")}`
+      : "";
+
+  const text = [
+    `[SITREP — Flow "${opts.flowName}" Step "${opts.stepId}" — ${new Date().toISOString()}]`,
+    `Outcome: ${opts.sitrep.outcome}`,
+    `Summary: ${opts.sitrep.summary}`,
+    findings,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  createUserMessage(db, { sessionId: session.id, text });
+}
+
+// ---------------------------------------------------------------------------
+// Format SITREPs for briefing injection
+// ---------------------------------------------------------------------------
+
+/** Format dependency SITREPs for inclusion in a step's briefing. */
+export function formatSitrepsForBriefing(
+  sitreps: Array<{ stepId: string; sitrep: SitrepResult }>,
+): string {
+  if (sitreps.length === 0) return "";
+
+  const lines = ["### Previous step results"];
+  for (const entry of sitreps) {
+    lines.push(`\n**Step "${entry.stepId}"** — ${entry.sitrep.outcome}`);
+    lines.push(entry.sitrep.summary);
+    if (entry.sitrep.keyFindings.length > 0) {
+      for (const finding of entry.sitrep.keyFindings) {
+        lines.push(`- ${finding}`);
+      }
+    }
+  }
+  return lines.join("\n");
+}

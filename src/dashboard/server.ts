@@ -36,6 +36,7 @@ import { registerAgentBlueprintRoutes } from "./routes/agent-blueprints.js";
 import { registerProfileRoutes } from "./routes/profile.js";
 import { registerNamedKeyRoutes } from "./routes/named-keys.js";
 import { registerSearchRoutes } from "./routes/search.js";
+import { registerFlowRoutes } from "./routes/instances/flows.js";
 import { rebuildSearchIndex } from "../core/repositories/search-repository.js";
 import { ModelDiscoveryService } from "../core/model-discovery/service.js";
 
@@ -225,6 +226,7 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   registerProfileRoutes(app, deps);
   registerNamedKeyRoutes(app, deps);
   registerSearchRoutes(app, deps);
+  registerFlowRoutes(app, deps);
 
   // Rebuild search index on startup
   rebuildSearchIndex(deps.db);

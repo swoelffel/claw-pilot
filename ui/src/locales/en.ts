@@ -634,4 +634,21 @@ export const templates = {
   "search-group-blueprints": "Blueprints",
   "search-group-templates": "Templates",
   "search-hint": "Search",
+
+  // flow-engine
+  "btn-flows": "Flows",
+  "flow-create": "New Flow",
+  "flow-edit": "Edit Flow",
+  "flow-delete": "Delete Flow",
+  "flow-run": "Run",
+  "flow-cancel": "Cancel",
+  "flow-status-pending": "Pending",
+  "flow-status-running": "Running",
+  "flow-status-completed": "Completed",
+  "flow-status-failed": "Failed",
+  "flow-status-cancelled": "Cancelled",
+  "flow-step": "Step",
+  "flow-trigger-manual": "Manual",
+  "flow-trigger-bus": "Automatic",
+  "flow-sitrep": "Mission Report",
 };

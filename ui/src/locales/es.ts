@@ -602,4 +602,21 @@ export const templates = {
   "search-group-blueprints": "Blueprints",
   "search-group-templates": "Plantillas",
   "search-hint": "Buscar",
+
+  // flow-engine
+  "btn-flows": "Flujos",
+  "flow-create": "Nuevo Flujo",
+  "flow-edit": "Editar Flujo",
+  "flow-delete": "Eliminar Flujo",
+  "flow-run": "Ejecutar",
+  "flow-cancel": "Cancelar",
+  "flow-status-pending": "Pendiente",
+  "flow-status-running": "En ejecucion",
+  "flow-status-completed": "Completado",
+  "flow-status-failed": "Fallido",
+  "flow-status-cancelled": "Cancelado",
+  "flow-step": "Paso",
+  "flow-trigger-manual": "Manual",
+  "flow-trigger-bus": "Automatico",
+  "flow-sitrep": "Informe de mision",
 };

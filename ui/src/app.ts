@@ -37,6 +37,9 @@ import "./components/memory-browser.js";
 import "./components/heartbeat-heatmap.js";
 import "./components/session-logs.js";
 import "./components/task-board.js";
+import "./components/flow-list.js";
+import "./components/flow-editor.js";
+import "./components/flow-run-detail.js";
 import "./components/budget-alert-banner.js";
 import "./components/command-palette.js";
 
@@ -730,6 +733,7 @@ export class CpApp extends LitElement {
         view?: string;
         blueprintId?: number;
         templateId?: string;
+        runId?: number;
         section?: import("./types.js").SidebarSection;
       }>
     ).detail;
@@ -753,6 +757,10 @@ export class CpApp extends LitElement {
       this._route = { view: "session-logs", slug: detail.slug };
     } else if (detail.view === "tasks" && detail.slug) {
       this._route = { view: "tasks", slug: detail.slug };
+    } else if (detail.view === "flows" && detail.slug) {
+      this._route = { view: "flows", slug: detail.slug };
+    } else if (detail.view === "flow-run" && detail.slug && detail.runId !== undefined) {
+      this._route = { view: "flow-run", slug: detail.slug, runId: detail.runId };
     } else if (detail.view === "agents-builder" && detail.slug) {
       this._route = { view: "agents-builder", slug: detail.slug };
     } else if (detail.view === "blueprints") {
@@ -966,6 +974,28 @@ export class CpApp extends LitElement {
           @navigate=${this._navigate}
         ></cp-budget-alert-banner>
         <cp-task-board .slug=${this._route.slug} @navigate=${this._navigate}></cp-task-board>
+      `;
+    }
+    if (this._route.view === "flows") {
+      return html`
+        <cp-budget-alert-banner
+          .slug=${this._route.slug}
+          @navigate=${this._navigate}
+        ></cp-budget-alert-banner>
+        <cp-flow-list .slug=${this._route.slug} @navigate=${this._navigate}></cp-flow-list>
+      `;
+    }
+    if (this._route.view === "flow-run") {
+      return html`
+        <cp-budget-alert-banner
+          .slug=${this._route.slug}
+          @navigate=${this._navigate}
+        ></cp-budget-alert-banner>
+        <cp-flow-run-detail
+          .slug=${this._route.slug}
+          .runId=${this._route.runId}
+          @navigate=${this._navigate}
+        ></cp-flow-run-detail>
       `;
     }
     return html``;
