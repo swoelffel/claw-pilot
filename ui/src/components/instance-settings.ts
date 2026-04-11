@@ -335,8 +335,7 @@ export class InstanceSettings extends LitElement {
     const namedKeys = c.namedKeys ?? [];
     const defaultNamedKeyId = c.defaultNamedKeyId ?? null;
     const defaultKey = namedKeys.find((k) => k.id === defaultNamedKeyId);
-    const selectedProviderId =
-      defaultKey?.providerId ?? c.general.defaultModel.split("/")[0] ?? "";
+    const selectedProviderId = defaultKey?.providerId ?? c.general.defaultModel.split("/")[0] ?? "";
     const selectedProviderCatalog = this._providerCatalog.find((p) => p.id === selectedProviderId);
     return { providerId: selectedProviderId, models: selectedProviderCatalog?.models ?? [] };
   }
