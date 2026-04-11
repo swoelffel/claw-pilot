@@ -65,6 +65,8 @@ export interface RouterInput {
   mcpRegistry?: McpRegistry;
   /** Profile resolver — used to inject user profile into system prompt */
   profileResolver?: ProfileResolver;
+  /** Force use of an existing session (e.g. flow mission sessions) */
+  sessionId?: string;
 }
 
 export interface RouterResult {
@@ -123,8 +125,9 @@ export class ChannelRouter {
       ? resolveModelFromString(config.defaultInternalModel, config.models)
       : undefined;
 
-    // 3. Find or create session for this peer
-    const sessionId = findOrCreateSession(db, instanceSlug, message, agentId, config);
+    // 3. Find or create session for this peer (or use forced sessionId)
+    const sessionId =
+      input.sessionId ?? findOrCreateSession(db, instanceSlug, message, agentId, config);
 
     // 4. Run middleware pipeline + prompt loop — serialized per session via queue
     // Resolve the agent's workspace directory to show to the agent (env block).

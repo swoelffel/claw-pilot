@@ -72,6 +72,7 @@ export async function executeStep(
 
   try {
     // 3. Route through ChannelRouter (uses runtime's initialized middlewares + agent registry)
+    //    Pass sessionId so messages are persisted in the mission session, not the permanent one.
     const result = await ChannelRouter.route({
       db,
       instanceSlug,
@@ -82,6 +83,7 @@ export async function executeStep(
         text: briefingText,
       },
       agentId,
+      sessionId: session.id,
       ...(ctx.workDir !== undefined ? { workDir: ctx.workDir } : {}),
       abort: abortController.signal,
     });
