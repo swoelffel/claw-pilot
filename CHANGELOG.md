@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.67.1] — 2026-04-11
+
+### Fixed
+- **Model selectors harmonized**: heartbeat model dropdowns in instance settings and agent detail panel now filter by API key provider instead of showing all providers
+- Extracted `_getSelectedProviderModels()` helper in instance-settings for consistent provider-based model filtering
+- Agent heartbeat "Model override" field changed from free-text input to filtered `<select>` dropdown
+- Circular dependency between task and activity repositories resolved
+
+---
+
 ## [0.67.0] — 2026-04-10
 
 ### Added
