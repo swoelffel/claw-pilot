@@ -31,24 +31,6 @@ interface FlowStep {
 
 type TriggerType = "manual" | "bus";
 
-interface FlowPayload {
-  name: string;
-  description: string;
-  triggerType: TriggerType;
-  steps: Array<{
-    id: string;
-    agentId: string;
-    prompt: string;
-    dependencies: string[];
-    timeout: number;
-    retries: number;
-  }>;
-}
-
-interface FlowResponse extends FlowPayload {
-  flowId: number;
-}
-
 // --- Helpers ---
 
 let _stepCounter = 0;
