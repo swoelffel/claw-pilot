@@ -6,6 +6,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.68.0] — 2026-04-11
+
+### Added
+- **FLOW-001 — Declarative workflow orchestration engine**: DAG-based multi-agent workflows with fan-out/fan-in parallel execution
+- Schema v33: `rt_flow_definitions`, `rt_flow_runs`, `rt_flow_step_runs` tables
+- Flow engine: topological sort, cycle detection, timeout, cancel, Promise.race step completion
+- Briefing/SITREP cycle: permanent session context → mission session → structured result summary
+- API: 9 flow endpoints with Zod validation + DAG cycle detection
+- UI: `cp-flow-list` (run/edit/delete), `cp-flow-editor` (agent select dropdown, DialogMixin), `cp-flow-run-detail` (live polling, step cards, SITREP expandable)
+- Bus events: FlowRunStarted, FlowStepCompleted, FlowRunCompleted
+- Flows added to FTS5 search index
+
+### Changed
+- **Runtime internal API**: all agent execution moved from dashboard to runtime daemon via internal HTTP API (`node:http`, port 19200-19299, Bearer auth via `timingSafeEqual`)
+- Dashboard `POST /runtime/chat` simplified from ~230 to ~30 lines (HTTP proxy)
+- Dashboard `_wakeup-agent.ts` simplified from ~150 to ~20 lines
+- Flow step execution uses `ChannelRouter.route()` directly with runtime's pre-initialized context
+- `loadMergedConfigDbFirst` relocated from dashboard to `src/runtime/config/loader.ts`
+- Instance must be **running** for chat, flows, and agent wakeup (503 when stopped)
+
+### Fixed
+- Flow Run button disabled with tooltip when instance is stopped
+- SITREP extraction regex tolerates markdown decoration (`## **OUTCOME**:`, `**OUTCOME**:`)
+- Flow step messages now persist in mission sessions (visible in session logs)
+- Flow editor correctly parses API response format (`steps_json`, `trigger_json`)
+
+---
+
 ## [0.67.1] — 2026-04-11
 
 ### Fixed

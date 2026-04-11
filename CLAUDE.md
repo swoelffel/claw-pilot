@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-`claw-pilot` v0.67.1 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, permanent cross-channel sessions, and extensible middleware pipeline.
+`claw-pilot` v0.68.0 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, permanent cross-channel sessions, and extensible middleware pipeline.
 
 All instances use the **claw-runtime** engine — a native Node.js engine (`src/runtime/`), managed via PID file daemon.
 
@@ -16,7 +16,7 @@ GitHub: https://github.com/swoelffel/claw-pilot
 - **Runtime**: Node.js >= 22.12.0, ESM, pnpm
 - **CLI**: Commander.js + @inquirer/prompts
 - **HTTP/WS**: Hono + ws
-- **DB**: better-sqlite3 (SQLite, WAL mode, schema v32)
+- **DB**: better-sqlite3 (SQLite, WAL mode, schema v33)
 - **UI**: Lit web components + Vite
 - **Build**: tsdown (CLI) + vite (UI)
 - **Tests**: Vitest
@@ -101,6 +101,9 @@ docs/main-doc.md    # Functional architecture — read this before major changes
 | `rt_parts` | Message parts (text, tool-call, tool-result) |
 | `rt_events` | Runtime events (bus events persisted for dashboard) |
 | `rt_task_activities` | Task activity timeline — chronological log of all task mutations + comments |
+| `rt_flow_definitions` | Flow definitions — name, steps_json (DAG), trigger_json, enabled |
+| `rt_flow_runs` | Flow run records — status (pending/running/completed/failed/cancelled) |
+| `rt_flow_step_runs` | Step execution — session_id, sitrep_json, result_text, tokens, cost |
 | `search_index` | FTS5 contentless virtual table for global cross-entity search |
 | `search_index_map` | Shadow table mapping (entity_type, entity_id) to FTS5 rowid + original values |
 | `rt_permissions` | Persisted permission rules (allow/deny/ask per scope+pattern) |
@@ -244,7 +247,7 @@ STARTING/STOPPING state on instance cards is tracked in `Monitor._transitioning`
 
 ## Test coverage
 
-~2108 tests passing, ~62% line coverage (+ ~100 e2e). Coverage thresholds enforced in `vitest.config.ts` (lines 61%, stmts 60%, funcs 63%, branches 53%). Tests are under `src/**/__tests__/`. Run with `pnpm test:run` before submitting changes.
+~2151 tests passing, ~62% line coverage (+ ~100 e2e). Coverage thresholds enforced in `vitest.config.ts` (lines 61%, stmts 60%, funcs 63%, branches 53%). Tests are under `src/**/__tests__/`. Run with `pnpm test:run` before submitting changes.
 
 ## UI development
 
