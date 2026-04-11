@@ -424,10 +424,9 @@ export class FlowEditor extends DialogMixin(LitElement) {
   }
 
   private _isFormValid(): boolean {
-    if (!this._name.trim()) return false;
-    if (this._steps.length === 0) return false;
-    // Every step must have an ID and an agent ID
-    return this._steps.every((s) => s.id.trim() && s.agentId.trim());
+    if (!(this._name ?? "").trim()) return false;
+    if (!this._steps || this._steps.length === 0) return false;
+    return this._steps.every((s) => (s.id ?? "").trim() && (s.agentId ?? "").trim());
   }
 
   private async _save(): Promise<void> {
@@ -436,8 +435,8 @@ export class FlowEditor extends DialogMixin(LitElement) {
     this._error = "";
 
     const payload: FlowPayload = {
-      name: this._name.trim(),
-      description: this._description.trim(),
+      name: (this._name ?? "").trim(),
+      description: (this._description ?? "").trim(),
       triggerType: this._triggerType,
       steps: this._steps.map((s) => ({
         id: s.id.trim(),
