@@ -370,20 +370,37 @@ export class FlowEditor extends DialogMixin(LitElement) {
         }
         throw new Error(message);
       }
-      const flow = (await res.json()) as FlowResponse;
+      const body = (await res.json()) as {
+        flow: {
+          name: string;
+          description: string | null;
+          steps_json: string;
+          trigger_json: string;
+        };
+      };
+      const flow = body.flow;
+      const steps = JSON.parse(flow.steps_json) as Array<{
+        id: string;
+        agentId: string;
+        prompt: string;
+        dependsOn?: string[];
+        timeoutMs?: number;
+        retries?: number;
+      }>;
+      const trigger = JSON.parse(flow.trigger_json) as { type: string };
+
       this._name = flow.name;
       this._description = flow.description ?? "";
-      this._triggerType = flow.triggerType ?? "manual";
-      this._steps = flow.steps.map((s, i) => ({
+      this._triggerType = (trigger.type === "bus" ? "bus" : "manual") as TriggerType;
+      this._steps = steps.map((s, i) => ({
         id: s.id ?? `step-${i + 1}`,
         agentId: s.agentId ?? "",
         prompt: s.prompt ?? "",
-        dependencies: Array.isArray(s.dependencies) ? s.dependencies.join(", ") : "",
-        timeout: s.timeout ?? 60,
+        dependencies: Array.isArray(s.dependsOn) ? s.dependsOn.join(", ") : "",
+        timeout: s.timeoutMs ? Math.round(s.timeoutMs / 1000) : 60,
         retries: s.retries ?? 0,
         _advancedOpen: false,
       }));
-      // Update counter so new steps don't collide
       _stepCounter = this._steps.length;
     } catch (err) {
       this._error = userMessage(err);
@@ -434,20 +451,20 @@ export class FlowEditor extends DialogMixin(LitElement) {
     this._saving = true;
     this._error = "";
 
-    const payload: FlowPayload = {
+    const payload = {
       name: (this._name ?? "").trim(),
       description: (this._description ?? "").trim(),
-      triggerType: this._triggerType,
+      trigger: { type: this._triggerType },
       steps: this._steps.map((s) => ({
         id: s.id.trim(),
         agentId: s.agentId.trim(),
         prompt: s.prompt.trim(),
-        dependencies: s.dependencies
+        dependsOn: (s.dependencies ?? "")
           .split(",")
           .map((d) => d.trim())
           .filter(Boolean),
-        timeout: s.timeout,
-        retries: s.retries,
+        ...(s.timeout && s.timeout !== 60 ? { timeoutMs: s.timeout * 1000 } : {}),
+        ...(s.retries ? { retries: s.retries } : {}),
       })),
     };
 
