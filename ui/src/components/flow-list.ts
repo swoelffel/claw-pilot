@@ -5,7 +5,7 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
-import { listFlows, runFlow, deleteFlow, updateFlow } from "../api.js";
+import { listFlows, runFlow, deleteFlow, updateFlow, fetchInstances } from "../api.js";
 import type { FlowDefinitionWithLastRun, FlowStepDef } from "../types.js";
 import "./flow-editor.js";
 
@@ -67,6 +67,7 @@ export class FlowList extends LitElement {
   @state() private _loading = true;
   @state() private _error = "";
   @state() private _runningIds: Set<number> = new Set();
+  @state() private _instanceRunning = false;
   @state() private _editorOpen = false;
   @state() private _editFlowId: number | undefined;
 
@@ -90,8 +91,9 @@ export class FlowList extends LitElement {
   private async _load(): Promise<void> {
     if (!this.slug) return;
     try {
-      const flows = await listFlows(this.slug);
+      const [flows, instances] = await Promise.all([listFlows(this.slug), fetchInstances()]);
       this._flows = flows;
+      this._instanceRunning = instances.find((i) => i.slug === this.slug)?.state === "running";
       // Sync running ids from actual server state
       const stillRunning = new Set(
         flows.filter((f) => f.lastRun?.status === "running").map((f) => f.id),
@@ -243,8 +245,10 @@ export class FlowList extends LitElement {
         <div class="flow-actions">
           <button
             class="btn-action btn-run"
-            ?disabled=${isRunning}
-            title=${msg("Run", { id: "flow-list-run" })}
+            ?disabled=${isRunning || !this._instanceRunning}
+            title=${!this._instanceRunning
+              ? msg("Instance must be running to execute flows", { id: "flow-list-run-disabled" })
+              : msg("Run", { id: "flow-list-run" })}
             @click=${() => void this._runFlow(flow.id)}
           >
             ${isRunning

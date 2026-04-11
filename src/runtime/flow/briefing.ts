@@ -72,12 +72,18 @@ export function buildBriefing(
     sections.push("");
   }
 
-  // 5. Instructions
-  sections.push("### Instructions");
-  sections.push("Execute this mission autonomously. Structure your final response:");
-  sections.push("- OUTCOME: success | failure | partial");
-  sections.push("- SUMMARY: 1-2 sentences");
-  sections.push("- KEY FINDINGS: bullet points (if applicable)");
+  // 5. Response format (must be prominent so LLMs reliably produce parseable markers)
+  sections.push("### MANDATORY response format");
+  sections.push("Your response MUST end with the following structured block, exactly as shown.");
+  sections.push("Do NOT omit it, do NOT rephrase the labels.\n");
+  sections.push("```");
+  sections.push("OUTCOME: success | failure | partial");
+  sections.push("SUMMARY: <1-2 sentence summary of what you found or did>");
+  sections.push("KEY FINDINGS:");
+  sections.push("- <finding 1>");
+  sections.push("- <finding 2>");
+  sections.push("- ...");
+  sections.push("```");
 
   return sections.join("\n");
 }

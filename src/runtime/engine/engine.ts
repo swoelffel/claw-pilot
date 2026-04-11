@@ -47,7 +47,22 @@ import {
   getBudgetsForInstance,
   reconcileBudget,
 } from "../../core/repositories/budget-repository.js";
+import { Registry } from "../../core/registry.js";
 import { logger, type Logger } from "../../lib/logger.js";
+import { deriveInternalApiPort, resolveInternalApiToken } from "../../lib/platform.js";
+import {
+  InternalApiServer,
+  type ChatRequest,
+  type ChatResponse,
+  type WakeRequest,
+  type FlowRunRequest,
+  type InternalApiHandlers,
+} from "./internal-api.js";
+import { createUserMessage } from "../session/message.js";
+import { runPromptLoop } from "../session/prompt-loop.js";
+import { runMiddlewarePipeline } from "../middleware/pipeline.js";
+import { resolveModelForAgent } from "../channel/router.js";
+import { startFlowRun } from "../flow/engine.js";
 import type { ProfileResolver } from "../profile/types.js";
 
 // ---------------------------------------------------------------------------
@@ -64,6 +79,9 @@ export class ClawRuntime {
   private _eventPersistenceUnsub: (() => void) | undefined;
   private _taskWiringUnsub: (() => void) | undefined;
   private _cleanupTimer: ReturnType<typeof setInterval> | undefined;
+  private _internalApi: InternalApiServer | undefined;
+  private _abortControllers = new Map<string, AbortController>();
+  private _registry: Registry | undefined;
   private _error: string | undefined;
   readonly log: Logger;
 
@@ -193,6 +211,25 @@ export class ClawRuntime {
         await channel.connect();
       }
 
+      // 4b. Start internal API server for dashboard IPC
+      try {
+        this._internalApi = new InternalApiServer({
+          port: deriveInternalApiPort(this.instanceSlug),
+          token: resolveInternalApiToken(this.instanceSlug),
+          slug: this.instanceSlug,
+          handlers: this._buildInternalApiHandlers(),
+        });
+        await this._internalApi.start();
+      } catch (apiErr) {
+        // Non-fatal: internal API server may fail to bind in test environments
+        // or when multiple runtimes with the same slug hash collide.
+        this.log.warn("internal_api_start_skipped", {
+          event: "internal_api_start_skipped",
+          error: apiErr instanceof Error ? apiErr.message : String(apiErr),
+        });
+        this._internalApi = undefined;
+      }
+
       this._setState("running");
       this.log.info("runtime_started", { event: "runtime_started" });
 
@@ -237,6 +274,16 @@ export class ClawRuntime {
     }
 
     const errors: string[] = [];
+
+    // 0. Stop internal API server
+    if (this._internalApi) {
+      try {
+        await this._internalApi.stop();
+      } catch (err) {
+        errors.push(`internal-api: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      this._internalApi = undefined;
+    }
 
     // 1. Disconnect channels
     for (const channel of this._channels) {
@@ -378,6 +425,119 @@ export class ClawRuntime {
           ...(routeStack !== undefined ? { stack: routeStack } : {}),
         });
       }
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internal API handlers (dashboard IPC)
+  // ---------------------------------------------------------------------------
+
+  private _buildInternalApiHandlers(): InternalApiHandlers {
+    return {
+      handleChat: async (body: ChatRequest): Promise<ChatResponse> => {
+        const result = await ChannelRouter.route({
+          db: this.db,
+          instanceSlug: this.instanceSlug,
+          config: this.config,
+          message: {
+            channelType: "web",
+            peerId: "dashboard",
+            text: body.message,
+          },
+          ...(body.agentId !== undefined ? { agentId: body.agentId } : {}),
+          ...(this.workDir !== undefined ? { workDir: this.workDir } : {}),
+          ...(this._mcpRegistry !== undefined ? { mcpRegistry: this._mcpRegistry } : {}),
+          ...(this.profileResolver !== undefined ? { profileResolver: this.profileResolver } : {}),
+        });
+        return {
+          sessionId: result.sessionId,
+          messageId: result.response.text ? result.sessionId : "",
+          text: result.response.text,
+          tokens: result.tokens,
+          costUsd: result.costUsd,
+          steps: 1,
+        };
+      },
+
+      handleWake: (body: WakeRequest): void => {
+        const session = getOrCreatePermanentSession(this.db, {
+          instanceSlug: this.instanceSlug,
+          agentId: body.agentId,
+          channel: "internal",
+        });
+        createUserMessage(this.db, { sessionId: session.id, text: body.messageText });
+
+        // Fire-and-forget prompt loop
+        const agentCfg = this.config.agents.find((a) => a.id === body.agentId);
+        if (!agentCfg) {
+          this.log.warn("internal_api_wake_agent_not_found", { agentId: body.agentId });
+          return;
+        }
+        const resolvedModel = resolveModelForAgent(
+          this.db,
+          this.instanceSlug,
+          agentCfg,
+          this.config,
+        );
+
+        void runMiddlewarePipeline({
+          ctx: {
+            db: this.db,
+            instanceSlug: this.instanceSlug,
+            sessionId: session.id,
+            agentConfig: agentCfg,
+            message: { text: body.messageText, channelType: "web", peerId: "task-board" },
+          },
+          runLoop: () =>
+            runPromptLoop({
+              db: this.db,
+              instanceSlug: this.instanceSlug,
+              sessionId: session.id,
+              userText: body.messageText,
+              agentConfig: agentCfg,
+              resolvedModel,
+              workDir: this.workDir,
+              runtimeAgents: this.config.agents.map((a) => ({ id: a.id, name: a.name })),
+              runtimeConfig: this.config,
+              compactionConfig: this.config.compaction,
+              subagentsConfig: this.config.subagents,
+              resolveTargetModel: (targetCfg) =>
+                resolveModelForAgent(this.db, this.instanceSlug, targetCfg, this.config),
+            }),
+        }).catch((err: unknown) => {
+          this.log.error("internal_api_wake_failed", {
+            event: "internal_api_wake_failed",
+            agentId: body.agentId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      },
+
+      handleFlowRun: (flowId: number, body: FlowRunRequest): number => {
+        if (!this._registry) this._registry = new Registry(this.db);
+        return startFlowRun(
+          {
+            db: this.db,
+            instanceSlug: this.instanceSlug,
+            registry: this._registry,
+            config: this.config,
+            workDir: this.workDir,
+          },
+          flowId,
+          body.triggerType ?? "manual",
+          body.triggerDetail,
+        );
+      },
+
+      handleAbort: (sessionId: string): boolean => {
+        const controller = this._abortControllers.get(sessionId);
+        if (controller) {
+          controller.abort();
+          this._abortControllers.delete(sessionId);
+          return true;
+        }
+        return false;
+      },
     };
   }
 

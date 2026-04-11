@@ -17,6 +17,9 @@ vi.mock("../routes/_config-helpers.js", () => ({
 }));
 vi.mock("../../lib/platform.js", () => ({
   getRuntimeStateDir: vi.fn(() => "/tmp/fake-state"),
+  isRuntimeRunning: vi.fn(() => false),
+  deriveInternalApiPort: vi.fn(() => 19250),
+  resolveInternalApiToken: vi.fn(() => "test-token"),
 }));
 vi.mock("../../lib/env-reader.js", () => ({
   buildResolvedEnv: vi.fn(() => ({})),
@@ -98,7 +101,7 @@ import {
   listEnrichedSessions,
   purgeArchivedSessions,
 } from "../../core/repositories/runtime-session-repository.js";
-import { listMessages, listParts, getAgent, initAgentRegistry } from "../../runtime/index.js";
+import { listMessages, listParts } from "../../runtime/index.js";
 
 import { resolveQuestion } from "../../runtime/tool/built-in/question.js";
 
@@ -406,14 +409,14 @@ describe("GET /api/instances/:slug/runtime/sessions/:sessionId/messages", () => 
 });
 
 describe("POST /api/instances/:slug/runtime/sessions/:sessionId/abort", () => {
-  it("returns 404 when no active prompt loop", async () => {
+  it("returns 503 when runtime is not running", async () => {
     const res = await app.request("/api/instances/test-inst/runtime/sessions/sess-1/abort", {
       method: "POST",
       headers: authHeaders(),
     });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(503);
     const data = await json(res);
-    expect(data.code).toBe("NO_ACTIVE_PROMPT_LOOP");
+    expect(data.code).toBe("RUNTIME_NOT_RUNNING");
   });
 
   it("returns 404 for unknown slug", async () => {
@@ -616,34 +619,16 @@ describe("POST /api/instances/:slug/runtime/chat", () => {
     expect(data.code).toBe("MISSING_MESSAGE");
   });
 
-  it("returns 404 when no runtime config found", async () => {
-    vi.mocked(loadMergedConfigDbFirst).mockReturnValue(null);
+  it("returns 503 when runtime is not running", async () => {
+    // Runtime daemon is not running — isRuntimeRunning returns false (no PID file in test env)
     const res = await app.request("/api/instances/test-inst/runtime/chat", {
       method: "POST",
       headers: jsonHeaders(),
       body: JSON.stringify({ message: "Hello" }),
     });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(503);
     const data = await json(res);
-    expect(data.code).toBe("RUNTIME_CONFIG_NOT_FOUND");
-  });
-
-  it("returns 404 when agent is not found", async () => {
-    vi.mocked(loadMergedConfigDbFirst).mockReturnValue({
-      defaultModel: "anthropic/claude-sonnet",
-      agents: [],
-    } as never);
-    vi.mocked(initAgentRegistry).mockReturnValue(undefined);
-    vi.mocked(getAgent).mockReturnValue(undefined as never);
-
-    const res = await app.request("/api/instances/test-inst/runtime/chat", {
-      method: "POST",
-      headers: jsonHeaders(),
-      body: JSON.stringify({ message: "Hello" }),
-    });
-    expect(res.status).toBe(404);
-    const data = await json(res);
-    expect(data.code).toBe("AGENT_NOT_FOUND");
+    expect(data.code).toBe("RUNTIME_NOT_RUNNING");
   });
 
   it("returns 404 for unknown slug", async () => {

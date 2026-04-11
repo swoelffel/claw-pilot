@@ -69,6 +69,41 @@ describe("extractSitrep", () => {
     expect(sitrep.outcome).toBe("success");
     expect(sitrep.summary).toBe("It worked.");
   });
+
+  it("extracts from markdown-decorated labels (## **OUTCOME**:)", () => {
+    const text = [
+      "Some preamble text.",
+      "",
+      "## **OUTCOME**: success",
+      "",
+      "## **SUMMARY**: Score 74/100 with critical risk detected.",
+      "",
+      "## **KEY FINDINGS**:",
+      "- Score 74/100",
+      "- Critical: ops-audit activity anomaly",
+      "- PATH configuration broken",
+    ].join("\n");
+
+    const sitrep = extractSitrep(text);
+    expect(sitrep.outcome).toBe("success");
+    expect(sitrep.summary).toBe("Score 74/100 with critical risk detected.");
+    expect(sitrep.keyFindings).toHaveLength(3);
+    expect(sitrep.keyFindings[0]).toBe("Score 74/100");
+  });
+
+  it("extracts from bold-only labels (**OUTCOME**:)", () => {
+    const text = [
+      "**OUTCOME**: partial",
+      "**SUMMARY**: Partial results obtained.",
+      "**KEY FINDINGS**:",
+      "- Finding A",
+    ].join("\n");
+
+    const sitrep = extractSitrep(text);
+    expect(sitrep.outcome).toBe("partial");
+    expect(sitrep.summary).toBe("Partial results obtained.");
+    expect(sitrep.keyFindings).toEqual(["Finding A"]);
+  });
 });
 
 describe("formatSitrepsForBriefing", () => {
