@@ -10,7 +10,7 @@ import type { Hono } from "hono";
 import { z } from "zod";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
-import { instanceGuard } from "../../../lib/guards.js";
+import { getInstanceContext } from "../_instance-middleware.js";
 import { getBus, PermissionReplied } from "../../../runtime/index.js";
 import { logger } from "../../../lib/logger.js";
 
@@ -44,17 +44,14 @@ interface RtPermissionRow {
 // ---------------------------------------------------------------------------
 
 export function registerPermissionRoutes(app: Hono, deps: RouteDeps): void {
-  const { registry, db } = deps;
+  const { db } = deps;
 
   // -------------------------------------------------------------------------
   // GET /api/instances/:slug/runtime/permissions
   // Liste les règles persistées dans rt_permissions pour cette instance.
   // -------------------------------------------------------------------------
   app.get("/api/instances/:slug/runtime/permissions", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     let rules: RtPermissionRow[] = [];
     try {
@@ -80,11 +77,8 @@ export function registerPermissionRoutes(app: Hono, deps: RouteDeps): void {
   // Supprime une règle persistée par son id.
   // -------------------------------------------------------------------------
   app.delete("/api/instances/:slug/runtime/permissions/:id", (c) => {
-    const slug = c.req.param("slug");
+    const { slug } = getInstanceContext(c);
     const id = c.req.param("id");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
 
     let deleted = false;
     try {
@@ -110,10 +104,7 @@ export function registerPermissionRoutes(app: Hono, deps: RouteDeps): void {
   // Body: { permissionId, decision, persist, comment? }
   // -------------------------------------------------------------------------
   app.post("/api/instances/:slug/runtime/permission/reply", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     // Parse + validation du body
     let rawBody: unknown;

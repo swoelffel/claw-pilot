@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
-import { instanceGuard } from "../../../lib/guards.js";
+import { getInstanceContext } from "../_instance-middleware.js";
 import {
   createFlowDefinition,
   getFlowDefinition,
@@ -144,10 +144,7 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
   // GET /api/instances/:slug/flows — list flow definitions
   // -------------------------------------------------------------------------
   app.get("/api/instances/:slug/flows", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const flows = listFlowDefinitions(db, slug);
 
@@ -167,11 +164,8 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
   // GET /api/instances/:slug/flows/:id — get flow definition + recent runs
   // -------------------------------------------------------------------------
   app.get("/api/instances/:slug/flows/:id", (c) => {
-    const slug = c.req.param("slug");
+    const { slug } = getInstanceContext(c);
     const id = Number(c.req.param("id"));
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
 
     const flow = getFlowDefinition(db, id);
     if (!flow || flow.instance_slug !== slug) {
@@ -186,10 +180,7 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
   // POST /api/instances/:slug/flows — create flow definition
   // -------------------------------------------------------------------------
   app.post("/api/instances/:slug/flows", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const body = await c.req.json().catch(() => null);
     if (!body) return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
@@ -237,11 +228,8 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
   // PATCH /api/instances/:slug/flows/:id — update flow definition
   // -------------------------------------------------------------------------
   app.patch("/api/instances/:slug/flows/:id", async (c) => {
-    const slug = c.req.param("slug");
+    const { slug } = getInstanceContext(c);
     const id = Number(c.req.param("id"));
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
 
     const existing = getFlowDefinition(db, id);
     if (!existing || existing.instance_slug !== slug) {
@@ -287,11 +275,8 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
   // DELETE /api/instances/:slug/flows/:id — delete flow definition
   // -------------------------------------------------------------------------
   app.delete("/api/instances/:slug/flows/:id", (c) => {
-    const slug = c.req.param("slug");
+    const { slug } = getInstanceContext(c);
     const id = Number(c.req.param("id"));
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
 
     const existing = getFlowDefinition(db, id);
     if (!existing || existing.instance_slug !== slug) {
@@ -308,11 +293,8 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
   // POST /api/instances/:slug/flows/:id/run — trigger manual execution
   // -------------------------------------------------------------------------
   app.post("/api/instances/:slug/flows/:id/run", async (c) => {
-    const slug = c.req.param("slug");
+    const { slug } = getInstanceContext(c);
     const id = Number(c.req.param("id"));
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
 
     // Runtime must be running to execute flows
     const rtGuard = runtimeGuard(c, slug);
@@ -353,11 +335,8 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
   // GET /api/instances/:slug/flows/:id/runs — list runs for a flow
   // -------------------------------------------------------------------------
   app.get("/api/instances/:slug/flows/:id/runs", (c) => {
-    const slug = c.req.param("slug");
+    const { slug } = getInstanceContext(c);
     const id = Number(c.req.param("id"));
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
 
     const limit = Number(c.req.query("limit") ?? "20");
     const runs = listFlowRuns(db, slug, { flowId: id, limit: Math.min(limit, 100) });
@@ -368,11 +347,8 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
   // GET /api/instances/:slug/flow-runs/:runId — get run detail + step runs
   // -------------------------------------------------------------------------
   app.get("/api/instances/:slug/flow-runs/:runId", (c) => {
-    const slug = c.req.param("slug");
+    const { slug } = getInstanceContext(c);
     const runId = Number(c.req.param("runId"));
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
 
     const run = getFlowRun(db, runId);
     if (!run || run.instance_slug !== slug) {
@@ -387,11 +363,8 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
   // POST /api/instances/:slug/flow-runs/:runId/cancel — cancel a running flow
   // -------------------------------------------------------------------------
   app.post("/api/instances/:slug/flow-runs/:runId/cancel", (c) => {
-    const slug = c.req.param("slug");
+    const { slug } = getInstanceContext(c);
     const runId = Number(c.req.param("runId"));
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
 
     const run = getFlowRun(db, runId);
     if (!run || run.instance_slug !== slug) {

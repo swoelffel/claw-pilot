@@ -15,6 +15,7 @@ import { SessionStore } from "../session-store.js";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { registerMemoryRoutes } from "../routes/instances/memory.js";
+import { instanceMiddleware } from "../routes/_instance-middleware.js";
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -117,6 +118,7 @@ beforeEach(() => {
     } as unknown as RouteDeps["modelDiscovery"],
   };
 
+  app.use("/api/instances/:slug/*", instanceMiddleware(registry));
   registerMemoryRoutes(app, deps);
 
   // Seed an instance with an agent

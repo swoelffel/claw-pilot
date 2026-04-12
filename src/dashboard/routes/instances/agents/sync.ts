@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { apiError } from "../../../route-deps.js";
-import { instanceGuard } from "../../../../lib/guards.js";
+import { getInstanceContext } from "../../_instance-middleware.js";
 import { constants } from "../../../../lib/constants.js";
 import { logger } from "../../../../lib/logger.js";
 
@@ -12,16 +12,13 @@ export function registerAgentSyncRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, conn } = deps;
 
   app.post("/api/instances/:slug/agents/sync", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { instance, slug } = getInstanceContext(c);
 
     try {
       // claw-runtime: agents are DB-only, no config file to sync from.
       // We sync workspace files from disk -> DB.
       const agents = registry.listAgents(slug);
-      const links = registry.listAgentLinks(instance!.id);
+      const links = registry.listAgentLinks(instance.id);
       let filesChanged = 0;
 
       for (const agent of agents) {
