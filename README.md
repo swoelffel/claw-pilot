@@ -2,9 +2,10 @@
 
 **CLI + web dashboard to orchestrate multi-agent clusters on a Linux or macOS server**
 
-`claw-pilot` v0.65.1 manages the full lifecycle of **claw-runtime** agent instances: provisioning,
+`claw-pilot` v0.69.0 manages the full lifecycle of **claw-runtime** agent instances: provisioning,
 service integration, visual Agent Builder, inter-agent messaging, middleware pipeline, named API keys,
-user profiles, budget enforcement, dynamic model discovery, task board with epic hierarchy, and a real-time dashboard to monitor and interact with multi-agent teams.
+user profiles, budget enforcement, dynamic model discovery, task board with epic hierarchy, workflow orchestration,
+and a real-time dashboard to monitor and interact with multi-agent teams.
 
 All instances use the **claw-runtime** engine — a native Node.js multi-agent runtime with built-in
 support for Agent-to-Agent (A2A) messaging, heartbeat scheduling, MCP integration, permissions system,
@@ -34,7 +35,8 @@ memory management, middleware chain, and plugin architecture.
 - **Permanent sessions** — primary agents get a single persistent session shared across all channels (web, Telegram, CLI)
 - **Inter-agent messaging** — `send_message` tool for persistent cross-agent communication (synchronous or fire-and-forget with async processing)
 - **Middleware pipeline** — extensible pre/post middleware chain in the message processing pipeline (guardrail, tool error recovery)
-- **Task board** — Kanban board with 5 status columns, drag & drop, agent assignment with wakeup, epic hierarchy (parent-child goals), auto-completion
+- **Task board** — Kanban board with 5 status columns, drag & drop, agent assignment with wakeup, epic hierarchy (parent-child goals), activity timeline, auto-completion
+- **Workflow orchestration** — declarative DAG-based workflow engine with fan-out/fan-in, per-step timeout & retry, SITREP extraction, session persistence (FLOW-001)
 - **Heartbeat scheduling** — per-agent background ticks with configurable intervals, timezone-aware active hours, permanent session reuse
 - **MCP integration** — discover and manage MCP servers per instance, real-time tool registry
 - **Permission system** — interactive approval for file access, bash execution, agent spawning
@@ -47,7 +49,9 @@ memory management, middleware chain, and plugin architecture.
 - **Dynamic model discovery** — real-time model discovery from 8 provider APIs with polling, caching, and DB persistence
 
 ### Dashboard & Tooling
+- **Home screen** — chatbot-styled entry point with system instance auto-provisioning, setup wizard, and 22-tool admin plugin (HOMEBOT)
 - **Web dashboard** — real-time status dashboard, agent builder, settings, device pairing (port 19000)
+- **Command palette** — global search (Cmd+K / Ctrl+K) across instances, agents, tasks, blueprints with FTS5 BM25 ranking
 - **Runtime Pilot** — multi-agent chat with tool call visualization, token/cost tracking, context panel, session tree
 - **Cost dashboard** — per-agent cost tracking with SVG charts + budget management tab
 - **Activity console** — live event stream (SSE) with filters and floating widget
@@ -139,8 +143,10 @@ claw-pilot dashboard
 
 | Screen | Purpose |
 |--------|---------|
+| **Home** | Chatbot entry point with system instance, setup wizard, admin flows |
 | **Instances** | Live status cards (health, port, agent count) with lifecycle actions |
-| **Task Board** | Kanban board with drag & drop, epic hierarchy, agent assignment, comments |
+| **Task Board** | Kanban board with drag & drop, epic hierarchy, agent assignment, activity timeline |
+| **Flows** | Workflow editor, run history, step-by-step execution detail |
 | **Agent Builder** | Visual canvas per instance — design teams with drag-and-drop, A2A/spawn links |
 | **Blueprints** | Create, edit, deploy reusable agent team templates |
 | **Agent Templates** | Standalone reusable agent templates with archetype system |
@@ -161,13 +167,13 @@ claw-pilot dashboard
 src/
   commands/         CLI commands — thin wrappers over core/ (17 commands incl. auth, service)
   core/             Business logic (registry, discovery, provisioner, agent-sync, blueprints, …)
-    repositories/   17 SQLite repositories (server, instance, agent, port, config, event,
+    repositories/   20 SQLite repositories (server, instance, agent, port, config, event,
                     blueprint, agent-blueprint, runtime-session, rt-event, cost, heartbeat,
-                    named-key, runtime-config, user-profile, budget, task)
+                    named-key, runtime-config, user-profile, budget, task, task-activity, search, flow)
     model-discovery/ Dynamic model discovery service (8 provider adapters, polling, DB persistence)
   dashboard/        Hono HTTP server + WebSocket monitor + auth (sessions/cookies)
-    routes/         REST API (~126 endpoints) + WebSocket
-  db/               SQLite schema and migrations (schema.ts) — current version: 30
+    routes/         REST API (~139 endpoints) + WebSocket
+  db/               SQLite schema and migrations (schema.ts) — current version: 34
   lib/              Utilities (logger, errors, constants, platform, xdg, shell, …)
   runtime/          claw-runtime engine
     bus/            Event bus (pub/sub)
@@ -180,6 +186,7 @@ src/
     provider/       LLM provider resolution and auth profiles
     session/        Prompt loop, message handling, compaction, system prompt
     tool/           Built-in tools + send_message + task delegation
+    flow/           Declarative DAG workflow engine (FLOW-001)
     agent/          Agent defaults, registry, kind resolution
     plugin/         Plugin system (hooks, types)
     mcp/            MCP client integration
@@ -188,7 +195,7 @@ src/
   server/           ServerConnection abstraction (LocalConnection; SSH planned)
   wizard/           Interactive creation wizard (@inquirer/prompts)
 ui/src/
-  components/       47 Lit web components (instance cards, agent builder, pilot, task board, …)
+  components/       54+ Lit web components (home screen, instance cards, agent builder, pilot, task board, flows, …)
     pilot/          Runtime Pilot subcomponents (messages, parts, context, input, header)
   services/         Auth state, WS monitor, router, update poller
   locales/          i18n via @lit/localize (6 languages)
@@ -201,7 +208,7 @@ templates/
 
 ### Data Model
 
-SQLite `~/.claw-pilot/registry.db` — schema v30. See [`docs/registry-db.md`](docs/registry-db.md).
+SQLite `~/.claw-pilot/registry.db` — schema v34. See [`docs/registry-db.md`](docs/registry-db.md).
 
 **claw-pilot registry** (instance management):
 | Table | Role |
@@ -226,6 +233,11 @@ SQLite `~/.claw-pilot/registry.db` — schema v30. See [`docs/registry-db.md`](d
 | `discovery_status` | Provider discovery status (last success/error, model count) |
 | `rt_tasks` | Task board — title, status (5 states), priority, assignee, labels, position, type (task/epic), parent_id |
 | `rt_task_comments` | Task discussion threads (author, content, timestamps) |
+| `rt_task_activities` | Activity timeline per task (9 types: created, status_changed, assigned, etc.) |
+| `search_index` | FTS5 global search index (instances, agents, tasks, blueprints) |
+| `rt_flow_definitions` | Workflow definitions — name, steps DAG (JSON), trigger config, enabled |
+| `rt_flow_runs` | Workflow execution runs — status, trigger, timing, error |
+| `rt_flow_step_runs` | Per-step execution details — agent, session, SITREP, tokens, cost |
 
 **claw-runtime persistence** (conversation history & state):
 | Table | Role |
@@ -251,7 +263,7 @@ pnpm build         # Build CLI + UI (dist/)
 pnpm build:cli     # Build CLI only
 pnpm build:ui      # Build UI only (Vite)
 pnpm typecheck:all # tsc --noEmit (backend + UI)
-pnpm test:run      # Run unit/integration tests (~2100 passing)
+pnpm test:run      # Run unit/integration tests (~2400 passing)
 pnpm test:ui       # Run UI tests
 pnpm test:e2e      # Run e2e tests (~100, real HTTP server, in-memory DB)
 pnpm lint:all      # oxlint src/ + ui/src/
@@ -271,11 +283,11 @@ Pre-push hooks: spellcheck + test:run. Commits follow conventional commits (comm
 | **Runtime** | Node.js >= 22.12.0, ESM modules, TypeScript ~6.0 |
 | **CLI** | Commander.js ^14 + @inquirer/prompts (interactive wizard) |
 | **HTTP / WebSocket** | Hono ^4.12 + ws ^8 (real-time status + agent communication) |
-| **Database** | better-sqlite3 ^12 + SQLite WAL (schema v30) |
+| **Database** | better-sqlite3 ^12 + SQLite WAL (schema v34) |
 | **UI** | Lit ^3 web components + Vite ^8 + @lit/localize (i18n, 6 languages) |
 | **Build** | tsdown (CLI), Vite ^8 (UI) |
 | **LLM Integration** | Vercel AI SDK ^6.0 (@ai-sdk/anthropic, openai, google) |
-| **Tests** | Vitest ^4 (~2100 unit/integration + ~100 e2e) |
+| **Tests** | Vitest ^4 (~2400 unit/integration + ~100 e2e) |
 | **Lint / Format** | oxlint ^1.59 + Prettier ^3.8 + cspell + lefthook (zero-warning enforcement) |
 | **Plugin System** | Event bus + hook-based plugins for tool, session, and message lifecycle |
 | **MCP** | @modelcontextprotocol/sdk ^1.28 (stdio + HTTP transports) |
@@ -292,7 +304,7 @@ Pre-push hooks: spellcheck + test:run. Commits follow conventional commits (comm
 | [`docs/ux-components/`](docs/ux-components/) | Individual component and dialog docs (29 components) |
 | [`docs/design-rules.md`](docs/design-rules.md) | Design system, anti-patterns, delivery checklist |
 | [`docs/i18n.md`](docs/i18n.md) | i18n architecture — adding languages, translation workflow |
-| [`docs/registry-db.md`](docs/registry-db.md) | Database schema (v30), migration history, recovery procedures |
+| [`docs/registry-db.md`](docs/registry-db.md) | Database schema (v34), migration history, recovery procedures |
 | [`CLAUDE.md`](CLAUDE.md) | Development conventions, key patterns, common pitfalls |
 | [`CHANGELOG.md`](CHANGELOG.md) | Detailed release notes |
 
@@ -302,11 +314,14 @@ Pre-push hooks: spellcheck + test:run. Commits follow conventional commits (comm
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 
-- **v0.65.0** (current) — Epic hierarchy (GOAL-001), heartbeat overhaul (permanent sessions, timezone validation), deprecated code removal
-- **v0.64.2** — Engineering excellence: Zod validation on all mutation routes, zero lint warnings, 111 new tests
-- **v0.64.0** — Task board (TASK-001): Kanban with drag & drop, agent assignment, i18n (37 keys)
+- **v0.69.0** (current) — HOMEBOT: chatbot home screen, system instance with 6 pre-configured flows, 22-tool admin plugin
+- **v0.68.0** — FLOW-001: declarative DAG workflow engine, agent execution refactor (dashboard → runtime proxy)
+- **v0.67.0** — SEARCH-001: command palette (Cmd+K), FTS5 global search across 5 entity types
+- **v0.66.0** — TIMELINE-001: activity timeline per task, 9 activity types with field-level tracking
+- **v0.65.0** — GOAL-001: epic hierarchy, heartbeat overhaul (permanent sessions, timezone validation)
+- **v0.64.0** — TASK-001: Kanban task board with drag & drop, agent assignment, engineering excellence
 - **v0.63.0** — Dynamic model discovery, 8 providers, circular dependency fix
-- **v0.62.0** — Budget enforcement with auto-pause, Telegram alerts, 55 new tests
+- **v0.62.0** — Budget enforcement with auto-pause, Telegram alerts
 - **v0.58.0** — Dashboard service management, auth command, system prompt snapshots
 - **v0.55.0** — Agent templates, runtime config in DB, skills sync
 - **v0.48.0** — Heartbeat heatmap, memory browser, activity console, cost dashboard
@@ -321,4 +336,4 @@ MIT — see [LICENSE](LICENSE)
 
 ---
 
-*Updated: 2026-04-09 — v0.65.1, schema v30, 8 providers, task board + epic hierarchy, budget enforcement, dynamic model discovery, ~126 REST endpoints*
+*Updated: 2026-04-12 — v0.69.0, schema v34, 20 repositories, ~139 REST endpoints, HOMEBOT, workflow engine, task board, command palette*
