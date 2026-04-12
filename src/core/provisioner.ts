@@ -164,6 +164,22 @@ export class Provisioner {
             }
           }
         }
+
+        // Sync RuntimeConfig agents with actual WizardAnswers IDs.
+        // ensureRuntimeConfig() generates a default "pilot" agent — we need to overwrite
+        // the agents list so that agent IDs match the DB records and workspace directories.
+        const defaults = runtimeConfig.agents[0]!;
+        const syncedConfig = {
+          ...runtimeConfig,
+          agents: answers.agents.map((agent) => ({
+            ...defaults,
+            id: agent.id,
+            name: agent.name,
+            ...(agent.model !== undefined ? { model: agent.model } : {}),
+            ...(agent.isDefault !== undefined ? { isDefault: agent.isDefault } : {}),
+          })),
+        };
+        this.registry.saveRuntimeConfig(slug, syncedConfig);
       }
 
       logger.step("claw-runtime instance created — start with 'claw-pilot runtime start'.");
