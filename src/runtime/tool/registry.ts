@@ -224,8 +224,8 @@ export async function getToolsForAgent(
   const tools = await getTools(toolOptions);
 
   if (agentKind === "subagent") {
-    // Hard rule: subagents can never spawn or message — remove task and send_message
-    return tools.filter((t) => t.id !== "task" && t.id !== "send_message");
+    // Hard rule: subagents can never spawn, message, or ask interactive questions
+    return tools.filter((t) => t.id !== "task" && t.id !== "send_message" && t.id !== "question");
   }
 
   return tools;
