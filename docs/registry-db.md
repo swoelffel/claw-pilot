@@ -1,7 +1,7 @@
 # claw-pilot — Registry Database (`registry.db`)
 
 SQLite database at `~/.claw-pilot/registry.db`. WAL mode, foreign keys enforced.  
-Current schema version: **30**. Source of truth: `src/db/schema.ts`.
+Current schema version: **34**. Source of truth: `src/db/schema.ts`.
 
 ---
 
@@ -27,7 +27,13 @@ discovered_models  (provider_id + model_id composite PK)
 discovery_status   (provider_id PK)
 
 rt_tasks ──< rt_task_comments
+         ├──< rt_task_activities
          └──< rt_tasks (self-referential via parent_id for epic hierarchy)
+
+rt_flow_definitions ──< rt_flow_runs ──< rt_flow_step_runs
+
+search_index       (FTS5 virtual table)
+search_index_map   (shadow mapping table)
 
 blueprints ──< agents ──< agent_files
            └──< agent_links
@@ -558,6 +564,100 @@ Discussion threads per task.
 
 Index: `idx_rt_task_comments_task` (task_id).
 
+### `rt_task_activities` (v31)
+
+Activity timeline per task — field-level mutation tracking.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `task_id` | INTEGER | NOT NULL, FK → rt_tasks(id) ON DELETE CASCADE |
+| `activity_type` | TEXT | NOT NULL (created/status_changed/assigned/priority_changed/title_changed/description_changed/labels_changed/parent_changed/comment) |
+| `actor_id` | TEXT | |
+| `details_json` | TEXT | (JSON: from/to values for field changes) |
+| `created_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+
+Index: `idx_rt_task_activities_task` (task_id, created_at).
+
+### `search_index` (v32)
+
+FTS5 virtual table for global command palette search.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `entity_type` | TEXT | instance/agent/task/blueprint/agent_blueprint |
+| `entity_id` | TEXT | |
+| `title` | TEXT | Primary searchable field |
+| `subtitle` | TEXT | Secondary searchable field |
+| `route_hash` | TEXT | Hash URL for navigation |
+
+BM25 ranked prefix matching. Contentless FTS5 backed by `search_index_map` shadow table.
+
+### `search_index_map` (v32)
+
+Shadow mapping table for FTS5 index management (entity_type, entity_id, fts_rowid, title, subtitle, route_hash). Primary key: (entity_type, entity_id).
+
+### `rt_flow_definitions` (v33)
+
+Workflow definitions with DAG step configuration.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `instance_slug` | TEXT | NOT NULL |
+| `name` | TEXT | NOT NULL |
+| `description` | TEXT | |
+| `steps_json` | TEXT | NOT NULL (JSON array of FlowStepDef) |
+| `trigger_json` | TEXT | DEFAULT '{"type":"manual"}' |
+| `enabled` | INTEGER | NOT NULL DEFAULT 1 |
+| `created_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+| `updated_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+
+Unique constraint: (instance_slug, name).
+
+### `rt_flow_runs` (v33)
+
+Workflow execution runs.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `flow_id` | INTEGER | NOT NULL, FK → rt_flow_definitions(id) |
+| `instance_slug` | TEXT | NOT NULL |
+| `status` | TEXT | NOT NULL CHECK (pending/running/completed/failed/cancelled) |
+| `trigger_type` | TEXT | |
+| `trigger_detail` | TEXT | |
+| `started_at` | TEXT | |
+| `finished_at` | TEXT | |
+| `created_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+| `error` | TEXT | |
+
+Index: `idx_flow_runs_instance` (instance_slug, status).
+
+### `rt_flow_step_runs` (v33)
+
+Per-step execution details within a flow run.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `run_id` | INTEGER | NOT NULL, FK → rt_flow_runs(id) |
+| `step_id` | TEXT | NOT NULL |
+| `agent_id` | TEXT | |
+| `status` | TEXT | NOT NULL CHECK (pending/running/completed/failed/skipped) |
+| `session_id` | TEXT | |
+| `started_at` | TEXT | |
+| `finished_at` | TEXT | |
+| `sitrep_json` | TEXT | (JSON: structured outcome summary) |
+| `result_text` | TEXT | |
+| `tokens_in` | INTEGER | |
+| `tokens_out` | INTEGER | |
+| `cost_usd` | REAL | |
+| `error` | TEXT | |
+| `retry_count` | INTEGER | DEFAULT 0 |
+
+Unique constraint: (run_id, step_id).
+
 ---
 
 ## Migration history
@@ -594,12 +694,16 @@ Index: `idx_rt_task_comments_task` (task_id).
 | 28 | Added `discovered_models` and `discovery_status` tables for dynamic model discovery from provider APIs. Composite PK (provider_id, model_id). |
 | 29 | Added `rt_tasks` and `rt_task_comments` tables for task board (Kanban). 5 statuses, 4 priorities, agent assignment, labels JSON, position for drag & drop. Indexes on instance+status and instance+assignee. |
 | 30 | Added `type` (task/epic) and `parent_id` (self-referential FK) columns to `rt_tasks` for epic hierarchy (GOAL-001). Indexes on parent_id and instance+type. |
+| 31 | Added `rt_task_activities` table for activity timeline per task (TIMELINE-001). 9 activity types with actor attribution and JSON details. Index on task_id+created_at. |
+| 32 | Added `search_index` (FTS5 virtual table) and `search_index_map` (shadow) for global command palette search (SEARCH-001). BM25 ranking, 5 entity types, prefix matching. |
+| 33 | Added `rt_flow_definitions`, `rt_flow_runs`, `rt_flow_step_runs` tables for declarative workflow orchestration (FLOW-001). DAG execution with fan-out/fan-in, per-step timeout & retry. |
+| 34 | Added `instances.is_system` column for system instance flag (HOMEBOT). |
 
 ---
 
 ## Key access patterns
 
-All DB access goes through `src/core/registry.ts` facade (17 repositories) — never raw SQL in commands or routes.
+All DB access goes through `src/core/registry.ts` facade (20 repositories) — never raw SQL in commands or routes.
 
 ### Instance operations
 
@@ -667,7 +771,11 @@ All DB access goes through `src/core/registry.ts` facade (17 repositories) — n
 | Epic hierarchy | `TaskRepository` | `getEpicsForInstance()`, `getChildTasks()`, `getEpicProgress()`, `getAncestryChain()`, `validateParentId()` |
 | Task comments | `TaskRepository` | `addComment()`, `getComments()` |
 | Agent task context | `TaskRepository` | `getActiveTasksForAgent()`, `getTaskCountsByStatus()` |
+| Activity timeline | `TaskActivityRepository` | `insertActivity()`, `getActivities()`, `getActivityCount()`, `recordFieldChanges()` |
+| Global search | `SearchRepository` | `upsertSearchEntry()`, `removeSearchEntry()`, `searchEntities()`, `rebuildSearchIndex()` |
+| Flow CRUD | `FlowRepository` | `createFlow()`, `getFlow()`, `listFlows()`, `updateFlow()`, `deleteFlow()` |
+| Flow execution | `FlowRepository` | `createRun()`, `updateRun()`, `getRun()`, `listRuns()`, `createStepRun()`, `updateStepRun()` |
 
 ---
 
-*Updated: 2026-04-09 — v0.65.1: schema v30, 17 repositories, migration history v1–v30*
+*Updated: 2026-04-12 — v0.69.0: schema v34, 20 repositories, migration history v1–v34*

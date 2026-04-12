@@ -1,7 +1,7 @@
 # claw-pilot — Functional Architecture
 
-> **Version**: 0.65.1
-> **Stack**: TypeScript ~6.0 / Node.js ESM, Lit ^3, SQLite (schema v30), Hono ^4.12
+> **Version**: 0.69.0
+> **Stack**: TypeScript ~6.0 / Node.js ESM, Lit ^3, SQLite (schema v34), Hono ^4.12
 > **Repo**: https://github.com/swoelffel/claw-pilot
 > **Detailed References**: [ux-design.md](./ux-design.md) (index) · [ux-screens/](./ux-screens/) · [ux-components/](./ux-components/) · [agents.md](./agents.md) · [registry-db.md](./registry-db.md) · [i18n.md](./i18n.md) · [design-rules.md](./design-rules.md) · `CLAUDE.md`
 
@@ -31,7 +31,7 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
 │   Provisioner · Lifecycle · Health · Discovery · AgentSync      │
 │   BlueprintDeployer · AgentProvisioner · TeamExport/Import      │
 │                        │                                        │
-│              Registry (facade) → 17 Repositories                │
+│              Registry (facade) → 20 Repositories                │
 │                        │                                        │
 │              ServerConnection (abstraction)                     │
 │              LocalConnection (local shell/fs)                   │
@@ -83,6 +83,12 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
 | `discovery_status` | v28 | Provider discovery status (last_success, last_error, model_count) |
 | `rt_tasks` | v29 + v30 | Task board — title, status (pending/in_progress/completed/blocked/cancelled), priority, assignee, labels JSON, position, type (task/epic), parent_id (epic hierarchy) |
 | `rt_task_comments` | v29 | Task discussion threads (author_id, content, FK CASCADE on task delete) |
+| `rt_task_activities` | v31 | Activity timeline per task — 9 activity types with field-level diff tracking |
+| `search_index` | v32 | FTS5 global search (BM25, 5 entity types: instance, agent, task, blueprint, agent_blueprint) |
+| `search_index_map` | v32 | Shadow mapping table for FTS5 index management |
+| `rt_flow_definitions` | v33 | Workflow definitions — name, steps DAG (JSON), trigger config (manual/bus), enabled |
+| `rt_flow_runs` | v33 | Workflow execution runs — status (5 states), trigger, timing, error |
+| `rt_flow_step_runs` | v33 | Per-step execution — agent, session, SITREP JSON, tokens, cost, retry count |
 
 **Added columns (v17–v26)**:
 - `agents.config_json` (v20) — full RuntimeAgentConfig as JSON blob
@@ -90,7 +96,12 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
 - `instances.runtime_config_json` (v21) — full RuntimeConfig as JSON blob (source of truth)
 - `instances.default_named_key_id` (v25) — default named key FK
 
-**Current migration version: 30**
+**Added columns (v30–v34)**:
+- `rt_tasks.type` (v30) — task/epic discriminator
+- `rt_tasks.parent_id` (v30) — self-referential FK for epic hierarchy
+- `instances.is_system` (v34) — system instance flag (HOMEBOT)
+
+**Current migration version: 34**
 
 **Default port range**: 18789–18838 (50 ports, 10 instances at 5-port intervals). Dashboard: 19000.
 
@@ -136,9 +147,9 @@ lifecycle.ts              start/stop/restart — PID file daemon
 health.ts                 health check — PID file
 provisioner.ts            instance creation (wizard)
 agent-provisioner.ts      add agents to existing instance
-registry.ts               facade over 17 repositories
+registry.ts               facade over 20 repositories
 registry-types.ts         types InstanceRecord, AgentRecord, BlueprintRecord, AgentBlueprintRecord, etc.
-repositories/             17 SQLite repositories:
+repositories/             20 SQLite repositories:
   server-repository.ts      — servers table
   instance-repository.ts    — instances table
   agent-repository.ts       — agents + agent_files + agent_links tables
@@ -156,6 +167,9 @@ repositories/             17 SQLite repositories:
   user-profile-repository.ts — user_profiles CRUD
   budget-repository.ts      — rt_budgets + rt_budget_events CRUD
   task-repository.ts        — rt_tasks + rt_task_comments CRUD, epic hierarchy, agent checkout
+  task-activity-repository.ts — rt_task_activities: field-level mutation tracking, 9 activity types
+  search-repository.ts      — search_index FTS5, BM25 ranking, 5 entity types, rebuild
+  flow-repository.ts        — rt_flow_definitions + rt_flow_runs + rt_flow_step_runs CRUD
 model-discovery/          Dynamic model discovery from provider APIs:
   service.ts                — ModelDiscoveryService (polling 24h, DB persistence, stale cache fallback)
   types.ts                  — DiscoveredModel, ProviderAdapter interfaces
@@ -219,6 +233,12 @@ channel/      Channel interface, ChannelRouter (per-session serialization queue)
               telegram: polling + webhook + MarkdownV2 formatter, pairing flow
 memory/       FTS5 full-text search index (memory-index.db), decay scoring
               search-tool: memory_search for agents, writer: memory file writing
+flow/         Declarative DAG workflow engine (FLOW-001):
+              engine.ts: topological sort, fan-out/fan-in, Promise.race parallel execution
+              step-executor.ts: per-step timeout (1s-10min), retry (0-5), agent session
+              briefing.ts: mission briefing builder for step prompts
+              sitrep.ts: structured SITREP extraction from agent responses
+              types.ts: FlowStepDef, SitrepResult, FlowEngineContext
 heartbeat/    HeartbeatRunner, intervals 5m-24h, active hours (timezone-aware, IANA validation)
               permanent session reuse (primary agents), structured finish_reason tagging
               HeartbeatTick, HeartbeatAlert, budget gate (skip if exceeded)
@@ -243,6 +263,8 @@ routes/
   blueprints.ts    CRUD blueprints + agents + files + spawn-links
   agent-blueprints.ts  CRUD agent blueprint templates + files + clone + export/import YAML
   named-keys.ts    CRUD named API keys (encrypted, admin-global)
+  search.ts        GET /api/search — global FTS5 search (BM25, 5 entity types)
+  system-instance.ts  System instance auto-provisioning (HOMEBOT)
   profile.ts       GET/PATCH user profile preferences
   instances.ts     Instance routes dispatcher
   instances/
@@ -251,7 +273,8 @@ routes/
     config.ts      GET/PATCH config + providers catalog + telegram token
     runtime.ts     GET runtime status/sessions/messages/context, POST chat, GET stream SSE
     budgets.ts     Budget CRUD, override, reset, audit events (8 endpoints)
-    tasks.ts       Task board CRUD, status changes, reorder, comments, epics (11 endpoints)
+    tasks.ts       Task board CRUD, status changes, reorder, comments, epics, timeline (12 endpoints)
+    flows.ts       Flow CRUD + DAG validation + execution + run history (9 endpoints)
     costs.ts       GET cost aggregations per agent/session
     events.ts      GET rt_events (activity console)
     heartbeat.ts   GET heartbeat history and analytics
@@ -405,6 +428,7 @@ Hono HTTP/WS server on port 19000. Dual auth: session cookie (priority) or Beare
 
 | Hash URL | View | Component |
 |---|---|---|
+| `#/home` | Home screen (default) | `cp-home-screen` |
 | `#/` or `#/instances` | Instances view | `cp-cluster-view` |
 | `#/instances/:slug/builder` | Agent builder | `cp-agents-builder` |
 | `#/instances/:slug/settings` | Instance settings | `cp-instance-settings` |
@@ -415,13 +439,15 @@ Hono HTTP/WS server on port 19000. Dual auth: session cookie (priority) or Beare
 | `#/instances/:slug/heartbeat` | Heartbeat heatmap visualization | `cp-heartbeat-heatmap` |
 | `#/instances/:slug/session-logs` | Session log viewer | `cp-session-logs` |
 | `#/instances/:slug/tasks` | Task board (Kanban) | `cp-task-board` |
+| `#/instances/:slug/flows` | Workflow editor + run history | `cp-flow-list` |
+| `#/instances/:slug/flows/runs/:runId` | Flow execution detail | `cp-flow-run-detail` |
 | `#/blueprints` | Blueprints view | `cp-blueprints-view` |
 | `#/blueprints/:id/builder` | Blueprint builder | `cp-blueprint-builder` |
 | `#/agent-templates` | Agent templates (reusable) | `cp-agent-templates-view` |
 | `#/agent-templates/:id` | Agent template detail + files | `cp-agent-template-detail` |
 | `#/profile` | User profile settings | `cp-profile-settings` |
 
-### REST API (~126 endpoints)
+### REST API (~139 endpoints)
 
 #### Auth
 
@@ -519,6 +545,20 @@ Hono HTTP/WS server on port 19000. Dual auth: session cookie (priority) or Beare
 | `GET` | `/api/instances/:slug/epics` | List epics |
 | `GET` | `/api/instances/:slug/epics/:id/children` | Get epic's child tasks |
 
+#### Instances — Flows (9 endpoints)
+
+| Method | Route | Role |
+|---|---|---|
+| `GET` | `/api/instances/:slug/flows` | List flow definitions |
+| `POST` | `/api/instances/:slug/flows` | Create flow (Zod validated, DAG cycle detection) |
+| `GET` | `/api/instances/:slug/flows/:id` | Get flow definition |
+| `PUT` | `/api/instances/:slug/flows/:id` | Update flow |
+| `DELETE` | `/api/instances/:slug/flows/:id` | Delete flow |
+| `POST` | `/api/instances/:slug/flows/:id/run` | Execute flow (async, returns run ID) |
+| `POST` | `/api/instances/:slug/flows/runs/:runId/cancel` | Cancel running flow |
+| `GET` | `/api/instances/:slug/flows/runs` | List flow runs |
+| `GET` | `/api/instances/:slug/flows/runs/:runId` | Get run detail (steps, SITREP, tokens) |
+
 #### Instances — Costs, Events, Heartbeat, Memory
 
 | Method | Route | Role |
@@ -606,6 +646,19 @@ Standalone reusable agent templates, independent of team blueprints and instance
 |---|---|---|
 | `GET` | `/api/profile` | Read current user profile |
 | `PATCH` | `/api/profile` | Update profile preferences |
+
+#### Global Search
+
+| Method | Route | Role |
+|---|---|---|
+| `GET` | `/api/search?q=&limit=` | FTS5 BM25 ranked search across 5 entity types (instance, agent, task, blueprint, agent_blueprint) |
+
+#### System Instance (HOMEBOT)
+
+| Method | Route | Role |
+|---|---|---|
+| `POST` | `/api/system-instance/provision` | Auto-provision system instance (cp-system) with 6 agents + 6 flows |
+| `GET` | `/api/system-instance/status` | System instance provisioning status |
 
 ### WebSocket Monitor
 
@@ -751,4 +804,4 @@ Separate SQLite FTS5 index in `memory-index.db`. Chunks MEMORY.md and memory/*.m
 
 ---
 
-*Updated: 2026-04-09 — v0.65.1: schema v30, 17 repositories, ~126 API endpoints, 8 providers, task board + epic hierarchy, budget enforcement, dynamic model discovery, heartbeat overhaul*
+*Updated: 2026-04-12 — v0.69.0: schema v34, 20 repositories, ~139 API endpoints, HOMEBOT, workflow engine (FLOW-001), task board + epics, command palette, activity timeline*
