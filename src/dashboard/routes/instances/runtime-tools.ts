@@ -5,6 +5,7 @@ import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
 import { logger } from "../../../lib/logger.js";
 import { getInstanceContext } from "../_instance-middleware.js";
+import { callRuntimeApi } from "../_internal-api-client.js";
 
 /** Fallback keyword matching for historical messages without structured metadata. */
 function detectHeartbeatStatusFallback(text: string): "ok" | "alert" {
@@ -34,6 +35,7 @@ export function registerRuntimeToolRoutes(app: Hono, deps: RouteDeps): void {
   // Body: { answer: string }
   // ---------------------------------------------------------------------------
   app.post("/api/instances/:slug/runtime/questions/:questionId/answer", async (c) => {
+    const { slug } = getInstanceContext(c);
     const questionId = c.req.param("questionId");
 
     let body: { answer?: string };
@@ -48,19 +50,29 @@ export function registerRuntimeToolRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 400, "MISSING_ANSWER", "Field 'answer' is required");
     }
 
-    const { resolveQuestion } = await import("../../../runtime/tool/built-in/question.js");
-    const resolved = resolveQuestion(questionId, body.answer);
-
-    if (!resolved) {
-      return apiError(
-        c,
-        404,
-        "QUESTION_NOT_FOUND",
-        `No pending question with ID "${questionId}" — it may have expired or already been answered.`,
+    // Forward to the runtime process via internal API (dashboard and runtime are separate processes)
+    try {
+      const result = await callRuntimeApi<{ ok: boolean; resolved: boolean }>(
+        slug,
+        `/internal/questions/${questionId}/answer`,
+        { answer: body.answer },
+        { timeoutMs: 10_000 },
       );
-    }
 
-    return c.json({ ok: true, questionId, answer: body.answer });
+      if (!result.resolved) {
+        return apiError(
+          c,
+          404,
+          "QUESTION_NOT_FOUND",
+          `No pending question with ID "${questionId}" — it may have expired or already been answered.`,
+        );
+      }
+
+      return c.json({ ok: true, questionId, answer: body.answer });
+    } catch (err) {
+      logger.warn("[route:runtime] question answer forwarding failed", { error: String(err) });
+      return apiError(c, 502, "RUNTIME_UNREACHABLE", "Cannot reach runtime to resolve question");
+    }
   });
 
   // ---------------------------------------------------------------------------

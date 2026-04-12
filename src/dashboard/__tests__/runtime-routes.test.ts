@@ -83,6 +83,9 @@ vi.mock("../../runtime/tool/registry.js", () => ({
 vi.mock("../../runtime/tool/built-in/question.js", () => ({
   resolveQuestion: vi.fn(() => false),
 }));
+vi.mock("../routes/_internal-api-client.js", () => ({
+  callRuntimeApi: vi.fn(),
+}));
 
 // ---------------------------------------------------------------------------
 // Real imports (after mocks)
@@ -104,7 +107,7 @@ import {
 } from "../../core/repositories/runtime-session-repository.js";
 import { listMessages, listParts } from "../../runtime/index.js";
 
-import { resolveQuestion } from "../../runtime/tool/built-in/question.js";
+import { callRuntimeApi } from "../routes/_internal-api-client.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -466,7 +469,7 @@ describe("POST /api/instances/:slug/runtime/questions/:questionId/answer", () =>
   });
 
   it("returns 404 when question not found", async () => {
-    vi.mocked(resolveQuestion).mockReturnValue(false);
+    vi.mocked(callRuntimeApi).mockResolvedValue({ ok: true, resolved: false });
     const res = await app.request(
       "/api/instances/test-inst/runtime/questions/q-nonexistent/answer",
       {
@@ -481,7 +484,7 @@ describe("POST /api/instances/:slug/runtime/questions/:questionId/answer", () =>
   });
 
   it("returns ok when question is resolved", async () => {
-    vi.mocked(resolveQuestion).mockReturnValue(true as never);
+    vi.mocked(callRuntimeApi).mockResolvedValue({ ok: true, resolved: true });
     const res = await app.request("/api/instances/test-inst/runtime/questions/q-1/answer", {
       method: "POST",
       headers: jsonHeaders(),

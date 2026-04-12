@@ -69,6 +69,7 @@ import { runPromptLoop } from "../session/prompt-loop.js";
 import { runMiddlewarePipeline } from "../middleware/pipeline.js";
 import { resolveModelForAgent } from "../channel/router.js";
 import { startFlowRun } from "../flow/engine.js";
+import { resolveQuestion as resolveQuestionFn } from "../tool/built-in/question.js";
 import type { ProfileResolver } from "../profile/types.js";
 
 // ---------------------------------------------------------------------------
@@ -555,6 +556,10 @@ export class ClawRuntime {
           body.triggerType ?? "manual",
           body.triggerDetail,
         );
+      },
+
+      handleQuestionAnswer: (questionId: string, answer: string): boolean => {
+        return resolveQuestionFn(questionId, answer);
       },
 
       handleAbort: (sessionId: string): boolean => {
