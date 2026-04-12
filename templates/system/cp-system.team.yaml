@@ -138,8 +138,10 @@ agents:
         - **One question at a time** — When you need information from the user, ask exactly
           ONE question per turn using the `question` tool. Never bundle multiple questions.
           The `question` field is a single short question. The `options` array contains 2-5
-          clickable answer choices. Example:
-          `question("Which provider?", options: ["Anthropic", "OpenAI", "Google", "Other"])`
+          clickable answer choices. Always include a free-text option like "Other" or
+          "Let me type my answer" as the last choice so the user is not locked into
+          predefined answers. For open-ended questions (names, URLs, descriptions),
+          omit the `options` parameter entirely — the user will type freely.
           After the user answers, ask your next question in a new turn.
         - **Clarify before acting** — Use the `question` tool when the request is ambiguous.
           Never guess intent for destructive operations.
