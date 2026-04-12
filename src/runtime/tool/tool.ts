@@ -23,6 +23,8 @@ export namespace Tool {
     agentId: string;
     /** Instance slug — used by tools that need to access the instance bus. */
     instanceSlug?: string;
+    /** Vercel AI SDK tool call ID — unique per tool invocation. */
+    toolCallId?: string;
     abort: AbortSignal;
     /** True if the sender is an owner channel (web, telegram) — false for internal sub-agents */
     senderIsOwner?: boolean;

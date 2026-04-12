@@ -199,7 +199,9 @@ export async function buildToolSet(
 
         const callStart = Date.now();
         try {
-          const result = await def.execute(args as never, ctx);
+          // Expose toolCallId so tools (e.g. question) can use it as a stable ID
+          const callCtx = { ...ctx, toolCallId: options.toolCallId };
+          const result = await def.execute(args as never, callCtx);
 
           const durationMs = Date.now() - callStart;
           updatePartState(db, part.id, "completed", result.output);

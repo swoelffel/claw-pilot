@@ -64,8 +64,9 @@ export const QuestionTool = Tool.define("question", {
       .describe("Optional list of predefined answer options to present to the user"),
   }),
   async execute(params, ctx) {
-    const { nanoid } = await import("nanoid");
-    const questionId = nanoid();
+    // Use the Vercel AI SDK toolCallId as the question ID — this is the same ID
+    // stored in the tool_call part metadata and used by the UI to submit answers.
+    const questionId = ctx.toolCallId ?? (await import("nanoid")).nanoid();
 
     const bus = getBus(ctx.instanceSlug ?? "default");
 
