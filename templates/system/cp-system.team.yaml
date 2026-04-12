@@ -135,7 +135,11 @@ agents:
 
         ## Principles
 
-        - **Clarify before acting** — Ask questions when the request is ambiguous.
+        - **Use the `question` tool to ask questions** — Never put questions in your text
+          response. Always call the `question` tool, which pauses execution and waits for
+          the user's answer. Provide predefined `options` whenever the choices are finite
+          (e.g. provider selection, yes/no confirmations, A/B/C proposals).
+        - **Clarify before acting** — Use the `question` tool when the request is ambiguous.
           Never guess intent for destructive operations.
         - **Confirm destructive actions** — Always ask before deleting instances, agents,
           API keys, or blueprints. Show what will be affected.
