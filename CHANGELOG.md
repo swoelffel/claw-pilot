@@ -6,6 +6,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.69.0] — 2026-04-12
+
+### Added
+- **HOMEBOT — Chatbot home screen**: new dashboard entry point with conversational system pilot
+- System instance (`cp-system`) auto-provisioned with 6 agents and 6 pre-configured flows
+- Home tab as first navigation tab, logo navigates to Home
+- Chat-styled setup wizard for first API key and model selection
+- System dashboard plugin: 22 tools calling dashboard REST API (instance CRUD, agent management, flow control, API key management)
+- `db-analyst` subagent with read-only SQL query tool (`cp_query_db`) on the registry database
+- `POST /api/system/query` endpoint for read-only SELECT queries (secrets masked)
+- System instance badge ("System") in cluster view instance cards
+- Schema v34: `is_system` column on instances table
+- `templates/system/cp-system.team.yaml` — editable team config for the system instance
+- `templates/system/cp-system.flows.json` — 6 pre-configured flows (Health Check, Onboarding, Cost Audit, Config Backup, Team Builder, Team Optimizer)
+
+### Changed
+- Default route changed from cluster view to Home screen
+- Provisioner now syncs RuntimeConfig agents with WizardAnswers IDs after creation
+- Team import (`importInstanceTeam`) now syncs merged config to DB, propagates `defaultModel` to agents without explicit model
+- `LogFormat` type extended with `"compact"` value
+- Compaction threshold schema relaxed to accept legacy integer values
+
+### Fixed
+- `buildAgentConfig` used `agent.name` (display name) instead of agent ID for config lookup — caused promptMode, archetype, and all RuntimeAgentConfig fields to be lost (masked by case-insensitive macOS)
+- RuntimeConfig schema rejected valid configs with `log.format: "compact"` and `compaction.threshold: 40`, causing silent `getRuntimeConfig()` null return and fallback to minimal config
+- System instance cannot be deleted (403) or stopped (403) via API
+- All system subagents use `toolProfile: sentinel` (no bash/write/edit access)
+
+---
+
 ## [0.68.0] — 2026-04-11
 
 ### Added
