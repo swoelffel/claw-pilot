@@ -8,6 +8,8 @@
     "ui/src/components/live-stream-widget.ts",
     "ui/src/components/pilot/parts/part-image.ts",
     "ui/src/components/instance-skills.ts",
+    "ui/src/components/home-screen.ts",
+    "ui/src/components/home-wizard.ts",
     "ui/src/api.ts"
   ],
   "ignoreFiles": [
