@@ -6,6 +6,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.69.1] — 2026-04-12
+
+### Changed
+- **CI complexity gate**: cognitive complexity (≤20) and max function length (≤150 lines) enforced via eslint-plugin-sonarjs — 43 legacy files baselined as warnings
+- **Instance middleware**: replaced 104 `instanceGuard` duplications with a single Hono middleware
+- **Config PATCH decomposition**: extracted 300-line monolithic handler into 5 focused functions
+- **Route splitting**: runtime.ts (800 lines) → 4 modules, tasks.ts (529 lines) → 3 modules
+- 47 new tests (2204 total), coverage thresholds adjusted for refactoring
+
+### Fixed
+- Workspace cache invalidation holes in runtime daemon
+- System pilot now uses question tool for user interactions
+- knip false positives on Lit custom elements (HomeScreen, HomeWizard)
+
+---
+
 ## [0.69.0] — 2026-04-12
 
 ### Added
