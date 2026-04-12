@@ -16,6 +16,13 @@ export class InstanceRepository {
       | undefined;
   }
 
+  /** Return the auto-provisioned system instance, if any. */
+  getSystemInstance(): InstanceRecord | undefined {
+    return this.db.prepare("SELECT * FROM instances WHERE is_system = 1 LIMIT 1").get() as
+      | InstanceRecord
+      | undefined;
+  }
+
   createInstance(data: {
     serverId: number;
     slug: string;
@@ -27,12 +34,14 @@ export class InstanceRepository {
     telegramBot?: string;
     defaultModel?: string;
     discovered?: boolean;
+    isSystem?: boolean;
   }): InstanceRecord {
     this.db
       .prepare(
         `INSERT OR IGNORE INTO instances (server_id, slug, display_name, port, config_path, state_dir,
-         systemd_unit, telegram_bot, default_model, discovered, instance_type, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         systemd_unit, telegram_bot, default_model, discovered, instance_type, is_system,
+         created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         data.serverId,
@@ -46,6 +55,7 @@ export class InstanceRepository {
         data.defaultModel ?? null,
         data.discovered ? 1 : 0,
         "claw-runtime",
+        data.isSystem ? 1 : 0,
         now(),
         now(),
       );

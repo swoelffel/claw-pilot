@@ -395,6 +395,9 @@ export async function importInstanceTeam(
   mergeTeamIntoRuntimeConfig(config, team);
   await conn.writeFile(instance.config_path, JSON.stringify(config, null, 2) + "\n");
 
+  // B1b. Sync to DB — the runtime loads config from DB (runtime_config_json), not just the file
+  registry.saveRuntimeConfig(instance.slug, config as Parameters<Registry["saveRuntimeConfig"]>[1]);
+
   // B2. Write workspace files to disk
   const stateDir = path.dirname(instance.config_path);
   const filesWritten = await syncWorkspacesToDisk(conn, stateDir, team);
@@ -449,6 +452,20 @@ function mergeTeamIntoRuntimeConfig(config: Record<string, unknown>, team: TeamF
         if (value !== undefined) {
           entry[key] = value;
         }
+      }
+    }
+
+    // Ensure every agent has a model — fall back to team defaults or instance default
+    if (!entry["model"]) {
+      const teamModel =
+        typeof team.defaults?.model === "string"
+          ? team.defaults.model
+          : typeof team.defaults?.model === "object" && team.defaults?.model !== null
+            ? (team.defaults.model as { primary?: string }).primary
+            : undefined;
+      const fallback = teamModel ?? (config["defaultModel"] as string | undefined);
+      if (fallback) {
+        entry["model"] = fallback;
       }
     }
 

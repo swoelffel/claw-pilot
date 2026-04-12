@@ -1209,3 +1209,34 @@ export async function getFlowRun(
 export async function cancelFlowRun(slug: string, runId: number): Promise<void> {
   await apiFetch(`/instances/${slug}/flow-runs/${runId}/cancel`, { method: "POST" });
 }
+
+// ---------------------------------------------------------------------------
+// System Instance
+// ---------------------------------------------------------------------------
+
+export interface SystemInstanceStatus {
+  provisioned: boolean;
+  running: boolean;
+  slug: string | null;
+}
+
+export async function fetchSystemStatus(): Promise<SystemInstanceStatus> {
+  return apiFetch<SystemInstanceStatus>("/system/status");
+}
+
+export async function ensureSystemInstance(
+  namedKeyId: number,
+): Promise<{ slug: string; status: string }> {
+  return apiFetch<{ slug: string; status: string }>("/system/ensure", {
+    method: "POST",
+    body: JSON.stringify({ namedKeyId }),
+  });
+}
+
+export async function fetchSystemReady(): Promise<{
+  ready: boolean;
+  slug?: string;
+  reason?: string;
+}> {
+  return apiFetch<{ ready: boolean; slug?: string; reason?: string }>("/system/ready");
+}

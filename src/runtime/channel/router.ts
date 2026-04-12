@@ -115,7 +115,7 @@ export class ChannelRouter {
     }
 
     // Build RuntimeAgentConfig from Agent.Info + global config
-    const agentConfig = buildAgentConfig(agentInfo, config);
+    const agentConfig = buildAgentConfig(agentInfo, config, agentId);
 
     // 2. Resolve model (named API keys first, then legacy provider/model string)
     const resolvedModel = resolveModelForAgent(db, instanceSlug, agentConfig, config);
@@ -298,13 +298,14 @@ function findOrCreateSession(
 function buildAgentConfig(
   agent: ReturnType<typeof getAgent> & object,
   config: RuntimeConfig,
+  agentId: string,
 ): import("../config/index.js").RuntimeAgentConfig {
   // Resolve persistence from config (explicit) or agent kind (inferred)
-  const agentConfigFromRuntime = config.agents.find((a) => a.id === agent.name);
+  const agentConfigFromRuntime = config.agents.find((a) => a.id === agentId);
   const persistence = resolveEffectivePersistence(agent, agentConfigFromRuntime);
 
   return {
-    id: agent.name,
+    id: agentId,
     name: agent.name,
     model: agent.model ?? config.defaultModel,
     systemPrompt: agent.prompt,
@@ -630,7 +631,7 @@ export function registerSubagentCompletedHandler(
         const agentInfo = getAgent(parentSession.agentId);
         if (!agentInfo) return;
 
-        const agentConfig = buildAgentConfig(agentInfo, config);
+        const agentConfig = buildAgentConfig(agentInfo, config, parentSession.agentId);
         const resolvedModel = resolveModelForAgent(db, instanceSlug, agentConfig, config);
         const internalResolvedModel = config.defaultInternalModel
           ? resolveModelFromString(config.defaultInternalModel, config.models)

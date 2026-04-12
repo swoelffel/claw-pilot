@@ -265,8 +265,9 @@ const WebChatConfigSchema = z.object({
 const CompactionConfigSchema = z.object({
   /** Enable automatic compaction when context window fills */
   auto: z.boolean().default(true),
-  /** Fraction of context window to use before triggering compaction (0-1) */
-  threshold: z.number().min(0.5).max(0.99).default(0.85),
+  /** Fraction of context window to use before triggering compaction (0-1).
+   *  Legacy configs may store message counts (e.g. 40) — accepted but treated as 0.85. */
+  threshold: z.number().min(0).default(0.85),
   /** Number of tokens to reserve for the compaction summary */
   reservedTokens: z.number().int().min(1000).max(50_000).default(8_000),
   /**
@@ -312,7 +313,7 @@ const LogConfigSchema = z.object({
   /** Minimum log level to emit. Messages below this level are silently dropped. */
   level: z.enum(["debug", "info", "warn", "error"]).default("info"),
   /** Output format. "text" = colored human-readable, "json" = JSON Lines (one object per line). */
-  format: z.enum(["text", "json"]).default("text"),
+  format: z.enum(["text", "json", "compact"]).default("text"),
   /** Rotate runtime.log when it exceeds this size (MB). */
   maxSizeMb: z.number().int().min(1).max(500).default(10),
   /** Number of rotated files to keep (runtime.log.1 … runtime.log.N). */

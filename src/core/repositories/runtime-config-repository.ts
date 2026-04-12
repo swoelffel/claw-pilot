@@ -35,7 +35,8 @@ export class RuntimeConfigRepository {
 
       return config;
     } catch (err) {
-      logger.warn(`[runtime-config-repo] Failed to parse runtime_config_json for ${slug}: ${err}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`[runtime-config-repo] Failed to parse runtime_config_json for ${slug}: ${msg}`);
       return null;
     }
   }
@@ -132,8 +133,9 @@ export class RuntimeConfigRepository {
           configs.push(parseAgentConfig(JSON.parse(row.config_json) as unknown));
           continue;
         } catch (err) {
+          const detail = err instanceof Error ? err.message : String(err);
           logger.warn(
-            `[runtime-config-repo] Invalid config_json for agent "${row.agent_id}", using fallback: ${err}`,
+            `[runtime-config-repo] Invalid config_json for agent "${row.agent_id}", using fallback: ${detail}`,
           );
         }
       }

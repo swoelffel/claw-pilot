@@ -8,6 +8,7 @@
 import type { SidebarSection } from "../types.js";
 
 export type Route =
+  | { view: "home" }
   | { view: "cluster" }
   | { view: "agents-builder"; slug: string }
   | { view: "blueprints" }
@@ -29,8 +30,10 @@ export type Route =
 /** Convert a Route to a hash string (without the leading #). */
 export function routeToHash(route: Route): string {
   switch (route.view) {
+    case "home":
+      return "/home";
     case "cluster":
-      return "/";
+      return "/instances";
     case "agents-builder":
       return `/instances/${route.slug}/builder`;
     case "instance-settings":
@@ -70,7 +73,13 @@ export function routeToHash(route: Route): string {
 export function hashToRoute(hash: string): Route {
   // Strip leading # and /
   const path = hash.replace(/^#?\/?/, "");
-  if (!path || path === "/") return { view: "cluster" };
+  if (!path || path === "/") return { view: "home" };
+
+  // /home
+  if (path === "home") return { view: "home" };
+
+  // /instances (cluster view)
+  if (path === "instances") return { view: "cluster" };
 
   // /instances/:slug/builder
   const builderMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/builder$/);
@@ -134,5 +143,5 @@ export function hashToRoute(hash: string): Route {
   // /profile
   if (path === "profile") return { view: "profile" };
 
-  return { view: "cluster" };
+  return { view: "home" };
 }

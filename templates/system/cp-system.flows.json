@@ -1,0 +1,110 @@
+[
+  {
+    "name": "Health Check",
+    "description": "Comprehensive system health report across all instances",
+    "steps": [
+      {
+        "id": "check",
+        "agentId": "analyst",
+        "prompt": "Run a complete health check of this ClawPilot installation.\n\n1. Use cp_system_health to get the overall system status\n2. For each running instance, use cp_instance_costs to get recent cost data\n3. Use cp_list_instances to get detailed instance information\n\nProduce a structured report with these sections:\n- **Overview**: total instances, running vs stopped, total cost\n- **Instance Details**: table with slug, state, model, agent count, recent cost\n- **Issues**: any instances in error state, stopped for a long time, or with unusual costs\n- **Recommendations**: actionable suggestions (restart errored instances, review expensive ones)",
+        "dependsOn": []
+      }
+    ],
+    "trigger": { "type": "manual" }
+  },
+  {
+    "name": "Onboarding",
+    "description": "Guide a new user through creating their first agent team",
+    "steps": [
+      {
+        "id": "discover",
+        "agentId": "analyst",
+        "prompt": "Analyze the current ClawPilot installation state for onboarding.\n\n1. Use cp_list_instances to see existing instances\n2. Use cp_list_named_keys to check configured API keys and providers\n3. Use cp_list_blueprints to see available team templates\n\nProduce a brief state summary:\n- Number of instances (running/stopped)\n- Available API keys and providers\n- Available blueprints\n- Readiness assessment: is the system ready for a new team?",
+        "dependsOn": []
+      },
+      {
+        "id": "propose",
+        "agentId": "architect",
+        "prompt": "Based on the system state analysis, propose a first team for a new user.\n\nConsider what would be most useful:\n- If no instances exist yet: suggest a simple 2-agent team (planner + developer)\n- If instances exist: suggest something complementary\n\nOutput a complete team specification with:\n- Suggested instance slug and display name\n- Agent definitions (id, name, archetype, toolProfile, role)\n- Brief SOUL.md content for each agent\n- Recommended model (use the cheapest available for a first team)\n- Why this team composition makes sense",
+        "dependsOn": ["discover"]
+      },
+      {
+        "id": "provision",
+        "agentId": "admin-exec",
+        "prompt": "Create the team proposed in the previous step.\n\n1. Use cp_create_instance with the proposed slug, model, and the first available named key\n2. Use cp_update_instance_config to configure agents as specified\n3. Use cp_start_instance to start the new instance\n\nReport the result:\n- Instance slug and port\n- Agent names and roles\n- Running status\n- How to access it (dashboard URL pattern)",
+        "dependsOn": ["propose"]
+      }
+    ],
+    "trigger": { "type": "manual" }
+  },
+  {
+    "name": "Cost Audit",
+    "description": "Detailed cost analysis with optimization recommendations",
+    "steps": [
+      {
+        "id": "collect",
+        "agentId": "analyst",
+        "prompt": "Gather comprehensive cost data for all instances.\n\n1. Use cp_list_instances to get all instances\n2. For each instance, use cp_instance_costs to get cost breakdown\n3. Use cp_list_agents for each instance to see agent-level details\n\nProduce raw data in table format:\n- Instance-level: slug, total cost, token usage (in/out), model used\n- Agent-level: agent name, model, cost contribution, message count\n- Provider-level: total spend per provider",
+        "dependsOn": []
+      },
+      {
+        "id": "recommend",
+        "agentId": "analyst",
+        "prompt": "Based on the cost data collected, produce optimization recommendations.\n\nAnalyze:\n1. **Expensive agents**: Which agents cost the most? Could they use a cheaper model?\n2. **Underutilized instances**: Low activity but still running? Should they be stopped?\n3. **Model optimization**: Are powerful models used for simple tasks? Suggest downgrades.\n4. **Token efficiency**: High input/output ratio? Suggests verbose prompts or responses.\n\nFormat as a prioritized action plan:\n- Quick wins (easy changes, significant savings)\n- Medium-term improvements\n- Estimated monthly savings for each recommendation",
+        "dependsOn": ["collect"]
+      }
+    ],
+    "trigger": { "type": "manual" }
+  },
+  {
+    "name": "Config Backup",
+    "description": "Export configuration snapshot of all instances",
+    "steps": [
+      {
+        "id": "export",
+        "agentId": "admin-exec",
+        "prompt": "Create a comprehensive configuration backup of this ClawPilot installation.\n\n1. Use cp_list_instances to get all instances with their configuration\n2. For each instance, use cp_list_agents to get agent details\n3. Use cp_list_named_keys to get all API keys (masked)\n4. Use cp_list_blueprints to get all team blueprints\n\nProduce a structured backup report with:\n- **Instances**: slug, display name, model, port, state, agent count\n- **Agents per instance**: id, name, model, archetype, toolProfile\n- **Named API Keys**: name, provider, default model (no raw keys)\n- **Blueprints**: name, description, agent count\n- **Summary**: total instances, total agents, total keys, total blueprints\n\nThis report should contain enough information to recreate the setup manually if needed.",
+        "dependsOn": []
+      }
+    ],
+    "trigger": { "type": "manual" }
+  },
+  {
+    "name": "Team Builder",
+    "description": "Design and provision a new agent team from a brief",
+    "steps": [
+      {
+        "id": "design",
+        "agentId": "architect",
+        "prompt": "Design a complete agent team based on the brief provided in the delegation context.\n\nFollow this process:\n1. Understand the goal — what should this team accomplish?\n2. Identify the key roles needed (2-5 agents)\n3. For each agent, specify: id, name, archetype, toolProfile, role description\n4. Write a complete SOUL.md for each agent (identity, values, principles, workflow)\n5. Define communication links (who delegates to whom)\n6. Recommend a model and instance slug\n\nUse cp_list_named_keys to check available API keys and choose an appropriate provider.\nUse cp_list_blueprints to check if a similar team already exists.\n\nOutput the full team specification in structured format.",
+        "dependsOn": []
+      },
+      {
+        "id": "provision",
+        "agentId": "admin-exec",
+        "prompt": "Provision the team designed in the previous step.\n\n1. Use cp_create_instance with the specified slug, model, and first available named key\n2. Use cp_update_instance_config to set up all agents with their configurations\n3. Use cp_start_instance to start the new instance\n4. Verify the instance is running with cp_get_instance\n\nReport:\n- Instance slug and URL\n- List of provisioned agents with their roles\n- Running status\n- Any issues encountered during provisioning",
+        "dependsOn": ["design"]
+      }
+    ],
+    "trigger": { "type": "manual" }
+  },
+  {
+    "name": "Team Optimizer",
+    "description": "Analyze and optimize an existing agent team",
+    "steps": [
+      {
+        "id": "audit",
+        "agentId": "analyst",
+        "prompt": "Analyze the target instance specified in the delegation context.\n\n1. Use cp_get_instance to get instance details\n2. Use cp_list_agents to get all agents and their configuration\n3. Use cp_instance_costs to get cost data\n\nProduce an audit report:\n- **Team composition**: agents, their archetypes, models, tool profiles\n- **Cost analysis**: cost per agent, total instance cost\n- **Activity patterns**: which agents are most/least active\n- **Architecture review**: are communication links appropriate? Any missing connections?\n- **Potential issues**: idle agents, expensive models for simple roles, missing archetypes",
+        "dependsOn": []
+      },
+      {
+        "id": "recommend",
+        "agentId": "architect",
+        "prompt": "Based on the audit report, produce optimization recommendations for the target team.\n\nConsider:\n1. **Agent consolidation**: Can agents with overlapping roles be merged?\n2. **Model optimization**: Which agents could use a cheaper model without quality loss?\n3. **Architecture improvements**: Missing delegation links? Wrong archetypes?\n4. **New agents**: Would adding a specialist improve the team?\n5. **SOUL.md quality**: Are agent prompts specific enough? Suggest improvements.\n\nFormat as a prioritized action plan:\n- High impact / easy changes first\n- Include estimated cost savings where applicable\n- For each recommendation, explain the reasoning",
+        "dependsOn": ["audit"]
+      }
+    ],
+    "trigger": { "type": "manual" }
+  }
+]

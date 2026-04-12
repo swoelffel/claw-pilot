@@ -106,6 +106,9 @@ export class Registry {
   deleteInstance(slug: string) {
     return this.instances.deleteInstance(slug);
   }
+  getSystemInstance() {
+    return this.instances.getSystemInstance();
+  }
 
   // --- Agents ---
   listAgents(instanceSlug: string) {

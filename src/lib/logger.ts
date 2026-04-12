@@ -6,7 +6,7 @@ import chalk from "chalk";
 // ---------------------------------------------------------------------------
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
-export type LogFormat = "text" | "json";
+export type LogFormat = "text" | "json" | "compact";
 
 // ---------------------------------------------------------------------------
 // Singleton state (configurable at runtime startup via configureLogger)

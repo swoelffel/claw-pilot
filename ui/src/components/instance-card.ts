@@ -49,6 +49,20 @@ export class InstanceCard extends LitElement {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .system-badge {
+        font-size: 10px;
+        font-weight: 600;
+        padding: 1px 7px;
+        border-radius: 8px;
+        background: var(--accent, #7c5cfc);
+        color: #fff;
+        letter-spacing: 0.03em;
+        flex-shrink: 0;
       }
 
       .slug {
@@ -669,7 +683,12 @@ export class InstanceCard extends LitElement {
         <!-- Header -->
         <div class="card-header">
           <div class="card-header-left">
-            <div class="display-name">${label}</div>
+            <div class="display-name">
+              ${label}
+              ${inst.is_system
+                ? html`<span class="system-badge">${msg("System", { id: "system-badge" })}</span>`
+                : nothing}
+            </div>
             ${showSlug ? html`<div class="slug">${inst.slug}</div>` : nothing}
           </div>
           <div class="card-header-right">

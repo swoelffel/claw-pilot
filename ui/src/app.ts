@@ -16,6 +16,7 @@ import { setToken, clearToken } from "./services/auth-state.js";
 import { WsMonitor } from "./services/ws-monitor.js";
 import { UpdatePoller } from "./services/update-poller.js";
 import { hashToRoute, routeToHash, type Route } from "./services/router.js";
+import "./components/home-screen.js";
 import "./components/cluster-view.js";
 import "./components/agents-builder.js";
 import "./components/blueprints-view.js";
@@ -471,7 +472,7 @@ export class CpApp extends LitElement {
   @state() private _authChecking = true;
   @state() private _sessionExpired = false;
   @state() private _username: string | null = null;
-  @state() private _route: Route = { view: "cluster" };
+  @state() private _route: Route = { view: "home" };
   @state() private _instances: InstanceInfo[] = [];
   @state() private _blueprintCount: number | null = null;
   @state() private _agentTemplateCount: number | null = null;
@@ -777,7 +778,7 @@ export class CpApp extends LitElement {
   }
 
   private _goHome(): void {
-    this._route = { view: "cluster" };
+    this._route = { view: "home" };
   }
 
   private async _switchLocale(locale: SupportedLocale): Promise<void> {
@@ -821,6 +822,9 @@ export class CpApp extends LitElement {
   // ---------------------------------------------------------------------------
 
   private _renderMain() {
+    if (this._route.view === "home") {
+      return html`<cp-home-screen @navigate=${this._navigate}></cp-home-screen>`;
+    }
     if (this._route.view === "cluster") {
       return html`
         <cp-cluster-view
@@ -1023,6 +1027,14 @@ export class CpApp extends LitElement {
           <div class="logo" @click=${this._goHome}>Claw<span>Pilot</span></div>
           <nav class="nav-tabs">
             <button
+              class="nav-tab ${this._route.view === "home" ? "active" : ""}"
+              @click=${() => {
+                this._route = { view: "home" };
+              }}
+            >
+              ${msg("Home", { id: "nav-home" })}
+            </button>
+            <button
               class="nav-tab ${this._route.view === "cluster" ||
               this._route.view === "agents-builder" ||
               this._route.view === "instance-settings" ||
@@ -1031,7 +1043,10 @@ export class CpApp extends LitElement {
               this._route.view === "activity" ||
               this._route.view === "memory" ||
               this._route.view === "heartbeat" ||
-              this._route.view === "session-logs"
+              this._route.view === "session-logs" ||
+              this._route.view === "tasks" ||
+              this._route.view === "flows" ||
+              this._route.view === "flow-run"
                 ? "active"
                 : ""}"
               @click=${() => {
@@ -1132,7 +1147,9 @@ export class CpApp extends LitElement {
         @cp-update-action=${this._onSelfUpdateStart}
       ></cp-self-update-banner>
 
-      <main class="${this._route.view === "pilot" ? "pilot" : ""}">${this._renderMain()}</main>
+      <main class="${this._route.view === "pilot" || this._route.view === "home" ? "pilot" : ""}">
+        ${this._renderMain()}
+      </main>
 
       ${"slug" in this._route && this._route.slug
         ? html`

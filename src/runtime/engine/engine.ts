@@ -31,6 +31,9 @@ import { McpRegistry } from "../mcp/registry.js";
 import { ChannelRouter, registerSubagentCompletedHandler } from "../channel/router.js";
 import { createChannels } from "./channel-factory.js";
 import { wirePluginsToBus } from "./plugin-wiring.js";
+import { registerPlugin } from "../plugin/plugin.js";
+import { systemDashboardPlugin } from "../plugin/system-dashboard/index.js";
+import { SYSTEM_INSTANCE_SLUG } from "../../core/system-instance.js";
 import { startHeartbeatRunner } from "../heartbeat/runner.js";
 // getRegisteredHooks import removed — routes hook was removed (YAGNI)
 import { registerMiddleware, clearMiddlewares } from "../middleware/index.js";
@@ -171,6 +174,11 @@ export class ClawRuntime {
         this._mcpRegistry = new McpRegistry();
         const enabledServers = this.config.mcpServers.filter((s) => s.enabled);
         await this._mcpRegistry.init(enabledServers, this.instanceSlug);
+      }
+
+      // 2b. Register system dashboard plugin for cp-system instance
+      if (this.instanceSlug === SYSTEM_INSTANCE_SLUG) {
+        registerPlugin("system-dashboard", systemDashboardPlugin);
       }
 
       // 3. Wire plugin hooks to bus events
