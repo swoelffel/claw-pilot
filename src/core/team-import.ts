@@ -13,6 +13,9 @@ import { now } from "../lib/date.js";
 import { constants } from "../lib/constants.js";
 import { loadWorkspaceTemplate, type TemplateVars } from "../lib/workspace-templates.js";
 import { Lifecycle } from "./lifecycle.js";
+import { getBus } from "../runtime/bus/index.js";
+import { WorkspaceFileChanged } from "../runtime/bus/events.js";
+import type { InstanceSlug, AgentId } from "../runtime/types.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -401,6 +404,28 @@ export async function importInstanceTeam(
   // B2. Write workspace files to disk
   const stateDir = path.dirname(instance.config_path);
   const filesWritten = await syncWorkspacesToDisk(conn, stateDir, team);
+
+  // B2b. Notify runtime of changed workspace files (invalidates cache + dirty flags)
+  try {
+    const bus = getBus(instance.slug);
+    for (const agent of team.agents) {
+      if (!agent.files) continue;
+      for (const filename of Object.keys(agent.files)) {
+        const filePath = path.join(stateDir, "workspaces", agent.id, filename);
+        bus.publish(WorkspaceFileChanged, {
+          instanceSlug: instance.slug as InstanceSlug,
+          agentId: agent.id as AgentId,
+          filename,
+          filePath,
+        });
+      }
+    }
+  } catch (err) {
+    // Bus may not exist if the runtime is not running — restart will clear the cache
+    logger.debug("[team-import] workspace file change notification skipped (bus unavailable)", {
+      error: String(err),
+    });
+  }
 
   // B3. Restart daemon (best-effort, don't fail the import)
   try {

@@ -7,6 +7,7 @@
 
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
 import type { ServerConnection } from "../server/connection.js";
@@ -35,6 +36,7 @@ export const SYSTEM_AGENT_NAME = "System Pilot";
 // In prod: dist/ → ../templates/system = templates/system ✓
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SYSTEM_TEMPLATE_DIR = path.join(__dirname, "../templates/system");
+const CP_SYSTEM_TEMPLATE_HASH_KEY = "cp_system_template_hash";
 
 // ---------------------------------------------------------------------------
 // SystemInstanceService
@@ -76,6 +78,8 @@ export class SystemInstanceService {
       );
       // Ensure flows are provisioned (idempotent)
       await SystemInstanceService._provisionFlows(db, SYSTEM_INSTANCE_SLUG);
+      // Re-sync workspace files if the YAML template changed (e.g. after code deploy)
+      await SystemInstanceService._syncTemplateIfChanged(db, conn, existing);
       return existing;
     }
 
@@ -193,6 +197,83 @@ export class SystemInstanceService {
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Compare the YAML template hash with the stored hash. If different, re-sync
+   * only the YAML-provided workspace files to disk + DB (preserves user content).
+   */
+  private static async _syncTemplateIfChanged(
+    db: Database.Database,
+    conn: ServerConnection,
+    instance: InstanceRecord,
+  ): Promise<void> {
+    const yamlPath = path.join(SYSTEM_TEMPLATE_DIR, "cp-system.team.yaml");
+    let yamlContent: string;
+    try {
+      yamlContent = await fs.readFile(yamlPath, "utf-8");
+    } catch (err) {
+      logger.debug("[system-instance] Cannot read team YAML for sync check", {
+        error: String(err),
+      });
+      return;
+    }
+
+    const currentHash = createHash("sha256").update(yamlContent).digest("hex");
+    const storedHash = db
+      .prepare("SELECT value FROM config WHERE key = ?")
+      .get(CP_SYSTEM_TEMPLATE_HASH_KEY) as { value: string } | undefined;
+
+    if (storedHash?.value === currentHash) return; // No change
+
+    // Parse the YAML
+    const result = parseAndValidateTeam(yamlContent);
+    if (!result.success) {
+      logger.warn("[system-instance] Template changed but YAML is invalid, skipping sync", {
+        error: String(result.error),
+      });
+      return;
+    }
+    const team = result.data;
+
+    // Re-sync workspace files: only overwrite YAML-provided files (preserve USER.md, memory, etc.)
+    const stateDir = instance.state_dir;
+    let filesUpdated = 0;
+    for (const agent of team.agents) {
+      if (!agent.files) continue;
+      const workspacePath = path.join(stateDir, "workspaces", agent.id);
+      await conn.mkdir(workspacePath);
+
+      for (const [filename, content] of Object.entries(agent.files)) {
+        await conn.writeFile(path.join(workspacePath, filename), content);
+        filesUpdated++;
+
+        // Update DB cache (agent_files)
+        const agentRecord = db
+          .prepare(
+            "SELECT a.id FROM agents a JOIN instances i ON a.instance_id = i.id WHERE i.slug = ? AND a.agent_id = ?",
+          )
+          .get(SYSTEM_INSTANCE_SLUG, agent.id) as { id: number } | undefined;
+        if (agentRecord) {
+          const contentHash = createHash("sha256").update(content).digest("hex");
+          db.prepare(
+            `INSERT INTO agent_files (agent_id, filename, content, content_hash, updated_at)
+             VALUES (?, ?, ?, ?, datetime('now'))
+             ON CONFLICT (agent_id, filename) DO UPDATE SET
+               content = excluded.content,
+               content_hash = excluded.content_hash,
+               updated_at = excluded.updated_at`,
+          ).run(agentRecord.id, filename, content, contentHash);
+        }
+      }
+    }
+
+    // Store new hash
+    db.prepare(
+      "INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+    ).run(CP_SYSTEM_TEMPLATE_HASH_KEY, currentHash);
+
+    logger.info(`[system-instance] Template re-synced: ${filesUpdated} files updated`);
+  }
 
   /** Load and parse the system team YAML from templates. */
   private static async _loadTeamFile() {

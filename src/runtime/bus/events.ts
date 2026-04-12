@@ -336,6 +336,15 @@ export const FlowRunCompleted = defineEvent<
 >("flow.run.completed");
 
 // ---------------------------------------------------------------------------
+// Workspace events
+// ---------------------------------------------------------------------------
+
+export const WorkspaceFileChanged = defineEvent<
+  "workspace.file.changed",
+  { instanceSlug: InstanceSlug; agentId: AgentId; filename: string; filePath: string }
+>("workspace.file.changed");
+
+// ---------------------------------------------------------------------------
 // Channel events
 // ---------------------------------------------------------------------------
 
@@ -392,7 +401,8 @@ export type AnyEventDef =
   | typeof SuggestionsGenerated
   | typeof FlowRunStarted
   | typeof FlowStepCompleted
-  | typeof FlowRunCompleted;
+  | typeof FlowRunCompleted
+  | typeof WorkspaceFileChanged;
 
 export type AnyEvent = {
   [K in AnyEventDef["type"]]: {
