@@ -80,7 +80,7 @@ describe("RuntimeConfigSchema", () => {
   it("rejects compaction threshold out of range", () => {
     const result = safeParseRuntimeConfig({
       version: 1,
-      compaction: { threshold: 1.5 }, // > 0.99
+      compaction: { threshold: -1 }, // < 0
     });
     expect(result.success).toBe(false);
   });
