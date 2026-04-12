@@ -67,7 +67,7 @@ export const QuestionTool = Tool.define("question", {
     const { nanoid } = await import("nanoid");
     const questionId = nanoid();
 
-    const bus = getBus(ctx.agentId.split(":")[0] ?? "default");
+    const bus = getBus(ctx.instanceSlug ?? "default");
 
     // Emit event so the channel layer can display the question
     bus.publish(QuestionAsked, {

@@ -21,6 +21,8 @@ export namespace Tool {
     sessionId: SessionId;
     messageId: MessageId;
     agentId: string;
+    /** Instance slug — used by tools that need to access the instance bus. */
+    instanceSlug?: string;
     abort: AbortSignal;
     /** True if the sender is an owner channel (web, telegram) — false for internal sub-agents */
     senderIsOwner?: boolean;
