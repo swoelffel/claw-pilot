@@ -326,6 +326,7 @@ function makeInstance(slug: string, state: InstanceRecord["state"]): InstanceRec
     discovered: 0,
     instance_type: "claw-runtime",
     runtime_config_json: null,
+    is_system: 0,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
   };

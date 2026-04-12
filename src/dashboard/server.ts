@@ -37,6 +37,8 @@ import { registerProfileRoutes } from "./routes/profile.js";
 import { registerNamedKeyRoutes } from "./routes/named-keys.js";
 import { registerSearchRoutes } from "./routes/search.js";
 import { registerFlowRoutes } from "./routes/instances/flows.js";
+import { registerSystemInstanceRoutes } from "./routes/system-instance.js";
+import { SystemInstanceService } from "../core/system-instance.js";
 import { rebuildSearchIndex } from "../core/repositories/search-repository.js";
 import { ModelDiscoveryService } from "../core/model-discovery/service.js";
 
@@ -227,9 +229,23 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   registerNamedKeyRoutes(app, deps);
   registerSearchRoutes(app, deps);
   registerFlowRoutes(app, deps);
+  registerSystemInstanceRoutes(app, deps, token, options.port);
 
   // Rebuild search index on startup
   rebuildSearchIndex(deps.db);
+
+  // Auto-start system instance if provisioned but stopped
+  void SystemInstanceService.ensureRunning(registry, lifecycle).catch((err) =>
+    logger.warn("[system] failed to auto-start system instance", { error: String(err) }),
+  );
+
+  // Sync dashboard token to system instance .env (in case token changed)
+  const systemInst = registry.getSystemInstance();
+  if (systemInst) {
+    void SystemInstanceService.syncDashboardToken(systemInst.state_dir, options.port, token).catch(
+      (err) => logger.debug("[system] failed to sync dashboard token", { error: String(err) }),
+    );
+  }
 
   // Global error handler — catches unhandled errors that bubble up through route handlers.
   // ClawPilotError subclasses are mapped to structured API responses; unknown errors → 500.

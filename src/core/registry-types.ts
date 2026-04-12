@@ -30,6 +30,8 @@ export interface InstanceRecord {
   instance_type: "claw-runtime";
   /** Full RuntimeConfig as JSON — source of truth for all instance config fields (v21+). */
   runtime_config_json: string | null;
+  /** 1 if this is the auto-provisioned system instance (cp-system), 0 otherwise. */
+  is_system: number;
   created_at: string;
   updated_at: string;
 }

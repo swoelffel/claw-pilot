@@ -49,6 +49,8 @@ export interface InstanceInfo {
   // gateway token for zero-friction Control UI login
   gatewayToken?: string | null;
   taskCounts?: { pending: number; inProgress: number; blocked: number };
+  /** True if this is the auto-provisioned system instance (cp-system). */
+  is_system?: number;
 }
 
 export interface HealthUpdate {

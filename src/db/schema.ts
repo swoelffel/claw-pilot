@@ -1358,6 +1358,12 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 34,
+    up(db) {
+      db.exec(`ALTER TABLE instances ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0`);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

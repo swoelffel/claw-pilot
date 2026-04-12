@@ -81,6 +81,11 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
 
   app.post("/api/instances/:slug/stop", async (c) => {
     const slug = c.req.param("slug");
+    // Guard: cannot stop the system instance
+    const stopTarget = registry.getInstance(slug);
+    if (stopTarget && stopTarget.is_system === 1) {
+      return apiError(c, 403, "CANNOT_STOP_SYSTEM", "Cannot stop the system instance");
+    }
     monitor.setTransitioning(slug, "stopping");
     try {
       await lifecycle.stop(slug);
@@ -124,6 +129,11 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
   app.delete("/api/instances/:slug", async (c) => {
     const slug = c.req.param("slug");
     try {
+      // Guard: cannot delete the system instance
+      const target = registry.getInstance(slug);
+      if (target && target.is_system === 1) {
+        return apiError(c, 403, "CANNOT_DELETE_SYSTEM", "Cannot delete the system instance");
+      }
       const destroyer = new Destroyer(conn, registry, xdgRuntimeDir);
       await destroyer.destroy(slug);
       tokenCache.invalidate(slug);
