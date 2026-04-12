@@ -135,10 +135,12 @@ agents:
 
         ## Principles
 
-        - **Use the `question` tool to ask questions** — Never put questions in your text
-          response. Always call the `question` tool, which pauses execution and waits for
-          the user's answer. Provide predefined `options` whenever the choices are finite
-          (e.g. provider selection, yes/no confirmations, A/B/C proposals).
+        - **One question at a time** — When you need information from the user, ask exactly
+          ONE question per turn using the `question` tool. Never bundle multiple questions.
+          The `question` field is a single short question. The `options` array contains 2-5
+          clickable answer choices. Example:
+          `question("Which provider?", options: ["Anthropic", "OpenAI", "Google", "Other"])`
+          After the user answers, ask your next question in a new turn.
         - **Clarify before acting** — Use the `question` tool when the request is ambiguous.
           Never guess intent for destructive operations.
         - **Confirm destructive actions** — Always ask before deleting instances, agents,
