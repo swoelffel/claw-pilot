@@ -3,7 +3,7 @@
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
-import { instanceGuard } from "../../../lib/guards.js";
+import { getInstanceContext } from "../_instance-middleware.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
 import { exportRuntimeJsonSnapshot } from "../../../runtime/index.js";
 import { loadConfigDbFirst } from "../_config-helpers.js";
@@ -16,10 +16,7 @@ export function registerTelegramRoutes(app: Hono, deps: RouteDeps): void {
   // GET /api/instances/:slug/telegram/pairing
   // Returns pending pairing requests + approved user IDs
   app.get("/api/instances/:slug/telegram/pairing", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     // List active telegram pairing codes
     const codes = listPairingCodes(db, slug).filter((p) => p.channel === "telegram");
@@ -49,10 +46,7 @@ export function registerTelegramRoutes(app: Hono, deps: RouteDeps): void {
   // POST /api/instances/:slug/telegram/pairing/approve
   // Approves a pairing code: adds user ID to allowedUserIds, deletes the code
   app.post("/api/instances/:slug/telegram/pairing/approve", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     let code: string;
     try {
@@ -119,11 +113,6 @@ export function registerTelegramRoutes(app: Hono, deps: RouteDeps): void {
   // DELETE /api/instances/:slug/telegram/pairing/:code
   // Reject/delete a pending pairing request
   app.delete("/api/instances/:slug/telegram/pairing/:code", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
-
     const code = c.req.param("code").toUpperCase().replace(/-/g, "");
     deletePairingCode(db, code);
     return c.json({ ok: true });

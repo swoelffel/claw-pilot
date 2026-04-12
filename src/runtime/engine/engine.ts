@@ -24,7 +24,10 @@ import {
   RuntimeStopped,
   RuntimeStateChanged,
   RuntimeError,
+  WorkspaceFileChanged,
 } from "../bus/events.js";
+import { clearWorkspaceCache, invalidateWorkspaceCache } from "../session/workspace-cache.js";
+import { markAllDirty } from "../session/system-prompt-dirty.js";
 import { initAgentRegistry, resolveEffectivePersistence, getAgent } from "../agent/registry.js";
 import { getOrCreatePermanentSession } from "../session/session.js";
 import { McpRegistry } from "../mcp/registry.js";
@@ -120,6 +123,9 @@ export class ClawRuntime {
     this._setState("starting");
 
     try {
+      // 0. Clear workspace file cache — fresh start after daemon restart
+      clearWorkspaceCache();
+
       // 1. Init agent registry (loads built-in agents + config agents)
       initAgentRegistry(this.config.agents);
 
@@ -183,6 +189,20 @@ export class ClawRuntime {
 
       // 3. Wire plugin hooks to bus events
       this._pluginUnsubscribers = wirePluginsToBus(this.instanceSlug);
+
+      // 3a. Subscribe to workspace file changes — invalidate cache + rebuild prompts
+      {
+        const wsBus = getBus(this.instanceSlug);
+        const wsUnsub = wsBus.subscribe(WorkspaceFileChanged, (payload) => {
+          invalidateWorkspaceCache(payload.filePath);
+          markAllDirty("workspace");
+          this.log.debug("[engine] workspace file changed, cache invalidated", {
+            agentId: payload.agentId,
+            filename: payload.filename,
+          });
+        });
+        this._pluginUnsubscribers.push(wsUnsub);
+      }
 
       // 3b. Register async subagent result handler
       this._subagentUnsubscribe = registerSubagentCompletedHandler(

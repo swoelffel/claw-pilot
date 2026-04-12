@@ -53,6 +53,7 @@ import { SessionStore } from "../session-store.js";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { registerConfigRoutes } from "../routes/instances/config.js";
+import { instanceMiddleware } from "../routes/_instance-middleware.js";
 import { writeEnvVar, removeEnvVar } from "../../lib/dotenv.js";
 import { isCryptoAvailable } from "../../lib/crypto.js";
 import type { RuntimeConfig } from "../../runtime/index.js";
@@ -199,6 +200,7 @@ beforeEach(() => {
     } as unknown as RouteDeps["modelDiscovery"],
   };
 
+  app.use("/api/instances/:slug/*", instanceMiddleware(registry));
   registerConfigRoutes(app, deps);
 
   // Seed: server + instance

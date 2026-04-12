@@ -9,6 +9,9 @@ pre-commit:
       run: pnpm lint:all
     typecheck:
       run: pnpm typecheck:all
+    complexity:
+      glob: "src/**/*.ts"
+      run: pnpm lint:complexity
 
 pre-push:
   commands:

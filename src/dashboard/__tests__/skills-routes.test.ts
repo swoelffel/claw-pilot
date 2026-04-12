@@ -33,6 +33,7 @@ vi.mock("../../lib/platform.js", async (importOriginal) => {
 
 // Import AFTER mock setup so the route module picks up the mocked function
 const { registerAgentSkillsRoutes } = await import("../routes/instances/agents/skills.js");
+import { instanceMiddleware } from "../routes/_instance-middleware.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -119,6 +120,7 @@ function createTestApp(): TestContext {
     } as unknown as RouteDeps["modelDiscovery"],
   };
 
+  app.use("/api/instances/:slug/*", instanceMiddleware(registry));
   registerAgentSkillsRoutes(app, deps);
 
   return { app, registry, conn, db, tmpDir, stateDir };

@@ -3,7 +3,7 @@
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
-import { instanceGuard } from "../../../lib/guards.js";
+import { getInstanceContext } from "../_instance-middleware.js";
 import type { WizardAnswers } from "../../../core/config-generator.js";
 import { Destroyer } from "../../../core/destroyer.js";
 import { Provisioner } from "../../../core/provisioner.js";
@@ -32,13 +32,10 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
   });
 
   app.get("/api/instances/:slug", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { instance, slug } = getInstanceContext(c);
     const [status, gatewayToken] = await Promise.all([
       health.check(slug),
-      tokenCache.get(slug, instance!.state_dir),
+      tokenCache.get(slug, instance.state_dir),
     ]);
     return c.json({ instance, status, gatewayToken });
   });
@@ -274,15 +271,12 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
 
   // GET /api/instances/:slug/conversations
   app.get("/api/instances/:slug/conversations", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { instance } = getInstanceContext(c);
 
     const limit = Math.min(parseInt(c.req.query("limit") ?? "10", 10), 100);
 
     try {
-      const runsPath = `${instance!.state_dir}/subagents/runs.json`;
+      const runsPath = `${instance.state_dir}/subagents/runs.json`;
       const raw = await conn.readFile(runsPath);
       const data = JSON.parse(raw) as {
         version: number;

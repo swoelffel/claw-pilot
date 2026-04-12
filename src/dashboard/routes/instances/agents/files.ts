@@ -4,26 +4,26 @@
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { apiError } from "../../../route-deps.js";
-import { instanceGuard } from "../../../../lib/guards.js";
+import { getInstanceContext } from "../../_instance-middleware.js";
 import { AgentProvisioner } from "../../../../core/agent-provisioner.js";
 import { EDITABLE_FILES } from "../../../../core/agent-sync.js";
 import { ClawPilotError, InstanceNotFoundError } from "../../../../lib/errors.js";
 import { logger } from "../../../../lib/logger.js";
+import * as path from "node:path";
+import { getBus } from "../../../../runtime/bus/index.js";
+import { WorkspaceFileChanged } from "../../../../runtime/bus/events.js";
+import type { InstanceSlug, AgentId } from "../../../../runtime/types.js";
 
 export function registerAgentFileRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, conn, lifecycle } = deps;
 
   // GET /api/instances/:slug/agents/:agentId/files/:filename — fetch a single workspace file
   app.get("/api/instances/:slug/agents/:agentId/files/:filename", (c) => {
-    const slug = c.req.param("slug");
+    const { instance } = getInstanceContext(c);
     const agentId = c.req.param("agentId");
     const filename = c.req.param("filename");
 
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
-
-    const agent = registry.getAgentByAgentId(instance!.id, agentId);
+    const agent = registry.getAgentByAgentId(instance.id, agentId);
     if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
     const file = registry.getAgentFileContent(agent.id, filename);
@@ -40,7 +40,7 @@ export function registerAgentFileRoutes(app: Hono, deps: RouteDeps): void {
 
   // PUT /api/instances/:slug/agents/:agentId/files/:filename — update a workspace file
   app.put("/api/instances/:slug/agents/:agentId/files/:filename", async (c) => {
-    const slug = c.req.param("slug");
+    const { instance, slug } = getInstanceContext(c);
     const agentId = c.req.param("agentId");
     const filename = c.req.param("filename");
 
@@ -48,11 +48,7 @@ export function registerAgentFileRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 403, "FILE_NOT_EDITABLE", "File is not editable");
     }
 
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
-
-    const agentRecord = registry.getAgentByAgentId(instance!.id, agentId);
+    const agentRecord = registry.getAgentByAgentId(instance.id, agentId);
     if (!agentRecord) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
     let body: { content?: string };
@@ -71,7 +67,7 @@ export function registerAgentFileRoutes(app: Hono, deps: RouteDeps): void {
 
     try {
       const provisioner = new AgentProvisioner(conn, registry);
-      await provisioner.updateAgentFile(instance!, agentId, filename, body.content);
+      await provisioner.updateAgentFile(instance, agentId, filename, body.content);
     } catch (err: unknown) {
       if (err instanceof InstanceNotFoundError) {
         return apiError(c, 404, "FILE_NOT_FOUND", err.message);
@@ -87,10 +83,25 @@ export function registerAgentFileRoutes(app: Hono, deps: RouteDeps): void {
       );
     }
 
-    // Restart daemon fire-and-forget
-    lifecycle.restart(slug).catch(() => {
-      /* best-effort restart */
-    });
+    // Notify the runtime that a workspace file changed (invalidates cache + dirty flags)
+    try {
+      const bus = getBus(slug);
+      const filePath = path.join(instance!.state_dir, "workspaces", agentId, filename);
+      bus.publish(WorkspaceFileChanged, {
+        instanceSlug: slug as InstanceSlug,
+        agentId: agentId as AgentId,
+        filename,
+        filePath,
+      });
+    } catch (err) {
+      // Bus may not exist if the runtime is not running — fall back to restart
+      logger.debug("[route:agents-files] workspace event skipped, falling back to restart", {
+        error: String(err),
+      });
+      lifecycle.restart(slug).catch(() => {
+        /* best-effort restart */
+      });
+    }
 
     const updatedFile = registry.getAgentFileContent(agentRecord.id, filename);
     return c.json(

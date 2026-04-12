@@ -26,6 +26,7 @@ vi.mock("../../bus/events.js", () => ({
   RuntimeStopped: Symbol("RuntimeStopped"),
   RuntimeStateChanged: Symbol("RuntimeStateChanged"),
   RuntimeError: Symbol("RuntimeError"),
+  WorkspaceFileChanged: Symbol("WorkspaceFileChanged"),
 }));
 vi.mock("../../agent/registry.js", () => ({
   initAgentRegistry: vi.fn(),

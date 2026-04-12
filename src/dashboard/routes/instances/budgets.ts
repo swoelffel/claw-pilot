@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
-import { instanceGuard } from "../../../lib/guards.js";
+import { getInstanceContext } from "../_instance-middleware.js";
 import {
   createBudget,
   getBudgetsForInstance,
@@ -41,16 +41,13 @@ const UpdateBudgetSchema = z.object({
 });
 
 export function registerBudgetRoutes(app: Hono, deps: RouteDeps): void {
-  const { registry, db } = deps;
+  const { db } = deps;
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/budgets
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/budgets", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const rows = getBudgetsForInstance(db, slug);
     return c.json(
@@ -75,10 +72,7 @@ export function registerBudgetRoutes(app: Hono, deps: RouteDeps): void {
   // POST /api/instances/:slug/budgets
   // ---------------------------------------------------------------------------
   app.post("/api/instances/:slug/budgets", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const body = await c.req.json().catch(() => null);
     const parsed = CreateBudgetSchema.safeParse(body);
@@ -136,10 +130,7 @@ export function registerBudgetRoutes(app: Hono, deps: RouteDeps): void {
   // PUT /api/instances/:slug/budgets/:id
   // ---------------------------------------------------------------------------
   app.put("/api/instances/:slug/budgets/:id", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const id = Number(c.req.param("id"));
     const existing = getBudget(db, id);
@@ -182,10 +173,7 @@ export function registerBudgetRoutes(app: Hono, deps: RouteDeps): void {
   // DELETE /api/instances/:slug/budgets/:id
   // ---------------------------------------------------------------------------
   app.delete("/api/instances/:slug/budgets/:id", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const id = Number(c.req.param("id"));
     const existing = getBudget(db, id);
@@ -201,10 +189,7 @@ export function registerBudgetRoutes(app: Hono, deps: RouteDeps): void {
   // POST /api/instances/:slug/budgets/:id/override
   // ---------------------------------------------------------------------------
   app.post("/api/instances/:slug/budgets/:id/override", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const id = Number(c.req.param("id"));
     const existing = getBudget(db, id);
@@ -227,10 +212,7 @@ export function registerBudgetRoutes(app: Hono, deps: RouteDeps): void {
   // GET /api/instances/:slug/budgets/:id/events
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/budgets/:id/events", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const id = Number(c.req.param("id"));
     const existing = getBudget(db, id);
@@ -257,10 +239,7 @@ export function registerBudgetRoutes(app: Hono, deps: RouteDeps): void {
   // GET /api/instances/:slug/budgets/events (all events for instance)
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/budgets/events", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const limit = Number(c.req.query("limit") ?? "50");
     const events = getBudgetEventsForInstance(db, slug, limit);
@@ -283,10 +262,7 @@ export function registerBudgetRoutes(app: Hono, deps: RouteDeps): void {
   // POST /api/instances/:slug/budgets/:id/reconcile
   // ---------------------------------------------------------------------------
   app.post("/api/instances/:slug/budgets/:id/reconcile", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const id = Number(c.req.param("id"));
     const existing = getBudget(db, id);

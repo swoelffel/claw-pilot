@@ -12,6 +12,7 @@ import { SessionStore } from "../session-store.js";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { registerTaskRoutes } from "../routes/instances/tasks.js";
+import { instanceMiddleware } from "../routes/_instance-middleware.js";
 import { disposeBus } from "../../runtime/bus/index.js";
 import type { InstanceSlug } from "../../runtime/types.js";
 
@@ -71,6 +72,7 @@ beforeEach(() => {
     } as unknown as RouteDeps["modelDiscovery"],
   };
 
+  app.use("/api/instances/:slug/*", instanceMiddleware(registry));
   registerTaskRoutes(app, deps);
 
   const server = registry.upsertLocalServer("testhost", "/opt/claw");

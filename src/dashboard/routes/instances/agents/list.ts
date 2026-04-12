@@ -2,7 +2,7 @@
 // GET /api/instances/:slug/agents
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
-import { instanceGuard } from "../../../../lib/guards.js";
+import { getInstanceContext } from "../../_instance-middleware.js";
 import { buildAgentPayload } from "../../_helpers.js";
 import { logger } from "../../../../lib/logger.js";
 
@@ -17,11 +17,7 @@ export function registerAgentListRoutes(app: Hono, deps: RouteDeps): void {
 
   // GET /api/instances/:slug/agents/builder — full builder payload
   app.get("/api/instances/:slug/agents/builder", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
-    const inst = instance!;
+    const { instance: inst } = getInstanceContext(c);
 
     const agents = registry.listAgents(inst.slug);
     const links = registry.listAgentLinks(inst.id);

@@ -5,7 +5,7 @@ import * as path from "node:path";
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
-import { instanceGuard } from "../../../lib/guards.js";
+import { getInstanceContext } from "../_instance-middleware.js";
 import { resolveAgentWorkspacePath } from "../../../core/agent-workspace.js";
 import { logger } from "../../../lib/logger.js";
 
@@ -121,10 +121,7 @@ export function registerMemoryRoutes(app: Hono, deps: RouteDeps): void {
   // List agents that have memory files in their workspace.
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/memory/agents", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { instance, slug } = getInstanceContext(c);
 
     const agents = registry.listAgents(slug);
     const results: Array<{
@@ -136,7 +133,7 @@ export function registerMemoryRoutes(app: Hono, deps: RouteDeps): void {
     }> = [];
 
     for (const agent of agents) {
-      const wsDir = resolveAgentWorkspacePath(instance!.state_dir, agent.agent_id, undefined);
+      const wsDir = resolveAgentWorkspacePath(instance.state_dir, agent.agent_id, undefined);
 
       if (!(await conn.exists(wsDir))) continue;
 
@@ -163,16 +160,13 @@ export function registerMemoryRoutes(app: Hono, deps: RouteDeps): void {
   // List memory files for a specific agent.
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/memory/agents/:agentId/files", async (c) => {
-    const slug = c.req.param("slug");
+    const { instance } = getInstanceContext(c);
     const agentId = c.req.param("agentId");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
 
-    const agent = registry.getAgentByAgentId(instance!.id, agentId);
+    const agent = registry.getAgentByAgentId(instance.id, agentId);
     if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
-    const wsDir = resolveAgentWorkspacePath(instance!.state_dir, agentId, undefined);
+    const wsDir = resolveAgentWorkspacePath(instance.state_dir, agentId, undefined);
     if (!(await conn.exists(wsDir))) {
       return c.json({ agentId, files: [] });
     }
@@ -186,14 +180,11 @@ export function registerMemoryRoutes(app: Hono, deps: RouteDeps): void {
   // Return the content of a single memory file.
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/memory/agents/:agentId/files/:filename{.+}", async (c) => {
-    const slug = c.req.param("slug");
+    const { instance } = getInstanceContext(c);
     const agentId = c.req.param("agentId");
     const filename = c.req.param("filename");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
 
-    const agent = registry.getAgentByAgentId(instance!.id, agentId);
+    const agent = registry.getAgentByAgentId(instance.id, agentId);
     if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
     // Security: validate filename against whitelist
@@ -201,7 +192,7 @@ export function registerMemoryRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 400, "INVALID_PATH", "Invalid memory file path");
     }
 
-    const wsDir = resolveAgentWorkspacePath(instance!.state_dir, agentId, undefined);
+    const wsDir = resolveAgentWorkspacePath(instance.state_dir, agentId, undefined);
     const filePath = path.join(wsDir, filename);
 
     if (!(await conn.exists(filePath))) {
@@ -227,10 +218,7 @@ export function registerMemoryRoutes(app: Hono, deps: RouteDeps): void {
   // Search across memory files (case-insensitive substring match).
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/memory/search", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { instance, slug } = getInstanceContext(c);
 
     const query = c.req.query("q");
     if (!query || !query.trim()) {
@@ -256,7 +244,7 @@ export function registerMemoryRoutes(app: Hono, deps: RouteDeps): void {
     for (const agent of agents) {
       if (filterAgentId && agent.agent_id !== filterAgentId) continue;
 
-      const wsDir = resolveAgentWorkspacePath(instance!.state_dir, agent.agent_id, undefined);
+      const wsDir = resolveAgentWorkspacePath(instance.state_dir, agent.agent_id, undefined);
 
       if (!(await conn.exists(wsDir))) continue;
 

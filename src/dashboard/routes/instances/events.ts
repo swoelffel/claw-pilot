@@ -4,7 +4,7 @@
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { RouteDeps } from "../../route-deps.js";
-import { instanceGuard } from "../../../lib/guards.js";
+import { getInstanceContext } from "../_instance-middleware.js";
 import {
   listRtEvents,
   isExcluded,
@@ -37,17 +37,14 @@ function parseNumber(raw: string | undefined): number | undefined {
 }
 
 export function registerEventsRoutes(app: Hono, deps: RouteDeps): void {
-  const { registry, db } = deps;
+  const { db } = deps;
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/events
   // Paginated historical events with filters.
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/events", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const cursor = parseNumber(c.req.query("cursor"));
     const limit = parseNumber(c.req.query("limit"));
@@ -88,10 +85,7 @@ export function registerEventsRoutes(app: Hono, deps: RouteDeps): void {
   // SSE stream of real-time bus events (all types except excluded ones).
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/events/stream", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     // Optional filters
     const filterTypes = parseTypes(c.req.query("type"));
