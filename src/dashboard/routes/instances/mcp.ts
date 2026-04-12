@@ -7,7 +7,7 @@
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
-import { instanceGuard } from "../../../lib/guards.js";
+import { getInstanceContext } from "../_instance-middleware.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
 import { readEnvFileSync } from "../../../lib/env-reader.js";
 import { McpRegistry } from "../../../runtime/mcp/registry.js";
@@ -71,10 +71,7 @@ export function registerMcpRoutes(app: Hono, deps: RouteDeps): void {
   // Returns the list of MCP tools available for the instance.
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/mcp/tools", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const mcpRegistry = await getMcpRegistryForSlug(slug, registry);
     if (!mcpRegistry) {
@@ -115,10 +112,7 @@ export function registerMcpRoutes(app: Hono, deps: RouteDeps): void {
   // Returns the connection status of each MCP server for the instance.
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/mcp/status", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const mcpRegistry = await getMcpRegistryForSlug(slug, registry);
     if (!mcpRegistry) {

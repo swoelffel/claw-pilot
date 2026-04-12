@@ -7,7 +7,7 @@ import * as fs from "node:fs/promises";
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
-import { instanceGuard } from "../../../lib/guards.js";
+import { getInstanceContext } from "../_instance-middleware.js";
 import { mimeFromExtension } from "../../../lib/mime.js";
 import { logger } from "../../../lib/logger.js";
 
@@ -22,14 +22,9 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024;
 // Route registration
 // ---------------------------------------------------------------------------
 
-export function registerWorkspaceDownloadRoutes(app: Hono, deps: RouteDeps): void {
-  const { registry } = deps;
-
+export function registerWorkspaceDownloadRoutes(app: Hono, _deps: RouteDeps): void {
   app.get("/api/instances/:slug/workspace/download", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { instance } = getInstanceContext(c);
 
     const filePath = c.req.query("path");
     if (!filePath) {
@@ -37,7 +32,7 @@ export function registerWorkspaceDownloadRoutes(app: Hono, deps: RouteDeps): voi
     }
 
     // Resolve and validate the file is within the instance state directory
-    const stateDir = instance!.state_dir;
+    const stateDir = instance.state_dir;
     const resolved = path.resolve(filePath);
     let real: string;
     try {

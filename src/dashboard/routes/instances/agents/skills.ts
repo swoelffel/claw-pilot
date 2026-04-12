@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { apiError } from "../../../route-deps.js";
-import { instanceGuard } from "../../../../lib/guards.js";
+import { getInstanceContext } from "../../_instance-middleware.js";
 import { getRuntimeStateDir } from "../../../../lib/platform.js";
 import { listAvailableSkills, type SkillEntry } from "../../../../runtime/tool/built-in/skill.js";
 import { constants } from "../../../../lib/constants.js";
@@ -153,16 +153,11 @@ async function listGitHubFiles(
 // Route registration
 // ---------------------------------------------------------------------------
 
-export function registerAgentSkillsRoutes(app: Hono, deps: RouteDeps): void {
-  const { registry } = deps;
-
+export function registerAgentSkillsRoutes(app: Hono, _deps: RouteDeps): void {
   // ── GET /api/instances/:slug/skills — list available skills ──────────────
 
   app.get("/api/instances/:slug/skills", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const stateDir = getRuntimeStateDir(slug);
 
@@ -180,10 +175,7 @@ export function registerAgentSkillsRoutes(app: Hono, deps: RouteDeps): void {
   // ── POST /api/instances/:slug/skills/upload — upload a ZIP ───────────────
 
   app.post("/api/instances/:slug/skills/upload", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const stateDir = getRuntimeStateDir(slug);
 
@@ -280,10 +272,7 @@ export function registerAgentSkillsRoutes(app: Hono, deps: RouteDeps): void {
   // ── POST /api/instances/:slug/skills/install — install from GitHub ───────
 
   app.post("/api/instances/:slug/skills/install", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const stateDir = getRuntimeStateDir(slug);
 
@@ -357,10 +346,7 @@ export function registerAgentSkillsRoutes(app: Hono, deps: RouteDeps): void {
   // ── DELETE /api/instances/:slug/skills/:name — delete a workspace skill ──
 
   app.delete("/api/instances/:slug/skills/:name", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const skillName = c.req.param("name");
     if (!SKILL_NAME_RE.test(skillName)) {

@@ -3,7 +3,7 @@
 
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
-import { instanceGuard } from "../../../lib/guards.js";
+import { getInstanceContext } from "../_instance-middleware.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
 import { loadConfigDbFirst } from "../_config-helpers.js";
 import { logger } from "../../../lib/logger.js";
@@ -29,10 +29,7 @@ export function registerHeartbeatRoutes(app: Hono, deps: RouteDeps): void {
   // GET /api/instances/:slug/heartbeat/schedule
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/heartbeat/schedule", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     try {
       const stateDir = getRuntimeStateDir(slug);
@@ -61,10 +58,7 @@ export function registerHeartbeatRoutes(app: Hono, deps: RouteDeps): void {
   // GET /api/instances/:slug/heartbeat/heatmap?days=7
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/heartbeat/heatmap", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const period = parseDays(c.req.query("days"));
     const since = sinceDateFromPeriod(period);

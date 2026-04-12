@@ -4,7 +4,7 @@
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { apiError } from "../../../route-deps.js";
-import { instanceGuard } from "../../../../lib/guards.js";
+import { getInstanceContext } from "../../_instance-middleware.js";
 import { z } from "zod";
 import { logger } from "../../../../lib/logger.js";
 
@@ -22,11 +22,8 @@ export function registerAgentUpdateRoutes(app: Hono, deps: RouteDeps): void {
 
   // PATCH /api/instances/:slug/agents/:agentId/position — persist canvas position
   app.patch("/api/instances/:slug/agents/:agentId/position", async (c) => {
-    const slug = c.req.param("slug");
+    const { instance } = getInstanceContext(c);
     const agentId = c.req.param("agentId");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
 
     let body: { x: number; y: number };
     try {
@@ -39,7 +36,7 @@ export function registerAgentUpdateRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
     }
 
-    const agent = registry.getAgentByAgentId(instance!.id, agentId);
+    const agent = registry.getAgentByAgentId(instance.id, agentId);
     if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
     registry.updateAgentPosition(agent.id, body.x, body.y);
@@ -48,11 +45,8 @@ export function registerAgentUpdateRoutes(app: Hono, deps: RouteDeps): void {
 
   // PATCH /api/instances/:slug/agents/:agentId/meta — update SQLite-side agent fields
   app.patch("/api/instances/:slug/agents/:agentId/meta", async (c) => {
-    const slug = c.req.param("slug");
+    const { instance } = getInstanceContext(c);
     const agentId = c.req.param("agentId");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
 
     let raw: unknown;
     try {
@@ -67,7 +61,7 @@ export function registerAgentUpdateRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 400, "FIELD_INVALID", parsed.error.issues[0]?.message ?? "Invalid fields");
     }
 
-    const agent = registry.getAgentByAgentId(instance!.id, agentId);
+    const agent = registry.getAgentByAgentId(instance.id, agentId);
     if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
     registry.updateAgentMeta(agent.id, parsed.data);

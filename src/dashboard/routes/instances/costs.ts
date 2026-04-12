@@ -3,7 +3,7 @@
 
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
-import { instanceGuard } from "../../../lib/guards.js";
+import { getInstanceContext } from "../_instance-middleware.js";
 import {
   getCostSummary,
   getDailyCosts,
@@ -20,16 +20,13 @@ function parsePeriod(raw: string | undefined): CostPeriod {
 }
 
 export function registerCostsRoutes(app: Hono, deps: RouteDeps): void {
-  const { registry, db } = deps;
+  const { db } = deps;
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/costs/summary
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/costs/summary", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const period = parsePeriod(c.req.query("period"));
     const row = getCostSummary(db, slug, period);
@@ -46,10 +43,7 @@ export function registerCostsRoutes(app: Hono, deps: RouteDeps): void {
   // GET /api/instances/:slug/costs/daily
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/costs/daily", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const period = parsePeriod(c.req.query("period"));
     const rows = getDailyCosts(db, slug, period);
@@ -68,10 +62,7 @@ export function registerCostsRoutes(app: Hono, deps: RouteDeps): void {
   // GET /api/instances/:slug/costs/by-agent
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/costs/by-agent", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const period = parsePeriod(c.req.query("period"));
     const rows = getCostsByAgent(db, slug, period);
@@ -90,10 +81,7 @@ export function registerCostsRoutes(app: Hono, deps: RouteDeps): void {
   // GET /api/instances/:slug/costs/by-model
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/costs/by-model", (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     const period = parsePeriod(c.req.query("period"));
     const rows = getCostsByModel(db, slug, period);

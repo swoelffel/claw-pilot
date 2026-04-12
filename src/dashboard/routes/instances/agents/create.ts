@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { apiError } from "../../../route-deps.js";
-import { instanceGuard } from "../../../../lib/guards.js";
+import { getInstanceContext } from "../../_instance-middleware.js";
 import { AgentProvisioner } from "../../../../core/agent-provisioner.js";
 import type { CreateAgentData } from "../../../../core/agent-provisioner.js";
 import { upsertSearchEntry } from "../../../../core/repositories/search-repository.js";
@@ -28,10 +28,7 @@ export function registerAgentCreateRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, conn, lifecycle } = deps;
 
   app.post("/api/instances/:slug/agents", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { instance, slug } = getInstanceContext(c);
 
     let body: CreateAgentData;
     try {
@@ -63,7 +60,7 @@ export function registerAgentCreateRoutes(app: Hono, deps: RouteDeps): void {
 
     try {
       const provisioner = new AgentProvisioner(conn, registry);
-      await provisioner.createAgent(instance!, body);
+      await provisioner.createAgent(instance, body);
     } catch (err: unknown) {
       return apiError(
         c,
@@ -86,16 +83,16 @@ export function registerAgentCreateRoutes(app: Hono, deps: RouteDeps): void {
       /* best-effort restart */
     });
 
-    const agents = registry.listAgents(instance!.slug);
-    const links = registry.listAgentLinks(instance!.id);
+    const agents = registry.listAgents(instance.slug);
+    const links = registry.listAgentLinks(instance.id);
     return c.json(
       {
         instance: {
-          slug: instance!.slug,
-          display_name: instance!.display_name,
-          port: instance!.port,
-          state: instance!.state,
-          default_model: instance!.default_model,
+          slug: instance.slug,
+          display_name: instance.display_name,
+          port: instance.port,
+          state: instance.state,
+          default_model: instance.default_model,
         },
         agents: agents.map((agent) => buildAgentPayload(agent, registry.listAgentFiles(agent.id))),
         links: links.map((l) => ({
@@ -112,10 +109,7 @@ export function registerAgentCreateRoutes(app: Hono, deps: RouteDeps): void {
   // Creates an agent in the instance using an agent blueprint as a template.
   // The blueprint's workspace files are copied to the new agent's workspace.
   app.post("/api/instances/:slug/agents/from-template", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { instance, slug } = getInstanceContext(c);
 
     const rawBody = await c.req.json().catch(() => null);
     const parsed = FromTemplateSchema.safeParse(rawBody);
@@ -141,7 +135,7 @@ export function registerAgentCreateRoutes(app: Hono, deps: RouteDeps): void {
 
     try {
       const provisioner = new AgentProvisioner(conn, registry);
-      await provisioner.createAgent(instance!, agentData);
+      await provisioner.createAgent(instance, agentData);
     } catch (err: unknown) {
       return apiError(
         c,
@@ -153,18 +147,13 @@ export function registerAgentCreateRoutes(app: Hono, deps: RouteDeps): void {
 
     // Overwrite the agent's workspace files with the blueprint's files
     const blueprintFiles = registry.listAgentBlueprintFiles(blueprintId);
-    const agentRecord = registry.getAgentByAgentId(instance!.id, agentSlug);
+    const agentRecord = registry.getAgentByAgentId(instance.id, agentSlug);
     if (agentRecord && blueprintFiles.length > 0) {
       const provisioner = new AgentProvisioner(conn, registry);
       for (const bpFile of blueprintFiles) {
         if (bpFile.content) {
           try {
-            await provisioner.updateAgentFile(
-              instance!,
-              agentSlug,
-              bpFile.filename,
-              bpFile.content,
-            );
+            await provisioner.updateAgentFile(instance, agentSlug, bpFile.filename, bpFile.content);
           } catch (err) {
             logger.debug("[route:agents-create] template file copy failed", { error: String(err) });
             // Non-editable file or write failure — skip silently
@@ -186,16 +175,16 @@ export function registerAgentCreateRoutes(app: Hono, deps: RouteDeps): void {
       /* best-effort restart */
     });
 
-    const agents = registry.listAgents(instance!.slug);
-    const links = registry.listAgentLinks(instance!.id);
+    const agents = registry.listAgents(instance.slug);
+    const links = registry.listAgentLinks(instance.id);
     return c.json(
       {
         instance: {
-          slug: instance!.slug,
-          display_name: instance!.display_name,
-          port: instance!.port,
-          state: instance!.state,
-          default_model: instance!.default_model,
+          slug: instance.slug,
+          display_name: instance.display_name,
+          port: instance.port,
+          state: instance.state,
+          default_model: instance.default_model,
         },
         agents: agents.map((agent) => buildAgentPayload(agent, registry.listAgentFiles(agent.id))),
         links: links.map((l) => ({

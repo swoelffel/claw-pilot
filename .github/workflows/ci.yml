@@ -38,6 +38,8 @@ jobs:
         run: pnpm lint:all
       - name: Spell check
         run: pnpm spellcheck
+      - name: Complexity check (cognitive complexity + function length)
+        run: pnpm lint:complexity
 
   # ── Job 2: Unit tests + coverage (parallel with quality) ───────────────────
   test:

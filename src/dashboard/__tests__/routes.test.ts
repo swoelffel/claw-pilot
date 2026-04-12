@@ -342,15 +342,12 @@ describe("GET /api/instances/:slug", () => {
 // ---------------------------------------------------------------------------
 
 describe("POST /api/instances/:slug/start", () => {
-  it("returns 200 for unknown slug (lifecycle stub is permissive)", async () => {
-    // Note: in production, Lifecycle.start() throws InstanceNotFoundError for unknown slugs.
-    // Our stub is permissive — this test verifies the route handler delegates to lifecycle.
+  it("returns 404 for unknown slug (middleware blocks before lifecycle)", async () => {
     const res = await ctx.app.request("/api/instances/nonexistent/start", {
       method: "POST",
       headers: authHeaders(),
     });
-    expect(res.status).toBe(200);
-    expect(ctx.lifecycle.lastAction).toEqual({ action: "start", slug: "nonexistent" });
+    expect(res.status).toBe(404);
   });
 
   it("starts a known instance", async () => {
@@ -396,13 +393,10 @@ describe("POST /api/instances/:slug/restart", () => {
 
 describe("GET /api/instances/:slug/agents", () => {
   it("returns 404 for unknown instance", async () => {
-    // Note: this route doesn't check instance existence, it just returns empty
     const res = await ctx.app.request("/api/instances/nonexistent/agents", {
       headers: authHeaders(),
     });
-    expect(res.status).toBe(200);
-    const body = await json(res);
-    expect(body).toEqual([]);
+    expect(res.status).toBe(404);
   });
 
   it("returns agents for a known instance", async () => {
@@ -1520,6 +1514,7 @@ links: []
 
 describe("POST /api/instances/:slug/start — error case", () => {
   it("returns 500 when lifecycle throws a generic error", async () => {
+    seedInstance(ctx, "demo1", 18789);
     // Override lifecycle with one that throws a generic error
     const originalStart = ctx.lifecycle.start.bind(ctx.lifecycle);
     ctx.lifecycle.start = async (_slug: string) => {
@@ -1541,6 +1536,7 @@ describe("POST /api/instances/:slug/start — error case", () => {
 
 describe("POST /api/instances/:slug/stop — error case", () => {
   it("returns 500 when lifecycle throws a generic error", async () => {
+    seedInstance(ctx, "demo1", 18789);
     ctx.lifecycle.stop = async (_slug: string) => {
       throw new Error("systemd unavailable");
     };

@@ -12,6 +12,7 @@ import { SessionStore } from "../session-store.js";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { registerFlowRoutes } from "../routes/instances/flows.js";
+import { instanceMiddleware } from "../routes/_instance-middleware.js";
 
 const TEST_TOKEN = "test-flow-token-64chars-hex-0123456789abcdef0123456789abcdef012";
 
@@ -77,6 +78,7 @@ beforeEach(() => {
     } as unknown as RouteDeps["modelDiscovery"],
   };
 
+  app.use("/api/instances/:slug/*", instanceMiddleware(registry));
   registerFlowRoutes(app, deps);
 
   // Create test instance with a "pilot" agent

@@ -3,7 +3,7 @@
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { apiError } from "../../../route-deps.js";
-import { instanceGuard } from "../../../../lib/guards.js";
+import { getInstanceContext } from "../../_instance-middleware.js";
 import { logger } from "../../../../lib/logger.js";
 
 export function registerAgentSpawnLinkRoutes(app: Hono, deps: RouteDeps): void {
@@ -11,11 +11,8 @@ export function registerAgentSpawnLinkRoutes(app: Hono, deps: RouteDeps): void {
 
   // PATCH /api/instances/:slug/agents/:agentId/spawn-links — update spawn targets
   app.patch("/api/instances/:slug/agents/:agentId/spawn-links", async (c) => {
-    const slug = c.req.param("slug");
+    const { instance } = getInstanceContext(c);
     const agentId = c.req.param("agentId");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
 
     let body: { targets: string[] };
     try {
@@ -34,7 +31,7 @@ export function registerAgentSpawnLinkRoutes(app: Hono, deps: RouteDeps): void {
     try {
       // claw-runtime: links are DB-only, runtime.json has no spawn concept
       // Validate that source agent exists in DB
-      const sourceAgent = registry.getAgentByAgentId(instance!.id, agentId);
+      const sourceAgent = registry.getAgentByAgentId(instance.id, agentId);
       if (!sourceAgent) {
         return apiError(c, 404, "AGENT_NOT_FOUND", `Agent '${agentId}' not found`);
       }
@@ -61,14 +58,14 @@ export function registerAgentSpawnLinkRoutes(app: Hono, deps: RouteDeps): void {
           }
           continue;
         }
-        const targetAgent = registry.getAgentByAgentId(instance!.id, targetId);
+        const targetAgent = registry.getAgentByAgentId(instance.id, targetId);
         if (!targetAgent) {
           return apiError(c, 404, "AGENT_NOT_FOUND", `Target agent '${targetId}' not found`);
         }
       }
 
       // Atomically replace spawn links for this source agent in DB
-      const allLinks = registry.listAgentLinks(instance!.id);
+      const allLinks = registry.listAgentLinks(instance.id);
       const otherLinks = allLinks
         .filter((l) => !(l.source_agent_id === agentId && l.link_type === "spawn"))
         .map((l) => ({
@@ -81,9 +78,9 @@ export function registerAgentSpawnLinkRoutes(app: Hono, deps: RouteDeps): void {
         targetAgentId: targetId,
         linkType: "spawn" as const,
       }));
-      registry.replaceAgentLinks(instance!.id, [...otherLinks, ...newLinks]);
+      registry.replaceAgentLinks(instance.id, [...otherLinks, ...newLinks]);
 
-      const updatedLinks = registry.listAgentLinks(instance!.id);
+      const updatedLinks = registry.listAgentLinks(instance.id);
       return c.json({
         ok: true,
         links: updatedLinks.map((l) => ({

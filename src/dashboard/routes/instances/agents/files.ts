@@ -4,7 +4,7 @@
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { apiError } from "../../../route-deps.js";
-import { instanceGuard } from "../../../../lib/guards.js";
+import { getInstanceContext } from "../../_instance-middleware.js";
 import { AgentProvisioner } from "../../../../core/agent-provisioner.js";
 import { EDITABLE_FILES } from "../../../../core/agent-sync.js";
 import { ClawPilotError, InstanceNotFoundError } from "../../../../lib/errors.js";
@@ -19,15 +19,11 @@ export function registerAgentFileRoutes(app: Hono, deps: RouteDeps): void {
 
   // GET /api/instances/:slug/agents/:agentId/files/:filename — fetch a single workspace file
   app.get("/api/instances/:slug/agents/:agentId/files/:filename", (c) => {
-    const slug = c.req.param("slug");
+    const { instance } = getInstanceContext(c);
     const agentId = c.req.param("agentId");
     const filename = c.req.param("filename");
 
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
-
-    const agent = registry.getAgentByAgentId(instance!.id, agentId);
+    const agent = registry.getAgentByAgentId(instance.id, agentId);
     if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
     const file = registry.getAgentFileContent(agent.id, filename);
@@ -44,7 +40,7 @@ export function registerAgentFileRoutes(app: Hono, deps: RouteDeps): void {
 
   // PUT /api/instances/:slug/agents/:agentId/files/:filename — update a workspace file
   app.put("/api/instances/:slug/agents/:agentId/files/:filename", async (c) => {
-    const slug = c.req.param("slug");
+    const { instance, slug } = getInstanceContext(c);
     const agentId = c.req.param("agentId");
     const filename = c.req.param("filename");
 
@@ -52,11 +48,7 @@ export function registerAgentFileRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 403, "FILE_NOT_EDITABLE", "File is not editable");
     }
 
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
-
-    const agentRecord = registry.getAgentByAgentId(instance!.id, agentId);
+    const agentRecord = registry.getAgentByAgentId(instance.id, agentId);
     if (!agentRecord) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
     let body: { content?: string };
@@ -75,7 +67,7 @@ export function registerAgentFileRoutes(app: Hono, deps: RouteDeps): void {
 
     try {
       const provisioner = new AgentProvisioner(conn, registry);
-      await provisioner.updateAgentFile(instance!, agentId, filename, body.content);
+      await provisioner.updateAgentFile(instance, agentId, filename, body.content);
     } catch (err: unknown) {
       if (err instanceof InstanceNotFoundError) {
         return apiError(c, 404, "FILE_NOT_FOUND", err.message);

@@ -3,11 +3,17 @@
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
-import { instanceGuard } from "../../../lib/guards.js";
+import { getInstanceContext } from "../_instance-middleware.js";
 import { logger } from "../../../lib/logger.js";
-import { PROVIDER_ENV_VARS } from "../../../lib/providers.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
 import { writeEnvVar, removeEnvVar } from "../../../lib/dotenv.js";
+import {
+  applyProviderEnvWrites,
+  applyProviderChanges,
+  applyAgentDefaultChanges,
+  applyAgentPatches,
+  applyTelegramChanges,
+} from "./config-patch-handlers.js";
 import { upsertSearchEntry } from "../../../core/repositories/search-repository.js";
 import {
   runtimeConfigExists,
@@ -26,10 +32,7 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
 
   // GET /api/instances/:slug/config — structured config for the settings UI
   app.get("/api/instances/:slug/config", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { instance, slug } = getInstanceContext(c);
 
     const stateDir = getRuntimeStateDir(slug);
 
@@ -67,18 +70,18 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
       if (!config) {
         // No config anywhere — return a stub
         const stub = buildInstanceConfigStub({
-          display_name: instance!.display_name,
-          default_model: instance!.default_model,
-          port: instance!.port,
+          display_name: instance.display_name,
+          default_model: instance.default_model,
+          port: instance.port,
         });
         return c.json({ ...stub, namedKeys: allNamedKeys, defaultNamedKeyId });
       }
 
       const payload = buildInstanceConfig(
         {
-          display_name: instance!.display_name,
-          default_model: instance!.default_model,
-          port: instance!.port,
+          display_name: instance.display_name,
+          default_model: instance.default_model,
+          port: instance.port,
         },
         config,
         stateDir,
@@ -119,10 +122,7 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
 
   // PATCH /api/instances/:slug/config — apply partial config changes
   app.patch("/api/instances/:slug/config", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { instance, slug } = getInstanceContext(c);
 
     let patch: RuntimeConfigPatch;
     try {
@@ -174,39 +174,20 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
     }
 
     // --- Async side effects: .env writes (must happen before DB transaction) ---
-    try {
-      if (patch.providers?.add) {
-        for (const entry of patch.providers.add) {
-          if (entry.apiKey) {
-            const envVar = PROVIDER_ENV_VARS[entry.id] ?? `${entry.id.toUpperCase()}_API_KEY`;
-            await writeEnvVar(envPath, envVar, entry.apiKey);
-          }
-        }
+    if (patch.providers) {
+      try {
+        await applyProviderEnvWrites(envPath, patch.providers);
+      } catch (err) {
+        logger.error(
+          `[config] PATCH .env error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return apiError(
+          c,
+          500,
+          "CONFIG_PATCH_FAILED",
+          err instanceof Error ? err.message : "Failed to update provider keys",
+        );
       }
-      if (patch.providers?.update) {
-        for (const entry of patch.providers.update) {
-          if (entry.apiKey !== undefined) {
-            const envVar = PROVIDER_ENV_VARS[entry.id] ?? `${entry.id.toUpperCase()}_API_KEY`;
-            await writeEnvVar(envPath, envVar, entry.apiKey);
-          }
-        }
-      }
-      if (patch.providers?.remove) {
-        for (const id of patch.providers.remove) {
-          const envVar = PROVIDER_ENV_VARS[id] ?? `${id.toUpperCase()}_API_KEY`;
-          await removeEnvVar(envPath, envVar);
-        }
-      }
-    } catch (err) {
-      logger.error(
-        `[config] PATCH .env error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return apiError(
-        c,
-        500,
-        "CONFIG_PATCH_FAILED",
-        err instanceof Error ? err.message : "Failed to update provider keys",
-      );
     }
 
     // --- Determine if we have any config-level changes to apply ---
@@ -226,7 +207,7 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
             seedConfig = loadRuntimeConfig(stateDir);
           } else {
             seedConfig = createDefaultRuntimeConfig(
-              instance!.default_model != null ? { defaultModel: instance!.default_model } : {},
+              instance.default_model != null ? { defaultModel: instance.default_model } : {},
             );
           }
           registry.saveRuntimeConfig(slug, seedConfig);
@@ -234,164 +215,21 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
 
         // Atomic read-modify-write in DB
         const updated = registry.patchRuntimeConfig(slug, (config) => {
-          // --- general.defaultModel ---
           if (patch.general?.defaultModel !== undefined) {
             config.defaultModel = patch.general.defaultModel;
           }
-
-          // --- providers ---
           if (patch.providers) {
-            // ADD
-            if (patch.providers.add) {
-              for (const entry of patch.providers.add) {
-                if (config.providers.some((p) => p.id === entry.id)) continue;
-                const envVar = PROVIDER_ENV_VARS[entry.id] ?? `${entry.id.toUpperCase()}_API_KEY`;
-                config.providers.push({
-                  id: entry.id,
-                  ...(entry.baseUrl !== undefined ? { baseUrl: entry.baseUrl } : {}),
-                  authProfiles: [
-                    {
-                      id: `${entry.id}-default`,
-                      providerId: entry.id,
-                      apiKeyEnvVar: envVar,
-                      priority: 0,
-                    },
-                  ],
-                });
-              }
-            }
-            // UPDATE
-            if (patch.providers.update) {
-              for (const entry of patch.providers.update) {
-                if (entry.baseUrl !== undefined) {
-                  const provider = config.providers.find((p) => p.id === entry.id);
-                  if (provider) {
-                    if (entry.baseUrl === null) {
-                      delete (provider as Record<string, unknown>).baseUrl;
-                    } else {
-                      provider.baseUrl = entry.baseUrl;
-                    }
-                  }
-                }
-              }
-            }
-            // REMOVE
-            if (patch.providers.remove) {
-              config.providers = config.providers.filter(
-                (p) => !patch.providers!.remove!.includes(p.id),
-              );
-            }
+            applyProviderChanges(config, patch.providers);
           }
-
-          // --- agentDefaults ---
           if (patch.agentDefaults) {
-            const ad = patch.agentDefaults;
-            if (ad.compaction) {
-              if (ad.compaction.mode !== undefined)
-                config.compaction.auto = ad.compaction.mode === "auto";
-              if (ad.compaction.threshold !== undefined)
-                config.compaction.threshold = ad.compaction.threshold;
-              if (ad.compaction.reservedTokens !== undefined)
-                config.compaction.reservedTokens = ad.compaction.reservedTokens;
-            }
-            if (ad.subagents) {
-              if (ad.subagents.maxSpawnDepth !== undefined)
-                config.subagents.maxSpawnDepth = ad.subagents.maxSpawnDepth;
-              if (ad.subagents.maxChildrenPerSession !== undefined)
-                config.subagents.maxChildrenPerSession = ad.subagents.maxChildrenPerSession;
-              if (ad.subagents.retentionHours !== undefined)
-                config.subagents.retentionHours = ad.subagents.retentionHours;
-            }
-            if (ad.defaultInternalModel !== undefined) {
-              config.defaultInternalModel = ad.defaultInternalModel || undefined;
-            }
-            if (ad.heartbeat?.model !== undefined) {
-              config.defaultHeartbeatModel = ad.heartbeat.model || undefined;
-            }
-            if (ad.models !== undefined) {
-              config.models = ad.models.map((m) => ({
-                id: m.id,
-                provider: m.provider,
-                model: m.model,
-              }));
-            }
+            applyAgentDefaultChanges(config, patch.agentDefaults);
           }
-
-          // --- per-agent config ---
           if (patch.agents && patch.agents.length > 0) {
-            for (const agentPatch of patch.agents) {
-              const agent = config.agents.find((a) => a.id === agentPatch.id);
-              if (!agent) continue;
-              if (agentPatch.name !== undefined) agent.name = agentPatch.name;
-              if (agentPatch.model !== undefined && agentPatch.model !== null)
-                agent.model = agentPatch.model;
-              if (agentPatch.toolProfile !== undefined) agent.toolProfile = agentPatch.toolProfile;
-              if (agentPatch.customTools !== undefined) agent.customTools = agentPatch.customTools;
-              if (agentPatch.maxSteps !== undefined) agent.maxSteps = agentPatch.maxSteps;
-              if (agentPatch.temperature !== undefined)
-                agent.temperature = agentPatch.temperature ?? undefined;
-              if (agentPatch.promptMode !== undefined) agent.promptMode = agentPatch.promptMode;
-              if (agentPatch.thinking !== undefined) {
-                if (agentPatch.thinking === null) {
-                  agent.thinking = undefined;
-                } else {
-                  agent.thinking = {
-                    enabled: agentPatch.thinking.enabled,
-                    ...(agentPatch.thinking.budgetTokens !== undefined
-                      ? { budgetTokens: agentPatch.thinking.budgetTokens }
-                      : {}),
-                  };
-                }
-              }
-              if (agentPatch.allowSubAgents !== undefined)
-                agent.allowSubAgents = agentPatch.allowSubAgents;
-              if (agentPatch.timeoutMs !== undefined) agent.timeoutMs = agentPatch.timeoutMs;
-              if (agentPatch.chunkTimeoutMs !== undefined)
-                agent.chunkTimeoutMs = agentPatch.chunkTimeoutMs;
-              if (agentPatch.instructionUrls !== undefined)
-                agent.instructionUrls = agentPatch.instructionUrls;
-              if (agentPatch.bootstrapFiles !== undefined)
-                agent.bootstrapFiles = agentPatch.bootstrapFiles;
-              if (agentPatch.archetype !== undefined) agent.archetype = agentPatch.archetype;
-              if (agentPatch.autoSelectSkills !== undefined)
-                agent.autoSelectSkills = agentPatch.autoSelectSkills;
-              if (agentPatch.autoSelectSkillsTopN !== undefined)
-                agent.autoSelectSkillsTopN = agentPatch.autoSelectSkillsTopN;
-              if (agentPatch.skills !== undefined) agent.skills = agentPatch.skills ?? undefined;
-              if (agentPatch.heartbeat !== undefined) {
-                if (agentPatch.heartbeat === null) {
-                  agent.heartbeat = undefined;
-                } else {
-                  agent.heartbeat = agentPatch.heartbeat as typeof agent.heartbeat;
-                }
-              }
-
-              // named_key_id lives in the agents SQL table, not in runtime_config_json
-              if (agentPatch.namedKeyId !== undefined) {
-                deps.db
-                  .prepare(
-                    `UPDATE agents SET named_key_id = ?
-                     WHERE agent_id = ? AND instance_id = (
-                       SELECT id FROM instances WHERE slug = ?
-                     )`,
-                  )
-                  .run(agentPatch.namedKeyId, agentPatch.id, slug);
-              }
-            }
+            applyAgentPatches(config, patch.agents, deps.db, slug);
           }
-
-          // --- telegram ---
           if (patch.channels?.telegram !== undefined) {
-            const tg = patch.channels.telegram;
-            if (tg.enabled !== undefined) config.telegram.enabled = tg.enabled;
-            if (tg.botTokenEnvVar !== undefined) config.telegram.botTokenEnvVar = tg.botTokenEnvVar;
-            if (tg.pollingIntervalMs !== undefined)
-              config.telegram.pollingIntervalMs = tg.pollingIntervalMs;
-            if (tg.allowedUserIds !== undefined) config.telegram.allowedUserIds = tg.allowedUserIds;
-            if (tg.dmPolicy !== undefined) config.telegram.dmPolicy = tg.dmPolicy;
-            if (tg.groupPolicy !== undefined) config.telegram.groupPolicy = tg.groupPolicy;
+            applyTelegramChanges(config, patch.channels.telegram);
           }
-
           return config;
         });
 
@@ -431,7 +269,7 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
 
     // Restart if needed and instance is running
     let autoRestarted = false;
-    if (requiresRestart && instance!.state === "running") {
+    if (requiresRestart && instance.state === "running") {
       try {
         await lifecycle.restart(slug);
         autoRestarted = true;
@@ -455,10 +293,7 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
 
   // PATCH /api/instances/:slug/config/telegram/token — write/remove bot token in .env
   app.patch("/api/instances/:slug/config/telegram/token", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
+    const { slug } = getInstanceContext(c);
 
     let token: string | null;
     try {

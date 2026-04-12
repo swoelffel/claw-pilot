@@ -96,6 +96,7 @@ import { SessionStore } from "../session-store.js";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { registerRuntimeRoutes } from "../routes/instances/runtime.js";
+import { instanceMiddleware } from "../routes/_instance-middleware.js";
 import { loadMergedConfigDbFirst } from "../routes/_config-helpers.js";
 import {
   listEnrichedSessions,
@@ -192,6 +193,7 @@ beforeEach(() => {
     systemdUnit: "claw-test-inst",
   });
 
+  app.use("/api/instances/:slug/*", instanceMiddleware(registry));
   registerRuntimeRoutes(app, deps);
 });
 
