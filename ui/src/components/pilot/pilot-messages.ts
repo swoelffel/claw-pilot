@@ -300,6 +300,7 @@ export class PilotMessages extends LitElement {
             <cp-pilot-message
               .entry=${entry}
               .slug=${this.slug}
+              .filters=${this.filters}
               .subagentResults=${this.subagentResults as Record<
                 string,
                 {

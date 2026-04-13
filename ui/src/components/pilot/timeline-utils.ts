@@ -73,6 +73,30 @@ function getUserText(msg: PilotMessage): string {
   return textPart?.content ?? "";
 }
 
+/**
+ * Extract `subSessionId` from the text part's metadata JSON — written by
+ * the runtime when injecting delegation or async-subagent-result traces.
+ * Falls back to the `task_id:` prefix in the message text for backward
+ * compatibility with historical async-result traces.
+ */
+function getSubSessionId(msg: PilotMessage, fallbackText: string): string | undefined {
+  const textPart = msg.parts.find((p) => p.type === "text");
+  if (textPart?.metadata) {
+    try {
+      const meta = JSON.parse(textPart.metadata) as { subSessionId?: string };
+      if (typeof meta.subSessionId === "string" && meta.subSessionId.length > 0) {
+        return meta.subSessionId;
+      }
+    } catch {
+      /* ignore malformed metadata */
+    }
+  }
+  // Fallback: pre-v0.71.3 async-result traces embed the id in the text
+  const taskIdMatch = /task_id:\s*([A-Za-z0-9_-]+)/.exec(fallbackText);
+  if (taskIdMatch && taskIdMatch[1]) return taskIdMatch[1];
+  return undefined;
+}
+
 // ---------------------------------------------------------------------------
 // buildTimeline — main transformation
 // ---------------------------------------------------------------------------
@@ -85,6 +109,8 @@ export function buildTimeline(messages: PilotMessage[], currentAgentId?: string)
     if (msg.role === "user") {
       const text = getUserText(msg);
       const channel = (msg as unknown as { channel?: string }).channel;
+      const subSessionId = getSubSessionId(msg, text);
+      const subSpread = subSessionId !== undefined ? { a2aSubSessionId: subSessionId } : {};
 
       // 1. Check for A2A sent pattern
       const sentMatch = A2A_SENT_RE.exec(text);
@@ -98,6 +124,7 @@ export function buildTimeline(messages: PilotMessage[], currentAgentId?: string)
           a2aTarget: sentMatch[1],
           a2aContent: sentMatch[2],
           ...(channel !== undefined ? { channel } : {}),
+          ...subSpread,
         });
         continue;
       }
@@ -114,6 +141,7 @@ export function buildTimeline(messages: PilotMessage[], currentAgentId?: string)
           a2aTarget: currentAgentId ?? "agent",
           a2aContent: recvMatch[2],
           ...(channel !== undefined ? { channel } : {}),
+          ...subSpread,
         });
         continue;
       }
@@ -131,6 +159,7 @@ export function buildTimeline(messages: PilotMessage[], currentAgentId?: string)
           a2aTarget: currentAgentId ?? "agent",
           a2aContent: fromMatch[2],
           ...(channel !== undefined ? { channel } : {}),
+          ...subSpread,
         });
         continue;
       }
@@ -147,6 +176,7 @@ export function buildTimeline(messages: PilotMessage[], currentAgentId?: string)
           a2aTarget: delegationSentMatch[1],
           a2aContent: delegationSentMatch[2],
           ...(channel !== undefined ? { channel } : {}),
+          ...subSpread,
         });
         continue;
       }
@@ -163,6 +193,7 @@ export function buildTimeline(messages: PilotMessage[], currentAgentId?: string)
           a2aTarget: currentAgentId ?? "agent",
           a2aContent: delegationRecvMatch[2],
           ...(channel !== undefined ? { channel } : {}),
+          ...subSpread,
         });
         continue;
       }
@@ -179,6 +210,7 @@ export function buildTimeline(messages: PilotMessage[], currentAgentId?: string)
           a2aTarget: currentAgentId ?? "agent",
           a2aContent: asyncMatch[1],
           ...(channel !== undefined ? { channel } : {}),
+          ...subSpread,
         });
         continue;
       }
