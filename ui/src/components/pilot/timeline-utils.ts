@@ -197,6 +197,21 @@ export function buildTimeline(messages: PilotMessage[], currentAgentId?: string)
       const parts = [...msg.parts].sort((a, b) => a.sortOrder - b.sortOrder);
       const agentSource = msg.agentId ?? "agent";
 
+      // Build a map: toolCallId → tool_result content, so we can surface
+      // question answers as separate user_chat entries right after the question.
+      const resultByCallId = new Map<string, string>();
+      for (const p of parts) {
+        if (p.type !== "tool_result" || !p.metadata) continue;
+        try {
+          const meta = JSON.parse(p.metadata) as { toolCallId?: string };
+          if (meta.toolCallId && p.content) {
+            resultByCallId.set(meta.toolCallId, p.content);
+          }
+        } catch {
+          /* ignore malformed metadata */
+        }
+      }
+
       // Track which parts produce entries, to mark the last one
       const partEntries: TimelineEntry[] = [];
       for (let i = 0; i < parts.length; i++) {
@@ -212,6 +227,50 @@ export function buildTimeline(messages: PilotMessage[], currentAgentId?: string)
           message: msg,
           part,
         });
+
+        // After a question tool_call, surface the user's answer as a
+        // user_chat entry so it appears in the chat flow (like a normal reply).
+        if (kind === "question" && part.metadata) {
+          try {
+            const meta = JSON.parse(part.metadata) as { toolCallId?: string };
+            const callId = meta.toolCallId;
+            const resultContent = callId ? resultByCallId.get(callId) : undefined;
+            // tool_result content is formatted as: "User answered: <answer>"
+            const match = resultContent ? /^User answered:\s*([\s\S]*)$/.exec(resultContent) : null;
+            const answer = match?.[1]?.trim();
+            if (answer) {
+              partEntries.push({
+                id: `${msg.id}:${i}:answer`,
+                kind: "user_chat",
+                timestamp: msg.createdAt,
+                source: "You",
+                // Synthetic message carrying just the answer text so
+                // pilot-message renders it as a user reply.
+                message: {
+                  id: `${msg.id}:${i}:answer`,
+                  sessionId: msg.sessionId,
+                  role: "user",
+                  isCompaction: false,
+                  createdAt: msg.createdAt,
+                  parts: [
+                    {
+                      id: `${msg.id}:${i}:answer:text`,
+                      messageId: `${msg.id}:${i}:answer`,
+                      type: "text",
+                      state: "completed",
+                      content: answer,
+                      sortOrder: 0,
+                      createdAt: msg.createdAt,
+                      updatedAt: msg.createdAt,
+                    },
+                  ],
+                },
+              });
+            }
+          } catch {
+            /* ignore malformed question metadata */
+          }
+        }
       }
 
       // Mark the last entry for footer rendering

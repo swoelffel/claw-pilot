@@ -579,6 +579,9 @@ export class RuntimePilot extends LitElement {
         } else if (status === "idle" && this._status !== "sending") {
           this._streamingText = "";
           this._status = "idle";
+          // Ensure the final messages are rendered — individual
+          // message.updated/created events may have been missed.
+          void this._reloadLastMessages();
         }
         break;
       }

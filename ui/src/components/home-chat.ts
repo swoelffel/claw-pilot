@@ -387,6 +387,9 @@ export class HomeChat extends LitElement {
         } else if (status === "idle" && this._status !== "sending") {
           this._streamingText = "";
           this._status = "idle";
+          // Ensure the final messages (assistant reply, tool results, etc.)
+          // are rendered — message.updated/created may have been missed.
+          void this._reloadLastMessages();
         }
         break;
       }

@@ -48,6 +48,32 @@ export function rejectQuestion(questionId: string, reason: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Bundled-question detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Detect when a model bundles multiple questions into a single tool call.
+ * Applied after stripping URLs (which legitimately contain "?" and "/" chars).
+ * Returns true if the question looks like a bundle.
+ */
+export function isBundledQuestion(raw: string): boolean {
+  // Remove URLs so their "?" and punctuation don't trigger false positives
+  const stripped = raw.replace(/https?:\/\/\S+/g, "");
+
+  // Multiple question marks → almost always multiple questions
+  const questionMarks = (stripped.match(/\?/g) ?? []).length;
+  if (questionMarks >= 2) return true;
+
+  // Numbered list item at line start: "1." / "1)" / "2." etc.
+  if (/^\s*\d+[.)]\s/m.test(stripped)) return true;
+
+  // Bullet list item at line start: "- " / "* " / "• "
+  if (/^\s*[-*•]\s/m.test(stripped)) return true;
+
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // Tool definition
 // ---------------------------------------------------------------------------
 
@@ -76,6 +102,23 @@ export const QuestionTool = Tool.define("question", {
           `The question tool can only be used in interactive user sessions. ` +
           `This session's channel is "${ctx.channel}" (no human on the loop). ` +
           `Work with the context you already have, or report the missing information in your final answer.`,
+        truncated: false,
+      };
+    }
+
+    // Reject bundled questions: the user can only answer one question per turn.
+    // Heuristics (applied to params.question, URLs-stripped to avoid false positives):
+    //   - Multiple "?" (2+)
+    //   - Numbered list items ("1." / "1)")
+    //   - Bullet list items on separate lines ("- " / "* ")
+    if (isBundledQuestion(params.question)) {
+      return {
+        title: "Question refused (bundled)",
+        output:
+          `Your question contains multiple questions bundled together. ` +
+          `The user can only answer one question per turn. ` +
+          `Pick the single most important one NOW (in a new tool call) and ask the others in subsequent turns, ` +
+          `after receiving each answer. Do NOT list them with numbers or bullets.`,
         truncated: false,
       };
     }
