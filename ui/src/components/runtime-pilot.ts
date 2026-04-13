@@ -742,6 +742,17 @@ export class RuntimePilot extends LitElement {
     void this._onSendMessage(new CustomEvent("send-message", { detail: { text: e.detail.text } }));
   }
 
+  /**
+   * The user answered a question — the backend just resumed the paused prompt
+   * loop but doesn't emit a new session.status event (the session was already
+   * busy). Flip to streaming so the UI reflects ongoing activity.
+   */
+  private _onQuestionAnswered(): void {
+    if (this._status === "idle") {
+      this._status = "streaming";
+    }
+  }
+
   // ── Stats computed from messages ──────────────────────────────────────────
 
   private get _totalTokens(): number {
@@ -817,7 +828,11 @@ export class RuntimePilot extends LitElement {
       ></cp-pilot-header>
 
       <div class="pilot-body">
-        <div class="pilot-main" @suggestion-click=${this._onSuggestionClick}>
+        <div
+          class="pilot-main"
+          @suggestion-click=${this._onSuggestionClick}
+          @question-answered=${this._onQuestionAnswered}
+        >
           <cp-pilot-filter-bar
             .filters=${this._filters}
             @filter-change=${this._onFilterChange}

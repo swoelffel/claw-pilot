@@ -461,6 +461,17 @@ export class HomeChat extends LitElement {
     void this._onSendMessage(new CustomEvent("send-message", { detail: { text: e.detail.text } }));
   }
 
+  /**
+   * The user answered a question — the backend just resumed the paused prompt
+   * loop but doesn't emit a new session.status event (the session was already
+   * busy). Flip to streaming so the UI reflects ongoing activity.
+   */
+  private _onQuestionAnswered(): void {
+    if (this._status === "idle") {
+      this._status = "streaming";
+    }
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   override render() {
@@ -480,7 +491,11 @@ export class HomeChat extends LitElement {
         .panelOpen=${false}
       ></cp-pilot-header>
 
-      <div class="chat-body" @suggestion-click=${this._onSuggestionClick}>
+      <div
+        class="chat-body"
+        @suggestion-click=${this._onSuggestionClick}
+        @question-answered=${this._onQuestionAnswered}
+      >
         <cp-pilot-messages
           .messages=${this._messages}
           .filters=${HOME_FILTERS}

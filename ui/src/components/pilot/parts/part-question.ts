@@ -173,6 +173,16 @@ export class PilotPartQuestion extends LitElement {
     try {
       await answerQuestion(this.slug, questionId, answer);
       this._answered = true;
+      // Notify the parent so it can show "busy" status — the backend resumes
+      // the prompt loop after resolving the pending question, but never emits
+      // a fresh session.status event (the session was already busy).
+      this.dispatchEvent(
+        new CustomEvent("question-answered", {
+          bubbles: true,
+          composed: true,
+          detail: { questionId, answer },
+        }),
+      );
     } catch {
       // On error, allow retry
       this._selectedAnswer = "";
