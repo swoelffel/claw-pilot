@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.70.2] — 2026-04-13
+
+### Added
+- **Self-updater bootstraps pnpm via corepack**: before `pnpm install`, the self-updater reads the `packageManager` field from `package.json` and runs `corepack prepare <value> --activate` so the next install uses the pinned pnpm version. Prerequisite for future pnpm major upgrades — without this, an update that ships a newer-format lockfile would fail on hosts still running the old pnpm. Non-breaking: silent no-op when the field is absent or not a pnpm pin.
+
+---
+
 ## [0.70.1] — 2026-04-13
 
 ### Fixed
