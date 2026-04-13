@@ -26,6 +26,7 @@ import {
   RuntimeError,
   WorkspaceFileChanged,
   SystemStateChanged,
+  QuestionAsked,
 } from "../bus/events.js";
 import { clearWorkspaceCache, invalidateWorkspaceCache } from "../session/workspace-cache.js";
 import { markAllDirty } from "../session/system-prompt-dirty.js";
@@ -494,7 +495,22 @@ export class ClawRuntime {
   private _buildInternalApiHandlers(): InternalApiHandlers {
     return {
       handleChat: async (body: ChatRequest): Promise<ChatResponse> => {
-        const result = await ChannelRouter.route({
+        // Race the full route vs the first `question.asked` event. When the
+        // prompt loop hits a pending question tool, it blocks on the user's
+        // answer — waiting for ChannelRouter.route() to resolve would hang
+        // HTTP /chat indefinitely and freeze the UI on "sending". Instead we
+        // return early with `pendingQuestion: true` so the UI can unblock
+        // and render the question card; SSE events continue delivering live
+        // updates while the loop remains suspended in the background.
+        const bus = getBus(this.instanceSlug);
+        let unsubQuestion: (() => void) | undefined;
+        const questionAskedPromise = new Promise<{ sessionId: string }>((resolve) => {
+          unsubQuestion = bus.subscribe(QuestionAsked, (payload) => {
+            resolve({ sessionId: payload.sessionId });
+          });
+        });
+
+        const routePromise = ChannelRouter.route({
           db: this.db,
           instanceSlug: this.instanceSlug,
           config: this.config,
@@ -508,6 +524,35 @@ export class ClawRuntime {
           ...(this._mcpRegistry !== undefined ? { mcpRegistry: this._mcpRegistry } : {}),
           ...(this.profileResolver !== undefined ? { profileResolver: this.profileResolver } : {}),
         });
+
+        // Keep the route running in the background if a question wins the race.
+        routePromise.catch((err: unknown) => {
+          this.log.warn("handle_chat_background_loop_error", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+
+        const winner = await Promise.race([
+          routePromise.then((r) => ({ kind: "route" as const, result: r })),
+          questionAskedPromise.then((q) => ({ kind: "question" as const, ...q })),
+        ]);
+
+        // Race winner decided — the question subscription is no longer needed.
+        unsubQuestion?.();
+
+        if (winner.kind === "question") {
+          return {
+            sessionId: winner.sessionId,
+            messageId: "",
+            text: "",
+            tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            costUsd: 0,
+            steps: 0,
+            pendingQuestion: true,
+          };
+        }
+
+        const { result } = winner;
         return {
           sessionId: result.sessionId,
           messageId: result.response.text ? result.sessionId : "",

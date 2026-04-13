@@ -24,6 +24,7 @@ import {
 import { tokenStyles } from "../styles/tokens.js";
 import { errorBannerStyles } from "../styles/shared.js";
 import { getToken } from "../services/auth-state.js";
+import { debugSse } from "../services/debug.js";
 import "./pilot/pilot-header.js";
 import "./pilot/pilot-messages.js";
 import "./pilot/pilot-input.js";
@@ -265,13 +266,18 @@ export class HomeChat extends LitElement {
     const token = getToken();
     const baseUrl = getRuntimeChatStreamUrl(this.slug);
     const url = token ? `${baseUrl}?token=${encodeURIComponent(token)}` : baseUrl;
-    const es = new EventSource(url);
+    // withCredentials ensures cookies (session) are sent even under strict
+    // SameSite policies; the ?token fallback above covers the case where no
+    // cookie is present (e.g. fresh install before login).
+    const es = new EventSource(url, { withCredentials: true });
     this._eventSource = es;
     this._sseConnected = false;
+    debugSse("[home-chat] _openStream", baseUrl);
 
     es.onopen = () => {
       this._sseConnected = true;
       this._reconnectDelay = SSE_RECONNECT_INITIAL_MS;
+      debugSse("[home-chat] sse open");
       if (this._error.includes("Connection")) {
         this._error = "";
         if (this._status === "error") this._status = "idle";
@@ -286,6 +292,7 @@ export class HomeChat extends LitElement {
       } catch {
         return;
       }
+      debugSse("[home-chat] sse event", event.type);
       this._handleBusEvent(event);
     };
 
@@ -295,6 +302,7 @@ export class HomeChat extends LitElement {
 
     es.onerror = () => {
       this._sseConnected = false;
+      debugSse("[home-chat] sse error, reconnecting in", this._reconnectDelay, "ms");
       this._closeStream();
       this._scheduleReconnect(this._reconnectDelay);
       this._reconnectDelay = Math.min(
@@ -487,7 +495,15 @@ export class HomeChat extends LitElement {
       }
 
       await this._reloadLastMessages();
-      if (this._status === "sending") this._status = "idle";
+      // If the backend returned early because the loop is suspended on a
+      // pending question, keep the UI in its current non-idle state — SSE
+      // will drive further transitions and the question card handles the
+      // user interaction from here.
+      if (result.pendingQuestion) {
+        debugSse("[home-chat] pendingQuestion=true — UI stays busy, SSE drives updates");
+      } else if (this._status === "sending") {
+        this._status = "idle";
+      }
     } catch (err) {
       this._status = "error";
       this._error = err instanceof Error ? err.message : "Failed to send message";
