@@ -217,6 +217,15 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
       return next();
     }
 
+    // 3. SSE fallback: EventSource cannot set custom headers, so accept
+    //    ?token=<bearer> as a last resort (timing-safe compare). Used by
+    //    the UI's EventSource for /runtime/chat/stream. The cookie path
+    //    above is still preferred when the browser sends it.
+    const queryToken = c.req.query("token");
+    if (queryToken && safeTokenCompare(`Bearer ${queryToken}`, expectedBearer)) {
+      return next();
+    }
+
     return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
   });
 

@@ -435,6 +435,13 @@ export interface RuntimeChatResponse {
   tokens: { input: number; output: number };
   costUsd: number | null;
   steps: number;
+  /**
+   * True when the prompt loop is suspended on a pending `question` tool call.
+   * The UI should not clear its busy state on this response — the loop is
+   * still running in the background. SSE events continue to deliver live
+   * updates while the user answers the question.
+   */
+  pendingQuestion?: boolean;
 }
 
 // --- Runtime Pilot types ---
