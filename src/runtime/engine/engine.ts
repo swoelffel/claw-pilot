@@ -25,6 +25,7 @@ import {
   RuntimeStateChanged,
   RuntimeError,
   WorkspaceFileChanged,
+  SystemStateChanged,
 } from "../bus/events.js";
 import { clearWorkspaceCache, invalidateWorkspaceCache } from "../session/workspace-cache.js";
 import { markAllDirty } from "../session/system-prompt-dirty.js";
@@ -203,6 +204,21 @@ export class ClawRuntime {
           });
         });
         this._pluginUnsubscribers.push(wsUnsub);
+      }
+
+      // 3a2. For cp-system: invalidate prompt cache when platform state changes
+      //      (named keys, instances, blueprints). The system-prompt embeds a
+      //      live snapshot of these resources for system-pilot and its subagents.
+      if (this.instanceSlug === SYSTEM_INSTANCE_SLUG) {
+        const sysBus = getBus(this.instanceSlug);
+        const sysUnsub = sysBus.subscribe(SystemStateChanged, (payload) => {
+          markAllDirty("system-state");
+          this.log.debug("[engine] cp-system state changed, prompts invalidated", {
+            resource: payload.resource,
+            action: payload.action,
+          });
+        });
+        this._pluginUnsubscribers.push(sysUnsub);
       }
 
       // 3b. Register async subagent result handler

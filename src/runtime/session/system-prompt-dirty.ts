@@ -21,7 +21,7 @@
 // ---------------------------------------------------------------------------
 
 /** Reasons that invalidate the cached system prompt. */
-export type DirtyReason = "compaction" | "workspace" | "memory" | "profile";
+export type DirtyReason = "compaction" | "workspace" | "memory" | "profile" | "system-state";
 
 // ---------------------------------------------------------------------------
 // State
