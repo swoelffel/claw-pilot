@@ -91,6 +91,12 @@ export class SelfUpdater {
         throw new Error(checkout.stderr.trim() || checkout.stdout.trim() || "git checkout failed");
       }
 
+      // 2b. Bootstrap the pnpm version pinned in package.json's `packageManager` field
+      // via corepack. This ensures pnpm version switches across releases never leave
+      // the host stuck on the old binary trying to read a newer lockfile format.
+      // Non-fatal — older releases without the field, or hosts without corepack, are skipped.
+      await this._bootstrapPackageManager(installDir);
+
       // 3. pnpm install — use sudo if node_modules/ is not writable by current user
       const nmDir = `${installDir}/node_modules`;
       const nmWriteCheck = await this._exec(`test -w "${nmDir}" || test ! -e "${nmDir}"`);
@@ -195,6 +201,44 @@ export class SelfUpdater {
     const total = running.length;
     if (ok === total) return `Restarted ${total} runtime(s).`;
     return `Restarted ${ok}/${total} runtime(s). ${total - ok} failed.`;
+  }
+
+  /**
+   * Read `packageManager` from `<installDir>/package.json` and, if it pins a pnpm
+   * version, run `corepack prepare <value> --activate` so the next `pnpm install`
+   * uses the correct binary. Silent no-op when the field is missing, points to
+   * another package manager, or the file cannot be read.
+   *
+   * Failure of `corepack prepare` itself is logged as a warning but does NOT
+   * abort the update — the subsequent `pnpm install` may still succeed if the
+   * existing pnpm binary can read the new lockfile.
+   */
+  private async _bootstrapPackageManager(installDir: string): Promise<void> {
+    let pmField: string | undefined;
+    try {
+      const pkgJsonPath = path.join(installDir, "package.json");
+      const raw = await this.conn.readFile(pkgJsonPath);
+      const parsed = JSON.parse(raw) as { packageManager?: string };
+      pmField = parsed.packageManager;
+    } catch (err) {
+      logger.debug("[self-updater] cannot read package.json for bootstrap, skipping", {
+        error: String(err),
+      });
+      return;
+    }
+
+    if (!pmField || !pmField.startsWith("pnpm@")) {
+      logger.debug("[self-updater] no pnpm packageManager field, skipping corepack bootstrap");
+      return;
+    }
+
+    logger.info(`[self-updater] Bootstrapping ${pmField} via corepack...`);
+    const res = await this._exec(`corepack prepare ${pmField} --activate`, { timeout: 60_000 });
+    if (res.exitCode !== 0) {
+      logger.warn(
+        `[self-updater] corepack prepare failed (continuing): ${res.stderr.trim() || res.stdout.trim() || "unknown error"}`,
+      );
+    }
   }
 
   // Remonte depuis dist/index.mjs → racine du projet (ou /opt/claw-pilot en fallback)
