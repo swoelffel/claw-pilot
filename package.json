@@ -53,13 +53,13 @@
     }
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.68",
-    "@ai-sdk/google": "^3.0.60",
+    "@ai-sdk/anthropic": "^3.0.69",
+    "@ai-sdk/google": "^3.0.62",
     "@ai-sdk/openai": "^3.0.52",
     "@inquirer/prompts": "^8",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@openrouter/ai-sdk-provider": "^2.5.0",
-    "ai": "^6.0.153",
+    "@openrouter/ai-sdk-provider": "^2.5.1",
+    "ai": "^6.0.158",
     "better-sqlite3": "^12",
     "chalk": "^5",
     "cli-table3": "^0.6",
