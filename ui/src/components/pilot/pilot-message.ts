@@ -5,7 +5,7 @@ import { customElement, property } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import type { TimelineEntry, PilotPart } from "../../types.js";
+import type { TimelineEntry, PilotPart, TimelineFilters } from "../../types.js";
 import { tokenStyles } from "../../styles/tokens.js";
 import "./parts/part-text.js";
 import "./parts/part-tool.js";
@@ -17,6 +17,7 @@ import "./parts/part-image.js";
 import "./parts/part-artifact.js";
 import "./parts/part-file.js";
 import "./parts/part-suggestion.js";
+import "./parts/part-delegation-expand.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -287,6 +288,11 @@ export class PilotMessageEl extends LitElement {
   @property() slug = "";
   /** Current session's channel, used to show badge only for cross-channel messages */
   @property() sessionChannel = "web";
+  /**
+   * Active timeline filters — propagated to the delegation drill-down so
+   * nested timelines honor the same toggles (tools, thinking, etc.).
+   */
+  @property({ type: Object }) filters: TimelineFilters | null = null;
 
   // ── Part rendering (reuses existing part components) ────────────────────
 
@@ -448,6 +454,15 @@ export class PilotMessageEl extends LitElement {
             class="a2a-content"
             .innerHTML=${DOMPurify.sanitize(marked.parse(e.a2aContent ?? "") as string)}
           ></div>
+          ${e.a2aSubSessionId
+            ? html`<cp-pilot-part-delegation-expand
+                .slug=${this.slug}
+                .subSessionId=${e.a2aSubSessionId}
+                .targetAgentId=${e.a2aTarget ?? ""}
+                .filters=${this.filters}
+                .subagentResults=${this.subagentResults}
+              ></cp-pilot-part-delegation-expand>`
+            : nothing}
         `;
 
       case "a2a_received":
@@ -457,6 +472,15 @@ export class PilotMessageEl extends LitElement {
             class="a2a-content"
             .innerHTML=${DOMPurify.sanitize(marked.parse(e.a2aContent ?? "") as string)}
           ></div>
+          ${e.a2aSubSessionId
+            ? html`<cp-pilot-part-delegation-expand
+                .slug=${this.slug}
+                .subSessionId=${e.a2aSubSessionId}
+                .targetAgentId=${e.source}
+                .filters=${this.filters}
+                .subagentResults=${this.subagentResults}
+              ></cp-pilot-part-delegation-expand>`
+            : nothing}
         `;
 
       case "tool_call":

@@ -576,6 +576,13 @@ export interface TimelineEntry {
   a2aContent?: string;
   /** Channel for cross-channel user messages */
   channel?: string;
+  /**
+   * Sub-session id attached to delegation / async-subagent-result traces.
+   * When present, the UI renders a drill-down expand control that fetches
+   * the sub-session's messages on demand. Missing on legacy traces written
+   * before v0.71.3 — those remain read-only.
+   */
+  a2aSubSessionId?: string;
 }
 
 export interface TimelineFilters {

@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.71.3] — 2026-04-13
+
+### Added
+- **Delegation drill-down**: `[delegation]` and `[Async subagent result]` traces in the Pilot & Home timelines are now **clickable** and expand in-place to show the full sub-session — assistant text, tool calls + results, reasoning, and a summary pill (steps · tokens · cost · duration). Nested delegations drill down recursively. Lazy-loaded on first click via the existing `GET /runtime/sessions/:id/messages` endpoint. Filters from the parent timeline (tools, thinking, etc.) are honored inside nested timelines.
+
+### Changed
+- **Runtime** — delegation traces now carry `subSessionId` in the text part's metadata JSON. `createUserMessage()` accepts an optional `metadata` param. `PromptLoopInput.userMetadata` threads through to the async-subagent-result injection in `channel/router.ts`. Traces written before v0.71.3 remain backward-compatible: legacy async-result traces still resolve via the `task_id:` fallback regex; legacy delegation traces render read-only (no drill-down).
+
+---
+
 ## [0.71.2] — 2026-04-13
 
 ### Fixed
