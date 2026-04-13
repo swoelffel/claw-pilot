@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.70.4] — 2026-04-13
+
+### Fixed
+- **Plugin tools (e.g. `cp_create_instance`) silently missing from every agent's toolset**: `ClawRuntime.start()` called `registerPlugin()` for the `system-dashboard` plugin but never `initPlugins()`, so the plugin factory was never invoked and no hooks were registered. As a result, every agent on `cp-system` (including the pilot and `admin-exec`) was missing the full suite of admin CRUD tools — the LLM hit the `invalid` fallback tool when trying to call them, producing refusals shaped like `{"toolName": "cp_create_instance", "reason": "Tool not available in current environment"}`. Fix: invoke `initPlugins()` right after `registerPlugin()` at runtime startup, and `resetPlugins()` on `stop()` to keep the module-global registry clean between restarts. Also extracted a shared `getRuntimeVersion()` helper used by both the engine and the prompt-loop. Adds 2 regression tests pinning the plugin-hook registration behavior.
+
+---
+
 ## [0.70.3] — 2026-04-13
 
 ### Changed
