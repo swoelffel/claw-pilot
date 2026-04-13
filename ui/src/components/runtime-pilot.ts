@@ -562,10 +562,12 @@ export class RuntimePilot extends LitElement {
 
       case "message.updated": {
         if (eventSessionId && eventSessionId !== this._activeSessionId) break;
-        // Reload the last message from API to get its parts
+        // Reload the last message from API to get its parts.
+        // Do NOT touch this._status here — message.updated fires on every
+        // tool call / tool result during a running loop. Trust session.status
+        // events for busy/idle transitions (emitted once at start, once at end).
         void this._reloadLastMessages(p.messageId as string | undefined);
         this._streamingText = "";
-        if (this._status !== "sending") this._status = "idle";
         break;
       }
 
