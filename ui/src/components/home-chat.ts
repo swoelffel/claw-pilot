@@ -28,7 +28,7 @@ import "./pilot/pilot-header.js";
 import "./pilot/pilot-messages.js";
 import "./pilot/pilot-input.js";
 
-type HomeChatStatus = "idle" | "loading" | "sending" | "streaming" | "error";
+type HomeChatStatus = "idle" | "loading" | "sending" | "thinking" | "tool" | "streaming" | "error";
 
 /** Polling fallback when SSE drops or misses an event */
 const POLL_INTERVAL_MS = 10_000;
@@ -90,6 +90,9 @@ export class HomeChat extends LitElement {
   @state() private _messages: PilotMessage[] = [];
   @state() private _hasMore = false;
   @state() private _streamingText = "";
+  @state() private _streamingReasoning = "";
+  @state() private _streamingReasoningPartId: string | null = null;
+  @state() private _currentToolName: string | null = null;
   @state() private _streamingAgentId = "";
   @state() private _tokensIn = 0;
   @state() private _tokensOut = 0;
@@ -197,7 +200,13 @@ export class HomeChat extends LitElement {
   }
 
   private async _refreshMessages(): Promise<void> {
-    if (!this._activeSessionId || this._status === "streaming" || this._status === "sending") {
+    if (
+      !this._activeSessionId ||
+      this._status === "streaming" ||
+      this._status === "sending" ||
+      this._status === "thinking" ||
+      this._status === "tool"
+    ) {
       return;
     }
     try {
@@ -351,7 +360,17 @@ export class HomeChat extends LitElement {
       case "message.part.delta": {
         if (eventSessionId && eventSessionId !== this._activeSessionId) break;
         const delta = p.delta as string | undefined;
-        if (delta) {
+        const partType = (p.partType as string | undefined) ?? "text";
+        const partId = p.partId as string | undefined;
+        if (!delta) break;
+        if (partType === "reasoning") {
+          if (partId && this._streamingReasoningPartId !== partId) {
+            this._streamingReasoning = "";
+            this._streamingReasoningPartId = partId;
+          }
+          this._streamingReasoning += delta;
+          if (this._status !== "thinking") this._status = "thinking";
+        } else {
           this._streamingText += delta;
           if (this._status !== "streaming") this._status = "streaming";
         }
@@ -362,8 +381,11 @@ export class HomeChat extends LitElement {
         if (eventSessionId && eventSessionId !== this._activeSessionId) break;
         if (p.role === "assistant") {
           this._streamingText = "";
+          this._streamingReasoning = "";
+          this._streamingReasoningPartId = null;
+          this._currentToolName = null;
           this._streamingAgentId = (p.agentId as string | undefined) ?? "";
-          this._status = "streaming";
+          if (this._status !== "sending") this._status = "sending";
         } else if (p.role === "user") {
           // Message from another channel (Telegram, CLI, etc.) — load it immediately
           void this._reloadLastMessages();
@@ -379,13 +401,34 @@ export class HomeChat extends LitElement {
         break;
       }
 
+      case "tool.call.started": {
+        if (eventSessionId && eventSessionId !== this._activeSessionId) break;
+        this._currentToolName = (p.toolName as string | undefined) ?? null;
+        this._status = "tool";
+        break;
+      }
+
+      case "tool.call.ended": {
+        if (eventSessionId && eventSessionId !== this._activeSessionId) break;
+        this._currentToolName = null;
+        break;
+      }
+
       case "session.status": {
         if (eventSessionId && eventSessionId !== this._activeSessionId) break;
         const status = p.status as string;
-        if (status === "busy" && this._status !== "streaming") {
-          this._status = "streaming";
+        if (
+          status === "busy" &&
+          this._status !== "streaming" &&
+          this._status !== "thinking" &&
+          this._status !== "tool"
+        ) {
+          this._status = "sending";
         } else if (status === "idle" && this._status !== "sending") {
           this._streamingText = "";
+          this._streamingReasoning = "";
+          this._streamingReasoningPartId = null;
+          this._currentToolName = null;
           this._status = "idle";
           // Ensure the final messages (assistant reply, tool results, etc.)
           // are rendered — message.updated/created may have been missed.
@@ -397,6 +440,9 @@ export class HomeChat extends LitElement {
       case "session.ended": {
         if (eventSessionId && eventSessionId !== this._activeSessionId) break;
         this._streamingText = "";
+        this._streamingReasoning = "";
+        this._streamingReasoningPartId = null;
+        this._currentToolName = null;
         this._status = "idle";
         break;
       }
@@ -479,7 +525,11 @@ export class HomeChat extends LitElement {
 
   override render() {
     const isDisabled = this._status !== "idle";
-    const isStreaming = this._status === "sending" || this._status === "streaming";
+    const isStreaming =
+      this._status === "sending" ||
+      this._status === "streaming" ||
+      this._status === "thinking" ||
+      this._status === "tool";
     const totalTokens = this._tokensIn + this._tokensOut;
 
     return html`
@@ -488,6 +538,7 @@ export class HomeChat extends LitElement {
         agentName="${msg("ClawPilot Assistant", { id: "home-chat-title" })}"
         model=""
         .status=${this._status}
+        .toolName=${this._currentToolName}
         .messageCount=${this._messages.length}
         .totalTokens=${totalTokens}
         .totalCost=${this._costUsd}
@@ -504,6 +555,8 @@ export class HomeChat extends LitElement {
           .filters=${HOME_FILTERS}
           .currentAgentId=${"system-pilot"}
           .streamingText=${this._streamingText}
+          .streamingReasoning=${this._streamingReasoning}
+          .streamingReasoningPartId=${this._streamingReasoningPartId}
           .streamingAgentId=${this._streamingAgentId}
           .status=${this._status}
           .hasMore=${this._hasMore}
