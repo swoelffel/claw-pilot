@@ -139,6 +139,106 @@ describe("SelfUpdater — successful update", () => {
 });
 
 // ---------------------------------------------------------------------------
+// _bootstrapPackageManager — corepack bootstrap from packageManager field
+// ---------------------------------------------------------------------------
+
+describe("SelfUpdater — packageManager bootstrap via corepack", () => {
+  it("invokes 'corepack prepare <pm> --activate' when packageManager field is present", async () => {
+    conn = new MockConnection();
+    mockSuccessSequence(conn);
+    updater = new SelfUpdater(conn);
+
+    // Seed package.json at the resolved install dir
+    const installDir = updater._resolveInstallDir();
+    conn.files.set(
+      `${installDir}/package.json`,
+      JSON.stringify({ packageManager: "pnpm@10.17.0" }),
+    );
+
+    // Mock corepack success
+    conn.mockExec("corepack prepare", { stdout: "", stderr: "", exitCode: 0 });
+
+    updater.run(undefined, undefined, "v1.0.0");
+    await flush();
+
+    const corepackCmd = conn.commands.find(
+      (c) =>
+        c.includes("corepack prepare") && c.includes("pnpm@10.17.0") && c.includes("--activate"),
+    );
+    expect(corepackCmd).toBeDefined();
+    expect(updater.getJob().status).toBe("done");
+  });
+
+  it("skips corepack call when packageManager field is missing", async () => {
+    conn = new MockConnection();
+    mockSuccessSequence(conn);
+    updater = new SelfUpdater(conn);
+
+    // Seed package.json with NO packageManager field
+    const installDir = updater._resolveInstallDir();
+    conn.files.set(`${installDir}/package.json`, JSON.stringify({ name: "claw-pilot" }));
+
+    updater.run(undefined, undefined, "v1.0.0");
+    await flush();
+
+    const corepackCmd = conn.commands.find((c) => c.includes("corepack prepare"));
+    expect(corepackCmd).toBeUndefined();
+    expect(updater.getJob().status).toBe("done");
+  });
+
+  it("skips corepack call when packageManager value is not pnpm", async () => {
+    conn = new MockConnection();
+    mockSuccessSequence(conn);
+    updater = new SelfUpdater(conn);
+
+    const installDir = updater._resolveInstallDir();
+    conn.files.set(`${installDir}/package.json`, JSON.stringify({ packageManager: "yarn@4.5.0" }));
+
+    updater.run(undefined, undefined, "v1.0.0");
+    await flush();
+
+    const corepackCmd = conn.commands.find((c) => c.includes("corepack prepare"));
+    expect(corepackCmd).toBeUndefined();
+    expect(updater.getJob().status).toBe("done");
+  });
+
+  it("continues update when corepack prepare fails (non-fatal)", async () => {
+    conn = new MockConnection();
+    mockSuccessSequence(conn);
+    updater = new SelfUpdater(conn);
+
+    const installDir = updater._resolveInstallDir();
+    conn.files.set(`${installDir}/package.json`, JSON.stringify({ packageManager: "pnpm@11.0.0" }));
+    conn.mockExec("corepack prepare", {
+      stdout: "",
+      stderr: "corepack: not installed",
+      exitCode: 1,
+    });
+
+    updater.run(undefined, undefined, "v1.0.0");
+    await flush();
+
+    // Update still completes — corepack failure is non-fatal
+    expect(updater.getJob().status).toBe("done");
+  });
+
+  it("skips corepack call when package.json cannot be read", async () => {
+    conn = new MockConnection();
+    mockSuccessSequence(conn);
+    updater = new SelfUpdater(conn);
+
+    // Do NOT seed package.json — readFile will throw
+
+    updater.run(undefined, undefined, "v1.0.0");
+    await flush();
+
+    const corepackCmd = conn.commands.find((c) => c.includes("corepack prepare"));
+    expect(corepackCmd).toBeUndefined();
+    expect(updater.getJob().status).toBe("done");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // _execute() — failure scenarios
 // ---------------------------------------------------------------------------
 
