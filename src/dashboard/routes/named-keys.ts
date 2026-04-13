@@ -10,6 +10,7 @@ import type { RouteDeps } from "../route-deps.js";
 import { isCryptoAvailable } from "../../lib/crypto.js";
 import { logger } from "../../lib/logger.js";
 import { NamedKeyRepository } from "../../core/repositories/named-key-repository.js";
+import { notifySystemStateChanged } from "./_system-state-notify.js";
 
 // ---------------------------------------------------------------------------
 // Validation schemas
@@ -98,6 +99,7 @@ export function registerNamedKeyRoutes(app: Hono, deps: RouteDeps): void {
       });
       // Trigger model re-discovery for this provider (non-blocking)
       void deps.modelDiscovery.invalidateProvider(data.providerId);
+      notifySystemStateChanged("named-key", "create");
       return c.json({ ok: true, key });
     } catch (err) {
       if (isUniqueConstraintError(err)) {
@@ -154,6 +156,7 @@ export function registerNamedKeyRoutes(app: Hono, deps: RouteDeps): void {
       if (updateData.apiKey !== undefined) {
         void deps.modelDiscovery.invalidateProvider(existing.providerId);
       }
+      notifySystemStateChanged("named-key", "update");
       return c.json({ ok: true, key });
     } catch (err) {
       if (isUniqueConstraintError(err)) {
@@ -182,6 +185,7 @@ export function registerNamedKeyRoutes(app: Hono, deps: RouteDeps): void {
       namedKeyRepo.delete(id);
       // Re-discover models for the provider (may now have no key)
       void deps.modelDiscovery.invalidateProvider(existing.providerId);
+      notifySystemStateChanged("named-key", "delete");
       return c.json({ ok: true });
     } catch (err) {
       if (isForeignKeyError(err)) {

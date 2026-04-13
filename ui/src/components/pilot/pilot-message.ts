@@ -460,6 +460,7 @@ export class PilotMessageEl extends LitElement {
 
       case "tool_call":
       case "artifact":
+      case "question":
         return html`
           <div class="source-label">${e.source}</div>
           <div class="part-wrap">

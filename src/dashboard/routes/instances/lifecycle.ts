@@ -15,6 +15,7 @@ import {
 import { deriveWebChatPort } from "../../../lib/platform.js";
 import { ClawPilotError, InstanceNotFoundError } from "../../../lib/errors.js";
 import { logger } from "../../../lib/logger.js";
+import { notifySystemStateChanged } from "../_system-state-notify.js";
 
 export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, conn, health, lifecycle, monitor, tokenCache, xdgRuntimeDir } = deps;
@@ -60,6 +61,7 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
     monitor.setTransitioning(slug, "starting");
     try {
       await lifecycle.start(slug);
+      notifySystemStateChanged("instance", "update");
       return c.json({ ok: true });
     } catch (err) {
       if (err instanceof InstanceNotFoundError) {
@@ -86,6 +88,7 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
     monitor.setTransitioning(slug, "stopping");
     try {
       await lifecycle.stop(slug);
+      notifySystemStateChanged("instance", "update");
       return c.json({ ok: true });
     } catch (err) {
       if (err instanceof InstanceNotFoundError) {
@@ -135,6 +138,7 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
       await destroyer.destroy(slug);
       tokenCache.invalidate(slug);
       removeSearchEntry(deps.db, "instance", slug);
+      notifySystemStateChanged("instance", "delete");
       return c.json({ ok: true, slug });
     } catch (err) {
       if (err instanceof InstanceNotFoundError) {
@@ -254,6 +258,7 @@ export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
         routeHash: `/instances/${slug}/builder`,
       });
 
+      notifySystemStateChanged("instance", "create");
       return c.json(result, 201);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Provisioning failed";

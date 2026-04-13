@@ -48,6 +48,32 @@ export function rejectQuestion(questionId: string, reason: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Bundled-question detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Detect when a model bundles multiple questions into a single tool call.
+ * Applied after stripping URLs (which legitimately contain "?" and "/" chars).
+ * Returns true if the question looks like a bundle.
+ */
+export function isBundledQuestion(raw: string): boolean {
+  // Remove URLs so their "?" and punctuation don't trigger false positives
+  const stripped = raw.replace(/https?:\/\/\S+/g, "");
+
+  // Multiple question marks → almost always multiple questions
+  const questionMarks = (stripped.match(/\?/g) ?? []).length;
+  if (questionMarks >= 2) return true;
+
+  // Numbered list item at line start: "1." / "1)" / "2." etc.
+  if (/^\s*\d+[.)]\s/m.test(stripped)) return true;
+
+  // Bullet list item at line start: "- " / "* " / "• "
+  if (/^\s*[-*•]\s/m.test(stripped)) return true;
+
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // Tool definition
 // ---------------------------------------------------------------------------
 
@@ -64,10 +90,44 @@ export const QuestionTool = Tool.define("question", {
       .describe("Optional list of predefined answer options to present to the user"),
   }),
   async execute(params, ctx) {
-    const { nanoid } = await import("nanoid");
-    const questionId = nanoid();
+    // Defense in depth: the question tool requires a human on the loop.
+    // Refuse to execute when the session was initiated by a non-interactive
+    // channel (e.g. internal agent-to-agent). Without this guard, a question
+    // here would block the agent until timeout since nobody can answer.
+    const INTERACTIVE_CHANNELS = new Set(["web", "telegram", "cli"]);
+    if (ctx.channel !== undefined && !INTERACTIVE_CHANNELS.has(ctx.channel)) {
+      return {
+        title: "Question refused (non-interactive session)",
+        output:
+          `The question tool can only be used in interactive user sessions. ` +
+          `This session's channel is "${ctx.channel}" (no human on the loop). ` +
+          `Work with the context you already have, or report the missing information in your final answer.`,
+        truncated: false,
+      };
+    }
 
-    const bus = getBus(ctx.agentId.split(":")[0] ?? "default");
+    // Reject bundled questions: the user can only answer one question per turn.
+    // Heuristics (applied to params.question, URLs-stripped to avoid false positives):
+    //   - Multiple "?" (2+)
+    //   - Numbered list items ("1." / "1)")
+    //   - Bullet list items on separate lines ("- " / "* ")
+    if (isBundledQuestion(params.question)) {
+      return {
+        title: "Question refused (bundled)",
+        output:
+          `Your question contains multiple questions bundled together. ` +
+          `The user can only answer one question per turn. ` +
+          `Pick the single most important one NOW (in a new tool call) and ask the others in subsequent turns, ` +
+          `after receiving each answer. Do NOT list them with numbers or bullets.`,
+        truncated: false,
+      };
+    }
+
+    // Use the Vercel AI SDK toolCallId as the question ID — this is the same ID
+    // stored in the tool_call part metadata and used by the UI to submit answers.
+    const questionId = ctx.toolCallId ?? (await import("nanoid")).nanoid();
+
+    const bus = getBus(ctx.instanceSlug ?? "default");
 
     // Emit event so the channel layer can display the question
     bus.publish(QuestionAsked, {
@@ -79,19 +139,23 @@ export const QuestionTool = Tool.define("question", {
       ...(params.options !== undefined ? { options: params.options } : {}),
     });
 
-    // Wait for answer (or abort)
-    const answer = await new Promise<string>((resolve, reject) => {
-      _pending.set(questionId, { resolve, reject });
+    // Wait for answer (or abort). Wrap in onLongWait so the prompt-loop
+    // watchdogs don't fire while we wait for the human to respond.
+    const waitForAnswer = (): Promise<string> =>
+      new Promise<string>((resolve, reject) => {
+        _pending.set(questionId, { resolve, reject });
 
-      ctx.abort.addEventListener(
-        "abort",
-        () => {
-          _pending.delete(questionId);
-          reject(new Error("Question aborted"));
-        },
-        { once: true },
-      );
-    });
+        ctx.abort.addEventListener(
+          "abort",
+          () => {
+            _pending.delete(questionId);
+            reject(new Error("Question aborted"));
+          },
+          { once: true },
+        );
+      });
+
+    const answer = ctx.onLongWait ? await ctx.onLongWait(waitForAnswer) : await waitForAnswer();
 
     return {
       title: `Question: ${params.question.slice(0, 50)}`,

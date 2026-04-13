@@ -21,6 +21,10 @@ import {
   getActiveTasksForAgent,
   type TaskRowWithEpic,
 } from "../../core/repositories/task-repository.js";
+import { NamedKeyRepository } from "../../core/repositories/named-key-repository.js";
+import { InstanceRepository } from "../../core/repositories/instance-repository.js";
+import { BlueprintRepository } from "../../core/repositories/blueprint-repository.js";
+import { SYSTEM_INSTANCE_SLUG } from "../../core/system-instance.js";
 import { logger } from "../../lib/logger.js";
 
 // Read claw-pilot version from package.json once at module load time
@@ -290,6 +294,15 @@ export async function buildSystemPrompt(ctx: SystemPromptContext): Promise<strin
     }
   }
 
+  // 3.56. ClawPilot platform state — only for agents in the cp-system instance.
+  // Gives system-pilot and its subagents live visibility into named API keys,
+  // instances, blueprints, and providers so they don't ask the user about
+  // data already present in the registry.
+  if (ctx.db && ctx.instanceSlug === SYSTEM_INSTANCE_SLUG) {
+    const stateBlock = buildClawPilotStateBlock(ctx.db);
+    if (stateBlock) sections.push(stateBlock);
+  }
+
   // 3.6. Available skills block (proactive injection or auto-select)
   // Skipped when building the base prompt for dirty-flag cache
   if (!ctx.skipSkills && ctx.workDir) {
@@ -319,6 +332,107 @@ function buildTaskBacklogBlock(tasks: TaskRowWithEpic[]): string {
   }
   lines.push("", "Use the task_board tool to manage these tasks.", "</task_backlog>");
   return lines.join("\n");
+}
+
+/** Max characters for the ClawPilot state block (hard cap to avoid prompt bloat). */
+const CLAWPILOT_STATE_MAX_CHARS = 3000;
+
+/**
+ * Build a <clawpilot_state> block summarizing the live platform state for
+ * agents in the cp-system instance: named API keys, instances, blueprints,
+ * configured providers. Helps these agents act with up-to-date context
+ * instead of asking the user about data already in the registry.
+ *
+ * Returns undefined if the DB cannot be read (graceful fallback).
+ */
+function buildClawPilotStateBlock(db: Database.Database): string | undefined {
+  try {
+    const keyRepo = new NamedKeyRepository(db);
+    const instRepo = new InstanceRepository(db);
+    const bpRepo = new BlueprintRepository(db);
+
+    const keys = keyRepo.listAll();
+    const instances = instRepo.listInstances();
+    const blueprints = bpRepo.listBlueprints();
+
+    // Count how many instances use each named key (via default_named_key_id).
+    const keyUsage = new Map<number, number>();
+    for (const inst of instances) {
+      const keyId = (inst as unknown as { default_named_key_id?: number | null })
+        .default_named_key_id;
+      if (typeof keyId === "number") {
+        keyUsage.set(keyId, (keyUsage.get(keyId) ?? 0) + 1);
+      }
+    }
+
+    // Unique providers configured via named keys
+    const providers = Array.from(new Set(keys.map((k) => k.providerId))).sort();
+
+    const lines: string[] = ["<clawpilot_state>"];
+    lines.push(
+      "Live snapshot of the ClawPilot platform — use this to ground your answers",
+      "instead of asking the user about resources already registered.",
+      "",
+    );
+
+    // Named API keys
+    if (keys.length === 0) {
+      lines.push("## Named API Keys: none configured");
+    } else {
+      lines.push(`## Named API Keys (${keys.length})`);
+      for (const k of keys) {
+        const usage = keyUsage.get(k.id) ?? 0;
+        const usageStr = usage === 0 ? "unused" : `used by ${usage} instance(s)`;
+        lines.push(
+          `- "${k.name}" (provider: ${k.providerId}, default model: ${k.defaultModel}) — ${usageStr}`,
+        );
+      }
+    }
+    lines.push("");
+
+    // Instances
+    if (instances.length === 0) {
+      lines.push("## Instances: none");
+    } else {
+      const running = instances.filter((i) => i.state === "running").length;
+      lines.push(`## Instances (${instances.length} total, ${running} running)`);
+      for (const i of instances) {
+        const systemTag = i.is_system === 1 ? " [SYSTEM]" : "";
+        const model = i.default_model ? `, default model: ${i.default_model}` : "";
+        lines.push(`- ${i.slug} (state: ${i.state}${model})${systemTag}`);
+      }
+    }
+    lines.push("");
+
+    // Blueprints
+    if (blueprints.length === 0) {
+      lines.push("## Blueprints: none");
+    } else {
+      lines.push(`## Blueprints (${blueprints.length})`);
+      for (const b of blueprints) {
+        const count = (b as unknown as { agent_count?: number }).agent_count ?? 0;
+        lines.push(
+          `- "${b.name}" (${count} agent(s))${b.description ? ` — ${b.description}` : ""}`,
+        );
+      }
+    }
+    lines.push("");
+
+    // Providers
+    lines.push(`## Providers configured: ${providers.length > 0 ? providers.join(", ") : "none"}`);
+    lines.push("</clawpilot_state>");
+
+    let block = lines.join("\n");
+    if (block.length > CLAWPILOT_STATE_MAX_CHARS) {
+      // Truncate gracefully — keep opening tag, add truncation marker, keep closing tag
+      block =
+        block.slice(0, CLAWPILOT_STATE_MAX_CHARS - 50) + "\n... (truncated)\n</clawpilot_state>";
+    }
+    return block;
+  } catch (err) {
+    logger.debug("[system-prompt] buildClawPilotStateBlock failed", { error: String(err) });
+    return undefined;
+  }
 }
 
 /**

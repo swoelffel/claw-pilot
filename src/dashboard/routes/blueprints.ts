@@ -12,6 +12,7 @@ import { constants } from "../../lib/constants.js";
 import { listBuiltinBlueprints } from "../../core/builtin-blueprints.js";
 import { logger } from "../../lib/logger.js";
 import { upsertSearchEntry, removeSearchEntry } from "../../core/repositories/search-repository.js";
+import { notifySystemStateChanged } from "./_system-state-notify.js";
 
 // ---------------------------------------------------------------------------
 // Zod schemas for request validation
@@ -232,6 +233,7 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
         routeHash: `/blueprints/${blueprint.id}/builder`,
       });
 
+      notifySystemStateChanged("blueprint", "create");
       return c.json(blueprint, 201);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -273,6 +275,7 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
         routeHash: `/blueprints/${blueprint.id}/builder`,
       });
 
+      notifySystemStateChanged("blueprint", "create");
       return c.json(blueprint, 201);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to import built-in blueprint";
@@ -359,6 +362,7 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
     registry.deleteBlueprint(id);
     removeSearchEntry(deps.db, "blueprint", String(id));
+    notifySystemStateChanged("blueprint", "delete");
     return c.json({ ok: true });
   });
 

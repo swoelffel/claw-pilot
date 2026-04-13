@@ -22,6 +22,8 @@ export interface InternalApiHandlers {
   handleFlowRun(flowId: number, body: FlowRunRequest): number;
   /** Abort an active session. */
   handleAbort(sessionId: string): boolean;
+  /** Resolve a pending question from the question tool. */
+  handleQuestionAnswer(questionId: string, answer: string): boolean;
 }
 
 export interface ChatRequest {
@@ -165,6 +167,16 @@ export class InternalApiServer {
         }
         const runId = this._handlers.handleFlowRun(flowId, body as FlowRunRequest);
         this._json(res, 202, { runId });
+      } else if (url.startsWith("/internal/questions/") && url.endsWith("/answer")) {
+        // /internal/questions/:questionId/answer
+        const questionId = url.slice("/internal/questions/".length, -"/answer".length);
+        const { answer } = body as { answer?: string };
+        if (!answer || typeof answer !== "string") {
+          this._json(res, 400, { error: "Missing answer", code: "MISSING_ANSWER" });
+          return;
+        }
+        const resolved = this._handlers.handleQuestionAnswer(questionId, answer);
+        this._json(res, 200, { ok: true, resolved });
       } else if (url.startsWith("/internal/sessions/") && url.endsWith("/abort")) {
         // /internal/sessions/:sessionId/abort
         const sessionId = url.slice("/internal/sessions/".length, -"/abort".length);

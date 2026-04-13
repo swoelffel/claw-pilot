@@ -89,14 +89,25 @@ export class PilotPartQuestion extends LitElement {
         font-weight: 600;
       }
 
+      .or-separator {
+        padding: 4px 12px;
+        font-size: 11px;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
       .free-input {
         display: flex;
         gap: 8px;
         padding: 0 12px 12px;
+        align-items: flex-end;
       }
 
-      .free-input input {
+      .free-input textarea {
         flex: 1;
+        min-height: 36px;
+        max-height: 180px;
         padding: 8px 10px;
         border: 1px solid var(--bg-border);
         border-radius: var(--radius-sm);
@@ -104,9 +115,11 @@ export class PilotPartQuestion extends LitElement {
         color: var(--text-primary);
         font-family: var(--font-ui);
         font-size: 13px;
+        line-height: 1.5;
+        resize: vertical;
       }
 
-      .free-input input:focus {
+      .free-input textarea:focus {
         outline: none;
         border-color: var(--accent);
       }
@@ -173,6 +186,16 @@ export class PilotPartQuestion extends LitElement {
     try {
       await answerQuestion(this.slug, questionId, answer);
       this._answered = true;
+      // Notify the parent so it can show "busy" status — the backend resumes
+      // the prompt loop after resolving the pending question, but never emits
+      // a fresh session.status event (the session was already busy).
+      this.dispatchEvent(
+        new CustomEvent("question-answered", {
+          bubbles: true,
+          composed: true,
+          detail: { questionId, answer },
+        }),
+      );
     } catch {
       // On error, allow retry
       this._selectedAnswer = "";
@@ -182,7 +205,9 @@ export class PilotPartQuestion extends LitElement {
   }
 
   private _handleKeydown(e: KeyboardEvent): void {
-    if (e.key === "Enter" && this._freeText.trim()) {
+    // Enter submits, Shift+Enter inserts a newline (standard chat UX)
+    if (e.key === "Enter" && !e.shiftKey && this._freeText.trim()) {
+      e.preventDefault();
       void this._submitAnswer(this._freeText.trim());
     }
   }
@@ -218,21 +243,26 @@ export class PilotPartQuestion extends LitElement {
                   `,
                 )}
               </div>
+              <div class="or-separator">
+                ${msg("or type your own answer", { id: "part-question-or" })}
+              </div>
             `
           : nothing}
-        ${options.length === 0 && !isAnswered
+        ${!isAnswered
           ? html`
               <div class="free-input">
-                <input
-                  type="text"
-                  placeholder="${msg("Type your answer…", { id: "part-question-placeholder" })}"
+                <textarea
+                  rows="2"
+                  placeholder="${msg("Type your answer…  (Enter = send, Shift+Enter = newline)", {
+                    id: "part-question-placeholder",
+                  })}"
                   .value=${this._freeText}
                   @input=${(e: InputEvent) => {
-                    this._freeText = (e.target as HTMLInputElement).value;
+                    this._freeText = (e.target as HTMLTextAreaElement).value;
                   }}
                   @keydown=${this._handleKeydown}
                   ?disabled=${this._submitting}
-                />
+                ></textarea>
                 <button
                   ?disabled=${this._submitting || !this._freeText.trim()}
                   @click=${() => void this._submitAnswer(this._freeText.trim())}

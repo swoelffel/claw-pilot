@@ -562,10 +562,12 @@ export class RuntimePilot extends LitElement {
 
       case "message.updated": {
         if (eventSessionId && eventSessionId !== this._activeSessionId) break;
-        // Reload the last message from API to get its parts
+        // Reload the last message from API to get its parts.
+        // Do NOT touch this._status here — message.updated fires on every
+        // tool call / tool result during a running loop. Trust session.status
+        // events for busy/idle transitions (emitted once at start, once at end).
         void this._reloadLastMessages(p.messageId as string | undefined);
         this._streamingText = "";
-        if (this._status !== "sending") this._status = "idle";
         break;
       }
 
@@ -577,6 +579,9 @@ export class RuntimePilot extends LitElement {
         } else if (status === "idle" && this._status !== "sending") {
           this._streamingText = "";
           this._status = "idle";
+          // Ensure the final messages are rendered — individual
+          // message.updated/created events may have been missed.
+          void this._reloadLastMessages();
         }
         break;
       }
@@ -740,6 +745,17 @@ export class RuntimePilot extends LitElement {
     void this._onSendMessage(new CustomEvent("send-message", { detail: { text: e.detail.text } }));
   }
 
+  /**
+   * The user answered a question — the backend just resumed the paused prompt
+   * loop but doesn't emit a new session.status event (the session was already
+   * busy). Flip to streaming so the UI reflects ongoing activity.
+   */
+  private _onQuestionAnswered(): void {
+    if (this._status === "idle") {
+      this._status = "streaming";
+    }
+  }
+
   // ── Stats computed from messages ──────────────────────────────────────────
 
   private get _totalTokens(): number {
@@ -815,7 +831,11 @@ export class RuntimePilot extends LitElement {
       ></cp-pilot-header>
 
       <div class="pilot-body">
-        <div class="pilot-main" @suggestion-click=${this._onSuggestionClick}>
+        <div
+          class="pilot-main"
+          @suggestion-click=${this._onSuggestionClick}
+          @question-answered=${this._onQuestionAnswered}
+        >
           <cp-pilot-filter-bar
             .filters=${this._filters}
             @filter-change=${this._onFilterChange}

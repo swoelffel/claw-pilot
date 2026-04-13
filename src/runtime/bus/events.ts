@@ -344,6 +344,17 @@ export const WorkspaceFileChanged = defineEvent<
   { instanceSlug: InstanceSlug; agentId: AgentId; filename: string; filePath: string }
 >("workspace.file.changed");
 
+/**
+ * Emitted on the cp-system bus when a ClawPilot platform resource
+ * (named API key, instance, blueprint) is created, updated, or deleted.
+ * Consumed by the cp-system engine to invalidate cached system prompts
+ * that embed a live platform state snapshot.
+ */
+export const SystemStateChanged = defineEvent<
+  "system.state.changed",
+  { resource: "named-key" | "instance" | "blueprint"; action: "create" | "update" | "delete" }
+>("system.state.changed");
+
 // ---------------------------------------------------------------------------
 // Channel events
 // ---------------------------------------------------------------------------
@@ -402,7 +413,8 @@ export type AnyEventDef =
   | typeof FlowRunStarted
   | typeof FlowStepCompleted
   | typeof FlowRunCompleted
-  | typeof WorkspaceFileChanged;
+  | typeof WorkspaceFileChanged
+  | typeof SystemStateChanged;
 
 export type AnyEvent = {
   [K in AnyEventDef["type"]]: {

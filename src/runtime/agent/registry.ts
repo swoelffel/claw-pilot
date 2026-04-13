@@ -169,16 +169,21 @@ function mergeAgentConfig(base: Agent.Info, cfg: RuntimeAgentConfig): Agent.Info
 
 /**
  * Create a new Agent.Info from a RuntimeAgentConfig (for user-defined agents).
- * User-defined agents default to mode "all", kind "primary", category "user" (safe defaults).
+ * Kind is inferred from explicit YAML declarations (promptMode / persistence)
+ * so that tool filtering and channel routing honor the user's intent.
  */
 function createFromConfig(cfg: RuntimeAgentConfig): Agent.Info {
-  // User-defined agents have no mode in RuntimeAgentConfig — default to "all"
-  // kind defaults to "primary" (safe default: visible agent = primary agent)
-  // category defaults to "user" (created and configured by the user)
+  // Infer kind from explicit config signals:
+  // - promptMode: "subagent" is the strongest signal (dedicated subagent prompt)
+  // - persistence: "ephemeral" means the agent lives only per-task (subagent semantics)
+  // Otherwise default to "primary" (user-facing, permanent session).
+  const inferredKind =
+    cfg.promptMode === "subagent" || cfg.persistence === "ephemeral" ? "subagent" : "primary";
+
   return Agent.Info.parse({
     name: cfg.name,
     mode: "all",
-    kind: "primary",
+    kind: inferredKind,
     category: "user",
     native: false,
     prompt: cfg.systemPrompt,
