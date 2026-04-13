@@ -10,8 +10,8 @@ RUN apt-get update && apt-get install -y \
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs
 
-# pnpm
-RUN npm install -g pnpm
+# pnpm — pinned to match packageManager field in package.json for reproducible builds
+RUN npm install -g pnpm@10.33.0
 
 # User openclaw (uid 1000)
 # Pre-create XDG_RUNTIME_DIR so the user can write to it without root
