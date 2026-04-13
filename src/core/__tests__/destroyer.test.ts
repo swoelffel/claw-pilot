@@ -137,4 +137,50 @@ describe("Destroyer.destroy()", () => {
     await destroyer.destroy(slug);
     await expect(destroyer.destroy(slug)).rejects.toThrow(InstanceNotFoundError);
   });
+
+  it("kills orphan runtime processes found via ps when PID file is absent", async () => {
+    const { slug } = seedInstance();
+    // PID file absent → _mockPid stays null
+
+    // Simulate `ps -A -o pid=,args=` returning one orphan matching our slug
+    conn.mockExec("ps", {
+      stdout: [
+        `12345 /usr/bin/node /opt/claw-pilot/dist/index.mjs runtime start ${slug}`,
+        `67890 /usr/bin/node /opt/claw-pilot/dist/index.mjs runtime start other-slug`,
+        `99999 /usr/bin/node /opt/claw-pilot/dist/index.mjs runtime start ${slug}-suffix`,
+      ].join("\n"),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+    try {
+      const destroyer = new Destroyer(conn, registry, XDG);
+      await destroyer.destroy(slug);
+
+      // Only the exact-match orphan should be killed (not "other-slug", not "<slug>-suffix")
+      expect(killSpy).toHaveBeenCalledWith(12345, "SIGTERM");
+      expect(killSpy).not.toHaveBeenCalledWith(67890, "SIGTERM");
+      expect(killSpy).not.toHaveBeenCalledWith(99999, "SIGTERM");
+    } finally {
+      killSpy.mockRestore();
+    }
+  });
+
+  it("does not invoke ps fallback when PID file yielded a live process", async () => {
+    const { slug } = seedInstance();
+    _mockPid = 4242;
+
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+    try {
+      const destroyer = new Destroyer(conn, registry, XDG);
+      await destroyer.destroy(slug);
+
+      // PID file path was used — ps should NOT have been called
+      expect(conn.commands.some((c) => c.startsWith("ps "))).toBe(false);
+      expect(killSpy).toHaveBeenCalledWith(4242, "SIGTERM");
+    } finally {
+      killSpy.mockRestore();
+    }
+  });
 });

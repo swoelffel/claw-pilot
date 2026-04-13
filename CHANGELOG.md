@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.70.1] — 2026-04-13
+
+### Fixed
+- **`uninstall.sh` — orphan and other-user systemd scans never executed on Linux**: `OS=$(uname -s)` was assigned at Step 3 but referenced earlier in Step 1b/1c (orphan service files + multi-user detection), so `[ "$OS" = "Linux" ]` was always false. Moved the `OS` assignment before Step 1b. macOS uninstall flow was unaffected.
+
+---
+
 ## [0.70.0] — 2026-04-13
 
 ### Added
