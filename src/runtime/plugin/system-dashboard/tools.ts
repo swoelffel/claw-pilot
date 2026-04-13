@@ -294,14 +294,16 @@ export function createSystemDashboardTools(
         slug: z.string().describe("Instance slug"),
       }),
       async execute({ slug }) {
-        const { data } = await api("GET", `/instances/${encodeURIComponent(slug)}/runtime/flows`);
+        const { data } = await api("GET", `/instances/${encodeURIComponent(slug)}/flows`);
         return { title: "list flows", output: JSON.stringify(data, null, 2), truncated: false };
       },
     }),
 
     Tool.define("cp_create_flow", {
       description:
-        "Create a new flow definition for an instance. A flow is a DAG of steps executed by agents.",
+        "Create a new flow definition for an instance. A flow is a DAG of steps executed by agents. " +
+        "Each step needs a `prompt` (the instruction given to the agent). Optional `dependsOn` " +
+        "lists other step ids this step waits on.",
       parameters: z.object({
         slug: z.string().describe("Instance slug"),
         name: z.string().describe("Flow name"),
@@ -309,20 +311,19 @@ export function createSystemDashboardTools(
         steps: z
           .array(
             z.object({
-              id: z.string(),
-              agentId: z.string(),
-              briefing: z.string(),
-              dependsOn: z.array(z.string()).optional(),
+              id: z.string().describe("Unique step id within the flow"),
+              agentId: z.string().describe("Agent id that executes the step"),
+              prompt: z.string().describe("Instruction given to the agent for this step"),
+              dependsOn: z
+                .array(z.string())
+                .optional()
+                .describe("Step ids this step depends on (DAG edges)"),
             }),
           )
           .describe("Flow steps (DAG)"),
       }),
       async execute({ slug, ...body }) {
-        const { data } = await api(
-          "POST",
-          `/instances/${encodeURIComponent(slug)}/runtime/flows`,
-          body,
-        );
+        const { data } = await api("POST", `/instances/${encodeURIComponent(slug)}/flows`, body);
         return { title: "create flow", output: JSON.stringify(data, null, 2), truncated: false };
       },
     }),
@@ -336,7 +337,7 @@ export function createSystemDashboardTools(
       async execute({ slug, flowId }) {
         const { data } = await api(
           "POST",
-          `/instances/${encodeURIComponent(slug)}/runtime/flows/${flowId}/run`,
+          `/instances/${encodeURIComponent(slug)}/flows/${flowId}/run`,
           { triggerType: "manual" },
         );
         return { title: "run flow", output: JSON.stringify(data, null, 2), truncated: false };
@@ -352,7 +353,7 @@ export function createSystemDashboardTools(
       async execute({ slug, flowId }) {
         const { data } = await api(
           "DELETE",
-          `/instances/${encodeURIComponent(slug)}/runtime/flows/${flowId}`,
+          `/instances/${encodeURIComponent(slug)}/flows/${flowId}`,
         );
         return { title: "delete flow", output: JSON.stringify(data, null, 2), truncated: false };
       },
