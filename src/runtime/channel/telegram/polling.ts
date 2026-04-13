@@ -191,13 +191,15 @@ export class TelegramPoller {
 
   /**
    * Send a text message to a chat.
+   * Returns the sent message's id when the API call succeeds and returns
+   * a recognizable payload — used by the caller to later edit the message.
    */
   async sendMessage(
     chatId: number,
     text: string,
     parseMode?: "MarkdownV2" | "HTML",
     replyMarkup?: TelegramReplyMarkup,
-  ): Promise<void> {
+  ): Promise<{ message_id: number } | undefined> {
     const payload = JSON.stringify({
       chat_id: chatId,
       text,
@@ -206,6 +208,36 @@ export class TelegramPoller {
     });
 
     const url = `https://api.telegram.org/bot${this.options.token}/sendMessage`;
+    const raw = await httpsPost(url, payload);
+    try {
+      const parsed = JSON.parse(raw) as {
+        ok?: boolean;
+        result?: { message_id?: number };
+      };
+      if (parsed.ok && parsed.result?.message_id !== undefined) {
+        return { message_id: parsed.result.message_id };
+      }
+    } catch (err) {
+      logger.debug("[telegram] sendMessage response parse failed", { error: String(err) });
+    }
+    return undefined;
+  }
+
+  /**
+   * Edit the inline keyboard of a previously-sent message. Used to reflect
+   * multi-select toggle state (☑️/☐) without sending a new message.
+   */
+  async editMessageReplyMarkup(
+    chatId: number,
+    messageId: number,
+    replyMarkup: TelegramReplyMarkup,
+  ): Promise<void> {
+    const payload = JSON.stringify({
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: replyMarkup,
+    });
+    const url = `https://api.telegram.org/bot${this.options.token}/editMessageReplyMarkup`;
     await httpsPost(url, payload);
   }
 
