@@ -64,6 +64,22 @@ export const QuestionTool = Tool.define("question", {
       .describe("Optional list of predefined answer options to present to the user"),
   }),
   async execute(params, ctx) {
+    // Defense in depth: the question tool requires a human on the loop.
+    // Refuse to execute when the session was initiated by a non-interactive
+    // channel (e.g. internal agent-to-agent). Without this guard, a question
+    // here would block the agent until timeout since nobody can answer.
+    const INTERACTIVE_CHANNELS = new Set(["web", "telegram", "cli"]);
+    if (ctx.channel !== undefined && !INTERACTIVE_CHANNELS.has(ctx.channel)) {
+      return {
+        title: "Question refused (non-interactive session)",
+        output:
+          `The question tool can only be used in interactive user sessions. ` +
+          `This session's channel is "${ctx.channel}" (no human on the loop). ` +
+          `Work with the context you already have, or report the missing information in your final answer.`,
+        truncated: false,
+      };
+    }
+
     // Use the Vercel AI SDK toolCallId as the question ID — this is the same ID
     // stored in the tool_call part metadata and used by the UI to submit answers.
     const questionId = ctx.toolCallId ?? (await import("nanoid")).nanoid();

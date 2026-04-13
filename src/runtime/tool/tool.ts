@@ -25,6 +25,9 @@ export namespace Tool {
     instanceSlug?: string;
     /** Vercel AI SDK tool call ID — unique per tool invocation. */
     toolCallId?: string;
+    /** Channel that initiated the session — used by tools that must only run
+     *  when a human user is on the loop (e.g. the question tool). */
+    channel?: string;
     abort: AbortSignal;
     /** True if the sender is an owner channel (web, telegram) — false for internal sub-agents */
     senderIsOwner?: boolean;
