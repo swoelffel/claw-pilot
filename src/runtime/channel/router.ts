@@ -642,6 +642,12 @@ export function registerSubagentCompletedHandler(
           instanceSlug,
           sessionId: payload.parentSessionId,
           userText: resultText,
+          // Attach the sub-session id so the UI can drill into the async
+          // subagent's full session from the parent timeline.
+          userMetadata: JSON.stringify({
+            kind: "async_subagent_result",
+            subSessionId: payload.subSessionId,
+          }),
           agentConfig,
           resolvedModel,
           workDir,

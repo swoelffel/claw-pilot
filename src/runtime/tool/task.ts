@@ -889,17 +889,33 @@ function injectTaskTrace(
       ? opts.resultText.slice(0, TRACE_SUMMARY_MAX_LENGTH) + "..."
       : opts.resultText;
 
-  // Trace in caller's session
+  // Trace in caller's session — metadata carries subSessionId so the UI can
+  // drill into the subagent's full session on click.
   createUserMessage(db, {
     sessionId: opts.callerSessionId,
     text: `[delegation] Asked ${opts.targetAgentId}: "${opts.taskDescription}" → ${summary}`,
+    ...(opts.targetSessionId !== undefined
+      ? {
+          metadata: JSON.stringify({
+            kind: "delegation_sent",
+            subSessionId: opts.targetSessionId,
+            targetAgentId: opts.targetAgentId,
+          }),
+        }
+      : {}),
   });
 
-  // Trace in target's permanent session (A2A primary peers only)
+  // Trace in target's permanent session (A2A primary peers only).
+  // Metadata carries the caller's sessionId for reverse drill-down.
   if (opts.isPrimaryPeer && opts.targetSessionId) {
     createUserMessage(db, {
       sessionId: opts.targetSessionId,
       text: `[delegation] ${opts.callerAgentId} asked: "${opts.taskDescription}" → I responded: ${summary}`,
+      metadata: JSON.stringify({
+        kind: "delegation_received",
+        subSessionId: opts.callerSessionId,
+        callerAgentId: opts.callerAgentId,
+      }),
     });
   }
 }

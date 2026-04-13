@@ -91,6 +91,12 @@ export interface PromptLoopInput {
   userProfile?: import("../profile/types.js").UserProfile;
   /** Image attachments (validated by multimodal middleware) to include in user message */
   imageAttachments?: import("../types.js").InboundAttachment[];
+  /**
+   * Optional JSON-stringified metadata attached to the user message's text part.
+   * Used e.g. for async subagent result injection so the UI can drill into
+   * the sub-session via `subSessionId`.
+   */
+  userMetadata?: string;
 }
 
 export interface PromptLoopResult {
@@ -125,6 +131,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
     runtimeConfig,
     resolveTargetModel,
     userProfile,
+    userMetadata,
   } = input;
 
   if (input.abort?.aborted) throw new Error("Aborted");
@@ -214,7 +221,11 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
 
   try {
     // 1. Create user message (+ image parts if attachments present)
-    const userMsg = createUserMessage(db, { sessionId, text: userText });
+    const userMsg = createUserMessage(db, {
+      sessionId,
+      text: userText,
+      ...(userMetadata !== undefined ? { metadata: userMetadata } : {}),
+    });
 
     // Store image attachments as parts on the user message (for message-builder to pick up)
     if (input.imageAttachments && input.imageAttachments.length > 0) {

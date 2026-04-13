@@ -60,10 +60,14 @@ function fromRow(row: MessageRow): MessageInfo {
 
 /**
  * Create a user message and immediately add a text part with the provided text.
+ *
+ * Optional `metadata` is a JSON string attached to the text part — used to
+ * carry structured context (e.g. `subSessionId` for delegation traces that
+ * the UI drills into).
  */
 export function createUserMessage(
   db: Database.Database,
-  input: { sessionId: SessionId; text: string },
+  input: { sessionId: SessionId; text: string; metadata?: string },
 ): MessageInfo {
   const id = nanoid();
   const now = new Date().toISOString();
@@ -74,7 +78,12 @@ export function createUserMessage(
   ).run(id, input.sessionId, now);
 
   // Create the initial text part
-  createPart(db, { messageId: id, type: "text", content: input.text });
+  createPart(db, {
+    messageId: id,
+    type: "text",
+    content: input.text,
+    ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+  });
 
   const row = db.prepare("SELECT * FROM rt_messages WHERE id = ?").get(id) as MessageRow;
   return fromRow(row);
