@@ -15,6 +15,9 @@ agents:
       allowSubAgents: true
       persistence: permanent
       promptMode: full
+      thinking:
+        enabled: true
+        budgetTokens: 4000
       agentToAgent:
         enabled: true
     meta:

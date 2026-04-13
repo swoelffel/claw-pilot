@@ -101,12 +101,15 @@ export class AgentProvisioner {
       }
     }
 
-    // Build agent config block
+    // Build agent config block.
+    // Extended thinking is enabled by default — only honored by Anthropic
+    // providers (see prompt-loop.ts). Non-Anthropic models silently ignore it.
     const agentConfigBlock = {
       id: data.agentSlug,
       name: data.name,
       model: `${data.provider}/${data.model}`,
       permissions: [],
+      thinking: { enabled: true, budgetTokens: 4000 },
       ...(data.toolProfile ? { toolProfile: data.toolProfile } : {}),
     };
 
