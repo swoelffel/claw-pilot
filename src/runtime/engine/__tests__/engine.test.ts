@@ -27,6 +27,7 @@ vi.mock("../../bus/events.js", () => ({
   RuntimeStateChanged: Symbol("RuntimeStateChanged"),
   RuntimeError: Symbol("RuntimeError"),
   WorkspaceFileChanged: Symbol("WorkspaceFileChanged"),
+  SystemStateChanged: Symbol("SystemStateChanged"),
 }));
 vi.mock("../../agent/registry.js", () => ({
   initAgentRegistry: vi.fn(),
@@ -115,6 +116,9 @@ import type { InstanceSlug } from "../../types.js";
 import { RuntimeStarted, RuntimeStopped } from "../../bus/events.js";
 import { createChannels } from "../channel-factory.js";
 import { clearMiddlewares, registerMiddleware } from "../../middleware/index.js";
+import { getRegisteredHooks } from "../../plugin/hooks.js";
+import { resetPlugins } from "../../plugin/plugin.js";
+import { SYSTEM_INSTANCE_SLUG } from "../../../core/system-instance.js";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -260,6 +264,73 @@ describe("ClawRuntime", () => {
       expect(clearMiddlewares).toHaveBeenCalled();
       // guardrail + multimodal + toolErrorRecovery = 3 (suggestions disabled)
       expect(registerMiddleware).toHaveBeenCalledTimes(3);
+    });
+
+    // -----------------------------------------------------------------------
+    // Regression: plugin initialization for cp-system
+    // -----------------------------------------------------------------------
+    //
+    // Bug: previously the engine called registerPlugin() for the system-dashboard
+    // plugin but never invoked initPlugins(), so the plugin factory was never
+    // called and the cp_* admin tools were missing from every agent's toolset.
+    // This test pins the fix: after start(), the plugin's hooks (in particular
+    // the `tools` hook) must be registered so that the tool registry can load
+    // cp_create_instance and siblings.
+    describe("plugin initialization (cp-system)", () => {
+      const SYSTEM_SLUG = SYSTEM_INSTANCE_SLUG as InstanceSlug;
+      const envBackup = {
+        url: process.env["CLAW_DASHBOARD_URL"],
+        token: process.env["CLAW_DASHBOARD_TOKEN"],
+      };
+
+      beforeEach(() => {
+        resetPlugins();
+        // Seed the cp-system instance row the engine expects at start().
+        db.prepare("DELETE FROM instances WHERE slug = ?").run(SYSTEM_SLUG);
+        db.prepare(
+          "INSERT INTO instances (server_id, slug, port, state, config_path, state_dir, systemd_unit) VALUES (1, ?, 18790, 'running', '/tmp/config.json', '/tmp/state', 'claw-pilot@cp-system')",
+        ).run(SYSTEM_SLUG);
+        process.env["CLAW_DASHBOARD_URL"] = "http://localhost:19000";
+        process.env["CLAW_DASHBOARD_TOKEN"] = "test-token";
+      });
+
+      afterEach(() => {
+        if (envBackup.url === undefined) delete process.env["CLAW_DASHBOARD_URL"];
+        else process.env["CLAW_DASHBOARD_URL"] = envBackup.url;
+        if (envBackup.token === undefined) delete process.env["CLAW_DASHBOARD_TOKEN"];
+        else process.env["CLAW_DASHBOARD_TOKEN"] = envBackup.token;
+        resetPlugins();
+      });
+
+      it("registers system-dashboard hooks on start() so plugin tools become available", async () => {
+        expect(getRegisteredHooks()).toHaveLength(0);
+
+        const rt = new ClawRuntime(minimalConfig, db, SYSTEM_SLUG);
+        await rt.start();
+
+        const hooks = getRegisteredHooks();
+        const toolsHook = hooks.find((h) => typeof h.tools === "function");
+        expect(toolsHook).toBeDefined();
+
+        const pluginTools = await toolsHook!.tools!({
+          instanceSlug: SYSTEM_SLUG,
+          workDir: undefined,
+          version: "test",
+        });
+        const toolIds = pluginTools.map((t) => t.id);
+        expect(toolIds).toContain("cp_create_instance");
+        expect(toolIds).toContain("cp_list_instances");
+      });
+
+      it("does NOT register system-dashboard for non-system instances", async () => {
+        const rt = new ClawRuntime(minimalConfig, db, SLUG);
+        await rt.start();
+
+        const hooks = getRegisteredHooks();
+        // No plugin has been registered for a regular instance, so no `tools`
+        // hook should exist.
+        expect(hooks.find((h) => typeof h.tools === "function")).toBeUndefined();
+      });
     });
   });
 
