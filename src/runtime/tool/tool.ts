@@ -28,6 +28,12 @@ export namespace Tool {
     /** Channel that initiated the session — used by tools that must only run
      *  when a human user is on the loop (e.g. the question tool). */
     channel?: string;
+    /**
+     * Run `fn` while the prompt-loop chunk/agent watchdogs are suspended.
+     * Use for legitimate long waits (e.g. user interaction via the question tool)
+     * that would otherwise trip the stall-detection timeouts.
+     */
+    onLongWait?<T>(fn: () => Promise<T>): Promise<T>;
     abort: AbortSignal;
     /** True if the sender is an owner channel (web, telegram) — false for internal sub-agents */
     senderIsOwner?: boolean;

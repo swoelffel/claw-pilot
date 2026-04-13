@@ -153,10 +153,10 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
 
   const bus = getBus(instanceSlug);
 
-  // Global watchdog
+  // Global watchdog — protects against runaway loops
   const TIMEOUT_MS = agentConfig.timeoutMs ?? 5 * 60 * 1000;
   const watchdogController = new AbortController();
-  const watchdogTimer = setTimeout(() => {
+  let watchdogTimer: ReturnType<typeof setTimeout> | undefined = setTimeout(() => {
     bus.publish(AgentTimeout, { sessionId, agentId: agentConfig.id, timeoutMs: TIMEOUT_MS });
     watchdogController.abort();
   }, TIMEOUT_MS);
@@ -165,11 +165,17 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
     ? AbortSignal.any([input.abort, watchdogController.signal])
     : watchdogController.signal;
 
-  // Chunk timeout watchdog
+  // Chunk timeout watchdog — protects against provider stalls
   const CHUNK_TIMEOUT_MS = agentConfig.chunkTimeoutMs ?? 120_000;
   let lastChunkTime = Date.now();
+  let watchdogsPaused = 0;
   const chunkWatchdogController = new AbortController();
   const chunkWatchdogTimer = setInterval(() => {
+    if (watchdogsPaused > 0) {
+      // Keep lastChunkTime fresh while paused so we don't fire on resume
+      lastChunkTime = Date.now();
+      return;
+    }
     const elapsed = Date.now() - lastChunkTime;
     if (elapsed > CHUNK_TIMEOUT_MS) {
       clearInterval(chunkWatchdogTimer);
@@ -177,6 +183,33 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       chunkWatchdogController.abort();
     }
   }, 5_000);
+
+  /**
+   * Suspend both watchdogs while `fn` runs (reentrant via counter).
+   * On resume, the agent watchdog is restarted with a full TIMEOUT_MS budget
+   * and the chunk watchdog resumes normal stall detection.
+   */
+  const onLongWait = async <T>(fn: () => Promise<T>): Promise<T> => {
+    watchdogsPaused++;
+    // Pause the agent watchdog by clearing its timer
+    if (watchdogTimer) {
+      clearTimeout(watchdogTimer);
+      watchdogTimer = undefined;
+    }
+    try {
+      return await fn();
+    } finally {
+      watchdogsPaused--;
+      if (watchdogsPaused === 0) {
+        // Restart agent watchdog with a fresh budget — user interaction happened
+        watchdogTimer = setTimeout(() => {
+          bus.publish(AgentTimeout, { sessionId, agentId: agentConfig.id, timeoutMs: TIMEOUT_MS });
+          watchdogController.abort();
+        }, TIMEOUT_MS);
+        lastChunkTime = Date.now();
+      }
+    }
+  };
 
   const fullAbort = AbortSignal.any([combinedAbort, chunkWatchdogController.signal]);
 
@@ -322,6 +355,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       channel: session.channel,
       abort: input.abort ?? new AbortController().signal,
       senderIsOwner,
+      onLongWait,
       ...(workDir !== undefined ? { workDir } : {}),
       agentConfig,
       metadata: (_meta) => {},

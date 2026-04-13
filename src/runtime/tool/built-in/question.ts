@@ -96,19 +96,23 @@ export const QuestionTool = Tool.define("question", {
       ...(params.options !== undefined ? { options: params.options } : {}),
     });
 
-    // Wait for answer (or abort)
-    const answer = await new Promise<string>((resolve, reject) => {
-      _pending.set(questionId, { resolve, reject });
+    // Wait for answer (or abort). Wrap in onLongWait so the prompt-loop
+    // watchdogs don't fire while we wait for the human to respond.
+    const waitForAnswer = (): Promise<string> =>
+      new Promise<string>((resolve, reject) => {
+        _pending.set(questionId, { resolve, reject });
 
-      ctx.abort.addEventListener(
-        "abort",
-        () => {
-          _pending.delete(questionId);
-          reject(new Error("Question aborted"));
-        },
-        { once: true },
-      );
-    });
+        ctx.abort.addEventListener(
+          "abort",
+          () => {
+            _pending.delete(questionId);
+            reject(new Error("Question aborted"));
+          },
+          { once: true },
+        );
+      });
+
+    const answer = ctx.onLongWait ? await ctx.onLongWait(waitForAnswer) : await waitForAnswer();
 
     return {
       title: `Question: ${params.question.slice(0, 50)}`,
