@@ -11,7 +11,6 @@
  * - workspace-cache.ts  — readWorkspaceFileCached (invalidated after write/edit)
  */
 
-import { createRequire } from "node:module";
 import { streamText, stepCountIs } from "ai";
 import type Database from "better-sqlite3";
 import type { SessionId, InstanceSlug } from "../types.js";
@@ -59,8 +58,7 @@ import { getAgent } from "../agent/registry.js";
 // message.sending hook is now wired via bus in plugin-wiring.ts (fires on MessageCreated with role=assistant)
 import type { PluginInput } from "../plugin/types.js";
 import { logger } from "../../lib/logger.js";
-
-const _moduleRequire = createRequire(import.meta.url);
+import { getRuntimeVersion } from "../_runtime-version.js";
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -99,25 +97,6 @@ export interface PromptLoopResult {
   tokens: { input: number; output: number; cacheRead: number; cacheWrite: number };
   costUsd: number;
   steps: number;
-}
-
-// ---------------------------------------------------------------------------
-// Runtime version helper
-// ---------------------------------------------------------------------------
-
-let _cachedRuntimeVersion: string | undefined;
-function _getRuntimeVersion(): string {
-  if (_cachedRuntimeVersion !== undefined) return _cachedRuntimeVersion;
-  let version = "unknown";
-  try {
-    const pkg = _moduleRequire("../../../../package.json") as { version?: string };
-    version = pkg.version ?? "unknown";
-  } catch (err) {
-    logger.debug("[prompt-loop] package.json read failed", { error: String(err) });
-    // intentionally ignored
-  }
-  _cachedRuntimeVersion = version;
-  return version;
 }
 
 // ---------------------------------------------------------------------------
@@ -332,7 +311,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
     const pluginInput: PluginInput = {
       instanceSlug,
       workDir,
-      version: _getRuntimeVersion(),
+      version: getRuntimeVersion(),
     };
 
     const agentInfoForTools = getAgent(agentConfig.id);
