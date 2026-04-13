@@ -858,6 +858,26 @@ export class RuntimePilot extends LitElement {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
+  /**
+   * True when the latest assistant message has an unresolved `question`
+   * tool_call — while pending, the chat input must be locked to prevent the
+   * user from queuing a text message that would deadlock behind the
+   * question's Promise in the session queue.
+   */
+  private get _hasPendingQuestion(): boolean {
+    const last = this._messages[this._messages.length - 1];
+    if (!last || last.role !== "assistant") return false;
+    return last.parts.some((p) => {
+      if (p.type !== "tool_call" || p.state !== undefined) return false;
+      try {
+        const meta = JSON.parse(p.metadata ?? "{}") as { toolName?: string };
+        return meta.toolName === "question";
+      } catch {
+        return false;
+      }
+    });
+  }
+
   override render() {
     const isDisabled = this._status !== "idle";
     const isStreaming =
@@ -865,6 +885,7 @@ export class RuntimePilot extends LitElement {
       this._status === "streaming" ||
       this._status === "thinking" ||
       this._status === "tool";
+    const lockReason: "pending_question" | "" = this._hasPendingQuestion ? "pending_question" : "";
     const agentId = this._context?.agent.id ?? "";
     const agentName = this._context?.agent.name ?? agentId;
     const model = this._context?.agent.model ?? "";
@@ -917,6 +938,7 @@ export class RuntimePilot extends LitElement {
           <cp-pilot-input
             .disabled=${isDisabled}
             .streaming=${isStreaming}
+            .lockReason=${lockReason}
             @send-message=${this._onSendMessage}
             @abort-request=${this._onAbortRequest}
           ></cp-pilot-input>

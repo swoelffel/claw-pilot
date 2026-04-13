@@ -305,6 +305,18 @@ export const ToolCallEnded = defineEvent<
 // Question events
 // ---------------------------------------------------------------------------
 
+/**
+ * A single question item within a question tool call. A tool call may contain
+ * 1..4 items rendered as tabs in the UI (see question.ts).
+ */
+export interface QuestionItem {
+  header: string;
+  question: string;
+  answerType: "single" | "multi" | "free";
+  options?: string[];
+  allowOther: boolean;
+}
+
 export const QuestionAsked = defineEvent<
   "question.asked",
   {
@@ -312,7 +324,11 @@ export const QuestionAsked = defineEvent<
     sessionId: SessionId;
     messageId: MessageId;
     agentId: AgentId;
+    /** v0.72+ structured list. Backward-compat: legacy single-question callers also populate `question` + `options`. */
+    questions: QuestionItem[];
+    /** @deprecated Kept for backward-compat with pre-v0.72 subscribers. Always equals `questions[0].question`. */
     question: string;
+    /** @deprecated Kept for backward-compat. Always equals `questions[0].options`. */
     options?: string[];
   }
 >("question.asked");

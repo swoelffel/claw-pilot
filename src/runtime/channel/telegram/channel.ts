@@ -31,7 +31,9 @@ import {
   BudgetSoftAlert,
   BudgetHardStop,
 } from "../../bus/events.js";
+import type { QuestionItem } from "../../bus/events.js";
 import { resolveQuestion } from "../../tool/built-in/question.js";
+import type { QuestionAnswerPayload } from "../../tool/built-in/question.js";
 import type { OutboundArtifact } from "../../types.js";
 
 // ---------------------------------------------------------------------------
@@ -66,6 +68,26 @@ export class TelegramChannel implements Channel {
   private budgetHardUnsub: (() => void) | undefined;
   /** Track last known chatId for sending question keyboards */
   private lastChatId: number | undefined;
+  /**
+   * In-flight question state machine. A single question tool call may contain
+   * multiple items rendered sequentially — we track the current item, the
+   * accumulated answers, and multi-select toggle state per questionId.
+   */
+  private pendingQuestions = new Map<
+    string,
+    {
+      items: QuestionItem[];
+      chatId: number;
+      currentIdx: number;
+      answers: QuestionAnswerPayload[];
+      /** Indexes of options currently toggled for the current `multi` item. */
+      multiSelected: Set<number>;
+      /** Message id of the last keyboard shown — used for editMessageReplyMarkup. */
+      lastMessageId?: number;
+      /** True when current item is `free` and we await a plain text reply. */
+      awaitingFreeText: boolean;
+    }
+  >();
 
   constructor(options: TelegramChannelOptions) {
     this.options = options;
@@ -229,6 +251,17 @@ export class TelegramChannel implements Channel {
     // Check if user is allowed
     const allowed = this.isUserAllowed(userId);
 
+    if (allowed) {
+      // If a pending question is awaiting free text from this chat, consume
+      // the plain-text message as the answer instead of forwarding it to
+      // the agent's normal chat loop (which would deadlock behind the
+      // session queue).
+      const rawText = message.text ?? message.caption ?? "";
+      if (rawText && (await this.tryConsumeFreeTextAnswer(chatId, rawText))) {
+        return;
+      }
+    }
+
     if (!allowed) {
       const policy = this.options.dmPolicy ?? "pairing";
       if (
@@ -391,7 +424,16 @@ export class TelegramChannel implements Channel {
 
   /**
    * Handle a callback_query from an inline keyboard button press.
-   * Data format: "q:<questionId>:<optionIndex>"
+   *
+   * Data formats (v0.72+):
+   *   q:<questionId>:sel:<optIdx>  — single-select
+   *   q:<questionId>:tog:<optIdx>  — multi-select toggle
+   *   q:<questionId>:cfm           — multi-select confirm
+   *   q:<questionId>:oth           — switch current item to free-text fallback
+   *   s:<suggestion>               — suggestion click (unchanged)
+   *
+   * Legacy (pre-v0.72): q:<questionId>:<url-encoded answer> — still honored
+   * when no state exists (falls back to direct resolveQuestion).
    */
   private async handleCallbackQuery(query: TelegramUpdate["callback_query"] & {}): Promise<void> {
     if (!this.poller || !query.data) return;
@@ -404,17 +446,27 @@ export class TelegramChannel implements Channel {
       // Non-critical — continue processing
     }
 
-    // Parse callback data
     const parts = query.data.split(":");
     const prefix = parts[0];
 
-    if (prefix === "q" && parts[1] && parts[2]) {
-      // Question answer: q:<questionId>:<answer>
+    if (prefix === "q" && parts[1]) {
       const questionId = parts[1];
-      const answer = decodeURIComponent(parts.slice(2).join(":"));
-      const resolved = resolveQuestion(questionId, answer);
-      if (!resolved) {
-        logger.warn(`[telegram] callback_query for unknown/expired question: ${questionId}`);
+      const action = parts[2];
+      const state = this.pendingQuestions.get(questionId);
+
+      // v0.72+ structured actions require state
+      if (state && (action === "sel" || action === "tog" || action === "cfm" || action === "oth")) {
+        await this.handleStructuredCallback(questionId, action, parts[3]);
+        return;
+      }
+
+      // Legacy fallback: q:<id>:<url-encoded answer>
+      if (!state && parts[2]) {
+        const answer = decodeURIComponent(parts.slice(2).join(":"));
+        const resolved = resolveQuestion(questionId, answer);
+        if (!resolved) {
+          logger.warn(`[telegram] callback_query for unknown/expired question: ${questionId}`);
+        }
       }
     } else if (prefix === "s" && parts[1]) {
       // Suggestion click: s:<suggestion text>
@@ -429,6 +481,97 @@ export class TelegramChannel implements Channel {
         });
       }
     }
+  }
+
+  /**
+   * Dispatch v0.72+ structured callback actions for pending questions.
+   */
+  private async handleStructuredCallback(
+    questionId: string,
+    action: string,
+    arg: string | undefined,
+  ): Promise<void> {
+    const state = this.pendingQuestions.get(questionId);
+    if (!state || !this.poller) return;
+    const item = state.items[state.currentIdx];
+    if (!item) return;
+
+    if (action === "sel" && arg !== undefined) {
+      const idx = Number(arg);
+      const opt = item.options?.[idx];
+      if (opt === undefined) return;
+      state.answers[state.currentIdx] = { selected: [opt] };
+      state.currentIdx++;
+      await this.sendNextQuestion(questionId);
+      return;
+    }
+
+    if (action === "tog" && arg !== undefined) {
+      const idx = Number(arg);
+      if (!item.options || idx < 0 || idx >= item.options.length) return;
+      if (state.multiSelected.has(idx)) state.multiSelected.delete(idx);
+      else state.multiSelected.add(idx);
+      // Edit the message markup to reflect the new selection state.
+      if (state.lastMessageId !== undefined) {
+        try {
+          await this.poller.editMessageReplyMarkup(state.chatId, state.lastMessageId, {
+            inline_keyboard: this.buildMultiKeyboard(questionId, item, state.multiSelected),
+          });
+        } catch (err) {
+          logger.warn(`[telegram] editMessageReplyMarkup failed: ${err}`);
+        }
+      }
+      return;
+    }
+
+    if (action === "cfm") {
+      const selected = [...state.multiSelected].sort((a, b) => a - b).map((i) => item.options![i]!);
+      if (selected.length === 0) return; // ignore empty confirm
+      state.answers[state.currentIdx] = { selected };
+      state.currentIdx++;
+      await this.sendNextQuestion(questionId);
+      return;
+    }
+
+    if (action === "oth") {
+      // Switch current item to "awaiting free text" mode.
+      state.awaitingFreeText = true;
+      try {
+        await this.poller.sendMessage(state.chatId, "💬 Reply with your custom answer:");
+      } catch (err) {
+        logger.warn(`[telegram] Failed to prompt for other: ${err}`);
+      }
+      return;
+    }
+  }
+
+  /**
+   * Intercept a text reply when a pending question is awaiting free text.
+   * Returns true when the text was consumed as an answer (caller should not
+   * forward it to the normal message handler).
+   */
+  private async tryConsumeFreeTextAnswer(chatId: number, text: string): Promise<boolean> {
+    for (const [questionId, state] of this.pendingQuestions) {
+      if (!state.awaitingFreeText || state.chatId !== chatId) continue;
+      const item = state.items[state.currentIdx];
+      if (!item) continue;
+
+      if (item.answerType === "free") {
+        state.answers[state.currentIdx] = { selected: [], otherText: text };
+      } else {
+        // "Other" fallback on single/multi item — keep any toggled selections.
+        const selected =
+          item.answerType === "multi"
+            ? [...state.multiSelected].sort((a, b) => a - b).map((i) => item.options![i]!)
+            : [];
+        state.answers[state.currentIdx] = { selected, otherText: text };
+      }
+      state.awaitingFreeText = false;
+      state.currentIdx++;
+      await this.sendNextQuestion(questionId);
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -469,43 +612,140 @@ export class TelegramChannel implements Channel {
   }
 
   /**
-   * Handle a QuestionAsked bus event — send inline keyboard to the last known chat.
+   * Handle a QuestionAsked bus event — set up sequential-question state and
+   * send the first item to the last known chat.
    */
   private async handleQuestionAsked(payload: {
     questionId: string;
+    questions?: QuestionItem[];
     question: string;
     options?: string[];
   }): Promise<void> {
     if (!this.poller || !this.lastChatId) return;
 
-    const options = payload.options ?? [];
-    if (options.length === 0) {
-      // No options — send as plain text (user must reply via text)
-      const text = `❓ ${payload.question}`;
-      try {
-        await this.poller.sendMessage(this.lastChatId, text);
-      } catch (err) {
-        logger.warn(`[telegram] Failed to send question: ${err}`);
+    // Normalize to QuestionItem[]. The bus event always carries `questions[]`
+    // in v0.72+; we fall back to the legacy flat shape for older emitters.
+    let items: QuestionItem[] = payload.questions ?? [];
+    if (items.length === 0) {
+      items = [
+        {
+          header: "",
+          question: payload.question,
+          answerType: (payload.options?.length ?? 0) > 0 ? "single" : "free",
+          ...(payload.options !== undefined ? { options: payload.options } : {}),
+          allowOther: false,
+        },
+      ];
+    }
+
+    this.pendingQuestions.set(payload.questionId, {
+      items,
+      chatId: this.lastChatId,
+      currentIdx: 0,
+      answers: [],
+      multiSelected: new Set(),
+      awaitingFreeText: false,
+    });
+
+    await this.sendNextQuestion(payload.questionId);
+  }
+
+  /**
+   * Send the current-index item from the pending state.
+   * Called on question start, and after each item is answered.
+   */
+  private async sendNextQuestion(questionId: string): Promise<void> {
+    const state = this.pendingQuestions.get(questionId);
+    if (!state || !this.poller) return;
+
+    const item = state.items[state.currentIdx];
+    if (!item) {
+      // All items answered — resolve atomically.
+      this.pendingQuestions.delete(questionId);
+      const resolved = resolveQuestion(questionId, JSON.stringify(state.answers));
+      if (!resolved) {
+        logger.warn(`[telegram] resolveQuestion failed for ${questionId}`);
       }
       return;
     }
 
-    // Build inline keyboard (one button per row)
-    const keyboard: TelegramInlineKeyboardButton[][] = options.map((opt) => [
-      {
-        text: opt,
-        callback_data: `q:${payload.questionId}:${encodeURIComponent(opt)}`,
-      },
-    ]);
+    const progress =
+      state.items.length > 1 ? ` (${state.currentIdx + 1}/${state.items.length})` : "";
+    const header = item.header ? `*${item.header}*\n` : "";
+    const text = `❓${progress}\n${header}${item.question}`;
 
-    const text = `❓ ${payload.question}`;
+    if (item.answerType === "free") {
+      state.awaitingFreeText = true;
+      state.multiSelected.clear();
+      try {
+        const sent = await this.poller.sendMessage(state.chatId, text);
+        if (sent?.message_id !== undefined) state.lastMessageId = sent.message_id;
+      } catch (err) {
+        logger.warn(`[telegram] Failed to send free-text question: ${err}`);
+      }
+      return;
+    }
+
+    state.awaitingFreeText = false;
+    state.multiSelected.clear();
+    const options = item.options ?? [];
+    const keyboard: TelegramInlineKeyboardButton[][] = [];
+    if (item.answerType === "single") {
+      for (let idx = 0; idx < options.length; idx++) {
+        keyboard.push([{ text: options[idx]!, callback_data: `q:${questionId}:sel:${idx}` }]);
+      }
+      if (item.allowOther) {
+        keyboard.push([
+          { text: "💬 Other (reply with text)", callback_data: `q:${questionId}:oth` },
+        ]);
+      }
+    } else {
+      // multi
+      for (let idx = 0; idx < options.length; idx++) {
+        keyboard.push([
+          { text: `☐ ${options[idx]!}`, callback_data: `q:${questionId}:tog:${idx}` },
+        ]);
+      }
+      if (item.allowOther) {
+        keyboard.push([
+          { text: "💬 Other (reply with text)", callback_data: `q:${questionId}:oth` },
+        ]);
+      }
+      keyboard.push([{ text: "✅ Confirm", callback_data: `q:${questionId}:cfm` }]);
+    }
+
     try {
-      await this.poller.sendMessage(this.lastChatId, text, undefined, {
+      const sent = await this.poller.sendMessage(state.chatId, text, undefined, {
         inline_keyboard: keyboard,
       });
+      if (sent?.message_id !== undefined) state.lastMessageId = sent.message_id;
     } catch (err) {
       logger.warn(`[telegram] Failed to send question with keyboard: ${err}`);
     }
+  }
+
+  /**
+   * Build the current inline keyboard for the active multi-select item,
+   * reflecting the toggle state with ☑️/☐ prefixes.
+   */
+  private buildMultiKeyboard(
+    questionId: string,
+    item: QuestionItem,
+    selected: Set<number>,
+  ): TelegramInlineKeyboardButton[][] {
+    const options = item.options ?? [];
+    const keyboard: TelegramInlineKeyboardButton[][] = [];
+    for (let idx = 0; idx < options.length; idx++) {
+      const prefix = selected.has(idx) ? "☑️" : "☐";
+      keyboard.push([
+        { text: `${prefix} ${options[idx]!}`, callback_data: `q:${questionId}:tog:${idx}` },
+      ]);
+    }
+    if (item.allowOther) {
+      keyboard.push([{ text: "💬 Other (reply with text)", callback_data: `q:${questionId}:oth` }]);
+    }
+    keyboard.push([{ text: "✅ Confirm", callback_data: `q:${questionId}:cfm` }]);
+    return keyboard;
   }
 }
 
