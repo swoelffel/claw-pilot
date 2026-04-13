@@ -558,7 +558,8 @@ export type TimelineEntryKind =
   | "compaction"
   | "image"
   | "suggestion"
-  | "artifact";
+  | "artifact"
+  | "question";
 
 export interface TimelineEntry {
   id: string;

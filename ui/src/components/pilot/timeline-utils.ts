@@ -35,13 +35,17 @@ function partTypeToKind(part: PilotPart): TimelineEntryKind | null {
     case "text":
       return "agent_text";
     case "tool_call":
-      // Detect create_artifact tool calls
+      // Detect tool calls that should render with a dedicated kind:
+      // - "question" → interactive Q&A card (always visible, never filtered)
+      // - "create_artifact" → collapsible artifact card
       try {
         toolName = (JSON.parse(part.metadata ?? "{}") as { toolName?: string }).toolName;
       } catch {
         /* ignore */
       }
-      return toolName === "create_artifact" ? "artifact" : "tool_call";
+      if (toolName === "question") return "question";
+      if (toolName === "create_artifact") return "artifact";
+      return "tool_call";
     case "tool_result":
       // Rendered inline with their tool_call — skip
       return null;
