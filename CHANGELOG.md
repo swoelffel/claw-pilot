@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.71.2] — 2026-04-13
+
+### Fixed
+- **`cp_*_flow` tools returned HTTP 404**: the system-dashboard tools `cp_list_flows`, `cp_create_flow`, `cp_run_flow`, `cp_delete_flow` hit `/api/instances/{slug}/runtime/flows` which does not exist — the real route is `/api/instances/{slug}/flows`. All four tools called from agents (e.g. `admin-exec` on cp-system) failed silently with 404, breaking any flow creation via delegation. Stale `/runtime/` prefix removed from all four endpoints.
+- **`cp_create_flow` step schema mismatch**: the tool declared step fields as `{ id, agentId, briefing: string, dependsOn? }` but the dashboard route expects `{ id, agentId, prompt: string, dependsOn?, timeoutMs?, retries?, briefing?: object }`. The tool now sends `prompt` (the step instruction), aligned with `FlowStepSchema` in `src/dashboard/routes/instances/flows.ts`.
+
+---
+
 ## [0.71.1] — 2026-04-13
 
 ### Changed
