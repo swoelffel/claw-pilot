@@ -35,8 +35,9 @@ import { McpRegistry } from "../mcp/registry.js";
 import { ChannelRouter, registerSubagentCompletedHandler } from "../channel/router.js";
 import { createChannels } from "./channel-factory.js";
 import { wirePluginsToBus } from "./plugin-wiring.js";
-import { registerPlugin } from "../plugin/plugin.js";
+import { registerPlugin, initPlugins, resetPlugins } from "../plugin/plugin.js";
 import { systemDashboardPlugin } from "../plugin/system-dashboard/index.js";
+import { getRuntimeVersion } from "../_runtime-version.js";
 import { SYSTEM_INSTANCE_SLUG } from "../../core/system-instance.js";
 import { startHeartbeatRunner } from "../heartbeat/runner.js";
 // getRegisteredHooks import removed — routes hook was removed (YAGNI)
@@ -188,6 +189,16 @@ export class ClawRuntime {
       if (this.instanceSlug === SYSTEM_INSTANCE_SLUG) {
         registerPlugin("system-dashboard", systemDashboardPlugin);
       }
+
+      // 2c. Initialize all registered plugins — invokes factories, registers hooks.
+      //     Without this, plugin tools (e.g. cp_create_instance) are never loaded
+      //     into the tool registry and agents silently fall back to the `invalid`
+      //     tool when trying to call them.
+      await initPlugins({
+        instanceSlug: this.instanceSlug,
+        workDir: this.workDir,
+        version: getRuntimeVersion(),
+      });
 
       // 3. Wire plugin hooks to bus events
       this._pluginUnsubscribers = wirePluginsToBus(this.instanceSlug);
@@ -352,11 +363,14 @@ export class ClawRuntime {
       this._mcpRegistry = undefined;
     }
 
-    // 3. Unsubscribe plugin wiring
+    // 3. Unsubscribe plugin wiring and reset the global plugin registry.
+    //    resetPlugins() clears _plugins[] and registered hooks so a subsequent
+    //    start() in the same process (e.g. tests) doesn't duplicate plugins.
     for (const unsub of this._pluginUnsubscribers) {
       unsub();
     }
     this._pluginUnsubscribers = [];
+    resetPlugins();
 
     // 3b. Unsubscribe async subagent result handler
     if (this._subagentUnsubscribe) {
