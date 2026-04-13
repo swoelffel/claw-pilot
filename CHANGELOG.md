@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.70.3] — 2026-04-13
+
+### Changed
+- **pnpm pinned to 10.33.0 via `packageManager` field**: all environments (local, CI, Docker, self-updater targets) now install the exact same pnpm version. Eliminates "latest" surprises and makes future pnpm upgrades deterministic. Combined with the self-updater bootstrap from v0.70.2, pnpm version switches on existing installs happen transparently via `corepack prepare`.
+- **`pnpm/action-setup` bumped to v6.0.0** in CI workflows (`ci.yml`, `deps-check.yml`). v6 reads the `packageManager` field automatically, so the explicit `with: version: latest` override is removed.
+- **Dockerfile** pins `pnpm@10.33.0` explicitly.
+
+Stays on pnpm 10 — pnpm 11 is still pre-release (latest on npm is `11.0.0-rc.0`). Upgrade to 11 will be a separate change once it ships stable. Supersedes #62.
+
+---
+
 ## [0.70.2] — 2026-04-13
 
 ### Added
