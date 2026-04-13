@@ -359,6 +359,9 @@ for _i in $INSTANCES; do INSTANCE_COUNT=$((INSTANCE_COUNT + 1)); done
 # Detect binary path (wrapper script or symlink)
 BINARY_PATH=$(command -v claw-pilot 2>/dev/null || true)
 
+# Detect OS early — needed by Step 1b/1c (orphan + other-user scans)
+OS=$(uname -s)
+
 # --- Step 1b: Scan for orphan systemd services ---
 # Orphan = service file exists but ExecStart points to a non-existent directory
 ORPHAN_SERVICES=""
@@ -481,8 +484,6 @@ fi
 echo ""
 
 # --- Step 3: Stop all processes ---
-
-OS=$(uname -s)
 
 # 3a. Kill runtime daemons FIRST (PID-file based + orphan scan)
 # Runtimes are detached node processes, NOT launchd/systemd services.
