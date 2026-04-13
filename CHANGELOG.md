@@ -6,6 +6,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.72.0] — 2026-04-13
+
+### Added
+- **Question UX overhaul (AskUserQuestion-style)**: the `question` tool now accepts a `questions: [{header, question, answerType, options?, allowOther?}]` array of 1..4 items. Each item has its own `answerType`: `"single"` (pick one option), `"multi"` (pick one or more), or `"free"` (open text). `allowOther: true` appends an "Other…" free-text field alongside options. The UI renders the card with one tab per question, completion dots per tab, and a single **Send** button that submits all answers atomically — no more accidental auto-submit on option click. Summary format for the agent's next turn is structured (e.g. `1. [label] → opt1, Other: custom`).
+- **Chat input lockout while a question is pending**: the main chat input is now disabled (with the contextual placeholder "Answer the question above to continue" plus a ⬆ badge) as long as the latest assistant message has an unresolved `question` tool_call. Prevents the deadlock where typing in the chat bar would queue a message behind the blocked question Promise.
+- **Telegram: sequential multi-question flow**: when the tool is called with `questions.length > 1`, items are presented one at a time with progress `(1/3)` prefix. `single` uses an inline keyboard (click = select + advance), `multi` uses togglable ☑️/☐ buttons + ✅ Confirm, `free` awaits the next plain-text reply. `allowOther` adds a 💬 button that switches the current item into awaiting-text mode.
+
+### Changed
+- `createUserMessage` accepts an optional `metadata` param (used by delegation-drilldown injection since v0.71.3).
+- `QuestionAsked` bus event payload gains `questions: QuestionItem[]`. Legacy `question` / `options` fields remain populated from the first item for backward-compat with pre-v0.72 subscribers.
+- `TelegramPoller.sendMessage` returns the sent message id (when available) so the channel can later `editMessageReplyMarkup` on multi-select toggles. New helper `editMessageReplyMarkup(chatId, messageId, markup)`.
+
+### Backward compatibility
+- The tool still accepts the legacy flat shape `{question: "...", options?: [...]}` — it is auto-wrapped into a single-item `questions[]` at `execute()` time. Historic `question` tool_call parts (stored in sessions before v0.72) render via the same flat-shape fallback in `part-question.ts`.
+- Legacy Telegram callback data `q:<id>:<url-encoded answer>` is still honored when no in-flight state exists.
+
+---
+
 ## [0.71.3] — 2026-04-13
 
 ### Added

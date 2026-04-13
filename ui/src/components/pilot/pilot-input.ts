@@ -160,6 +160,13 @@ export class PilotInput extends LitElement {
   /** When true, shows Stop button instead of Send */
   @property({ type: Boolean }) streaming = false;
   @property() placeholder = "";
+  /**
+   * Optional lock reason. When set to "pending_question", the input is
+   * force-disabled regardless of `disabled`, the placeholder becomes
+   * contextual, and a small banner nudges the user to answer the question
+   * card above.
+   */
+  @property() lockReason: "pending_question" | "" = "";
 
   @state() private _text = "";
   @state() private _files: AttachedFile[] = [];
@@ -187,7 +194,7 @@ export class PilotInput extends LitElement {
   private _send(): void {
     const text = this._text.trim();
     const hasContent = text || this._files.length > 0;
-    if (!hasContent || this.disabled) return;
+    if (!hasContent || this.disabled || this.lockReason === "pending_question") return;
 
     const files =
       this._files.length > 0
@@ -264,16 +271,31 @@ export class PilotInput extends LitElement {
   }
 
   override render() {
-    const placeholder =
-      this.placeholder ||
-      msg("Message… (Enter to send, Shift+Enter for newline)", {
-        id: "pilot-input-placeholder",
-      });
+    const locked = this.lockReason === "pending_question";
+    const effectivelyDisabled = this.disabled || locked;
+    const placeholder = locked
+      ? msg("Answer the question above to continue", {
+          id: "pilot-input-placeholder-locked",
+        })
+      : this.placeholder ||
+        msg("Message… (Enter to send, Shift+Enter for newline)", {
+          id: "pilot-input-placeholder",
+        });
 
-    const canSend = (this._text.trim() || this._files.length > 0) && !this.disabled;
+    const canSend = (this._text.trim() || this._files.length > 0) && !effectivelyDisabled;
 
     return html`
       <div class="input-wrapper">
+        ${locked
+          ? html`<div
+              style="padding:6px 10px;font-size:11px;color:var(--text-muted);background:color-mix(in srgb, var(--accent) 6%, transparent);border-bottom:1px solid var(--bg-border);display:flex;align-items:center;gap:6px"
+            >
+              ⬆
+              ${msg("Answer the question above to continue", {
+                id: "pilot-input-lock-badge",
+              })}
+            </div>`
+          : nothing}
         ${this._files.length > 0
           ? html`
               <div class="preview-strip">
@@ -304,7 +326,7 @@ export class PilotInput extends LitElement {
           />
           <button
             class="btn-attach"
-            ?disabled=${this.disabled || this.streaming}
+            ?disabled=${effectivelyDisabled || this.streaming}
             @click=${this._openFilePicker}
             title=${msg("Attach image", { id: "pilot-btn-attach" })}
           >
@@ -320,7 +342,7 @@ export class PilotInput extends LitElement {
             @dragleave=${this._handleDragLeave}
             @drop=${this._handleDrop}
             placeholder=${placeholder}
-            ?disabled=${this.disabled || this.streaming}
+            ?disabled=${effectivelyDisabled || this.streaming}
             rows="1"
           ></textarea>
           ${this.streaming
