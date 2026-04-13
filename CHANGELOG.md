@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.71.1] — 2026-04-13
+
+### Changed
+- **Extended thinking enabled by default** for:
+  - The cp-system `system-pilot` agent (on fresh installations — existing installs unaffected). Pairs with the v0.71.0 live reasoning streaming so new users see the "Thinking…" card out of the box.
+  - New default pilot agent on fresh instance provisioning (`createDefaultRuntimeConfig`).
+  - Agents created via the dashboard (`AgentProvisioner.createAgent`).
+  - Budget: `4000` tokens. Only honored by Anthropic providers (see prompt-loop.ts) — non-Anthropic models silently ignore the setting.
+
+---
+
 ## [0.71.0] — 2026-04-13
 
 ### Added

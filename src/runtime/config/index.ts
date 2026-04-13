@@ -533,6 +533,9 @@ export function createDefaultRuntimeConfig(options: {
           { permission: "question", pattern: "**", action: "allow" as const },
         ],
         temperature: undefined,
+        // Extended thinking enabled by default. Only honored by Anthropic
+        // providers (see prompt-loop.ts) — non-Anthropic models silently ignore it.
+        thinking: { enabled: true, budgetTokens: 4000 },
         // Pilot is always permanent — it is the default user-facing agent.
         // Without this, mode "all" → kind "primary" → persistence "permanent" by
         // inference, but being explicit avoids any ambiguity.
