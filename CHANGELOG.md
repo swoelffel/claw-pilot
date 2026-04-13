@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.72.1] — 2026-04-14
+
+### Fixed
+- **Home/Pilot UI frozen on "sending…" when the agent asks a question**: `POST /api/instances/:slug/runtime/chat` proxied to `/internal/chat` which awaited `ChannelRouter.route()` → `runPromptLoop()`. When the loop hit the `question` tool, it blocked on the user's answer (Promise resolved by `resolveQuestion`), so the HTTP request never returned. The UI's `await postRuntimeChat()` stayed pending and `_status` remained `"sending"` — forcing a manual refresh to see the pending question card. Fix: `engine.handleChat` now races the route vs the first `question.asked` bus event; when the race is won by the question, it returns `{ sessionId, pendingQuestion: true }` while the route keeps running in the background. SSE events continue to deliver live updates. The UI (`home-chat`, `runtime-pilot`) interprets `pendingQuestion: true` as "stay busy, don't flip to idle".
+- **SSE stream rejected with HTTP 401 on strict browser SameSite policies**: `EventSource` cannot set an `Authorization` header, and `new EventSource(url)` without `withCredentials: true` does not send cookies on all browsers. The server auth middleware (`/api/*`) now also accepts the bearer token via `?token=<value>` query string (timing-safe compare). The UI opens `EventSource(url, { withCredentials: true })` so the session cookie is sent consistently.
+
+### Added
+- **SSE diagnostic logging opt-in**: toggle in browser devtools via `localStorage.setItem('cp:debug-sse', '1')` then reload. Logs every connection, event, and error under the `[cp:sse]` prefix. New helper `ui/src/services/debug.ts::debugSse`.
+
+---
+
 ## [0.72.0] — 2026-04-13
 
 ### Added

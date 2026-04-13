@@ -41,6 +41,13 @@ export interface ChatResponse {
   tokens: { input: number; output: number; cacheRead: number; cacheWrite: number };
   costUsd: number;
   steps: number;
+  /**
+   * True when the prompt loop is suspended on a pending `question` tool call.
+   * The UI should not clear its "busy" status on this response — the loop
+   * is still running in the background and will complete once the user
+   * answers the question. SSE events deliver live updates meanwhile.
+   */
+  pendingQuestion?: boolean;
 }
 
 export interface WakeRequest {
