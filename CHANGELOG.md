@@ -6,6 +6,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.70.0] — 2026-04-13
+
+### Added
+- **Lean Home chat** (`cp-home-chat`): dedicated simplified component for `/home` — compact header with status and cumulative tokens/cost, messages list, input bar. No right side panel, no filter bar, no agent tabs. The full pilot remains at `/instances/cp-system/pilot`.
+- **Live ClawPilot state in cp-system prompts**: every cp-system agent now receives a `<clawpilot_state>` block in its system prompt summarizing named API keys (with usage count), instances (with state), blueprints, and configured providers.
+- **`SystemStateChanged` bus event**: emitted from dashboard routes (named-keys, instance lifecycle, blueprints) so the cp-system engine can invalidate cached prompts when platform state changes.
+- **Bundled-question detection**: the `question` tool rejects questions containing multiple "?", numbered lists, or bullet lists — forces agents to ask one question at a time.
+- **User answers in chat flow**: answers to questions now appear as `YOU` entries in the timeline (synthetic user_chat entry built from the completed tool_call content).
+
+### Changed
+- **Question tool UX**: free-text input is now a multi-line `<textarea>` (Enter sends, Shift+Enter inserts newline), and the free-text field is always shown alongside option buttons with an "or type your own" separator.
+- **Delegation rendering**: `[delegation] Asked X` / `[delegation] X asked` traces from the `task` tool are now rendered as A2A entries (pink ⬡→ style), not as `YOU` user_chat.
+- **Question tool kind**: questions now have their own `"question"` timeline kind (always visible), decoupled from the generic `tool_call` filter.
+- **Pilot status during question wait**: clicking an answer flips the status to `streaming` optimistically, and `session.status: idle` at loop end triggers a message reload to guarantee the assistant reply appears without manual refresh.
+
+### Fixed
+- **Question tool blocked forever**: the tool's `QuestionAsked` bus event was published on the wrong bus (`ctx.agentId` used as slug); now uses `ctx.instanceSlug`.
+- **Question answer routing (IPC)**: dashboard and runtime are separate processes. The dashboard was importing `resolveQuestion()` directly, hitting an empty `_pending` map. Answers now flow via a new `/internal/questions/:id/answer` endpoint on the runtime's internal API.
+- **Question ID mismatch**: the tool used a `nanoid` while the UI sent the Vercel AI SDK `toolCallId`. Now both use `toolCallId` so answers resolve correctly.
+- **Subagents should not ask the user**: the `question` tool is now stripped from the toolset of any agent whose `kind === "subagent"` (same filter as `task` and `send_message`). Also hardens the runtime with a channel guard refusing non-interactive sessions (no human on the loop).
+- **Kind inference for user-defined agents**: `createFromConfig()` now infers `kind: "subagent"` when `promptMode: subagent` or `persistence: ephemeral` — admin-exec, architect, etc. are correctly registered as subagents.
+- **Watchdog timeouts during user wait**: the prompt-loop chunk-timeout (120s) and agent-timeout (5 min) fired while the question tool was waiting for a human answer. Added `ctx.onLongWait(fn)` — used by the question tool to suspend both watchdogs during the Promise await.
+- **Home status stayed `idle` during active loop**: `message.updated` no longer forces `idle`; busy/idle transitions rely on `session.status` events only.
+- **Question tool card hidden by "tools: false" filter**: questions now have a dedicated kind that has no filter mapping and is always shown.
+- **Answer extraction**: the previous fix searched for a separate `tool_result` part that doesn't exist in claw-runtime — the output is on the `tool_call` part's own `content`. Fix reads directly from there.
+- **cp-system template auto-sync**: `ensureProvisioned()` now compares the YAML template hash with a stored hash and re-syncs workspace files when the template changes — previously, deploying a modified `cp-system.team.yaml` had no effect until manual re-provision.
+
+---
+
 ## [0.69.1] — 2026-04-12
 
 ### Changed
