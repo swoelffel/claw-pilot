@@ -34,7 +34,9 @@ import "./pilot/pilot-input.js";
 import "./pilot/pilot-context-panel.js";
 import "./pilot/pilot-filter-bar.js";
 
-type PilotStatus = "idle" | "loading" | "sending" | "streaming" | "error";
+// Extended status machine — `thinking` (reasoning stream) and `tool` (tool call
+// in flight) are derived from delta events to give the user fine-grained feedback.
+type PilotStatus = "idle" | "loading" | "sending" | "thinking" | "tool" | "streaming" | "error";
 
 /** Max events kept in the ring buffer */
 const MAX_EVENTS = 100;
@@ -198,6 +200,9 @@ export class RuntimePilot extends LitElement {
   @state() private _messages: PilotMessage[] = [];
   @state() private _hasMore = false;
   @state() private _streamingText = "";
+  @state() private _streamingReasoning = "";
+  @state() private _streamingReasoningPartId: string | null = null;
+  @state() private _currentToolName: string | null = null;
   @state() private _streamingAgentId = "";
   @state() private _context: SessionContext | null = null;
   @state() private _panelOpen = true;
@@ -377,7 +382,13 @@ export class RuntimePilot extends LitElement {
    * Used by polling and visibilitychange. Does not change _status.
    */
   private async _refreshMessages(): Promise<void> {
-    if (!this._activeSessionId || this._status === "streaming" || this._status === "sending") {
+    if (
+      !this._activeSessionId ||
+      this._status === "streaming" ||
+      this._status === "sending" ||
+      this._status === "thinking" ||
+      this._status === "tool"
+    ) {
       return;
     }
     try {
@@ -540,7 +551,18 @@ export class RuntimePilot extends LitElement {
       case "message.part.delta": {
         if (eventSessionId && eventSessionId !== this._activeSessionId) break;
         const delta = p.delta as string | undefined;
-        if (delta) {
+        const partType = (p.partType as string | undefined) ?? "text";
+        const partId = p.partId as string | undefined;
+        if (!delta) break;
+        if (partType === "reasoning") {
+          // Reset buffer when a new reasoning block starts (different partId)
+          if (partId && this._streamingReasoningPartId !== partId) {
+            this._streamingReasoning = "";
+            this._streamingReasoningPartId = partId;
+          }
+          this._streamingReasoning += delta;
+          if (this._status !== "thinking") this._status = "thinking";
+        } else {
           this._streamingText += delta;
           if (this._status !== "streaming") this._status = "streaming";
         }
@@ -551,8 +573,12 @@ export class RuntimePilot extends LitElement {
         if (eventSessionId && eventSessionId !== this._activeSessionId) break;
         if (p.role === "assistant") {
           this._streamingText = "";
+          this._streamingReasoning = "";
+          this._streamingReasoningPartId = null;
+          this._currentToolName = null;
           this._streamingAgentId = (p.agentId as string | undefined) ?? "";
-          this._status = "streaming";
+          // Keep status as "sending" until the first delta tells us the phase
+          if (this._status !== "sending") this._status = "sending";
         } else if (p.role === "user") {
           // Message from another channel (Telegram, CLI, etc.) — load it immediately
           void this._reloadLastMessages();
@@ -571,13 +597,35 @@ export class RuntimePilot extends LitElement {
         break;
       }
 
+      case "tool.call.started": {
+        if (eventSessionId && eventSessionId !== this._activeSessionId) break;
+        this._currentToolName = (p.toolName as string | undefined) ?? null;
+        this._status = "tool";
+        break;
+      }
+
+      case "tool.call.ended": {
+        if (eventSessionId && eventSessionId !== this._activeSessionId) break;
+        this._currentToolName = null;
+        // Do not force another status here — next delta (reasoning/text) will set it.
+        break;
+      }
+
       case "session.status": {
         if (eventSessionId && eventSessionId !== this._activeSessionId) break;
         const status = p.status as string;
-        if (status === "busy" && this._status !== "streaming") {
-          this._status = "streaming";
+        if (
+          status === "busy" &&
+          this._status !== "streaming" &&
+          this._status !== "thinking" &&
+          this._status !== "tool"
+        ) {
+          this._status = "sending";
         } else if (status === "idle" && this._status !== "sending") {
           this._streamingText = "";
+          this._streamingReasoning = "";
+          this._streamingReasoningPartId = null;
+          this._currentToolName = null;
           this._status = "idle";
           // Ensure the final messages are rendered — individual
           // message.updated/created events may have been missed.
@@ -589,6 +637,9 @@ export class RuntimePilot extends LitElement {
       case "session.ended": {
         if (eventSessionId && eventSessionId !== this._activeSessionId) break;
         this._streamingText = "";
+        this._streamingReasoning = "";
+        this._streamingReasoningPartId = null;
+        this._currentToolName = null;
         this._status = "idle";
         break;
       }
@@ -809,7 +860,11 @@ export class RuntimePilot extends LitElement {
 
   override render() {
     const isDisabled = this._status !== "idle";
-    const isStreaming = this._status === "sending" || this._status === "streaming";
+    const isStreaming =
+      this._status === "sending" ||
+      this._status === "streaming" ||
+      this._status === "thinking" ||
+      this._status === "tool";
     const agentId = this._context?.agent.id ?? "";
     const agentName = this._context?.agent.name ?? agentId;
     const model = this._context?.agent.model ?? "";
@@ -821,6 +876,7 @@ export class RuntimePilot extends LitElement {
         .agentName=${agentName}
         .model=${model}
         .status=${this._status}
+        .toolName=${this._currentToolName}
         .messageCount=${this._messages.length}
         .totalTokens=${this._totalTokens}
         .totalCost=${this._totalCost}
@@ -846,6 +902,8 @@ export class RuntimePilot extends LitElement {
             .filters=${this._filters}
             .currentAgentId=${agentId}
             .streamingText=${this._streamingText}
+            .streamingReasoning=${this._streamingReasoning}
+            .streamingReasoningPartId=${this._streamingReasoningPartId}
             .streamingAgentId=${this._streamingAgentId}
             .status=${this._status}
             .hasMore=${this._hasMore}

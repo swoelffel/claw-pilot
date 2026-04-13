@@ -5,7 +5,14 @@ import { customElement, property } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../../styles/tokens.js";
 
-export type PilotStatus = "idle" | "loading" | "sending" | "streaming" | "error";
+export type PilotStatus =
+  | "idle"
+  | "loading"
+  | "sending"
+  | "thinking"
+  | "tool"
+  | "streaming"
+  | "error";
 
 function formatCost(usd: number): string {
   if (usd === 0) return "$0.00";
@@ -97,6 +104,8 @@ export class PilotHeader extends LitElement {
 
       .status-pill.loading,
       .status-pill.sending,
+      .status-pill.thinking,
+      .status-pill.tool,
       .status-pill.streaming {
         background: rgba(245, 158, 11, 0.08);
         color: var(--state-warning);
@@ -200,6 +209,8 @@ export class PilotHeader extends LitElement {
   @property() agentName = "";
   @property() model = "";
   @property() status: PilotStatus = "idle";
+  /** When status === "tool", name of the currently running tool (e.g. "bash"). */
+  @property() toolName: string | null = null;
   @property({ type: Number }) messageCount = 0;
   @property({ type: Number }) totalTokens = 0;
   @property({ type: Number }) totalCost = 0;
@@ -207,18 +218,30 @@ export class PilotHeader extends LitElement {
   @property({ type: Boolean }) panelOpen = true;
 
   private _statusLabel(): string {
+    if (this.status === "tool") {
+      const toolStr = this.toolName ?? "tool";
+      return msg(`Using ${toolStr}…`, { id: "pilot-status-tool" });
+    }
     const labels: Record<PilotStatus, string> = {
       idle: msg("idle", { id: "pilot-status-idle" }),
       loading: msg("loading", { id: "pilot-status-loading" }),
-      sending: msg("sending", { id: "pilot-status-sending" }),
-      streaming: msg("streaming", { id: "pilot-status-streaming" }),
+      sending: msg("sending…", { id: "pilot-status-sending" }),
+      thinking: msg("thinking…", { id: "pilot-status-thinking" }),
+      tool: msg("using tool…", { id: "pilot-status-tool-generic" }),
+      streaming: msg("responding…", { id: "pilot-status-streaming" }),
       error: msg("error", { id: "pilot-status-error" }),
     };
     return labels[this.status];
   }
 
   private _isPulsing(): boolean {
-    return this.status === "sending" || this.status === "streaming" || this.status === "loading";
+    return (
+      this.status === "sending" ||
+      this.status === "streaming" ||
+      this.status === "loading" ||
+      this.status === "thinking" ||
+      this.status === "tool"
+    );
   }
 
   /** Derives a short model display name: "anthropic/claude-sonnet-4-5" → "sonnet-4-5" */

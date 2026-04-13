@@ -98,7 +98,14 @@ export const MessageUpdated = defineEvent<
 
 export const MessagePartDelta = defineEvent<
   "message.part.delta",
-  { sessionId: SessionId; messageId: MessageId; partId: string; delta: string }
+  {
+    sessionId: SessionId;
+    messageId: MessageId;
+    partId: string;
+    delta: string;
+    /** Discriminates text deltas from reasoning deltas. Defaults to "text" for backward compat. */
+    partType?: "text" | "reasoning";
+  }
 >("message.part.delta");
 
 // ---------------------------------------------------------------------------
@@ -282,6 +289,18 @@ export const ToolErrorRecovered = defineEvent<
   { sessionId: string; toolName: string; errorType: string }
 >("tool.error.recovered");
 
+/** Emitted when a tool call begins (before execution). Drives UI phase indicator. */
+export const ToolCallStarted = defineEvent<
+  "tool.call.started",
+  { sessionId: SessionId; messageId: MessageId; toolName: string; toolCallId: string }
+>("tool.call.started");
+
+/** Emitted when a tool call completes (success or error). Drives UI phase indicator. */
+export const ToolCallEnded = defineEvent<
+  "tool.call.ended",
+  { sessionId: SessionId; messageId: MessageId; toolName: string; toolCallId: string }
+>("tool.call.ended");
+
 // ---------------------------------------------------------------------------
 // Question events
 // ---------------------------------------------------------------------------
@@ -408,6 +427,8 @@ export type AnyEventDef =
   | typeof LLMChunkTimeout
   | typeof GuardrailBlocked
   | typeof ToolErrorRecovered
+  | typeof ToolCallStarted
+  | typeof ToolCallEnded
   | typeof QuestionAsked
   | typeof SuggestionsGenerated
   | typeof FlowRunStarted

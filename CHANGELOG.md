@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.71.0] — 2026-04-13
+
+### Added
+- **Live reasoning streaming in Pilot & Home chat**: agents that emit reasoning tokens (Anthropic extended thinking, Gemini 2.5 Pro, OpenAI o3) now surface those tokens in real-time as a collapsible "Thinking…" card under the assistant bubble. The card shows a live preview of the last reasoning line (truncated to 80 chars) and a pulsing dot while the stream is active; expanding it auto-scrolls as new tokens arrive. The `thinking` filter is overridden while the reasoning part is streaming (`state === "running"`), then respected once the part is finalized — so Home keeps its clean history even though live feedback is always visible. Implemented via a new `partType: "text" | "reasoning"` discriminator on the existing `message.part.delta` bus event (backward compatible).
+- **5-phase status indicator in Pilot header**: the generic `sending`/`streaming` pill is replaced by phase-aware labels — `sending…`, `thinking…`, `using <tool>…`, `responding…`, `idle`. Tool phase is driven by two new bus events `tool.call.started` and `tool.call.ended` emitted from the prompt-loop `onChunk` callback.
+
+---
+
 ## [0.70.4] — 2026-04-13
 
 ### Fixed
