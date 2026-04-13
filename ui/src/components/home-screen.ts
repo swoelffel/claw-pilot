@@ -14,6 +14,7 @@ import {
 } from "../api.js";
 import type { NamedApiKey } from "../types.js";
 import "./home-wizard.js";
+import "./home-chat.js";
 
 type HomeState = "loading" | "wizard" | "provisioning" | "starting" | "ready" | "error";
 
@@ -74,38 +75,6 @@ export class HomeScreen extends LitElement {
     }
     .retry-btn:hover {
       background: var(--surface-hover, #252540);
-    }
-
-    /* Full-height pilot container */
-    .pilot-container {
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-      overflow: hidden;
-    }
-
-    .pilot-header {
-      display: flex;
-      align-items: center;
-      padding: 12px 20px;
-      border-bottom: 1px solid var(--border, #333);
-      gap: 10px;
-    }
-
-    .pilot-header h2 {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 600;
-      color: var(--text-primary, #e0e0e0);
-    }
-
-    .pilot-header .badge {
-      font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 10px;
-      background: var(--accent, #7c5cfc);
-      color: #fff;
-      font-weight: 500;
     }
   `;
 
@@ -254,15 +223,7 @@ export class HomeScreen extends LitElement {
         `;
 
       case "ready":
-        return html`
-          <div class="pilot-container">
-            <div class="pilot-header">
-              <h2>${msg("ClawPilot Assistant", { id: "home-assistant-title" })}</h2>
-              <span class="badge">System</span>
-            </div>
-            <cp-runtime-pilot .slug=${this._systemSlug}></cp-runtime-pilot>
-          </div>
-        `;
+        return html`<cp-home-chat .slug=${this._systemSlug ?? ""}></cp-home-chat>`;
     }
   }
 }
