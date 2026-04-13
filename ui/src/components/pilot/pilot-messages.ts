@@ -10,8 +10,9 @@ import { tokenStyles } from "../../styles/tokens.js";
 import { spinnerStyles } from "../../styles/shared.js";
 import { buildTimeline, filterTimeline } from "./timeline-utils.js";
 import "./pilot-message.js";
+import "./parts/part-reasoning.js";
 
-type AgentStatus = "idle" | "loading" | "sending" | "streaming" | "error";
+type AgentStatus = "idle" | "loading" | "sending" | "thinking" | "tool" | "streaming" | "error";
 
 @localized()
 @customElement("cp-pilot-messages")
@@ -184,6 +185,8 @@ export class PilotMessages extends LitElement {
   @property({ type: Array }) messages: PilotMessage[] = [];
   @property({ type: Object }) filters: TimelineFilters = DEFAULT_TIMELINE_FILTERS;
   @property() streamingText = "";
+  @property() streamingReasoning = "";
+  @property() streamingReasoningPartId: string | null = null;
   @property() streamingAgentId = "";
   @property() status: AgentStatus = "idle";
   @property({ type: Boolean }) hasMore = false;
@@ -212,7 +215,11 @@ export class PilotMessages extends LitElement {
   }
 
   override updated(changed: Map<string, unknown>): void {
-    if (changed.has("messages") || changed.has("streamingText")) {
+    if (
+      changed.has("messages") ||
+      changed.has("streamingText") ||
+      changed.has("streamingReasoning")
+    ) {
       if (!this._userScrolled) {
         this._scrollToBottom();
       }
@@ -242,8 +249,12 @@ export class PilotMessages extends LitElement {
     const allEmpty = this._timeline.length === 0;
     const filteredEmpty = !allEmpty && filtered.length === 0;
 
-    const isEmpty =
-      allEmpty && !this.streamingText && this.status !== "loading" && this.status !== "sending";
+    const isActive =
+      this.status === "loading" ||
+      this.status === "sending" ||
+      this.status === "thinking" ||
+      this.status === "tool";
+    const isEmpty = allEmpty && !this.streamingText && !this.streamingReasoning && !isActive;
 
     return html`
       <div class="messages-scroll" @scroll=${this._onScroll}>
@@ -301,6 +312,23 @@ export class PilotMessages extends LitElement {
             ></cp-pilot-message>
           `,
         )}
+        ${this.streamingReasoning
+          ? html`
+              <div class="streaming-entry">
+                <span class="streaming-ts">${this._nowTime()}</span>
+                <span class="streaming-icon">💭</span>
+                <div class="streaming-content">
+                  <div class="streaming-header">
+                    ${this.streamingAgentId || msg("agent", { id: "role-agent" })}
+                  </div>
+                  <cp-pilot-part-reasoning
+                    .content=${this.streamingReasoning}
+                    .isStreaming=${true}
+                  ></cp-pilot-part-reasoning>
+                </div>
+              </div>
+            `
+          : nothing}
         ${this.streamingText
           ? html`
               <div class="streaming-entry">
@@ -317,7 +345,12 @@ export class PilotMessages extends LitElement {
               </div>
             `
           : nothing}
-        ${(this.status === "sending" || this.status === "loading") && !this.streamingText
+        ${(this.status === "sending" ||
+          this.status === "loading" ||
+          this.status === "thinking" ||
+          this.status === "tool") &&
+        !this.streamingText &&
+        !this.streamingReasoning
           ? html`
               <div class="spinner-entry">
                 <span></span>

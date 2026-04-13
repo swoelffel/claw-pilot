@@ -285,6 +285,10 @@ export function filterTimeline(
   filters: TimelineFilters,
 ): TimelineEntry[] {
   return entries.filter((entry) => {
+    // Live reasoning is always visible while streaming (state === "running"),
+    // regardless of the `thinking` filter. Once the reasoning part completes,
+    // the filter takes effect again and the card is hidden if thinking is off.
+    if (entry.kind === "reasoning" && entry.part?.state === "running") return true;
     const filterKey = KIND_TO_FILTER[entry.kind];
     // Kinds without a dedicated filter (compaction, image, artifact) are always visible
     if (filterKey === undefined) return true;

@@ -38,6 +38,8 @@ import {
   AgentTimeout,
   LLMChunkTimeout,
   PermissionReplied,
+  ToolCallStarted,
+  ToolCallEnded,
 } from "../bus/events.js";
 import { cacheSystemPrompt, persistSystemPromptSnapshot } from "./system-prompt-cache.js";
 import {
@@ -364,6 +366,20 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
     // 6. Stream the response
     let textPartId: string | undefined;
     let accumulatedText = "";
+    // Reasoning streaming state — a new part is created per reasoning block
+    // (detected via provider-assigned `id` change) and finalized when
+    // a subsequent chunk of a different kind arrives (text-delta / tool-call / ...).
+    let reasoningPartId: string | undefined;
+    let reasoningProviderId: string | undefined;
+    let accumulatedReasoning = "";
+    const finalizeReasoning = (): void => {
+      if (reasoningPartId) {
+        updatePartState(db, reasoningPartId, "completed", accumulatedReasoning);
+      }
+      reasoningPartId = undefined;
+      reasoningProviderId = undefined;
+      accumulatedReasoning = "";
+    };
     let stepCount = 0;
 
     const MAX_STEPS_REMINDER =
@@ -452,6 +468,8 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
         lastChunkTime = Date.now();
 
         if (chunk.type === "text-delta") {
+          // Transitioning to text output — finalize any in-flight reasoning part
+          finalizeReasoning();
           accumulatedText += chunk.text;
           if (!textPartId) {
             const part = createPart(db, {
@@ -469,11 +487,45 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
               messageId: assistantMsg.id,
               partId: textPartId,
               delta: chunk.text,
+              partType: "text",
+            });
+          }
+        }
+
+        if (chunk.type === "reasoning-delta") {
+          // New reasoning block (different provider-assigned id) — finalize the
+          // previous one if any, then create a fresh "running" part.
+          if (reasoningProviderId !== chunk.id) {
+            finalizeReasoning();
+            reasoningProviderId = chunk.id;
+            const part = createPart(db, {
+              messageId: assistantMsg.id,
+              type: "reasoning",
+              content: chunk.text,
+            });
+            reasoningPartId = part.id;
+            updatePartState(db, reasoningPartId, "running", chunk.text);
+            accumulatedReasoning = chunk.text;
+          } else {
+            accumulatedReasoning += chunk.text;
+            if (reasoningPartId) {
+              updatePartState(db, reasoningPartId, "running", accumulatedReasoning);
+            }
+          }
+          if (reasoningPartId) {
+            bus.publish(MessagePartDelta, {
+              sessionId,
+              messageId: assistantMsg.id,
+              partId: reasoningPartId,
+              delta: chunk.text,
+              partType: "reasoning",
             });
           }
         }
 
         if (chunk.type === "tool-call") {
+          // Transitioning to tool call — finalize any in-flight reasoning part
+          finalizeReasoning();
           stepCount++;
           createPart(db, {
             messageId: assistantMsg.id,
@@ -483,6 +535,12 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
               toolName: chunk.toolName,
               args: "input" in chunk ? chunk.input : undefined,
             }),
+          });
+          bus.publish(ToolCallStarted, {
+            sessionId,
+            messageId: assistantMsg.id,
+            toolName: chunk.toolName,
+            toolCallId: chunk.toolCallId,
           });
         }
 
@@ -508,6 +566,19 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
                   : JSON.stringify(chunk.output)
                 : "";
             updatePartState(db, toolPart.id, "completed", output);
+            try {
+              const meta = JSON.parse(toolPart.metadata ?? "{}") as { toolName?: string };
+              bus.publish(ToolCallEnded, {
+                sessionId,
+                messageId: assistantMsg.id,
+                toolName: meta.toolName ?? "unknown",
+                toolCallId: chunk.toolCallId,
+              });
+            } catch (err) {
+              logger.debug("[prompt-loop] failed to publish ToolCallEnded", {
+                error: String(err),
+              });
+            }
           }
         }
       },
@@ -515,6 +586,8 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
 
     const finalResult = await streamResult;
 
+    // Finalize any trailing parts that did not have a transition chunk after them
+    finalizeReasoning();
     if (textPartId) updatePartState(db, textPartId, "completed", accumulatedText);
 
     // 7. Token usage and cost

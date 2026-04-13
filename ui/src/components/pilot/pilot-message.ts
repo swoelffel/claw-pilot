@@ -367,6 +367,7 @@ export class PilotMessageEl extends LitElement {
       case "reasoning":
         return html`<cp-pilot-part-reasoning
           .content=${part.content ?? ""}
+          .isStreaming=${part.state === "running"}
         ></cp-pilot-part-reasoning>`;
 
       case "subtask": {
@@ -476,6 +477,7 @@ export class PilotMessageEl extends LitElement {
             ${e.part
               ? html`<cp-pilot-part-reasoning
                   .content=${e.part.content ?? ""}
+                  .isStreaming=${e.part.state === "running"}
                 ></cp-pilot-part-reasoning>`
               : nothing}
           </div>
