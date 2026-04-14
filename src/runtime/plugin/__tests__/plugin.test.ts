@@ -18,6 +18,7 @@ const mockInput: PluginInput = {
   instanceSlug: "test" as PluginInput["instanceSlug"],
   workDir: "/tmp/test",
   version: "0.0.0-test",
+  db: {} as any,
 };
 
 beforeEach(() => {

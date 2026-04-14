@@ -60,6 +60,7 @@ const PLUGIN_INPUT: PluginInput = {
   instanceSlug: SLUG,
   workDir: "/tmp/test",
   version: "0.0.0-test",
+  db: {} as any,
 };
 
 // ---------------------------------------------------------------------------
