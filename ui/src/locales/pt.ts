@@ -619,4 +619,21 @@ export const templates = {
   "flow-trigger-manual": "Manual",
   "flow-trigger-bus": "Automatico",
   "flow-sitrep": "Relatorio de missao",
+
+  // home-wizard.ts
+  "wizard-welcome-title": "Bem-vindo ao ClawPilot!",
+  "wizard-welcome-subtitle": "Configure seu provedor de IA e perfil para comecar.",
+  "wizard-provider-section": "Provedor de IA",
+  "wizard-provider-label": "Provedor",
+  "wizard-model-label": "Modelo padrao",
+  "wizard-api-key-label": "Chave API",
+  "wizard-key-name-label": "Nome da chave",
+  "wizard-key-name-hint": "Opcional — ajuda a identificar esta chave depois.",
+  "wizard-profile-section": "Seu perfil",
+  "wizard-display-name-label": "Nome de exibicao",
+  "wizard-display-name-placeholder": "Seu nome",
+  "wizard-language-label": "Idioma",
+  "wizard-timezone-label": "Fuso horario",
+  "wizard-setting-up": "Configurando...",
+  "wizard-get-started": "Comecar",
 };

@@ -618,4 +618,21 @@ export const templates = {
   "flow-trigger-manual": "Manuale",
   "flow-trigger-bus": "Automatico",
   "flow-sitrep": "Rapporto missione",
+
+  // home-wizard.ts
+  "wizard-welcome-title": "Benvenuto su ClawPilot!",
+  "wizard-welcome-subtitle": "Configura il tuo provider IA e il tuo profilo per iniziare.",
+  "wizard-provider-section": "Provider IA",
+  "wizard-provider-label": "Provider",
+  "wizard-model-label": "Modello predefinito",
+  "wizard-api-key-label": "Chiave API",
+  "wizard-key-name-label": "Nome della chiave",
+  "wizard-key-name-hint": "Opzionale — aiuta a identificare questa chiave in seguito.",
+  "wizard-profile-section": "Il tuo profilo",
+  "wizard-display-name-label": "Nome visualizzato",
+  "wizard-display-name-placeholder": "Il tuo nome",
+  "wizard-language-label": "Lingua",
+  "wizard-timezone-label": "Fuso orario",
+  "wizard-setting-up": "Configurazione...",
+  "wizard-get-started": "Inizia",
 };
