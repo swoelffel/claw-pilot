@@ -6,6 +6,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.72.5] — 2026-04-14
+
+### Changed
+- **Enterprise-ready: DB-direct system tools** — replaced the HTTP-proxy `system-dashboard` plugin with a new `system-tools` plugin that queries `registry.db` directly via Registry, Lifecycle, Provisioner, and Destroyer. The 22 `cp_*` tools no longer depend on the dashboard REST API or `CLAW_DASHBOARD_TOKEN`. Each component (dashboard, runtime) now connects to the DB independently — first step toward externalized DB architecture.
+- **Reinforced cp-system agent prompts** — converted all 5 subagent inline `systemPrompt` to SOUL.md workspace files with ClawPilot architecture context, explicit filesystem constraints, and role-specific tool documentation. Agents can no longer hallucinate about editing `runtime.json`.
+
+### Removed
+- **Dashboard token synchronization** — removed `syncDashboardToken()`, `CLAW_DASHBOARD_URL`, and `CLAW_DASHBOARD_TOKEN` from `.env` files. The runtime no longer needs the dashboard to be running for `cp_*` tools to work.
+- **`system-dashboard` plugin** — deleted `src/runtime/plugin/system-dashboard/` (HTTP proxy approach).
+- **`sentinel-runtime.json` example** — removed obsolete example file and HEARTBEAT.md reference.
+
+### Fixed
+- **Tool output sanitization** — `cp_get_instance` and `cp_list_instances` no longer expose `config_path`, `state_dir`, and `systemd_unit` to agents, preventing hallucinations about filesystem editing.
+
+---
+
 ## [0.72.4] — 2026-04-14
 
 ### Fixed
