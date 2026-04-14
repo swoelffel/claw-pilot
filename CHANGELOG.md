@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.72.4] — 2026-04-14
+
+### Fixed
+- **Thinking blocks visible by default**: reasoning traces no longer disappear after streaming completes. `thinking` filter now defaults to `true` in both the home chat and runtime pilot.
+- **Streaming timestamp includes seconds**: live streaming entries now show `HH:MM:SS` instead of `HH:MM`, matching persisted timeline entries.
+
+---
+
 ## [0.72.3] — 2026-04-14
 
 ### Changed
