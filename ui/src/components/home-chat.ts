@@ -501,6 +501,10 @@ export class HomeChat extends LitElement {
       // user interaction from here.
       if (result.pendingQuestion) {
         debugSse("[home-chat] pendingQuestion=true — UI stays busy, SSE drives updates");
+        // Transition away from "sending" so that session.status=idle from SSE
+        // is not ignored by the guard in _handleBusEvent (which skips idle
+        // when _status is still "sending" to avoid a race condition).
+        if (this._status === "sending") this._status = "thinking";
       } else if (this._status === "sending") {
         this._status = "idle";
       }

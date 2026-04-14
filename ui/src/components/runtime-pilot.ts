@@ -780,6 +780,9 @@ export class RuntimePilot extends LitElement {
       // interaction from here.
       if (result.pendingQuestion) {
         debugSse("[runtime-pilot] pendingQuestion=true — UI stays busy, SSE drives updates");
+        // Transition away from "sending" so that session.status=idle from SSE
+        // is not ignored by the guard in _handleBusEvent.
+        if (this._status === "sending") this._status = "thinking";
       } else if (this._status === "sending") {
         this._status = "idle";
       }
