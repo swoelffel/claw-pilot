@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-`claw-pilot` v0.72.6 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, permanent cross-channel sessions, and extensible middleware pipeline.
+`claw-pilot` v0.72.7 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, permanent cross-channel sessions, and extensible middleware pipeline.
 
 All instances use the **claw-runtime** engine — a native Node.js engine (`src/runtime/`), managed via PID file daemon.
 
@@ -77,7 +77,8 @@ ui/
     localization/   # i18n via @lit/localize (6 languages)
     styles/         # Design tokens, shared CSS
 templates/          # Workspace bootstrap files + systemd/nginx templates
-docs/main-doc.md    # Functional architecture — read this before major changes
+docs/architecture/  # Functional architecture (split into focused files) — read before major changes
+docs/main-doc.md    # Redirect stub → architecture/README.md
 ```
 
 ## Data model (SQLite `~/.claw-pilot/registry.db`)
@@ -258,7 +259,8 @@ Reference docs:
 
 | Document | Content |
 |----------|---------|
-| `docs/main-doc.md` | Functional architecture overview |
+| `docs/architecture/` | Functional architecture (split into focused files) |
+| `docs/sse-architecture.md` | Real-time streaming architecture (SSE + WS) |
 | `docs/ux-design.md` | UX index — global tokens, routing, screen/component map |
 | `docs/ux-screens/` | Individual screen docs (one file per screen) |
 | `docs/ux-components/` | Individual component and dialog docs |

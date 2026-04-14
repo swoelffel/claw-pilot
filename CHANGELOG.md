@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.72.7] — 2026-04-14
+
+### Changed
+- **Documentation restructured for vibecoders**: split the 807-line monolithic `main-doc.md` into 7 focused files under `docs/architecture/` (data-model, code-structure, features-cli, dashboard, api-reference, runtime-engine, plus index). Added onboarding `docs/README.md` with documentation map.
+- **SSE architecture documented**: new `docs/sse-architecture.md` covers all 3 SSE streams, WebSocket monitor, 43 bus event types, proxy layer, reconnection strategy, and auth mechanisms.
+- **UX design synced to v0.72.6**: added 6 missing hash routes (#/home, memory, heartbeat, session-logs, flows, flow-run), 10 new components, 4 new screens, and update history entries for v0.70–v0.72.
+
+### Added
+- 3 new screen docs: `screen-home.md`, `screen-flow-list.md`, `screen-flow-run-detail.md`
+- 9 new component docs: `comp-home-chat.md`, `comp-home-wizard.md`, `comp-command-palette.md`, `comp-pilot-part-delegation-expand.md`, `comp-pilot-part-reasoning.md`, `comp-epic-tree.md`, `comp-flow-editor.md`, `comp-task-card.md`, `comp-task-detail.md`
+
+---
+
 ## [0.72.6] — 2026-04-14
 
 ### Changed
