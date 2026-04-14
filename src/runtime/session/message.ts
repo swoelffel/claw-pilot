@@ -67,10 +67,10 @@ function fromRow(row: MessageRow): MessageInfo {
  */
 export function createUserMessage(
   db: Database.Database,
-  input: { sessionId: SessionId; text: string; metadata?: string },
+  input: { sessionId: SessionId; text: string; metadata?: string; createdAt?: string },
 ): MessageInfo {
   const id = nanoid();
-  const now = new Date().toISOString();
+  const now = input.createdAt ?? new Date().toISOString();
 
   db.prepare(
     `INSERT INTO rt_messages (id, session_id, role, created_at)

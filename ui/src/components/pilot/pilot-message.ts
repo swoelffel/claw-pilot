@@ -28,16 +28,17 @@ function formatTimelineTime(iso: string): string {
   const now = new Date();
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
   if (
     d.getFullYear() === now.getFullYear() &&
     d.getMonth() === now.getMonth() &&
     d.getDate() === now.getDate()
   ) {
-    return `${hh}:${mm}`;
+    return `${hh}:${mm}:${ss}`;
   }
   const dd = String(d.getDate()).padStart(2, "0");
   const mo = String(d.getMonth() + 1).padStart(2, "0");
-  return `${dd}/${mo} ${hh}:${mm}`;
+  return `${dd}/${mo} ${hh}:${mm}:${ss}`;
 }
 
 function formatCost(usd: number): string {
@@ -98,7 +99,7 @@ export class PilotMessageEl extends LitElement {
 
       .timeline-entry {
         display: grid;
-        grid-template-columns: 52px 22px 1fr;
+        grid-template-columns: 68px 22px 1fr;
         gap: 0 8px;
         align-items: start;
         padding: 4px 0;
@@ -125,7 +126,7 @@ export class PilotMessageEl extends LitElement {
         border-radius: 50%;
         font-size: 11px;
         flex-shrink: 0;
-        margin-top: 1px;
+        margin-top: 20px;
         overflow: hidden;
         line-height: 1;
         user-select: none;
