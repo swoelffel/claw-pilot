@@ -485,8 +485,8 @@ export class PilotPartQuestion extends LitElement {
     if (items.length === 0) return nothing;
     this._ensureInit(items);
 
-    const isCompleted = this.result?.state === "completed";
-    const answeredText = this.result?.content ?? "";
+    const isCompleted = this.call.state === "completed" || this.result?.state === "completed";
+    const answeredText = this.call.content ?? this.result?.content ?? "";
     const isAnswered = isCompleted || this._answered;
 
     // Clamp active tab if items list changed (edge case during streaming).
