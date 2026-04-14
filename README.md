@@ -110,7 +110,7 @@ claw-runtime:
   runtime stop <slug>         Stop a claw-runtime instance
   runtime restart <slug>      Restart a claw-runtime instance
   runtime logs <slug>         View runtime logs (-f for live tail)
-  runtime config <slug>       Show/edit runtime.json configuration
+  runtime config <slug>       Show/edit runtime.json debug snapshot (DB is source of truth)
   runtime chat <slug> [msg]   Interactive chat with an agent
 
 Tooling:

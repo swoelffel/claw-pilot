@@ -92,7 +92,7 @@ HEARTBEAT TICK (every 30m)
 2026-03-15T10:00Z — 1 blocked task, 1 escalation sent
 ```
 
-### Configuration example
+### Configuration
 
-See `docs/_work/ClawPilot/examples/sentinel-runtime.json` for a complete
-runtime.json configuration with a Sentinel agent.
+Sentinel heartbeat settings (schedule, active hours, model) are configured via the
+dashboard agent settings panel or through the `cp_update_instance_config` API tool.

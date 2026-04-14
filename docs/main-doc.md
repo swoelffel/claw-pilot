@@ -174,11 +174,11 @@ model-discovery/          Dynamic model discovery from provider APIs:
   service.ts                — ModelDiscoveryService (polling 24h, DB persistence, stale cache fallback)
   types.ts                  — DiscoveredModel, ProviderAdapter interfaces
   adapters/                 — 8 provider adapters (anthropic, openai, google, openrouter, ollama, mistral, xai, opencode)
-agent-sync.ts             sync agents from runtime.json
+agent-sync.ts             sync agents from runtime.json debug snapshot (deprecated, DB is source of truth)
 agent-workspace.ts        resolve agent workspace paths
 blueprint-deployer.ts     deploy blueprint on creation
 config-generator.ts       generate .env with provider keys
-config-helpers.ts         runtime.json manipulation
+config-helpers.ts         runtime.json debug snapshot manipulation (deprecated)
 dashboard-service.ts      install/uninstall systemd/launchd service
 destroyer.ts              delete instance (ports, DB, files)
 discovery.ts              discover existing system instances
@@ -330,7 +330,7 @@ Checks prerequisites, creates `~/.claw-pilot/`, initializes DB, generates dashbo
 Interactive wizard:
 
 1. Slug, display name, port, AI provider, API key, initial agents, optional blueprint
-2. Generate `runtime.json` in state directory (`~/.claw-pilot/instances/<slug>/`)
+2. Generate `runtime.json` debug snapshot in state directory (`~/.claw-pilot/instances/<slug>/`) — the DB is the source of truth
 3. Lifecycle via PID file
 
 ### 3. Lifecycle (`start`, `stop`, `restart`, `destroy`)
@@ -364,9 +364,9 @@ claw-pilot runtime restart <slug>            # stop + start --daemon
 claw-pilot runtime status <slug>             # state + config
 claw-pilot runtime chat <slug>               # interactive REPL
 claw-pilot runtime chat <slug> --once "msg"  # non-interactive mode (CI/scripts)
-claw-pilot runtime config init <slug>        # create runtime.json with defaults
-claw-pilot runtime config show <slug>        # display runtime.json
-claw-pilot runtime config edit <slug>        # edit runtime.json
+claw-pilot runtime config init <slug>        # create runtime.json debug snapshot with defaults (DB is source of truth)
+claw-pilot runtime config show <slug>        # display runtime.json debug snapshot
+claw-pilot runtime config edit <slug>        # edit runtime.json debug snapshot (prefer DB/dashboard for persistent changes)
 claw-pilot runtime mcp add <slug>            # add MCP server
 claw-pilot runtime mcp remove <slug>         # remove MCP server
 claw-pilot runtime mcp list <slug>           # list MCP servers
