@@ -49,7 +49,7 @@ describe("cp-system.team.yaml", () => {
     expect(pilot!.files!["AGENTS.md"]).toBeDefined();
   });
 
-  it("subagents have systemPrompt in config", () => {
+  it("subagents have SOUL.md workspace files", () => {
     const yaml = readFileSync(YAML_PATH, "utf-8");
     const result = parseAndValidateTeam(yaml);
     expect(result.success).toBe(true);
@@ -58,7 +58,7 @@ describe("cp-system.team.yaml", () => {
     for (const id of ["admin-exec", "config-exec", "analyst", "architect", "db-analyst"]) {
       const agent = result.data.agents.find((a) => a.id === id);
       expect(agent).toBeDefined();
-      expect(agent!.config?.systemPrompt).toBeDefined();
+      expect(agent!.files?.["SOUL.md"]).toBeDefined();
     }
   });
 

@@ -59,6 +59,26 @@ async function dashboardFetch(
 }
 
 // ---------------------------------------------------------------------------
+// Output sanitization — strip filesystem paths that agents cannot use
+// and that cause hallucinations about editing runtime.json directly.
+// ---------------------------------------------------------------------------
+
+/** Fields to omit from instance payloads exposed to agents. */
+const FS_PATH_KEYS = new Set(["config_path", "state_dir", "systemd_unit"]);
+
+function stripFsPaths(data: unknown): unknown {
+  if (Array.isArray(data)) return data.map(stripFsPaths);
+  if (typeof data === "object" && data !== null) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+      if (!FS_PATH_KEYS.has(k)) out[k] = v;
+    }
+    return out;
+  }
+  return data;
+}
+
+// ---------------------------------------------------------------------------
 // Tool factory
 // ---------------------------------------------------------------------------
 
@@ -80,7 +100,11 @@ export function createSystemDashboardTools(
       parameters: z.object({}),
       async execute() {
         const { data } = await api("GET", "/instances");
-        return { title: "list instances", output: JSON.stringify(data, null, 2), truncated: false };
+        return {
+          title: "list instances",
+          output: JSON.stringify(stripFsPaths(data), null, 2),
+          truncated: false,
+        };
       },
     }),
 
@@ -91,7 +115,11 @@ export function createSystemDashboardTools(
       }),
       async execute({ slug }) {
         const { data } = await api("GET", `/instances/${encodeURIComponent(slug)}`);
-        return { title: "get instance", output: JSON.stringify(data, null, 2), truncated: false };
+        return {
+          title: "get instance",
+          output: JSON.stringify(stripFsPaths(data), null, 2),
+          truncated: false,
+        };
       },
     }),
 
