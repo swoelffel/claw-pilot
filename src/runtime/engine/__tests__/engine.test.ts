@@ -20,6 +20,13 @@ const mockBus = {
 vi.mock("../../bus/index.js", () => ({
   getBus: vi.fn(() => mockBus),
   disposeBus: vi.fn(),
+  RuntimeStarted: Symbol("RuntimeStarted"),
+  RuntimeStopped: Symbol("RuntimeStopped"),
+  RuntimeStateChanged: Symbol("RuntimeStateChanged"),
+  RuntimeError: Symbol("RuntimeError"),
+  WorkspaceFileChanged: Symbol("WorkspaceFileChanged"),
+  SystemStateChanged: Symbol("SystemStateChanged"),
+  PermissionReplied: Symbol("PermissionReplied"),
 }));
 vi.mock("../../bus/events.js", () => ({
   RuntimeStarted: Symbol("RuntimeStarted"),
@@ -28,6 +35,7 @@ vi.mock("../../bus/events.js", () => ({
   RuntimeError: Symbol("RuntimeError"),
   WorkspaceFileChanged: Symbol("WorkspaceFileChanged"),
   SystemStateChanged: Symbol("SystemStateChanged"),
+  PermissionReplied: Symbol("PermissionReplied"),
 }));
 vi.mock("../../agent/registry.js", () => ({
   initAgentRegistry: vi.fn(),

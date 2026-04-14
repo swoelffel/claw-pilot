@@ -24,7 +24,7 @@ import { registerSystemRoutes } from "../routes/system.js";
 import type { HealthStatus } from "../../core/health.js";
 import type { SelfUpdateStatus } from "../../core/self-update-checker.js";
 import type { SelfUpdateJob } from "../../core/self-updater.js";
-import { getBus, disposeBus } from "../../runtime/index.js";
+import { disposeBus } from "../../runtime/index.js";
 
 // ---------------------------------------------------------------------------
 // Test token
@@ -1924,10 +1924,9 @@ describe("POST /api/instances/:slug/runtime/permission/reply", () => {
     expect(body.code).toBe("NOT_FOUND");
   });
 
-  it("returns { ok: true } even when no bus is pre-registered (bus created lazily)", async () => {
-    // Objective: verifies the route succeeds regardless of whether hasBus() is true —
-    // getBus() creates the bus lazily and the event is published (silently dropped if
-    // no one is subscribed, which is the expected behaviour when no prompt loop is running).
+  it("returns { ok: true } even when the runtime daemon is not running", async () => {
+    // Objective: verifies the route succeeds even when the daemon is unreachable.
+    // publishRuntimeEvent is best-effort (catches all errors internally).
     // Arrange
     seedInstance(ctx, "demo1", 18789);
     // Ensure no bus exists for demo1 (disposeBus is idempotent)
@@ -1973,18 +1972,13 @@ describe("POST /api/instances/:slug/runtime/permission/reply", () => {
     expect(body.code).toBe("VALIDATION_ERROR");
   });
 
-  it("returns { ok: true } when the bus is active and the body is valid", async () => {
-    // Objective: positive — verifies the route publishes the PermissionReplied
-    // event on the bus and returns the confirmation payload.
+  it("returns { ok: true } when the body is valid (event relayed to daemon via HTTP)", async () => {
+    // Objective: positive — verifies the route returns the confirmation payload.
+    // The PermissionReplied event is relayed to the daemon via publishRuntimeEvent
+    // (best-effort HTTP POST). In tests the daemon is not running so the publish
+    // silently fails, but the route still returns 200.
     // Arrange
     seedInstance(ctx, "demo1", 18789);
-    const bus = getBus("demo1"); // activate the bus
-
-    // Capture published events to verify the bus was called
-    const published: unknown[] = [];
-    bus.subscribeAll((event) => {
-      published.push(event);
-    });
 
     // Act
     const res = await ctx.app.request("/api/instances/demo1/runtime/permission/reply", {
@@ -2005,13 +1999,6 @@ describe("POST /api/instances/:slug/runtime/permission/reply", () => {
     expect(body.permissionId).toBe("perm-xyz");
     expect(body.decision).toBe("deny");
     expect(body.persist).toBe(true);
-
-    // Verify the event was published on the bus
-    expect(published).toHaveLength(1);
-    const event = published[0] as { type: string; payload: Record<string, unknown> };
-    expect(event.type).toBe("permission.replied");
-    expect(event.payload.id).toBe("perm-xyz");
-    expect(event.payload.action).toBe("deny");
   });
 });
 

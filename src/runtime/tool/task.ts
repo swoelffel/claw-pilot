@@ -321,6 +321,7 @@ export function createTaskTool(options: {
 
         if (params.mode === "async") {
           const bus = getBus(instanceSlug);
+          const delegationStartedAt = new Date().toISOString();
 
           runPromptLoop({
             db,
@@ -344,6 +345,7 @@ export function createTaskTool(options: {
                 taskDescription: params.description,
                 resultText: asyncResult.text,
                 isPrimaryPeer: true,
+                startedAt: delegationStartedAt,
               });
               bus.publish(SubagentCompleted, {
                 parentSessionId: ctx.sessionId,
@@ -386,6 +388,7 @@ export function createTaskTool(options: {
         }
 
         // Sync mode
+        const syncDelegationStartedAt = new Date().toISOString();
         const result = await runPromptLoop({
           db,
           instanceSlug,
@@ -408,6 +411,7 @@ export function createTaskTool(options: {
           taskDescription: params.description,
           resultText: result.text,
           isPrimaryPeer: true,
+          startedAt: syncDelegationStartedAt,
         });
 
         const tokensTotal = result.tokens.input + result.tokens.output;
@@ -524,6 +528,7 @@ export function createTaskTool(options: {
       // Async mode: spawn in background, return immediately with task_id
       if (params.mode === "async") {
         const bus = getBus(instanceSlug);
+        const delegationStartedAt = new Date().toISOString();
 
         // Fire and forget — catch errors to avoid unhandled rejections
         runPromptLoop({
@@ -550,6 +555,7 @@ export function createTaskTool(options: {
               taskDescription: params.description,
               resultText: asyncResult.text,
               isPrimaryPeer: false,
+              startedAt: delegationStartedAt,
             });
             bus.publish(SubagentCompleted, {
               parentSessionId: ctx.sessionId,
@@ -595,6 +601,7 @@ export function createTaskTool(options: {
         ? "\n\n" + buildContractPrompt(contract.criteria, contract.grading)
         : "";
 
+      const subagentStartedAt = new Date().toISOString();
       let currentPrompt = params.prompt;
       let result: TaskPromptLoopResult;
       let contractVerdicts: CriterionVerdict[] | undefined;
@@ -646,6 +653,7 @@ export function createTaskTool(options: {
         taskDescription: params.description,
         resultText: result!.text,
         isPrimaryPeer: false,
+        startedAt: subagentStartedAt,
       });
 
       const stepsInfo = agentConfig.maxSteps
@@ -882,6 +890,9 @@ function injectTaskTrace(
     taskDescription: string;
     resultText: string;
     isPrimaryPeer: boolean;
+    /** ISO timestamp of when the delegation started — used as created_at so traces
+     *  appear in chronological order relative to the parent's text. */
+    startedAt: string;
   },
 ): void {
   const summary =
@@ -891,9 +902,12 @@ function injectTaskTrace(
 
   // Trace in caller's session — metadata carries subSessionId so the UI can
   // drill into the subagent's full session on click.
+  // Use startedAt as created_at so the trace appears chronologically next to
+  // the parent's text that triggered the delegation (not after its result).
   createUserMessage(db, {
     sessionId: opts.callerSessionId,
     text: `[delegation] Asked ${opts.targetAgentId}: "${opts.taskDescription}" → ${summary}`,
+    createdAt: opts.startedAt,
     ...(opts.targetSessionId !== undefined
       ? {
           metadata: JSON.stringify({
@@ -911,6 +925,7 @@ function injectTaskTrace(
     createUserMessage(db, {
       sessionId: opts.targetSessionId,
       text: `[delegation] ${opts.callerAgentId} asked: "${opts.taskDescription}" → I responded: ${summary}`,
+      createdAt: opts.startedAt,
       metadata: JSON.stringify({
         kind: "delegation_received",
         subSessionId: opts.callerSessionId,
