@@ -12,7 +12,7 @@ import {
   deriveSummary,
   type EventLevel,
 } from "../../../core/repositories/rt-event-repository.js";
-import { getBus, hasBus } from "../../../runtime/bus/index.js";
+import { proxyRuntimeSSE } from "../_sse-proxy.js";
 
 const VALID_LEVELS = new Set<EventLevel>(["info", "warn", "error"]);
 
@@ -82,64 +82,41 @@ export function registerEventsRoutes(app: Hono, deps: RouteDeps): void {
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/events/stream
-  // SSE stream of real-time bus events (all types except excluded ones).
+  // SSE stream proxied from the runtime daemon's bus.
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/events/stream", (c) => {
     const { slug } = getInstanceContext(c);
 
     // Optional filters
-    const filterTypes = parseTypes(c.req.query("type"));
-    const filterTypesSet = filterTypes ? new Set(filterTypes) : null;
+    const filterTypes = c.req.query("type") || undefined;
     const filterAgentId = c.req.query("agentId") || undefined;
     const filterLevel = parseLevel(c.req.query("level"));
 
-    // If the runtime bus isn't active, still open the SSE (it will just receive pings)
-    const bus = hasBus(slug) ? getBus(slug) : null;
-
     return streamSSE(c, async (stream) => {
-      const unsub = bus?.subscribeAll((event) => {
-        if (isExcluded(event.type)) return;
+      await proxyRuntimeSSE(stream, slug, {
+        ...(filterTypes !== undefined ? { types: filterTypes } : {}),
+        transform: (raw) => {
+          const eventType = raw.type as string;
+          if (isExcluded(eventType)) return null;
 
-        // Apply optional server-side filters
-        if (filterTypesSet && !filterTypesSet.has(event.type)) return;
+          const payload = raw.payload as Record<string, unknown>;
+          const level = deriveLevel(eventType);
 
-        const payload = event.payload as Record<string, unknown>;
-        const level = deriveLevel(event.type);
+          if (filterLevel && level !== filterLevel) return null;
 
-        if (filterLevel && level !== filterLevel) return;
+          if (filterAgentId) {
+            const agentId = (payload.agentId ?? payload.fromAgentId) as string | undefined;
+            if (agentId !== filterAgentId) return null;
+          }
 
-        if (filterAgentId) {
-          const agentId = (payload.agentId ?? payload.fromAgentId) as string | undefined;
-          if (agentId !== filterAgentId) return;
-        }
-
-        const summary = deriveSummary(event.type, payload);
-
-        void stream.writeSSE({
-          data: JSON.stringify({
-            type: event.type,
+          return {
+            type: eventType,
             level,
-            summary,
+            summary: deriveSummary(eventType, payload),
             payload,
-            timestamp: new Date().toISOString(),
-          }),
-        });
-      });
-
-      // Ping every 15s to keep the connection alive
-      const pingInterval = setInterval(() => {
-        void stream.writeSSE({ event: "ping", data: "" });
-      }, 15_000);
-
-      // Cleanup on client disconnect
-      stream.onAbort(() => {
-        clearInterval(pingInterval);
-        unsub?.();
-      });
-
-      // Keep the stream open until the client disconnects
-      await new Promise<void>((resolve) => {
-        stream.onAbort(resolve);
+            timestamp: raw.timestamp,
+          };
+        },
       });
     });
   });
