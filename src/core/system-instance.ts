@@ -64,18 +64,10 @@ export class SystemInstanceService {
     conn: ServerConnection,
     db: Database.Database,
     namedKeyId: number,
-    dashboardPort: number,
-    dashboardToken: string,
   ): Promise<InstanceRecord> {
     // 1. Already provisioned?
     const existing = registry.getSystemInstance();
     if (existing) {
-      // Sync dashboard credentials in case they changed
-      await SystemInstanceService.syncDashboardToken(
-        existing.state_dir,
-        dashboardPort,
-        dashboardToken,
-      );
       // Ensure flows are provisioned (idempotent)
       await SystemInstanceService._provisionFlows(db, SYSTEM_INSTANCE_SLUG);
       // Re-sync workspace files if the YAML template changed (e.g. after code deploy)
@@ -103,7 +95,7 @@ export class SystemInstanceService {
     if (serverId === undefined) throw new Error("No local server registered");
 
     const provisioner = new Provisioner(conn, registry);
-    const result = await provisioner.provision(
+    await provisioner.provision(
       {
         slug: SYSTEM_INSTANCE_SLUG,
         displayName: SYSTEM_INSTANCE_DISPLAY_NAME,
@@ -133,10 +125,7 @@ export class SystemInstanceService {
       SYSTEM_INSTANCE_SLUG,
     );
 
-    // 7. Write dashboard credentials to .env
-    await SystemInstanceService.syncDashboardToken(result.stateDir, dashboardPort, dashboardToken);
-
-    // 8. Provision flow definitions
+    // 7. Provision flow definitions
     await SystemInstanceService._provisionFlows(db, SYSTEM_INSTANCE_SLUG);
 
     logger.info(`[system-instance] Provisioned ${SYSTEM_INSTANCE_SLUG} with key "${key.name}"`);
@@ -160,38 +149,6 @@ export class SystemInstanceService {
     } catch (err) {
       logger.warn("[system-instance] Failed to auto-start cp-system", { error: String(err) });
     }
-  }
-
-  /**
-   * Write/update CLAW_DASHBOARD_URL and CLAW_DASHBOARD_TOKEN in the system instance .env.
-   * Appends if missing, replaces if present.
-   */
-  static async syncDashboardToken(
-    stateDir: string,
-    dashboardPort: number,
-    dashboardToken: string,
-  ): Promise<void> {
-    const envPath = path.join(stateDir, ".env");
-    let content: string;
-    try {
-      content = await fs.readFile(envPath, "utf-8");
-    } catch (err) {
-      logger.debug("[system-instance] .env not found, creating fresh", { error: String(err) });
-      content = "";
-    }
-
-    const dashboardUrl = `http://127.0.0.1:${dashboardPort}`;
-    const lines = content.split("\n").filter((l) => l.trim().length > 0);
-
-    // Remove existing dashboard vars
-    const filtered = lines.filter(
-      (l) => !l.startsWith("CLAW_DASHBOARD_URL=") && !l.startsWith("CLAW_DASHBOARD_TOKEN="),
-    );
-
-    filtered.push(`CLAW_DASHBOARD_URL=${dashboardUrl}`);
-    filtered.push(`CLAW_DASHBOARD_TOKEN=${dashboardToken}`);
-
-    await fs.writeFile(envPath, filtered.join("\n") + "\n", { mode: 0o600 });
   }
 
   // ---------------------------------------------------------------------------

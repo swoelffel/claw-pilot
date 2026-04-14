@@ -15,12 +15,7 @@ const EnsureBodySchema = z.object({
   namedKeyId: z.number().int().positive(),
 });
 
-export function registerSystemInstanceRoutes(
-  app: Hono,
-  deps: RouteDeps,
-  dashboardToken: string,
-  dashboardPort: number,
-): void {
+export function registerSystemInstanceRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, conn, lifecycle, db } = deps;
 
   /**
@@ -64,8 +59,6 @@ export function registerSystemInstanceRoutes(
         conn,
         db,
         namedKeyId,
-        dashboardPort,
-        dashboardToken,
       );
 
       // 2. Ensure running

@@ -325,6 +325,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       instanceSlug,
       workDir,
       version: getRuntimeVersion(),
+      db,
     };
 
     const agentInfoForTools = getAgent(agentConfig.id);
