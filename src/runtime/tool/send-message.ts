@@ -63,7 +63,6 @@ export function createSendMessageTool(options: {
   callerAgentConfig: RuntimeAgentConfig;
   runtimeAgentConfigs?: RuntimeAgentConfig[];
   modelAliases?: ModelAlias[];
-  /** Injected model resolver — breaks circular dependency with channel/router. */
   resolveTargetModel?: (agentConfig: RuntimeAgentConfig) => ResolvedModel;
   compactionConfig?: RuntimeConfig["compaction"];
   runPromptLoop: (input: SendMessagePromptLoopInput) => Promise<SendMessagePromptLoopResult>;
@@ -81,28 +80,7 @@ export function createSendMessageTool(options: {
     runPromptLoop,
   } = options;
 
-  // Build the list of reachable primary peers for the description
-  const primaryPeers: RuntimeAgentConfig[] = (runtimeAgentConfigs ?? []).filter((cfg) => {
-    if (cfg.id === callerAgentConfig.id) return false;
-    if (cfg.agentToAgent && cfg.agentToAgent.enabled === false) return false;
-    return true;
-  });
-
-  const peerList = primaryPeers.map((cfg) => {
-    const arch = cfg.archetype ? ` [archetype: ${cfg.archetype}]` : "";
-    return `- ${cfg.id} (${cfg.name})${arch}`;
-  });
-
-  const description = [
-    "Send a persistent message to another agent. Unlike `task` (transactional),",
-    "this message stays in both agents' session history until compaction.",
-    "Use this for context sharing, coordination, and ongoing collaboration.",
-    "",
-    "Available agents:",
-    ...peerList,
-    "",
-    'You can also route by archetype name (e.g. to: "evaluator").',
-  ].join("\n");
+  const description = buildDescription(callerAgentConfig, runtimeAgentConfigs);
 
   return Tool.define("send_message", {
     description,
@@ -115,7 +93,7 @@ export function createSendMessageTool(options: {
         .describe("Wait for a reply (true) or fire-and-forget (false)"),
     }),
     async execute(params, ctx) {
-      // 1. Reject self-messaging early with a clear error for the LLM
+      // 1. Reject self-messaging
       if (params.to === callerAgentConfig.id) {
         throw new Error(
           `Cannot send a message to yourself ('${callerAgentConfig.id}'). ` +
@@ -123,38 +101,12 @@ export function createSendMessageTool(options: {
         );
       }
 
-      // 2. Resolve target agent config (by ID, then by archetype)
-      const targetConfig =
-        (runtimeAgentConfigs ?? []).find((cfg) => cfg.id === params.to) ??
-        (runtimeAgentConfigs ?? []).find(
-          (cfg) =>
-            cfg.id !== callerAgentConfig.id && cfg.archetype != null && cfg.archetype === params.to,
-        );
+      // 2. Resolve target agent config
+      const targetConfig = resolveTarget(params.to, callerAgentConfig, runtimeAgentConfigs);
 
-      if (!targetConfig) {
-        const available = (runtimeAgentConfigs ?? [])
-          .filter((cfg) => cfg.id !== callerAgentConfig.id)
-          .map((cfg) => cfg.id)
-          .join(", ");
-        const archetypes = [
-          ...new Set(
-            (runtimeAgentConfigs ?? [])
-              .filter((cfg) => cfg.id !== callerAgentConfig.id && cfg.archetype != null)
-              .map((cfg) => cfg.archetype!),
-          ),
-        ].join(", ");
-        throw new Error(
-          `No agent found for "${params.to}". ` +
-            (available ? `Available agents: ${available}. ` : "") +
-            (archetypes ? `Available archetypes: ${archetypes}` : ""),
-        );
-      }
-
-      // 3. A2A policy check (allowList accepts agent IDs and archetype names)
+      // 3. A2A policy check
       const policy = checkA2APolicy(callerAgentConfig, targetConfig.id, targetConfig.archetype);
-      if (!policy.allowed) {
-        throw new Error(policy.reason);
-      }
+      if (!policy.allowed) throw new Error(policy.reason);
 
       ctx.metadata({ title: `→ ${targetConfig.id}: ${params.message.slice(0, 50)}` });
 
@@ -165,7 +117,7 @@ export function createSendMessageTool(options: {
         channel: "internal",
       });
 
-      // 5. Record outgoing message in caller's session (for memory persistence)
+      // 5. Record outgoing message in caller's session
       createUserMessage(db, {
         sessionId: ctx.sessionId,
         text: `[message_sent] To ${targetConfig.id}: ${params.message}`,
@@ -180,97 +132,232 @@ export function createSendMessageTool(options: {
         instanceSlug,
       });
 
-      // 7. Resolve target model (named keys first, then legacy fallback)
-      let targetModel: ResolvedModel;
-      if (resolveTargetModel) {
-        try {
-          targetModel = resolveTargetModel(targetConfig);
-        } catch (err) {
-          logger.warn("[tool:send-message] target model resolution failed", { error: String(err) });
-          targetModel = resolvedModel;
-        }
-      } else {
-        targetModel = targetConfig.model
-          ? resolveAgentModel(targetConfig.model, modelAliases ?? [], resolvedModel)
-          : resolvedModel;
-      }
+      // 7. Resolve target model
+      const targetModel = resolveTargetModelForMessage(
+        targetConfig,
+        resolvedModel,
+        modelAliases,
+        resolveTargetModel,
+      );
 
-      // 8. Fire-and-forget mode — trigger async prompt loop without waiting
+      // 8. Fire-and-forget or expect-reply
       if (!params.expect_reply) {
-        const fireAndForgetSystemPrompt = [
-          "## Incoming message",
-          `Agent '${callerAgentConfig.id}' (${callerAgentConfig.name}) sends you this message.`,
-          "Process this message autonomously.",
-        ].join("\n");
-
-        void runPromptLoop({
+        return fireAndForget(params, ctx, targetConfig, targetSession, targetModel, {
           db,
           instanceSlug,
-          sessionId: targetSession.id,
-          userText: `[message_from:${callerAgentConfig.id}] ${params.message}`,
-          agentConfig: targetConfig,
-          resolvedModel: targetModel,
           workDir,
-          abort: new AbortController().signal,
-          extraSystemPrompt: fireAndForgetSystemPrompt,
-          ...(compactionConfig !== undefined ? { compactionConfig } : {}),
-          ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
-        }).catch((err) => {
-          logger.error(
-            `[send_message] fire-and-forget prompt loop failed for ${targetConfig.id}: ${err}`,
-          );
+          callerAgentConfig,
+          compactionConfig,
+          runtimeAgentConfigs,
+          runPromptLoop,
         });
-
-        return {
-          title: `Message sent to ${targetConfig.id}`,
-          output: `Message delivered to ${targetConfig.id} (fire-and-forget, processing triggered).`,
-          truncated: false,
-        };
       }
 
-      // 9. Expect reply: run prompt loop on target's permanent session
-      const extraSystemPrompt = [
-        "## Incoming message",
-        `Agent '${callerAgentConfig.id}' (${callerAgentConfig.name}) sends you this message.`,
-        "Respond naturally — your reply will be forwarded back.",
-      ].join("\n");
-
-      const result = await runPromptLoop({
+      return expectReply(params, ctx, targetConfig, targetSession, targetModel, {
         db,
         instanceSlug,
-        sessionId: targetSession.id,
-        userText: `[message_from:${callerAgentConfig.id}] ${params.message}`,
-        agentConfig: targetConfig,
-        resolvedModel: targetModel,
         workDir,
-        abort: ctx.abort,
-        extraSystemPrompt,
-        ...(compactionConfig !== undefined ? { compactionConfig } : {}),
-        ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
+        callerAgentConfig,
+        compactionConfig,
+        runtimeAgentConfigs,
+        runPromptLoop,
       });
-
-      // 10. Record incoming reply in caller's session
-      createUserMessage(db, {
-        sessionId: ctx.sessionId,
-        text: `[message_received] From ${targetConfig.id}: ${result.text}`,
-      });
-
-      const tokensTotal = result.tokens.input + result.tokens.output;
-      const output = [
-        `from: ${targetConfig.id} (${targetConfig.name})`,
-        `steps: ${result.steps}`,
-        `tokens: ${tokensTotal}`,
-        "",
-        "<reply>",
-        result.text,
-        "</reply>",
-      ].join("\n");
-
-      return {
-        title: `Reply from ${targetConfig.id}`,
-        output,
-        truncated: false,
-      };
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/** Build the tool description with available peers. */
+function buildDescription(
+  callerAgentConfig: RuntimeAgentConfig,
+  runtimeAgentConfigs?: RuntimeAgentConfig[],
+): string {
+  const primaryPeers = (runtimeAgentConfigs ?? []).filter((cfg) => {
+    if (cfg.id === callerAgentConfig.id) return false;
+    if (cfg.agentToAgent && cfg.agentToAgent.enabled === false) return false;
+    return true;
+  });
+
+  const peerList = primaryPeers.map((cfg) => {
+    const arch = cfg.archetype ? ` [archetype: ${cfg.archetype}]` : "";
+    return `- ${cfg.id} (${cfg.name})${arch}`;
+  });
+
+  return [
+    "Send a persistent message to another agent. Unlike `task` (transactional),",
+    "this message stays in both agents' session history until compaction.",
+    "Use this for context sharing, coordination, and ongoing collaboration.",
+    "",
+    "Available agents:",
+    ...peerList,
+    "",
+    'You can also route by archetype name (e.g. to: "evaluator").',
+  ].join("\n");
+}
+
+/** Resolve the target agent config by ID or archetype. */
+function resolveTarget(
+  to: string,
+  callerAgentConfig: RuntimeAgentConfig,
+  runtimeAgentConfigs?: RuntimeAgentConfig[],
+): RuntimeAgentConfig {
+  const targetConfig =
+    (runtimeAgentConfigs ?? []).find((cfg) => cfg.id === to) ??
+    (runtimeAgentConfigs ?? []).find(
+      (cfg) => cfg.id !== callerAgentConfig.id && cfg.archetype != null && cfg.archetype === to,
+    );
+
+  if (!targetConfig) {
+    const available = (runtimeAgentConfigs ?? [])
+      .filter((cfg) => cfg.id !== callerAgentConfig.id)
+      .map((cfg) => cfg.id)
+      .join(", ");
+    const archetypes = [
+      ...new Set(
+        (runtimeAgentConfigs ?? [])
+          .filter((cfg) => cfg.id !== callerAgentConfig.id && cfg.archetype != null)
+          .map((cfg) => cfg.archetype!),
+      ),
+    ].join(", ");
+    throw new Error(
+      `No agent found for "${to}". ` +
+        (available ? `Available agents: ${available}. ` : "") +
+        (archetypes ? `Available archetypes: ${archetypes}` : ""),
+    );
+  }
+
+  return targetConfig;
+}
+
+/** Resolve the model for the target agent. */
+function resolveTargetModelForMessage(
+  targetConfig: RuntimeAgentConfig,
+  fallbackModel: ResolvedModel,
+  modelAliases?: ModelAlias[],
+  resolveTargetModelFn?: (agentConfig: RuntimeAgentConfig) => ResolvedModel,
+): ResolvedModel {
+  if (resolveTargetModelFn) {
+    try {
+      return resolveTargetModelFn(targetConfig);
+    } catch (err) {
+      logger.warn("[tool:send-message] target model resolution failed", { error: String(err) });
+      return fallbackModel;
+    }
+  }
+  return targetConfig.model
+    ? resolveAgentModel(targetConfig.model, modelAliases ?? [], fallbackModel)
+    : fallbackModel;
+}
+
+/** Shared context for prompt loop execution. */
+interface LoopContext {
+  db: Database.Database;
+  instanceSlug: InstanceSlug;
+  workDir: string | undefined;
+  callerAgentConfig: RuntimeAgentConfig;
+  compactionConfig: RuntimeConfig["compaction"] | undefined;
+  runtimeAgentConfigs: RuntimeAgentConfig[] | undefined;
+  runPromptLoop: (input: SendMessagePromptLoopInput) => Promise<SendMessagePromptLoopResult>;
+}
+
+/** Handle fire-and-forget mode. */
+function fireAndForget(
+  params: { message: string },
+  _ctx: Tool.Context,
+  targetConfig: RuntimeAgentConfig,
+  targetSession: { id: string },
+  targetModel: ResolvedModel,
+  lctx: LoopContext,
+): Tool.Result {
+  const systemPrompt = [
+    "## Incoming message",
+    `Agent '${lctx.callerAgentConfig.id}' (${lctx.callerAgentConfig.name}) sends you this message.`,
+    "Process this message autonomously.",
+  ].join("\n");
+
+  void lctx
+    .runPromptLoop({
+      db: lctx.db,
+      instanceSlug: lctx.instanceSlug,
+      sessionId: targetSession.id,
+      userText: `[message_from:${lctx.callerAgentConfig.id}] ${params.message}`,
+      agentConfig: targetConfig,
+      resolvedModel: targetModel,
+      workDir: lctx.workDir,
+      abort: new AbortController().signal,
+      extraSystemPrompt: systemPrompt,
+      ...(lctx.compactionConfig !== undefined ? { compactionConfig: lctx.compactionConfig } : {}),
+      ...(lctx.runtimeAgentConfigs !== undefined
+        ? { runtimeAgentConfigs: lctx.runtimeAgentConfigs }
+        : {}),
+    })
+    .catch((err) => {
+      logger.error(
+        `[send_message] fire-and-forget prompt loop failed for ${targetConfig.id}: ${err}`,
+      );
+    });
+
+  return {
+    title: `Message sent to ${targetConfig.id}`,
+    output: `Message delivered to ${targetConfig.id} (fire-and-forget, processing triggered).`,
+    truncated: false,
+  };
+}
+
+/** Handle expect-reply mode. */
+async function expectReply(
+  params: { message: string },
+  ctx: Tool.Context,
+  targetConfig: RuntimeAgentConfig,
+  targetSession: { id: string },
+  targetModel: ResolvedModel,
+  lctx: LoopContext,
+): Promise<Tool.Result> {
+  const systemPrompt = [
+    "## Incoming message",
+    `Agent '${lctx.callerAgentConfig.id}' (${lctx.callerAgentConfig.name}) sends you this message.`,
+    "Respond naturally — your reply will be forwarded back.",
+  ].join("\n");
+
+  const result = await lctx.runPromptLoop({
+    db: lctx.db,
+    instanceSlug: lctx.instanceSlug,
+    sessionId: targetSession.id,
+    userText: `[message_from:${lctx.callerAgentConfig.id}] ${params.message}`,
+    agentConfig: targetConfig,
+    resolvedModel: targetModel,
+    workDir: lctx.workDir,
+    abort: ctx.abort,
+    extraSystemPrompt: systemPrompt,
+    ...(lctx.compactionConfig !== undefined ? { compactionConfig: lctx.compactionConfig } : {}),
+    ...(lctx.runtimeAgentConfigs !== undefined
+      ? { runtimeAgentConfigs: lctx.runtimeAgentConfigs }
+      : {}),
+  });
+
+  // Record incoming reply in caller's session
+  createUserMessage(lctx.db, {
+    sessionId: ctx.sessionId,
+    text: `[message_received] From ${targetConfig.id}: ${result.text}`,
+  });
+
+  const tokensTotal = result.tokens.input + result.tokens.output;
+  const output = [
+    `from: ${targetConfig.id} (${targetConfig.name})`,
+    `steps: ${result.steps}`,
+    `tokens: ${tokensTotal}`,
+    "",
+    "<reply>",
+    result.text,
+    "</reply>",
+  ].join("\n");
+
+  return {
+    title: `Reply from ${targetConfig.id}`,
+    output,
+    truncated: false,
+  };
 }

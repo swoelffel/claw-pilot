@@ -119,6 +119,100 @@ async function applyToolDefinitionHooks(
 }
 
 // ---------------------------------------------------------------------------
+// Dynamic tool wiring — shared wrapper for task, task_board, send_message, memory_search
+// ---------------------------------------------------------------------------
+
+interface DynamicToolWireContext {
+  db: Database.Database;
+  messageId: string;
+  sessionId: SessionId;
+  ctx: Tool.Context;
+  bus: ReturnType<typeof getBus>;
+  providerId: string;
+  pluginInput: PluginInput | undefined;
+}
+
+/** Wire a dynamic tool (task, task_board, send_message, memory_search) into the ToolSet. */
+async function wireDynamicTool(
+  set: ToolSet,
+  toolName: string,
+  toolInfo: Tool.Info,
+  wireCtx: DynamicToolWireContext,
+): Promise<void> {
+  const def = await applyToolDefinitionHooks(await toolInfo.init(), wireCtx.pluginInput);
+  const normalizedParams = normalizeForProvider(def.parameters, wireCtx.providerId);
+  set[toolName] = aiTool({
+    description: def.description,
+    inputSchema: zodSchema(normalizedParams),
+    execute: async (args: unknown, options: { toolCallId: string }) => {
+      const part = getOrCreateToolCallPart(
+        wireCtx.db,
+        wireCtx.messageId,
+        options.toolCallId,
+        toolName,
+        args,
+      );
+      try {
+        const result = await def.execute(args as never, wireCtx.ctx);
+        updatePartState(wireCtx.db, part.id, "completed", result.output);
+        wireCtx.bus.publish(MessageUpdated, {
+          sessionId: wireCtx.sessionId,
+          messageId: wireCtx.messageId,
+        });
+        return result.output;
+      } catch (err) {
+        updatePartState(
+          wireCtx.db,
+          part.id,
+          "error",
+          err instanceof Error ? err.message : String(err),
+        );
+        wireCtx.bus.publish(MessageUpdated, {
+          sessionId: wireCtx.sessionId,
+          messageId: wireCtx.messageId,
+        });
+        throw err;
+      }
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Workspace cache invalidation after write/edit
+// ---------------------------------------------------------------------------
+
+/** Invalidate workspace cache and trigger memory re-indexation when a file is written. */
+function handleWriteInvalidation(
+  toolId: string,
+  args: unknown,
+  sessionId: SessionId,
+  memoryDb: Database.Database | undefined,
+  workDir: string | undefined,
+  agentId: string,
+): void {
+  if (toolId !== "write" && toolId !== "edit" && toolId !== "multiedit") return;
+
+  const writtenPath: string | undefined =
+    typeof args === "object" && args !== null && "filePath" in args
+      ? String((args as { filePath: unknown }).filePath)
+      : undefined;
+  if (!writtenPath) return;
+
+  invalidateWorkspaceCache(writtenPath);
+  markDirty(sessionId, isMemoryFile(writtenPath) ? "memory" : "workspace");
+
+  if (memoryDb && workDir && isMemoryFile(writtenPath)) {
+    void Promise.resolve().then(() => {
+      try {
+        rebuildMemoryIndex(memoryDb, workDir, agentId);
+      } catch (err) {
+        logger.debug("[tool-set-builder] memory re-indexation failed", { error: String(err) });
+      }
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // buildToolSet
 // ---------------------------------------------------------------------------
 
@@ -155,33 +249,93 @@ export async function buildToolSet(
 ): Promise<ToolSet> {
   const set: ToolSet = {};
   const bus = getBus(instanceSlug);
-
   const recentCalls: Array<{ tool: string; hash: string }> = [];
 
-  for (const toolInfo of tools) {
-    let def = await applyToolDefinitionHooks(await toolInfo.init(), pluginInput);
+  // 1. Wire built-in tools from the registry
+  await wireBuiltInTools(
+    set,
+    tools,
+    ctx,
+    db,
+    messageId,
+    instanceSlug,
+    sessionId,
+    resolvedModel,
+    memoryDb,
+    workDir,
+    pluginInput,
+    bus,
+    recentCalls,
+  );
 
+  // 2. Remove create_artifact when disabled
+  if (runtimeConfig?.artifacts?.enabled === false) {
+    delete set["create_artifact"];
+  }
+
+  // 3. Inject dynamic tools (task, task_board, send_message)
+  const wireCtx: DynamicToolWireContext = {
+    db,
+    messageId,
+    sessionId,
+    ctx,
+    bus,
+    providerId: resolvedModel.providerId,
+    pluginInput,
+  };
+
+  if (callerAgentConfig && agentKind !== "subagent") {
+    await injectDynamicTools(set, wireCtx, callerAgentConfig, {
+      db,
+      instanceSlug,
+      resolvedModel,
+      workDir,
+      ...(subagentsConfig !== undefined ? { subagentsConfig } : {}),
+      ...(compactionConfig !== undefined ? { compactionConfig } : {}),
+      ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
+      ...(runtimeConfig !== undefined ? { runtimeConfig } : {}),
+      ...(resolveTargetModel !== undefined ? { resolveTargetModel } : {}),
+      runPromptLoopFn,
+    });
+  }
+
+  // 4. Memory search tool
+  if (memoryDb) {
+    await wireDynamicTool(set, "memory_search", createMemorySearchTool(memoryDb), wireCtx);
+  }
+
+  // 5. Invalid tool (catch-all for hallucinated tool names)
+  wireInvalidTool(set, tools);
+
+  return set;
+}
+
+/** Wire all built-in tools from the registry into the ToolSet. */
+async function wireBuiltInTools(
+  set: ToolSet,
+  tools: Tool.Info[],
+  ctx: Tool.Context,
+  db: Database.Database,
+  messageId: string,
+  instanceSlug: InstanceSlug,
+  sessionId: SessionId,
+  resolvedModel: ResolvedModel,
+  memoryDb: Database.Database | undefined,
+  workDir: string | undefined,
+  pluginInput: PluginInput | undefined,
+  bus: ReturnType<typeof getBus>,
+  recentCalls: Array<{ tool: string; hash: string }>,
+): Promise<void> {
+  for (const toolInfo of tools) {
+    const def = await applyToolDefinitionHooks(await toolInfo.init(), pluginInput);
     if (def.ownerOnly && !ctx.senderIsOwner) continue;
 
     const normalizedParams = normalizeForProvider(def.parameters, resolvedModel.providerId);
-
     set[toolInfo.id] = aiTool({
       description: def.description,
       inputSchema: zodSchema(normalizedParams),
       execute: async (args: unknown, options: { toolCallId: string }) => {
-        const callHash = JSON.stringify(args);
-        recentCalls.push({ tool: toolInfo.id, hash: callHash });
-        if (recentCalls.length > 3) recentCalls.shift();
-        const isDoomLoop =
-          recentCalls.length === 3 &&
-          recentCalls.every((c) => c.tool === toolInfo.id && c.hash === callHash);
-        if (isDoomLoop) {
-          bus.publish(DoomLoopDetected, { sessionId, toolName: toolInfo.id });
-          throw new Error(
-            `Doom loop detected: '${toolInfo.id}' called 3 times with identical arguments. ` +
-              `Stop repeating this call and try a different approach.`,
-          );
-        }
+        checkDoomLoop(recentCalls, toolInfo.id, args, sessionId, bus);
 
         await triggerToolBeforeCall({
           instanceSlug,
@@ -193,20 +347,13 @@ export async function buildToolSet(
           logger.warn(`Plugin hook tool.beforeCall threw: ${err}`);
         });
 
-        // Reuse the part created by onChunk Path-A (which has toolCallId).
-        // This prevents duplicate tool_call parts in the DB.
         const part = getOrCreateToolCallPart(db, messageId, options.toolCallId, toolInfo.id, args);
-
         const callStart = Date.now();
         try {
-          // Expose toolCallId so tools (e.g. question) can use it as a stable ID
           const callCtx = { ...ctx, toolCallId: options.toolCallId };
           const result = await def.execute(args as never, callCtx);
-
           const durationMs = Date.now() - callStart;
           updatePartState(db, part.id, "completed", result.output);
-          // Persist durationMs in metadata so the UI can display execution time.
-          // Keep toolCallId so message-builder can correlate tool_call ↔ tool_result.
           db.prepare("UPDATE rt_parts SET metadata = ?, updated_at = ? WHERE id = ?").run(
             JSON.stringify({
               toolCallId: options.toolCallId,
@@ -218,7 +365,6 @@ export async function buildToolSet(
             part.id,
           );
           bus.publish(MessageUpdated, { sessionId, messageId });
-
           await triggerToolAfterCall({
             instanceSlug,
             sessionId,
@@ -230,38 +376,11 @@ export async function buildToolSet(
           }).catch((err) => {
             logger.warn(`Plugin hook tool.afterCall threw: ${err}`);
           });
-
-          // Invalidate workspace cache for write/edit operations
-          if (toolInfo.id === "write" || toolInfo.id === "edit" || toolInfo.id === "multiedit") {
-            const writtenPath: string | undefined =
-              typeof args === "object" && args !== null && "filePath" in args
-                ? String((args as { filePath: unknown }).filePath)
-                : undefined;
-            if (writtenPath) {
-              invalidateWorkspaceCache(writtenPath);
-              markDirty(sessionId, isMemoryFile(writtenPath) ? "memory" : "workspace");
-
-              // Trigger memory re-indexation in background if a memory file was written
-              if (memoryDb && workDir && isMemoryFile(writtenPath)) {
-                void Promise.resolve().then(() => {
-                  try {
-                    rebuildMemoryIndex(memoryDb, workDir, ctx.agentId);
-                  } catch (err) {
-                    logger.debug("[tool-set-builder] memory re-indexation failed", {
-                      error: String(err),
-                    });
-                    // Silently ignore re-indexation errors
-                  }
-                });
-              }
-            }
-          }
-
+          handleWriteInvalidation(toolInfo.id, args, sessionId, memoryDb, workDir, ctx.agentId);
           return result.output;
         } catch (err) {
           updatePartState(db, part.id, "error", err instanceof Error ? err.message : String(err));
           bus.publish(MessageUpdated, { sessionId, messageId });
-
           await triggerToolAfterCall({
             instanceSlug,
             sessionId,
@@ -273,175 +392,149 @@ export async function buildToolSet(
           }).catch((hookErr) => {
             logger.warn(`Plugin hook tool.afterCall threw on error path: ${hookErr}`);
           });
-
           throw err;
         }
       },
     });
   }
+}
 
-  // Remove create_artifact tool when artifacts are disabled in config
-  if (runtimeConfig?.artifacts?.enabled === false) {
-    delete set["create_artifact"];
-  }
-
-  if (callerAgentConfig && agentKind !== "subagent") {
-    const profile = callerAgentConfig.toolProfile ?? "executor";
-    // Resolve allowed tools from profile or custom list
-    const allowedTools = new Set(
-      profile === "custom" ? (callerAgentConfig.customTools ?? []) : (TOOL_PROFILES[profile] ?? []),
+/** Check for doom-loop (3 identical consecutive calls). */
+function checkDoomLoop(
+  recentCalls: Array<{ tool: string; hash: string }>,
+  toolId: string,
+  args: unknown,
+  sessionId: SessionId,
+  bus: ReturnType<typeof getBus>,
+): void {
+  const callHash = JSON.stringify(args);
+  recentCalls.push({ tool: toolId, hash: callHash });
+  if (recentCalls.length > 3) recentCalls.shift();
+  const isDoomLoop =
+    recentCalls.length === 3 && recentCalls.every((c) => c.tool === toolId && c.hash === callHash);
+  if (isDoomLoop) {
+    bus.publish(DoomLoopDetected, { sessionId, toolName: toolId });
+    throw new Error(
+      `Doom loop detected: '${toolId}' called 3 times with identical arguments. ` +
+        `Stop repeating this call and try a different approach.`,
     );
+  }
+}
 
-    if (allowedTools.has("task")) {
-      const env = workDir ? buildResolvedEnv(workDir) : undefined;
-      const taskToolInfo = createTaskTool({
-        db,
-        instanceSlug,
-        resolvedModel,
-        workDir,
-        ...(subagentsConfig !== undefined ? { subagentsConfig } : {}),
-        agentPermissions: callerAgentConfig.permissions,
-        ...(compactionConfig !== undefined ? { compactionConfig } : {}),
-        callerAgentConfig,
-        ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
-        ...(runtimeConfig?.models !== undefined ? { modelAliases: runtimeConfig.models } : {}),
-        ...(resolveTargetModel !== undefined ? { resolveTargetModel } : {}),
-        ...(env !== undefined ? { env } : {}),
-        runPromptLoop: runPromptLoopFn,
-      });
-      const taskDef = await applyToolDefinitionHooks(await taskToolInfo.init(), pluginInput);
-      const normalizedTaskParams = normalizeForProvider(
-        taskDef.parameters,
-        resolvedModel.providerId,
-      );
-      set["task"] = aiTool({
-        description: taskDef.description,
-        inputSchema: zodSchema(normalizedTaskParams),
-        execute: async (args: unknown, options: { toolCallId: string }) => {
-          const part = getOrCreateToolCallPart(db, messageId, options.toolCallId, "task", args);
-          try {
-            const result = await taskDef.execute(args as never, ctx);
-            updatePartState(db, part.id, "completed", result.output);
-            bus.publish(MessageUpdated, { sessionId, messageId });
-            return result.output;
-          } catch (err) {
-            updatePartState(db, part.id, "error", err instanceof Error ? err.message : String(err));
-            bus.publish(MessageUpdated, { sessionId, messageId });
-            throw err;
-          }
-        },
-      });
-    }
+/** Inject dynamic tools (task, task_board, send_message) based on the agent's tool profile. */
+/** Options shared by task and send_message tool injection. */
+interface DynamicToolOpts {
+  db: Database.Database;
+  instanceSlug: InstanceSlug;
+  resolvedModel: ResolvedModel;
+  workDir: string | undefined;
+  subagentsConfig?: SubagentsConfig;
+  compactionConfig?: RuntimeConfig["compaction"];
+  runtimeAgentConfigs?: import("../config/index.js").RuntimeAgentConfig[];
+  runtimeConfig?: RuntimeConfig;
+  resolveTargetModel?: (
+    agentConfig: import("../config/index.js").RuntimeAgentConfig,
+  ) => ResolvedModel;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  runPromptLoopFn: (input: any) => Promise<{
+    text: string;
+    steps: number;
+    tokens: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  }>;
+}
 
-    if (allowedTools.has("task_board")) {
-      // task_board — shared task board management
-      const taskBoardToolInfo = createTaskBoardTool({ db, instanceSlug });
-      const taskBoardDef = await applyToolDefinitionHooks(
-        await taskBoardToolInfo.init(),
-        pluginInput,
-      );
-      const normalizedTaskBoardParams = normalizeForProvider(
-        taskBoardDef.parameters,
-        resolvedModel.providerId,
-      );
-      set["task_board"] = aiTool({
-        description: taskBoardDef.description,
-        inputSchema: zodSchema(normalizedTaskBoardParams),
-        execute: async (args: unknown, options: { toolCallId: string }) => {
-          const part = getOrCreateToolCallPart(
-            db,
-            messageId,
-            options.toolCallId,
-            "task_board",
-            args,
-          );
-          try {
-            const result = await taskBoardDef.execute(args as never, ctx);
-            updatePartState(db, part.id, "completed", result.output);
-            bus.publish(MessageUpdated, { sessionId, messageId });
-            return result.output;
-          } catch (err) {
-            updatePartState(db, part.id, "error", err instanceof Error ? err.message : String(err));
-            bus.publish(MessageUpdated, { sessionId, messageId });
-            throw err;
-          }
-        },
-      });
-    }
+/** Inject the task tool if allowed by profile. */
+async function injectTaskTool(
+  set: ToolSet,
+  wireCtx: DynamicToolWireContext,
+  callerAgentConfig: import("../config/index.js").RuntimeAgentConfig,
+  opts: DynamicToolOpts,
+): Promise<void> {
+  const env = opts.workDir ? buildResolvedEnv(opts.workDir) : undefined;
+  const taskToolInfo = createTaskTool({
+    db: opts.db,
+    instanceSlug: opts.instanceSlug,
+    resolvedModel: opts.resolvedModel,
+    workDir: opts.workDir,
+    ...(opts.subagentsConfig !== undefined ? { subagentsConfig: opts.subagentsConfig } : {}),
+    agentPermissions: callerAgentConfig.permissions,
+    ...(opts.compactionConfig !== undefined ? { compactionConfig: opts.compactionConfig } : {}),
+    callerAgentConfig,
+    ...(opts.runtimeAgentConfigs !== undefined
+      ? { runtimeAgentConfigs: opts.runtimeAgentConfigs }
+      : {}),
+    ...(opts.runtimeConfig?.models !== undefined
+      ? { modelAliases: opts.runtimeConfig.models }
+      : {}),
+    ...(opts.resolveTargetModel !== undefined
+      ? { resolveTargetModel: opts.resolveTargetModel }
+      : {}),
+    ...(env !== undefined ? { env } : {}),
+    runPromptLoop: opts.runPromptLoopFn,
+  });
+  await wireDynamicTool(set, "task", taskToolInfo, wireCtx);
+}
 
-    if (allowedTools.has("send_message")) {
-      // send_message — persistent inter-agent messaging
-      const sendMsgToolInfo = createSendMessageTool({
-        db,
-        instanceSlug,
-        resolvedModel,
-        workDir,
-        callerAgentConfig,
-        ...(runtimeAgentConfigs !== undefined ? { runtimeAgentConfigs } : {}),
-        ...(runtimeConfig?.models !== undefined ? { modelAliases: runtimeConfig.models } : {}),
-        ...(resolveTargetModel !== undefined ? { resolveTargetModel } : {}),
-        ...(compactionConfig !== undefined ? { compactionConfig } : {}),
-        runPromptLoop: runPromptLoopFn,
-      });
-      const sendMsgDef = await applyToolDefinitionHooks(await sendMsgToolInfo.init(), pluginInput);
-      const normalizedSendMsgParams = normalizeForProvider(
-        sendMsgDef.parameters,
-        resolvedModel.providerId,
-      );
-      set["send_message"] = aiTool({
-        description: sendMsgDef.description,
-        inputSchema: zodSchema(normalizedSendMsgParams),
-        execute: async (args: unknown, options: { toolCallId: string }) => {
-          const part = getOrCreateToolCallPart(
-            db,
-            messageId,
-            options.toolCallId,
-            "send_message",
-            args,
-          );
-          try {
-            const result = await sendMsgDef.execute(args as never, ctx);
-            updatePartState(db, part.id, "completed", result.output);
-            bus.publish(MessageUpdated, { sessionId, messageId });
-            return result.output;
-          } catch (err) {
-            updatePartState(db, part.id, "error", err instanceof Error ? err.message : String(err));
-            bus.publish(MessageUpdated, { sessionId, messageId });
-            throw err;
-          }
-        },
-      });
-    }
+/** Inject the send_message tool if allowed by profile. */
+async function injectSendMessageTool(
+  set: ToolSet,
+  wireCtx: DynamicToolWireContext,
+  callerAgentConfig: import("../config/index.js").RuntimeAgentConfig,
+  opts: DynamicToolOpts,
+): Promise<void> {
+  const sendMsgToolInfo = createSendMessageTool({
+    db: opts.db,
+    instanceSlug: opts.instanceSlug,
+    resolvedModel: opts.resolvedModel,
+    workDir: opts.workDir,
+    callerAgentConfig,
+    ...(opts.runtimeAgentConfigs !== undefined
+      ? { runtimeAgentConfigs: opts.runtimeAgentConfigs }
+      : {}),
+    ...(opts.runtimeConfig?.models !== undefined
+      ? { modelAliases: opts.runtimeConfig.models }
+      : {}),
+    ...(opts.resolveTargetModel !== undefined
+      ? { resolveTargetModel: opts.resolveTargetModel }
+      : {}),
+    ...(opts.compactionConfig !== undefined ? { compactionConfig: opts.compactionConfig } : {}),
+    runPromptLoop: opts.runPromptLoopFn,
+  });
+  await wireDynamicTool(set, "send_message", sendMsgToolInfo, wireCtx);
+}
+
+/** Inject dynamic tools (task, task_board, send_message) based on the agent's tool profile. */
+async function injectDynamicTools(
+  set: ToolSet,
+  wireCtx: DynamicToolWireContext,
+  callerAgentConfig: import("../config/index.js").RuntimeAgentConfig,
+  opts: DynamicToolOpts,
+): Promise<void> {
+  const profile = callerAgentConfig.toolProfile ?? "executor";
+  const allowedTools = new Set(
+    profile === "custom" ? (callerAgentConfig.customTools ?? []) : (TOOL_PROFILES[profile] ?? []),
+  );
+
+  if (allowedTools.has("task")) {
+    await injectTaskTool(set, wireCtx, callerAgentConfig, opts);
   }
 
-  if (memoryDb) {
-    const memorySearchTool = createMemorySearchTool(memoryDb);
-    const memoryDef = await applyToolDefinitionHooks(await memorySearchTool.init(), pluginInput);
-    set["memory_search"] = aiTool({
-      description: memoryDef.description,
-      inputSchema: zodSchema(memoryDef.parameters),
-      execute: async (args: unknown, options: { toolCallId: string }) => {
-        const part = getOrCreateToolCallPart(
-          db,
-          messageId,
-          options.toolCallId,
-          "memory_search",
-          args,
-        );
-        try {
-          const result = await memoryDef.execute(args as never, ctx);
-          updatePartState(db, part.id, "completed", result.output);
-          bus.publish(MessageUpdated, { sessionId, messageId });
-          return result.output;
-        } catch (err) {
-          updatePartState(db, part.id, "error", err instanceof Error ? err.message : String(err));
-          bus.publish(MessageUpdated, { sessionId, messageId });
-          throw err;
-        }
-      },
-    });
+  if (allowedTools.has("task_board")) {
+    await wireDynamicTool(
+      set,
+      "task_board",
+      createTaskBoardTool({ db: opts.db, instanceSlug: opts.instanceSlug }),
+      wireCtx,
+    );
   }
 
+  if (allowedTools.has("send_message")) {
+    await injectSendMessageTool(set, wireCtx, callerAgentConfig, opts);
+  }
+}
+
+/** Wire the invalid tool (catch-all for hallucinated tool names). */
+function wireInvalidTool(set: ToolSet, tools: Tool.Info[]): void {
   const availableToolNames = tools.map((t) => t.id);
   const invalidToolSchema = z.object({
     toolName: z.string(),
@@ -460,8 +553,6 @@ export async function buildToolSet(
       );
     },
   });
-
-  return set;
 }
 
 export type { ToolSet, McpRegistry };

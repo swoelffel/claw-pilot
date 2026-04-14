@@ -98,179 +98,172 @@ type ImportTarget =
   | { type: "blueprint"; blueprintId: number }
   | { type: "instance"; instanceId: number; configPath: string };
 
-/**
- * Core DB transaction shared by importBlueprintTeam and importInstanceTeam.
- *
- * After inserting the YAML-provided files, gap-fills any missing EXPORTABLE_FILES
- * with default templates from templates/workspace/. This ensures that blueprints
- * imported from outside claw-pilot (e.g., with only AGENTS.md + SOUL.md + USER.md)
- * get a complete set of workspace files.
- *
- * Returns the number of files written (YAML + gap-filled).
- */
-async function _importTeamCore(
+/** Delete existing agents and links for the target (blueprint or instance). */
+function deleteExistingAgents(db: Database.Database, target: ImportTarget): void {
+  const existingAgents =
+    target.type === "blueprint"
+      ? (db.prepare("SELECT id FROM agents WHERE blueprint_id = ?").all(target.blueprintId) as {
+          id: number;
+        }[])
+      : (db.prepare("SELECT id FROM agents WHERE instance_id = ?").all(target.instanceId) as {
+          id: number;
+        }[]);
+
+  for (const agent of existingAgents) {
+    db.prepare("DELETE FROM agent_files WHERE agent_id = ?").run(agent.id);
+  }
+
+  if (target.type === "blueprint") {
+    db.prepare("DELETE FROM agent_links WHERE blueprint_id = ?").run(target.blueprintId);
+    db.prepare("DELETE FROM agents WHERE blueprint_id = ?").run(target.blueprintId);
+  } else {
+    db.prepare("DELETE FROM agent_links WHERE instance_id = ?").run(target.instanceId);
+    db.prepare("DELETE FROM agents WHERE instance_id = ?").run(target.instanceId);
+  }
+}
+
+/** Insert a single agent into the DB and return its DB id. */
+function insertAgent(
   db: Database.Database,
   target: ImportTarget,
-  team: TeamFile,
-): Promise<number> {
+  agent: TeamFile["agents"][number],
+  stateDir: string | null,
+): number {
+  const workspacePath =
+    target.type === "blueprint"
+      ? `blueprint://${target.blueprintId}/${agent.id}`
+      : path.join(stateDir!, "workspaces", agent.id);
+
+  const tagsJson = agent.meta?.tags ? JSON.stringify(agent.meta.tags) : null;
+  let modelValue: string | null = null;
+  if (agent.config?.model) {
+    modelValue =
+      typeof agent.config.model === "string"
+        ? agent.config.model
+        : JSON.stringify(agent.config.model);
+  }
+
+  const createdAt = now();
+
+  // Reconstruct config_json from YAML agent config + top-level fields
+  const configJsonValue = agent.config
+    ? JSON.stringify({
+        id: agent.id,
+        name: agent.name,
+        isDefault: agent.is_default,
+        ...agent.config,
+      })
+    : null;
+
+  if (target.type === "blueprint") {
+    db.prepare(
+      `INSERT INTO agents (blueprint_id, agent_id, name, model, workspace_path, is_default,
+       role, tags, notes, skills, position_x, position_y, created_at, config_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      target.blueprintId,
+      agent.id,
+      agent.name,
+      modelValue,
+      workspacePath,
+      agent.is_default ? 1 : 0,
+      agent.meta?.role ?? null,
+      tagsJson,
+      agent.meta?.notes ?? null,
+      null, // skills column (deprecated — archetype is now in config)
+      agent.meta?.position?.x ?? null,
+      agent.meta?.position?.y ?? null,
+      createdAt,
+      configJsonValue,
+    );
+  } else {
+    db.prepare(
+      `INSERT INTO agents (instance_id, agent_id, name, model, workspace_path, is_default,
+       role, tags, notes, position_x, position_y, created_at, config_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      target.instanceId,
+      agent.id,
+      agent.name,
+      modelValue,
+      workspacePath,
+      agent.is_default ? 1 : 0,
+      agent.meta?.role ?? null,
+      tagsJson,
+      agent.meta?.notes ?? null,
+      agent.meta?.position?.x ?? null,
+      agent.meta?.position?.y ?? null,
+      createdAt,
+      configJsonValue,
+    );
+  }
+
+  // Get the inserted agent's DB id
+  const inserted =
+    target.type === "blueprint"
+      ? (db
+          .prepare("SELECT id FROM agents WHERE blueprint_id = ? AND agent_id = ?")
+          .get(target.blueprintId, agent.id) as { id: number })
+      : (db
+          .prepare("SELECT id FROM agents WHERE instance_id = ? AND agent_id = ?")
+          .get(target.instanceId, agent.id) as { id: number });
+
+  return inserted.id;
+}
+
+/** Insert files from YAML for a single agent, return the set of filenames written. */
+function insertAgentFiles(
+  db: Database.Database,
+  agentDbId: number,
+  files: Record<string, string> | undefined,
+): { filesWritten: number; existingFilenames: Set<string> } {
+  const existingFilenames = new Set<string>();
   let filesWritten = 0;
 
-  // --- Phase 1: DB transaction (synchronous) ---
-  // Collect { agentDbId, agentId, agentName, existingFilenames } for gap-fill phase.
-  const agentsToGapFill: Array<{
+  if (!files) return { filesWritten, existingFilenames };
+
+  for (const [filename, content] of Object.entries(files)) {
+    const contentHash = createHash("sha256").update(content).digest("hex").slice(0, 16);
+    db.prepare(
+      `INSERT INTO agent_files (agent_id, filename, content, content_hash, updated_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(agentDbId, filename, content, contentHash, now());
+    filesWritten++;
+    existingFilenames.add(filename);
+  }
+
+  return { filesWritten, existingFilenames };
+}
+
+/** Insert links into the DB for the given target. */
+function insertLinks(db: Database.Database, target: ImportTarget, links: TeamFile["links"]): void {
+  for (const link of links) {
+    if (target.type === "blueprint") {
+      db.prepare(
+        `INSERT OR IGNORE INTO agent_links (blueprint_id, source_agent_id, target_agent_id, link_type)
+         VALUES (?, ?, ?, ?)`,
+      ).run(target.blueprintId, link.source, link.target, link.type);
+    } else {
+      db.prepare(
+        `INSERT OR IGNORE INTO agent_links (instance_id, source_agent_id, target_agent_id, link_type)
+         VALUES (?, ?, ?, ?)`,
+      ).run(target.instanceId, link.source, link.target, link.type);
+    }
+  }
+}
+
+/** Gap-fill missing EXPORTABLE_FILES from templates for all agents. */
+async function gapFillMissingFiles(
+  db: Database.Database,
+  agentsToGapFill: Array<{
     dbId: number;
     agentId: string;
     agentName: string;
     existingFilenames: Set<string>;
-  }> = [];
+  }>,
+): Promise<number> {
+  let filesWritten = 0;
 
-  db.transaction(() => {
-    // 1. Delete existing agent_files
-    const existingAgents =
-      target.type === "blueprint"
-        ? (db.prepare("SELECT id FROM agents WHERE blueprint_id = ?").all(target.blueprintId) as {
-            id: number;
-          }[])
-        : (db.prepare("SELECT id FROM agents WHERE instance_id = ?").all(target.instanceId) as {
-            id: number;
-          }[]);
-
-    for (const agent of existingAgents) {
-      db.prepare("DELETE FROM agent_files WHERE agent_id = ?").run(agent.id);
-    }
-
-    // 2. Delete existing agent_links
-    if (target.type === "blueprint") {
-      db.prepare("DELETE FROM agent_links WHERE blueprint_id = ?").run(target.blueprintId);
-      db.prepare("DELETE FROM agents WHERE blueprint_id = ?").run(target.blueprintId);
-    } else {
-      db.prepare("DELETE FROM agent_links WHERE instance_id = ?").run(target.instanceId);
-      db.prepare("DELETE FROM agents WHERE instance_id = ?").run(target.instanceId);
-    }
-
-    // 3. Insert new agents + files
-    const stateDir = target.type === "instance" ? path.dirname(target.configPath) : null;
-
-    for (const agent of team.agents) {
-      const workspacePath =
-        target.type === "blueprint"
-          ? `blueprint://${target.blueprintId}/${agent.id}`
-          : path.join(stateDir!, "workspaces", agent.id);
-
-      const tagsJson = agent.meta?.tags ? JSON.stringify(agent.meta.tags) : null;
-      let modelValue: string | null = null;
-      if (agent.config?.model) {
-        modelValue =
-          typeof agent.config.model === "string"
-            ? agent.config.model
-            : JSON.stringify(agent.config.model);
-      }
-
-      const createdAt = now();
-
-      // Reconstruct config_json from YAML agent config + top-level fields
-      const configJsonValue = agent.config
-        ? JSON.stringify({
-            id: agent.id,
-            name: agent.name,
-            isDefault: agent.is_default,
-            ...agent.config,
-          })
-        : null;
-
-      if (target.type === "blueprint") {
-        db.prepare(
-          `INSERT INTO agents (blueprint_id, agent_id, name, model, workspace_path, is_default,
-           role, tags, notes, skills, position_x, position_y, created_at, config_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).run(
-          target.blueprintId,
-          agent.id,
-          agent.name,
-          modelValue,
-          workspacePath,
-          agent.is_default ? 1 : 0,
-          agent.meta?.role ?? null,
-          tagsJson,
-          agent.meta?.notes ?? null,
-          null, // skills column (deprecated — archetype is now in config)
-          agent.meta?.position?.x ?? null,
-          agent.meta?.position?.y ?? null,
-          createdAt,
-          configJsonValue,
-        );
-      } else {
-        db.prepare(
-          `INSERT INTO agents (instance_id, agent_id, name, model, workspace_path, is_default,
-           role, tags, notes, position_x, position_y, created_at, config_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).run(
-          target.instanceId,
-          agent.id,
-          agent.name,
-          modelValue,
-          workspacePath,
-          agent.is_default ? 1 : 0,
-          agent.meta?.role ?? null,
-          tagsJson,
-          agent.meta?.notes ?? null,
-          agent.meta?.position?.x ?? null,
-          agent.meta?.position?.y ?? null,
-          createdAt,
-          configJsonValue,
-        );
-      }
-
-      // Get the inserted agent's DB id
-      const inserted =
-        target.type === "blueprint"
-          ? (db
-              .prepare("SELECT id FROM agents WHERE blueprint_id = ? AND agent_id = ?")
-              .get(target.blueprintId, agent.id) as { id: number })
-          : (db
-              .prepare("SELECT id FROM agents WHERE instance_id = ? AND agent_id = ?")
-              .get(target.instanceId, agent.id) as { id: number });
-
-      // Insert files from YAML
-      const existingFilenames = new Set<string>();
-      if (agent.files) {
-        for (const [filename, content] of Object.entries(agent.files)) {
-          const contentHash = createHash("sha256").update(content).digest("hex").slice(0, 16);
-          db.prepare(
-            `INSERT INTO agent_files (agent_id, filename, content, content_hash, updated_at)
-             VALUES (?, ?, ?, ?, ?)`,
-          ).run(inserted.id, filename, content, contentHash, now());
-          filesWritten++;
-          existingFilenames.add(filename);
-        }
-      }
-
-      // Track for gap-fill phase
-      agentsToGapFill.push({
-        dbId: inserted.id,
-        agentId: agent.id,
-        agentName: agent.name,
-        existingFilenames,
-      });
-    }
-
-    // 4. Insert links
-    for (const link of team.links) {
-      if (target.type === "blueprint") {
-        db.prepare(
-          `INSERT OR IGNORE INTO agent_links (blueprint_id, source_agent_id, target_agent_id, link_type)
-           VALUES (?, ?, ?, ?)`,
-        ).run(target.blueprintId, link.source, link.target, link.type);
-      } else {
-        db.prepare(
-          `INSERT OR IGNORE INTO agent_links (instance_id, source_agent_id, target_agent_id, link_type)
-           VALUES (?, ?, ?, ?)`,
-        ).run(target.instanceId, link.source, link.target, link.type);
-      }
-    }
-  })();
-
-  // --- Phase 2: Gap-fill missing EXPORTABLE_FILES from templates (async) ---
   const insertFile = db.prepare(
     `INSERT INTO agent_files (agent_id, filename, content, content_hash, updated_at)
      VALUES (?, ?, ?, ?, ?)`,
@@ -296,6 +289,80 @@ async function _importTeamCore(
   return filesWritten;
 }
 
+/**
+ * Core DB transaction shared by importBlueprintTeam and importInstanceTeam.
+ *
+ * After inserting the YAML-provided files, gap-fills any missing EXPORTABLE_FILES
+ * with default templates from templates/workspace/. This ensures that blueprints
+ * imported from outside claw-pilot (e.g., with only AGENTS.md + SOUL.md + USER.md)
+ * get a complete set of workspace files.
+ *
+ * Returns the number of files written (YAML + gap-filled).
+ */
+async function _importTeamCore(
+  db: Database.Database,
+  target: ImportTarget,
+  team: TeamFile,
+): Promise<number> {
+  let filesWritten = 0;
+
+  // --- Phase 1: DB transaction (synchronous) ---
+  const agentsToGapFill: Array<{
+    dbId: number;
+    agentId: string;
+    agentName: string;
+    existingFilenames: Set<string>;
+  }> = [];
+
+  db.transaction(() => {
+    // 1. Delete existing agents, files, and links
+    deleteExistingAgents(db, target);
+
+    // 2. Insert new agents + files
+    const stateDir = target.type === "instance" ? path.dirname(target.configPath) : null;
+
+    for (const agent of team.agents) {
+      const agentDbId = insertAgent(db, target, agent, stateDir);
+
+      const { filesWritten: agentFiles, existingFilenames } = insertAgentFiles(
+        db,
+        agentDbId,
+        agent.files,
+      );
+      filesWritten += agentFiles;
+
+      agentsToGapFill.push({
+        dbId: agentDbId,
+        agentId: agent.id,
+        agentName: agent.name,
+        existingFilenames,
+      });
+    }
+
+    // 3. Insert links
+    insertLinks(db, target, team.links);
+  })();
+
+  // --- Phase 2: Gap-fill missing EXPORTABLE_FILES from templates (async) ---
+  filesWritten += await gapFillMissingFiles(db, agentsToGapFill);
+
+  return filesWritten;
+}
+
+// ---------------------------------------------------------------------------
+// Dry-run file count helper
+// ---------------------------------------------------------------------------
+
+/** Compute the number of files that would be written (YAML + gap-fill). */
+function computeDryRunFileCount(team: TeamFile): number {
+  return team.agents.reduce((sum, a) => {
+    const provided = Object.keys(a.files ?? {}).filter((f) =>
+      (constants.EXPORTABLE_FILES as readonly string[]).includes(f),
+    ).length;
+    return sum + Object.keys(a.files ?? {}).length + (constants.EXPORTABLE_FILES.length - provided);
+  }, 0);
+}
+
 // ---------------------------------------------------------------------------
 // Import into blueprint (DB only)
 // ---------------------------------------------------------------------------
@@ -313,22 +380,13 @@ export async function importBlueprintTeam(
   const currentAgents = registry.listBlueprintAgents(blueprintId);
 
   if (dryRun) {
-    // Include gap-fill: each agent gets EXPORTABLE_FILES minus what's already in the YAML
-    const filesToWrite = team.agents.reduce((sum, a) => {
-      const provided = Object.keys(a.files ?? {}).filter((f) =>
-        (constants.EXPORTABLE_FILES as readonly string[]).includes(f),
-      ).length;
-      return (
-        sum + Object.keys(a.files ?? {}).length + (constants.EXPORTABLE_FILES.length - provided)
-      );
-    }, 0);
     return {
       ok: true,
       dry_run: true,
       summary: {
         agents_to_import: team.agents.length,
         links_to_import: team.links.length,
-        files_to_write: filesToWrite,
+        files_to_write: computeDryRunFileCount(team),
         agents_to_remove: currentAgents.length,
         current_agent_count: currentAgents.length,
       },
@@ -361,22 +419,13 @@ export async function importInstanceTeam(
   const currentAgents = registry.listAgents(instance.slug);
 
   if (dryRun) {
-    // Include gap-fill: each agent gets EXPORTABLE_FILES minus what's already in the YAML
-    const filesToWrite = team.agents.reduce((sum, a) => {
-      const provided = Object.keys(a.files ?? {}).filter((f) =>
-        (constants.EXPORTABLE_FILES as readonly string[]).includes(f),
-      ).length;
-      return (
-        sum + Object.keys(a.files ?? {}).length + (constants.EXPORTABLE_FILES.length - provided)
-      );
-    }, 0);
     return {
       ok: true,
       dry_run: true,
       summary: {
         agents_to_import: team.agents.length,
         links_to_import: team.links.length,
-        files_to_write: filesToWrite,
+        files_to_write: computeDryRunFileCount(team),
         agents_to_remove: currentAgents.length,
         current_agent_count: currentAgents.length,
       },
@@ -391,7 +440,28 @@ export async function importInstanceTeam(
   );
 
   // --- Phase B: Filesystem operations ---
+  await syncInstanceFilesystem(conn, registry, instance, team, xdgRuntimeDir);
 
+  return {
+    ok: true,
+    agents_imported: team.agents.length,
+    links_imported: team.links.length,
+    files_written: await syncWorkspacesToDisk(conn, path.dirname(instance.config_path), team),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Instance filesystem sync
+// ---------------------------------------------------------------------------
+
+/** Perform filesystem operations after DB import: config merge, workspace write, bus notify, restart. */
+async function syncInstanceFilesystem(
+  conn: ServerConnection,
+  registry: Registry,
+  instance: InstanceRecord,
+  team: TeamFile,
+  xdgRuntimeDir: string,
+): Promise<void> {
   // B1. Regenerate runtime.json (partial merge)
   const configRaw = await conn.readFile(instance.config_path);
   const config = JSON.parse(configRaw) as Record<string, unknown>;
@@ -403,9 +473,22 @@ export async function importInstanceTeam(
 
   // B2. Write workspace files to disk
   const stateDir = path.dirname(instance.config_path);
-  const filesWritten = await syncWorkspacesToDisk(conn, stateDir, team);
+  await syncWorkspacesToDisk(conn, stateDir, team);
 
   // B2b. Notify runtime of changed workspace files (invalidates cache + dirty flags)
+  notifyWorkspaceChanges(instance, team, stateDir);
+
+  // B3. Restart daemon (best-effort, don't fail the import)
+  try {
+    const lifecycle = new Lifecycle(conn, registry, xdgRuntimeDir);
+    await lifecycle.restart(instance.slug);
+  } catch (err) {
+    logger.warn("[team-import] best-effort restart failed after import", { error: String(err) });
+  }
+}
+
+/** Notify the runtime bus of changed workspace files. */
+function notifyWorkspaceChanges(instance: InstanceRecord, team: TeamFile, stateDir: string): void {
   try {
     const bus = getBus(instance.slug);
     for (const agent of team.agents) {
@@ -426,26 +509,31 @@ export async function importInstanceTeam(
       error: String(err),
     });
   }
-
-  // B3. Restart daemon (best-effort, don't fail the import)
-  try {
-    const lifecycle = new Lifecycle(conn, registry, xdgRuntimeDir);
-    await lifecycle.restart(instance.slug);
-  } catch (err) {
-    logger.warn("[team-import] best-effort restart failed after import", { error: String(err) });
-  }
-
-  return {
-    ok: true,
-    agents_imported: team.agents.length,
-    links_imported: team.links.length,
-    files_written: filesWritten,
-  };
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Resolve the effective model for an agent entry. */
+function resolveAgentModel(
+  agentEntry: Record<string, unknown>,
+  team: TeamFile,
+  config: Record<string, unknown>,
+): void {
+  if (agentEntry["model"]) return;
+
+  const teamModel =
+    typeof team.defaults?.model === "string"
+      ? team.defaults.model
+      : typeof team.defaults?.model === "object" && team.defaults?.model !== null
+        ? (team.defaults.model as { primary?: string }).primary
+        : undefined;
+  const fallback = teamModel ?? (config["defaultModel"] as string | undefined);
+  if (fallback) {
+    agentEntry["model"] = fallback;
+  }
+}
 
 /**
  * Merge team data into an existing runtime.json config.
@@ -480,19 +568,8 @@ function mergeTeamIntoRuntimeConfig(config: Record<string, unknown>, team: TeamF
       }
     }
 
-    // Ensure every agent has a model — fall back to team defaults or instance default
-    if (!entry["model"]) {
-      const teamModel =
-        typeof team.defaults?.model === "string"
-          ? team.defaults.model
-          : typeof team.defaults?.model === "object" && team.defaults?.model !== null
-            ? (team.defaults.model as { primary?: string }).primary
-            : undefined;
-      const fallback = teamModel ?? (config["defaultModel"] as string | undefined);
-      if (fallback) {
-        entry["model"] = fallback;
-      }
-    }
+    // Ensure every agent has a model
+    resolveAgentModel(entry, team, config);
 
     // Inject subagents.allowAgents from spawn links
     // Targets starting with "@" are archetype references — strip the prefix for allowList

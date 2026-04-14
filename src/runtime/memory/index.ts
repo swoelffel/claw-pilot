@@ -97,72 +97,15 @@ export function rebuildMemoryIndex(
   if (!fs.existsSync(wsDir)) return; // No workspace found — nothing to index
 
   // Collect files to index
-  const filesToIndex: Array<{ source: string; filePath: string }> = [];
-
-  // MEMORY.md
-  const memoryMd = path.join(wsDir, "MEMORY.md");
-  if (fs.existsSync(memoryMd)) {
-    filesToIndex.push({ source: "MEMORY.md", filePath: memoryMd });
-  }
-
-  // memory/*.md (alphabetical order)
-  const memoryDir = path.join(wsDir, "memory");
-  if (fs.existsSync(memoryDir)) {
-    try {
-      if (fs.statSync(memoryDir).isDirectory()) {
-        const files = fs
-          .readdirSync(memoryDir)
-          .filter((f) => f.endsWith(".md"))
-          .sort();
-        for (const filename of files) {
-          filesToIndex.push({
-            source: `memory/${filename}`,
-            filePath: path.join(memoryDir, filename),
-          });
-        }
-      }
-    } catch (err) {
-      logger.debug("[memory:index] directory inaccessible", { error: String(err) });
-      // Directory inaccessible — skip
-    }
-  }
-
+  const filesToIndex = scanMemoryFiles(wsDir);
   if (filesToIndex.length === 0) return;
 
   // Full rebuild: delete all existing chunks, then re-insert
   memoryDb.exec("DELETE FROM memory_chunks");
 
-  const insert = memoryDb.prepare("INSERT INTO memory_chunks (source, chunk) VALUES (?, ?)");
-
-  const insertMany = memoryDb.transaction(
-    (entries: Array<{ source: string; chunks: string[] }>) => {
-      for (const entry of entries) {
-        for (const chunk of entry.chunks) {
-          insert.run(entry.source, chunk);
-        }
-      }
-    },
-  );
-
-  const entries: Array<{ source: string; chunks: string[] }> = [];
-
-  for (const { source, filePath } of filesToIndex) {
-    try {
-      const rawContent = fs.readFileSync(filePath, "utf-8");
-      // Strip decay scores [x.x] before indexing to avoid polluting FTS5 searches
-      const content = rawContent.replace(/^- \[\d+\.\d+\]\s*/gm, "- ");
-      const chunks = chunkText(content, CHUNK_SIZE, CHUNK_OVERLAP);
-      if (chunks.length > 0) {
-        entries.push({ source, chunks });
-      }
-    } catch (err) {
-      logger.debug("[memory:index] file unreadable", { error: String(err) });
-      // File unreadable — skip silently
-    }
-  }
-
+  const entries = chunkMemoryFiles(filesToIndex);
   if (entries.length > 0) {
-    insertMany(entries);
+    insertMemoryChunks(memoryDb, entries);
   }
 }
 
@@ -206,6 +149,81 @@ export function searchMemory(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/** Scan the workspace directory for MEMORY.md and memory/*.md files. */
+function scanMemoryFiles(wsDir: string): Array<{ source: string; filePath: string }> {
+  const filesToIndex: Array<{ source: string; filePath: string }> = [];
+
+  // MEMORY.md
+  const memoryMd = path.join(wsDir, "MEMORY.md");
+  if (fs.existsSync(memoryMd)) {
+    filesToIndex.push({ source: "MEMORY.md", filePath: memoryMd });
+  }
+
+  // memory/*.md (alphabetical order)
+  const memoryDir = path.join(wsDir, "memory");
+  if (fs.existsSync(memoryDir)) {
+    try {
+      if (fs.statSync(memoryDir).isDirectory()) {
+        const files = fs
+          .readdirSync(memoryDir)
+          .filter((f) => f.endsWith(".md"))
+          .sort();
+        for (const filename of files) {
+          filesToIndex.push({
+            source: `memory/${filename}`,
+            filePath: path.join(memoryDir, filename),
+          });
+        }
+      }
+    } catch (err) {
+      logger.debug("[memory:index] directory inaccessible", { error: String(err) });
+    }
+  }
+
+  return filesToIndex;
+}
+
+/** Read and chunk each memory file, stripping decay scores. */
+function chunkMemoryFiles(
+  filesToIndex: Array<{ source: string; filePath: string }>,
+): Array<{ source: string; chunks: string[] }> {
+  const entries: Array<{ source: string; chunks: string[] }> = [];
+
+  for (const { source, filePath } of filesToIndex) {
+    try {
+      const rawContent = fs.readFileSync(filePath, "utf-8");
+      // Strip decay scores [x.x] before indexing to avoid polluting FTS5 searches
+      const content = rawContent.replace(/^- \[\d+\.\d+\]\s*/gm, "- ");
+      const chunks = chunkText(content, CHUNK_SIZE, CHUNK_OVERLAP);
+      if (chunks.length > 0) {
+        entries.push({ source, chunks });
+      }
+    } catch (err) {
+      logger.debug("[memory:index] file unreadable", { error: String(err) });
+    }
+  }
+
+  return entries;
+}
+
+/** Insert pre-chunked entries into the FTS5 memory_chunks table in a single transaction. */
+function insertMemoryChunks(
+  memoryDb: Database.Database,
+  entries: Array<{ source: string; chunks: string[] }>,
+): void {
+  const insert = memoryDb.prepare("INSERT INTO memory_chunks (source, chunk) VALUES (?, ?)");
+
+  const insertMany = memoryDb.transaction((rows: Array<{ source: string; chunks: string[] }>) => {
+    for (const entry of rows) {
+      for (const chunk of entry.chunks) {
+        insert.run(entry.source, chunk);
+      }
+    }
+  });
+
+  insertMany(entries);
+}
+
 /**
  * Split text into overlapping chunks of approximately `size` characters.
  * Tries to split on paragraph boundaries (\n\n) when possible.
@@ -223,19 +241,7 @@ function chunkText(text: string, size: number, overlap: number): string[] {
     if (current.length + trimmed.length + 2 <= size) {
       current = current ? `${current}\n\n${trimmed}` : trimmed;
     } else {
-      if (current) {
-        chunks.push(current);
-        // Keep overlap: last `overlap` chars of current as start of next chunk
-        current = current.length > overlap ? current.slice(-overlap) + "\n\n" + trimmed : trimmed;
-      } else {
-        // Single paragraph larger than chunk size — split by characters
-        let start = 0;
-        while (start < trimmed.length) {
-          chunks.push(trimmed.slice(start, start + size));
-          start += size - overlap;
-        }
-        current = "";
-      }
+      current = flushParagraph(chunks, current, trimmed, size, overlap);
     }
   }
 
@@ -244,4 +250,32 @@ function chunkText(text: string, size: number, overlap: number): string[] {
   }
 
   return chunks.filter((c) => c.trim().length > 0);
+}
+
+/** Push the current accumulator and start the next chunk with overlap. */
+function flushParagraph(
+  chunks: string[],
+  current: string,
+  trimmed: string,
+  size: number,
+  overlap: number,
+): string {
+  if (current) {
+    chunks.push(current);
+    // Keep overlap: last `overlap` chars of current as start of next chunk
+    return current.length > overlap ? current.slice(-overlap) + "\n\n" + trimmed : trimmed;
+  }
+
+  // Single paragraph larger than chunk size — split by characters
+  splitLargeParagraph(chunks, trimmed, size, overlap);
+  return "";
+}
+
+/** Split a single oversized paragraph into character-based chunks. */
+function splitLargeParagraph(chunks: string[], text: string, size: number, overlap: number): void {
+  let start = 0;
+  while (start < text.length) {
+    chunks.push(text.slice(start, start + size));
+    start += size - overlap;
+  }
 }

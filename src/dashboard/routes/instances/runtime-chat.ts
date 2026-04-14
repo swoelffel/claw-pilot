@@ -23,46 +23,51 @@ interface ApiErrorDetail {
   httpStatus: number;
 }
 
+/** Build an ApiErrorDetail from an AI SDK APICallError-shaped record. */
+function buildApiCallErrorDetail(rec: Record<string, unknown>): ApiErrorDetail {
+  const statusCode = rec.statusCode as number;
+  const responseBody = typeof rec.responseBody === "string" ? rec.responseBody : undefined;
+  const url = typeof rec.url === "string" ? rec.url : undefined;
+  const data = rec.data as { error?: { message?: string } } | undefined;
+
+  const providerMessage = data?.error?.message ?? parseResponseBodyMessage(responseBody);
+
+  const userMessage = providerMessage
+    ? `Provider error (${statusCode}): ${providerMessage}`
+    : `Provider returned HTTP ${statusCode}`;
+
+  const logMessage =
+    `statusCode=${statusCode}` +
+    (url ? ` url=${url}` : "") +
+    (responseBody ? ` body=${responseBody}` : "");
+
+  return { userMessage, logMessage, httpStatus: 502 };
+}
+
+/** Walk to the next error in the cause chain (Error.cause or RetryError.errors). */
+function nextCauseInChain(current: unknown): unknown {
+  if (current instanceof Error) return current.cause;
+  const rec = current as Record<string, unknown>;
+  if (Array.isArray(rec.errors) && rec.errors.length > 0) {
+    return rec.errors[rec.errors.length - 1];
+  }
+  return undefined;
+}
+
 /**
  * Walk the error cause chain to find an AI SDK APICallError and extract
  * the provider's actual error message, status code, and response body.
  */
 function extractApiErrorDetail(err: unknown): ApiErrorDetail {
-  // Walk the cause chain looking for an error with statusCode + responseBody
-  // (AI SDK's APICallError shape).
   let current: unknown = err;
   for (let depth = 0; depth < 10 && current; depth++) {
     const rec = current as Record<string, unknown>;
     if (typeof rec.statusCode === "number") {
-      const statusCode = rec.statusCode as number;
-      const responseBody = typeof rec.responseBody === "string" ? rec.responseBody : undefined;
-      const url = typeof rec.url === "string" ? rec.url : undefined;
-      const data = rec.data as { error?: { message?: string } } | undefined;
-
-      const providerMessage = data?.error?.message ?? parseResponseBodyMessage(responseBody);
-
-      const userMessage = providerMessage
-        ? `Provider error (${statusCode}): ${providerMessage}`
-        : `Provider returned HTTP ${statusCode}`;
-
-      const logMessage =
-        `statusCode=${statusCode}` +
-        (url ? ` url=${url}` : "") +
-        (responseBody ? ` body=${responseBody}` : "");
-
-      return { userMessage, logMessage, httpStatus: 502 };
+      return buildApiCallErrorDetail(rec);
     }
-    // Walk: cause property (standard Error chain) or errors array (RetryError)
-    if (current instanceof Error) {
-      current = current.cause;
-    } else if (Array.isArray(rec.errors) && rec.errors.length > 0) {
-      current = rec.errors[rec.errors.length - 1];
-    } else {
-      break;
-    }
+    current = nextCauseInChain(current);
   }
 
-  // No APICallError found — return the original message
   const message = err instanceof Error ? err.message : String(err);
   return {
     userMessage: message || "Agent execution failed",

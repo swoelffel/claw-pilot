@@ -99,42 +99,8 @@ function safeTokenCompare(a: string, b: string): boolean {
   return timingSafeEqual(Buffer.from(a, "utf-8"), Buffer.from(b, "utf-8"));
 }
 
-/**
- * Build the wired Hono app without starting an HTTP server.
- * Useful for testing: call this to get the app, then start a server manually
- * on port 0 to get an OS-assigned port.
- *
- * Does NOT:
- * - Call serve()
- * - Create a WebSocket server
- * - Register a SIGTERM handler
- *
- * DOES:
- * - Set up the session cleanup interval (returned via cleanup())
- */
-export async function buildDashboardApp(options: DashboardOptions): Promise<DashboardAppResult> {
-  const { token, registry, conn, sessionStore, db } = options;
-  // Capture startup timestamp for uptime reporting
-  const startedAt = Date.now();
-  const app = new Hono();
-
-  // Resolve XDG_RUNTIME_DIR once at startup for the current user
-  const xdgRuntimeDir = await resolveXdgRuntimeDir(conn);
-
-  const health = new HealthChecker(conn, registry, xdgRuntimeDir);
-  const lifecycle = new Lifecycle(conn, registry, xdgRuntimeDir);
-  const monitor = new Monitor(health, undefined, db);
-  const selfUpdateChecker = new SelfUpdateChecker();
-  const selfUpdater = new SelfUpdater(conn, lifecycle, registry);
-  const tokenCache = new TokenCache(conn);
-  const modelDiscovery = new ModelDiscoveryService(db);
-
-  // Periodic session cleanup (every 60s)
-  const cleanupInterval = setInterval(() => {
-    sessionStore.cleanup();
-  }, constants.SESSION_CLEANUP_INTERVAL_MS);
-  if (cleanupInterval.unref) cleanupInterval.unref();
-
+/** Register public healthcheck, security headers, request-id, and rate-limit middleware. */
+function registerCoreMiddleware(app: Hono, startedAt: number): void {
   // Public healthcheck — no auth required (for systemd, load balancers, monitoring)
   app.get("/health", (c) =>
     c.json({
@@ -171,6 +137,45 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
     "/api/self/update",
     createRateLimiter({ maxRequests: 1, windowMs: constants.SELF_UPDATE_RATE_LIMIT_MS }),
   );
+}
+
+/**
+ * Build the wired Hono app without starting an HTTP server.
+ * Useful for testing: call this to get the app, then start a server manually
+ * on port 0 to get an OS-assigned port.
+ *
+ * Does NOT:
+ * - Call serve()
+ * - Create a WebSocket server
+ * - Register a SIGTERM handler
+ *
+ * DOES:
+ * - Set up the session cleanup interval (returned via cleanup())
+ */
+export async function buildDashboardApp(options: DashboardOptions): Promise<DashboardAppResult> {
+  const { token, registry, conn, sessionStore, db } = options;
+  // Capture startup timestamp for uptime reporting
+  const startedAt = Date.now();
+  const app = new Hono();
+
+  // Resolve XDG_RUNTIME_DIR once at startup for the current user
+  const xdgRuntimeDir = await resolveXdgRuntimeDir(conn);
+
+  const health = new HealthChecker(conn, registry, xdgRuntimeDir);
+  const lifecycle = new Lifecycle(conn, registry, xdgRuntimeDir);
+  const monitor = new Monitor(health, undefined, db);
+  const selfUpdateChecker = new SelfUpdateChecker();
+  const selfUpdater = new SelfUpdater(conn, lifecycle, registry);
+  const tokenCache = new TokenCache(conn);
+  const modelDiscovery = new ModelDiscoveryService(db);
+
+  // Periodic session cleanup (every 60s)
+  const cleanupInterval = setInterval(() => {
+    sessionStore.cleanup();
+  }, constants.SESSION_CLEANUP_INTERVAL_MS);
+  if (cleanupInterval.unref) cleanupInterval.unref();
+
+  registerCoreMiddleware(app, startedAt);
 
   // --- API routes (delegated to route modules) ---
   const deps: RouteDeps = {

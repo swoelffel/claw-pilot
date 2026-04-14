@@ -13,30 +13,32 @@ import {
   importInstanceTeam,
   importBlueprintTeam,
 } from "../core/team-import.js";
+import type { TeamFile } from "../core/team-schema.js";
 import type { Registry } from "../core/registry.js";
 import type { ServerConnection } from "../server/connection.js";
 import type Database from "better-sqlite3";
 
 // ---------------------------------------------------------------------------
-// Shared import handler
+// Import types
 // ---------------------------------------------------------------------------
 
 type ImportTarget =
   | { kind: "blueprint"; blueprintArg: string }
   | { kind: "instance"; slug: string };
 
-async function handleImport(
-  target: ImportTarget,
-  filePath: string,
-  opts: { dryRun?: boolean; yes?: boolean },
-  deps: {
-    registry: Registry;
-    conn: ServerConnection;
-    db: Database.Database;
-    xdgRuntimeDir: string;
-  },
-): Promise<void> {
-  // Read and validate file
+interface ImportDeps {
+  registry: Registry;
+  conn: ServerConnection;
+  db: Database.Database;
+  xdgRuntimeDir: string;
+}
+
+// ---------------------------------------------------------------------------
+// Extracted import helpers
+// ---------------------------------------------------------------------------
+
+/** Read and validate a team YAML file. Returns the parsed team data. Throws on failure. */
+async function validateTeamFile(filePath: string): Promise<TeamFile> {
   logger.step(`Validating ${filePath}...`);
   let yamlContent: string;
   try {
@@ -56,114 +58,125 @@ async function handleImport(
     );
   }
 
-  const team = parsed.data;
-  const fileCount = team.agents.reduce((sum, a) => sum + Object.keys(a.files ?? {}).length, 0);
+  return parsed.data;
+}
 
-  // Resolve target entity (blueprint or instance)
-  let targetName: string;
-  let currentAgentCount: number;
-
+/** Resolve import target to entity name and current agent count. */
+function resolveImportTarget(
+  target: ImportTarget,
+  deps: ImportDeps,
+): { targetName: string; currentAgentCount: number; entityId: number } {
   if (target.kind === "blueprint") {
     const blueprints = deps.registry.listBlueprints();
     const bp =
       blueprints.find((b) => b.name === target.blueprintArg) ??
       blueprints.find((b) => b.id === Number(target.blueprintArg));
-    if (!bp) {
-      throw new CliError(`Blueprint "${target.blueprintArg}" not found.`);
-    }
-    targetName = `blueprint "${bp.name}"`;
-    currentAgentCount = deps.registry.listBlueprintAgents(bp.id).length;
+    if (!bp) throw new CliError(`Blueprint "${target.blueprintArg}" not found.`);
 
-    console.log(`  Format version: ${team.version}`);
-    if (team.source) console.log(`  Source: ${team.source}`);
+    return {
+      targetName: `blueprint "${bp.name}"`,
+      currentAgentCount: deps.registry.listBlueprintAgents(bp.id).length,
+      entityId: bp.id,
+    };
+  }
+
+  const instance = deps.registry.getInstance(target.slug);
+  if (!instance) throw new CliError(`Instance "${target.slug}" not found.`);
+
+  return {
+    targetName: `instance "${target.slug}"`,
+    currentAgentCount: deps.registry.listAgents(target.slug).length,
+    entityId: instance.id,
+  };
+}
+
+/** Display summary, ask for confirmation, and execute the import. */
+async function confirmAndExecuteImport(
+  target: ImportTarget,
+  team: TeamFile,
+  opts: { dryRun?: boolean; yes?: boolean },
+  deps: ImportDeps,
+  targetName: string,
+  currentAgentCount: number,
+  entityId: number,
+): Promise<void> {
+  const fileCount = team.agents.reduce((sum, a) => sum + Object.keys(a.files ?? {}).length, 0);
+
+  // Display summary
+  console.log(`  Format version: ${team.version}`);
+  if (team.source) console.log(`  Source: ${team.source}`);
+  console.log(`  Agents: ${team.agents.length} (current: ${currentAgentCount} — will be replaced)`);
+  console.log(`  Links: ${team.links.length}`);
+  console.log(`  Files: ${fileCount}`);
+
+  if (opts.dryRun) {
+    console.log(chalk.dim("\nDry run complete. No changes made."));
+    return;
+  }
+
+  // Confirmation prompt
+  if (!opts.yes) {
     console.log(
-      `  Agents: ${team.agents.length} (current: ${currentAgentCount} — will be replaced)`,
+      chalk.yellow(`\nWARNING: This will replace ALL agents, files, and links for ${targetName}.`),
     );
-    console.log(`  Links: ${team.links.length}`);
-    console.log(`  Files: ${fileCount}`);
-
-    if (opts.dryRun) {
-      console.log(chalk.dim("\nDry run complete. No changes made."));
+    console.log(chalk.yellow("This action cannot be undone.\n"));
+    const proceed = await confirm({ message: "Proceed?", default: false });
+    if (!proceed) {
+      console.log("Aborted.");
       return;
     }
+  }
 
-    if (!opts.yes) {
-      console.log(
-        chalk.yellow(
-          `\nWARNING: This will replace ALL agents, files, and links for ${targetName}.`,
-        ),
-      );
-      console.log(chalk.yellow("This action cannot be undone.\n"));
-      const proceed = await confirm({ message: "Proceed?", default: false });
-      if (!proceed) {
-        console.log("Aborted.");
-        return;
-      }
-    }
-
-    logger.step("Importing...");
-    const result = await importBlueprintTeam(deps.db, deps.registry, bp.id, team);
+  // Execute import
+  logger.step("Importing...");
+  if (target.kind === "blueprint") {
+    const result = await importBlueprintTeam(deps.db, deps.registry, entityId, team);
     if ("agents_imported" in result) {
-      logger.success(`Removed ${currentAgentCount} existing agents`);
-      logger.success(`Created ${result.agents_imported} agents`);
-      logger.success(`Written ${result.files_written} workspace files`);
-      logger.success(`Created ${result.links_imported} links`);
-      console.log(chalk.green("\nImport complete."));
+      logImportResult(result, currentAgentCount);
     }
   } else {
     const instance = deps.registry.getInstance(target.slug);
-    if (!instance) {
-      throw new CliError(`Instance "${target.slug}" not found.`);
-    }
-    targetName = `instance "${target.slug}"`;
-    currentAgentCount = deps.registry.listAgents(target.slug).length;
-
-    console.log(`  Format version: ${team.version}`);
-    if (team.source) console.log(`  Source: ${team.source}`);
-    console.log(
-      `  Agents: ${team.agents.length} (current: ${currentAgentCount} — will be replaced)`,
-    );
-    console.log(`  Links: ${team.links.length}`);
-    console.log(`  Files: ${fileCount}`);
-
-    if (opts.dryRun) {
-      console.log(chalk.dim("\nDry run complete. No changes made."));
-      return;
-    }
-
-    if (!opts.yes) {
-      console.log(
-        chalk.yellow(
-          `\nWARNING: This will replace ALL agents, files, and links for ${targetName}.`,
-        ),
-      );
-      console.log(chalk.yellow("This action cannot be undone.\n"));
-      const proceed = await confirm({ message: "Proceed?", default: false });
-      if (!proceed) {
-        console.log("Aborted.");
-        return;
-      }
-    }
-
-    logger.step("Importing...");
     const result = await importInstanceTeam(
       deps.db,
       deps.registry,
       deps.conn,
-      instance,
+      instance!,
       team,
       deps.xdgRuntimeDir,
     );
     if ("agents_imported" in result) {
-      logger.success(`Removed ${currentAgentCount} existing agents`);
-      logger.success(`Created ${result.agents_imported} agents`);
-      logger.success(`Written ${result.files_written} workspace files`);
-      logger.success(`Created ${result.links_imported} links`);
+      logImportResult(result, currentAgentCount);
       logger.success("Regenerated runtime.json");
       logger.success("Restarted runtime");
-      console.log(chalk.green("\nImport complete."));
     }
   }
+  console.log(chalk.green("\nImport complete."));
+}
+
+/** Log import result counts. */
+function logImportResult(
+  result: { agents_imported: number; files_written: number; links_imported: number },
+  currentAgentCount: number,
+): void {
+  logger.success(`Removed ${currentAgentCount} existing agents`);
+  logger.success(`Created ${result.agents_imported} agents`);
+  logger.success(`Written ${result.files_written} workspace files`);
+  logger.success(`Created ${result.links_imported} links`);
+}
+
+// ---------------------------------------------------------------------------
+// Shared import handler
+// ---------------------------------------------------------------------------
+
+async function handleImport(
+  target: ImportTarget,
+  filePath: string,
+  opts: { dryRun?: boolean; yes?: boolean },
+  deps: ImportDeps,
+): Promise<void> {
+  const team = await validateTeamFile(filePath);
+  const { targetName, currentAgentCount, entityId } = resolveImportTarget(target, deps);
+  await confirmAndExecuteImport(target, team, opts, deps, targetName, currentAgentCount, entityId);
 }
 
 // ---------------------------------------------------------------------------

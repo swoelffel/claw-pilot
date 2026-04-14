@@ -130,7 +130,7 @@ function convertLine(line: string): string {
 
 /**
  * Convert inline Markdown formatting within a single line.
- * Processes: inline code, bold, italic.
+ * Processes: inline code, bold, italic, strikethrough.
  */
 function convertInline(text: string): string {
   // We process token by token to avoid double-escaping
@@ -138,65 +138,70 @@ function convertInline(text: string): string {
   let i = 0;
 
   while (i < text.length) {
-    // Inline code: `code`
-    if (text[i] === "`") {
-      const end = text.indexOf("`", i + 1);
-      if (end !== -1) {
-        const code = text.slice(i + 1, end).replace(/`/g, "\\`");
-        result += `\`${code}\``;
-        i = end + 1;
-        continue;
-      }
+    const match = tryConvertInlineToken(text, i);
+    if (match) {
+      result += match.output;
+      i = match.next;
+    } else {
+      result += escapeTelegramV2(text[i]!);
+      i++;
     }
-
-    // Bold: **text** or __text__
-    if (text.startsWith("**", i)) {
-      const end = text.indexOf("**", i + 2);
-      if (end !== -1) {
-        const inner = escapeTelegramV2(text.slice(i + 2, end));
-        result += `*${inner}*`;
-        i = end + 2;
-        continue;
-      }
-    }
-
-    // Italic: *text* (single asterisk, not double)
-    if (text[i] === "*" && text[i + 1] !== "*") {
-      const end = text.indexOf("*", i + 1);
-      if (end !== -1 && text[end + 1] !== "*") {
-        const inner = escapeTelegramV2(text.slice(i + 1, end));
-        result += `_${inner}_`;
-        i = end + 1;
-        continue;
-      }
-    }
-
-    // Italic: _text_ (single underscore)
-    if (text[i] === "_" && text[i + 1] !== "_") {
-      const end = text.indexOf("_", i + 1);
-      if (end !== -1 && text[end + 1] !== "_") {
-        const inner = escapeTelegramV2(text.slice(i + 1, end));
-        result += `_${inner}_`;
-        i = end + 1;
-        continue;
-      }
-    }
-
-    // Strikethrough: ~~text~~
-    if (text.startsWith("~~", i)) {
-      const end = text.indexOf("~~", i + 2);
-      if (end !== -1) {
-        const inner = escapeTelegramV2(text.slice(i + 2, end));
-        result += `~${inner}~`;
-        i = end + 2;
-        continue;
-      }
-    }
-
-    // Plain character — escape it
-    result += escapeTelegramV2(text[i]!);
-    i++;
   }
 
   return result;
+}
+
+/** Result of a single inline-formatting match attempt. */
+interface InlineMatch {
+  output: string;
+  next: number;
+}
+
+/**
+ * Try to match an inline Markdown token at position `i`.
+ * Returns the converted output and the next scan position, or undefined if no match.
+ */
+function tryConvertInlineToken(text: string, i: number): InlineMatch | undefined {
+  // Inline code: `code`
+  if (text[i] === "`") {
+    const end = text.indexOf("`", i + 1);
+    if (end !== -1) {
+      const code = text.slice(i + 1, end).replace(/`/g, "\\`");
+      return { output: `\`${code}\``, next: end + 1 };
+    }
+  }
+
+  // Bold: **text**
+  if (text.startsWith("**", i)) {
+    const end = text.indexOf("**", i + 2);
+    if (end !== -1) {
+      return { output: `*${escapeTelegramV2(text.slice(i + 2, end))}*`, next: end + 2 };
+    }
+  }
+
+  // Strikethrough: ~~text~~
+  if (text.startsWith("~~", i)) {
+    const end = text.indexOf("~~", i + 2);
+    if (end !== -1) {
+      return { output: `~${escapeTelegramV2(text.slice(i + 2, end))}~`, next: end + 2 };
+    }
+  }
+
+  // Italic: *text* (single asterisk, not double)
+  if (text[i] === "*" && text[i + 1] !== "*") {
+    const end = text.indexOf("*", i + 1);
+    if (end !== -1 && text[end + 1] !== "*") {
+      return { output: `_${escapeTelegramV2(text.slice(i + 1, end))}_`, next: end + 1 };
+    }
+  }
+
+  // Italic: _text_ (single underscore)
+  if (text[i] === "_" && text[i + 1] !== "_") {
+    const end = text.indexOf("_", i + 1);
+    if (end !== -1 && text[end + 1] !== "_") {
+      return { output: `_${escapeTelegramV2(text.slice(i + 1, end))}_`, next: end + 1 };
+    }
+  }
+
+  return undefined;
 }

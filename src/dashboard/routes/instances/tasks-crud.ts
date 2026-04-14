@@ -57,6 +57,127 @@ const UpdateTaskSchema = z.object({
   parentId: z.number().nullable().optional(),
 });
 
+// ---------------------------------------------------------------------------
+// Extracted route handlers
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type HonoContext = any;
+type DB = RouteDeps["db"];
+
+/** Handle POST /tasks — create a new task. */
+async function handleCreateTask(
+  c: HonoContext,
+  db: DB,
+  registry: RouteDeps["registry"],
+): Promise<Response> {
+  const { slug } = getInstanceContext(c);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = CreateTaskSchema.safeParse(body);
+  if (!parsed.success) return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+  const data = parsed.data;
+
+  let row: TaskRow;
+  try {
+    row = createTask(db, {
+      instanceSlug: slug,
+      title: data.title,
+      ...(data.description !== undefined ? { description: data.description } : {}),
+      ...(data.priority !== undefined ? { priority: data.priority } : {}),
+      ...(data.assigneeId !== undefined ? { assigneeId: data.assigneeId } : {}),
+      ...(data.labels !== undefined ? { labels: data.labels } : {}),
+      createdBy: data.createdBy ?? "user",
+      ...(data.type !== undefined ? { type: data.type } : {}),
+      ...(data.parentId !== undefined ? { parentId: data.parentId } : {}),
+    });
+  } catch (err) {
+    return apiError(c, 400, "INVALID_PARENT", String(err));
+  }
+
+  insertActivity(db, {
+    taskId: row.id,
+    activityType: "created",
+    actorId: data.createdBy ?? "user",
+    details: { status: row.status, priority: row.priority },
+  });
+
+  upsertSearchEntry(db, {
+    entityType: "task",
+    entityId: String(row.id),
+    title: row.title,
+    subtitle: `${slug} · ${row.status}`,
+    routeHash: `/instances/${slug}/tasks`,
+  });
+
+  if (data.assigneeId) {
+    notifyAndWakeAgent(db, registry, slug, data.assigneeId, row.id, row.title, row.description);
+  }
+
+  return c.json(toJson(row), 201);
+}
+
+/** Handle PATCH /tasks/:id — update an existing task. */
+async function handleUpdateTask(
+  c: HonoContext,
+  db: DB,
+  registry: RouteDeps["registry"],
+): Promise<Response> {
+  const { slug } = getInstanceContext(c);
+  const id = Number(c.req.param("id"));
+  const existing = getTask(db, id);
+  if (!existing || existing.instance_slug !== slug) {
+    return apiError(c, 404, "NOT_FOUND", "Task not found");
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = UpdateTaskSchema.safeParse(body);
+  if (!parsed.success) return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+  const data = parsed.data;
+
+  let updated: TaskRow | undefined;
+  try {
+    updated = updateTask(db, id, {
+      ...(data.title !== undefined ? { title: data.title } : {}),
+      ...(data.description !== undefined ? { description: data.description } : {}),
+      ...(data.priority !== undefined ? { priority: data.priority } : {}),
+      ...(data.assigneeId !== undefined ? { assigneeId: data.assigneeId } : {}),
+      ...(data.labels !== undefined ? { labels: data.labels } : {}),
+      ...(data.parentId !== undefined ? { parentId: data.parentId } : {}),
+    });
+  } catch (err) {
+    return apiError(c, 400, "INVALID_PARENT", String(err));
+  }
+  if (!updated) return apiError(c, 404, "NOT_FOUND", "Task not found");
+
+  recordFieldChanges(db, id, "user", existing, {
+    ...(data.title !== undefined ? { title: data.title } : {}),
+    ...(data.description !== undefined ? { description: data.description } : {}),
+    ...(data.priority !== undefined ? { priority: data.priority } : {}),
+    ...(data.assigneeId !== undefined ? { assigneeId: data.assigneeId } : {}),
+    ...(data.labels !== undefined ? { labels: data.labels } : {}),
+    ...(data.parentId !== undefined ? { parentId: data.parentId } : {}),
+  });
+
+  upsertSearchEntry(db, {
+    entityType: "task",
+    entityId: String(id),
+    title: updated.title,
+    subtitle: `${slug} · ${updated.status}`,
+    routeHash: `/instances/${slug}/tasks`,
+  });
+
+  if (
+    data.assigneeId !== undefined &&
+    data.assigneeId !== null &&
+    data.assigneeId !== existing.assignee_id
+  ) {
+    notifyAndWakeAgent(db, registry, slug, data.assigneeId, id, updated.title, updated.description);
+  }
+
+  return c.json(toJson(updated));
+}
+
 export function registerTaskCrudRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, db } = deps;
 
@@ -132,126 +253,14 @@ export function registerTaskCrudRoutes(app: Hono, deps: RouteDeps): void {
   // POST /api/instances/:slug/tasks
   // ---------------------------------------------------------------------------
   app.post("/api/instances/:slug/tasks", async (c) => {
-    const { slug } = getInstanceContext(c);
-
-    const body = await c.req.json().catch(() => null);
-    const parsed = CreateTaskSchema.safeParse(body);
-    if (!parsed.success) {
-      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
-    }
-    const data = parsed.data;
-
-    let row: TaskRow;
-    try {
-      row = createTask(db, {
-        instanceSlug: slug,
-        title: data.title,
-        ...(data.description !== undefined ? { description: data.description } : {}),
-        ...(data.priority !== undefined ? { priority: data.priority } : {}),
-        ...(data.assigneeId !== undefined ? { assigneeId: data.assigneeId } : {}),
-        ...(data.labels !== undefined ? { labels: data.labels } : {}),
-        createdBy: data.createdBy ?? "user",
-        ...(data.type !== undefined ? { type: data.type } : {}),
-        ...(data.parentId !== undefined ? { parentId: data.parentId } : {}),
-      });
-    } catch (err) {
-      return apiError(c, 400, "INVALID_PARENT", String(err));
-    }
-
-    // Log activity
-    insertActivity(db, {
-      taskId: row.id,
-      activityType: "created",
-      actorId: data.createdBy ?? "user",
-      details: { status: row.status, priority: row.priority },
-    });
-
-    upsertSearchEntry(db, {
-      entityType: "task",
-      entityId: String(row.id),
-      title: row.title,
-      subtitle: `${slug} · ${row.status}`,
-      routeHash: `/instances/${slug}/tasks`,
-    });
-
-    // Inject notification + trigger prompt loop if task was created with an assignee
-    if (data.assigneeId) {
-      notifyAndWakeAgent(db, registry, slug, data.assigneeId, row.id, row.title, row.description);
-    }
-
-    return c.json(toJson(row), 201);
+    return handleCreateTask(c, db, registry);
   });
 
   // ---------------------------------------------------------------------------
   // PATCH /api/instances/:slug/tasks/:id
   // ---------------------------------------------------------------------------
   app.patch("/api/instances/:slug/tasks/:id", async (c) => {
-    const { slug } = getInstanceContext(c);
-
-    const id = Number(c.req.param("id"));
-    const existing = getTask(db, id);
-    if (!existing || existing.instance_slug !== slug) {
-      return apiError(c, 404, "NOT_FOUND", "Task not found");
-    }
-
-    const body = await c.req.json().catch(() => null);
-    const parsed = UpdateTaskSchema.safeParse(body);
-    if (!parsed.success) {
-      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
-    }
-    const data = parsed.data;
-
-    let updated: TaskRow | undefined;
-    try {
-      updated = updateTask(db, id, {
-        ...(data.title !== undefined ? { title: data.title } : {}),
-        ...(data.description !== undefined ? { description: data.description } : {}),
-        ...(data.priority !== undefined ? { priority: data.priority } : {}),
-        ...(data.assigneeId !== undefined ? { assigneeId: data.assigneeId } : {}),
-        ...(data.labels !== undefined ? { labels: data.labels } : {}),
-        ...(data.parentId !== undefined ? { parentId: data.parentId } : {}),
-      });
-    } catch (err) {
-      return apiError(c, 400, "INVALID_PARENT", String(err));
-    }
-    if (!updated) return apiError(c, 404, "NOT_FOUND", "Task not found");
-
-    // Log field changes
-    recordFieldChanges(db, id, "user", existing, {
-      ...(data.title !== undefined ? { title: data.title } : {}),
-      ...(data.description !== undefined ? { description: data.description } : {}),
-      ...(data.priority !== undefined ? { priority: data.priority } : {}),
-      ...(data.assigneeId !== undefined ? { assigneeId: data.assigneeId } : {}),
-      ...(data.labels !== undefined ? { labels: data.labels } : {}),
-      ...(data.parentId !== undefined ? { parentId: data.parentId } : {}),
-    });
-
-    upsertSearchEntry(db, {
-      entityType: "task",
-      entityId: String(id),
-      title: updated.title,
-      subtitle: `${slug} · ${updated.status}`,
-      routeHash: `/instances/${slug}/tasks`,
-    });
-
-    // Inject notification + trigger prompt loop when assignee changes
-    if (
-      data.assigneeId !== undefined &&
-      data.assigneeId !== null &&
-      data.assigneeId !== existing.assignee_id
-    ) {
-      notifyAndWakeAgent(
-        db,
-        registry,
-        slug,
-        data.assigneeId,
-        id,
-        updated.title,
-        updated.description,
-      );
-    }
-
-    return c.json(toJson(updated));
+    return handleUpdateTask(c, db, registry);
   });
 
   // ---------------------------------------------------------------------------

@@ -43,46 +43,48 @@ export async function applyProviderEnvWrites(
 // Provider mutations on RuntimeConfig (add / update / remove)
 // ---------------------------------------------------------------------------
 
+/** Add new providers to RuntimeConfig (mutates in place). */
+function addProviders(
+  config: RuntimeConfig,
+  entries: NonNullable<NonNullable<RuntimeConfigPatch["providers"]>["add"]>,
+): void {
+  for (const entry of entries) {
+    if (config.providers.some((p) => p.id === entry.id)) continue;
+    const envVar = PROVIDER_ENV_VARS[entry.id] ?? `${entry.id.toUpperCase()}_API_KEY`;
+    config.providers.push({
+      id: entry.id,
+      ...(entry.baseUrl !== undefined ? { baseUrl: entry.baseUrl } : {}),
+      authProfiles: [
+        { id: `${entry.id}-default`, providerId: entry.id, apiKeyEnvVar: envVar, priority: 0 },
+      ],
+    });
+  }
+}
+
+/** Update existing providers in RuntimeConfig (mutates in place). */
+function updateProviders(
+  config: RuntimeConfig,
+  entries: NonNullable<NonNullable<RuntimeConfigPatch["providers"]>["update"]>,
+): void {
+  for (const entry of entries) {
+    if (entry.baseUrl === undefined) continue;
+    const provider = config.providers.find((p) => p.id === entry.id);
+    if (!provider) continue;
+    if (entry.baseUrl === null) {
+      delete (provider as Record<string, unknown>).baseUrl;
+    } else {
+      provider.baseUrl = entry.baseUrl;
+    }
+  }
+}
+
 /** Add, update, or remove providers in the RuntimeConfig (mutates in place). */
 export function applyProviderChanges(
   config: RuntimeConfig,
   providers: NonNullable<RuntimeConfigPatch["providers"]>,
 ): void {
-  // ADD
-  if (providers.add) {
-    for (const entry of providers.add) {
-      if (config.providers.some((p) => p.id === entry.id)) continue;
-      const envVar = PROVIDER_ENV_VARS[entry.id] ?? `${entry.id.toUpperCase()}_API_KEY`;
-      config.providers.push({
-        id: entry.id,
-        ...(entry.baseUrl !== undefined ? { baseUrl: entry.baseUrl } : {}),
-        authProfiles: [
-          {
-            id: `${entry.id}-default`,
-            providerId: entry.id,
-            apiKeyEnvVar: envVar,
-            priority: 0,
-          },
-        ],
-      });
-    }
-  }
-  // UPDATE
-  if (providers.update) {
-    for (const entry of providers.update) {
-      if (entry.baseUrl !== undefined) {
-        const provider = config.providers.find((p) => p.id === entry.id);
-        if (provider) {
-          if (entry.baseUrl === null) {
-            delete (provider as Record<string, unknown>).baseUrl;
-          } else {
-            provider.baseUrl = entry.baseUrl;
-          }
-        }
-      }
-    }
-  }
-  // REMOVE
+  if (providers.add) addProviders(config, providers.add);
+  if (providers.update) updateProviders(config, providers.update);
   if (providers.remove) {
     config.providers = config.providers.filter((p) => !providers.remove!.includes(p.id));
   }
@@ -92,27 +94,38 @@ export function applyProviderChanges(
 // Agent defaults (compaction, subagents, heartbeat, models)
 // ---------------------------------------------------------------------------
 
+/** Apply compaction defaults from patch (mutates in place). */
+function applyCompactionDefaults(
+  config: RuntimeConfig,
+  compaction: NonNullable<NonNullable<RuntimeConfigPatch["agentDefaults"]>["compaction"]>,
+): void {
+  if (compaction.mode !== undefined) config.compaction.auto = compaction.mode === "auto";
+  if (compaction.threshold !== undefined) config.compaction.threshold = compaction.threshold;
+  if (compaction.reservedTokens !== undefined)
+    config.compaction.reservedTokens = compaction.reservedTokens;
+}
+
+/** Apply subagent defaults from patch (mutates in place). */
+function applySubagentDefaults(
+  config: RuntimeConfig,
+  subagents: NonNullable<NonNullable<RuntimeConfigPatch["agentDefaults"]>["subagents"]>,
+): void {
+  if (subagents.maxSpawnDepth !== undefined)
+    config.subagents.maxSpawnDepth = subagents.maxSpawnDepth;
+  if (subagents.maxChildrenPerSession !== undefined)
+    config.subagents.maxChildrenPerSession = subagents.maxChildrenPerSession;
+  if (subagents.retentionHours !== undefined)
+    config.subagents.retentionHours = subagents.retentionHours;
+}
+
 /** Apply agentDefaults patch to RuntimeConfig (mutates in place). */
 export function applyAgentDefaultChanges(
   config: RuntimeConfig,
   agentDefaults: NonNullable<RuntimeConfigPatch["agentDefaults"]>,
 ): void {
   const ad = agentDefaults;
-  if (ad.compaction) {
-    if (ad.compaction.mode !== undefined) config.compaction.auto = ad.compaction.mode === "auto";
-    if (ad.compaction.threshold !== undefined)
-      config.compaction.threshold = ad.compaction.threshold;
-    if (ad.compaction.reservedTokens !== undefined)
-      config.compaction.reservedTokens = ad.compaction.reservedTokens;
-  }
-  if (ad.subagents) {
-    if (ad.subagents.maxSpawnDepth !== undefined)
-      config.subagents.maxSpawnDepth = ad.subagents.maxSpawnDepth;
-    if (ad.subagents.maxChildrenPerSession !== undefined)
-      config.subagents.maxChildrenPerSession = ad.subagents.maxChildrenPerSession;
-    if (ad.subagents.retentionHours !== undefined)
-      config.subagents.retentionHours = ad.subagents.retentionHours;
-  }
+  if (ad.compaction) applyCompactionDefaults(config, ad.compaction);
+  if (ad.subagents) applySubagentDefaults(config, ad.subagents);
   if (ad.defaultInternalModel !== undefined) {
     config.defaultInternalModel = ad.defaultInternalModel || undefined;
   }
@@ -132,6 +145,69 @@ export function applyAgentDefaultChanges(
 // Per-agent config mutations
 // ---------------------------------------------------------------------------
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AgentConfig = RuntimeConfig["agents"][number];
+type AgentPatch = NonNullable<RuntimeConfigPatch["agents"]>[number];
+
+/** Apply scalar fields from an agent patch onto the agent config (mutates in place). */
+function applyAgentScalarFields(agent: AgentConfig, patch: AgentPatch): void {
+  if (patch.name !== undefined) agent.name = patch.name;
+  if (patch.model !== undefined && patch.model !== null) agent.model = patch.model;
+  if (patch.toolProfile !== undefined) agent.toolProfile = patch.toolProfile;
+  if (patch.customTools !== undefined) agent.customTools = patch.customTools;
+  if (patch.maxSteps !== undefined) agent.maxSteps = patch.maxSteps;
+  if (patch.temperature !== undefined) agent.temperature = patch.temperature ?? undefined;
+  if (patch.promptMode !== undefined) agent.promptMode = patch.promptMode;
+  if (patch.allowSubAgents !== undefined) agent.allowSubAgents = patch.allowSubAgents;
+  if (patch.timeoutMs !== undefined) agent.timeoutMs = patch.timeoutMs;
+  if (patch.chunkTimeoutMs !== undefined) agent.chunkTimeoutMs = patch.chunkTimeoutMs;
+  if (patch.instructionUrls !== undefined) agent.instructionUrls = patch.instructionUrls;
+  if (patch.bootstrapFiles !== undefined) agent.bootstrapFiles = patch.bootstrapFiles;
+  if (patch.archetype !== undefined) agent.archetype = patch.archetype;
+  if (patch.autoSelectSkills !== undefined) agent.autoSelectSkills = patch.autoSelectSkills;
+  if (patch.autoSelectSkillsTopN !== undefined)
+    agent.autoSelectSkillsTopN = patch.autoSelectSkillsTopN;
+  if (patch.skills !== undefined) agent.skills = patch.skills ?? undefined;
+}
+
+/** Apply complex nested fields (thinking, heartbeat) from an agent patch. */
+function applyAgentNestedFields(agent: AgentConfig, patch: AgentPatch): void {
+  if (patch.thinking !== undefined) {
+    if (patch.thinking === null) {
+      agent.thinking = undefined;
+    } else {
+      agent.thinking = {
+        enabled: patch.thinking.enabled,
+        ...(patch.thinking.budgetTokens !== undefined
+          ? { budgetTokens: patch.thinking.budgetTokens }
+          : {}),
+      };
+    }
+  }
+  if (patch.heartbeat !== undefined) {
+    if (patch.heartbeat === null) {
+      agent.heartbeat = undefined;
+    } else {
+      agent.heartbeat = patch.heartbeat as typeof agent.heartbeat;
+    }
+  }
+}
+
+/** Update named_key_id in the agents SQL table for a specific agent. */
+function updateAgentNamedKeyId(
+  db: Database.Database,
+  slug: string,
+  agentId: string,
+  namedKeyId: unknown,
+): void {
+  db.prepare(
+    `UPDATE agents SET named_key_id = ?
+     WHERE agent_id = ? AND instance_id = (
+       SELECT id FROM instances WHERE slug = ?
+     )`,
+  ).run(namedKeyId, agentId, slug);
+}
+
 /** Apply per-agent patches to RuntimeConfig (mutates in place).
  *  Also updates named_key_id in the agents SQL table when present. */
 export function applyAgentPatches(
@@ -143,54 +219,12 @@ export function applyAgentPatches(
   for (const agentPatch of agents) {
     const agent = config.agents.find((a) => a.id === agentPatch.id);
     if (!agent) continue;
-    if (agentPatch.name !== undefined) agent.name = agentPatch.name;
-    if (agentPatch.model !== undefined && agentPatch.model !== null) agent.model = agentPatch.model;
-    if (agentPatch.toolProfile !== undefined) agent.toolProfile = agentPatch.toolProfile;
-    if (agentPatch.customTools !== undefined) agent.customTools = agentPatch.customTools;
-    if (agentPatch.maxSteps !== undefined) agent.maxSteps = agentPatch.maxSteps;
-    if (agentPatch.temperature !== undefined)
-      agent.temperature = agentPatch.temperature ?? undefined;
-    if (agentPatch.promptMode !== undefined) agent.promptMode = agentPatch.promptMode;
-    if (agentPatch.thinking !== undefined) {
-      if (agentPatch.thinking === null) {
-        agent.thinking = undefined;
-      } else {
-        agent.thinking = {
-          enabled: agentPatch.thinking.enabled,
-          ...(agentPatch.thinking.budgetTokens !== undefined
-            ? { budgetTokens: agentPatch.thinking.budgetTokens }
-            : {}),
-        };
-      }
-    }
-    if (agentPatch.allowSubAgents !== undefined) agent.allowSubAgents = agentPatch.allowSubAgents;
-    if (agentPatch.timeoutMs !== undefined) agent.timeoutMs = agentPatch.timeoutMs;
-    if (agentPatch.chunkTimeoutMs !== undefined) agent.chunkTimeoutMs = agentPatch.chunkTimeoutMs;
-    if (agentPatch.instructionUrls !== undefined)
-      agent.instructionUrls = agentPatch.instructionUrls;
-    if (agentPatch.bootstrapFiles !== undefined) agent.bootstrapFiles = agentPatch.bootstrapFiles;
-    if (agentPatch.archetype !== undefined) agent.archetype = agentPatch.archetype;
-    if (agentPatch.autoSelectSkills !== undefined)
-      agent.autoSelectSkills = agentPatch.autoSelectSkills;
-    if (agentPatch.autoSelectSkillsTopN !== undefined)
-      agent.autoSelectSkillsTopN = agentPatch.autoSelectSkillsTopN;
-    if (agentPatch.skills !== undefined) agent.skills = agentPatch.skills ?? undefined;
-    if (agentPatch.heartbeat !== undefined) {
-      if (agentPatch.heartbeat === null) {
-        agent.heartbeat = undefined;
-      } else {
-        agent.heartbeat = agentPatch.heartbeat as typeof agent.heartbeat;
-      }
-    }
 
-    // named_key_id lives in the agents SQL table, not in runtime_config_json
+    applyAgentScalarFields(agent, agentPatch);
+    applyAgentNestedFields(agent, agentPatch);
+
     if (agentPatch.namedKeyId !== undefined) {
-      db.prepare(
-        `UPDATE agents SET named_key_id = ?
-                     WHERE agent_id = ? AND instance_id = (
-                       SELECT id FROM instances WHERE slug = ?
-                     )`,
-      ).run(agentPatch.namedKeyId, agentPatch.id, slug);
+      updateAgentNamedKeyId(db, slug, agentPatch.id, agentPatch.namedKeyId);
     }
   }
 }

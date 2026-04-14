@@ -16,6 +16,36 @@ import {
 import { logger } from "../../lib/logger.js";
 import { rebuildSearchIndex } from "../../core/repositories/search-repository.js";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type HonoContext = any;
+
+/** Log team validation errors and return an API error response. Returns null if parsed successfully. */
+function handleTeamValidationError(
+  c: HonoContext,
+  parsed: ReturnType<typeof parseAndValidateTeam>,
+  entityLabel: string,
+): ReturnType<typeof apiError> | null {
+  if (parsed.success) return null;
+  const err = parsed.error;
+  if (err.error === "yaml_parse_error") {
+    logger.error(`[team-import] YAML parse error for ${entityLabel}: ${err.message ?? ""}`);
+    return c.json(
+      { ok: false, error: "YAML_PARSE_ERROR", message: err.message ?? "Invalid YAML" },
+      400,
+    ) as ReturnType<typeof apiError>;
+  }
+  const details = err.details ?? [];
+  logger.error(`[team-import] Validation failed for ${entityLabel} — ${details.length} issue(s):`);
+  for (const d of details) {
+    logger.error(`  [team-import]   path="${d.path || "(root)"}" — ${d.message}`);
+  }
+  const humanMessage =
+    details.length > 0
+      ? details.map((d) => `${d.path ? `[${d.path}] ` : ""}${d.message}`).join(" | ")
+      : "Invalid team file format";
+  return apiError(c, 400, "VALIDATION_FAILED", humanMessage);
+}
+
 export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
   const { registry, conn, xdgRuntimeDir } = deps;
 
@@ -69,29 +99,9 @@ export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
     logger.info(`[team-import] instance=${slug} dry_run=${dryRun} size=${yamlContent.length}B`);
 
     const parsed = parseAndValidateTeam(yamlContent);
-    if (!parsed.success) {
-      const err = parsed.error;
-      if (err.error === "yaml_parse_error") {
-        logger.error(`[team-import] YAML parse error for instance=${slug}: ${err.message ?? ""}`);
-        return c.json(
-          { ok: false, error: "YAML_PARSE_ERROR", message: err.message ?? "Invalid YAML" },
-          400,
-        );
-      }
-      // validation_failed — log each Zod issue
-      const details = err.details ?? [];
-      logger.error(
-        `[team-import] Validation failed for instance=${slug} — ${details.length} issue(s):`,
-      );
-      for (const d of details) {
-        logger.error(`  [team-import]   path="${d.path || "(root)"}" — ${d.message}`);
-      }
-      const humanMessage =
-        details.length > 0
-          ? details.map((d) => `${d.path ? `[${d.path}] ` : ""}${d.message}`).join(" | ")
-          : "Invalid team file format";
-      return apiError(c, 400, "VALIDATION_FAILED", humanMessage);
-    }
+    const validationError = handleTeamValidationError(c, parsed, `instance=${slug}`);
+    if (validationError) return validationError;
+    if (!parsed.success) return apiError(c, 400, "VALIDATION_FAILED", "Validation failed");
 
     logger.info(
       `[team-import] Validated OK — ${parsed.data.agents.length} agents, ${parsed.data.links.length} links`,
@@ -170,28 +180,9 @@ export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
     logger.info(`[team-import] blueprint=${id} dry_run=${dryRun} size=${yamlContent.length}B`);
 
     const parsed = parseAndValidateTeam(yamlContent);
-    if (!parsed.success) {
-      const err = parsed.error;
-      if (err.error === "yaml_parse_error") {
-        logger.error(`[team-import] YAML parse error for blueprint=${id}: ${err.message ?? ""}`);
-        return c.json(
-          { ok: false, error: "YAML_PARSE_ERROR", message: err.message ?? "Invalid YAML" },
-          400,
-        );
-      }
-      const details = err.details ?? [];
-      logger.error(
-        `[team-import] Validation failed for blueprint=${id} — ${details.length} issue(s):`,
-      );
-      for (const d of details) {
-        logger.error(`  [team-import]   path="${d.path || "(root)"}" — ${d.message}`);
-      }
-      const humanMessage =
-        details.length > 0
-          ? details.map((d) => `${d.path ? `[${d.path}] ` : ""}${d.message}`).join(" | ")
-          : "Invalid team file format";
-      return apiError(c, 400, "VALIDATION_FAILED", humanMessage);
-    }
+    const validationError = handleTeamValidationError(c, parsed, `blueprint=${id}`);
+    if (validationError) return validationError;
+    if (!parsed.success) return apiError(c, 400, "VALIDATION_FAILED", "Validation failed");
 
     logger.info(
       `[team-import] Validated OK — ${parsed.data.agents.length} agents, ${parsed.data.links.length} links`,

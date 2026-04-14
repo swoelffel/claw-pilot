@@ -134,6 +134,105 @@ function validateSteps(steps: Array<{ id: string; dependsOn: string[] }>): strin
 }
 
 // ---------------------------------------------------------------------------
+// Extracted route handlers
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type HonoContext = any;
+type DB = RouteDeps["db"];
+
+/** Handle POST /flows — create a new flow definition. */
+async function handleCreateFlow(
+  c: HonoContext,
+  db: DB,
+  registry: RouteDeps["registry"],
+): Promise<Response> {
+  const { slug } = getInstanceContext(c);
+
+  const body = await c.req.json().catch(() => null);
+  if (!body) return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+
+  const parsed = CreateFlowSchema.safeParse(body);
+  if (!parsed.success) return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+
+  const data = parsed.data;
+
+  const dagErr = validateSteps(data.steps);
+  if (dagErr) return apiError(c, 400, "INVALID_DAG", dagErr);
+
+  const agents = registry.listAgents(slug);
+  const agentIds = new Set(agents.map((a: { agent_id: string }) => a.agent_id));
+  for (const step of data.steps) {
+    if (!agentIds.has(step.agentId)) {
+      return apiError(c, 400, "INVALID_AGENT", `Agent "${step.agentId}" not found in instance`);
+    }
+  }
+
+  const flow = createFlowDefinition(db, {
+    instanceSlug: slug,
+    name: data.name,
+    ...(data.description !== undefined ? { description: data.description } : {}),
+    stepsJson: JSON.stringify(data.steps),
+    ...(data.trigger !== undefined ? { triggerJson: JSON.stringify(data.trigger) } : {}),
+    ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
+  });
+
+  upsertSearchEntry(db, {
+    entityType: "flow",
+    entityId: String(flow.id),
+    title: flow.name,
+    subtitle: `${data.steps.length} steps`,
+    routeHash: `/instances/${slug}/flows`,
+  });
+
+  return c.json({ flow }, 201);
+}
+
+/** Handle PATCH /flows/:id — update an existing flow definition. */
+async function handleUpdateFlow(c: HonoContext, db: DB): Promise<Response> {
+  const { slug } = getInstanceContext(c);
+  const id = Number(c.req.param("id"));
+
+  const existing = getFlowDefinition(db, id);
+  if (!existing || existing.instance_slug !== slug) {
+    return apiError(c, 404, "NOT_FOUND", "Flow not found");
+  }
+
+  const body = await c.req.json().catch(() => null);
+  if (!body) return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+
+  const parsed = UpdateFlowSchema.safeParse(body);
+  if (!parsed.success) return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+
+  const data = parsed.data;
+
+  if (data.steps) {
+    const dagErr = validateSteps(data.steps);
+    if (dagErr) return apiError(c, 400, "INVALID_DAG", dagErr);
+  }
+
+  const updated = updateFlowDefinition(db, id, {
+    ...(data.name !== undefined ? { name: data.name } : {}),
+    ...(data.description !== undefined ? { description: data.description } : {}),
+    ...(data.steps !== undefined ? { stepsJson: JSON.stringify(data.steps) } : {}),
+    ...(data.trigger !== undefined ? { triggerJson: JSON.stringify(data.trigger) } : {}),
+    ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
+  });
+
+  if (updated) {
+    upsertSearchEntry(db, {
+      entityType: "flow",
+      entityId: String(updated.id),
+      title: updated.name,
+      subtitle: `${JSON.parse(updated.steps_json).length} steps`,
+      routeHash: `/instances/${slug}/flows`,
+    });
+  }
+
+  return c.json({ flow: updated });
+}
+
+// ---------------------------------------------------------------------------
 // Route registration
 // ---------------------------------------------------------------------------
 
@@ -180,95 +279,14 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
   // POST /api/instances/:slug/flows — create flow definition
   // -------------------------------------------------------------------------
   app.post("/api/instances/:slug/flows", async (c) => {
-    const { slug } = getInstanceContext(c);
-
-    const body = await c.req.json().catch(() => null);
-    if (!body) return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
-
-    const parsed = CreateFlowSchema.safeParse(body);
-    if (!parsed.success) return apiError(c, 400, "INVALID_BODY", parsed.error.message);
-
-    const data = parsed.data;
-
-    // Validate DAG
-    const dagErr = validateSteps(data.steps);
-    if (dagErr) return apiError(c, 400, "INVALID_DAG", dagErr);
-
-    // Validate agents exist in instance
-    const agents = registry.listAgents(slug);
-    const agentIds = new Set(agents.map((a: { agent_id: string }) => a.agent_id));
-    for (const step of data.steps) {
-      if (!agentIds.has(step.agentId)) {
-        return apiError(c, 400, "INVALID_AGENT", `Agent "${step.agentId}" not found in instance`);
-      }
-    }
-
-    const flow = createFlowDefinition(db, {
-      instanceSlug: slug,
-      name: data.name,
-      ...(data.description !== undefined ? { description: data.description } : {}),
-      stepsJson: JSON.stringify(data.steps),
-      ...(data.trigger !== undefined ? { triggerJson: JSON.stringify(data.trigger) } : {}),
-      ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
-    });
-
-    // Update search index
-    upsertSearchEntry(db, {
-      entityType: "flow",
-      entityId: String(flow.id),
-      title: flow.name,
-      subtitle: `${data.steps.length} steps`,
-      routeHash: `/instances/${slug}/flows`,
-    });
-
-    return c.json({ flow }, 201);
+    return handleCreateFlow(c, db, registry);
   });
 
   // -------------------------------------------------------------------------
   // PATCH /api/instances/:slug/flows/:id — update flow definition
   // -------------------------------------------------------------------------
   app.patch("/api/instances/:slug/flows/:id", async (c) => {
-    const { slug } = getInstanceContext(c);
-    const id = Number(c.req.param("id"));
-
-    const existing = getFlowDefinition(db, id);
-    if (!existing || existing.instance_slug !== slug) {
-      return apiError(c, 404, "NOT_FOUND", "Flow not found");
-    }
-
-    const body = await c.req.json().catch(() => null);
-    if (!body) return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
-
-    const parsed = UpdateFlowSchema.safeParse(body);
-    if (!parsed.success) return apiError(c, 400, "INVALID_BODY", parsed.error.message);
-
-    const data = parsed.data;
-
-    // Validate DAG if steps are being updated
-    if (data.steps) {
-      const dagErr = validateSteps(data.steps);
-      if (dagErr) return apiError(c, 400, "INVALID_DAG", dagErr);
-    }
-
-    const updated = updateFlowDefinition(db, id, {
-      ...(data.name !== undefined ? { name: data.name } : {}),
-      ...(data.description !== undefined ? { description: data.description } : {}),
-      ...(data.steps !== undefined ? { stepsJson: JSON.stringify(data.steps) } : {}),
-      ...(data.trigger !== undefined ? { triggerJson: JSON.stringify(data.trigger) } : {}),
-      ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
-    });
-
-    if (updated) {
-      upsertSearchEntry(db, {
-        entityType: "flow",
-        entityId: String(updated.id),
-        title: updated.name,
-        subtitle: `${JSON.parse(updated.steps_json).length} steps`,
-        routeHash: `/instances/${slug}/flows`,
-      });
-    }
-
-    return c.json({ flow: updated });
+    return handleUpdateFlow(c, db);
   });
 
   // -------------------------------------------------------------------------

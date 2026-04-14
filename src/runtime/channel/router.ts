@@ -365,82 +365,97 @@ export function resolveModelForAgent(
   if (isCryptoAvailable()) {
     const namedKeyRepo = new NamedKeyRepository(db);
 
-    // Check agent-level override first.
-    // RuntimeAgentConfig doesn't carry namedKeyId — read it from the agents table.
-    const agentRow = db
-      .prepare(
-        "SELECT named_key_id FROM agents WHERE instance_id = (SELECT id FROM instances WHERE slug = ?) AND agent_id = ?",
-      )
-      .get(instanceSlug, agentConfig.id) as { named_key_id: number | null } | undefined;
+    // 1. Agent-level named key override
+    const agentResult = resolveAgentNamedKey(db, instanceSlug, agentConfig, namedKeyRepo);
+    if (agentResult) return agentResult;
 
-    const namedKeyId = agentRow?.named_key_id;
-    if (namedKeyId) {
-      // Get full key info: provider, defaultModel, baseUrl + decrypt the API key
-      const keyInfo = db
-        .prepare("SELECT provider_id, default_model, base_url FROM named_api_keys WHERE id = ?")
-        .get(namedKeyId) as
-        | { provider_id: string; default_model: string; base_url: string | null }
-        | undefined;
+    // 2. Instance default / provider-matched named key
+    const instanceResult = resolveInstanceNamedKey(db, instanceSlug, agentConfig, namedKeyRepo);
+    if (instanceResult) return instanceResult;
+  }
 
-      if (keyInfo) {
-        const apiKey = namedKeyRepo.getDecryptedKey(namedKeyId);
-        // Agent model may be "provider/model" format or just "model" — extract model part
-        const modelId = agentConfig.model
-          ? agentConfig.model.includes("/")
-            ? agentConfig.model.split("/").slice(1).join("/")
-            : agentConfig.model
-          : keyInfo.default_model;
-        return resolveModel(keyInfo.provider_id, modelId, {
-          apiKey,
-          ...(keyInfo.base_url ? { baseUrl: keyInfo.base_url } : {}),
-        });
-      }
-    }
+  // 3. Fallback: legacy resolution via "provider/model" string + .env
+  const modelStr = agentConfig.model ?? config.defaultModel;
+  return resolveModelFromString(modelStr, config.models);
+}
 
-    // Check instance default named key
-    const instance = db.prepare("SELECT id FROM instances WHERE slug = ?").get(instanceSlug) as
-      | { id: number }
-      | undefined;
-    if (instance) {
-      // Determine the provider the agent's model requires
-      const agentProviderId = agentConfig.model?.includes("/")
-        ? agentConfig.model.split("/")[0]
-        : undefined;
+/** Extract the model part from a possibly "provider/model" string. */
+function extractModelId(modelRef: string | undefined, fallback: string): string {
+  if (!modelRef) return fallback;
+  return modelRef.includes("/") ? modelRef.split("/").slice(1).join("/") : modelRef;
+}
 
-      const defaultKey = namedKeyRepo.getDefaultKeyForInstance(instance.id);
+/** Try resolving via the agent's own named_key_id (from the agents table). */
+function resolveAgentNamedKey(
+  db: Database.Database,
+  instanceSlug: InstanceSlug,
+  agentConfig: import("../config/index.js").RuntimeAgentConfig,
+  namedKeyRepo: NamedKeyRepository,
+): ResolvedModel | undefined {
+  const agentRow = db
+    .prepare(
+      "SELECT named_key_id FROM agents WHERE instance_id = (SELECT id FROM instances WHERE slug = ?) AND agent_id = ?",
+    )
+    .get(instanceSlug, agentConfig.id) as { named_key_id: number | null } | undefined;
 
-      // Use instance default key only if its provider matches the agent's model provider
-      if (defaultKey && (!agentProviderId || defaultKey.providerId === agentProviderId)) {
-        const modelId = agentConfig.model
-          ? agentConfig.model.includes("/")
-            ? agentConfig.model.split("/").slice(1).join("/")
-            : agentConfig.model
-          : defaultKey.defaultModel;
-        return resolveModel(defaultKey.providerId, modelId, {
-          apiKey: defaultKey.apiKey,
-          ...(defaultKey.baseUrl ? { baseUrl: defaultKey.baseUrl } : {}),
-        });
-      }
+  const namedKeyId = agentRow?.named_key_id;
+  if (!namedKeyId) return undefined;
 
-      // Fallback: find any named key matching the required provider
-      if (agentProviderId) {
-        const matchingKey = namedKeyRepo.findKeyByProvider(instance.id, agentProviderId);
-        if (matchingKey) {
-          const modelId = agentConfig.model!.includes("/")
-            ? agentConfig.model!.split("/").slice(1).join("/")
-            : agentConfig.model!;
-          return resolveModel(matchingKey.providerId, modelId, {
-            apiKey: matchingKey.apiKey,
-            ...(matchingKey.baseUrl ? { baseUrl: matchingKey.baseUrl } : {}),
-          });
-        }
-      }
+  const keyInfo = db
+    .prepare("SELECT provider_id, default_model, base_url FROM named_api_keys WHERE id = ?")
+    .get(namedKeyId) as
+    | { provider_id: string; default_model: string; base_url: string | null }
+    | undefined;
+
+  if (!keyInfo) return undefined;
+
+  const apiKey = namedKeyRepo.getDecryptedKey(namedKeyId);
+  const modelId = extractModelId(agentConfig.model, keyInfo.default_model);
+  return resolveModel(keyInfo.provider_id, modelId, {
+    apiKey,
+    ...(keyInfo.base_url ? { baseUrl: keyInfo.base_url } : {}),
+  });
+}
+
+/** Try resolving via the instance's default named key or a provider-matched key. */
+function resolveInstanceNamedKey(
+  db: Database.Database,
+  instanceSlug: InstanceSlug,
+  agentConfig: import("../config/index.js").RuntimeAgentConfig,
+  namedKeyRepo: NamedKeyRepository,
+): ResolvedModel | undefined {
+  const instance = db.prepare("SELECT id FROM instances WHERE slug = ?").get(instanceSlug) as
+    | { id: number }
+    | undefined;
+  if (!instance) return undefined;
+
+  const agentProviderId = agentConfig.model?.includes("/")
+    ? agentConfig.model.split("/")[0]
+    : undefined;
+
+  // Try instance default key (must match agent's provider if specified)
+  const defaultKey = namedKeyRepo.getDefaultKeyForInstance(instance.id);
+  if (defaultKey && (!agentProviderId || defaultKey.providerId === agentProviderId)) {
+    const modelId = extractModelId(agentConfig.model, defaultKey.defaultModel);
+    return resolveModel(defaultKey.providerId, modelId, {
+      apiKey: defaultKey.apiKey,
+      ...(defaultKey.baseUrl ? { baseUrl: defaultKey.baseUrl } : {}),
+    });
+  }
+
+  // Fallback: find any named key matching the required provider
+  if (agentProviderId) {
+    const matchingKey = namedKeyRepo.findKeyByProvider(instance.id, agentProviderId);
+    if (matchingKey) {
+      const modelId = extractModelId(agentConfig.model, agentConfig.model!);
+      return resolveModel(matchingKey.providerId, modelId, {
+        apiKey: matchingKey.apiKey,
+        ...(matchingKey.baseUrl ? { baseUrl: matchingKey.baseUrl } : {}),
+      });
     }
   }
 
-  // Fallback: legacy resolution via "provider/model" string + .env
-  const modelStr = agentConfig.model ?? config.defaultModel;
-  return resolveModelFromString(modelStr, config.models);
+  return undefined;
 }
 
 /**

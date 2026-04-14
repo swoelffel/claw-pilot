@@ -66,119 +66,140 @@ async function isPortResponding(port: number): Promise<boolean> {
   }
 }
 
-export async function installDashboardService(
+// ---------------------------------------------------------------------------
+// Node binary resolution
+// ---------------------------------------------------------------------------
+
+/** Resolve the node binary path, checking PATH then known fallback locations. */
+async function resolveNodeBinary(
   conn: ServerConnection,
-  xdgRuntimeDir: string,
-  port: number = constants.DASHBOARD_PORT,
-): Promise<void> {
-  const sm = getServiceManager();
-
-  const home = os.homedir();
-
-  // Resolve node binary via conn
+  sm: string,
+  home: string,
+): Promise<string> {
   const nodeResult = await conn.execFile("which", ["node"]);
   let nodeBin = nodeResult.stdout.trim();
-  if (!nodeBin) {
-    // Fallback: check known paths including nvm/volta/fnm
-    const nodeCandidates =
-      sm === "launchd"
-        ? ["/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"]
-        : ["/usr/local/bin/node", "/usr/bin/node"];
-    for (const candidate of nodeCandidates) {
-      if (await conn.exists(candidate)) {
-        nodeBin = candidate;
-        break;
-      }
-    }
-    // nvm glob fallback (macOS + Linux)
-    if (!nodeBin) {
-      const nvmResult = await conn.exec(
-        `ls ${home}/.nvm/versions/node/*/bin/node 2>/dev/null | sort -V | tail -1`,
-      );
-      const nvmBin = nvmResult.stdout.trim();
-      if (nvmBin) nodeBin = nvmBin;
-    }
-    // volta fallback
-    if (!nodeBin && (await conn.exists(`${home}/.volta/bin/node`))) {
-      nodeBin = `${home}/.volta/bin/node`;
-    }
-  }
-  if (!nodeBin) {
-    throw new Error("Cannot find node binary. Ensure Node.js is in PATH.");
+  if (nodeBin) return nodeBin;
+
+  // Fallback: check known paths including nvm/volta/fnm
+  const nodeCandidates =
+    sm === "launchd"
+      ? ["/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"]
+      : ["/usr/local/bin/node", "/usr/bin/node"];
+  for (const candidate of nodeCandidates) {
+    if (await conn.exists(candidate)) return candidate;
   }
 
-  const clawPilotBin = resolveClawPilotBin();
+  // nvm glob fallback (macOS + Linux)
+  const nvmResult = await conn.exec(
+    `ls ${home}/.nvm/versions/node/*/bin/node 2>/dev/null | sort -V | tail -1`,
+  );
+  const nvmBin = nvmResult.stdout.trim();
+  if (nvmBin) return nvmBin;
 
-  if (sm === "launchd") {
-    // macOS: install as launchd agent
-    const plistContent = generateDashboardLaunchdPlist({ nodeBin, clawPilotBin, port, home });
-
-    const launchdDir = getLaunchdDir();
-    await conn.mkdir(launchdDir);
-
-    const plistPath = getDashboardLaunchdPlistPath();
-    await conn.writeFile(plistPath, plistContent, 0o644);
-    logger.success(`Launchd plist written: ${plistPath}`);
-
-    // Load the agent
-    await conn.execFile("launchctl", ["load", "-w", plistPath]);
-    logger.success(`Launchd agent loaded: ${DASHBOARD_LAUNCHD_LABEL}`);
-  } else {
-    // Linux: install as systemd system service (not user service)
-    // System services work without linger and survive reboots regardless of user login
-    //
-    // When install.sh runs `sudo claw-pilot service install`, this process is root.
-    // Use SUDO_USER / SUDO_UID to resolve the real user who invoked sudo,
-    // so the service runs as the correct non-root user.
-    const isRoot = process.getuid?.() === 0;
-    const uid =
-      isRoot && process.env.SUDO_UID
-        ? parseInt(process.env.SUDO_UID, 10)
-        : (process.getuid?.() ?? 1000);
-    const username =
-      isRoot && process.env.SUDO_USER ? process.env.SUDO_USER : os.userInfo().username;
-    const serviceHome = isRoot && process.env.SUDO_USER ? `/home/${process.env.SUDO_USER}` : home;
-
-    // Generate service file content (system-level)
-    const serviceContent = generateDashboardService({
-      nodeBin,
-      clawPilotBin,
-      port,
-      home: serviceHome,
-      uid,
-      username,
-    });
-
-    // Ensure systemd system dir exists
-    const systemdSystemDir = getSystemdSystemDir();
-    await conn.mkdir(systemdSystemDir);
-
-    // Write service file to /etc/systemd/system/
-    const servicePath = getDashboardServicePath(true);
-    await conn.writeFile(servicePath, serviceContent, 0o644);
-    logger.success(`Service file written: ${servicePath}`);
-
-    // System services require root — use sudo directly to avoid polkit/pkttyagent noise.
-    // If already root (e.g. called via sudo from install.sh), sudo is a no-op.
-    const sudo = isRoot ? "" : "sudo ";
-
-    const reload = await conn.exec(`${sudo}systemctl daemon-reload`);
-    if (reload.exitCode !== 0) {
-      throw new Error(`systemctl daemon-reload failed: ${reload.stderr}`);
-    }
-
-    const enable = await conn.exec(`${sudo}systemctl enable ${DASHBOARD_SERVICE_UNIT}`);
-    if (enable.exitCode !== 0) {
-      throw new Error(`systemctl enable failed: ${enable.stderr}`);
-    }
-
-    const start = await conn.exec(`${sudo}systemctl start ${DASHBOARD_SERVICE_UNIT}`);
-    if (start.exitCode !== 0) {
-      throw new Error(`systemctl start failed: ${start.stderr}`);
-    }
+  // volta fallback
+  if (await conn.exists(`${home}/.volta/bin/node`)) {
+    return `${home}/.volta/bin/node`;
   }
 
-  // Wait for port to respond
+  throw new Error("Cannot find node binary. Ensure Node.js is in PATH.");
+}
+
+// ---------------------------------------------------------------------------
+// macOS service installation
+// ---------------------------------------------------------------------------
+
+/** Install the dashboard as a macOS launchd agent. */
+async function installMacOSService(
+  conn: ServerConnection,
+  nodeBin: string,
+  clawPilotBin: string,
+  port: number,
+  home: string,
+): Promise<void> {
+  const plistContent = generateDashboardLaunchdPlist({ nodeBin, clawPilotBin, port, home });
+
+  const launchdDir = getLaunchdDir();
+  await conn.mkdir(launchdDir);
+
+  const plistPath = getDashboardLaunchdPlistPath();
+  await conn.writeFile(plistPath, plistContent, 0o644);
+  logger.success(`Launchd plist written: ${plistPath}`);
+
+  // Load the agent
+  await conn.execFile("launchctl", ["load", "-w", plistPath]);
+  logger.success(`Launchd agent loaded: ${DASHBOARD_LAUNCHD_LABEL}`);
+}
+
+// ---------------------------------------------------------------------------
+// Linux service installation
+// ---------------------------------------------------------------------------
+
+/** Install the dashboard as a Linux systemd system service. */
+async function installLinuxService(
+  conn: ServerConnection,
+  nodeBin: string,
+  clawPilotBin: string,
+  port: number,
+  home: string,
+): Promise<void> {
+  // System services work without linger and survive reboots regardless of user login
+  //
+  // When install.sh runs `sudo claw-pilot service install`, this process is root.
+  // Use SUDO_USER / SUDO_UID to resolve the real user who invoked sudo,
+  // so the service runs as the correct non-root user.
+  const isRoot = process.getuid?.() === 0;
+  const uid =
+    isRoot && process.env.SUDO_UID
+      ? parseInt(process.env.SUDO_UID, 10)
+      : (process.getuid?.() ?? 1000);
+  const username = isRoot && process.env.SUDO_USER ? process.env.SUDO_USER : os.userInfo().username;
+  const serviceHome = isRoot && process.env.SUDO_USER ? `/home/${process.env.SUDO_USER}` : home;
+
+  // Generate service file content (system-level)
+  const serviceContent = generateDashboardService({
+    nodeBin,
+    clawPilotBin,
+    port,
+    home: serviceHome,
+    uid,
+    username,
+  });
+
+  // Ensure systemd system dir exists
+  const systemdSystemDir = getSystemdSystemDir();
+  await conn.mkdir(systemdSystemDir);
+
+  // Write service file to /etc/systemd/system/
+  const servicePath = getDashboardServicePath(true);
+  await conn.writeFile(servicePath, serviceContent, 0o644);
+  logger.success(`Service file written: ${servicePath}`);
+
+  // System services require root — use sudo directly to avoid polkit/pkttyagent noise.
+  // If already root (e.g. called via sudo from install.sh), sudo is a no-op.
+  const sudo = isRoot ? "" : "sudo ";
+
+  const reload = await conn.exec(`${sudo}systemctl daemon-reload`);
+  if (reload.exitCode !== 0) {
+    throw new Error(`systemctl daemon-reload failed: ${reload.stderr}`);
+  }
+
+  const enable = await conn.exec(`${sudo}systemctl enable ${DASHBOARD_SERVICE_UNIT}`);
+  if (enable.exitCode !== 0) {
+    throw new Error(`systemctl enable failed: ${enable.stderr}`);
+  }
+
+  const start = await conn.exec(`${sudo}systemctl start ${DASHBOARD_SERVICE_UNIT}`);
+  if (start.exitCode !== 0) {
+    throw new Error(`systemctl start failed: ${start.stderr}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Port readiness check
+// ---------------------------------------------------------------------------
+
+/** Wait for the dashboard port to respond, with a timeout. */
+async function waitForPortReady(sm: string, port: number, home: string): Promise<void> {
   logger.info(`Waiting for dashboard to be ready on port ${port}...`);
   try {
     await pollUntilReady({
@@ -197,6 +218,32 @@ export async function installDashboardService(
       logger.dim(`Check logs: sudo journalctl -u ${DASHBOARD_SERVICE_UNIT} -n 50`);
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+export async function installDashboardService(
+  conn: ServerConnection,
+  xdgRuntimeDir: string,
+  port: number = constants.DASHBOARD_PORT,
+): Promise<void> {
+  const sm = getServiceManager();
+  const home = os.homedir();
+
+  // Resolve node binary via conn
+  const nodeBin = await resolveNodeBinary(conn, sm, home);
+  const clawPilotBin = resolveClawPilotBin();
+
+  if (sm === "launchd") {
+    await installMacOSService(conn, nodeBin, clawPilotBin, port, home);
+  } else {
+    await installLinuxService(conn, nodeBin, clawPilotBin, port, home);
+  }
+
+  // Wait for port to respond
+  await waitForPortReady(sm, port, home);
 }
 
 export async function uninstallDashboardService(

@@ -66,77 +66,185 @@ const FromAgentSchema = z.object({
 // Route registration
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type HonoContext = any;
+
+/** Map blueprint files to the summary format used in API responses. */
+function formatBlueprintFiles(
+  files: Array<{
+    filename: string;
+    content_hash: string | null;
+    content: string;
+    updated_at: string | null;
+  }>,
+) {
+  return files.map((f) => ({
+    filename: f.filename,
+    content_hash: f.content_hash,
+    size: f.content.length,
+    updated_at: f.updated_at,
+  }));
+}
+
+/** Add or update the search index entry for an agent blueprint. */
+function indexAgentBlueprint(
+  db: RouteDeps["db"],
+  blueprint: { id: string; name: string; category?: string | null },
+): void {
+  upsertSearchEntry(db, {
+    entityType: "agent_blueprint",
+    entityId: blueprint.id,
+    title: blueprint.name,
+    subtitle: blueprint.category ?? "",
+    routeHash: `/agent-templates/${blueprint.id}`,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Extracted route handlers
+// ---------------------------------------------------------------------------
+
+/** Handle POST /api/agent-blueprints — create with optional seeded files. */
+async function handleCreateAgentBlueprint(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { registry } = deps;
+  const body = await c.req.json().catch(() => null);
+  const parsed = CreateSchema.safeParse(body);
+  if (!parsed.success) return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+
+  const { name, description, category, configJson, icon, tags, seedFiles } = parsed.data;
+  const blueprint = registry.createAgentBlueprint({
+    name,
+    ...(description !== undefined ? { description } : {}),
+    ...(category !== undefined ? { category } : {}),
+    ...(configJson !== undefined ? { configJson } : {}),
+    ...(icon !== undefined ? { icon } : {}),
+    ...(tags !== undefined ? { tags } : {}),
+  });
+
+  if (seedFiles) {
+    for (const filename of constants.EXPORTABLE_FILES) {
+      const content = await loadWorkspaceTemplate(filename, {
+        agentId: blueprint.id,
+        agentName: blueprint.name,
+        instanceSlug: "blueprint",
+        instanceName: "Blueprint",
+      });
+      registry.upsertAgentBlueprintFile(blueprint.id, filename, content);
+    }
+  }
+
+  indexAgentBlueprint(deps.db, blueprint);
+  const files = registry.listAgentBlueprintFiles(blueprint.id);
+  return c.json({ ...blueprint, files }, 201);
+}
+
+/** Handle POST /api/agent-blueprints/from-agent — save instance agent as template. */
+async function handleFromAgent(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { registry } = deps;
+  const body = await c.req.json().catch(() => null);
+  const parsed = FromAgentSchema.safeParse(body);
+  if (!parsed.success) return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+
+  const { instanceSlug, agentId, name, description } = parsed.data;
+  const instance = registry.getInstance(instanceSlug);
+  if (!instance) return apiError(c, 404, "NOT_FOUND", `Instance not found: ${instanceSlug}`);
+  const agentRecord = registry.getAgentByAgentId(instance.id, agentId);
+  if (!agentRecord) return apiError(c, 404, "NOT_FOUND", `Agent not found: ${agentId}`);
+
+  const blueprint = registry.createAgentBlueprint({
+    name,
+    ...(description !== undefined ? { description } : {}),
+    category: "user",
+  });
+
+  const agentFiles = registry.listAgentFiles(agentRecord.id);
+  for (const file of agentFiles) {
+    if (file.content) registry.upsertAgentBlueprintFile(blueprint.id, file.filename, file.content);
+  }
+
+  indexAgentBlueprint(deps.db, blueprint);
+  const files = registry.listAgentBlueprintFiles(blueprint.id);
+  return c.json({ ...blueprint, files: formatBlueprintFiles(files) }, 201);
+}
+
+const ImportSchema = z.object({
+  version: z.string().optional(),
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).optional(),
+  category: z.enum(["user", "tool", "system"]).optional(),
+  icon: z.string().max(10).optional(),
+  tags: z.string().optional(),
+  files: z.record(z.string(), z.string()).optional(),
+});
+
+/** Handle POST /api/agent-blueprints/import — import from YAML. */
+async function handleImportAgentBlueprint(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { registry } = deps;
+  let yamlContent: string;
+  try {
+    yamlContent = await c.req.text();
+  } catch (err) {
+    logger.warn("[route:agent-blueprints] request body read failed", { error: String(err) });
+    return apiError(c, 400, "INVALID_BODY", "Cannot read request body");
+  }
+
+  let raw: unknown;
+  try {
+    raw = parseYaml(yamlContent);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Invalid YAML";
+    logger.error(`[agent-blueprint-import] YAML parse error: ${msg}`);
+    return apiError(c, 400, "YAML_PARSE_ERROR", msg);
+  }
+
+  const parsed = ImportSchema.safeParse(raw);
+  if (!parsed.success) return apiError(c, 400, "VALIDATION_ERROR", parsed.error.message);
+
+  const { name, description, category, icon, tags, files } = parsed.data;
+  const blueprint = registry.createAgentBlueprint({
+    name,
+    ...(description !== undefined ? { description } : {}),
+    ...(category !== undefined ? { category } : {}),
+    ...(icon !== undefined ? { icon } : {}),
+    ...(tags !== undefined ? { tags } : {}),
+  });
+
+  if (files) {
+    for (const [filename, content] of Object.entries(files)) {
+      registry.upsertAgentBlueprintFile(blueprint.id, filename, content);
+    }
+  }
+
+  indexAgentBlueprint(deps.db, blueprint);
+  const createdFiles = registry.listAgentBlueprintFiles(blueprint.id);
+  return c.json({ ...blueprint, files: formatBlueprintFiles(createdFiles) }, 201);
+}
+
+// ---------------------------------------------------------------------------
+// Route registration
+// ---------------------------------------------------------------------------
+
 export function registerAgentBlueprintRoutes(app: Hono, deps: RouteDeps): void {
   const { registry } = deps;
 
-  // --- GET /api/agent-blueprints — list all ---
-  app.get("/api/agent-blueprints", (c) => {
-    const blueprints = registry.listAgentBlueprints();
-    return c.json(blueprints);
-  });
+  app.get("/api/agent-blueprints", (c) => c.json(registry.listAgentBlueprints()));
 
-  // --- POST /api/agent-blueprints — create ---
-  app.post("/api/agent-blueprints", async (c) => {
-    const body = await c.req.json().catch(() => null);
-    const parsed = CreateSchema.safeParse(body);
-    if (!parsed.success) {
-      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
-    }
-    const { name, description, category, configJson, icon, tags, seedFiles } = parsed.data;
+  app.post("/api/agent-blueprints", async (c) => handleCreateAgentBlueprint(c, deps));
 
-    const blueprint = registry.createAgentBlueprint({
-      name,
-      ...(description !== undefined ? { description } : {}),
-      ...(category !== undefined ? { category } : {}),
-      ...(configJson !== undefined ? { configJson } : {}),
-      ...(icon !== undefined ? { icon } : {}),
-      ...(tags !== undefined ? { tags } : {}),
-    });
-
-    // Seed default files if requested — use workspace templates as initial content
-    if (seedFiles) {
-      for (const filename of constants.EXPORTABLE_FILES) {
-        const content = await loadWorkspaceTemplate(filename, {
-          agentId: blueprint.id,
-          agentName: blueprint.name,
-          instanceSlug: "blueprint",
-          instanceName: "Blueprint",
-        });
-        registry.upsertAgentBlueprintFile(blueprint.id, filename, content);
-      }
-    }
-
-    upsertSearchEntry(deps.db, {
-      entityType: "agent_blueprint",
-      entityId: blueprint.id,
-      title: blueprint.name,
-      subtitle: blueprint.category ?? "",
-      routeHash: `/agent-templates/${blueprint.id}`,
-    });
-
-    const files = registry.listAgentBlueprintFiles(blueprint.id);
-    return c.json({ ...blueprint, files }, 201);
-  });
-
-  // --- GET /api/agent-blueprints/:id — detail + files ---
   app.get("/api/agent-blueprints/:id", (c) => {
     const id = c.req.param("id");
     const blueprint = registry.getAgentBlueprint(id);
     if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
-
-    const files = registry.listAgentBlueprintFiles(id);
     return c.json({
       ...blueprint,
-      files: files.map((f) => ({
-        filename: f.filename,
-        content_hash: f.content_hash,
-        size: f.content.length,
-        updated_at: f.updated_at,
-      })),
+      files: formatBlueprintFiles(registry.listAgentBlueprintFiles(id)),
     });
   });
 
-  // --- PUT /api/agent-blueprints/:id — update metadata ---
   app.put("/api/agent-blueprints/:id", async (c) => {
     const id = c.req.param("id");
     const existing = registry.getAgentBlueprint(id);
@@ -144,11 +252,8 @@ export function registerAgentBlueprintRoutes(app: Hono, deps: RouteDeps): void {
 
     const body = await c.req.json().catch(() => null);
     const parsed = UpdateSchema.safeParse(body);
-    if (!parsed.success) {
-      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
-    }
+    if (!parsed.success) return apiError(c, 400, "INVALID_BODY", parsed.error.message);
 
-    // Build update payload with conditional spread (exactOptionalPropertyTypes)
     const d = parsed.data;
     const updated = registry.updateAgentBlueprint(id, {
       ...(d.name !== undefined ? { name: d.name } : {}),
@@ -158,75 +263,39 @@ export function registerAgentBlueprintRoutes(app: Hono, deps: RouteDeps): void {
       ...("icon" in d ? { icon: d.icon ?? null } : {}),
       ...("tags" in d ? { tags: d.tags ?? null } : {}),
     });
-
-    if (updated) {
-      upsertSearchEntry(deps.db, {
-        entityType: "agent_blueprint",
-        entityId: updated.id,
-        title: updated.name,
-        subtitle: updated.category ?? "",
-        routeHash: `/agent-templates/${updated.id}`,
-      });
-    }
-
+    if (updated) indexAgentBlueprint(deps.db, updated);
     return c.json(updated);
   });
 
-  // --- DELETE /api/agent-blueprints/:id ---
   app.delete("/api/agent-blueprints/:id", (c) => {
     const id = c.req.param("id");
-    const existing = registry.getAgentBlueprint(id);
-    if (!existing) return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
-
+    if (!registry.getAgentBlueprint(id))
+      return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
     registry.deleteAgentBlueprint(id);
     removeSearchEntry(deps.db, "agent_blueprint", id);
     return c.json({ ok: true });
   });
 
-  // --- POST /api/agent-blueprints/:id/clone ---
   app.post("/api/agent-blueprints/:id/clone", async (c) => {
     const id = c.req.param("id");
     const body = await c.req.json().catch(() => ({}));
     const parsed = CloneSchema.safeParse(body);
-    const newName = parsed.success ? parsed.data.name : undefined;
-
-    const clone = registry.cloneAgentBlueprint(id, newName);
+    const clone = registry.cloneAgentBlueprint(id, parsed.success ? parsed.data.name : undefined);
     if (!clone) return apiError(c, 404, "NOT_FOUND", "Source agent blueprint not found");
-
-    upsertSearchEntry(deps.db, {
-      entityType: "agent_blueprint",
-      entityId: clone.id,
-      title: clone.name,
-      subtitle: clone.category ?? "",
-      routeHash: `/agent-templates/${clone.id}`,
-    });
-
-    const files = registry.listAgentBlueprintFiles(clone.id);
+    indexAgentBlueprint(deps.db, clone);
     return c.json(
-      {
-        ...clone,
-        files: files.map((f) => ({
-          filename: f.filename,
-          content_hash: f.content_hash,
-          size: f.content.length,
-          updated_at: f.updated_at,
-        })),
-      },
+      { ...clone, files: formatBlueprintFiles(registry.listAgentBlueprintFiles(clone.id)) },
       201,
     );
   });
 
-  // --- GET /api/agent-blueprints/:id/files/:filename ---
   app.get("/api/agent-blueprints/:id/files/:filename", (c) => {
     const id = c.req.param("id");
     const filename = c.req.param("filename");
-
-    const blueprint = registry.getAgentBlueprint(id);
-    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
-
+    if (!registry.getAgentBlueprint(id))
+      return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
     const file = registry.getAgentBlueprintFile(id, filename);
     if (!file) return apiError(c, 404, "NOT_FOUND", `File not found: ${filename}`);
-
     return c.json({
       filename: file.filename,
       content: file.content,
@@ -235,26 +304,17 @@ export function registerAgentBlueprintRoutes(app: Hono, deps: RouteDeps): void {
     });
   });
 
-  // --- PUT /api/agent-blueprints/:id/files/:filename ---
   app.put("/api/agent-blueprints/:id/files/:filename", async (c) => {
     const id = c.req.param("id");
     const filename = c.req.param("filename");
-
-    const blueprint = registry.getAgentBlueprint(id);
-    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
-
+    if (!registry.getAgentBlueprint(id))
+      return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
     const body = await c.req.json().catch(() => null);
-    if (!body || typeof body.content !== "string") {
+    if (!body || typeof body.content !== "string")
       return apiError(c, 400, "INVALID_BODY", 'Body must be { "content": "..." }');
-    }
-
-    const content = body.content as string;
-    if (content.length > 1_000_000) {
+    if ((body.content as string).length > 1_000_000)
       return apiError(c, 413, "FILE_TOO_LARGE", "File content exceeds 1MB limit");
-    }
-
-    registry.upsertAgentBlueprintFile(id, filename, content);
-
+    registry.upsertAgentBlueprintFile(id, filename, body.content as string);
     const saved = registry.getAgentBlueprintFile(id, filename);
     return c.json({
       filename: saved!.filename,
@@ -264,73 +324,16 @@ export function registerAgentBlueprintRoutes(app: Hono, deps: RouteDeps): void {
     });
   });
 
-  // --- DELETE /api/agent-blueprints/:id/files/:filename ---
   app.delete("/api/agent-blueprints/:id/files/:filename", (c) => {
     const id = c.req.param("id");
-    const filename = c.req.param("filename");
-
-    const blueprint = registry.getAgentBlueprint(id);
-    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
-
-    registry.deleteAgentBlueprintFile(id, filename);
+    if (!registry.getAgentBlueprint(id))
+      return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
+    registry.deleteAgentBlueprintFile(id, c.req.param("filename"));
     return c.json({ ok: true });
   });
 
-  // --- POST /api/agent-blueprints/from-agent — "Save as template" ---
-  app.post("/api/agent-blueprints/from-agent", async (c) => {
-    const body = await c.req.json().catch(() => null);
-    const parsed = FromAgentSchema.safeParse(body);
-    if (!parsed.success) {
-      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
-    }
-    const { instanceSlug, agentId, name, description } = parsed.data;
+  app.post("/api/agent-blueprints/from-agent", async (c) => handleFromAgent(c, deps));
 
-    // Verify the instance and agent exist
-    const instance = registry.getInstance(instanceSlug);
-    if (!instance) return apiError(c, 404, "NOT_FOUND", `Instance not found: ${instanceSlug}`);
-
-    const agentRecord = registry.getAgentByAgentId(instance.id, agentId);
-    if (!agentRecord) return apiError(c, 404, "NOT_FOUND", `Agent not found: ${agentId}`);
-
-    // Create the agent blueprint
-    const blueprint = registry.createAgentBlueprint({
-      name,
-      ...(description !== undefined ? { description } : {}),
-      category: "user",
-    });
-
-    // Copy workspace files from the instance agent to the blueprint
-    const agentFiles = registry.listAgentFiles(agentRecord.id);
-    for (const file of agentFiles) {
-      if (file.content) {
-        registry.upsertAgentBlueprintFile(blueprint.id, file.filename, file.content);
-      }
-    }
-
-    upsertSearchEntry(deps.db, {
-      entityType: "agent_blueprint",
-      entityId: blueprint.id,
-      title: blueprint.name,
-      subtitle: blueprint.category ?? "",
-      routeHash: `/agent-templates/${blueprint.id}`,
-    });
-
-    const files = registry.listAgentBlueprintFiles(blueprint.id);
-    return c.json(
-      {
-        ...blueprint,
-        files: files.map((f) => ({
-          filename: f.filename,
-          content_hash: f.content_hash,
-          size: f.content.length,
-          updated_at: f.updated_at,
-        })),
-      },
-      201,
-    );
-  });
-
-  // --- GET /api/agent-blueprints/:id/export — export as YAML ---
   app.get("/api/agent-blueprints/:id/export", (c) => {
     const id = c.req.param("id");
     const blueprint = registry.getAgentBlueprint(id);
@@ -363,80 +366,5 @@ export function registerAgentBlueprintRoutes(app: Hono, deps: RouteDeps): void {
     });
   });
 
-  // --- POST /api/agent-blueprints/import — import from YAML ---
-  app.post("/api/agent-blueprints/import", async (c) => {
-    let yamlContent: string;
-    try {
-      yamlContent = await c.req.text();
-    } catch (err) {
-      logger.warn("[route:agent-blueprints] request body read failed", { error: String(err) });
-      return apiError(c, 400, "INVALID_BODY", "Cannot read request body");
-    }
-
-    // 1. Parse YAML
-    let raw: unknown;
-    try {
-      raw = parseYaml(yamlContent);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Invalid YAML";
-      logger.error(`[agent-blueprint-import] YAML parse error: ${msg}`);
-      return apiError(c, 400, "YAML_PARSE_ERROR", msg);
-    }
-
-    // 2. Validate structure
-    const ImportSchema = z.object({
-      version: z.string().optional(),
-      name: z.string().min(1).max(100),
-      description: z.string().max(500).optional(),
-      category: z.enum(["user", "tool", "system"]).optional(),
-      icon: z.string().max(10).optional(),
-      tags: z.string().optional(),
-      files: z.record(z.string(), z.string()).optional(),
-    });
-
-    const parsed = ImportSchema.safeParse(raw);
-    if (!parsed.success) {
-      return apiError(c, 400, "VALIDATION_ERROR", parsed.error.message);
-    }
-
-    const { name, description, category, icon, tags, files } = parsed.data;
-
-    // 3. Create blueprint
-    const blueprint = registry.createAgentBlueprint({
-      name,
-      ...(description !== undefined ? { description } : {}),
-      ...(category !== undefined ? { category } : {}),
-      ...(icon !== undefined ? { icon } : {}),
-      ...(tags !== undefined ? { tags } : {}),
-    });
-
-    // 4. Create files from YAML
-    if (files) {
-      for (const [filename, content] of Object.entries(files)) {
-        registry.upsertAgentBlueprintFile(blueprint.id, filename, content);
-      }
-    }
-
-    upsertSearchEntry(deps.db, {
-      entityType: "agent_blueprint",
-      entityId: blueprint.id,
-      title: blueprint.name,
-      subtitle: blueprint.category ?? "",
-      routeHash: `/agent-templates/${blueprint.id}`,
-    });
-
-    const createdFiles = registry.listAgentBlueprintFiles(blueprint.id);
-    return c.json(
-      {
-        ...blueprint,
-        files: createdFiles.map((f) => ({
-          filename: f.filename,
-          content_hash: f.content_hash,
-          size: f.content.length,
-          updated_at: f.updated_at,
-        })),
-      },
-      201,
-    );
-  });
+  app.post("/api/agent-blueprints/import", async (c) => handleImportAgentBlueprint(c, deps));
 }

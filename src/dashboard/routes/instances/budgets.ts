@@ -40,6 +40,24 @@ const UpdateBudgetSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
+/** Map a budget DB row to the API response shape. */
+function formatBudgetRow(r: ReturnType<typeof getBudgetsForInstance>[number]) {
+  return {
+    id: r.id,
+    scope: r.scope,
+    scopeId: r.scope_id,
+    period: r.period,
+    limitUsd: r.limit_usd,
+    spentUsd: r.spent_usd,
+    softAlertPct: r.soft_alert_pct,
+    hardStopPct: r.hard_stop_pct,
+    overridePct: r.override_pct,
+    enabled: r.enabled === 1,
+    periodStart: r.period_start,
+    createdAt: r.created_at,
+  };
+}
+
 export function registerBudgetRoutes(app: Hono, deps: RouteDeps): void {
   const { db } = deps;
 
@@ -48,24 +66,7 @@ export function registerBudgetRoutes(app: Hono, deps: RouteDeps): void {
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/budgets", (c) => {
     const { slug } = getInstanceContext(c);
-
-    const rows = getBudgetsForInstance(db, slug);
-    return c.json(
-      rows.map((r) => ({
-        id: r.id,
-        scope: r.scope,
-        scopeId: r.scope_id,
-        period: r.period,
-        limitUsd: r.limit_usd,
-        spentUsd: r.spent_usd,
-        softAlertPct: r.soft_alert_pct,
-        hardStopPct: r.hard_stop_pct,
-        overridePct: r.override_pct,
-        enabled: r.enabled === 1,
-        periodStart: r.period_start,
-        createdAt: r.created_at,
-      })),
-    );
+    return c.json(getBudgetsForInstance(db, slug).map(formatBudgetRow));
   });
 
   // ---------------------------------------------------------------------------
@@ -96,22 +97,7 @@ export function registerBudgetRoutes(app: Hono, deps: RouteDeps): void {
         ...(data.hardStopPct !== undefined ? { hardStopPct: data.hardStopPct } : {}),
         ...(data.overridePct !== undefined ? { overridePct: data.overridePct } : {}),
       });
-      return c.json(
-        {
-          id: row.id,
-          scope: row.scope,
-          scopeId: row.scope_id,
-          period: row.period,
-          limitUsd: row.limit_usd,
-          spentUsd: row.spent_usd,
-          softAlertPct: row.soft_alert_pct,
-          hardStopPct: row.hard_stop_pct,
-          overridePct: row.override_pct,
-          enabled: row.enabled === 1,
-          periodStart: row.period_start,
-        },
-        201,
-      );
+      return c.json(formatBudgetRow(row), 201);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("UNIQUE constraint")) {
@@ -154,19 +140,7 @@ export function registerBudgetRoutes(app: Hono, deps: RouteDeps): void {
     });
     if (!updated) return apiError(c, 404, "NOT_FOUND", "Budget not found");
 
-    return c.json({
-      id: updated.id,
-      scope: updated.scope,
-      scopeId: updated.scope_id,
-      period: updated.period,
-      limitUsd: updated.limit_usd,
-      spentUsd: updated.spent_usd,
-      softAlertPct: updated.soft_alert_pct,
-      hardStopPct: updated.hard_stop_pct,
-      overridePct: updated.override_pct,
-      enabled: updated.enabled === 1,
-      periodStart: updated.period_start,
-    });
+    return c.json(formatBudgetRow(updated));
   });
 
   // ---------------------------------------------------------------------------

@@ -150,6 +150,96 @@ async function listGitHubFiles(
 }
 
 // ---------------------------------------------------------------------------
+// Extracted route handlers
+// ---------------------------------------------------------------------------
+
+/** Find SKILL.md root in an extracted directory (at root or in a single subfolder). */
+async function findSkillRoot(extractDir: string): Promise<string | null> {
+  const topEntries = await fs.readdir(extractDir, { withFileTypes: true });
+  if (topEntries.some((e) => e.isFile() && e.name === "SKILL.md")) return extractDir;
+
+  for (const sub of topEntries.filter((e) => e.isDirectory())) {
+    const subPath = path.join(extractDir, sub.name);
+    try {
+      await fs.access(path.join(subPath, "SKILL.md"));
+      return subPath;
+    } catch (err) {
+      logger.debug("[route:skills] SKILL.md not in subfolder", { error: String(err) });
+    }
+  }
+  return null;
+}
+
+/** Copy all files from skillRoot into targetDir, preserving directory structure. */
+async function copySkillFiles(skillRoot: string, targetDir: string): Promise<void> {
+  const filesToCopy = await fs.readdir(skillRoot, { withFileTypes: true, recursive: true });
+  for (const entry of filesToCopy) {
+    if (!entry.isFile()) continue;
+    const parentDir = entry.parentPath ?? skillRoot;
+    const srcFile = path.join(parentDir, entry.name);
+    const relPath = path.relative(skillRoot, srcFile);
+    const destFile = path.join(targetDir, relPath);
+    await fs.mkdir(path.dirname(destFile), { recursive: true });
+    await fs.copyFile(srcFile, destFile);
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type HonoContext = any;
+
+/** Handle POST /skills/upload — extract ZIP archive and install skill. */
+async function handleSkillUpload(c: HonoContext, stateDir: string): Promise<Response> {
+  const body = await c.req.parseBody();
+  const file = body["file"];
+
+  if (!file || !(file instanceof File)) {
+    return apiError(c, 400, "MISSING_FILE", "A 'file' field with a .zip file is required");
+  }
+  if (file.size > MAX_ZIP_SIZE) {
+    return apiError(c, 413, "FILE_TOO_LARGE", "ZIP file must be under 1 MB");
+  }
+
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "cp-skill-"));
+  const zipPath = path.join(tmpDir, "skill.zip");
+  const extractDir = path.join(tmpDir, "extracted");
+
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    await fs.writeFile(zipPath, buffer);
+    await fs.mkdir(extractDir, { recursive: true });
+    await execFileAsync("unzip", ["-o", zipPath, "-d", extractDir]);
+
+    const skillRoot = await findSkillRoot(extractDir);
+    if (!skillRoot) {
+      return apiError(c, 400, "NO_SKILL_MD", "No SKILL.md found in the archive");
+    }
+
+    const skillMdContent = await fs.readFile(path.join(skillRoot, "SKILL.md"), "utf-8");
+    const nameMatch = /^---[\s\S]*?^name\s*:\s*["']?([a-zA-Z0-9_-]+)["']?/m.exec(skillMdContent);
+    const skillName =
+      nameMatch?.[1] ??
+      (skillRoot !== extractDir ? path.basename(skillRoot) : path.basename(file.name, ".zip"));
+
+    if (!SKILL_NAME_RE.test(skillName)) {
+      return apiError(
+        c,
+        400,
+        "INVALID_NAME",
+        "Skill name must be alphanumeric with hyphens/underscores",
+      );
+    }
+
+    const targetDir = path.join(stateDir, "skills", skillName);
+    await fs.mkdir(targetDir, { recursive: true });
+    await copySkillFiles(skillRoot, targetDir);
+
+    return c.json({ ok: true, name: skillName });
+  } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Route registration
 // ---------------------------------------------------------------------------
 
@@ -176,97 +266,8 @@ export function registerAgentSkillsRoutes(app: Hono, _deps: RouteDeps): void {
 
   app.post("/api/instances/:slug/skills/upload", async (c) => {
     const { slug } = getInstanceContext(c);
-
     const stateDir = getRuntimeStateDir(slug);
-
-    // 1. Parse multipart body
-    const body = await c.req.parseBody();
-    const file = body["file"];
-
-    if (!file || !(file instanceof File)) {
-      return apiError(c, 400, "MISSING_FILE", "A 'file' field with a .zip file is required");
-    }
-
-    if (file.size > MAX_ZIP_SIZE) {
-      return apiError(c, 413, "FILE_TOO_LARGE", "ZIP file must be under 1 MB");
-    }
-
-    // 2. Write to a temp file
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "cp-skill-"));
-    const zipPath = path.join(tmpDir, "skill.zip");
-    const extractDir = path.join(tmpDir, "extracted");
-
-    try {
-      const buffer = Buffer.from(await file.arrayBuffer());
-      await fs.writeFile(zipPath, buffer);
-      await fs.mkdir(extractDir, { recursive: true });
-
-      // 3. Extract with unzip
-      await execFileAsync("unzip", ["-o", zipPath, "-d", extractDir]);
-
-      // 4. Find SKILL.md — may be at root or in a single subfolder
-      let skillRoot = extractDir;
-      const topEntries = await fs.readdir(extractDir, { withFileTypes: true });
-      const skillMdAtRoot = topEntries.some((e) => e.isFile() && e.name === "SKILL.md");
-
-      if (!skillMdAtRoot) {
-        // Check for a single subfolder containing SKILL.md
-        const subDirs = topEntries.filter((e) => e.isDirectory());
-        let found = false;
-        for (const sub of subDirs) {
-          const subPath = path.join(extractDir, sub.name);
-          try {
-            await fs.access(path.join(subPath, "SKILL.md"));
-            skillRoot = subPath;
-            found = true;
-            break;
-          } catch (err) {
-            logger.debug("[route:skills] SKILL.md not in subfolder", { error: String(err) });
-            // Not in this subfolder
-          }
-        }
-        if (!found) {
-          return apiError(c, 400, "NO_SKILL_MD", "No SKILL.md found in the archive");
-        }
-      }
-
-      // 5. Derive skill name from SKILL.md frontmatter or folder name
-      const skillMdContent = await fs.readFile(path.join(skillRoot, "SKILL.md"), "utf-8");
-      const nameMatch = /^---[\s\S]*?^name\s*:\s*["']?([a-zA-Z0-9_-]+)["']?/m.exec(skillMdContent);
-      const skillName =
-        nameMatch?.[1] ??
-        (skillRoot !== extractDir ? path.basename(skillRoot) : path.basename(file.name, ".zip"));
-
-      if (!SKILL_NAME_RE.test(skillName)) {
-        return apiError(
-          c,
-          400,
-          "INVALID_NAME",
-          "Skill name must be alphanumeric with hyphens/underscores",
-        );
-      }
-
-      // 6. Copy to workspace skills directory
-      const targetDir = path.join(stateDir, "skills", skillName);
-      await fs.mkdir(targetDir, { recursive: true });
-
-      // Copy all files from skillRoot to targetDir
-      const filesToCopy = await fs.readdir(skillRoot, { withFileTypes: true, recursive: true });
-      for (const entry of filesToCopy) {
-        if (!entry.isFile()) continue;
-        const parentDir = entry.parentPath ?? skillRoot;
-        const srcFile = path.join(parentDir, entry.name);
-        const relPath = path.relative(skillRoot, srcFile);
-        const destFile = path.join(targetDir, relPath);
-        await fs.mkdir(path.dirname(destFile), { recursive: true });
-        await fs.copyFile(srcFile, destFile);
-      }
-
-      return c.json({ ok: true, name: skillName });
-    } finally {
-      // 7. Cleanup temp directory
-      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
-    }
+    return handleSkillUpload(c, stateDir);
   });
 
   // ── POST /api/instances/:slug/skills/install — install from GitHub ───────

@@ -152,22 +152,7 @@ export interface ToolRegistryOptions {
  * Applies toolProfile filter if specified.
  */
 export async function getTools(options?: ToolRegistryOptions): Promise<Tool.Info[]> {
-  let tools: Tool.Info[] = [...BUILTIN_TOOLS];
-
-  // Apply tool profile filter
-  if (options?.toolProfile && TOOL_PROFILES[options.toolProfile]) {
-    const allowed = new Set(TOOL_PROFILES[options.toolProfile]);
-    tools = tools.filter((t) => allowed.has(t.id));
-  }
-
-  // Add extra allowed tools (beyond profile)
-  if (options?.alsoAllow && options.alsoAllow.length > 0) {
-    const extraIds = new Set(options.alsoAllow);
-    const extra = BUILTIN_TOOLS.filter(
-      (t) => extraIds.has(t.id) && !tools.find((e) => e.id === t.id),
-    );
-    tools = [...tools, ...extra];
-  }
+  let tools = resolveToolProfile(options?.toolProfile, options?.alsoAllow);
 
   if (options?.customToolsDir) {
     const custom = await loadCustomTools(options.customToolsDir);
@@ -179,26 +164,8 @@ export async function getTools(options?: ToolRegistryOptions): Promise<Tool.Info
     tools.push(...mcpTools);
   }
 
-  // Append tools declared by plugins (after built-in and MCP tools)
   if (options?.pluginInput) {
-    const hooks = getRegisteredHooks();
-    for (const hook of hooks) {
-      if (hook.tools) {
-        try {
-          const pluginTools = await hook.tools(options.pluginInput);
-          for (const tool of pluginTools) {
-            // Deduplication: do not overwrite existing tools
-            if (!tools.find((t) => t.id === tool.id)) {
-              tools.push(tool);
-            } else {
-              logger.warn(`Plugin tool '${tool.id}' conflicts with existing tool — skipped`);
-            }
-          }
-        } catch (err) {
-          logger.warn(`Plugin hook tools threw: ${err}`);
-        }
-      }
-    }
+    tools = await appendPluginTools(tools, options.pluginInput);
   }
 
   if (options?.exclude && options.exclude.length > 0) {
@@ -224,7 +191,6 @@ export async function getToolsForAgent(
   const tools = await getTools(toolOptions);
 
   if (agentKind === "subagent") {
-    // Hard rule: subagents can never spawn, message, or ask interactive questions
     return tools.filter((t) => t.id !== "task" && t.id !== "send_message" && t.id !== "question");
   }
 
@@ -244,6 +210,62 @@ export function getBuiltinTools(): Tool.Info[] {
  */
 export function getBuiltinTool(id: string): Tool.Info | undefined {
   return BUILTIN_TOOLS.find((t) => t.id === id);
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply tool profile filter and alsoAllow list to built-in tools.
+ */
+function resolveToolProfile(toolProfile?: string, alsoAllow?: string[]): Tool.Info[] {
+  let tools: Tool.Info[] = [...BUILTIN_TOOLS];
+
+  if (toolProfile && TOOL_PROFILES[toolProfile]) {
+    const allowed = new Set(TOOL_PROFILES[toolProfile]);
+    tools = tools.filter((t) => allowed.has(t.id));
+  }
+
+  if (alsoAllow && alsoAllow.length > 0) {
+    const extraIds = new Set(alsoAllow);
+    const extra = BUILTIN_TOOLS.filter(
+      (t) => extraIds.has(t.id) && !tools.find((e) => e.id === t.id),
+    );
+    tools = [...tools, ...extra];
+  }
+
+  return tools;
+}
+
+/**
+ * Append tools declared by plugins (after built-in and MCP tools).
+ * Deduplication: plugin tools that conflict with existing tools are skipped.
+ */
+async function appendPluginTools(
+  tools: Tool.Info[],
+  pluginInput: PluginInput,
+): Promise<Tool.Info[]> {
+  const hooks = getRegisteredHooks();
+  const result = [...tools];
+
+  for (const hook of hooks) {
+    if (!hook.tools) continue;
+    try {
+      const pluginTools = await hook.tools(pluginInput);
+      for (const tool of pluginTools) {
+        if (!result.find((t) => t.id === tool.id)) {
+          result.push(tool);
+        } else {
+          logger.warn(`Plugin tool '${tool.id}' conflicts with existing tool — skipped`);
+        }
+      }
+    } catch (err) {
+      logger.warn(`Plugin hook tools threw: ${err}`);
+    }
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
