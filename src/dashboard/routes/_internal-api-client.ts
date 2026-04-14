@@ -3,7 +3,7 @@
 // HTTP client for dashboard→runtime daemon IPC.
 // Calls the runtime's internal API server on its derived port.
 
-import { deriveInternalApiPort, resolveInternalApiToken } from "../../lib/platform.js";
+import { resolveActualInternalApiPort, resolveInternalApiToken } from "../../lib/platform.js";
 import { logger } from "../../lib/logger.js";
 
 /** Default timeout for chat requests (5 minutes). */
@@ -19,7 +19,7 @@ export async function callRuntimeApi<T>(
   body: unknown,
   options?: { timeoutMs?: number },
 ): Promise<T> {
-  const port = deriveInternalApiPort(slug);
+  const port = resolveActualInternalApiPort(slug);
   const token = resolveInternalApiToken(slug);
   const url = `http://127.0.0.1:${port}${path}`;
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -68,7 +68,7 @@ export async function publishRuntimeEvent(
   type: string,
   payload: Record<string, unknown>,
 ): Promise<void> {
-  const port = deriveInternalApiPort(slug);
+  const port = resolveActualInternalApiPort(slug);
   const token = resolveInternalApiToken(slug);
   const url = `http://127.0.0.1:${port}/internal/events/publish`;
 

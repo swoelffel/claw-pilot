@@ -6,6 +6,7 @@
 import * as http from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { logger } from "../../lib/logger.js";
+import { MAX_PORT_RETRIES } from "../../lib/platform.js";
 import type { InstanceSlug } from "../types.js";
 import {
   getBus,
@@ -94,6 +95,7 @@ export class InternalApiServer {
   private readonly _tokenBuffer: Buffer;
   private readonly _handlers: InternalApiHandlers;
   private readonly _slug: InstanceSlug;
+  private _boundPort: number | undefined;
 
   constructor(options: {
     port: number;
@@ -107,8 +109,39 @@ export class InternalApiServer {
     this._slug = options.slug;
   }
 
-  /** Start listening for HTTP requests. */
+  /** Actual port after start(). May differ from constructor port if a retry was needed. */
+  get boundPort(): number {
+    return this._boundPort ?? this._port;
+  }
+
+  /** Start listening for HTTP requests, retrying on EADDRINUSE. */
   async start(): Promise<void> {
+    for (let attempt = 0; attempt <= MAX_PORT_RETRIES; attempt++) {
+      const candidatePort = this._port + attempt;
+      try {
+        await this._tryBind(candidatePort);
+        this._boundPort = candidatePort;
+        if (attempt > 0) {
+          logger.warn("internal_api_port_retry", {
+            event: "internal_api_port_retry",
+            slug: this._slug,
+            requestedPort: this._port,
+            boundPort: candidatePort,
+            attempts: attempt + 1,
+          });
+        }
+        return;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "EADDRINUSE" && attempt < MAX_PORT_RETRIES) {
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
+  /** Attempt to bind the HTTP server on the given port. */
+  private _tryBind(port: number): Promise<void> {
     return new Promise((resolve, reject) => {
       this._server = http.createServer((req, res) => {
         void this._handleRequest(req, res);
@@ -118,17 +151,17 @@ export class InternalApiServer {
         logger.error("internal_api_listen_error", {
           event: "internal_api_listen_error",
           slug: this._slug,
-          port: this._port,
+          port,
           error: String(err),
         });
         reject(err);
       });
 
-      this._server.listen(this._port, "127.0.0.1", () => {
+      this._server.listen(port, "127.0.0.1", () => {
         logger.info("internal_api_started", {
           event: "internal_api_started",
           slug: this._slug,
-          port: this._port,
+          port,
         });
         resolve();
       });
