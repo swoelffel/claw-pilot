@@ -270,28 +270,30 @@ function fireAndForget(
   targetConfig: RuntimeAgentConfig,
   targetSession: { id: string },
   targetModel: ResolvedModel,
-  lctx: LoopContext,
+  loopCtx: LoopContext,
 ): Tool.Result {
   const systemPrompt = [
     "## Incoming message",
-    `Agent '${lctx.callerAgentConfig.id}' (${lctx.callerAgentConfig.name}) sends you this message.`,
+    `Agent '${loopCtx.callerAgentConfig.id}' (${loopCtx.callerAgentConfig.name}) sends you this message.`,
     "Process this message autonomously.",
   ].join("\n");
 
-  void lctx
+  void loopCtx
     .runPromptLoop({
-      db: lctx.db,
-      instanceSlug: lctx.instanceSlug,
+      db: loopCtx.db,
+      instanceSlug: loopCtx.instanceSlug,
       sessionId: targetSession.id,
-      userText: `[message_from:${lctx.callerAgentConfig.id}] ${params.message}`,
+      userText: `[message_from:${loopCtx.callerAgentConfig.id}] ${params.message}`,
       agentConfig: targetConfig,
       resolvedModel: targetModel,
-      workDir: lctx.workDir,
+      workDir: loopCtx.workDir,
       abort: new AbortController().signal,
       extraSystemPrompt: systemPrompt,
-      ...(lctx.compactionConfig !== undefined ? { compactionConfig: lctx.compactionConfig } : {}),
-      ...(lctx.runtimeAgentConfigs !== undefined
-        ? { runtimeAgentConfigs: lctx.runtimeAgentConfigs }
+      ...(loopCtx.compactionConfig !== undefined
+        ? { compactionConfig: loopCtx.compactionConfig }
+        : {}),
+      ...(loopCtx.runtimeAgentConfigs !== undefined
+        ? { runtimeAgentConfigs: loopCtx.runtimeAgentConfigs }
         : {}),
     })
     .catch((err) => {
@@ -314,32 +316,34 @@ async function expectReply(
   targetConfig: RuntimeAgentConfig,
   targetSession: { id: string },
   targetModel: ResolvedModel,
-  lctx: LoopContext,
+  loopCtx: LoopContext,
 ): Promise<Tool.Result> {
   const systemPrompt = [
     "## Incoming message",
-    `Agent '${lctx.callerAgentConfig.id}' (${lctx.callerAgentConfig.name}) sends you this message.`,
+    `Agent '${loopCtx.callerAgentConfig.id}' (${loopCtx.callerAgentConfig.name}) sends you this message.`,
     "Respond naturally — your reply will be forwarded back.",
   ].join("\n");
 
-  const result = await lctx.runPromptLoop({
-    db: lctx.db,
-    instanceSlug: lctx.instanceSlug,
+  const result = await loopCtx.runPromptLoop({
+    db: loopCtx.db,
+    instanceSlug: loopCtx.instanceSlug,
     sessionId: targetSession.id,
-    userText: `[message_from:${lctx.callerAgentConfig.id}] ${params.message}`,
+    userText: `[message_from:${loopCtx.callerAgentConfig.id}] ${params.message}`,
     agentConfig: targetConfig,
     resolvedModel: targetModel,
-    workDir: lctx.workDir,
+    workDir: loopCtx.workDir,
     abort: ctx.abort,
     extraSystemPrompt: systemPrompt,
-    ...(lctx.compactionConfig !== undefined ? { compactionConfig: lctx.compactionConfig } : {}),
-    ...(lctx.runtimeAgentConfigs !== undefined
-      ? { runtimeAgentConfigs: lctx.runtimeAgentConfigs }
+    ...(loopCtx.compactionConfig !== undefined
+      ? { compactionConfig: loopCtx.compactionConfig }
+      : {}),
+    ...(loopCtx.runtimeAgentConfigs !== undefined
+      ? { runtimeAgentConfigs: loopCtx.runtimeAgentConfigs }
       : {}),
   });
 
   // Record incoming reply in caller's session
-  createUserMessage(lctx.db, {
+  createUserMessage(loopCtx.db, {
     sessionId: ctx.sessionId,
     text: `[message_received] From ${targetConfig.id}: ${result.text}`,
   });

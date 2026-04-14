@@ -273,25 +273,25 @@ export function createTaskBoardTool(options: {
     parameters,
     async execute(params, ctx) {
       const bus = getBus(instanceSlug);
-      const hctx: HandlerCtx = { db, instanceSlug, bus };
+      const handlerCtx: HandlerCtx = { db, instanceSlug, bus };
 
       switch (params.action) {
         case "list":
-          return handleList(params, ctx, hctx);
+          return handleList(params, ctx, handlerCtx);
         case "list_epics":
-          return handleListEpics(params, ctx, hctx);
+          return handleListEpics(params, ctx, handlerCtx);
         case "create":
-          return handleCreate(params, ctx, hctx);
+          return handleCreate(params, ctx, handlerCtx);
         case "checkout":
-          return handleCheckout(params, ctx, hctx);
+          return handleCheckout(params, ctx, handlerCtx);
         case "complete":
-          return handleStatusChange("completed", "complete", params, ctx, hctx);
+          return handleStatusChange("completed", "complete", params, ctx, handlerCtx);
         case "block":
-          return handleStatusChange("blocked", "block", params, ctx, hctx);
+          return handleStatusChange("blocked", "block", params, ctx, handlerCtx);
         case "cancel":
-          return handleStatusChange("cancelled", "cancel", params, ctx, hctx);
+          return handleStatusChange("cancelled", "cancel", params, ctx, handlerCtx);
         case "comment":
-          return handleComment(params, ctx, hctx);
+          return handleComment(params, ctx, handlerCtx);
         default:
           return ok("task_board", `Unknown action: ${params.action}`);
       }

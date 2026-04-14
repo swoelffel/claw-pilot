@@ -84,7 +84,7 @@ export function createTaskTool(options: {
     runtimeAgentConfigs,
   );
 
-  const tctx = {
+  const taskCtx = {
     db,
     instanceSlug,
     resolvedModel,
@@ -121,7 +121,7 @@ export function createTaskTool(options: {
           { description: params.description, prompt: params.prompt, mode: params.mode },
           ctx,
           primaryPeerConfig,
-          tctx,
+          taskCtx,
         );
       }
 
@@ -137,7 +137,7 @@ export function createTaskTool(options: {
           contract: params.contract,
         },
         ctx,
-        tctx,
+        taskCtx,
       );
     },
   });

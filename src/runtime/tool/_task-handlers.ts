@@ -265,24 +265,24 @@ export function resolveTargetAgent(
  */
 export function resolveTargetPeerModel(
   primaryPeerConfig: RuntimeAgentConfig,
-  tctx: TaskExecContext,
+  taskCtx: TaskExecContext,
 ): ResolvedModel {
-  if (tctx.resolveTargetModel) {
+  if (taskCtx.resolveTargetModel) {
     try {
-      return tctx.resolveTargetModel(primaryPeerConfig);
+      return taskCtx.resolveTargetModel(primaryPeerConfig);
     } catch (err) {
       logger.warn("[tool:task] target model resolution failed", { error: String(err) });
-      return tctx.resolvedModel;
+      return taskCtx.resolvedModel;
     }
   }
   return primaryPeerConfig.model
     ? resolveAgentModel(
         primaryPeerConfig.model,
-        tctx.modelAliases ?? [],
-        tctx.resolvedModel,
-        tctx.env,
+        taskCtx.modelAliases ?? [],
+        taskCtx.resolvedModel,
+        taskCtx.env,
       )
-    : tctx.resolvedModel;
+    : taskCtx.resolvedModel;
 }
 
 /**
@@ -292,7 +292,7 @@ export async function handleA2ADelegation(
   params: { description: string; prompt: string; mode: "sync" | "async" },
   ctx: Tool.Context,
   primaryPeerConfig: RuntimeAgentConfig,
-  tctx: TaskExecContext,
+  taskCtx: TaskExecContext,
 ): Promise<Tool.Result> {
   // Guard: permanent agents cannot be spawned
   if (primaryPeerConfig.persistence === "permanent") {
@@ -302,7 +302,8 @@ export async function handleA2ADelegation(
     );
   }
 
-  const { db, instanceSlug, resolvedModel, workDir, compactionConfig, runtimeAgentConfigs } = tctx;
+  const { db, instanceSlug, resolvedModel, workDir, compactionConfig, runtimeAgentConfigs } =
+    taskCtx;
 
   const targetSession = getOrCreatePermanentSession(db, {
     instanceSlug,
@@ -324,7 +325,7 @@ export async function handleA2ADelegation(
     "Respond with your result — it will be forwarded back to the delegating agent.",
   ].join("\n");
 
-  const targetModel = resolveTargetPeerModel(primaryPeerConfig, tctx);
+  const targetModel = resolveTargetPeerModel(primaryPeerConfig, taskCtx);
   const modelLabel =
     primaryPeerConfig.model ?? `${resolvedModel.providerId}/${resolvedModel.modelId}`;
 
@@ -350,7 +351,7 @@ export async function handleA2ADelegation(
       targetSession,
       loopInput,
       modelLabel,
-      tctx,
+      taskCtx,
     );
   }
 
@@ -361,7 +362,7 @@ export async function handleA2ADelegation(
     targetSession,
     loopInput,
     modelLabel,
-    tctx,
+    taskCtx,
   );
 }
 
@@ -376,15 +377,15 @@ function handleAsyncDelegation(
   targetSession: { id: string },
   loopInput: TaskPromptLoopInput,
   modelLabel: string,
-  tctx: TaskExecContext,
+  taskCtx: TaskExecContext,
 ): Tool.Result {
-  const bus = getBus(tctx.instanceSlug);
+  const bus = getBus(taskCtx.instanceSlug);
   const delegationStartedAt = new Date().toISOString();
 
-  tctx
+  taskCtx
     .runPromptLoop(loopInput)
     .then((asyncResult) => {
-      injectTaskTrace(tctx.db, {
+      injectTaskTrace(taskCtx.db, {
         callerSessionId: ctx.sessionId,
         callerAgentId: ctx.agentId,
         targetAgentId: primaryPeerConfig.id,
@@ -437,12 +438,12 @@ async function handleSyncDelegation(
   targetSession: { id: string },
   loopInput: TaskPromptLoopInput,
   modelLabel: string,
-  tctx: TaskExecContext,
+  taskCtx: TaskExecContext,
 ): Promise<Tool.Result> {
   const syncDelegationStartedAt = new Date().toISOString();
-  const result = await tctx.runPromptLoop(loopInput);
+  const result = await taskCtx.runPromptLoop(loopInput);
 
-  injectTaskTrace(tctx.db, {
+  injectTaskTrace(taskCtx.db, {
     callerSessionId: ctx.sessionId,
     callerAgentId: ctx.agentId,
     targetAgentId: primaryPeerConfig.id,
@@ -493,29 +494,29 @@ export async function handleSubagentExecution(
       | undefined;
   },
   ctx: Tool.Context,
-  tctx: TaskExecContext,
+  taskCtx: TaskExecContext,
 ): Promise<Tool.Result> {
   const agent = getAgent(params.subagent_type);
   if (!agent) {
-    throw buildAgentNotFoundError(params.subagent_type, tctx);
+    throw buildAgentNotFoundError(params.subagent_type, taskCtx);
   }
 
   // Find or create the sub-agent session
   const sessionId = resolveOrCreateSubSession(
     params.task_id,
-    tctx.db,
-    tctx.instanceSlug,
+    taskCtx.db,
+    taskCtx.instanceSlug,
     ctx.sessionId,
     agent.name,
     params.description,
-    tctx.subagentsConfig,
+    taskCtx.subagentsConfig,
   );
 
   ctx.metadata({ title: params.description });
 
-  const agentConfig = buildSubagentConfig(agent, tctx.resolvedModel);
+  const agentConfig = buildSubagentConfig(agent, taskCtx.resolvedModel);
 
-  const parentSession = getSession(tctx.db, ctx.sessionId);
+  const parentSession = getSession(taskCtx.db, ctx.sessionId);
   const subagentDepth = (parentSession?.spawnDepth ?? 0) + 1;
   const extraSystemPrompt = [
     "## Subagent Context",
@@ -526,7 +527,7 @@ export async function handleSubagentExecution(
   ].join("\n");
 
   const subAgentWorkDir =
-    tctx.callerAgentConfig?.inheritWorkspace !== false ? tctx.workDir : undefined;
+    taskCtx.callerAgentConfig?.inheritWorkspace !== false ? taskCtx.workDir : undefined;
 
   if (params.mode === "async") {
     return handleAsyncSubagent(
@@ -537,7 +538,7 @@ export async function handleSubagentExecution(
       extraSystemPrompt,
       subAgentWorkDir,
       agent.name,
-      tctx,
+      taskCtx,
     );
   }
 
@@ -549,7 +550,7 @@ export async function handleSubagentExecution(
     extraSystemPrompt,
     subAgentWorkDir,
     agent.name,
-    tctx,
+    taskCtx,
   );
 }
 
@@ -565,29 +566,31 @@ function handleAsyncSubagent(
   extraSystemPrompt: string,
   subAgentWorkDir: string | undefined,
   agentName: string,
-  tctx: TaskExecContext,
+  taskCtx: TaskExecContext,
 ): Tool.Result {
-  const bus = getBus(tctx.instanceSlug);
+  const bus = getBus(taskCtx.instanceSlug);
   const delegationStartedAt = new Date().toISOString();
 
-  tctx
+  taskCtx
     .runPromptLoop({
-      db: tctx.db,
-      instanceSlug: tctx.instanceSlug,
+      db: taskCtx.db,
+      instanceSlug: taskCtx.instanceSlug,
       sessionId,
       userText: params.prompt,
       agentConfig,
-      resolvedModel: tctx.resolvedModel,
+      resolvedModel: taskCtx.resolvedModel,
       workDir: subAgentWorkDir,
       abort: ctx.abort,
       extraSystemPrompt,
-      ...(tctx.compactionConfig !== undefined ? { compactionConfig: tctx.compactionConfig } : {}),
+      ...(taskCtx.compactionConfig !== undefined
+        ? { compactionConfig: taskCtx.compactionConfig }
+        : {}),
     })
     .then((asyncResult) => {
       if (params.lifecycle !== "session") {
-        archiveSession(tctx.db, sessionId);
+        archiveSession(taskCtx.db, sessionId);
       }
-      injectTaskTrace(tctx.db, {
+      injectTaskTrace(taskCtx.db, {
         callerSessionId: ctx.sessionId,
         callerAgentId: ctx.agentId,
         targetAgentId: agentName,
@@ -651,7 +654,7 @@ async function handleSyncSubagent(
   extraSystemPrompt: string,
   subAgentWorkDir: string | undefined,
   agentName: string,
-  tctx: TaskExecContext,
+  taskCtx: TaskExecContext,
 ): Promise<Tool.Result> {
   const contract = params.contract;
   const contractPromptBlock = contract
@@ -670,17 +673,19 @@ async function handleSyncSubagent(
 
   for (let iteration = 1; iteration <= maxIterations; iteration++) {
     iterationsUsed = iteration;
-    result = await tctx.runPromptLoop({
-      db: tctx.db,
-      instanceSlug: tctx.instanceSlug,
+    result = await taskCtx.runPromptLoop({
+      db: taskCtx.db,
+      instanceSlug: taskCtx.instanceSlug,
       sessionId,
       userText: currentPrompt + contractPromptBlock,
       agentConfig,
-      resolvedModel: tctx.resolvedModel,
+      resolvedModel: taskCtx.resolvedModel,
       workDir: subAgentWorkDir,
       abort: ctx.abort,
       extraSystemPrompt,
-      ...(tctx.compactionConfig !== undefined ? { compactionConfig: tctx.compactionConfig } : {}),
+      ...(taskCtx.compactionConfig !== undefined
+        ? { compactionConfig: taskCtx.compactionConfig }
+        : {}),
     });
 
     if (!contract) break;
@@ -699,10 +704,10 @@ async function handleSyncSubagent(
   }
 
   if (params.lifecycle !== "session") {
-    archiveSession(tctx.db, sessionId);
+    archiveSession(taskCtx.db, sessionId);
   }
 
-  injectTaskTrace(tctx.db, {
+  injectTaskTrace(taskCtx.db, {
     callerSessionId: ctx.sessionId,
     callerAgentId: ctx.agentId,
     targetAgentId: agentName,
@@ -812,18 +817,18 @@ function injectTaskTrace(
 }
 
 /** Build the agent-not-found error with helpful available agent lists. */
-function buildAgentNotFoundError(subagentType: string, tctx: TaskExecContext): Error {
+function buildAgentNotFoundError(subagentType: string, taskCtx: TaskExecContext): Error {
   const availableSubagents = listAgents({ mode: "subagent", includeHidden: false })
     .map((a) => a.name)
     .join(", ");
-  const availablePrimary = (tctx.runtimeAgentConfigs ?? [])
-    .filter((cfg) => cfg.id !== tctx.callerAgentConfig?.id)
+  const availablePrimary = (taskCtx.runtimeAgentConfigs ?? [])
+    .filter((cfg) => cfg.id !== taskCtx.callerAgentConfig?.id)
     .map((cfg) => cfg.id)
     .join(", ");
   const declaredArchetypes = [
     ...new Set(
-      (tctx.runtimeAgentConfigs ?? [])
-        .filter((cfg) => cfg.id !== tctx.callerAgentConfig?.id && cfg.archetype != null)
+      (taskCtx.runtimeAgentConfigs ?? [])
+        .filter((cfg) => cfg.id !== taskCtx.callerAgentConfig?.id && cfg.archetype != null)
         .map((cfg) => cfg.archetype!),
     ),
   ].join(", ");
