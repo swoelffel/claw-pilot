@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.72.6] — 2026-04-14
+
+### Changed
+- **Zero complexity baseline** — refactored 44 files to eliminate all 64 ESLint `sonarjs/cognitive-complexity` and `max-lines-per-function` warnings. Every function in the codebase now passes strict thresholds (cognitive complexity ≤20, max 150 lines per function) with zero exceptions.
+- **Removed BASELINE_FILES from eslint.config.js** — all code is now enforced at error level. New complex code will be blocked at CI.
+
+### Added
+- `src/runtime/session/_prompt-loop-handlers.ts` — extracted chunk handlers, watchdog manager, and compaction logic from `prompt-loop.ts`
+- `src/runtime/tool/_task-handlers.ts` — extracted A2A delegation, subagent execution, and contract verdict logic from `task.ts`
+- `src/runtime/tool/built-in/_skill-frontmatter.ts` — extracted frontmatter parsing and eligibility checks from `skill.ts`
+- `src/runtime/tool/built-in/_skill-remote.ts` — extracted remote skill fetching from `skill.ts`
+
+---
+
 ## [0.72.5] — 2026-04-14
 
 ### Changed
