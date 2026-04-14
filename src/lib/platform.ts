@@ -127,7 +127,8 @@ const WEB_CHAT_PORT_RANGE = 100;
 function getUserSalt(): string {
   try {
     return os.userInfo().username;
-  } catch {
+  } catch (err) {
+    logger.debug("getUserSalt fallback", { error: String(err) });
     return process.env["USER"] ?? process.env["USERNAME"] ?? "default";
   }
 }
@@ -185,7 +186,8 @@ export function readPortFile(stateDir: string, name: string, fallback: number): 
     const content = fs.readFileSync(path.join(stateDir, `${name}.port`), "utf8");
     const parsed = parseInt(content.trim(), 10);
     return Number.isFinite(parsed) ? parsed : fallback;
-  } catch {
+  } catch (err) {
+    logger.debug("[platform] readPortFile failed", { error: String(err), fallback });
     return fallback;
   }
 }
@@ -194,8 +196,8 @@ export function readPortFile(stateDir: string, name: string, fallback: number): 
 export function removePortFile(stateDir: string, name: string): void {
   try {
     fs.unlinkSync(path.join(stateDir, `${name}.port`));
-  } catch {
-    /* ignore — file may not exist */
+  } catch (err) {
+    logger.debug("[platform] removePortFile failed", { error: String(err) });
   }
 }
 
