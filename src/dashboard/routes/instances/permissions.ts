@@ -11,7 +11,7 @@ import { z } from "zod";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
 import { getInstanceContext } from "../_instance-middleware.js";
-import { getBus, PermissionReplied } from "../../../runtime/index.js";
+import { publishRuntimeEvent } from "../_internal-api-client.js";
 import { logger } from "../../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -127,11 +127,9 @@ export function registerPermissionRoutes(app: Hono, deps: RouteDeps): void {
 
     const { permissionId, decision, persist, comment } = parsed.data;
 
-    // Publier la réponse sur le bus — le runtime engine écoute PermissionReplied
-    // sessionId n'est pas connu ici — on utilise une chaîne vide comme
-    // convention (le moteur filtre par id, pas par sessionId)
-    const bus = getBus(slug);
-    bus.publish(PermissionReplied, {
+    // Relay permission reply to the runtime daemon via HTTP.
+    // sessionId is empty by convention — the engine matches by permission id.
+    void publishRuntimeEvent(slug, "permission.replied", {
       id: permissionId,
       sessionId: "",
       action: decision,

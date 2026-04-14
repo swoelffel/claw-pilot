@@ -7,6 +7,13 @@ import * as http from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { logger } from "../../lib/logger.js";
 import type { InstanceSlug } from "../types.js";
+import {
+  getBus,
+  PermissionReplied,
+  SystemStateChanged,
+  WorkspaceFileChanged,
+} from "../bus/index.js";
+import type { EventDef } from "../bus/index.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -59,6 +66,23 @@ export interface FlowRunRequest {
   triggerType?: string;
   triggerDetail?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Publishable event whitelist (dashboard → runtime via HTTP)
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const PUBLISHABLE_EVENTS: Record<string, EventDef<string, any>> = {
+  "permission.replied": PermissionReplied,
+  "system.state.changed": SystemStateChanged,
+  "workspace.file.changed": WorkspaceFileChanged,
+};
+
+// ---------------------------------------------------------------------------
+// SSE constants
+// ---------------------------------------------------------------------------
+
+const SSE_PING_INTERVAL_MS = 15_000;
 
 // ---------------------------------------------------------------------------
 // InternalApiServer
@@ -129,7 +153,7 @@ export class InternalApiServer {
   }
 
   // ---------------------------------------------------------------------------
-  // Request handling
+  // Request handling — method-aware routing
   // ---------------------------------------------------------------------------
 
   private async _handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -139,13 +163,26 @@ export class InternalApiServer {
       return;
     }
 
-    // 2. Only POST allowed
+    const url = req.url ?? "";
+    const pathname = url.split("?")[0]!;
+
+    // 2. GET routes (no body parsing)
+    if (req.method === "GET") {
+      if (pathname === "/internal/events/stream") {
+        this._handleEventStream(req, res);
+        return;
+      }
+      this._json(res, 404, { error: "Not found", code: "NOT_FOUND" });
+      return;
+    }
+
+    // 3. POST routes
     if (req.method !== "POST") {
       this._json(res, 405, { error: "Method not allowed", code: "METHOD_NOT_ALLOWED" });
       return;
     }
 
-    // 3. Parse body
+    // 4. Parse body
     let body: unknown;
     try {
       body = await this._readBody(req);
@@ -155,18 +192,30 @@ export class InternalApiServer {
       return;
     }
 
-    // 4. Route
-    const url = req.url ?? "";
+    // 5. Route POST endpoints
+    await this._routePost(pathname, body, res);
+  }
+
+  // ---------------------------------------------------------------------------
+  // POST route dispatch
+  // ---------------------------------------------------------------------------
+
+  private async _routePost(
+    pathname: string,
+    body: unknown,
+    res: http.ServerResponse,
+  ): Promise<void> {
     try {
-      if (url === "/internal/chat") {
+      if (pathname === "/internal/chat") {
         const result = await this._handlers.handleChat(body as ChatRequest);
         this._json(res, 200, result);
-      } else if (url === "/internal/wake") {
+      } else if (pathname === "/internal/wake") {
         this._handlers.handleWake(body as WakeRequest);
         this._json(res, 200, { ok: true });
-      } else if (url.startsWith("/internal/flows/") && url.endsWith("/run")) {
-        // /internal/flows/:flowId/run
-        const flowIdStr = url.slice("/internal/flows/".length, -"/run".length);
+      } else if (pathname === "/internal/events/publish") {
+        this._handleEventPublish(body, res);
+      } else if (pathname.startsWith("/internal/flows/") && pathname.endsWith("/run")) {
+        const flowIdStr = pathname.slice("/internal/flows/".length, -"/run".length);
         const flowId = Number(flowIdStr);
         if (!Number.isFinite(flowId)) {
           this._json(res, 400, { error: "Invalid flow ID", code: "INVALID_FLOW_ID" });
@@ -174,9 +223,8 @@ export class InternalApiServer {
         }
         const runId = this._handlers.handleFlowRun(flowId, body as FlowRunRequest);
         this._json(res, 202, { runId });
-      } else if (url.startsWith("/internal/questions/") && url.endsWith("/answer")) {
-        // /internal/questions/:questionId/answer
-        const questionId = url.slice("/internal/questions/".length, -"/answer".length);
+      } else if (pathname.startsWith("/internal/questions/") && pathname.endsWith("/answer")) {
+        const questionId = pathname.slice("/internal/questions/".length, -"/answer".length);
         const { answer } = body as { answer?: string };
         if (!answer || typeof answer !== "string") {
           this._json(res, 400, { error: "Missing answer", code: "MISSING_ANSWER" });
@@ -184,9 +232,8 @@ export class InternalApiServer {
         }
         const resolved = this._handlers.handleQuestionAnswer(questionId, answer);
         this._json(res, 200, { ok: true, resolved });
-      } else if (url.startsWith("/internal/sessions/") && url.endsWith("/abort")) {
-        // /internal/sessions/:sessionId/abort
-        const sessionId = url.slice("/internal/sessions/".length, -"/abort".length);
+      } else if (pathname.startsWith("/internal/sessions/") && pathname.endsWith("/abort")) {
+        const sessionId = pathname.slice("/internal/sessions/".length, -"/abort".length);
         const aborted = this._handlers.handleAbort(sessionId);
         this._json(res, 200, { ok: true, aborted });
       } else {
@@ -197,11 +244,96 @@ export class InternalApiServer {
       logger.error("internal_api_handler_error", {
         event: "internal_api_handler_error",
         slug: this._slug,
-        url,
+        url: pathname,
         error: msg,
       });
       this._json(res, 500, { error: msg, code: "INTERNAL_ERROR" });
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // GET /internal/events/stream — SSE stream from daemon bus
+  // ---------------------------------------------------------------------------
+
+  private _handleEventStream(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const parsedUrl = new URL(req.url ?? "", `http://${req.headers.host ?? "localhost"}`);
+    const sessionId = parsedUrl.searchParams.get("sessionId") ?? undefined;
+    const typesRaw = parsedUrl.searchParams.get("types") ?? undefined;
+    const typesFilter = typesRaw
+      ? new Set(
+          typesRaw
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean),
+        )
+      : null;
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    // Hint browser reconnect delay
+    res.write("retry: 3000\n\n");
+
+    const bus = getBus(this._slug);
+    let cleaned = false;
+
+    const unsub = bus.subscribeAll((event) => {
+      if (cleaned) return;
+
+      // Optional type filter
+      if (typesFilter && !typesFilter.has(event.type)) return;
+
+      // Optional sessionId filter (skip for instance-scoped events without sessionId)
+      if (sessionId) {
+        const payload = event.payload as Record<string, unknown>;
+        if (payload.sessionId && payload.sessionId !== sessionId) return;
+      }
+
+      const line = `data: ${JSON.stringify({ ...event, timestamp: new Date().toISOString() })}\n\n`;
+      res.write(line);
+    });
+
+    const pingInterval = setInterval(() => {
+      if (!cleaned) res.write(":ping\n\n");
+    }, SSE_PING_INTERVAL_MS);
+
+    const cleanup = (): void => {
+      if (cleaned) return;
+      cleaned = true;
+      clearInterval(pingInterval);
+      unsub();
+    };
+
+    req.on("close", cleanup);
+    res.on("close", cleanup);
+  }
+
+  // ---------------------------------------------------------------------------
+  // POST /internal/events/publish — dashboard→runtime event relay
+  // ---------------------------------------------------------------------------
+
+  private _handleEventPublish(body: unknown, res: http.ServerResponse): void {
+    const { type, payload } = body as { type?: string; payload?: Record<string, unknown> };
+    if (!type || typeof type !== "string") {
+      this._json(res, 400, { error: "Missing event type", code: "MISSING_EVENT_TYPE" });
+      return;
+    }
+
+    const eventDef = PUBLISHABLE_EVENTS[type];
+    if (!eventDef) {
+      this._json(res, 400, {
+        error: `Event type "${type}" is not publishable`,
+        code: "UNKNOWN_EVENT_TYPE",
+      });
+      return;
+    }
+
+    const bus = getBus(this._slug);
+    bus.publish(eventDef, payload ?? {});
+    this._json(res, 200, { ok: true });
   }
 
   // ---------------------------------------------------------------------------

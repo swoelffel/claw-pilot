@@ -6,9 +6,9 @@ import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
 import { logger } from "../../../lib/logger.js";
 import { getInstanceContext } from "../_instance-middleware.js";
-import { getBus } from "../../../runtime/index.js";
 import { callRuntimeApi } from "../_internal-api-client.js";
 import { runtimeGuard } from "../_runtime-guard.js";
+import { proxyRuntimeSSE } from "../_sse-proxy.js";
 
 // ---------------------------------------------------------------------------
 // AI SDK error extraction
@@ -161,84 +161,54 @@ export function registerRuntimeChatRoutes(app: Hono, _deps: RouteDeps): void {
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/runtime/chat/stream?sessionId=<id>
-  // SSE stream of bus events for a runtime session.
-  // sessionId is now optional — omitting it streams all instance events.
+  // SSE stream proxied from the runtime daemon's bus.
+  // sessionId is optional — omitting it streams all instance events.
   // ---------------------------------------------------------------------------
+
+  /** Event types relevant for the chat/pilot UI. */
+  const CHAT_RELEVANT_TYPES = [
+    // Message streaming
+    "message.part.delta",
+    "message.created",
+    "message.updated",
+    // Session lifecycle
+    "session.status",
+    "session.ended",
+    "session.created",
+    "session.updated",
+    // System prompt (context panel real-time update)
+    "session.system_prompt",
+    // Permissions
+    "permission.asked",
+    "permission.replied",
+    // Sub-agents
+    "subagent.completed",
+    // Provider
+    "provider.failover",
+    "provider.auth_failed",
+    // Tools
+    "tool.doom_loop",
+    "tool.call.started",
+    "tool.call.ended",
+    // MCP
+    "mcp.tools.changed",
+    // Timeouts
+    "llm.chunk_timeout",
+    "agent.timeout",
+    // Questions
+    "question.asked",
+    // Suggestions
+    "suggestions.generated",
+  ].join(",");
+
   app.get("/api/instances/:slug/runtime/chat/stream", (c) => {
     const { slug } = getInstanceContext(c);
-
-    const sessionId = c.req.query("sessionId");
-    const bus = getBus(slug);
+    const sessionId = c.req.query("sessionId") || undefined;
 
     return streamSSE(c, async (stream) => {
-      // Subscribe to all bus events and forward relevant ones to the SSE stream
-      const unsub = bus.subscribeAll((event) => {
-        // Forward all pilot-relevant event types
-        const relevantTypes = new Set([
-          // Message streaming
-          "message.part.delta",
-          "message.created",
-          "message.updated",
-          // Session lifecycle
-          "session.status",
-          "session.ended",
-          "session.created",
-          "session.updated",
-          // System prompt (context panel real-time update)
-          "session.system_prompt",
-          // Permissions
-          "permission.asked",
-          "permission.replied",
-          // Sub-agents
-          "subagent.completed",
-          // Provider
-          "provider.failover",
-          "provider.auth_failed",
-          // Tools
-          "tool.doom_loop",
-          // MCP
-          "mcp.tools.changed",
-          // Timeouts
-          "llm.chunk_timeout",
-          "agent.timeout",
-          // Questions
-          "question.asked",
-        ]);
-
-        if (!relevantTypes.has(event.type)) return;
-
-        // If sessionId filter is provided, only forward events for that session
-        // (skip for instance-scoped events that have no sessionId)
-        if (sessionId) {
-          const payload = event.payload as Record<string, unknown>;
-          const instanceScopedTypes = new Set([
-            "provider.failover",
-            "provider.auth_failed",
-            "mcp.tools.changed",
-          ]);
-          if (!instanceScopedTypes.has(event.type) && payload.sessionId !== sessionId) return;
-        }
-
-        // Attach server-side timestamp for the event log
-        void stream.writeSSE({
-          data: JSON.stringify({ ...event, timestamp: new Date().toISOString() }),
-        });
-      });
-
-      // Ping every 15s to keep the connection alive
-      const pingInterval = setInterval(() => {
-        void stream.writeSSE({ event: "ping", data: "" });
-      }, 15_000);
-
-      // Cleanup on client disconnect
-      stream.onAbort(() => {
-        clearInterval(pingInterval);
-        unsub();
-      });
-
-      // Keep the stream open until the client disconnects
-      await new Promise<void>((resolve) => {
-        stream.onAbort(resolve);
+      await proxyRuntimeSSE(stream, slug, {
+        ...(sessionId !== undefined ? { sessionId } : {}),
+        types: CHAT_RELEVANT_TYPES,
       });
     });
   });

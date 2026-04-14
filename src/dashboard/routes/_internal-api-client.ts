@@ -55,3 +55,46 @@ export async function callRuntimeApi<T>(
 
   return (await response.json()) as T;
 }
+
+/** Timeout for best-effort event publish (short — fire-and-forget). */
+const PUBLISH_TIMEOUT_MS = 5_000;
+
+/**
+ * Publish an event on the runtime daemon's bus via HTTP.
+ * Best-effort: errors are logged but never thrown.
+ */
+export async function publishRuntimeEvent(
+  slug: string,
+  type: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const port = deriveInternalApiPort(slug);
+  const token = resolveInternalApiToken(slug);
+  const url = `http://127.0.0.1:${port}/internal/events/publish`;
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ type, payload }),
+      signal: AbortSignal.timeout(PUBLISH_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      logger.debug("[publish-event] daemon rejected event", {
+        slug,
+        type,
+        status: response.status,
+      });
+    }
+  } catch (err) {
+    // Best-effort — daemon may not be running
+    logger.debug("[publish-event] failed to publish event to daemon", {
+      slug,
+      type,
+      error: String(err),
+    });
+  }
+}

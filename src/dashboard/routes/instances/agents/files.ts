@@ -10,12 +10,10 @@ import { EDITABLE_FILES } from "../../../../core/agent-sync.js";
 import { ClawPilotError, InstanceNotFoundError } from "../../../../lib/errors.js";
 import { logger } from "../../../../lib/logger.js";
 import * as path from "node:path";
-import { getBus } from "../../../../runtime/bus/index.js";
-import { WorkspaceFileChanged } from "../../../../runtime/bus/events.js";
-import type { InstanceSlug, AgentId } from "../../../../runtime/types.js";
+import { publishRuntimeEvent } from "../../_internal-api-client.js";
 
 export function registerAgentFileRoutes(app: Hono, deps: RouteDeps): void {
-  const { registry, conn, lifecycle } = deps;
+  const { registry, conn } = deps;
 
   // GET /api/instances/:slug/agents/:agentId/files/:filename — fetch a single workspace file
   app.get("/api/instances/:slug/agents/:agentId/files/:filename", (c) => {
@@ -83,25 +81,16 @@ export function registerAgentFileRoutes(app: Hono, deps: RouteDeps): void {
       );
     }
 
-    // Notify the runtime that a workspace file changed (invalidates cache + dirty flags)
-    try {
-      const bus = getBus(slug);
-      const filePath = path.join(instance!.state_dir, "workspaces", agentId, filename);
-      bus.publish(WorkspaceFileChanged, {
-        instanceSlug: slug as InstanceSlug,
-        agentId: agentId as AgentId,
-        filename,
-        filePath,
-      });
-    } catch (err) {
-      // Bus may not exist if the runtime is not running — fall back to restart
-      logger.debug("[route:agents-files] workspace event skipped, falling back to restart", {
-        error: String(err),
-      });
-      lifecycle.restart(slug).catch(() => {
-        /* best-effort restart */
-      });
-    }
+    // Notify the runtime daemon that a workspace file changed (invalidates cache + dirty flags).
+    // Best-effort: if the daemon is not running, there is no cache to invalidate —
+    // the next startup will load fresh workspace files.
+    const filePath = path.join(instance!.state_dir, "workspaces", agentId, filename);
+    void publishRuntimeEvent(slug, "workspace.file.changed", {
+      instanceSlug: slug,
+      agentId,
+      filename,
+      filePath,
+    });
 
     const updatedFile = registry.getAgentFileContent(agentRecord.id, filename);
     return c.json(
