@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.72.2] — 2026-04-14
+
+### Fixed
+- **SSE bridge across dashboard/daemon processes**: dashboard and runtime daemons run as separate OS processes, each with their own in-memory Bus. SSE routes in the dashboard subscribed to an empty local bus — events like `session.status`, `message.part.delta` never reached the browser. New bidirectional HTTP bridge: daemon exposes `GET /internal/events/stream` (SSE) and `POST /internal/events/publish`, dashboard proxies via `_sse-proxy.ts` and `publishRuntimeEvent()`. All 4 broken communication paths fixed (SSE streaming, permission replies, system state, workspace file changes). Status-pill now reflects real runtime activity.
+- **Answered question detection**: detect answered question from `call.state` instead of only from result part.
+- **UI unblock after pendingQuestion**: transition session status to `thinking` when `pendingQuestion` response is received, preventing the UI from staying stuck on "sending".
+- **Delegation trace timestamps**: backdate delegation traces to their actual start time and add seconds precision to the timeline display.
+
+---
+
 ## [0.72.1] — 2026-04-14
 
 ### Fixed
