@@ -53,17 +53,23 @@ Since v0.7.1, navigation uses hash URLs (`#/...`). Browser back/forward and page
 
 | Hash URL | Rendered view | Component |
 |---|---|---|
-| `#/` or `#/instances` | Instances view (home) | `cp-cluster-view` |
+| `#/home` | Home screen (default) | `cp-home-screen` |
+| `#/` or `#/instances` | Instances view | `cp-cluster-view` |
 | `#/instances/:slug/builder` | Agent builder | `cp-agents-builder` |
 | `#/instances/:slug/settings` | Instance settings | `cp-instance-settings` |
 | `#/instances/:slug/pilot` | Interactive chat + LLM context panel | `cp-runtime-pilot` |
 | `#/instances/:slug/costs` | Cost analytics dashboard | `cp-costs-dashboard` |
 | `#/instances/:slug/activity` | Event browser + filters | `cp-activity-console` |
+| `#/instances/:slug/memory` | Memory file browser + search | `cp-memory-browser` |
+| `#/instances/:slug/heartbeat` | Heartbeat heatmap visualization | `cp-heartbeat-heatmap` |
+| `#/instances/:slug/session-logs` | Session log viewer | `cp-session-logs` |
+| `#/instances/:slug/tasks` | Task board (Kanban) | `cp-task-board` |
+| `#/instances/:slug/flows` | Workflow editor + run history | `cp-flow-list` |
+| `#/instances/:slug/flows/runs/:runId` | Flow execution detail | `cp-flow-run-detail` |
 | `#/blueprints` | Blueprints view | `cp-blueprints-view` |
 | `#/blueprints/:id/builder` | Blueprint builder | `cp-blueprint-builder` |
 | `#/agent-templates` | Agent templates (reusable agent blueprints) | `cp-agent-templates-view` |
 | `#/agent-templates/:id` | Agent template detail + file editing | `cp-agent-template-detail` |
-| `#/instances/:slug/tasks` | Task board (Kanban) | `cp-task-board` |
 | `#/profile` | User profile settings | `cp-profile-settings` |
 
 Navigation between views emits `navigate { view, slug?, blueprintId?, templateId? }` events captured by `app.ts`, which updates the hash URL and renders the corresponding component.
@@ -114,17 +120,23 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 | # | Screen | Tag | Route | Components used | Doc |
 |---|--------|-----|-------|-----------------|-----|
 | 0 | Login | `cp-login-view` | — (pre-auth) | — | [screen-login.md](ux-screens/screen-login.md) |
+| — | Home Screen | `cp-home-screen` | `#/home` | cp-home-wizard, cp-home-chat | [screen-home.md](ux-screens/screen-home.md) |
 | 1 | Instances | `cp-cluster-view` | `#/instances` | instance-card, create-dialog, delete-instance-dialog, discover-dialog | [screen-instances.md](ux-screens/screen-instances.md) |
-| 2b | Instance Settings | `cp-instance-settings` | `#/instances/:slug/settings` | channels, mcp, permissions, config (inline) | [screen-instance-settings.md](ux-screens/screen-instance-settings.md) |
-| 2c | Runtime Pilot | `cp-runtime-pilot` | `#/instances/:slug/pilot` | 22 sub-components (inline) | [screen-runtime-pilot.md](ux-screens/screen-runtime-pilot.md) |
-| 2d | Cost Dashboard | `cp-costs-dashboard` | `#/instances/:slug/costs` | cp-budget-settings, cp-budget-alert-banner (Analytics tab: summary cards, SVG chart, table, donut; Budgets tab: budget management) | [screen-costs-dashboard.md](ux-screens/screen-costs-dashboard.md) |
-| 2e | Activity Console | `cp-activity-console` | `#/instances/:slug/activity` | — (self-contained: filters, event table, detail panel) | [screen-activity-console.md](ux-screens/screen-activity-console.md) |
+| 2b | Instance Settings | `cp-instance-settings` | `#/instances/:slug/settings` | channels, mcp, permissions, config, skills (inline) | [screen-instance-settings.md](ux-screens/screen-instance-settings.md) |
+| 2c | Runtime Pilot | `cp-runtime-pilot` | `#/instances/:slug/pilot` | 22+ sub-components (inline) | [screen-runtime-pilot.md](ux-screens/screen-runtime-pilot.md) |
+| 2d | Cost Dashboard | `cp-costs-dashboard` | `#/instances/:slug/costs` | cp-budget-settings, cp-budget-alert-banner | [screen-costs-dashboard.md](ux-screens/screen-costs-dashboard.md) |
+| 2e | Activity Console | `cp-activity-console` | `#/instances/:slug/activity` | — (self-contained) | [screen-activity-console.md](ux-screens/screen-activity-console.md) |
+| — | Memory Browser | `cp-memory-browser` | `#/instances/:slug/memory` | — | [screen-memory-browser.md](ux-screens/screen-memory-browser.md) |
+| — | Heartbeat Heatmap | `cp-heartbeat-heatmap` | `#/instances/:slug/heartbeat` | — | [screen-heartbeat-heatmap.md](ux-screens/screen-heartbeat-heatmap.md) |
+| — | Session Logs | `cp-session-logs` | `#/instances/:slug/session-logs` | session-tree | [screen-session-logs.md](ux-screens/screen-session-logs.md) |
 | 3 | Agent Builder | `cp-agents-builder` | `#/instances/:slug/builder` | agent-card-mini, agent-detail-panel, agent-links-svg | [screen-agent-builder.md](ux-screens/screen-agent-builder.md) |
 | 4 | Blueprints | `cp-blueprints-view` | `#/blueprints` | blueprint-card | [screen-blueprints.md](ux-screens/screen-blueprints.md) |
 | 5 | Blueprint Builder | `cp-blueprint-builder` | `#/blueprints/:id/builder` | agent-card-mini, agent-detail-panel, agent-links-svg | [screen-blueprint-builder.md](ux-screens/screen-blueprint-builder.md) |
 | — | Agent Templates | `cp-agent-templates-view` | `#/agent-templates` | — | [screen-agent-templates.md](ux-screens/screen-agent-templates.md) |
 | — | Agent Template Detail | `cp-agent-template-detail` | `#/agent-templates/:id` | agent-file-editor | [screen-agent-template-detail.md](ux-screens/screen-agent-template-detail.md) |
-| — | Task Board | `cp-task-board` | `#/instances/:slug/tasks` | task-card, task-detail | [screen-task-board.md](ux-screens/screen-task-board.md) |
+| — | Task Board | `cp-task-board` | `#/instances/:slug/tasks` | task-card, task-detail, epic-tree | [screen-task-board.md](ux-screens/screen-task-board.md) |
+| — | Flow List | `cp-flow-list` | `#/instances/:slug/flows` | flow-editor | [screen-flow-list.md](ux-screens/screen-flow-list.md) |
+| — | Flow Run Detail | `cp-flow-run-detail` | `#/instances/:slug/flows/runs/:runId` | — | [screen-flow-run-detail.md](ux-screens/screen-flow-run-detail.md) |
 | — | Profile Settings | `cp-profile-settings` | `#/profile` | — (standalone) | [screen-profile-settings.md](ux-screens/screen-profile-settings.md) |
 
 ---
@@ -147,8 +159,17 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 | Bus Alerts | `cp-bus-alerts` | [comp-bus-alerts.md](ux-components/comp-bus-alerts.md) |
 | Canvas Legend | `cp-canvas-legend` | [comp-canvas-legend.md](ux-components/comp-canvas-legend.md) |
 | Budget Alert Banner | `cp-budget-alert-banner` | [comp-budget-alert-banner.md](ux-components/comp-budget-alert-banner.md) |
-| Task Card | `cp-task-card` | — (inline in task-board) |
-| Task Detail | `cp-task-detail` | — (inline in task-board) |
+| Budget Settings | `cp-budget-settings` | [comp-budget-settings.md](ux-components/comp-budget-settings.md) |
+| Named Keys Panel | `cp-named-keys-panel` | [comp-named-keys-panel.md](ux-components/comp-named-keys-panel.md) |
+| Home Chat | `cp-home-chat` | [comp-home-chat.md](ux-components/comp-home-chat.md) |
+| Home Wizard | `cp-home-wizard` | [comp-home-wizard.md](ux-components/comp-home-wizard.md) |
+| Command Palette | `cp-command-palette` | [comp-command-palette.md](ux-components/comp-command-palette.md) |
+| Task Card | `cp-task-card` | [comp-task-card.md](ux-components/comp-task-card.md) |
+| Task Detail | `cp-task-detail` | [comp-task-detail.md](ux-components/comp-task-detail.md) |
+| Epic Tree | `cp-epic-tree` | [comp-epic-tree.md](ux-components/comp-epic-tree.md) |
+| Flow Editor | `cp-flow-editor` | [comp-flow-editor.md](ux-components/comp-flow-editor.md) |
+| Pilot Part: Reasoning | `cp-pilot-part-reasoning` | [comp-pilot-part-reasoning.md](ux-components/comp-pilot-part-reasoning.md) |
+| Pilot Part: Delegation Expand | `cp-pilot-part-delegation-expand` | [comp-pilot-part-delegation-expand.md](ux-components/comp-pilot-part-delegation-expand.md) |
 
 ---
 
@@ -191,3 +212,9 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 *Updated: 2026-03-28 - Builder UX harness design overhaul. Agent cards: archetype color stripe (6 colors), persistence-based backgrounds (permanent=surface, ephemeral=base, default=accent), inline @archetype spawn capsules (row 4), fixed card dimensions (186×80px). SVG links: spawn=dotted with arrow, A2A messaging=dashed without arrow (bidirectional merged), ray-rectangle clipping to card edges. Canvas legend (cp-canvas-legend, collapsible). Multi-select: rubber-band rectangle selection, group drag with position persistence. Persistence guard in task.ts: permanent agents cannot be spawned. 6 archetype CSS tokens added.*
 
 *Updated: 2026-04-03 - BUDGET-001: Budget enforcement (auto-pause). Cost Dashboard now has Analytics/Budgets tabs. New components: cp-budget-settings (budget CRUD, progress bars, event log, create/edit dialog), cp-budget-alert-banner (warning/exceeded banners on all instance pages with override button). Backend: rt_budgets + rt_budget_events tables, pre/post-LLM budget checks, heartbeat budget blocking, monthly reset, reconciliation, Telegram notifications.*
+
+*Updated: 2026-04-13 - v0.70.0: Home screen with cp-home-chat (lean chat for cp-system) and cp-home-wizard (setup form). Question tool UX overhaul with tabs and chat lockout.*
+
+*Updated: 2026-04-13 - v0.71.0: Live reasoning streaming (collapsible "Thinking..." card), 5-phase status indicator (sending/thinking/using tool/responding/idle), delegation drill-down (clickable traces expand nested sub-sessions).*
+
+*Updated: 2026-04-14 - v0.72.6: SSE bridge (daemon/dashboard real-time sync), setup wizard replaced with form, system-tools plugin (DB-direct, 22 cp_* tools), zero complexity baseline. New routes: #/home, #/.../memory, #/.../heartbeat, #/.../session-logs, #/.../flows, #/.../flows/runs/:runId. New components: cp-home-chat, cp-home-wizard, cp-command-palette, cp-epic-tree, cp-flow-editor, cp-flow-list, cp-flow-run-detail, cp-pilot-part-reasoning, cp-pilot-part-delegation-expand. Total: 86 components, 18 routes.*
