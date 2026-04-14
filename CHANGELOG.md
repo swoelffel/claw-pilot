@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.72.3] — 2026-04-14
+
+### Changed
+- **Setup wizard replaced with form**: the chat-bubble wizard for initial setup is replaced by a single-page form. All fields (provider, API key, model) are visible at once. New profile section collects display name, language (auto-detected from browser), and timezone (auto-detected). Localized in 6 languages.
+
+---
+
 ## [0.72.2] — 2026-04-14
 
 ### Fixed
