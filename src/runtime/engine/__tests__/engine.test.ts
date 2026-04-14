@@ -324,6 +324,7 @@ describe("ClawRuntime", () => {
           instanceSlug: SYSTEM_SLUG,
           workDir: undefined,
           version: "test",
+          db: {} as any,
         });
         const toolIds = pluginTools.map((t) => t.id);
         expect(toolIds).toContain("cp_create_instance");

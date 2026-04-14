@@ -238,7 +238,7 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   registerNamedKeyRoutes(app, deps);
   registerSearchRoutes(app, deps);
   registerFlowRoutes(app, deps);
-  registerSystemInstanceRoutes(app, deps, token, options.port);
+  registerSystemInstanceRoutes(app, deps);
 
   // Rebuild search index on startup
   rebuildSearchIndex(deps.db);
@@ -247,14 +247,6 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   void SystemInstanceService.ensureRunning(registry, lifecycle).catch((err) =>
     logger.warn("[system] failed to auto-start system instance", { error: String(err) }),
   );
-
-  // Sync dashboard token to system instance .env (in case token changed)
-  const systemInst = registry.getSystemInstance();
-  if (systemInst) {
-    void SystemInstanceService.syncDashboardToken(systemInst.state_dir, options.port, token).catch(
-      (err) => logger.debug("[system] failed to sync dashboard token", { error: String(err) }),
-    );
-  }
 
   // Global error handler — catches unhandled errors that bubble up through route handlers.
   // ClawPilotError subclasses are mapped to structured API responses; unknown errors → 500.

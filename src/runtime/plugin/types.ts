@@ -21,6 +21,7 @@
  */
 
 import type { ZodType } from "zod";
+import type Database from "better-sqlite3";
 import type { InstanceSlug, SessionId } from "../types.js";
 import type { Tool } from "../tool/tool.js";
 
@@ -129,6 +130,8 @@ export interface PluginInput {
   workDir: string | undefined;
   /** Runtime version */
   version: string;
+  /** Direct DB handle — plugins that need data access use this instead of HTTP. */
+  db: Database.Database;
 }
 
 // ---------------------------------------------------------------------------

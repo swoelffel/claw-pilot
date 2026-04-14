@@ -26,6 +26,7 @@ const TEST_INPUT: PluginInput = {
   instanceSlug: "test-instance",
   workDir: "/tmp/test",
   version: "0.0.0-test",
+  db: {} as any,
 };
 
 // ---------------------------------------------------------------------------

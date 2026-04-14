@@ -37,7 +37,7 @@ import { ChannelRouter, registerSubagentCompletedHandler } from "../channel/rout
 import { createChannels } from "./channel-factory.js";
 import { wirePluginsToBus } from "./plugin-wiring.js";
 import { registerPlugin, initPlugins, resetPlugins } from "../plugin/plugin.js";
-import { systemDashboardPlugin } from "../plugin/system-dashboard/index.js";
+import { systemToolsPlugin } from "../plugin/system-tools/index.js";
 import { getRuntimeVersion } from "../_runtime-version.js";
 import { SYSTEM_INSTANCE_SLUG } from "../../core/system-instance.js";
 import { startHeartbeatRunner } from "../heartbeat/runner.js";
@@ -186,9 +186,9 @@ export class ClawRuntime {
         await this._mcpRegistry.init(enabledServers, this.instanceSlug);
       }
 
-      // 2b. Register system dashboard plugin for cp-system instance
+      // 2b. Register system tools plugin for cp-system instance (DB-direct, no HTTP proxy)
       if (this.instanceSlug === SYSTEM_INSTANCE_SLUG) {
-        registerPlugin("system-dashboard", systemDashboardPlugin);
+        registerPlugin("system-tools", systemToolsPlugin);
       }
 
       // 2c. Initialize all registered plugins — invokes factories, registers hooks.
@@ -199,6 +199,7 @@ export class ClawRuntime {
         instanceSlug: this.instanceSlug,
         workDir: this.workDir,
         version: getRuntimeVersion(),
+        db: this.db,
       });
 
       // 3. Wire plugin hooks to bus events
