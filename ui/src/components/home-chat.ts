@@ -49,7 +49,7 @@ const HOME_FILTERS: TimelineFilters = {
   chat: true,
   a2a: true,
   tools: false,
-  thinking: false,
+  thinking: true,
   subtasks: true,
   suggestions: true,
 };
