@@ -6,6 +6,7 @@ import * as fs from "node:fs";
 import Database from "better-sqlite3";
 import { initDatabase } from "../schema.js";
 import { Registry } from "../../core/registry.js";
+import { deriveWebChatPort } from "../../lib/platform.js";
 
 let tmpDir: string;
 let dbPath: string;
@@ -180,7 +181,7 @@ describe("initDatabase — fresh database", () => {
 
   it("reaches the latest schema version (29)", () => {
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(34);
+    expect(schemaVersion(db)).toBe(35);
     db.close();
   });
 
@@ -230,7 +231,7 @@ describe("migration v1 → v4", () => {
     v1.close();
 
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(34);
+    expect(schemaVersion(db)).toBe(35);
     db.close();
   });
 
@@ -296,8 +297,8 @@ describe("migration v1 → v4", () => {
     const instance = registry.getInstance("test-inst");
     expect(instance).toBeDefined();
     expect(instance!.slug).toBe("test-inst");
-    // v23 migration backfills port with deriveWebChatPort("test-inst") = 19126
-    expect(instance!.port).toBe(19126);
+    // v35 migration recalculates port with user-salted deriveWebChatPort
+    expect(instance!.port).toBe(deriveWebChatPort("test-inst"));
     db.close();
   });
 
@@ -368,7 +369,7 @@ describe("migration v2 → v4", () => {
     v1.close();
 
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(34);
+    expect(schemaVersion(db)).toBe(35);
     expect(tableNames(db)).toContain("blueprints");
     expect(tableNames(db)).toContain("users");
     expect(tableNames(db)).toContain("sessions");

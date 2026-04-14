@@ -6,7 +6,7 @@
 // Hono's SSEStreamingApi so the browser receives them transparently.
 
 import type { SSEStreamingApi } from "hono/streaming";
-import { deriveInternalApiPort, resolveInternalApiToken } from "../../lib/platform.js";
+import { resolveActualInternalApiPort, resolveInternalApiToken } from "../../lib/platform.js";
 import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -105,7 +105,7 @@ const PING_INTERVAL_MS = 15_000;
 
 /** Build the upstream daemon URL for the SSE endpoint. */
 function _buildUpstreamUrl(slug: string, params?: ProxySSEParams): string {
-  const port = deriveInternalApiPort(slug);
+  const port = resolveActualInternalApiPort(slug);
   const qs = new URLSearchParams();
   if (params?.sessionId) qs.set("sessionId", params.sessionId);
   if (params?.types) qs.set("types", params.types);

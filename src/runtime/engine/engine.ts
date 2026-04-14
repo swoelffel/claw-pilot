@@ -34,6 +34,7 @@ import { initAgentRegistry, resolveEffectivePersistence, getAgent } from "../age
 import { getOrCreatePermanentSession } from "../session/session.js";
 import { McpRegistry } from "../mcp/registry.js";
 import { ChannelRouter, registerSubagentCompletedHandler } from "../channel/router.js";
+import { WebChatChannel } from "../channel/web-chat.js";
 import { createChannels } from "./channel-factory.js";
 import { wirePluginsToBus } from "./plugin-wiring.js";
 import { registerPlugin, initPlugins, resetPlugins } from "../plugin/plugin.js";
@@ -58,7 +59,12 @@ import {
 } from "../../core/repositories/budget-repository.js";
 import { Registry } from "../../core/registry.js";
 import { logger, type Logger } from "../../lib/logger.js";
-import { deriveInternalApiPort, resolveInternalApiToken } from "../../lib/platform.js";
+import {
+  deriveInternalApiPort,
+  resolveInternalApiToken,
+  writePortFile,
+  removePortFile,
+} from "../../lib/platform.js";
 import {
   InternalApiServer,
   type ChatRequest,
@@ -196,6 +202,12 @@ export class ClawRuntime {
       await this._shutdownSubsystem(`channel[${channel.type}]`, () => channel.disconnect(), errors);
     }
     this._channels = [];
+
+    // 1b. Remove port files
+    if (this.workDir) {
+      removePortFile(this.workDir, "webchat");
+      removePortFile(this.workDir, "api");
+    }
 
     // 2. Dispose MCP
     await this._shutdownSubsystem("mcp", async () => this._mcpRegistry?.dispose(), errors);
@@ -422,6 +434,15 @@ export class ClawRuntime {
       await channel.connect();
     }
 
+    // 4a. Write web-chat port file for dashboard discovery
+    if (this.workDir) {
+      for (const channel of this._channels) {
+        if (channel instanceof WebChatChannel) {
+          writePortFile(this.workDir, "webchat", channel.boundPort);
+        }
+      }
+    }
+
     // 4b. Start internal API server for dashboard IPC
     try {
       this._internalApi = new InternalApiServer({
@@ -431,6 +452,11 @@ export class ClawRuntime {
         handlers: this._buildInternalApiHandlers(),
       });
       await this._internalApi.start();
+
+      // Write internal API port file for dashboard discovery
+      if (this.workDir) {
+        writePortFile(this.workDir, "api", this._internalApi.boundPort);
+      }
     } catch (apiErr) {
       // Non-fatal: internal API server may fail to bind in test environments
       // or when multiple runtimes with the same slug hash collide.

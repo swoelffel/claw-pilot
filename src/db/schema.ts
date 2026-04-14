@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import * as path from "node:path";
 import { logger } from "../lib/logger.js";
+import { deriveWebChatPort } from "../lib/platform.js";
 
 // Base schema version — bump only when adding new migrations (migrations tracked separately)
 const BASE_SCHEMA_VERSION = 1;
@@ -1362,6 +1363,34 @@ const MIGRATIONS: Migration[] = [
     version: 34,
     up(db) {
       db.exec(`ALTER TABLE instances ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0`);
+    },
+  },
+  {
+    // v35: Recalculate instance ports using user-salted hash.
+    // Port derivation now includes os.userInfo().username in the hash input
+    // so that multiple OS users on the same machine get distinct ports.
+    version: 35,
+    up(db) {
+      const hasInstances = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='instances'")
+        .get();
+      if (!hasInstances) return;
+
+      const hasPorts = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='ports'")
+        .get();
+
+      const instances = db.prepare("SELECT slug FROM instances").all() as { slug: string }[];
+      const updateInstance = db.prepare("UPDATE instances SET port = ? WHERE slug = ?");
+      const updatePort = hasPorts
+        ? db.prepare("UPDATE ports SET port = ? WHERE instance_slug = ?")
+        : null;
+
+      for (const { slug } of instances) {
+        const newPort = deriveWebChatPort(slug);
+        updateInstance.run(newPort, slug);
+        updatePort?.run(newPort, slug);
+      }
     },
   },
 ];

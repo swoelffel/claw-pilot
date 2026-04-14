@@ -24,6 +24,7 @@ import type { Channel } from "./channel.js";
 import type { InboundMessage, OutboundMessage } from "../types.js";
 import { ChannelError } from "./channel.js";
 import { logger } from "../../lib/logger.js";
+import { MAX_PORT_RETRIES } from "../../lib/platform.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -68,12 +69,18 @@ export class WebChatChannel implements Channel {
   private handler: ((msg: InboundMessage) => Promise<void>) | undefined;
   private peers = new Map<string, WebSocket>();
   private readonly options: Required<WebChatOptions>;
+  private _boundPort: number | undefined;
 
   constructor(options: WebChatOptions) {
     this.options = {
       maxConnections: 10,
       ...options,
     };
+  }
+
+  /** Actual port after connect(). May differ from options.port if a retry was needed. */
+  get boundPort(): number {
+    return this._boundPort ?? this.options.port;
   }
 
   onMessage(handler: (msg: InboundMessage) => Promise<void>): void {
@@ -83,8 +90,33 @@ export class WebChatChannel implements Channel {
   async connect(): Promise<void> {
     if (this.wss) return; // idempotent
 
-    const wss = new WebSocketServer({ port: this.options.port });
-    this.wss = wss;
+    for (let attempt = 0; attempt <= MAX_PORT_RETRIES; attempt++) {
+      const candidatePort = this.options.port + attempt;
+      try {
+        const wss = await this._tryBind(candidatePort);
+        this.wss = wss;
+        this._boundPort = candidatePort;
+        if (attempt > 0) {
+          logger.warn("web_chat_port_retry", {
+            event: "web_chat_port_retry",
+            requestedPort: this.options.port,
+            boundPort: candidatePort,
+            attempts: attempt + 1,
+          });
+        }
+        return;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "EADDRINUSE" && attempt < MAX_PORT_RETRIES) {
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
+  /** Attempt to bind a WSS on the given port and wire up connection handlers. */
+  private async _tryBind(port: number): Promise<WebSocketServer> {
+    const wss = new WebSocketServer({ port });
 
     wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
       // Auth check
@@ -119,6 +151,8 @@ export class WebChatChannel implements Channel {
       wss.once("listening", resolve);
       wss.once("error", reject);
     });
+
+    return wss;
   }
 
   async send(message: OutboundMessage): Promise<void> {
