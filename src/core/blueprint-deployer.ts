@@ -34,70 +34,16 @@ export class BlueprintDeployer {
     // 5. For each blueprint agent: write files + register in DB + update config
     for (const bpAgent of blueprintAgents) {
       const isDefault = bpAgent.is_default === 1;
-
-      // Workspace path: workspaces/<agent_id> for all agents
       const workspaceDir = path.join(stateDir, "workspaces", bpAgent.agent_id);
 
-      // Create workspace directory only for secondary agents
-      // (pilot workspace already exists, created by Provisioner step 5)
-      if (!isDefault) {
-        await this.conn.mkdir(workspaceDir);
-      }
-
-      // Read files from DB and write to disk
-      // For pilot: overwrites the generic templates with blueprint content
-      const files = this.registry.listAgentFiles(bpAgent.id);
-      for (const file of files) {
-        if (file.content) {
-          await this.conn.writeFile(path.join(workspaceDir, file.filename), file.content);
-        }
-      }
-
-      // If no files in DB, write minimal placeholders (secondary agents only).
-      if (files.length === 0 && !isDefault) {
-        for (const filename of constants.TEMPLATE_FILES) {
-          await this.conn.writeFile(path.join(workspaceDir, filename), `# ${bpAgent.name}\n`);
-        }
-      }
+      // Write workspace files to disk
+      const files = await this._writeAgentWorkspaceFiles(bpAgent, workspaceDir, isDefault);
 
       // Build agent config block
-      let modelStr: string;
-      if (bpAgent.model) {
-        // bpAgent.model may be either:
-        //   - a JSON-serialized object: '{"primary":"opencode/claude-haiku-4-5"}' → use primary
-        //   - a bare "provider/model" string: "anthropic/claude-haiku-4-5" → use as-is
-        try {
-          const parsed = JSON.parse(bpAgent.model) as Record<string, unknown>;
-          modelStr = typeof parsed["primary"] === "string" ? parsed["primary"] : bpAgent.model;
-        } catch (err) {
-          logger.warn("[blueprint-deployer] agent model is not JSON, using as-is", {
-            error: String(err),
-          });
-          modelStr = bpAgent.model;
-        }
-      } else {
-        modelStr = defaultModel;
-      }
-
-      const agentEntry: Record<string, unknown> = {
-        id: bpAgent.agent_id,
-        name: bpAgent.name,
-        model: modelStr,
-        permissions: [],
-        ...(isDefault ? { isDefault: true } : {}),
-      };
-
-      // Add spawn links for this agent (all agents including main)
-      const spawnTargets = blueprintLinks
-        .filter((l) => l.source_agent_id === bpAgent.agent_id && l.link_type === "spawn")
-        .map((l) => l.target_agent_id);
-      if (spawnTargets.length > 0) {
-        agentEntry["allowSubAgents"] = true;
-      }
+      const modelStr = this._resolveModelString(bpAgent.model, defaultModel);
+      const agentEntry = this._buildAgentEntry(bpAgent, modelStr, isDefault, blueprintLinks);
 
       // Register agent in DB (linked to instance)
-      // Copy canvas positions from blueprint so the dashboard renders cards
-      // at the same layout the user designed in the blueprint editor.
       this.registry.upsertAgent(instance.id, {
         agentId: bpAgent.agent_id,
         name: bpAgent.name,
@@ -110,19 +56,7 @@ export class BlueprintDeployer {
       });
 
       // Copy files to instance agent DB cache
-      const instanceAgent = this.registry.getAgentByAgentId(instance.id, bpAgent.agent_id);
-      if (instanceAgent) {
-        for (const file of files) {
-          if (file.content) {
-            const hash = createHash("sha256").update(file.content).digest("hex").slice(0, 16);
-            this.registry.upsertAgentFile(instanceAgent.id, {
-              filename: file.filename,
-              content: file.content,
-              contentHash: hash,
-            });
-          }
-        }
-      }
+      this._cacheAgentFiles(instance.id, bpAgent.agent_id, files);
     }
 
     // 6. Register blueprint links as instance links in DB
@@ -136,8 +70,123 @@ export class BlueprintDeployer {
     }
 
     // 7. Export runtime.json snapshot for debugging
+    this._exportSnapshot(stateDir, instance.slug);
+  }
+
+  // ------------------------------------------------------------------
+  // Private helpers
+  // ------------------------------------------------------------------
+
+  /**
+   * Write workspace files to disk for a single blueprint agent.
+   * Returns the file records from DB (for caching into instance agent).
+   */
+  private async _writeAgentWorkspaceFiles(
+    bpAgent: { id: number; agent_id: string; name: string; is_default: number },
+    workspaceDir: string,
+    isDefault: boolean,
+  ): Promise<Array<{ filename: string; content: string | null }>> {
+    // Create workspace directory only for secondary agents
+    // (pilot workspace already exists, created by Provisioner step 5)
+    if (!isDefault) {
+      await this.conn.mkdir(workspaceDir);
+    }
+
+    // Read files from DB and write to disk
+    // For pilot: overwrites the generic templates with blueprint content
+    const files = this.registry.listAgentFiles(bpAgent.id);
+    for (const file of files) {
+      if (file.content) {
+        await this.conn.writeFile(path.join(workspaceDir, file.filename), file.content);
+      }
+    }
+
+    // If no files in DB, write minimal placeholders (secondary agents only).
+    if (files.length === 0 && !isDefault) {
+      for (const filename of constants.TEMPLATE_FILES) {
+        await this.conn.writeFile(path.join(workspaceDir, filename), `# ${bpAgent.name}\n`);
+      }
+    }
+
+    return files;
+  }
+
+  /**
+   * Resolve the model string from a blueprint agent's model field.
+   * Handles JSON-serialized objects (use primary) and bare strings.
+   */
+  private _resolveModelString(model: string | null, defaultModel: string): string {
+    if (!model) return defaultModel;
+
+    // model may be either:
+    //   - a JSON-serialized object: '{"primary":"opencode/claude-haiku-4-5"}' → use primary
+    //   - a bare "provider/model" string: "anthropic/claude-haiku-4-5" → use as-is
     try {
-      const updatedConfig = this.registry.getRuntimeConfig(instance.slug);
+      const parsed = JSON.parse(model) as Record<string, unknown>;
+      return typeof parsed["primary"] === "string" ? parsed["primary"] : model;
+    } catch (err) {
+      logger.warn("[blueprint-deployer] agent model is not JSON, using as-is", {
+        error: String(err),
+      });
+      return model;
+    }
+  }
+
+  /** Build the runtime config entry for a single agent. */
+  private _buildAgentEntry(
+    bpAgent: { agent_id: string; name: string },
+    modelStr: string,
+    isDefault: boolean,
+    blueprintLinks: Array<{
+      source_agent_id: string;
+      target_agent_id: string;
+      link_type: string;
+    }>,
+  ): Record<string, unknown> {
+    const agentEntry: Record<string, unknown> = {
+      id: bpAgent.agent_id,
+      name: bpAgent.name,
+      model: modelStr,
+      permissions: [],
+      ...(isDefault ? { isDefault: true } : {}),
+    };
+
+    // Add spawn links for this agent (all agents including main)
+    const spawnTargets = blueprintLinks
+      .filter((l) => l.source_agent_id === bpAgent.agent_id && l.link_type === "spawn")
+      .map((l) => l.target_agent_id);
+    if (spawnTargets.length > 0) {
+      agentEntry["allowSubAgents"] = true;
+    }
+
+    return agentEntry;
+  }
+
+  /** Copy workspace files from blueprint agent to instance agent DB cache. */
+  private _cacheAgentFiles(
+    instanceId: number,
+    agentId: string,
+    files: Array<{ filename: string; content: string | null }>,
+  ): void {
+    const instanceAgent = this.registry.getAgentByAgentId(instanceId, agentId);
+    if (!instanceAgent) return;
+
+    for (const file of files) {
+      if (file.content) {
+        const hash = createHash("sha256").update(file.content).digest("hex").slice(0, 16);
+        this.registry.upsertAgentFile(instanceAgent.id, {
+          filename: file.filename,
+          content: file.content,
+          contentHash: hash,
+        });
+      }
+    }
+  }
+
+  /** Export runtime.json snapshot for debugging (best-effort). */
+  private _exportSnapshot(stateDir: string, slug: string): void {
+    try {
+      const updatedConfig = this.registry.getRuntimeConfig(slug);
       if (updatedConfig) {
         exportRuntimeJsonSnapshot(stateDir, updatedConfig);
       }

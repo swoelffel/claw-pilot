@@ -130,163 +130,17 @@ export class ClawRuntime {
       // 0. Clear workspace file cache — fresh start after daemon restart
       clearWorkspaceCache();
 
-      // 1. Init agent registry (loads built-in agents + config agents)
-      initAgentRegistry(this.config.agents);
+      // 1. Init agents, permanent sessions, and middlewares
+      this._initAgentsAndSessions();
 
-      // 1b. Pre-create permanent sessions for all permanent agents
-      //     Ensures they appear in the session tree before any A2A delegation.
-      for (const agentConfig of this.config.agents) {
-        const agentInfo = getAgent(agentConfig.id);
-        const isPermanent =
-          resolveEffectivePersistence(
-            agentInfo ?? {
-              kind: "primary",
-              category: "user",
-              archetype: null,
-              name: agentConfig.id,
-              permission: [],
-              mode: "all",
-              options: {},
-            },
-            agentConfig,
-          ) === "permanent";
-        if (isPermanent) {
-          getOrCreatePermanentSession(this.db, {
-            instanceSlug: this.instanceSlug,
-            agentId: agentConfig.id,
-            channel: "web",
-          });
-        }
-      }
+      // 2. Init MCP and plugins
+      await this._initMcpAndPlugins();
 
-      // 1c. Register built-in middlewares
-      clearMiddlewares();
-      registerMiddleware(guardrailMiddleware);
-      registerMiddleware(multimodalMiddleware);
-      registerMiddleware(toolErrorRecoveryMiddleware);
-      if (this.config.artifacts?.suggestionsEnabled !== false) {
-        registerMiddleware(
-          createSuggestionMiddleware({
-            ...(this.config.artifacts?.suggestionsModel !== undefined
-              ? { suggestionsModel: this.config.artifacts.suggestionsModel }
-              : {}),
-            maxSuggestions: this.config.artifacts?.maxSuggestions ?? 3,
-            ...(this.config.models !== undefined && this.config.models.length > 0
-              ? { modelAliases: this.config.models }
-              : {}),
-            runtimeConfig: this.config,
-          }),
-        );
-      }
+      // 3. Wire bus subscriptions (plugins, heartbeat, event persistence, tasks)
+      this._initBusWiring();
 
-      // 2. Init MCP if enabled
-      if (this.config.mcpEnabled && this.config.mcpServers.length > 0) {
-        this._mcpRegistry = new McpRegistry();
-        const enabledServers = this.config.mcpServers.filter((s) => s.enabled);
-        await this._mcpRegistry.init(enabledServers, this.instanceSlug);
-      }
-
-      // 2b. Register system tools plugin for cp-system instance (DB-direct, no HTTP proxy)
-      if (this.instanceSlug === SYSTEM_INSTANCE_SLUG) {
-        registerPlugin("system-tools", systemToolsPlugin);
-      }
-
-      // 2c. Initialize all registered plugins — invokes factories, registers hooks.
-      //     Without this, plugin tools (e.g. cp_create_instance) are never loaded
-      //     into the tool registry and agents silently fall back to the `invalid`
-      //     tool when trying to call them.
-      await initPlugins({
-        instanceSlug: this.instanceSlug,
-        workDir: this.workDir,
-        version: getRuntimeVersion(),
-        db: this.db,
-      });
-
-      // 3. Wire plugin hooks to bus events
-      this._pluginUnsubscribers = wirePluginsToBus(this.instanceSlug);
-
-      // 3a. Subscribe to workspace file changes — invalidate cache + rebuild prompts
-      {
-        const wsBus = getBus(this.instanceSlug);
-        const wsUnsub = wsBus.subscribe(WorkspaceFileChanged, (payload) => {
-          invalidateWorkspaceCache(payload.filePath);
-          markAllDirty("workspace");
-          this.log.debug("[engine] workspace file changed, cache invalidated", {
-            agentId: payload.agentId,
-            filename: payload.filename,
-          });
-        });
-        this._pluginUnsubscribers.push(wsUnsub);
-      }
-
-      // 3a2. For cp-system: invalidate prompt cache when platform state changes
-      //      (named keys, instances, blueprints). The system-prompt embeds a
-      //      live snapshot of these resources for system-pilot and its subagents.
-      if (this.instanceSlug === SYSTEM_INSTANCE_SLUG) {
-        const sysBus = getBus(this.instanceSlug);
-        const sysUnsub = sysBus.subscribe(SystemStateChanged, (payload) => {
-          markAllDirty("system-state");
-          this.log.debug("[engine] cp-system state changed, prompts invalidated", {
-            resource: payload.resource,
-            action: payload.action,
-          });
-        });
-        this._pluginUnsubscribers.push(sysUnsub);
-      }
-
-      // 3b. Register async subagent result handler
-      this._subagentUnsubscribe = registerSubagentCompletedHandler(
-        this.db,
-        this.instanceSlug,
-        this.config,
-        this.workDir,
-      );
-
-      // 3c. Start heartbeat runner for agents with heartbeat config
-      this._stopHeartbeat = startHeartbeatRunner(this.config.agents, {
-        db: this.db,
-        instanceSlug: this.instanceSlug,
-        runtimeConfig: this.config,
-        workDir: this.workDir,
-      });
-
-      // 3d. Wire event persistence to rt_events table
-      this._eventPersistenceUnsub = wireEventPersistence(this.db, this.instanceSlug);
-
-      // 3e. Wire task assignment notifications
-      this._taskWiringUnsub = wireTaskNotifications({
-        db: this.db,
-        instanceSlug: this.instanceSlug,
-        config: this.config,
-        workDir: this.workDir,
-      });
-
-      // 4. Create and connect channels
-      this._channels = createChannels(this.config, this.instanceSlug, this.db);
-      const messageHandler = this._buildMessageHandler();
-      for (const channel of this._channels) {
-        channel.onMessage(messageHandler);
-        await channel.connect();
-      }
-
-      // 4b. Start internal API server for dashboard IPC
-      try {
-        this._internalApi = new InternalApiServer({
-          port: deriveInternalApiPort(this.instanceSlug),
-          token: resolveInternalApiToken(this.instanceSlug),
-          slug: this.instanceSlug,
-          handlers: this._buildInternalApiHandlers(),
-        });
-        await this._internalApi.start();
-      } catch (apiErr) {
-        // Non-fatal: internal API server may fail to bind in test environments
-        // or when multiple runtimes with the same slug hash collide.
-        this.log.warn("internal_api_start_skipped", {
-          event: "internal_api_start_skipped",
-          error: apiErr instanceof Error ? apiErr.message : String(apiErr),
-        });
-        this._internalApi = undefined;
-      }
+      // 4. Create channels and start internal API
+      await this._initChannelsAndApi();
 
       this._setState("running");
       this.log.info("runtime_started", { event: "runtime_started" });
@@ -334,69 +188,31 @@ export class ClawRuntime {
     const errors: string[] = [];
 
     // 0. Stop internal API server
-    if (this._internalApi) {
-      try {
-        await this._internalApi.stop();
-      } catch (err) {
-        errors.push(`internal-api: ${err instanceof Error ? err.message : String(err)}`);
-      }
-      this._internalApi = undefined;
-    }
+    await this._shutdownSubsystem("internal-api", async () => this._internalApi?.stop(), errors);
+    this._internalApi = undefined;
 
     // 1. Disconnect channels
     for (const channel of this._channels) {
-      try {
-        await channel.disconnect();
-      } catch (err) {
-        errors.push(
-          `channel[${channel.type}]: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+      await this._shutdownSubsystem(`channel[${channel.type}]`, () => channel.disconnect(), errors);
     }
     this._channels = [];
 
     // 2. Dispose MCP
-    if (this._mcpRegistry) {
-      try {
-        await this._mcpRegistry.dispose();
-      } catch (err) {
-        errors.push(`mcp: ${err instanceof Error ? err.message : String(err)}`);
-      }
-      this._mcpRegistry = undefined;
-    }
+    await this._shutdownSubsystem("mcp", async () => this._mcpRegistry?.dispose(), errors);
+    this._mcpRegistry = undefined;
 
     // 3. Unsubscribe plugin wiring and reset the global plugin registry.
-    //    resetPlugins() clears _plugins[] and registered hooks so a subsequent
-    //    start() in the same process (e.g. tests) doesn't duplicate plugins.
     for (const unsub of this._pluginUnsubscribers) {
       unsub();
     }
     this._pluginUnsubscribers = [];
     resetPlugins();
 
-    // 3b. Unsubscribe async subagent result handler
-    if (this._subagentUnsubscribe) {
-      this._subagentUnsubscribe();
-      this._subagentUnsubscribe = undefined;
-    }
-
-    // 3c. Stop heartbeat runner
-    if (this._stopHeartbeat) {
-      this._stopHeartbeat();
-      this._stopHeartbeat = undefined;
-    }
-
-    // 3d. Unsubscribe event persistence
-    if (this._eventPersistenceUnsub) {
-      this._eventPersistenceUnsub();
-      this._eventPersistenceUnsub = undefined;
-    }
-
-    // 3e. Unsubscribe task wiring
-    if (this._taskWiringUnsub) {
-      this._taskWiringUnsub();
-      this._taskWiringUnsub = undefined;
-    }
+    // 3b–3e. Unsubscribe sync handlers
+    this._clearOptionalUnsub("_subagentUnsubscribe");
+    this._clearOptionalUnsub("_stopHeartbeat");
+    this._clearOptionalUnsub("_eventPersistenceUnsub");
+    this._clearOptionalUnsub("_taskWiringUnsub");
 
     // 3f. Clear middleware registry
     clearMiddlewares();
@@ -452,6 +268,206 @@ export class ClawRuntime {
       }
     }
     return result;
+  }
+
+  // -------------------------------------------------------------------------
+  // Start sub-steps
+  // -------------------------------------------------------------------------
+
+  /** Init agent registry, permanent sessions, and built-in middlewares. */
+  private _initAgentsAndSessions(): void {
+    // 1. Init agent registry (loads built-in agents + config agents)
+    initAgentRegistry(this.config.agents);
+
+    // 1b. Pre-create permanent sessions for all permanent agents
+    //     Ensures they appear in the session tree before any A2A delegation.
+    for (const agentConfig of this.config.agents) {
+      const agentInfo = getAgent(agentConfig.id);
+      const isPermanent =
+        resolveEffectivePersistence(
+          agentInfo ?? {
+            kind: "primary",
+            category: "user",
+            archetype: null,
+            name: agentConfig.id,
+            permission: [],
+            mode: "all",
+            options: {},
+          },
+          agentConfig,
+        ) === "permanent";
+      if (isPermanent) {
+        getOrCreatePermanentSession(this.db, {
+          instanceSlug: this.instanceSlug,
+          agentId: agentConfig.id,
+          channel: "web",
+        });
+      }
+    }
+
+    // 1c. Register built-in middlewares
+    clearMiddlewares();
+    registerMiddleware(guardrailMiddleware);
+    registerMiddleware(multimodalMiddleware);
+    registerMiddleware(toolErrorRecoveryMiddleware);
+    if (this.config.artifacts?.suggestionsEnabled !== false) {
+      registerMiddleware(
+        createSuggestionMiddleware({
+          ...(this.config.artifacts?.suggestionsModel !== undefined
+            ? { suggestionsModel: this.config.artifacts.suggestionsModel }
+            : {}),
+          maxSuggestions: this.config.artifacts?.maxSuggestions ?? 3,
+          ...(this.config.models !== undefined && this.config.models.length > 0
+            ? { modelAliases: this.config.models }
+            : {}),
+          runtimeConfig: this.config,
+        }),
+      );
+    }
+  }
+
+  /** Init MCP registry and plugin system. */
+  private async _initMcpAndPlugins(): Promise<void> {
+    // 2. Init MCP if enabled
+    if (this.config.mcpEnabled && this.config.mcpServers.length > 0) {
+      this._mcpRegistry = new McpRegistry();
+      const enabledServers = this.config.mcpServers.filter((s) => s.enabled);
+      await this._mcpRegistry.init(enabledServers, this.instanceSlug);
+    }
+
+    // 2b. Register system tools plugin for cp-system instance (DB-direct, no HTTP proxy)
+    if (this.instanceSlug === SYSTEM_INSTANCE_SLUG) {
+      registerPlugin("system-tools", systemToolsPlugin);
+    }
+
+    // 2c. Initialize all registered plugins — invokes factories, registers hooks.
+    //     Without this, plugin tools (e.g. cp_create_instance) are never loaded
+    //     into the tool registry and agents silently fall back to the `invalid`
+    //     tool when trying to call them.
+    await initPlugins({
+      instanceSlug: this.instanceSlug,
+      workDir: this.workDir,
+      version: getRuntimeVersion(),
+      db: this.db,
+    });
+  }
+
+  /** Wire bus subscriptions: plugins, workspace, heartbeat, event persistence, tasks. */
+  private _initBusWiring(): void {
+    // 3. Wire plugin hooks to bus events
+    this._pluginUnsubscribers = wirePluginsToBus(this.instanceSlug);
+
+    // 3a. Subscribe to workspace file changes — invalidate cache + rebuild prompts
+    {
+      const wsBus = getBus(this.instanceSlug);
+      const wsUnsub = wsBus.subscribe(WorkspaceFileChanged, (payload) => {
+        invalidateWorkspaceCache(payload.filePath);
+        markAllDirty("workspace");
+        this.log.debug("[engine] workspace file changed, cache invalidated", {
+          agentId: payload.agentId,
+          filename: payload.filename,
+        });
+      });
+      this._pluginUnsubscribers.push(wsUnsub);
+    }
+
+    // 3a2. For cp-system: invalidate prompt cache when platform state changes
+    if (this.instanceSlug === SYSTEM_INSTANCE_SLUG) {
+      const sysBus = getBus(this.instanceSlug);
+      const sysUnsub = sysBus.subscribe(SystemStateChanged, (payload) => {
+        markAllDirty("system-state");
+        this.log.debug("[engine] cp-system state changed, prompts invalidated", {
+          resource: payload.resource,
+          action: payload.action,
+        });
+      });
+      this._pluginUnsubscribers.push(sysUnsub);
+    }
+
+    // 3b. Register async subagent result handler
+    this._subagentUnsubscribe = registerSubagentCompletedHandler(
+      this.db,
+      this.instanceSlug,
+      this.config,
+      this.workDir,
+    );
+
+    // 3c. Start heartbeat runner for agents with heartbeat config
+    this._stopHeartbeat = startHeartbeatRunner(this.config.agents, {
+      db: this.db,
+      instanceSlug: this.instanceSlug,
+      runtimeConfig: this.config,
+      workDir: this.workDir,
+    });
+
+    // 3d. Wire event persistence to rt_events table
+    this._eventPersistenceUnsub = wireEventPersistence(this.db, this.instanceSlug);
+
+    // 3e. Wire task assignment notifications
+    this._taskWiringUnsub = wireTaskNotifications({
+      db: this.db,
+      instanceSlug: this.instanceSlug,
+      config: this.config,
+      workDir: this.workDir,
+    });
+  }
+
+  /** Create and connect channels, start internal API server. */
+  private async _initChannelsAndApi(): Promise<void> {
+    // 4. Create and connect channels
+    this._channels = createChannels(this.config, this.instanceSlug, this.db);
+    const messageHandler = this._buildMessageHandler();
+    for (const channel of this._channels) {
+      channel.onMessage(messageHandler);
+      await channel.connect();
+    }
+
+    // 4b. Start internal API server for dashboard IPC
+    try {
+      this._internalApi = new InternalApiServer({
+        port: deriveInternalApiPort(this.instanceSlug),
+        token: resolveInternalApiToken(this.instanceSlug),
+        slug: this.instanceSlug,
+        handlers: this._buildInternalApiHandlers(),
+      });
+      await this._internalApi.start();
+    } catch (apiErr) {
+      // Non-fatal: internal API server may fail to bind in test environments
+      // or when multiple runtimes with the same slug hash collide.
+      this.log.warn("internal_api_start_skipped", {
+        event: "internal_api_start_skipped",
+        error: apiErr instanceof Error ? apiErr.message : String(apiErr),
+      });
+      this._internalApi = undefined;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Stop helpers
+  // -------------------------------------------------------------------------
+
+  /** Try to shut down a subsystem, collecting errors instead of throwing. */
+  private async _shutdownSubsystem(
+    name: string,
+    fn: () => Promise<void> | undefined,
+    errors: string[],
+  ): Promise<void> {
+    try {
+      await fn();
+    } catch (err) {
+      errors.push(`${name}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /** Call and clear an optional unsubscribe function stored on this instance. */
+  private _clearOptionalUnsub(
+    key: "_subagentUnsubscribe" | "_stopHeartbeat" | "_eventPersistenceUnsub" | "_taskWiringUnsub",
+  ): void {
+    const fn = this[key];
+    if (fn) {
+      fn();
+      this[key] = undefined;
+    }
   }
 
   // -------------------------------------------------------------------------

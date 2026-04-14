@@ -8,6 +8,104 @@ import { InstanceDiscovery } from "../core/discovery.js";
 import { LocalConnection } from "../server/local.js";
 import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 import { logger } from "../lib/logger.js";
+import type { ServerConnection } from "../server/connection.js";
+import type { DiscoveryResult } from "../core/discovery.js";
+
+// ---------------------------------------------------------------------------
+// Extracted helpers
+// ---------------------------------------------------------------------------
+
+/** Display discovered instances. */
+function discoverInstances(result: DiscoveryResult): void {
+  if (result.instances.length === 0) {
+    logger.dim("No existing instances found.");
+    return;
+  }
+
+  for (const inst of result.instances) {
+    const stateLabel = inst.runtimeRunning ? "running" : "stopped";
+    const registeredLabel = result.newInstances.includes(inst) ? "NEW" : "registered";
+    logger.step(
+      `[${registeredLabel}] ${inst.slug}  port:${inst.port}  ` +
+        `status:${stateLabel}  ` +
+        `agents:${inst.agents.length}  (source: ${inst.source})`,
+    );
+  }
+}
+
+/** Prompt to adopt new instances and execute adoption. */
+async function adoptNewInstances(
+  result: DiscoveryResult,
+  discovery: InstanceDiscovery,
+  serverId: number,
+  nonInteractive: boolean,
+): Promise<void> {
+  if (result.newInstances.length === 0) return;
+
+  const adoptAll =
+    nonInteractive ||
+    (await confirm({
+      message: `Adopt ${result.newInstances.length} new instance(s) into Claw Pilot registry?`,
+      default: true,
+    }));
+
+  if (adoptAll) {
+    for (const inst of result.newInstances) {
+      await discovery.adopt(inst, serverId);
+      logger.success(`Adopted: ${inst.slug} (${inst.agents.length} agents, port ${inst.port})`);
+    }
+  }
+}
+
+/** Prompt to remove stale instances and execute removal. */
+async function removeStaleInstances(
+  result: DiscoveryResult,
+  registry: Registry,
+  nonInteractive: boolean,
+): Promise<void> {
+  if (result.removedSlugs.length === 0) return;
+
+  logger.warn("\nInstances in registry but no longer found on disk:");
+  for (const slug of result.removedSlugs) {
+    logger.step(`- ${slug}`);
+  }
+
+  const removeStale = nonInteractive
+    ? false // conservative: don't auto-delete in --yes mode
+    : await confirm({
+        message: `Remove ${result.removedSlugs.length} stale instance(s) from registry?`,
+        default: false,
+      });
+
+  if (removeStale) {
+    for (const slug of result.removedSlugs) {
+      const instance = registry.getInstance(slug);
+      if (instance) {
+        registry.releasePort(instance.server_id, instance.port);
+        registry.deleteAgents(instance.id);
+        registry.deleteInstance(slug);
+        logger.success(`Removed: ${slug}`);
+      }
+    }
+  }
+}
+
+/** Detect shared resources (Ollama, Qdrant, Docker). */
+async function detectSharedResources(conn: ServerConnection): Promise<void> {
+  logger.info("\nShared resources:");
+  const [ollamaResult, qdrantResult, dockerResult] = await Promise.all([
+    conn.exec("curl -s http://127.0.0.1:11434/api/version 2>/dev/null || true"),
+    conn.exec("curl -s http://127.0.0.1:6333/healthz 2>/dev/null || true"),
+    conn.exec("docker info --format '{{.ServerVersion}}' 2>/dev/null || true"),
+  ]);
+  logger.step(`Ollama:  ${ollamaResult.stdout.trim() ? "running" : "not detected"}`);
+  logger.step(`Qdrant:  ${qdrantResult.stdout.includes("ok") ? "running" : "not detected"}`);
+  logger.step(`Docker:  ${dockerResult.stdout.trim() || "not detected"}`);
+}
+
+// ---------------------------------------------------------------------------
+// Command definition
+// ---------------------------------------------------------------------------
 
 export function initCommand(): Command {
   return new Command("init")
@@ -34,77 +132,14 @@ export function initCommand(): Command {
         const discovery = new InstanceDiscovery(conn, registry, instancesDir, xdgRuntimeDir);
         const result = await discovery.scan();
 
-        // 4a. Display results
-        if (result.instances.length === 0) {
-          logger.dim("No existing instances found.");
-        } else {
-          for (const inst of result.instances) {
-            const stateLabel = inst.runtimeRunning ? "running" : "stopped";
-            const registeredLabel = result.newInstances.includes(inst) ? "NEW" : "registered";
-            logger.step(
-              `[${registeredLabel}] ${inst.slug}  port:${inst.port}  ` +
-                `status:${stateLabel}  ` +
-                `agents:${inst.agents.length}  (source: ${inst.source})`,
-            );
-          }
-        }
+        const nonInteractive = opts.yes === true;
 
-        // 4b. Adopt new instances
-        if (result.newInstances.length > 0) {
-          const adoptAll =
-            opts.yes ??
-            (await confirm({
-              message: `Adopt ${result.newInstances.length} new instance(s) into Claw Pilot registry?`,
-              default: true,
-            }));
-
-          if (adoptAll) {
-            for (const inst of result.newInstances) {
-              await discovery.adopt(inst, server.id);
-              logger.success(
-                `Adopted: ${inst.slug} (${inst.agents.length} agents, port ${inst.port})`,
-              );
-            }
-          }
-        }
-
-        // 4c. Handle removed instances
-        if (result.removedSlugs.length > 0) {
-          logger.warn("\nInstances in registry but no longer found on disk:");
-          for (const slug of result.removedSlugs) {
-            logger.step(`- ${slug}`);
-          }
-          const removeStale =
-            opts.yes === true
-              ? false // conservative: don't auto-delete in --yes mode
-              : await confirm({
-                  message: `Remove ${result.removedSlugs.length} stale instance(s) from registry?`,
-                  default: false,
-                });
-
-          if (removeStale) {
-            for (const slug of result.removedSlugs) {
-              const instance = registry.getInstance(slug);
-              if (instance) {
-                registry.releasePort(instance.server_id, instance.port);
-                registry.deleteAgents(instance.id);
-                registry.deleteInstance(slug);
-                logger.success(`Removed: ${slug}`);
-              }
-            }
-          }
-        }
+        discoverInstances(result);
+        await adoptNewInstances(result, discovery, server.id, nonInteractive);
+        await removeStaleInstances(result, registry, nonInteractive);
 
         // 5. Detect shared resources
-        logger.info("\nShared resources:");
-        const [ollamaResult, qdrantResult, dockerResult] = await Promise.all([
-          conn.exec("curl -s http://127.0.0.1:11434/api/version 2>/dev/null || true"),
-          conn.exec("curl -s http://127.0.0.1:6333/healthz 2>/dev/null || true"),
-          conn.exec("docker info --format '{{.ServerVersion}}' 2>/dev/null || true"),
-        ]);
-        logger.step(`Ollama:  ${ollamaResult.stdout.trim() ? "running" : "not detected"}`);
-        logger.step(`Qdrant:  ${qdrantResult.stdout.includes("ok") ? "running" : "not detected"}`);
-        logger.step(`Docker:  ${dockerResult.stdout.trim() || "not detected"}`);
+        await detectSharedResources(conn);
 
         // 6. Summary
         const totalInstances = registry.listInstances().length;

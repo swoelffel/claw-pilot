@@ -110,6 +110,88 @@ async function getLastModified(
 }
 
 // ---------------------------------------------------------------------------
+// Extracted search handler
+// ---------------------------------------------------------------------------
+
+interface SearchResult {
+  agentId: string;
+  source: string;
+  snippet: string;
+  line: number;
+}
+
+/** Search a single file's content for matching lines. */
+function searchFileContent(
+  content: string,
+  queryLower: string,
+  agentId: string,
+  filePath: string,
+  results: SearchResult[],
+  limit: number,
+): void {
+  const lines = content.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (results.length >= limit) return;
+    if (lines[i]!.toLowerCase().includes(queryLower)) {
+      const start = Math.max(0, i - 1);
+      const end = Math.min(lines.length - 1, i + 1);
+      results.push({
+        agentId,
+        source: filePath,
+        snippet: lines.slice(start, end + 1).join("\n"),
+        line: i + 1,
+      });
+    }
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type HonoContext = any;
+
+/** Handle GET /memory/search — search across agent memory files. */
+async function handleMemorySearch(
+  c: HonoContext,
+  registry: RouteDeps["registry"],
+  conn: RouteDeps["conn"],
+): Promise<Response> {
+  const { instance, slug } = getInstanceContext(c);
+
+  const query = c.req.query("q");
+  if (!query || !query.trim()) {
+    return apiError(c, 400, "MISSING_QUERY", "Query parameter 'q' is required");
+  }
+
+  const filterAgentId = c.req.query("agentId") || undefined;
+  const rawLimit = c.req.query("limit");
+  const limit = rawLimit
+    ? Math.min(Math.max(1, Number(rawLimit) || DEFAULT_SEARCH_LIMIT), MAX_SEARCH_LIMIT)
+    : DEFAULT_SEARCH_LIMIT;
+
+  const queryLower = query.trim().toLowerCase();
+  const agents = registry.listAgents(slug);
+  const results: SearchResult[] = [];
+
+  for (const agent of agents) {
+    if (filterAgentId && agent.agent_id !== filterAgentId) continue;
+    const wsDir = resolveAgentWorkspacePath(instance.state_dir, agent.agent_id, undefined);
+    if (!(await conn.exists(wsDir))) continue;
+
+    const files = await listMemoryFiles(conn, wsDir);
+    for (const file of files) {
+      if (results.length >= limit) break;
+      try {
+        const content = await conn.readFile(path.join(wsDir, file.path));
+        searchFileContent(content, queryLower, agent.agent_id, file.path, results, limit);
+      } catch (err) {
+        logger.debug("[route:memory] search file read failed", { error: String(err) });
+      }
+    }
+  }
+
+  return c.json({ query: query.trim(), results });
+}
+
+// ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
 
@@ -218,68 +300,6 @@ export function registerMemoryRoutes(app: Hono, deps: RouteDeps): void {
   // Search across memory files (case-insensitive substring match).
   // ---------------------------------------------------------------------------
   app.get("/api/instances/:slug/memory/search", async (c) => {
-    const { instance, slug } = getInstanceContext(c);
-
-    const query = c.req.query("q");
-    if (!query || !query.trim()) {
-      return apiError(c, 400, "MISSING_QUERY", "Query parameter 'q' is required");
-    }
-
-    const filterAgentId = c.req.query("agentId") || undefined;
-    const rawLimit = c.req.query("limit");
-    const limit = rawLimit
-      ? Math.min(Math.max(1, Number(rawLimit) || DEFAULT_SEARCH_LIMIT), MAX_SEARCH_LIMIT)
-      : DEFAULT_SEARCH_LIMIT;
-
-    const queryLower = query.trim().toLowerCase();
-    const agents = registry.listAgents(slug);
-
-    const results: Array<{
-      agentId: string;
-      source: string;
-      snippet: string;
-      line: number;
-    }> = [];
-
-    for (const agent of agents) {
-      if (filterAgentId && agent.agent_id !== filterAgentId) continue;
-
-      const wsDir = resolveAgentWorkspacePath(instance.state_dir, agent.agent_id, undefined);
-
-      if (!(await conn.exists(wsDir))) continue;
-
-      const files = await listMemoryFiles(conn, wsDir);
-
-      for (const file of files) {
-        if (results.length >= limit) break;
-
-        try {
-          const content = await conn.readFile(path.join(wsDir, file.path));
-          const lines = content.split("\n");
-
-          for (let i = 0; i < lines.length; i++) {
-            if (results.length >= limit) break;
-            if (lines[i]!.toLowerCase().includes(queryLower)) {
-              // Build snippet with 1 line of context before/after
-              const start = Math.max(0, i - 1);
-              const end = Math.min(lines.length - 1, i + 1);
-              const snippet = lines.slice(start, end + 1).join("\n");
-
-              results.push({
-                agentId: agent.agent_id,
-                source: file.path,
-                snippet,
-                line: i + 1,
-              });
-            }
-          }
-        } catch (err) {
-          logger.debug("[route:memory] search file read failed", { error: String(err) });
-          // File unreadable — skip
-        }
-      }
-    }
-
-    return c.json({ query: query.trim(), results });
+    return handleMemorySearch(c, registry, conn);
   });
 }

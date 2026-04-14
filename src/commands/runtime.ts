@@ -206,6 +206,182 @@ function loadEnvFile(stateDir: string): void {
 }
 
 // ---------------------------------------------------------------------------
+// runtime start helpers
+// ---------------------------------------------------------------------------
+
+/** Spawn a detached daemon process and poll for its PID file. */
+async function spawnDaemon(slug: string, stateDir: string, ensureConfig: boolean): Promise<void> {
+  if (isRuntimeRunning(stateDir)) {
+    const pid = getRuntimePid(stateDir);
+    logger.warn(`claw-runtime for "${slug}" is already running (PID ${pid}).`);
+    process.exit(0);
+  }
+
+  const nodeArgs = [
+    ...process.argv.slice(1),
+    "runtime",
+    "start",
+    slug,
+    ...(ensureConfig ? ["--ensure-config"] : []),
+  ];
+
+  const logDir = `${stateDir}/logs`;
+  fs.mkdirSync(logDir, { recursive: true });
+  const logFile = `${logDir}/runtime.log`;
+  const isDarwinPlatform = process.platform === "darwin";
+  const [cmd, args] = isDarwinPlatform
+    ? [process.execPath, nodeArgs]
+    : ["nohup", [process.execPath, ...nodeArgs]];
+  const logFd = isDarwinPlatform ? "ignore" : fs.openSync(logFile, "a");
+
+  const child = spawn(cmd, args, {
+    detached: true,
+    stdio: ["ignore", logFd, logFd],
+  });
+
+  child.unref();
+
+  // Poll for PID file to appear (up to 5 s)
+  const pidPath = getRuntimePidPath(stateDir);
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 200));
+    if (isRuntimeRunning(stateDir)) {
+      const pid = getRuntimePid(stateDir);
+      logger.success(`claw-runtime started (slug: ${slug}, PID: ${pid})`);
+      process.exit(0);
+    }
+  }
+
+  logger.warn(`claw-runtime started (slug: ${slug}) — PID file not yet available at ${pidPath}`);
+  process.exit(0);
+}
+
+/** Start the runtime in foreground mode (blocking). */
+async function startForeground(
+  slug: string,
+  stateDir: string,
+  ensureConfig: boolean,
+): Promise<void> {
+  // Load environment variables from .env file
+  loadEnvFile(stateDir);
+
+  // Ensure master encryption key is available (for named API key decryption)
+  await ensureMasterEncryptionKey();
+
+  // Open DB early so we can read config from it
+  const db = initDatabase(getDbPath());
+
+  // Load config: DB first, then file fallback, then create default
+  const config = loadOrCreateConfig(db, slug, stateDir, ensureConfig);
+
+  // Apply log config before any further logging
+  configureLogger({ level: config.log.level, format: config.log.format });
+
+  // Rotate log file if needed (before writing anything)
+  const logFile = `${stateDir}/logs/runtime.log`;
+  rotateLogs(logFile, config.log.maxSizeMb, config.log.maxFiles);
+
+  // Export runtime.json snapshot for debugging
+  exportRuntimeJsonSnapshot(stateDir, config);
+
+  // Load user-level .env (shared across instances) — if it exists
+  const userEnvDir = getDataDir();
+  loadEnvFile(userEnvDir);
+
+  const runtime = new ClawRuntime(config, db, slug, stateDir);
+
+  // Write PID file so lifecycle/health can detect us
+  const pidPath = getRuntimePidPath(stateDir);
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(pidPath, String(process.pid), "utf8");
+
+  // Graceful shutdown on SIGTERM / SIGINT
+  registerShutdownHandlers(runtime, db, pidPath);
+
+  logger.info(`Starting claw-runtime for "${slug}"...`);
+  logger.dim(`Model: ${config.defaultModel}`);
+  logger.dim(`Agents: ${config.agents.map((a: RuntimeAgentConfig) => a.id).join(", ") || "none"}`);
+
+  try {
+    await runtime.start();
+  } catch (err) {
+    logger.error(`Failed to start runtime: ${err instanceof Error ? err.message : String(err)}`);
+    db.close();
+    process.exit(1);
+  }
+
+  logger.success(`Runtime running (slug: ${slug}, PID: ${process.pid})`);
+
+  if (config.webChat.enabled) {
+    logger.step("Web chat channel: active");
+  }
+  if (config.telegram.enabled) {
+    logger.step("Telegram channel: active");
+  }
+
+  logger.dim("Press Ctrl+C or send SIGTERM to stop.");
+
+  // Keep process alive — channels hold their own event loops (WS server, polling)
+  await new Promise<void>((resolve) => {
+    process.once("beforeExit", resolve);
+  });
+}
+
+/** Load config from DB/file or create default if ensureConfig is set. */
+function loadOrCreateConfig(
+  db: ReturnType<typeof initDatabase>,
+  slug: string,
+  stateDir: string,
+  ensureConfig: boolean,
+): RuntimeConfig {
+  const fromDb = loadConfigFromDbOrFile(db, slug, stateDir);
+  if (fromDb) return fromDb;
+
+  if (ensureConfig) {
+    const config = ensureRuntimeConfig(stateDir);
+    new Registry(db).saveRuntimeConfig(slug, config);
+    return config;
+  }
+
+  logger.error(`No runtime config found for instance "${slug}" (checked DB and file).`);
+  logger.error(`Run: claw-pilot runtime config init ${slug}`);
+  db.close();
+  process.exit(1);
+}
+
+/** Register SIGTERM/SIGINT handlers for graceful shutdown. */
+function registerShutdownHandlers(
+  runtime: ClawRuntime,
+  db: ReturnType<typeof initDatabase>,
+  pidPath: string,
+): void {
+  let stopping = false;
+  const shutdown = async () => {
+    if (stopping) return;
+    stopping = true;
+    logger.info("Stopping runtime...");
+    try {
+      await runtime.stop();
+      logger.success("Runtime stopped.");
+    } catch (err) {
+      logger.error(`Error during stop: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      try {
+        fs.unlinkSync(pidPath);
+      } catch (err) {
+        logger.debug("[runtime-cmd] PID file cleanup failed", { error: String(err) });
+      }
+      db.close();
+      process.exit(0);
+    }
+  };
+
+  process.on("SIGTERM", () => void shutdown());
+  process.on("SIGINT", () => void shutdown());
+}
+
+// ---------------------------------------------------------------------------
 // runtime start <slug>
 // ---------------------------------------------------------------------------
 
@@ -221,171 +397,12 @@ function runtimeStartCommand(): Command {
     .action(async (slug: string, opts: { ensureConfig?: boolean; daemon?: boolean }) => {
       const stateDir = getRuntimeStateDir(slug);
 
-      // --daemon: spawn a detached child and exit immediately
       if (opts.daemon) {
-        if (isRuntimeRunning(stateDir)) {
-          const pid = getRuntimePid(stateDir);
-          logger.warn(`claw-runtime for "${slug}" is already running (PID ${pid}).`);
-          process.exit(0);
-        }
-
-        // Re-invoke the same binary without --daemon so the child runs in foreground
-        const nodeArgs = [
-          ...process.argv.slice(1), // keep the script path
-          "runtime",
-          "start",
-          slug,
-          ...(opts.ensureConfig ? ["--ensure-config"] : []),
-        ];
-
-        // On Linux (including Docker), use nohup to fully detach the child from
-        // the controlling terminal. Without this, Docker kills the child when the
-        // docker exec session ends (even with detached:true + setsid).
-        // Stdout/stderr are redirected to <stateDir>/logs/runtime.log.
-        const logDir = `${stateDir}/logs`;
-        fs.mkdirSync(logDir, { recursive: true });
-        const logFile = `${logDir}/runtime.log`;
-        const isDarwinPlatform = process.platform === "darwin";
-        const [cmd, args] = isDarwinPlatform
-          ? [process.execPath, nodeArgs]
-          : ["nohup", [process.execPath, ...nodeArgs]];
-        const logFd = isDarwinPlatform ? "ignore" : fs.openSync(logFile, "a");
-
-        const child = spawn(cmd, args, {
-          detached: true,
-          stdio: ["ignore", logFd, logFd],
-        });
-
-        child.unref();
-
-        // Poll for PID file to appear (up to 5 s)
-        const pidPath = getRuntimePidPath(stateDir);
-        const deadline = Date.now() + 5_000;
-        while (Date.now() < deadline) {
-          await new Promise((r) => setTimeout(r, 200));
-          if (isRuntimeRunning(stateDir)) {
-            const pid = getRuntimePid(stateDir);
-            logger.success(`claw-runtime started (slug: ${slug}, PID: ${pid})`);
-            process.exit(0);
-          }
-        }
-
-        // Fallback: PID file not yet written but child may still be starting
-        logger.warn(
-          `claw-runtime started (slug: ${slug}) — PID file not yet available at ${pidPath}`,
-        );
-        process.exit(0);
+        await spawnDaemon(slug, stateDir, opts.ensureConfig === true);
+        return;
       }
 
-      // --- Foreground mode (default) ---
-
-      // Load environment variables from .env file
-      loadEnvFile(stateDir);
-
-      // Ensure master encryption key is available (for named API key decryption)
-      await ensureMasterEncryptionKey();
-
-      // Open DB early so we can read config from it
-      const db = initDatabase(getDbPath());
-
-      // Load config: DB first, then file fallback, then create default
-      let config;
-      const fromDb = loadConfigFromDbOrFile(db, slug, stateDir);
-      if (fromDb) {
-        config = fromDb;
-      } else if (opts.ensureConfig) {
-        config = ensureRuntimeConfig(stateDir);
-        // Persist to DB for next time
-        new Registry(db).saveRuntimeConfig(slug, config);
-      } else {
-        logger.error(`No runtime config found for instance "${slug}" (checked DB and file).`);
-        logger.error(`Run: claw-pilot runtime config init ${slug}`);
-        db.close();
-        process.exit(1);
-      }
-
-      // Apply log config before any further logging
-      configureLogger({ level: config.log.level, format: config.log.format });
-
-      // Rotate log file if needed (before writing anything)
-      const logFile = `${stateDir}/logs/runtime.log`;
-      rotateLogs(logFile, config.log.maxSizeMb, config.log.maxFiles);
-
-      // Export runtime.json snapshot for debugging
-      exportRuntimeJsonSnapshot(stateDir, config);
-
-      // Load user-level .env (shared across instances) — if it exists
-      const userEnvDir = getDataDir();
-      loadEnvFile(userEnvDir);
-
-      const runtime = new ClawRuntime(config, db, slug, stateDir);
-
-      // Write PID file so lifecycle/health can detect us
-      const pidPath = getRuntimePidPath(stateDir);
-      fs.mkdirSync(stateDir, { recursive: true });
-      fs.writeFileSync(pidPath, String(process.pid), "utf8");
-
-      // Graceful shutdown on SIGTERM / SIGINT
-      let stopping = false;
-      const shutdown = async () => {
-        if (stopping) return;
-        stopping = true;
-        logger.info("Stopping runtime...");
-        try {
-          await runtime.stop();
-          logger.success("Runtime stopped.");
-        } catch (err) {
-          logger.error(`Error during stop: ${err instanceof Error ? err.message : String(err)}`);
-        } finally {
-          // Remove PID file on clean exit
-          try {
-            fs.unlinkSync(pidPath);
-          } catch (err) {
-            logger.debug("[runtime-cmd] PID file cleanup failed", { error: String(err) });
-            /* already gone */
-          }
-          db.close();
-          process.exit(0);
-        }
-      };
-
-      process.on("SIGTERM", () => void shutdown());
-      process.on("SIGINT", () => void shutdown());
-
-      logger.info(`Starting claw-runtime for "${slug}"...`);
-      logger.dim(`Model: ${config.defaultModel}`);
-      logger.dim(
-        `Agents: ${config.agents.map((a: RuntimeAgentConfig) => a.id).join(", ") || "none"}`,
-      );
-
-      try {
-        await runtime.start();
-      } catch (err) {
-        logger.error(
-          `Failed to start runtime: ${err instanceof Error ? err.message : String(err)}`,
-        );
-        // Do NOT remove the PID file here — the lifecycle poller uses its presence
-        // to detect a premature exit. The shutdown handler will clean it up on SIGTERM.
-        // Removing it here would cause a race where the poller misses the crash window.
-        db.close();
-        process.exit(1);
-      }
-
-      logger.success(`Runtime running (slug: ${slug}, PID: ${process.pid})`);
-
-      if (config.webChat.enabled) {
-        logger.step("Web chat channel: active");
-      }
-      if (config.telegram.enabled) {
-        logger.step("Telegram channel: active");
-      }
-
-      logger.dim("Press Ctrl+C or send SIGTERM to stop.");
-
-      // Keep process alive — channels hold their own event loops (WS server, polling)
-      await new Promise<void>((resolve) => {
-        process.once("beforeExit", resolve);
-      });
+      await startForeground(slug, stateDir, opts.ensureConfig === true);
     });
 }
 
@@ -508,8 +525,203 @@ function runtimeRestartCommand(): Command {
 }
 
 // ---------------------------------------------------------------------------
+// runtime chat helpers
+// ---------------------------------------------------------------------------
+
+interface ChatContext {
+  slug: string;
+  stateDir: string;
+  db: ReturnType<typeof initDatabase>;
+  agentCfg: RuntimeAgentConfig;
+  resolvedModelObj: ReturnType<typeof resolveModel>;
+  agentWorkDir: string;
+  sessionId: string;
+}
+
+/** Print a chat response with token/cost info. */
+function printChatResponse(result: {
+  text: string;
+  tokens: { input: number; output: number };
+  steps: number;
+  costUsd: number;
+}): void {
+  console.log(result.text);
+  console.log(
+    chalk.dim(
+      `  [${result.tokens.input}→${result.tokens.output} tokens, ${result.steps} step(s), $${result.costUsd.toFixed(6)}]`,
+    ),
+  );
+}
+
+/** Handle a single chat line from the REPL. */
+async function handleChatLine(
+  input: string,
+  ctx: ChatContext,
+  rl: readline.Interface,
+): Promise<boolean> {
+  if (!input) {
+    rl.prompt();
+    return false;
+  }
+
+  // Built-in commands
+  if (input === "/exit" || input === "/quit") {
+    console.log(chalk.dim("\nSession saved. Goodbye!"));
+    rl.close();
+    ctx.db.close();
+    process.exit(0);
+  }
+
+  if (input === "/sessions") {
+    const sessions = listSessions(ctx.db, ctx.slug, { state: "active", limit: 10 });
+    console.log(chalk.bold("\nActive sessions:"));
+    for (const s of sessions) {
+      const marker = s.id === ctx.sessionId ? chalk.green(" ← current") : "";
+      console.log(
+        `  ${chalk.dim(s.id)}  agent=${s.agentId}  ${chalk.dim(s.createdAt.toISOString())}${marker}`,
+      );
+    }
+    console.log("");
+    rl.prompt();
+    return false;
+  }
+
+  if (input === "/help") {
+    console.log(chalk.bold("\nCommands:"));
+    console.log("  /exit, /quit  — end the session");
+    console.log("  /sessions     — list active sessions");
+    console.log("  /help         — show this help");
+    console.log("");
+    rl.prompt();
+    return false;
+  }
+
+  // Agent interaction
+  rl.pause();
+  process.stdout.write(chalk.green("Agent: "));
+
+  try {
+    const result = await runPromptLoop({
+      db: ctx.db,
+      instanceSlug: ctx.slug,
+      sessionId: ctx.sessionId,
+      userText: input,
+      agentConfig: ctx.agentCfg,
+      resolvedModel: ctx.resolvedModelObj,
+      workDir: ctx.stateDir,
+      agentWorkDir: ctx.agentWorkDir,
+    });
+
+    printChatResponse(result);
+    console.log("");
+  } catch (err) {
+    console.log(chalk.red(`\n[Error] ${err instanceof Error ? err.message : String(err)}`));
+  }
+
+  rl.resume();
+  rl.prompt();
+  return false;
+}
+
+/** Set up and run the chat REPL loop. */
+function setupChatRepl(ctx: ChatContext): void {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: true,
+    prompt: chalk.bold("You: "),
+  });
+
+  rl.prompt();
+
+  rl.on("line", (line: string) => {
+    void handleChatLine(line.trim(), ctx, rl);
+  });
+
+  rl.on("close", () => {
+    console.log(chalk.dim("\nSession saved. Goodbye!"));
+    ctx.db.close();
+    process.exit(0);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // runtime chat <slug>
 // ---------------------------------------------------------------------------
+
+/** Resolve agent config and model from options and runtime config. */
+function resolveAgentAndModel(
+  config: RuntimeConfig,
+  opts: { agent?: string; model?: string },
+): {
+  agentId: string;
+  agentCfg: RuntimeAgentConfig;
+  resolvedModelObj: ReturnType<typeof resolveModel>;
+} {
+  const agentId = opts.agent ?? defaultAgentName();
+  const agentInfo = getAgent(agentId);
+  if (!agentInfo) {
+    logger.error(`Agent "${agentId}" not found.`);
+    process.exit(1);
+  }
+
+  const agentCfg: RuntimeAgentConfig = config.agents.find((a) => a.id === agentId) ?? {
+    id: agentInfo.name,
+    name: agentInfo.name,
+    model: opts.model ?? agentInfo.model ?? config.defaultModel,
+    permissions: agentInfo.permission ?? [],
+    maxSteps: agentInfo.steps ?? 20,
+    allowSubAgents: true,
+    toolProfile: "executor",
+    isDefault: false,
+    inheritWorkspace: true,
+  };
+
+  const modelStr = opts.model ?? agentCfg.model;
+  const slashIdx = modelStr.indexOf("/");
+  if (slashIdx === -1) {
+    logger.error(`Invalid model format "${modelStr}" — expected "provider/model".`);
+    process.exit(1);
+  }
+  const providerId = modelStr.slice(0, slashIdx);
+  const modelId = modelStr.slice(slashIdx + 1);
+
+  let resolvedModelObj;
+  try {
+    resolvedModelObj = resolveModel(providerId, modelId);
+  } catch (err) {
+    logger.error(
+      `Cannot resolve model "${modelStr}": ${err instanceof Error ? err.message : String(err)}`,
+    );
+    process.exit(1);
+  }
+
+  return { agentId, agentCfg, resolvedModelObj };
+}
+
+/** Print previous messages when resuming a session. */
+async function printSessionHistory(
+  db: ReturnType<typeof initDatabase>,
+  sessionId: string,
+): Promise<void> {
+  const { listMessages } = await import("../runtime/session/message.js");
+  const { listParts } = await import("../runtime/session/part.js");
+  const msgs = listMessages(db, sessionId);
+  for (const msg of msgs) {
+    const parts = listParts(db, msg.id);
+    const text = parts
+      .filter((p) => p.type === "text")
+      .map((p) => p.content ?? "")
+      .join("");
+    if (!text) continue;
+    if (msg.role === "user") {
+      console.log(chalk.bold("You: ") + text);
+    } else {
+      console.log(chalk.green("Agent: ") + text);
+    }
+  }
+  if (msgs.length > 0) console.log("");
+}
 
 function runtimeChatCommand(): Command {
   return new Command("chat")
@@ -532,70 +744,17 @@ function runtimeChatCommand(): Command {
         },
       ) => {
         const stateDir = getRuntimeStateDir(slug);
-        const chatDb = initDatabase(getDbPath());
+        const db = initDatabase(getDbPath());
 
         // Load config: DB first, then file fallback
-        let config;
-        const chatFromDb = loadConfigFromDbOrFile(chatDb, slug, stateDir);
-        if (chatFromDb) {
-          config = chatFromDb;
-        } else if (opts.ensureConfig) {
-          config = ensureRuntimeConfig(stateDir);
-          new Registry(chatDb).saveRuntimeConfig(slug, config);
-        } else {
-          logger.error(`No runtime config found for instance "${slug}" (checked DB and file).`);
-          logger.error(`Run: claw-pilot runtime config init ${slug}`);
-          chatDb.close();
-          process.exit(1);
-        }
+        const config = loadOrCreateConfig(db, slug, stateDir, opts.ensureConfig === true);
 
         // Init agent registry
         const { initAgentRegistry } = await import("../runtime/agent/registry.js");
         initAgentRegistry(config.agents);
 
-        // Resolve agent
-        const agentId = opts.agent ?? defaultAgentName();
-        const agentInfo = getAgent(agentId);
-        if (!agentInfo) {
-          logger.error(`Agent "${agentId}" not found.`);
-          process.exit(1);
-        }
-
-        // Build RuntimeAgentConfig from agent info + config override
-        const agentCfg: RuntimeAgentConfig = config.agents.find((a) => a.id === agentId) ?? {
-          id: agentInfo.name,
-          name: agentInfo.name,
-          model: opts.model ?? agentInfo.model ?? config.defaultModel,
-          permissions: agentInfo.permission ?? [],
-          maxSteps: agentInfo.steps ?? 20,
-          allowSubAgents: true,
-          toolProfile: "executor",
-          isDefault: false,
-          inheritWorkspace: true,
-        };
-
-        // Model override
-        const modelStr = opts.model ?? agentCfg.model;
-        const slashIdx = modelStr.indexOf("/");
-        if (slashIdx === -1) {
-          logger.error(`Invalid model format "${modelStr}" — expected "provider/model".`);
-          process.exit(1);
-        }
-        const providerId = modelStr.slice(0, slashIdx);
-        const modelId = modelStr.slice(slashIdx + 1);
-
-        let resolvedModelObj;
-        try {
-          resolvedModelObj = resolveModel(providerId, modelId);
-        } catch (err) {
-          logger.error(
-            `Cannot resolve model "${modelStr}": ${err instanceof Error ? err.message : String(err)}`,
-          );
-          process.exit(1);
-        }
-
-        // Use the DB opened earlier for config loading
-        const db = chatDb;
+        // Resolve agent and model
+        const { agentId, agentCfg, resolvedModelObj } = resolveAgentAndModel(config, opts);
 
         // Create or resume session
         let session;
@@ -613,11 +772,12 @@ function runtimeChatCommand(): Command {
           logger.info(`New session: ${session.id}`);
         }
 
+        const agentWorkDir = resolveAgentWorkspacePath(stateDir, agentId, undefined);
+
         // --once: non-interactive single-shot mode (no TTY required)
         if (opts.once) {
           logger.info(`Session: ${session.id}`);
           process.stdout.write(chalk.green("Agent: "));
-          const agentWorkDir = resolveAgentWorkspacePath(stateDir, agentId, undefined);
           try {
             const result = await runPromptLoop({
               db,
@@ -629,12 +789,7 @@ function runtimeChatCommand(): Command {
               workDir: stateDir,
               agentWorkDir,
             });
-            console.log(result.text);
-            console.log(
-              chalk.dim(
-                `  [${result.tokens.input}→${result.tokens.output} tokens, ${result.steps} step(s), $${result.costUsd.toFixed(6)}]`,
-              ),
-            );
+            printChatResponse(result);
           } catch (err) {
             console.log(chalk.red(`\n[Error] ${err instanceof Error ? err.message : String(err)}`));
             db.close();
@@ -645,6 +800,7 @@ function runtimeChatCommand(): Command {
         }
 
         // Print header
+        const modelStr = opts.model ?? agentCfg.model;
         console.log(chalk.bold(`\nclaw-runtime chat — ${slug}`));
         console.log(
           `  Agent : ${chalk.cyan(agentId)}   Model : ${chalk.cyan(modelStr)}   Session : ${chalk.dim(session.id)}`,
@@ -653,114 +809,18 @@ function runtimeChatCommand(): Command {
 
         // List previous messages if resuming
         if (opts.session) {
-          const { listMessages } = await import("../runtime/session/message.js");
-          const { listParts } = await import("../runtime/session/part.js");
-          const msgs = listMessages(db, session.id);
-          for (const msg of msgs) {
-            const parts = listParts(db, msg.id);
-            const text = parts
-              .filter((p) => p.type === "text")
-              .map((p) => p.content ?? "")
-              .join("");
-            if (!text) continue;
-            if (msg.role === "user") {
-              console.log(chalk.bold("You: ") + text);
-            } else {
-              console.log(chalk.green("Agent: ") + text);
-            }
-          }
-          if (msgs.length > 0) console.log("");
+          await printSessionHistory(db, session.id);
         }
 
-        // Resolve agent workspace directory once for the whole REPL session
-        const agentWorkDir = resolveAgentWorkspacePath(stateDir, agentId, undefined);
-
-        // REPL loop
-        const rl = readline.createInterface({
-          input: process.stdin,
-          output: process.stdout,
-          terminal: true,
-          prompt: chalk.bold("You: "),
-        });
-
-        rl.prompt();
-
-        rl.on("line", async (line: string) => {
-          const input = line.trim();
-          if (!input) {
-            rl.prompt();
-            return;
-          }
-
-          // Built-in commands
-          if (input === "/exit" || input === "/quit") {
-            console.log(chalk.dim("\nSession saved. Goodbye!"));
-            rl.close();
-            db.close();
-            process.exit(0);
-          }
-
-          if (input === "/sessions") {
-            const sessions = listSessions(db, slug, { state: "active", limit: 10 });
-            console.log(chalk.bold("\nActive sessions:"));
-            for (const s of sessions) {
-              const marker = s.id === session.id ? chalk.green(" ← current") : "";
-              console.log(
-                `  ${chalk.dim(s.id)}  agent=${s.agentId}  ${chalk.dim(s.createdAt.toISOString())}${marker}`,
-              );
-            }
-            console.log("");
-            rl.prompt();
-            return;
-          }
-
-          if (input === "/help") {
-            console.log(chalk.bold("\nCommands:"));
-            console.log("  /exit, /quit  — end the session");
-            console.log("  /sessions     — list active sessions");
-            console.log("  /help         — show this help");
-            console.log("");
-            rl.prompt();
-            return;
-          }
-
-          // Pause readline while the agent is thinking
-          rl.pause();
-          process.stdout.write(chalk.green("Agent: "));
-
-          try {
-            const result = await runPromptLoop({
-              db,
-              instanceSlug: slug,
-              sessionId: session.id,
-              userText: input,
-              agentConfig: agentCfg,
-              resolvedModel: resolvedModelObj,
-              workDir: stateDir,
-              agentWorkDir,
-            });
-
-            // runPromptLoop streams internally but we print the final text here
-            // (streaming to stdout is handled via bus events in a future step)
-            console.log(result.text);
-            console.log(
-              chalk.dim(
-                `  [${result.tokens.input}→${result.tokens.output} tokens, ${result.steps} step(s), $${result.costUsd.toFixed(6)}]`,
-              ),
-            );
-            console.log("");
-          } catch (err) {
-            console.log(chalk.red(`\n[Error] ${err instanceof Error ? err.message : String(err)}`));
-          }
-
-          rl.resume();
-          rl.prompt();
-        });
-
-        rl.on("close", () => {
-          console.log(chalk.dim("\nSession saved. Goodbye!"));
-          db.close();
-          process.exit(0);
+        // Start REPL
+        setupChatRepl({
+          slug,
+          stateDir,
+          db,
+          agentCfg,
+          resolvedModelObj,
+          agentWorkDir,
+          sessionId: session.id,
         });
       },
     );

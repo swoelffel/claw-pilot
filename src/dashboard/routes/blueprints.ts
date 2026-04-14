@@ -155,135 +155,381 @@ function buildBlueprintPayload(blueprintId: number, reg: Registry) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type HonoContext = any;
+
+/** Normalize tags: ensure they're valid JSON array format. */
+function normalizeTags(tags: string | undefined): string | undefined {
+  if (tags === undefined) return undefined;
+  try {
+    JSON.parse(tags);
+    return tags;
+  } catch (err) {
+    logger.debug("[route:blueprints] tags JSON parse fallback", { error: String(err) });
+    return JSON.stringify([tags]);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Extracted route handlers
+// ---------------------------------------------------------------------------
+
+/** Handle GET /api/blueprints — list all (DB + built-in). */
+async function handleListBlueprints(c: HonoContext, registry: Registry): Promise<Response> {
+  const dbBlueprints = registry.listBlueprints();
+  const builtinBlueprints = await listBuiltinBlueprints();
+
+  const dbNames = new Set(dbBlueprints.map((b) => b.name));
+  const builtinEntries = builtinBlueprints
+    .filter((b) => !dbNames.has(b.name))
+    .map((b) => ({
+      id: -1,
+      name: b.name,
+      description: b.description,
+      icon: null,
+      tags: JSON.stringify(["builtin"]),
+      color: null,
+      agent_count: b.agentCount,
+      created_at: "",
+      updated_at: "",
+      _builtin: true as const,
+      _slug: b.slug,
+    }));
+
+  return c.json([...builtinEntries, ...dbBlueprints]);
+}
+
+/** Handle POST /api/blueprints — create a new blueprint. */
+async function handleCreateBlueprint(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { registry } = deps;
+  const body = await c.req.json().catch(() => null);
+  const parsed = CreateBlueprintSchema.safeParse(body);
+  if (!parsed.success) {
+    const nameIssue = parsed.error.issues.find((i: { path: unknown[] }) => i.path[0] === "name");
+    if (nameIssue) return apiError(c, 400, "BLUEPRINT_NAME_REQUIRED", "Blueprint name is required");
+    return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+  }
+  const data = parsed.data;
+
+  try {
+    const normalizedTags = normalizeTags(data.tags);
+    const blueprint = registry.createBlueprint({
+      name: data.name.trim(),
+      ...(data.description !== undefined ? { description: data.description } : {}),
+      ...(data.icon !== undefined ? { icon: data.icon } : {}),
+      ...(normalizedTags !== undefined ? { tags: normalizedTags } : {}),
+      ...(data.color !== undefined ? { color: data.color } : {}),
+    });
+
+    await seedBlueprintPilotAgent(registry, blueprint.id);
+
+    upsertSearchEntry(deps.db, {
+      entityType: "blueprint",
+      entityId: String(blueprint.id),
+      title: blueprint.name,
+      subtitle: blueprint.description ?? "",
+      routeHash: `/blueprints/${blueprint.id}/builder`,
+    });
+
+    notifySystemStateChanged("blueprint", "create");
+    return c.json(blueprint, 201);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("UNIQUE"))
+      return apiError(c, 409, "BLUEPRINT_NAME_TAKEN", "A blueprint with this name already exists");
+    return apiError(c, 500, "INTERNAL_ERROR", msg);
+  }
+}
+
+/** Handle POST /api/blueprints/import-builtin/:slug. */
+async function handleImportBuiltin(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { registry } = deps;
+  const slug = c.req.param("slug");
+  const { loadBuiltinBlueprint } = await import("../../core/builtin-blueprints.js");
+  const builtin = await loadBuiltinBlueprint(slug);
+  if (!builtin) return apiError(c, 404, "NOT_FOUND", `Built-in blueprint '${slug}' not found`);
+
+  try {
+    const blueprint = registry.createBlueprint({
+      name: builtin.name,
+      description: builtin.description,
+      tags: JSON.stringify(["builtin"]),
+    });
+
+    const { importBlueprintTeam } = await import("../../core/team-import.js");
+    await importBlueprintTeam(deps.db, registry, blueprint.id, builtin.teamFile);
+
+    upsertSearchEntry(deps.db, {
+      entityType: "blueprint",
+      entityId: String(blueprint.id),
+      title: blueprint.name,
+      subtitle: blueprint.description ?? "",
+      routeHash: `/blueprints/${blueprint.id}/builder`,
+    });
+
+    notifySystemStateChanged("blueprint", "create");
+    return c.json(blueprint, 201);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to import built-in blueprint";
+    return apiError(c, 500, "INTERNAL_ERROR", msg);
+  }
+}
+
+/** Handle PUT /api/blueprints/:id — update a blueprint. */
+async function handleUpdateBlueprint(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { registry } = deps;
+  const id = Number(c.req.param("id"));
+  if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
+  const blueprint = registry.getBlueprint(id);
+  if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = UpdateBlueprintSchema.safeParse(body);
+  if (!parsed.success) return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+  const data = parsed.data;
+
+  try {
+    let normalizedTags = data.tags;
+    if (normalizedTags !== undefined && normalizedTags !== null) {
+      normalizedTags = normalizeTags(normalizedTags) ?? normalizedTags;
+    }
+
+    const updated = registry.updateBlueprint(id, {
+      ...(data.name !== undefined ? { name: data.name } : {}),
+      ...(data.description !== undefined ? { description: data.description } : {}),
+      ...(data.icon !== undefined ? { icon: data.icon } : {}),
+      ...(normalizedTags !== undefined ? { tags: normalizedTags } : {}),
+      ...(data.color !== undefined ? { color: data.color } : {}),
+    });
+
+    if (updated) {
+      upsertSearchEntry(deps.db, {
+        entityType: "blueprint",
+        entityId: String(id),
+        title: updated.name,
+        subtitle: updated.description ?? "",
+        routeHash: `/blueprints/${id}/builder`,
+      });
+    }
+
+    return c.json(updated);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("UNIQUE"))
+      return apiError(c, 409, "BLUEPRINT_NAME_TAKEN", "A blueprint with this name already exists");
+    return apiError(c, 500, "INTERNAL_ERROR", msg);
+  }
+}
+
+/** Handle POST /api/blueprints/:id/agents — create agent in blueprint. */
+async function handleCreateBlueprintAgent(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { registry } = deps;
+  const id = Number(c.req.param("id"));
+  if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
+  const blueprint = registry.getBlueprint(id);
+  if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = CreateAgentSchema.safeParse(body);
+  if (!parsed.success) {
+    const idIssue = parsed.error.issues.find((i: { path: unknown[] }) => i.path[0] === "agent_id");
+    if (idIssue) {
+      const isMissing = idIssue.code === "invalid_type";
+      return apiError(
+        c,
+        400,
+        isMissing ? "FIELD_REQUIRED" : "INVALID_AGENT_ID",
+        isMissing ? "agent_id is required" : "Invalid agent_id format",
+      );
+    }
+    return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+  }
+  const data = parsed.data;
+
+  let newAgent;
+  try {
+    newAgent = registry.createBlueprintAgent(id, {
+      agentId: data.agent_id,
+      name: data.name,
+      ...(data.model !== undefined ? { model: data.model } : {}),
+    });
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (errMsg.includes("UNIQUE"))
+      return apiError(
+        c,
+        409,
+        "AGENT_ID_TAKEN",
+        "An agent with this id already exists in this blueprint",
+      );
+    return apiError(c, 500, "INTERNAL_ERROR", errMsg);
+  }
+
+  await seedBlueprintAgentFiles(registry, newAgent.id, data.agent_id, data.name);
+  const payload = buildBlueprintPayload(id, registry);
+  return c.json(payload, 201);
+}
+
+/** Handle PATCH /agents/:agentId/meta. */
+async function handleUpdateAgentMeta(c: HonoContext, registry: Registry): Promise<Response> {
+  const id = Number(c.req.param("id"));
+  const agentId = c.req.param("agentId");
+  if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
+  if (!registry.getBlueprint(id)) return apiError(c, 404, "NOT_FOUND", "Not found");
+  const agent = registry.getBlueprintAgent(id, agentId);
+  if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = UpdateAgentMetaSchema.safeParse(body);
+  if (!parsed.success) return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+  const data = parsed.data;
+
+  const metaFields: Parameters<typeof registry.updateAgentMeta>[1] = {};
+  if ("role" in data) metaFields.role = data.role;
+  if ("tags" in data) metaFields.tags = data.tags;
+  if ("notes" in data) metaFields.notes = data.notes;
+  if ("skills" in data) metaFields.skills = data.skills;
+  registry.updateAgentMeta(agent.id, metaFields);
+
+  return c.json(buildBlueprintPayload(id, registry));
+}
+
+/** Handle DELETE /agents/:agentId. */
+function handleDeleteAgent(c: HonoContext, registry: Registry): Response {
+  const id = Number(c.req.param("id"));
+  const agentId = c.req.param("agentId");
+  if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
+  if (!registry.getBlueprint(id)) return apiError(c, 404, "NOT_FOUND", "Not found");
+  if (!registry.getBlueprintAgent(id, agentId))
+    return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
+  registry.deleteBlueprintAgent(id, agentId);
+  return c.json(buildBlueprintPayload(id, registry));
+}
+
+/** Handle PATCH /agents/:agentId/position. */
+async function handleUpdatePosition(c: HonoContext, registry: Registry): Promise<Response> {
+  const id = Number(c.req.param("id"));
+  const agentId = c.req.param("agentId");
+  if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
+  const body = await c.req.json().catch(() => null);
+  const parsed = UpdateAgentPositionSchema.safeParse(body);
+  if (!parsed.success) return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+  const agent = registry.getBlueprintAgent(id, agentId);
+  if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
+  registry.updateBlueprintAgentPosition(agent.id, parsed.data.x, parsed.data.y);
+  return c.json({ ok: true });
+}
+
+/** Handle GET /agents/:agentId/files/:filename. */
+function handleReadFile(c: HonoContext, registry: Registry): Response {
+  const id = Number(c.req.param("id"));
+  if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
+  const agent = registry.getBlueprintAgent(id, c.req.param("agentId"));
+  if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
+  const file = registry.getAgentFileContent(agent.id, c.req.param("filename"));
+  if (!file) return apiError(c, 404, "FILE_NOT_FOUND", "File not found");
+  return c.json({
+    filename: file.filename,
+    content: file.content ?? "",
+    content_hash: file.content_hash ?? "",
+    updated_at: file.updated_at ?? "",
+    editable: true,
+  });
+}
+
+/** Handle PUT /agents/:agentId/files/:filename. */
+async function handleWriteFile(c: HonoContext, registry: Registry): Promise<Response> {
+  const id = Number(c.req.param("id"));
+  const filename = c.req.param("filename");
+  if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
+  const body = await c.req.json().catch(() => null);
+  const parsed = WriteFileSchema.safeParse(body);
+  if (!parsed.success) return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+  const agent = registry.getBlueprintAgent(id, c.req.param("agentId"));
+  if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
+
+  try {
+    const { createHash } = await import("node:crypto");
+    const contentHash = createHash("sha256").update(parsed.data.content).digest("hex").slice(0, 16);
+    registry.upsertAgentFile(agent.id, { filename, content: parsed.data.content, contentHash });
+  } catch (err: unknown) {
+    return apiError(
+      c,
+      500,
+      "FILE_SAVE_FAILED",
+      err instanceof Error ? err.message : "File save failed",
+    );
+  }
+
+  const saved = registry.getAgentFileContent(agent.id, filename);
+  return c.json({
+    filename,
+    content: parsed.data.content,
+    content_hash: saved?.content_hash ?? "",
+    updated_at: saved?.updated_at ?? new Date().toISOString(),
+    editable: true,
+  });
+}
+
+/** Handle PATCH /agents/:agentId/spawn-links. */
+async function handleSpawnLinks(c: HonoContext, registry: Registry): Promise<Response> {
+  const id = Number(c.req.param("id"));
+  const agentId = c.req.param("agentId");
+  if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
+  const body = await c.req.json().catch(() => null);
+  const parsed = UpdateSpawnLinksSchema.safeParse(body);
+  if (!parsed.success) return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+  if (!registry.getBlueprint(id)) return apiError(c, 404, "NOT_FOUND", "Not found");
+
+  const allLinks = registry.listBlueprintLinks(id);
+  const otherLinks = allLinks.filter(
+    (l) => !(l.source_agent_id === agentId && l.link_type === "spawn"),
+  );
+  const newSpawnLinks = parsed.data.targets.map((target) => ({
+    sourceAgentId: agentId,
+    targetAgentId: target,
+    linkType: "spawn" as const,
+  }));
+  registry.replaceBlueprintLinks(id, [
+    ...otherLinks.map((l) => ({
+      sourceAgentId: l.source_agent_id,
+      targetAgentId: l.target_agent_id,
+      linkType: l.link_type,
+    })),
+    ...newSpawnLinks,
+  ]);
+
+  const updatedLinks = registry.listBlueprintLinks(id).map((l) => ({
+    source_agent_id: l.source_agent_id,
+    target_agent_id: l.target_agent_id,
+    link_type: l.link_type,
+  }));
+  return c.json({ ok: true, links: updatedLinks });
+}
+
 export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
   const { registry } = deps;
 
-  // GET /api/blueprints — liste tous les blueprints (DB + built-in)
+  // GET /api/blueprints — list all blueprints (DB + built-in)
   app.get("/api/blueprints", async (c) => {
-    const dbBlueprints = registry.listBlueprints();
-    const builtinBlueprints = await listBuiltinBlueprints();
-
-    // Merge: built-in blueprints not yet in the DB are appended with _builtin marker
-    const dbNames = new Set(dbBlueprints.map((b) => b.name));
-    const builtinEntries = builtinBlueprints
-      .filter((b) => !dbNames.has(b.name))
-      .map((b) => ({
-        id: -1, // sentinel: not in DB
-        name: b.name,
-        description: b.description,
-        icon: null,
-        tags: JSON.stringify(["builtin"]),
-        color: null,
-        agent_count: b.agentCount,
-        created_at: "",
-        updated_at: "",
-        _builtin: true as const,
-        _slug: b.slug,
-      }));
-
-    return c.json([...builtinEntries, ...dbBlueprints]);
+    return handleListBlueprints(c, registry);
   });
 
-  // POST /api/blueprints — créer un blueprint
+  // POST /api/blueprints — create a blueprint
   app.post("/api/blueprints", async (c) => {
-    const body = await c.req.json().catch(() => null);
-    const parsed = CreateBlueprintSchema.safeParse(body);
-    if (!parsed.success) {
-      const nameIssue = parsed.error.issues.find((i) => i.path[0] === "name");
-      if (nameIssue) {
-        return apiError(c, 400, "BLUEPRINT_NAME_REQUIRED", "Blueprint name is required");
-      }
-      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
-    }
-    const data = parsed.data;
-
-    try {
-      // Normalize tags: convert to JSON array format if it's a plain string
-      let normalizedTags: string | undefined;
-      if (data.tags !== undefined) {
-        try {
-          // If it's already valid JSON, keep it as is
-          JSON.parse(data.tags);
-          normalizedTags = data.tags;
-        } catch (err) {
-          logger.debug("[route:blueprints] tags JSON parse fallback on create", {
-            error: String(err),
-          });
-          // If it's a plain string, convert to JSON array
-          normalizedTags = JSON.stringify([data.tags]);
-        }
-      }
-
-      const blueprint = registry.createBlueprint({
-        name: data.name.trim(),
-        ...(data.description !== undefined ? { description: data.description } : {}),
-        ...(data.icon !== undefined ? { icon: data.icon } : {}),
-        ...(normalizedTags !== undefined ? { tags: normalizedTags } : {}),
-        ...(data.color !== undefined ? { color: data.color } : {}),
-      });
-
-      // Seed default "main" agent — every blueprint starts with one
-      await seedBlueprintPilotAgent(registry, blueprint.id);
-
-      upsertSearchEntry(deps.db, {
-        entityType: "blueprint",
-        entityId: String(blueprint.id),
-        title: blueprint.name,
-        subtitle: blueprint.description ?? "",
-        routeHash: `/blueprints/${blueprint.id}/builder`,
-      });
-
-      notifySystemStateChanged("blueprint", "create");
-      return c.json(blueprint, 201);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("UNIQUE"))
-        return apiError(
-          c,
-          409,
-          "BLUEPRINT_NAME_TAKEN",
-          "A blueprint with this name already exists",
-        );
-      return apiError(c, 500, "INTERNAL_ERROR", msg);
-    }
+    return handleCreateBlueprint(c, deps);
   });
 
-  // POST /api/blueprints/import-builtin/:slug — import a built-in blueprint into the DB
+  // POST /api/blueprints/import-builtin/:slug — import a built-in blueprint
   app.post("/api/blueprints/import-builtin/:slug", async (c) => {
-    const slug = c.req.param("slug");
-    const { loadBuiltinBlueprint } = await import("../../core/builtin-blueprints.js");
-    const builtin = await loadBuiltinBlueprint(slug);
-    if (!builtin) {
-      return apiError(c, 404, "NOT_FOUND", `Built-in blueprint '${slug}' not found`);
-    }
-
-    try {
-      const blueprint = registry.createBlueprint({
-        name: builtin.name,
-        description: builtin.description,
-        tags: JSON.stringify(["builtin"]),
-      });
-
-      const { importBlueprintTeam } = await import("../../core/team-import.js");
-      await importBlueprintTeam(deps.db, registry, blueprint.id, builtin.teamFile);
-
-      upsertSearchEntry(deps.db, {
-        entityType: "blueprint",
-        entityId: String(blueprint.id),
-        title: blueprint.name,
-        subtitle: blueprint.description ?? "",
-        routeHash: `/blueprints/${blueprint.id}/builder`,
-      });
-
-      notifySystemStateChanged("blueprint", "create");
-      return c.json(blueprint, 201);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to import built-in blueprint";
-      return apiError(c, 500, "INTERNAL_ERROR", msg);
-    }
+    return handleImportBuiltin(c, deps);
   });
 
-  // GET /api/blueprints/:id — détail d'un blueprint
+  // GET /api/blueprints/:id — blueprint detail
   app.get("/api/blueprints/:id", (c) => {
     const id = Number(c.req.param("id"));
     if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
@@ -292,69 +538,12 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     return c.json(blueprint);
   });
 
-  // PUT /api/blueprints/:id — mettre à jour un blueprint
+  // PUT /api/blueprints/:id — update a blueprint
   app.put("/api/blueprints/:id", async (c) => {
-    const id = Number(c.req.param("id"));
-    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
-    const blueprint = registry.getBlueprint(id);
-    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
-
-    const body = await c.req.json().catch(() => null);
-    const parsed = UpdateBlueprintSchema.safeParse(body);
-    if (!parsed.success) {
-      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
-    }
-    const data = parsed.data;
-
-    try {
-      // Normalize tags if provided
-      let normalizedTags = data.tags;
-      if (normalizedTags !== undefined && normalizedTags !== null) {
-        try {
-          // If it's already valid JSON, keep it as is
-          JSON.parse(normalizedTags);
-        } catch (err) {
-          logger.debug("[route:blueprints] tags JSON parse fallback on update", {
-            error: String(err),
-          });
-          // If it's a plain string, convert to JSON array
-          normalizedTags = JSON.stringify([normalizedTags]);
-        }
-      }
-
-      const updated = registry.updateBlueprint(id, {
-        ...(data.name !== undefined ? { name: data.name } : {}),
-        ...(data.description !== undefined ? { description: data.description } : {}),
-        ...(data.icon !== undefined ? { icon: data.icon } : {}),
-        ...(normalizedTags !== undefined ? { tags: normalizedTags } : {}),
-        ...(data.color !== undefined ? { color: data.color } : {}),
-      });
-
-      if (updated) {
-        upsertSearchEntry(deps.db, {
-          entityType: "blueprint",
-          entityId: String(id),
-          title: updated.name,
-          subtitle: updated.description ?? "",
-          routeHash: `/blueprints/${id}/builder`,
-        });
-      }
-
-      return c.json(updated);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("UNIQUE"))
-        return apiError(
-          c,
-          409,
-          "BLUEPRINT_NAME_TAKEN",
-          "A blueprint with this name already exists",
-        );
-      return apiError(c, 500, "INTERNAL_ERROR", msg);
-    }
+    return handleUpdateBlueprint(c, deps);
   });
 
-  // DELETE /api/blueprints/:id — supprimer un blueprint
+  // DELETE /api/blueprints/:id — delete a blueprint
   app.delete("/api/blueprints/:id", (c) => {
     const id = Number(c.req.param("id"));
     if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
@@ -366,7 +555,7 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     return c.json({ ok: true });
   });
 
-  // GET /api/blueprints/:id/builder — payload complet builder
+  // GET /api/blueprints/:id/builder — full builder payload
   app.get("/api/blueprints/:id/builder", (c) => {
     const id = Number(c.req.param("id"));
     if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
@@ -375,231 +564,25 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
     return c.json(payload);
   });
 
-  // POST /api/blueprints/:id/agents — créer un agent dans un blueprint
+  // POST /api/blueprints/:id/agents — create agent in blueprint
   app.post("/api/blueprints/:id/agents", async (c) => {
-    const id = Number(c.req.param("id"));
-    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
-    const blueprint = registry.getBlueprint(id);
-    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
-
-    const body = await c.req.json().catch(() => null);
-    const parsed = CreateAgentSchema.safeParse(body);
-    if (!parsed.success) {
-      const idIssue = parsed.error.issues.find((i) => i.path[0] === "agent_id");
-      if (idIssue) {
-        const isMissing = idIssue.code === "invalid_type";
-        return apiError(
-          c,
-          400,
-          isMissing ? "FIELD_REQUIRED" : "INVALID_AGENT_ID",
-          isMissing ? "agent_id is required" : "Invalid agent_id format",
-        );
-      }
-      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
-    }
-    const data = parsed.data;
-
-    let newAgent;
-    try {
-      newAgent = registry.createBlueprintAgent(id, {
-        agentId: data.agent_id,
-        name: data.name,
-        ...(data.model !== undefined ? { model: data.model } : {}),
-      });
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      if (errMsg.includes("UNIQUE"))
-        return apiError(
-          c,
-          409,
-          "AGENT_ID_TAKEN",
-          "An agent with this id already exists in this blueprint",
-        );
-      return apiError(c, 500, "INTERNAL_ERROR", errMsg);
-    }
-
-    // Seed workspace files for the new agent (same as for the default main agent)
-    await seedBlueprintAgentFiles(registry, newAgent.id, data.agent_id, data.name);
-
-    const payload = buildBlueprintPayload(id, registry);
-    return c.json(payload, 201);
+    return handleCreateBlueprintAgent(c, deps);
   });
 
-  // PATCH /api/blueprints/:id/agents/:agentId/meta — mettre à jour les métadonnées
-  app.patch("/api/blueprints/:id/agents/:agentId/meta", async (c) => {
-    const id = Number(c.req.param("id"));
-    const agentId = c.req.param("agentId");
-    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
-
-    const blueprint = registry.getBlueprint(id);
-    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
-
-    const agent = registry.getBlueprintAgent(id, agentId);
-    if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
-
-    const body = await c.req.json().catch(() => null);
-    const parsed = UpdateAgentMetaSchema.safeParse(body);
-    if (!parsed.success) {
-      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
-    }
-    const data = parsed.data;
-
-    const metaFields: Parameters<typeof registry.updateAgentMeta>[1] = {};
-    if ("role" in data) metaFields.role = data.role;
-    if ("tags" in data) metaFields.tags = data.tags;
-    if ("notes" in data) metaFields.notes = data.notes;
-    if ("skills" in data) metaFields.skills = data.skills;
-
-    registry.updateAgentMeta(agent.id, metaFields);
-
-    const payload = buildBlueprintPayload(id, registry);
-    return c.json(payload);
-  });
-
-  // DELETE /api/blueprints/:id/agents/:agentId — supprimer un agent
-  app.delete("/api/blueprints/:id/agents/:agentId", (c) => {
-    const id = Number(c.req.param("id"));
-    const agentId = c.req.param("agentId");
-    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
-    const blueprint = registry.getBlueprint(id);
-    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
-    const agent = registry.getBlueprintAgent(id, agentId);
-    if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
-    registry.deleteBlueprintAgent(id, agentId);
-    const payload = buildBlueprintPayload(id, registry);
-    return c.json(payload);
-  });
-
-  // PATCH /api/blueprints/:id/agents/:agentId/position — position canvas
-  app.patch("/api/blueprints/:id/agents/:agentId/position", async (c) => {
-    const id = Number(c.req.param("id"));
-    const agentId = c.req.param("agentId");
-    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
-
-    const body = await c.req.json().catch(() => null);
-    const parsed = UpdateAgentPositionSchema.safeParse(body);
-    if (!parsed.success) {
-      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
-    }
-    const data = parsed.data;
-
-    const agent = registry.getBlueprintAgent(id, agentId);
-    if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
-    registry.updateBlueprintAgentPosition(agent.id, data.x, data.y);
-    return c.json({ ok: true });
-  });
-
-  // GET /api/blueprints/:id/agents/:agentId/files/:filename — lire un fichier
-  app.get("/api/blueprints/:id/agents/:agentId/files/:filename", (c) => {
-    const id = Number(c.req.param("id"));
-    const agentId = c.req.param("agentId");
-    const filename = c.req.param("filename");
-    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
-
-    const agent = registry.getBlueprintAgent(id, agentId);
-    if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
-
-    const file = registry.getAgentFileContent(agent.id, filename);
-    if (!file) return apiError(c, 404, "FILE_NOT_FOUND", "File not found");
-
-    return c.json({
-      filename: file.filename,
-      content: file.content ?? "",
-      content_hash: file.content_hash ?? "",
-      updated_at: file.updated_at ?? "",
-      editable: true,
-    });
-  });
-
-  // PUT /api/blueprints/:id/agents/:agentId/files/:filename — écrire un fichier
-  app.put("/api/blueprints/:id/agents/:agentId/files/:filename", async (c) => {
-    const id = Number(c.req.param("id"));
-    const agentId = c.req.param("agentId");
-    const filename = c.req.param("filename");
-    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
-
-    const body = await c.req.json().catch(() => null);
-    const parsed = WriteFileSchema.safeParse(body);
-    if (!parsed.success) {
-      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
-    }
-    const data = parsed.data;
-
-    const agent = registry.getBlueprintAgent(id, agentId);
-    if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
-
-    try {
-      const { createHash } = await import("node:crypto");
-      const contentHash = createHash("sha256").update(data.content).digest("hex").slice(0, 16);
-      registry.upsertAgentFile(agent.id, {
-        filename,
-        content: data.content,
-        contentHash,
-      });
-    } catch (err: unknown) {
-      return apiError(
-        c,
-        500,
-        "FILE_SAVE_FAILED",
-        err instanceof Error ? err.message : "File save failed",
-      );
-    }
-
-    // Return AgentFileContent shape (same as instance file route) so the
-    // shared agent-detail-panel can handle both contexts uniformly.
-    const saved = registry.getAgentFileContent(agent.id, filename);
-    return c.json({
-      filename,
-      content: data.content,
-      content_hash: saved?.content_hash ?? "",
-      updated_at: saved?.updated_at ?? new Date().toISOString(),
-      editable: true,
-    });
-  });
-
-  // PATCH /api/blueprints/:id/agents/:agentId/spawn-links — modifier les liens spawn
-  app.patch("/api/blueprints/:id/agents/:agentId/spawn-links", async (c) => {
-    const id = Number(c.req.param("id"));
-    const agentId = c.req.param("agentId");
-    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
-
-    const body = await c.req.json().catch(() => null);
-    const parsed = UpdateSpawnLinksSchema.safeParse(body);
-    if (!parsed.success) {
-      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
-    }
-    const data = parsed.data;
-
-    const blueprint = registry.getBlueprint(id);
-    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
-
-    // Get all current links for this blueprint, keep non-spawn links for this agent, replace spawn links
-    const allLinks = registry.listBlueprintLinks(id);
-    const otherLinks = allLinks.filter(
-      (l) => !(l.source_agent_id === agentId && l.link_type === "spawn"),
-    );
-    const newSpawnLinks = data.targets.map((target) => ({
-      sourceAgentId: agentId,
-      targetAgentId: target,
-      linkType: "spawn" as const,
-    }));
-    const mergedLinks = [
-      ...otherLinks.map((l) => ({
-        sourceAgentId: l.source_agent_id,
-        targetAgentId: l.target_agent_id,
-        linkType: l.link_type,
-      })),
-      ...newSpawnLinks,
-    ];
-    registry.replaceBlueprintLinks(id, mergedLinks);
-
-    // Return { ok, links } — same shape as the instance spawn-links route so
-    // the shared agent-detail-panel can handle both contexts uniformly.
-    const updatedLinks = registry.listBlueprintLinks(id).map((l) => ({
-      source_agent_id: l.source_agent_id,
-      target_agent_id: l.target_agent_id,
-      link_type: l.link_type,
-    }));
-    return c.json({ ok: true, links: updatedLinks });
-  });
+  app.patch("/api/blueprints/:id/agents/:agentId/meta", async (c) =>
+    handleUpdateAgentMeta(c, registry),
+  );
+  app.delete("/api/blueprints/:id/agents/:agentId", (c) => handleDeleteAgent(c, registry));
+  app.patch("/api/blueprints/:id/agents/:agentId/position", async (c) =>
+    handleUpdatePosition(c, registry),
+  );
+  app.get("/api/blueprints/:id/agents/:agentId/files/:filename", (c) =>
+    handleReadFile(c, registry),
+  );
+  app.put("/api/blueprints/:id/agents/:agentId/files/:filename", async (c) =>
+    handleWriteFile(c, registry),
+  );
+  app.patch("/api/blueprints/:id/agents/:agentId/spawn-links", async (c) =>
+    handleSpawnLinks(c, registry),
+  );
 }

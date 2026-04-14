@@ -216,104 +216,87 @@ export interface SystemPromptContext {
  *
  * Async to support instructionUrls fetching (Phase 2a).
  */
+/** Build the agent identity block if applicable (primary agents with workspace only). */
+function resolveAgentIdentityBlock(ctx: SystemPromptContext): string | undefined {
+  if (!ctx.workDir) return undefined;
+  const agentInfo = getAgent(ctx.agentConfig.id);
+  if (agentInfo?.kind !== "primary") return undefined;
+
+  const wsDir = resolveWorkspaceDir(ctx.workDir, ctx.agentConfig.id);
+  const wsState = wsDir ? readWorkspaceState(wsDir) : {};
+  return buildAgentIdentityBlock({
+    agentId: ctx.agentConfig.id,
+    agentName: ctx.agentConfig.name,
+    agentCreatedAt: wsState.agentCreatedAt,
+    instanceSlug: ctx.instanceSlug,
+    channel: ctx.channel,
+    clawPilotVersion: _clawPilotVersion,
+  });
+}
+
+/** Collect optional conditional sections that depend on DB/instance context. */
+function collectContextSections(ctx: SystemPromptContext): string[] {
+  const sections: string[] = [];
+
+  // Session context (permanent agents only)
+  const sessionCtxBlock = buildSessionContextIfPermanent(ctx);
+  if (sessionCtxBlock) sections.push(sessionCtxBlock);
+
+  // Task backlog for this agent
+  if (ctx.db && ctx.instanceSlug) {
+    const activeTasks = getActiveTasksForAgent(ctx.db, ctx.instanceSlug, ctx.agentConfig.id);
+    if (activeTasks.length > 0) sections.push(buildTaskBacklogBlock(activeTasks));
+  }
+
+  // ClawPilot platform state (cp-system instance only)
+  if (ctx.db && ctx.instanceSlug === SYSTEM_INSTANCE_SLUG) {
+    const stateBlock = buildClawPilotStateBlock(ctx.db);
+    if (stateBlock) sections.push(stateBlock);
+  }
+
+  return sections;
+}
+
 export async function buildSystemPrompt(ctx: SystemPromptContext): Promise<string> {
   const sections: string[] = [];
 
-  // 0. Agent identity block (primary agents only — stable position for Anthropic cache)
-  const agentInfo = getAgent(ctx.agentConfig.id);
-  if (agentInfo?.kind === "primary" && ctx.workDir) {
-    const wsDir = resolveWorkspaceDir(ctx.workDir, ctx.agentConfig.id);
-    const wsState = wsDir ? readWorkspaceState(wsDir) : {};
-    sections.push(
-      buildAgentIdentityBlock({
-        agentId: ctx.agentConfig.id,
-        agentName: ctx.agentConfig.name,
-        agentCreatedAt: wsState.agentCreatedAt,
-        instanceSlug: ctx.instanceSlug,
-        channel: ctx.channel,
-        clawPilotVersion: _clawPilotVersion,
-      }),
-    );
-  }
+  // 0. Agent identity (primary agents only)
+  const identityBlock = resolveAgentIdentityBlock(ctx);
+  if (identityBlock) sections.push(identityBlock);
 
   // 1. Agent instructions (inline > file > auto-discovery > default)
   const instructions = await resolveInstructions(ctx);
   if (instructions) sections.push(instructions.trim());
 
-  // 1.2. Archetype behavioral instructions (injected after agent identity, before teammates)
+  // 1.2. Archetype behavioral instructions
   const archetype = ctx.agentConfig.archetype;
   if (archetype) {
     const block = loadArchetypeBlock(archetype);
     if (block) sections.push(block);
   }
 
-  // 1.5. Teammates block (injected after instructions, before env)
+  // 1.5. Teammates block
   if (ctx.runtimeAgents && ctx.runtimeAgents.length > 1) {
     sections.push(
       buildTeammatesBlock(ctx.runtimeAgents, ctx.agentConfig.id, ctx.runtimeAgentConfigs),
     );
   }
 
-  // 2. Environment block
+  // 2. Environment + behavior
   sections.push(buildEnvBlock(ctx));
-
-  // 3. Behavior constraints (always present)
   sections.push(BEHAVIOR_BLOCK);
 
-  // 3.5. Session context — résumé de la dernière compaction (agents permanents uniquement)
-  if (ctx.db && ctx.sessionId) {
-    const agentInfoForCtx = getAgent(ctx.agentConfig.id);
-    const agentConfigForCtx = ctx.runtimeConfig?.agents.find((a) => a.id === ctx.agentConfig.id);
-    const isPermanent =
-      resolveEffectivePersistence(
-        agentInfoForCtx ?? {
-          kind: "primary",
-          category: "user",
-          archetype: null,
-          name: ctx.agentConfig.id,
-          permission: [],
-          mode: "all",
-          options: {},
-        },
-        agentConfigForCtx,
-      ) === "permanent";
+  // 3. Context-dependent sections (session, tasks, platform state)
+  sections.push(...collectContextSections(ctx));
 
-    if (isPermanent) {
-      const compactionSummary = getCompactionSummary(ctx.db, ctx.sessionId);
-      if (compactionSummary) {
-        sections.push(buildSessionContextBlock(compactionSummary));
-      }
-    }
-  }
-
-  // 3.55. Task backlog for this agent
-  if (ctx.db && ctx.instanceSlug) {
-    const activeTasks = getActiveTasksForAgent(ctx.db, ctx.instanceSlug, ctx.agentConfig.id);
-    if (activeTasks.length > 0) {
-      sections.push(buildTaskBacklogBlock(activeTasks));
-    }
-  }
-
-  // 3.56. ClawPilot platform state — only for agents in the cp-system instance.
-  // Gives system-pilot and its subagents live visibility into named API keys,
-  // instances, blueprints, and providers so they don't ask the user about
-  // data already present in the registry.
-  if (ctx.db && ctx.instanceSlug === SYSTEM_INSTANCE_SLUG) {
-    const stateBlock = buildClawPilotStateBlock(ctx.db);
-    if (stateBlock) sections.push(stateBlock);
-  }
-
-  // 3.6. Available skills block (proactive injection or auto-select)
-  // Skipped when building the base prompt for dirty-flag cache
+  // 4. Skills block
   if (!ctx.skipSkills && ctx.workDir) {
     const skillsBlock = await buildSkillsBlock(ctx.workDir, ctx.agentConfig, ctx.userText);
     if (skillsBlock) sections.push(skillsBlock);
   }
 
-  // 4. Extra system prompt (subagent context, injected by Task tool)
-  if (ctx.extraSystemPrompt) {
-    sections.push(ctx.extraSystemPrompt.trim());
-  }
+  // 5. Extra system prompt (subagent context)
+  if (ctx.extraSystemPrompt) sections.push(ctx.extraSystemPrompt.trim());
 
   return sections.join("\n\n");
 }
@@ -345,6 +328,56 @@ const CLAWPILOT_STATE_MAX_CHARS = 3000;
  *
  * Returns undefined if the DB cannot be read (graceful fallback).
  */
+/** Build the named API keys section for the ClawPilot state block. */
+function buildKeysSection(
+  keys: Array<{ id: number; name: string; providerId: string; defaultModel: string }>,
+  keyUsage: Map<number, number>,
+): string[] {
+  if (keys.length === 0) return ["## Named API Keys: none configured"];
+  const lines = [`## Named API Keys (${keys.length})`];
+  for (const k of keys) {
+    const usage = keyUsage.get(k.id) ?? 0;
+    const usageStr = usage === 0 ? "unused" : `used by ${usage} instance(s)`;
+    lines.push(
+      `- "${k.name}" (provider: ${k.providerId}, default model: ${k.defaultModel}) — ${usageStr}`,
+    );
+  }
+  return lines;
+}
+
+/** Build the instances section for the ClawPilot state block. */
+function buildInstancesSection(
+  instances: Array<{
+    slug: string;
+    state: string;
+    is_system: number;
+    default_model?: string | null;
+  }>,
+): string[] {
+  if (instances.length === 0) return ["## Instances: none"];
+  const running = instances.filter((i) => i.state === "running").length;
+  const lines = [`## Instances (${instances.length} total, ${running} running)`];
+  for (const i of instances) {
+    const systemTag = i.is_system === 1 ? " [SYSTEM]" : "";
+    const model = i.default_model ? `, default model: ${i.default_model}` : "";
+    lines.push(`- ${i.slug} (state: ${i.state}${model})${systemTag}`);
+  }
+  return lines;
+}
+
+/** Build the blueprints section for the ClawPilot state block. */
+function buildBlueprintsSection(
+  blueprints: Array<{ name: string; description?: string | null }>,
+): string[] {
+  if (blueprints.length === 0) return ["## Blueprints: none"];
+  const lines = [`## Blueprints (${blueprints.length})`];
+  for (const b of blueprints) {
+    const count = (b as unknown as { agent_count?: number }).agent_count ?? 0;
+    lines.push(`- "${b.name}" (${count} agent(s))${b.description ? ` — ${b.description}` : ""}`);
+  }
+  return lines;
+}
+
 function buildClawPilotStateBlock(db: Database.Database): string | undefined {
   try {
     const keyRepo = new NamedKeyRepository(db);
@@ -365,66 +398,25 @@ function buildClawPilotStateBlock(db: Database.Database): string | undefined {
       }
     }
 
-    // Unique providers configured via named keys
     const providers = Array.from(new Set(keys.map((k) => k.providerId))).sort();
 
-    const lines: string[] = ["<clawpilot_state>"];
-    lines.push(
+    const lines: string[] = [
+      "<clawpilot_state>",
       "Live snapshot of the ClawPilot platform — use this to ground your answers",
       "instead of asking the user about resources already registered.",
       "",
-    );
-
-    // Named API keys
-    if (keys.length === 0) {
-      lines.push("## Named API Keys: none configured");
-    } else {
-      lines.push(`## Named API Keys (${keys.length})`);
-      for (const k of keys) {
-        const usage = keyUsage.get(k.id) ?? 0;
-        const usageStr = usage === 0 ? "unused" : `used by ${usage} instance(s)`;
-        lines.push(
-          `- "${k.name}" (provider: ${k.providerId}, default model: ${k.defaultModel}) — ${usageStr}`,
-        );
-      }
-    }
-    lines.push("");
-
-    // Instances
-    if (instances.length === 0) {
-      lines.push("## Instances: none");
-    } else {
-      const running = instances.filter((i) => i.state === "running").length;
-      lines.push(`## Instances (${instances.length} total, ${running} running)`);
-      for (const i of instances) {
-        const systemTag = i.is_system === 1 ? " [SYSTEM]" : "";
-        const model = i.default_model ? `, default model: ${i.default_model}` : "";
-        lines.push(`- ${i.slug} (state: ${i.state}${model})${systemTag}`);
-      }
-    }
-    lines.push("");
-
-    // Blueprints
-    if (blueprints.length === 0) {
-      lines.push("## Blueprints: none");
-    } else {
-      lines.push(`## Blueprints (${blueprints.length})`);
-      for (const b of blueprints) {
-        const count = (b as unknown as { agent_count?: number }).agent_count ?? 0;
-        lines.push(
-          `- "${b.name}" (${count} agent(s))${b.description ? ` — ${b.description}` : ""}`,
-        );
-      }
-    }
-    lines.push("");
-
-    // Providers
-    lines.push(`## Providers configured: ${providers.length > 0 ? providers.join(", ") : "none"}`);
-    lines.push("</clawpilot_state>");
+      ...buildKeysSection(keys, keyUsage),
+      "",
+      ...buildInstancesSection(instances),
+      "",
+      ...buildBlueprintsSection(blueprints),
+      "",
+      `## Providers configured: ${providers.length > 0 ? providers.join(", ") : "none"}`,
+      "</clawpilot_state>",
+    ];
 
     let block = lines.join("\n");
     if (block.length > CLAWPILOT_STATE_MAX_CHARS) {
-      // Truncate gracefully — keep opening tag, add truncation marker, keep closing tag
       block =
         block.slice(0, CLAWPILOT_STATE_MAX_CHARS - 50) + "\n... (truncated)\n</clawpilot_state>";
     }
@@ -467,6 +459,31 @@ function getCompactionSummary(db: Database.Database, sessionId: string): string 
     .get(row.id) as { content: string | null } | undefined;
 
   return part?.content ?? undefined;
+}
+
+/** Resolve and build the session context block for permanent agents. */
+function buildSessionContextIfPermanent(ctx: SystemPromptContext): string | undefined {
+  if (!ctx.db || !ctx.sessionId) return undefined;
+
+  const agentInfoForCtx = getAgent(ctx.agentConfig.id);
+  const agentConfigForCtx = ctx.runtimeConfig?.agents.find((a) => a.id === ctx.agentConfig.id);
+  const isPermanent =
+    resolveEffectivePersistence(
+      agentInfoForCtx ?? {
+        kind: "primary",
+        category: "user",
+        archetype: null,
+        name: ctx.agentConfig.id,
+        permission: [],
+        mode: "all",
+        options: {},
+      },
+      agentConfigForCtx,
+    ) === "permanent";
+
+  if (!isPermanent) return undefined;
+  const compactionSummary = getCompactionSummary(ctx.db, ctx.sessionId);
+  return compactionSummary ? buildSessionContextBlock(compactionSummary) : undefined;
 }
 
 /**
@@ -646,9 +663,112 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<string>
   }
 }
 
+/** Check whether file content is a stub (e.g. "# AgentName" with nothing else). */
+function isStubContent(raw: string, identifier: string): boolean {
+  return !raw || raw === `# ${identifier}` || raw.split("\n").length <= 1;
+}
+
+/**
+ * Read a USER.md file with dynamic profile injection.
+ * Returns 0–2 strings: the profile block (if any) and the file content (if non-stub).
+ */
+function readUserMdFile(
+  wsDir: string,
+  agentId: string,
+  userProfile: UserProfile | undefined,
+): string[] {
+  const parts: string[] = [];
+  if (userProfile) {
+    const profileBlock = buildUserProfileBlock(userProfile);
+    if (profileBlock) parts.push(profileBlock);
+  }
+  // Also read USER.md from disk — append if it has non-stub content (backward compat)
+  const filePath = join(wsDir, "USER.md");
+  const rawContent = readWorkspaceFileCached(filePath);
+  if (rawContent !== undefined) {
+    const raw = rawContent.trim();
+    const isStub = isStubContent(raw, agentId) || raw.includes("_No preferences configured yet._");
+    if (!isStub) parts.push(raw);
+  }
+  return parts;
+}
+
+/** Read a single discovery file and handle BOOTSTRAP.md one-shot logic. */
+function readDiscoveryFile(
+  wsDir: string,
+  filename: string,
+  agentId: string,
+  wsState: { bootstrapDone?: boolean },
+  writeState: (wsDir: string, state: Record<string, unknown>) => void,
+): string | undefined {
+  const filePath = join(wsDir, filename);
+  const rawContent = readWorkspaceFileCached(filePath);
+  if (rawContent === undefined) return undefined;
+
+  const raw = rawContent.trim();
+  if (isStubContent(raw, agentId)) return undefined;
+
+  // Mark BOOTSTRAP.md as done after successful injection
+  if (filename === "BOOTSTRAP.md" && !wsState.bootstrapDone) {
+    writeState(wsDir, { ...wsState, bootstrapDone: true });
+    wsState.bootstrapDone = true;
+    archiveBootstrapContent(wsDir, raw);
+  }
+
+  return raw;
+}
+
+/** Read all memory/*.md files from a workspace directory. */
+function readMemoryFiles(wsDir: string): string[] {
+  const memoryDir = join(wsDir, "memory");
+  if (!existsSync(memoryDir)) return [];
+
+  try {
+    if (!statSync(memoryDir).isDirectory()) return [];
+    const memoryFiles = readdirSync(memoryDir)
+      .filter((f) => f.endsWith(".md"))
+      .sort();
+
+    const parts: string[] = [];
+    for (const filename of memoryFiles) {
+      const filePath = join(memoryDir, filename);
+      const rawContent = readWorkspaceFileCached(filePath);
+      if (rawContent !== undefined) {
+        const raw = rawContent.trim();
+        if (!isStubContent(raw, filename.replace(".md", ""))) {
+          parts.push(raw);
+        }
+      }
+    }
+    return parts;
+  } catch (err) {
+    logger.debug("[system-prompt] memory directory inaccessible", { error: String(err) });
+    return [];
+  }
+}
+
+/** Read bootstrapFiles (extra context files configured per agent). */
+function readBootstrapFiles(wsDir: string, patterns: readonly string[]): string[] {
+  const parts: string[] = [];
+  for (const pattern of patterns) {
+    const matchedFiles = expandSimpleGlob(wsDir, pattern);
+    for (const relPath of matchedFiles) {
+      const absPath = join(wsDir, relPath);
+      if (!absPath.startsWith(wsDir + "/") && absPath !== wsDir) continue;
+      const rawContent = readWorkspaceFileCached(absPath);
+      if (rawContent !== undefined) {
+        const raw = rawContent.trim();
+        if (raw && raw.split("\n").length > 1) {
+          parts.push(raw);
+        }
+      }
+    }
+  }
+  return parts;
+}
+
 /**
  * Try to read workspace files from the agent's workspace directory.
- * Checks workspace-<agentId>/ first, then workspace/ (OpenClaw-compatible layout).
  * Returns concatenated non-empty file contents, or undefined if nothing found.
  *
  * @param bootstrapFiles Optional glob patterns (relative to wsDir) for extra files to inject
@@ -663,126 +783,31 @@ function discoverWorkspaceInstructions(
   skipMemory?: boolean,
   userProfile?: UserProfile,
 ): string | undefined {
-  // Candidate workspace directory: workspaces/<agentId>
-  const candidates = [join(workDir, "workspaces", agentId)];
+  const wsDir = join(workDir, "workspaces", agentId);
+  if (!existsSync(wsDir)) return undefined;
 
-  for (const wsDir of candidates) {
-    if (!existsSync(wsDir)) continue;
+  const wsState = readWorkspaceState(wsDir);
+  const parts: string[] = [];
 
-    // Read workspace state once per candidate directory (for BOOTSTRAP.md one-shot)
-    const wsState = readWorkspaceState(wsDir);
+  for (const filename of discoveryFiles) {
+    if (filename === "BOOTSTRAP.md" && wsState.bootstrapDone) continue;
 
-    const parts: string[] = [];
-    for (const filename of discoveryFiles) {
-      // BOOTSTRAP.md one-shot: only inject on the first session, then mark as done.
-      // If bootstrapDone is already true, skip BOOTSTRAP.md entirely.
-      if (filename === "BOOTSTRAP.md" && wsState.bootstrapDone) {
-        continue;
-      }
-
-      // USER.md: replace with dynamic profile block if available
-      if (filename === "USER.md" && userProfile) {
-        const profileBlock = buildUserProfileBlock(userProfile);
-        if (profileBlock) {
-          parts.push(profileBlock);
-        }
-        // Also read USER.md from disk — append if it has non-stub content (backward compat)
-        const filePath = join(wsDir, filename);
-        const rawContent = readWorkspaceFileCached(filePath);
-        if (rawContent !== undefined) {
-          const raw = rawContent.trim();
-          const isStub =
-            !raw ||
-            raw === `# ${agentId}` ||
-            raw.split("\n").length <= 1 ||
-            raw.includes("_No preferences configured yet._");
-          if (!isStub) {
-            parts.push(raw);
-          }
-        }
-        continue;
-      }
-
-      const filePath = join(wsDir, filename);
-      // Use cached read — workspace files rarely change between LLM calls
-      const rawContent = readWorkspaceFileCached(filePath);
-      if (rawContent !== undefined) {
-        const raw = rawContent.trim();
-        // Skip stub-only content (e.g. "# AgentName" with nothing else)
-        if (raw && raw !== `# ${agentId}` && raw.split("\n").length > 1) {
-          parts.push(raw);
-
-          // Mark BOOTSTRAP.md as done after successful injection
-          if (filename === "BOOTSTRAP.md" && !wsState.bootstrapDone) {
-            writeWorkspaceState(wsDir, { ...wsState, bootstrapDone: true });
-            wsState.bootstrapDone = true; // update local copy to avoid double-write
-
-            // Archive BOOTSTRAP.md content to memory/bootstrap-history.md
-            // BOOTSTRAP.md stays on disk (user can re-read it), only the content is archived
-            archiveBootstrapContent(wsDir, raw);
-          }
-        }
-      }
+    if (filename === "USER.md") {
+      parts.push(...readUserMdFile(wsDir, agentId, userProfile));
+      continue;
     }
 
-    // Also read memory/*.md files — skipped for subagents (no long-term memory)
-    const memoryDir = join(wsDir, "memory");
-    if (!skipMemory && existsSync(memoryDir)) {
-      try {
-        if (statSync(memoryDir).isDirectory()) {
-          const memoryFiles = readdirSync(memoryDir)
-            .filter((f) => f.endsWith(".md"))
-            .sort();
-
-          for (const filename of memoryFiles) {
-            const filePath = join(memoryDir, filename);
-            // Use cached read — memory files rarely change mid-session
-            const rawContent = readWorkspaceFileCached(filePath);
-            if (rawContent !== undefined) {
-              const raw = rawContent.trim();
-              // Skip stub-only content (same rule as DISCOVERY_FILES)
-              if (raw && raw !== `# ${filename.replace(".md", "")}` && raw.split("\n").length > 1) {
-                parts.push(raw);
-              }
-            }
-          }
-        }
-      } catch (err) {
-        logger.debug("[system-prompt] memory directory inaccessible", { error: String(err) });
-        // memory/ directory inaccessible — skip silently
-      }
-    }
-
-    // Load bootstrapFiles (extra context files configured per agent)
-    // These are glob patterns relative to wsDir, loaded after DISCOVERY_FILES.
-    if (bootstrapFiles && bootstrapFiles.length > 0) {
-      for (const pattern of bootstrapFiles) {
-        // Expand simple glob patterns: support "*.md" and "dir/*.md" only.
-        // For full glob support, a glob library would be needed — here we handle
-        // the common cases manually to avoid adding a dependency.
-        const matchedFiles = expandSimpleGlob(wsDir, pattern);
-        for (const relPath of matchedFiles) {
-          // Path traversal guard: resolved path must stay within wsDir
-          const absPath = join(wsDir, relPath);
-          if (!absPath.startsWith(wsDir + "/") && absPath !== wsDir) continue;
-          // Use cached read for bootstrapFiles too
-          const rawContent = readWorkspaceFileCached(absPath);
-          if (rawContent !== undefined) {
-            const raw = rawContent.trim();
-            if (raw && raw.split("\n").length > 1) {
-              parts.push(raw);
-            }
-          }
-        }
-      }
-    }
-
-    if (parts.length > 0) {
-      return parts.join("\n\n");
-    }
+    const content = readDiscoveryFile(wsDir, filename, agentId, wsState, writeWorkspaceState);
+    if (content) parts.push(content);
   }
 
-  return undefined;
+  if (!skipMemory) parts.push(...readMemoryFiles(wsDir));
+
+  if (bootstrapFiles && bootstrapFiles.length > 0) {
+    parts.push(...readBootstrapFiles(wsDir, bootstrapFiles));
+  }
+
+  return parts.length > 0 ? parts.join("\n\n") : undefined;
 }
 
 /**

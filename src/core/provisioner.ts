@@ -16,6 +16,7 @@ import { shellEscape } from "../lib/shell.js";
 import { BlueprintDeployer } from "./blueprint-deployer.js";
 import { ensureRuntimeConfig } from "../runtime/engine/config-loader.js";
 import { importInstanceTeam } from "./team-import.js";
+import type { RuntimeConfig } from "../runtime/config/index.js";
 
 export interface ProvisionResult {
   slug: string;
@@ -53,134 +54,33 @@ export class Provisioner {
     // Track what has been created so we can roll back on failure
     let stateDirCreated = false;
     let instanceRegistered = false;
-    let portAllocated = false; // tracks registry.allocatePort() for rollback
+    let portAllocated = false;
 
     try {
       // Step 2: Create directory structure
-      logger.step("Creating directories...");
-      await this.conn.mkdir(getInstancesDir(), { mode: constants.DIR_MODE });
-      await this.conn.mkdir(stateDir, { mode: constants.DIR_MODE });
-      await this.conn.mkdir(path.join(stateDir, "workspaces"));
-      await this.conn.mkdir(logsDir);
+      await this._createInstanceDirs(stateDir, logsDir);
       stateDirCreated = true;
 
       // Step 3: Generate secrets
-      logger.step("Generating secrets...");
-      const gatewayToken = generateGatewayToken();
+      const gatewayToken = await this._generateInstanceSecrets(envPath, answers);
 
-      const envContent = generateEnv({
-        gatewayToken,
-        ...(answers.telegram.botToken !== undefined && {
-          telegramBotToken: answers.telegram.botToken,
-        }),
-      });
-      await this.conn.writeFile(envPath, envContent, constants.ENV_FILE_MODE);
-
-      // Step 4: Generate runtime.json configuration
-      logger.step("Generating configuration...");
-      const defaultModel = answers.defaultModel || undefined;
-      const runtimeConfig = ensureRuntimeConfig(stateDir, {
-        ...(defaultModel !== undefined ? { defaultModel } : {}),
-        telegramEnabled: answers.telegram.enabled,
-      });
-
-      // Register in registry BEFORE workspaces (lifecycle.start needs registry entry)
-      const instance = this.registry.createInstance({
+      // Step 4: Generate runtime.json configuration + register instance
+      const { instance, runtimeConfig } = this._registerInstance(
         serverId,
         slug,
-        displayName: answers.displayName,
         port,
         configPath,
         stateDir,
-        systemdUnit: `claw-runtime-${slug}`,
-        defaultModel: answers.defaultModel,
-        discovered: false,
-      });
+        answers,
+      );
       instanceRegistered = true;
 
-      // Persist runtime config to DB so exportSnapshot() can read it back
-      this.registry.saveRuntimeConfig(slug, runtimeConfig);
-
-      // Register port in the ports table (useful for tracking)
+      // Register port in the ports table
       this.registry.allocatePort(serverId, port, slug);
       portAllocated = true;
 
-      if (answers.blueprintTeamFile) {
-        // Blueprint path: delegate to team-import pipeline
-        logger.step("Deploying team blueprint...");
-        // Inject the wizard-selected model as the team default
-        const teamFile = { ...answers.blueprintTeamFile };
-        if (!teamFile.defaults) {
-          teamFile.defaults = { model: answers.defaultModel };
-        } else if (!teamFile.defaults.model) {
-          teamFile.defaults = { ...teamFile.defaults, model: answers.defaultModel };
-        }
-        await importInstanceTeam(
-          this.registry.getDb(),
-          this.registry,
-          this.conn,
-          instance,
-          teamFile,
-          stateDir,
-        );
-      } else {
-        // Manual path: create workspaces + register agents individually
-        logger.step("Creating workspaces...");
-        const renderedFilesPerAgent = new Map<
-          string,
-          Array<{ filename: string; content: string }>
-        >();
-        for (const agent of answers.agents) {
-          const workspaceId = agent.workspace ?? agent.id;
-          const workspacePath = path.join(stateDir, "workspaces", workspaceId);
-          await this.conn.mkdir(workspacePath);
-          const rendered = await this.provisionWorkspaceFiles(workspacePath, {
-            agentId: agent.id,
-            agentName: agent.name,
-            instanceSlug: slug,
-            instanceName: answers.displayName,
-            agents: answers.agents,
-          });
-          renderedFilesPerAgent.set(agent.id, rendered);
-        }
-
-        // Register agents + persist workspace files in DB
-        for (const agent of answers.agents) {
-          const workspaceId = agent.workspace ?? agent.id;
-          this.registry.createAgent(instance.id, {
-            agentId: agent.id,
-            name: agent.name,
-            ...(agent.model !== undefined && { model: agent.model }),
-            workspacePath: path.join(stateDir, "workspaces", workspaceId),
-            ...(agent.isDefault !== undefined && { isDefault: agent.isDefault }),
-          });
-
-          const agentRecord = this.registry.getAgentByAgentId(instance.id, agent.id);
-          const renderedFiles = renderedFilesPerAgent.get(agent.id) ?? [];
-          if (agentRecord) {
-            for (const { filename, content } of renderedFiles) {
-              const contentHash = createHash("sha256").update(content, "utf8").digest("hex");
-              this.registry.upsertAgentFile(agentRecord.id, { filename, content, contentHash });
-            }
-          }
-        }
-
-        // Sync RuntimeConfig agents with actual WizardAnswers IDs.
-        // ensureRuntimeConfig() generates a default "pilot" agent — we need to overwrite
-        // the agents list so that agent IDs match the DB records and workspace directories.
-        const defaults = runtimeConfig.agents[0]!;
-        const syncedConfig = {
-          ...runtimeConfig,
-          agents: answers.agents.map((agent) => ({
-            ...defaults,
-            id: agent.id,
-            name: agent.name,
-            ...(agent.model !== undefined ? { model: agent.model } : {}),
-            ...(agent.isDefault !== undefined ? { isDefault: agent.isDefault } : {}),
-          })),
-        };
-        this.registry.saveRuntimeConfig(slug, syncedConfig);
-      }
+      // Step 5: Create agents (blueprint-team or manual)
+      await this._provisionAgents(answers, instance, runtimeConfig, stateDir, slug);
 
       logger.step("claw-runtime instance created — start with 'claw-pilot runtime start'.");
 
@@ -209,7 +109,7 @@ export class Provisioner {
     } catch (err) {
       // Provisioning failed — roll back all created artefacts (best-effort)
       logger.warn(`Provisioning failed — rolling back artefacts for "${slug}"...`);
-      await this.rollback({
+      await this._rollback({
         slug,
         stateDir,
         serverId,
@@ -222,7 +122,187 @@ export class Provisioner {
     }
   }
 
-  private async rollback(ctx: {
+  // ------------------------------------------------------------------
+  // Private: Directory creation
+  // ------------------------------------------------------------------
+
+  /** Create the instance directory structure (state, workspaces, logs). */
+  private async _createInstanceDirs(stateDir: string, logsDir: string): Promise<void> {
+    logger.step("Creating directories...");
+    await this.conn.mkdir(getInstancesDir(), { mode: constants.DIR_MODE });
+    await this.conn.mkdir(stateDir, { mode: constants.DIR_MODE });
+    await this.conn.mkdir(path.join(stateDir, "workspaces"));
+    await this.conn.mkdir(logsDir);
+  }
+
+  // ------------------------------------------------------------------
+  // Private: Secret generation
+  // ------------------------------------------------------------------
+
+  /** Generate gateway token and write the .env file. Returns the gateway token. */
+  private async _generateInstanceSecrets(envPath: string, answers: WizardAnswers): Promise<string> {
+    logger.step("Generating secrets...");
+    const gatewayToken = generateGatewayToken();
+
+    const envContent = generateEnv({
+      gatewayToken,
+      ...(answers.telegram.botToken !== undefined && {
+        telegramBotToken: answers.telegram.botToken,
+      }),
+    });
+    await this.conn.writeFile(envPath, envContent, constants.ENV_FILE_MODE);
+
+    return gatewayToken;
+  }
+
+  // ------------------------------------------------------------------
+  // Private: Instance registration
+  // ------------------------------------------------------------------
+
+  /** Register the instance in the DB and persist runtime config. */
+  private _registerInstance(
+    serverId: number,
+    slug: string,
+    port: number,
+    configPath: string,
+    stateDir: string,
+    answers: WizardAnswers,
+  ): { instance: ReturnType<Registry["createInstance"]>; runtimeConfig: RuntimeConfig } {
+    logger.step("Generating configuration...");
+    const defaultModel = answers.defaultModel || undefined;
+    const runtimeConfig = ensureRuntimeConfig(stateDir, {
+      ...(defaultModel !== undefined ? { defaultModel } : {}),
+      telegramEnabled: answers.telegram.enabled,
+    });
+
+    const instance = this.registry.createInstance({
+      serverId,
+      slug,
+      displayName: answers.displayName,
+      port,
+      configPath,
+      stateDir,
+      systemdUnit: `claw-runtime-${slug}`,
+      defaultModel: answers.defaultModel,
+      discovered: false,
+    });
+
+    // Persist runtime config to DB so exportSnapshot() can read it back
+    this.registry.saveRuntimeConfig(slug, runtimeConfig);
+
+    return { instance, runtimeConfig };
+  }
+
+  // ------------------------------------------------------------------
+  // Private: Agent provisioning
+  // ------------------------------------------------------------------
+
+  /** Provision agents via blueprint-team import or manual workspace creation. */
+  private async _provisionAgents(
+    answers: WizardAnswers,
+    instance: ReturnType<Registry["createInstance"]>,
+    runtimeConfig: RuntimeConfig,
+    stateDir: string,
+    slug: string,
+  ): Promise<void> {
+    if (answers.blueprintTeamFile) {
+      await this._provisionFromTeamFile(answers, instance, stateDir);
+    } else {
+      await this._provisionManualAgents(answers, instance, runtimeConfig, stateDir, slug);
+    }
+  }
+
+  /** Provision agents from a .team.yaml blueprint file. */
+  private async _provisionFromTeamFile(
+    answers: WizardAnswers,
+    instance: ReturnType<Registry["createInstance"]>,
+    stateDir: string,
+  ): Promise<void> {
+    logger.step("Deploying team blueprint...");
+    // Inject the wizard-selected model as the team default
+    const teamFile = { ...answers.blueprintTeamFile! };
+    if (!teamFile.defaults) {
+      teamFile.defaults = { model: answers.defaultModel };
+    } else if (!teamFile.defaults.model) {
+      teamFile.defaults = { ...teamFile.defaults, model: answers.defaultModel };
+    }
+    await importInstanceTeam(
+      this.registry.getDb(),
+      this.registry,
+      this.conn,
+      instance,
+      teamFile,
+      stateDir,
+    );
+  }
+
+  /** Provision agents manually: create workspaces + register agents individually. */
+  private async _provisionManualAgents(
+    answers: WizardAnswers,
+    instance: ReturnType<Registry["createInstance"]>,
+    runtimeConfig: RuntimeConfig,
+    stateDir: string,
+    slug: string,
+  ): Promise<void> {
+    logger.step("Creating workspaces...");
+    const renderedFilesPerAgent = new Map<string, Array<{ filename: string; content: string }>>();
+    for (const agent of answers.agents) {
+      const workspaceId = agent.workspace ?? agent.id;
+      const workspacePath = path.join(stateDir, "workspaces", workspaceId);
+      await this.conn.mkdir(workspacePath);
+      const rendered = await this._provisionWorkspaceFiles(workspacePath, {
+        agentId: agent.id,
+        agentName: agent.name,
+        instanceSlug: slug,
+        instanceName: answers.displayName,
+        agents: answers.agents,
+      });
+      renderedFilesPerAgent.set(agent.id, rendered);
+    }
+
+    // Register agents + persist workspace files in DB
+    for (const agent of answers.agents) {
+      const workspaceId = agent.workspace ?? agent.id;
+      this.registry.createAgent(instance.id, {
+        agentId: agent.id,
+        name: agent.name,
+        ...(agent.model !== undefined && { model: agent.model }),
+        workspacePath: path.join(stateDir, "workspaces", workspaceId),
+        ...(agent.isDefault !== undefined && { isDefault: agent.isDefault }),
+      });
+
+      const agentRecord = this.registry.getAgentByAgentId(instance.id, agent.id);
+      const renderedFiles = renderedFilesPerAgent.get(agent.id) ?? [];
+      if (agentRecord) {
+        for (const { filename, content } of renderedFiles) {
+          const contentHash = createHash("sha256").update(content, "utf8").digest("hex");
+          this.registry.upsertAgentFile(agentRecord.id, { filename, content, contentHash });
+        }
+      }
+    }
+
+    // Sync RuntimeConfig agents with actual WizardAnswers IDs.
+    // ensureRuntimeConfig() generates a default "pilot" agent — we need to overwrite
+    // the agents list so that agent IDs match the DB records and workspace directories.
+    const defaults = runtimeConfig.agents[0]!;
+    const syncedConfig = {
+      ...runtimeConfig,
+      agents: answers.agents.map((agent) => ({
+        ...defaults,
+        id: agent.id,
+        name: agent.name,
+        ...(agent.model !== undefined ? { model: agent.model } : {}),
+        ...(agent.isDefault !== undefined ? { isDefault: agent.isDefault } : {}),
+      })),
+    };
+    this.registry.saveRuntimeConfig(slug, syncedConfig);
+  }
+
+  // ------------------------------------------------------------------
+  // Private: Rollback
+  // ------------------------------------------------------------------
+
+  private async _rollback(ctx: {
     slug: string;
     stateDir: string;
     serverId: number;
@@ -271,7 +351,11 @@ export class Provisioner {
     logger.warn(`Rollback complete for "${slug}".`);
   }
 
-  private async provisionWorkspaceFiles(
+  // ------------------------------------------------------------------
+  // Private: Workspace file provisioning
+  // ------------------------------------------------------------------
+
+  private async _provisionWorkspaceFiles(
     workspacePath: string,
     context: {
       agentId: string;

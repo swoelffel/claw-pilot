@@ -27,268 +27,352 @@ import { buildInstanceConfig, buildInstanceConfigStub } from "./config-builders.
 import { NamedKeyRepository } from "../../../core/repositories/named-key-repository.js";
 import { isCryptoAvailable } from "../../../lib/crypto.js";
 
-export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
-  const { registry, lifecycle } = deps;
+// ---------------------------------------------------------------------------
+// Extracted route handlers
+// ---------------------------------------------------------------------------
 
-  // GET /api/instances/:slug/config — structured config for the settings UI
-  app.get("/api/instances/:slug/config", async (c) => {
-    const { instance, slug } = getInstanceContext(c);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type HonoContext = any;
 
-    const stateDir = getRuntimeStateDir(slug);
+/** Load named keys and default key ID for the instance. */
+function loadNamedKeyInfo(
+  deps: RouteDeps,
+  slug: string,
+): {
+  allNamedKeys: import("../../../core/repositories/named-key-repository.js").NamedApiKeyRecord[];
+  defaultNamedKeyId: number | null;
+} {
+  if (!isCryptoAvailable()) return { allNamedKeys: [], defaultNamedKeyId: null };
 
-    try {
-      // 1. Try DB first (source of truth since v21)
-      let config = registry.getRuntimeConfig(slug);
+  const namedKeyRepo = new NamedKeyRepository(deps.db);
+  const allNamedKeys = namedKeyRepo.listAll();
+  let defaultNamedKeyId: number | null = null;
+  const inst = deps.registry.getInstance(slug);
+  if (inst) {
+    const row = deps.db
+      .prepare("SELECT default_named_key_id FROM instances WHERE id = ?")
+      .get(inst.id) as { default_named_key_id: number | null } | undefined;
+    defaultNamedKeyId = row?.default_named_key_id ?? null;
+  }
+  return { allNamedKeys, defaultNamedKeyId };
+}
 
-      // 2. Fallback to runtime.json (deprecated — pre-v21 instances only)
-      if (!config && runtimeConfigExists(stateDir)) {
-        logger.warn(
-          `[config] Falling back to runtime.json for "${slug}" — DB config not found. ` +
-            "This fallback is deprecated and will be removed in a future version.",
-        );
-        config = loadRuntimeConfig(stateDir);
-        // Backfill DB for next time
-        registry.saveRuntimeConfig(slug, config);
-      }
+/** Enrich agent payloads with named_key_id from the agents DB table. */
+function enrichAgentsWithNamedKeys(
+  db: RouteDeps["db"],
+  slug: string,
+  agents: Array<{ id: string } & Record<string, unknown>>,
+): Array<{ id: string; namedKeyId: number | null } & Record<string, unknown>> {
+  const agentKeyRows = db
+    .prepare(
+      `SELECT a.agent_id, a.named_key_id
+       FROM agents a JOIN instances i ON a.instance_id = i.id
+       WHERE i.slug = ? AND a.named_key_id IS NOT NULL`,
+    )
+    .all(slug) as Array<{ agent_id: string; named_key_id: number }>;
+  const keyMap = new Map(agentKeyRows.map((r) => [r.agent_id, r.named_key_id]));
+  return agents.map((a) => ({ ...a, namedKeyId: keyMap.get(a.id) ?? null }));
+}
 
-      // Load all named keys (global) and instance default key ID
-      let defaultNamedKeyId: number | null = null;
-      let allNamedKeys: import("../../../core/repositories/named-key-repository.js").NamedApiKeyRecord[] =
-        [];
-      if (isCryptoAvailable()) {
-        const namedKeyRepo = new NamedKeyRepository(deps.db);
-        allNamedKeys = namedKeyRepo.listAll();
-        const inst = deps.registry.getInstance(slug);
-        if (inst) {
-          const row = deps.db
-            .prepare("SELECT default_named_key_id FROM instances WHERE id = ?")
-            .get(inst.id) as { default_named_key_id: number | null } | undefined;
-          defaultNamedKeyId = row?.default_named_key_id ?? null;
-        }
-      }
+/** Handle GET /api/instances/:slug/config. */
+async function handleGetConfig(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { registry } = deps;
+  const { instance, slug } = getInstanceContext(c);
+  const stateDir = getRuntimeStateDir(slug);
 
-      if (!config) {
-        // No config anywhere — return a stub
-        const stub = buildInstanceConfigStub({
-          display_name: instance.display_name,
-          default_model: instance.default_model,
-          port: instance.port,
-        });
-        return c.json({ ...stub, namedKeys: allNamedKeys, defaultNamedKeyId });
-      }
+  try {
+    let config = registry.getRuntimeConfig(slug);
 
-      const payload = buildInstanceConfig(
-        {
-          display_name: instance.display_name,
-          default_model: instance.default_model,
-          port: instance.port,
-        },
-        config,
-        stateDir,
+    if (!config && runtimeConfigExists(stateDir)) {
+      logger.warn(
+        `[config] Falling back to runtime.json for "${slug}" — DB config not found. ` +
+          "This fallback is deprecated and will be removed in a future version.",
       );
+      config = loadRuntimeConfig(stateDir);
+      registry.saveRuntimeConfig(slug, config);
+    }
 
-      // Enrich agents with named_key_id from the agents DB table
-      const agentKeyRows = deps.db
-        .prepare(
-          `SELECT a.agent_id, a.named_key_id
-           FROM agents a JOIN instances i ON a.instance_id = i.id
-           WHERE i.slug = ? AND a.named_key_id IS NOT NULL`,
-        )
-        .all(slug) as Array<{ agent_id: string; named_key_id: number }>;
-      const keyMap = new Map(agentKeyRows.map((r) => [r.agent_id, r.named_key_id]));
-      const enrichedAgents = payload.agents.map((a) => ({
-        ...a,
-        namedKeyId: keyMap.get(a.id) ?? null,
-      }));
+    const { allNamedKeys, defaultNamedKeyId } = loadNamedKeyInfo(deps, slug);
 
-      return c.json({
-        ...payload,
-        agents: enrichedAgents,
-        namedKeys: allNamedKeys,
-        defaultNamedKeyId,
+    if (!config) {
+      const stub = buildInstanceConfigStub({
+        display_name: instance.display_name,
+        default_model: instance.default_model,
+        port: instance.port,
       });
+      return c.json({ ...stub, namedKeys: allNamedKeys, defaultNamedKeyId });
+    }
+
+    const payload = buildInstanceConfig(
+      {
+        display_name: instance.display_name,
+        default_model: instance.default_model,
+        port: instance.port,
+      },
+      config,
+      stateDir,
+    );
+
+    const enrichedAgents = enrichAgentsWithNamedKeys(deps.db, slug, payload.agents);
+
+    return c.json({
+      ...payload,
+      agents: enrichedAgents,
+      namedKeys: allNamedKeys,
+      defaultNamedKeyId,
+    });
+  } catch (err) {
+    logger.error(
+      `[config] GET /config error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return apiError(
+      c,
+      500,
+      "CONFIG_READ_FAILED",
+      err instanceof Error ? err.message : "Failed to read config",
+    );
+  }
+}
+
+/** Validate provider removal against defaultModel usage. */
+function validateProviderRemoval(
+  c: HonoContext,
+  registry: RouteDeps["registry"],
+  slug: string,
+  removeIds: string[],
+): ReturnType<typeof apiError> | null {
+  const currentConfig = registry.getRuntimeConfig(slug);
+  if (!currentConfig) return null;
+  for (const id of removeIds) {
+    if (currentConfig.defaultModel.startsWith(`${id}/`)) {
+      return apiError(
+        c,
+        400,
+        "PROVIDER_IN_USE",
+        `Cannot remove provider "${id}" — used by default model "${currentConfig.defaultModel}"`,
+      );
+    }
+  }
+  return null;
+}
+
+/** Apply config-level changes (DB read-modify-write). */
+function applyConfigChanges(
+  deps: RouteDeps,
+  slug: string,
+  stateDir: string,
+  patch: RuntimeConfigPatch,
+  defaultModel: string | null,
+): void {
+  const { registry } = deps;
+  if (!registry.getRuntimeConfig(slug)) {
+    let seedConfig: RuntimeConfig;
+    if (runtimeConfigExists(stateDir)) {
+      seedConfig = loadRuntimeConfig(stateDir);
+    } else {
+      seedConfig = createDefaultRuntimeConfig(defaultModel != null ? { defaultModel } : {});
+    }
+    registry.saveRuntimeConfig(slug, seedConfig);
+  }
+
+  const updated = registry.patchRuntimeConfig(slug, (config) => {
+    if (patch.general?.defaultModel !== undefined) config.defaultModel = patch.general.defaultModel;
+    if (patch.providers) applyProviderChanges(config, patch.providers);
+    if (patch.agentDefaults) applyAgentDefaultChanges(config, patch.agentDefaults);
+    if (patch.agents && patch.agents.length > 0)
+      applyAgentPatches(config, patch.agents, deps.db, slug);
+    if (patch.channels?.telegram !== undefined)
+      applyTelegramChanges(config, patch.channels.telegram);
+    return config;
+  });
+
+  if (patch.general?.defaultModel !== undefined) {
+    registry.updateInstance(slug, { defaultModel: patch.general.defaultModel });
+  }
+
+  exportRuntimeJsonSnapshot(stateDir, updated);
+}
+
+/** Parse and validate a config patch from the request body. */
+async function parsePatchBody(c: HonoContext): Promise<RuntimeConfigPatch | Response> {
+  try {
+    const raw = await c.req.json();
+    const result = RuntimeConfigPatchSchema.safeParse(raw);
+    if (!result.success) return apiError(c, 400, "INVALID_BODY", "Invalid config patch");
+    return result.data;
+  } catch (err) {
+    logger.warn("[route:config] JSON parse failed on config patch", { error: String(err) });
+    return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+  }
+}
+
+/** Update display name and search index if displayName is in the patch. */
+function applyDisplayNameChange(deps: RouteDeps, slug: string, patch: RuntimeConfigPatch): void {
+  if (patch.general?.displayName === undefined) return;
+  deps.registry.updateInstance(slug, { displayName: patch.general.displayName });
+  const inst = deps.registry.getInstance(slug);
+  if (inst) {
+    upsertSearchEntry(deps.db, {
+      entityType: "instance",
+      entityId: slug,
+      title: inst.display_name ?? slug,
+      subtitle: inst.state ?? "",
+      routeHash: `/instances/${slug}/builder`,
+    });
+  }
+}
+
+/** Apply provider .env writes. Returns error response on failure, null on success. */
+async function applyProviderEnvSideEffects(
+  c: HonoContext,
+  slug: string,
+  envPath: string,
+  providers: NonNullable<RuntimeConfigPatch["providers"]>,
+): Promise<Response | null> {
+  try {
+    await applyProviderEnvWrites(envPath, providers);
+    return null;
+  } catch (err) {
+    logger.error(
+      `[config] PATCH .env error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return apiError(
+      c,
+      500,
+      "CONFIG_PATCH_FAILED",
+      err instanceof Error ? err.message : "Failed to update provider keys",
+    );
+  }
+}
+
+/** Apply default named key change if present in patch. Returns error response on crypto unavailability. */
+function applyDefaultNamedKeyChange(
+  c: HonoContext,
+  deps: RouteDeps,
+  slug: string,
+  patch: RuntimeConfigPatch,
+): Response | null {
+  if (patch.defaultNamedKeyId === undefined) return null;
+  if (!isCryptoAvailable()) {
+    return apiError(c, 503, "CRYPTO_UNAVAILABLE", "Named keys require MASTER_ENCRYPTION_KEY");
+  }
+  const inst = deps.registry.getInstance(slug);
+  if (inst) {
+    const namedKeyRepo = new NamedKeyRepository(deps.db);
+    namedKeyRepo.setDefaultKeyForInstance(inst.id, patch.defaultNamedKeyId);
+  }
+  return null;
+}
+
+/** Check if the patch contains config-level changes (beyond display name and named key). */
+function hasRuntimeConfigChanges(patch: RuntimeConfigPatch): boolean {
+  return (
+    patch.general?.defaultModel !== undefined ||
+    patch.providers !== undefined ||
+    patch.agentDefaults !== undefined ||
+    (patch.agents !== undefined && patch.agents.length > 0) ||
+    patch.channels?.telegram !== undefined
+  );
+}
+
+/** Apply provider-related side effects (validation + .env writes). Returns error response or null. */
+async function applyProviderSideEffects(
+  c: HonoContext,
+  deps: RouteDeps,
+  slug: string,
+  stateDir: string,
+  patch: RuntimeConfigPatch,
+): Promise<Response | null> {
+  if (patch.providers?.remove) {
+    const removalError = validateProviderRemoval(c, deps.registry, slug, patch.providers.remove);
+    if (removalError) return removalError;
+  }
+  if (patch.providers) {
+    return applyProviderEnvSideEffects(c, slug, `${stateDir}/.env`, patch.providers);
+  }
+  return null;
+}
+
+/** Attempt to restart the instance if needed. Returns whether restart happened. */
+async function attemptAutoRestart(
+  lifecycle: RouteDeps["lifecycle"],
+  slug: string,
+  instanceState: string | null,
+  requiresRestart: boolean,
+): Promise<boolean> {
+  if (!requiresRestart || instanceState !== "running") return false;
+  try {
+    await lifecycle.restart(slug);
+    return true;
+  } catch (err) {
+    logger.warn(
+      `[config] restart after config patch failed for ${slug}: ${err instanceof Error ? err.message : "unknown"}`,
+    );
+    return false;
+  }
+}
+
+/** Handle PATCH /api/instances/:slug/config. */
+async function handlePatchConfig(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { instance, slug } = getInstanceContext(c);
+
+  const patchOrError = await parsePatchBody(c);
+  if (patchOrError instanceof Response) return patchOrError;
+  const patch = patchOrError;
+
+  const stateDir = getRuntimeStateDir(slug);
+
+  applyDisplayNameChange(deps, slug, patch);
+
+  const providerError = await applyProviderSideEffects(c, deps, slug, stateDir, patch);
+  if (providerError) return providerError;
+
+  let requiresRestart = false;
+  if (hasRuntimeConfigChanges(patch)) {
+    try {
+      applyConfigChanges(deps, slug, stateDir, patch, instance.default_model);
+      requiresRestart = true;
     } catch (err) {
       logger.error(
-        `[config] GET /config error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+        `[config] PATCH /config error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
       );
       return apiError(
         c,
         500,
-        "CONFIG_READ_FAILED",
-        err instanceof Error ? err.message : "Failed to read config",
+        "CONFIG_PATCH_FAILED",
+        err instanceof Error ? err.message : "Failed to update config",
       );
     }
+  }
+
+  const namedKeyError = applyDefaultNamedKeyChange(c, deps, slug, patch);
+  if (namedKeyError) return namedKeyError;
+
+  const autoRestarted = await attemptAutoRestart(
+    deps.lifecycle,
+    slug,
+    instance.state,
+    requiresRestart,
+  );
+
+  logger.info(`[config] PATCH /config slug=${slug} patch=${JSON.stringify(patch)}`);
+  return c.json({
+    ok: true,
+    requiresRestart: requiresRestart && !autoRestarted,
+    hotReloaded: false,
+    warnings: [],
+  });
+}
+
+export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
+  // GET /api/instances/:slug/config — structured config for the settings UI
+  app.get("/api/instances/:slug/config", async (c) => {
+    return handleGetConfig(c, deps);
   });
 
   // PATCH /api/instances/:slug/config — apply partial config changes
   app.patch("/api/instances/:slug/config", async (c) => {
-    const { instance, slug } = getInstanceContext(c);
-
-    let patch: RuntimeConfigPatch;
-    try {
-      const raw = await c.req.json();
-      const result = RuntimeConfigPatchSchema.safeParse(raw);
-      if (!result.success) {
-        return apiError(c, 400, "INVALID_BODY", "Invalid config patch");
-      }
-      patch = result.data;
-    } catch (err) {
-      logger.warn("[route:config] JSON parse failed on config patch", { error: String(err) });
-      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
-    }
-
-    const stateDir = getRuntimeStateDir(slug);
-    const envPath = `${stateDir}/.env`;
-    let requiresRestart = false;
-
-    // Update display name in DB (instance-level, not part of RuntimeConfig)
-    if (patch.general?.displayName !== undefined) {
-      registry.updateInstance(slug, { displayName: patch.general.displayName });
-      const inst = registry.getInstance(slug);
-      if (inst) {
-        upsertSearchEntry(deps.db, {
-          entityType: "instance",
-          entityId: slug,
-          title: inst.display_name ?? slug,
-          subtitle: inst.state ?? "",
-          routeHash: `/instances/${slug}/builder`,
-        });
-      }
-    }
-
-    // --- Pre-validation: check provider removal conflicts ---
-    if (patch.providers?.remove) {
-      const currentConfig = registry.getRuntimeConfig(slug);
-      if (currentConfig) {
-        for (const id of patch.providers.remove) {
-          if (currentConfig.defaultModel.startsWith(`${id}/`)) {
-            return apiError(
-              c,
-              400,
-              "PROVIDER_IN_USE",
-              `Cannot remove provider "${id}" — used by default model "${currentConfig.defaultModel}"`,
-            );
-          }
-        }
-      }
-    }
-
-    // --- Async side effects: .env writes (must happen before DB transaction) ---
-    if (patch.providers) {
-      try {
-        await applyProviderEnvWrites(envPath, patch.providers);
-      } catch (err) {
-        logger.error(
-          `[config] PATCH .env error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-        return apiError(
-          c,
-          500,
-          "CONFIG_PATCH_FAILED",
-          err instanceof Error ? err.message : "Failed to update provider keys",
-        );
-      }
-    }
-
-    // --- Determine if we have any config-level changes to apply ---
-    const hasConfigChanges =
-      patch.general?.defaultModel !== undefined ||
-      patch.providers !== undefined ||
-      patch.agentDefaults !== undefined ||
-      (patch.agents !== undefined && patch.agents.length > 0) ||
-      patch.channels?.telegram !== undefined;
-
-    if (hasConfigChanges) {
-      try {
-        // Ensure config exists in DB (backfill from file or create default)
-        if (!registry.getRuntimeConfig(slug)) {
-          let seedConfig: RuntimeConfig;
-          if (runtimeConfigExists(stateDir)) {
-            seedConfig = loadRuntimeConfig(stateDir);
-          } else {
-            seedConfig = createDefaultRuntimeConfig(
-              instance.default_model != null ? { defaultModel: instance.default_model } : {},
-            );
-          }
-          registry.saveRuntimeConfig(slug, seedConfig);
-        }
-
-        // Atomic read-modify-write in DB
-        const updated = registry.patchRuntimeConfig(slug, (config) => {
-          if (patch.general?.defaultModel !== undefined) {
-            config.defaultModel = patch.general.defaultModel;
-          }
-          if (patch.providers) {
-            applyProviderChanges(config, patch.providers);
-          }
-          if (patch.agentDefaults) {
-            applyAgentDefaultChanges(config, patch.agentDefaults);
-          }
-          if (patch.agents && patch.agents.length > 0) {
-            applyAgentPatches(config, patch.agents, deps.db, slug);
-          }
-          if (patch.channels?.telegram !== undefined) {
-            applyTelegramChanges(config, patch.channels.telegram);
-          }
-          return config;
-        });
-
-        // Keep instances.default_model in sync
-        if (patch.general?.defaultModel !== undefined) {
-          registry.updateInstance(slug, { defaultModel: patch.general.defaultModel });
-        }
-
-        // Export runtime.json snapshot (best-effort, for debugging/backup)
-        exportRuntimeJsonSnapshot(stateDir, updated);
-
-        requiresRestart = true;
-      } catch (err) {
-        logger.error(
-          `[config] PATCH /config error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-        return apiError(
-          c,
-          500,
-          "CONFIG_PATCH_FAILED",
-          err instanceof Error ? err.message : "Failed to update config",
-        );
-      }
-    }
-
-    // --- Default named key (simple FK on instances, v25) ---
-    if (patch.defaultNamedKeyId !== undefined) {
-      if (!isCryptoAvailable()) {
-        return apiError(c, 503, "CRYPTO_UNAVAILABLE", "Named keys require MASTER_ENCRYPTION_KEY");
-      }
-      const inst = deps.registry.getInstance(slug);
-      if (inst) {
-        const namedKeyRepo = new NamedKeyRepository(deps.db);
-        namedKeyRepo.setDefaultKeyForInstance(inst.id, patch.defaultNamedKeyId);
-      }
-    }
-
-    // Restart if needed and instance is running
-    let autoRestarted = false;
-    if (requiresRestart && instance.state === "running") {
-      try {
-        await lifecycle.restart(slug);
-        autoRestarted = true;
-      } catch (err) {
-        logger.warn(
-          `[config] restart after config patch failed for ${slug}: ${err instanceof Error ? err.message : "unknown"}`,
-        );
-      }
-    }
-
-    logger.info(`[config] PATCH /config slug=${slug} patch=${JSON.stringify(patch)}`);
-    // If the backend already restarted the instance, inform the UI so it doesn't show
-    // a redundant "restart required" banner.
-    return c.json({
-      ok: true,
-      requiresRestart: requiresRestart && !autoRestarted,
-      hotReloaded: false,
-      warnings: [],
-    });
+    return handlePatchConfig(c, deps);
   });
 
   // PATCH /api/instances/:slug/config/telegram/token — write/remove bot token in .env
@@ -313,7 +397,7 @@ export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
     try {
       // Get the botTokenEnvVar name from config (default: TELEGRAM_BOT_TOKEN)
       let varName = "TELEGRAM_BOT_TOKEN";
-      const config = registry.getRuntimeConfig(slug);
+      const config = deps.registry.getRuntimeConfig(slug);
       if (config) {
         varName = config.telegram.botTokenEnvVar;
       } else if (runtimeConfigExists(stateDir)) {

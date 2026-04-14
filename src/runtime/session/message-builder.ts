@@ -213,6 +213,142 @@ export function applyCaching(
 }
 
 // ---------------------------------------------------------------------------
+// Core message builder — helpers
+// ---------------------------------------------------------------------------
+
+interface ToolCallMeta {
+  toolCallId: string;
+  toolName: string;
+  args?: unknown;
+}
+
+/** Parse tool-call metadata JSON, returning undefined on malformed data. */
+function parseToolCallMeta(metadata: string | undefined): ToolCallMeta | undefined {
+  if (!metadata) return undefined;
+  try {
+    const meta = JSON.parse(metadata) as {
+      toolCallId?: string;
+      toolName?: string;
+      args?: unknown;
+    };
+    if (meta.toolCallId && meta.toolName) {
+      return { toolCallId: meta.toolCallId, toolName: meta.toolName, args: meta.args };
+    }
+  } catch (err) {
+    logger.warn("[message-builder] JSON.parse of tool metadata failed", {
+      error: String(err),
+    });
+  }
+  return undefined;
+}
+
+/** Parse image mime type from part metadata, defaulting to image/jpeg. */
+function parseImageMimeType(metadata: string | undefined): string {
+  if (!metadata) return "image/jpeg";
+  try {
+    const meta = JSON.parse(metadata) as { mimeType?: string };
+    if (meta.mimeType) return meta.mimeType;
+  } catch (err) {
+    logger.warn("[message-builder] JSON.parse of image metadata failed", {
+      error: String(err),
+    });
+  }
+  return "image/jpeg";
+}
+
+/** Build a user-role ModelMessage from parts (text-only or multipart with images). */
+function buildUserMessage(parts: PartInfo[]): ModelMessage | undefined {
+  const textParts = parts.filter((p) => p.type === "text");
+  const imageParts = parts.filter((p) => p.type === "image");
+  const text = textParts.map((p) => p.content ?? "").join("\n");
+
+  if (imageParts.length > 0 && text) {
+    const contentArray: Array<
+      { type: "text"; text: string } | { type: "image"; image: string; mimeType?: string }
+    > = [{ type: "text", text }];
+
+    for (const imgPart of imageParts) {
+      if (!imgPart.content) continue;
+      const mimeType = parseImageMimeType(imgPart.metadata);
+      contentArray.push({
+        type: "image",
+        image: imgPart.content,
+        ...(mimeType !== undefined ? { mimeType } : {}),
+      });
+    }
+    return { role: "user", content: contentArray } as ModelMessage;
+  }
+
+  if (text) return { role: "user", content: text };
+  return undefined;
+}
+
+/** Build assistant + tool-result ModelMessages from parts. */
+function buildAssistantMessages(parts: PartInfo[]): ModelMessage[] {
+  const textParts = parts.filter((p) => p.type === "text" || p.type === "compaction");
+  const toolCallParts = parts.filter((p) => p.type === "tool_call");
+  const result: ModelMessage[] = [];
+
+  if (toolCallParts.length === 0) {
+    const text = textParts.map((p) => p.content ?? "").join("\n");
+    if (text) result.push({ role: "assistant", content: text });
+    return result;
+  }
+
+  // Build assistant content: text parts + tool-call parts
+  const contentParts: Array<
+    | { type: "text"; text: string }
+    | { type: "tool-call"; toolCallId: string; toolName: string; input: unknown }
+  > = [];
+
+  for (const tp of textParts) {
+    if (tp.content) contentParts.push({ type: "text", text: tp.content });
+  }
+
+  for (const tcp of toolCallParts) {
+    const meta = parseToolCallMeta(tcp.metadata);
+    if (meta) {
+      contentParts.push({
+        type: "tool-call",
+        toolCallId: meta.toolCallId,
+        toolName: meta.toolName,
+        input: meta.args ?? {},
+      });
+    }
+  }
+
+  if (contentParts.length > 0) result.push({ role: "assistant", content: contentParts });
+
+  // Build tool-result messages for every tool-call — even on error or
+  // unexpected termination.  Without this, MissingToolResultsError permanently
+  // breaks permanent sessions.
+  const toolResults: ToolResultPart[] = [];
+  for (const tcp of toolCallParts) {
+    const meta = parseToolCallMeta(tcp.metadata);
+    if (!meta) continue;
+
+    let output: string;
+    if (tcp.state === "completed" && tcp.content) {
+      output = tcp.content;
+    } else if (tcp.state === "error") {
+      output = tcp.content ?? "[Tool execution failed]";
+    } else {
+      output = "[Tool execution was interrupted unexpectedly]";
+    }
+
+    toolResults.push({
+      type: "tool-result",
+      toolCallId: meta.toolCallId,
+      toolName: meta.toolName,
+      output: { type: "text", value: output },
+    });
+  }
+
+  if (toolResults.length > 0) result.push({ role: "tool", content: toolResults });
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Core message builder
 // ---------------------------------------------------------------------------
 
@@ -233,121 +369,10 @@ export function buildCoreMessages(db: Database.Database, messages: MessageInfo[]
     const parts = partsMap.get(msg.id) ?? [];
 
     if (msg.role === "user") {
-      const textParts = parts.filter((p) => p.type === "text");
-      const imageParts = parts.filter((p) => p.type === "image");
-      const text = textParts.map((p) => p.content ?? "").join("\n");
-
-      if (imageParts.length > 0 && text) {
-        // Multipart user message: text + images
-        const contentArray: Array<
-          { type: "text"; text: string } | { type: "image"; image: string; mimeType?: string }
-        > = [{ type: "text", text }];
-
-        for (const imgPart of imageParts) {
-          if (!imgPart.content) continue;
-          let mimeType = "image/jpeg";
-          if (imgPart.metadata) {
-            try {
-              const meta = JSON.parse(imgPart.metadata) as { mimeType?: string };
-              if (meta.mimeType) mimeType = meta.mimeType;
-            } catch (err) {
-              logger.warn("[message-builder] JSON.parse of image metadata failed", {
-                error: String(err),
-              });
-              // Use default mimeType
-            }
-          }
-          contentArray.push({
-            type: "image",
-            image: imgPart.content,
-            ...(mimeType !== undefined ? { mimeType } : {}),
-          });
-        }
-        result.push({ role: "user", content: contentArray } as ModelMessage);
-      } else if (text) {
-        result.push({ role: "user", content: text });
-      }
+      const userMsg = buildUserMessage(parts);
+      if (userMsg) result.push(userMsg);
     } else {
-      const textParts = parts.filter((p) => p.type === "text" || p.type === "compaction");
-      const toolCallParts = parts.filter((p) => p.type === "tool_call");
-
-      if (toolCallParts.length === 0) {
-        const text = textParts.map((p) => p.content ?? "").join("\n");
-        if (text) result.push({ role: "assistant", content: text });
-      } else {
-        const contentParts: Array<
-          | { type: "text"; text: string }
-          | { type: "tool-call"; toolCallId: string; toolName: string; input: unknown }
-        > = [];
-
-        for (const tp of textParts) {
-          if (tp.content) contentParts.push({ type: "text", text: tp.content });
-        }
-
-        for (const tcp of toolCallParts) {
-          if (tcp.metadata) {
-            try {
-              const meta = JSON.parse(tcp.metadata) as {
-                toolCallId?: string;
-                toolName?: string;
-                args?: unknown;
-              };
-              if (meta.toolCallId && meta.toolName) {
-                contentParts.push({
-                  type: "tool-call",
-                  toolCallId: meta.toolCallId,
-                  toolName: meta.toolName,
-                  input: meta.args ?? {},
-                });
-              }
-            } catch (err) {
-              logger.warn("[message-builder] JSON.parse of tool_call metadata failed", {
-                error: String(err),
-              });
-              // Skip malformed metadata
-            }
-          }
-        }
-
-        if (contentParts.length > 0) result.push({ role: "assistant", content: contentParts });
-
-        const toolResults: ToolResultPart[] = [];
-        for (const tcp of toolCallParts) {
-          if (!tcp.metadata) continue;
-          try {
-            const meta = JSON.parse(tcp.metadata) as { toolCallId?: string; toolName?: string };
-            if (!meta.toolCallId || !meta.toolName) continue;
-
-            // Always emit a tool-result for every tool-call included in the assistant
-            // message — even on error or unexpected termination (state null).
-            // Without this, MissingToolResultsError permanently breaks permanent sessions.
-            let output: string;
-            if (tcp.state === "completed" && tcp.content) {
-              output = tcp.content;
-            } else if (tcp.state === "error") {
-              // Captured error — content holds the error message set by the handler
-              output = tcp.content ?? "[Tool execution failed]";
-            } else {
-              // state null: process was killed or crashed before the tool finished
-              output = "[Tool execution was interrupted unexpectedly]";
-            }
-
-            toolResults.push({
-              type: "tool-result",
-              toolCallId: meta.toolCallId,
-              toolName: meta.toolName,
-              output: { type: "text", value: output },
-            });
-          } catch (err) {
-            logger.warn("[message-builder] JSON.parse of tool_result metadata failed", {
-              error: String(err),
-            });
-            // Skip malformed metadata
-          }
-        }
-
-        if (toolResults.length > 0) result.push({ role: "tool", content: toolResults });
-      }
+      result.push(...buildAssistantMessages(parts));
     }
   }
 

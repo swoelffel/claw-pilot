@@ -74,138 +74,231 @@ export const ReadTool = Tool.define("read", {
       ? params.filePath
       : path.resolve(instanceRoot, params.filePath);
 
-    let stat: fsSync.Stats;
-    try {
-      stat = await fs.stat(filePath);
-    } catch (err) {
-      logger.debug("[tool:read] stat failed", { error: String(err) });
-      // Try to suggest similar files
-      const dir = path.dirname(filePath);
-      const base = path.basename(filePath).toLowerCase();
-      let suggestions: string[] = [];
-      try {
-        const entries = await fs.readdir(dir);
-        suggestions = entries
-          .filter((e) => e.toLowerCase().includes(base) || base.includes(e.toLowerCase()))
-          .slice(0, 3)
-          .map((e) => path.join(dir, e));
-      } catch (err) {
-        logger.debug("[tool:read] readdir for suggestions failed", { error: String(err) });
-        // ignore
-      }
-      if (suggestions.length > 0) {
-        throw new Error(
-          `File not found: ${filePath}\n\nDid you mean one of these?\n${suggestions.join("\n")}`,
-        );
-      }
-      throw new Error(`File not found: ${filePath}`);
-    }
-
+    const stat = await statWithSuggestions(filePath);
     const title = filePath;
 
-    // Directory listing
     if (stat.isDirectory()) {
-      const dirents = await fs.readdir(filePath, { withFileTypes: true });
-      const entries: string[] = [];
-      for (const d of dirents) {
-        if (d.isDirectory()) {
-          entries.push(d.name + "/");
-        } else if (d.isSymbolicLink()) {
-          const target = await fs.stat(path.join(filePath, d.name)).catch(() => undefined);
-          entries.push(d.name + (target?.isDirectory() ? "/" : ""));
-        } else {
-          entries.push(d.name);
-        }
-      }
-      entries.sort((a, b) => a.localeCompare(b));
-
-      const limit = params.limit ?? DEFAULT_LIMIT;
-      const offset = params.offset ?? 1;
-      const start = offset - 1;
-      const sliced = entries.slice(start, start + limit);
-      const truncated = start + sliced.length < entries.length;
-
-      const output = [
-        `<path>${filePath}</path>`,
-        `<type>directory</type>`,
-        `<entries>`,
-        sliced.join("\n"),
-        truncated
-          ? `\n(Showing ${sliced.length} of ${entries.length} entries. Use 'offset' to read beyond entry ${offset + sliced.length})`
-          : `\n(${entries.length} entries)`,
-        `</entries>`,
-      ].join("\n");
-
-      return { title, output, truncated };
+      return readDirectory(filePath, title, params.offset, params.limit);
     }
 
-    // Binary check
     const ext = path.extname(filePath).toLowerCase();
     if (BINARY_EXTENSIONS.has(ext)) {
       throw new Error(`Cannot read binary file: ${filePath}`);
     }
 
-    // Text file reading with streaming
-    const stream = fsSync.createReadStream(filePath, { encoding: "utf8" });
-    const rl = createInterface({ input: stream, crlfDelay: Infinity });
-
-    const limit = params.limit ?? DEFAULT_LIMIT;
-    const offset = params.offset ?? 1;
-    const start = offset - 1;
-    const raw: string[] = [];
-    let bytes = 0;
-    let lines = 0;
-    let truncatedByBytes = false;
-    let hasMoreLines = false;
-
-    try {
-      for await (const text of rl) {
-        lines++;
-        if (lines <= start) continue;
-        if (raw.length >= limit) {
-          hasMoreLines = true;
-          continue;
-        }
-        const line =
-          text.length > MAX_LINE_LENGTH
-            ? text.substring(0, MAX_LINE_LENGTH) +
-              `... (line truncated to ${MAX_LINE_LENGTH} chars)`
-            : text;
-        const size = Buffer.byteLength(line, "utf-8") + (raw.length > 0 ? 1 : 0);
-        if (bytes + size > MAX_BYTES) {
-          truncatedByBytes = true;
-          hasMoreLines = true;
-          break;
-        }
-        raw.push(line);
-        bytes += size;
-      }
-    } finally {
-      rl.close();
-      stream.destroy();
-    }
-
-    if (lines < offset && !(lines === 0 && offset === 1)) {
-      throw new Error(`Offset ${offset} is out of range for this file (${lines} lines)`);
-    }
-
-    const content = raw.map((line, index) => `${index + offset}: ${line}`);
-    const lastReadLine = offset + raw.length - 1;
-    const nextOffset = lastReadLine + 1;
-    const truncated = hasMoreLines || truncatedByBytes;
-
-    let output = [`<path>${filePath}</path>`, `<type>file</type>`, "<content>"].join("\n");
-    output += content.join("\n");
-
-    if (truncatedByBytes) {
-      output += `\n\n(Output capped at ${MAX_BYTES / 1024} KB. Showing lines ${offset}-${lastReadLine}. Use offset=${nextOffset} to continue.)`;
-    } else if (hasMoreLines) {
-      output += `\n\n(Showing lines ${offset}-${lastReadLine} of ${lines}. Use offset=${nextOffset} to continue.)`;
-    } else {
-      output += `\n\n(End of file - total ${lines} lines)`;
-    }
-    output += "\n</content>";
-
-    return { title, output, truncated };
+    return readTextFile(filePath, title, params.offset, params.limit);
   },
 });
+
+// ---------------------------------------------------------------------------
+// stat with helpful suggestions on failure
+// ---------------------------------------------------------------------------
+
+/**
+ * Stat a path and throw a helpful error with suggestions if not found.
+ */
+async function statWithSuggestions(filePath: string): Promise<fsSync.Stats> {
+  try {
+    return await fs.stat(filePath);
+  } catch (err) {
+    logger.debug("[tool:read] stat failed", { error: String(err) });
+    const suggestions = await findSuggestions(filePath);
+    if (suggestions.length > 0) {
+      throw new Error(
+        `File not found: ${filePath}\n\nDid you mean one of these?\n${suggestions.join("\n")}`,
+      );
+    }
+    throw new Error(`File not found: ${filePath}`);
+  }
+}
+
+/** Find similar filenames in the same directory. */
+async function findSuggestions(filePath: string): Promise<string[]> {
+  const dir = path.dirname(filePath);
+  const base = path.basename(filePath).toLowerCase();
+  try {
+    const entries = await fs.readdir(dir);
+    return entries
+      .filter((e) => e.toLowerCase().includes(base) || base.includes(e.toLowerCase()))
+      .slice(0, 3)
+      .map((e) => path.join(dir, e));
+  } catch (err) {
+    logger.debug("[tool:read] readdir for suggestions failed", { error: String(err) });
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Directory listing
+// ---------------------------------------------------------------------------
+
+/**
+ * Read a directory and return a formatted listing.
+ */
+async function readDirectory(
+  filePath: string,
+  title: string,
+  rawOffset: number | undefined,
+  rawLimit: number | undefined,
+): Promise<Tool.Result> {
+  const dirents = await fs.readdir(filePath, { withFileTypes: true });
+  const entries: string[] = [];
+  for (const d of dirents) {
+    if (d.isDirectory()) {
+      entries.push(d.name + "/");
+    } else if (d.isSymbolicLink()) {
+      const target = await fs.stat(path.join(filePath, d.name)).catch(() => undefined);
+      entries.push(d.name + (target?.isDirectory() ? "/" : ""));
+    } else {
+      entries.push(d.name);
+    }
+  }
+  entries.sort((a, b) => a.localeCompare(b));
+
+  const limit = rawLimit ?? DEFAULT_LIMIT;
+  const offset = rawOffset ?? 1;
+  const start = offset - 1;
+  const sliced = entries.slice(start, start + limit);
+  const truncated = start + sliced.length < entries.length;
+
+  const output = [
+    `<path>${filePath}</path>`,
+    `<type>directory</type>`,
+    `<entries>`,
+    sliced.join("\n"),
+    truncated
+      ? `\n(Showing ${sliced.length} of ${entries.length} entries. Use 'offset' to read beyond entry ${offset + sliced.length})`
+      : `\n(${entries.length} entries)`,
+    `</entries>`,
+  ].join("\n");
+
+  return { title, output, truncated };
+}
+
+// ---------------------------------------------------------------------------
+// Text file reading
+// ---------------------------------------------------------------------------
+
+/**
+ * Read a text file with streaming, offset/limit support, and byte cap.
+ */
+async function readTextFile(
+  filePath: string,
+  title: string,
+  rawOffset: number | undefined,
+  rawLimit: number | undefined,
+): Promise<Tool.Result> {
+  const limit = rawLimit ?? DEFAULT_LIMIT;
+  const offset = rawOffset ?? 1;
+  const start = offset - 1;
+
+  const { raw, lines, hasMoreLines, truncatedByBytes } = await readTextFileChunk(
+    filePath,
+    start,
+    limit,
+  );
+
+  if (lines < offset && !(lines === 0 && offset === 1)) {
+    throw new Error(`Offset ${offset} is out of range for this file (${lines} lines)`);
+  }
+
+  const content = raw.map((line, index) => `${index + offset}: ${line}`);
+  const lastReadLine = offset + raw.length - 1;
+  const nextOffset = lastReadLine + 1;
+  const truncated = hasMoreLines || truncatedByBytes;
+
+  const output = formatFileOutput(filePath, content, {
+    offset,
+    lastReadLine,
+    nextOffset,
+    totalLines: lines,
+    truncatedByBytes,
+    hasMoreLines,
+  });
+
+  return { title, output, truncated };
+}
+
+/** Result of reading a text file chunk. */
+interface TextChunkResult {
+  raw: string[];
+  lines: number;
+  hasMoreLines: boolean;
+  truncatedByBytes: boolean;
+}
+
+/**
+ * Stream-read a chunk of a text file with offset, limit, and byte cap.
+ */
+async function readTextFileChunk(
+  filePath: string,
+  startLine: number,
+  limit: number,
+): Promise<TextChunkResult> {
+  const stream = fsSync.createReadStream(filePath, { encoding: "utf8" });
+  const rl = createInterface({ input: stream, crlfDelay: Infinity });
+
+  const raw: string[] = [];
+  let bytes = 0;
+  let lines = 0;
+  let truncatedByBytes = false;
+  let hasMoreLines = false;
+
+  try {
+    for await (const text of rl) {
+      lines++;
+      if (lines <= startLine) continue;
+      if (raw.length >= limit) {
+        hasMoreLines = true;
+        continue;
+      }
+      const line =
+        text.length > MAX_LINE_LENGTH
+          ? text.substring(0, MAX_LINE_LENGTH) + `... (line truncated to ${MAX_LINE_LENGTH} chars)`
+          : text;
+      const size = Buffer.byteLength(line, "utf-8") + (raw.length > 0 ? 1 : 0);
+      if (bytes + size > MAX_BYTES) {
+        truncatedByBytes = true;
+        hasMoreLines = true;
+        break;
+      }
+      raw.push(line);
+      bytes += size;
+    }
+  } finally {
+    rl.close();
+    stream.destroy();
+  }
+
+  return { raw, lines, hasMoreLines, truncatedByBytes };
+}
+
+/**
+ * Format the output for a file read result.
+ */
+function formatFileOutput(
+  filePath: string,
+  content: string[],
+  info: {
+    offset: number;
+    lastReadLine: number;
+    nextOffset: number;
+    totalLines: number;
+    truncatedByBytes: boolean;
+    hasMoreLines: boolean;
+  },
+): string {
+  let output = [`<path>${filePath}</path>`, `<type>file</type>`, "<content>"].join("\n");
+  output += content.join("\n");
+
+  if (info.truncatedByBytes) {
+    output += `\n\n(Output capped at ${MAX_BYTES / 1024} KB. Showing lines ${info.offset}-${info.lastReadLine}. Use offset=${info.nextOffset} to continue.)`;
+  } else if (info.hasMoreLines) {
+    output += `\n\n(Showing lines ${info.offset}-${info.lastReadLine} of ${info.totalLines}. Use offset=${info.nextOffset} to continue.)`;
+  } else {
+    output += `\n\n(End of file - total ${info.totalLines} lines)`;
+  }
+  output += "\n</content>";
+
+  return output;
+}

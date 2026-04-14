@@ -378,48 +378,63 @@ export class TelegramChannel implements Channel {
     const attachments: InboundAttachment[] = [];
 
     // Handle photos (pick the largest size — last in array)
-    if (message.photo && message.photo.length > 0) {
-      const largest = message.photo[message.photo.length - 1]!;
-      try {
-        const fileInfo = await this.poller.getFile(largest.file_id);
-        const base64 = await this.poller.downloadFileAsBase64(fileInfo.file_path);
-        const ext = fileInfo.file_path.split(".").pop()?.toLowerCase() ?? "jpg";
-        const mimeType = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
-        attachments.push({
-          id: largest.file_unique_id,
-          type: "image",
-          mimeType,
-          data: base64,
-          ...(fileInfo.file_size !== undefined ? { sizeBytes: fileInfo.file_size } : {}),
-        });
-      } catch (err) {
-        logger.warn(`[telegram] Failed to download photo: ${err}`);
-      }
-    }
+    const photoAttachment = await this._extractPhotoAttachment(message);
+    if (photoAttachment) attachments.push(photoAttachment);
 
     // Handle documents (images sent as files)
-    if (message.document) {
-      const doc = message.document;
-      const isImage = doc.mime_type?.startsWith("image/") ?? false;
-      if (isImage) {
-        try {
-          const fileInfo = await this.poller.getFile(doc.file_id);
-          const base64 = await this.poller.downloadFileAsBase64(fileInfo.file_path);
-          attachments.push({
-            id: doc.file_unique_id,
-            type: "image",
-            mimeType: doc.mime_type ?? "image/jpeg",
-            data: base64,
-            ...(doc.file_name !== undefined ? { filename: doc.file_name } : {}),
-            ...(doc.file_size !== undefined ? { sizeBytes: doc.file_size } : {}),
-          });
-        } catch (err) {
-          logger.warn(`[telegram] Failed to download document: ${err}`);
-        }
-      }
-    }
+    const docAttachment = await this._extractDocumentAttachment(message);
+    if (docAttachment) attachments.push(docAttachment);
 
     return attachments;
+  }
+
+  /** Download the largest photo from a Telegram message, if present. */
+  private async _extractPhotoAttachment(
+    message: import("./polling.js").TelegramMessage,
+  ): Promise<InboundAttachment | undefined> {
+    if (!this.poller || !message.photo || message.photo.length === 0) return undefined;
+    const largest = message.photo[message.photo.length - 1]!;
+    try {
+      const fileInfo = await this.poller.getFile(largest.file_id);
+      const base64 = await this.poller.downloadFileAsBase64(fileInfo.file_path);
+      const ext = fileInfo.file_path.split(".").pop()?.toLowerCase() ?? "jpg";
+      const mimeType = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+      return {
+        id: largest.file_unique_id,
+        type: "image",
+        mimeType,
+        data: base64,
+        ...(fileInfo.file_size !== undefined ? { sizeBytes: fileInfo.file_size } : {}),
+      };
+    } catch (err) {
+      logger.warn(`[telegram] Failed to download photo: ${err}`);
+      return undefined;
+    }
+  }
+
+  /** Download an image document from a Telegram message, if present. */
+  private async _extractDocumentAttachment(
+    message: import("./polling.js").TelegramMessage,
+  ): Promise<InboundAttachment | undefined> {
+    if (!this.poller || !message.document) return undefined;
+    const doc = message.document;
+    const isImage = doc.mime_type?.startsWith("image/") ?? false;
+    if (!isImage) return undefined;
+    try {
+      const fileInfo = await this.poller.getFile(doc.file_id);
+      const base64 = await this.poller.downloadFileAsBase64(fileInfo.file_path);
+      return {
+        id: doc.file_unique_id,
+        type: "image",
+        mimeType: doc.mime_type ?? "image/jpeg",
+        data: base64,
+        ...(doc.file_name !== undefined ? { filename: doc.file_name } : {}),
+        ...(doc.file_size !== undefined ? { sizeBytes: doc.file_size } : {}),
+      };
+    } catch (err) {
+      logger.warn(`[telegram] Failed to download document: ${err}`);
+      return undefined;
+    }
   }
 
   /**
@@ -443,43 +458,49 @@ export class TelegramChannel implements Channel {
       await this.poller.answerCallbackQuery(query.id);
     } catch (err) {
       logger.warn("[telegram] answerCallbackQuery failed", { error: String(err) });
-      // Non-critical — continue processing
     }
 
     const parts = query.data.split(":");
     const prefix = parts[0];
 
     if (prefix === "q" && parts[1]) {
-      const questionId = parts[1];
-      const action = parts[2];
-      const state = this.pendingQuestions.get(questionId);
-
-      // v0.72+ structured actions require state
-      if (state && (action === "sel" || action === "tog" || action === "cfm" || action === "oth")) {
-        await this.handleStructuredCallback(questionId, action, parts[3]);
-        return;
-      }
-
-      // Legacy fallback: q:<id>:<url-encoded answer>
-      if (!state && parts[2]) {
-        const answer = decodeURIComponent(parts.slice(2).join(":"));
-        const resolved = resolveQuestion(questionId, answer);
-        if (!resolved) {
-          logger.warn(`[telegram] callback_query for unknown/expired question: ${questionId}`);
-        }
-      }
+      this._handleQuestionCallback(parts);
     } else if (prefix === "s" && parts[1]) {
-      // Suggestion click: s:<suggestion text>
-      const suggestionText = decodeURIComponent(parts.slice(1).join(":"));
-      const chatId = query.message?.chat?.id;
-      if (suggestionText && chatId && this.handler) {
-        // Send as a new inbound message
-        void this.handler({
-          channelType: "telegram",
-          peerId: `telegram:${chatId}`,
-          text: suggestionText,
-        });
+      this._handleSuggestionCallback(parts, query.message?.chat?.id);
+    }
+  }
+
+  /** Dispatch a question callback (structured v0.72+ or legacy). */
+  private _handleQuestionCallback(parts: string[]): void {
+    const questionId = parts[1]!;
+    const action = parts[2];
+    const state = this.pendingQuestions.get(questionId);
+
+    // v0.72+ structured actions require state
+    if (state && (action === "sel" || action === "tog" || action === "cfm" || action === "oth")) {
+      void this.handleStructuredCallback(questionId, action, parts[3]);
+      return;
+    }
+
+    // Legacy fallback: q:<id>:<url-encoded answer>
+    if (!state && parts[2]) {
+      const answer = decodeURIComponent(parts.slice(2).join(":"));
+      const resolved = resolveQuestion(questionId, answer);
+      if (!resolved) {
+        logger.warn(`[telegram] callback_query for unknown/expired question: ${questionId}`);
       }
+    }
+  }
+
+  /** Dispatch a suggestion callback — forward as a new inbound message. */
+  private _handleSuggestionCallback(parts: string[], chatId: number | undefined): void {
+    const suggestionText = decodeURIComponent(parts.slice(1).join(":"));
+    if (suggestionText && chatId && this.handler) {
+      void this.handler({
+        channelType: "telegram",
+        peerId: `telegram:${chatId}`,
+        text: suggestionText,
+      });
     }
   }
 
@@ -496,52 +517,80 @@ export class TelegramChannel implements Channel {
     const item = state.items[state.currentIdx];
     if (!item) return;
 
-    if (action === "sel" && arg !== undefined) {
-      const idx = Number(arg);
-      const opt = item.options?.[idx];
-      if (opt === undefined) return;
-      state.answers[state.currentIdx] = { selected: [opt] };
-      state.currentIdx++;
-      await this.sendNextQuestion(questionId);
-      return;
+    if (action === "sel") {
+      await this._handleSelectAction(questionId, state, item, arg);
+    } else if (action === "tog") {
+      await this._handleToggleAction(questionId, state, item, arg);
+    } else if (action === "cfm") {
+      await this._handleConfirmAction(questionId, state, item);
+    } else if (action === "oth") {
+      await this._handleOtherAction(state);
     }
+  }
 
-    if (action === "tog" && arg !== undefined) {
-      const idx = Number(arg);
-      if (!item.options || idx < 0 || idx >= item.options.length) return;
-      if (state.multiSelected.has(idx)) state.multiSelected.delete(idx);
-      else state.multiSelected.add(idx);
-      // Edit the message markup to reflect the new selection state.
-      if (state.lastMessageId !== undefined) {
-        try {
-          await this.poller.editMessageReplyMarkup(state.chatId, state.lastMessageId, {
-            inline_keyboard: this.buildMultiKeyboard(questionId, item, state.multiSelected),
-          });
-        } catch (err) {
-          logger.warn(`[telegram] editMessageReplyMarkup failed: ${err}`);
-        }
-      }
-      return;
-    }
+  /** Handle single-select callback. */
+  private async _handleSelectAction(
+    questionId: string,
+    state: { answers: QuestionAnswerPayload[]; currentIdx: number },
+    item: QuestionItem,
+    arg: string | undefined,
+  ): Promise<void> {
+    if (arg === undefined) return;
+    const idx = Number(arg);
+    const opt = item.options?.[idx];
+    if (opt === undefined) return;
+    state.answers[state.currentIdx] = { selected: [opt] };
+    state.currentIdx++;
+    await this.sendNextQuestion(questionId);
+  }
 
-    if (action === "cfm") {
-      const selected = [...state.multiSelected].sort((a, b) => a - b).map((i) => item.options![i]!);
-      if (selected.length === 0) return; // ignore empty confirm
-      state.answers[state.currentIdx] = { selected };
-      state.currentIdx++;
-      await this.sendNextQuestion(questionId);
-      return;
-    }
-
-    if (action === "oth") {
-      // Switch current item to "awaiting free text" mode.
-      state.awaitingFreeText = true;
+  /** Handle multi-select toggle callback. */
+  private async _handleToggleAction(
+    questionId: string,
+    state: { chatId: number; multiSelected: Set<number>; lastMessageId?: number },
+    item: QuestionItem,
+    arg: string | undefined,
+  ): Promise<void> {
+    if (arg === undefined || !this.poller) return;
+    const idx = Number(arg);
+    if (!item.options || idx < 0 || idx >= item.options.length) return;
+    if (state.multiSelected.has(idx)) state.multiSelected.delete(idx);
+    else state.multiSelected.add(idx);
+    if (state.lastMessageId !== undefined) {
       try {
-        await this.poller.sendMessage(state.chatId, "💬 Reply with your custom answer:");
+        await this.poller.editMessageReplyMarkup(state.chatId, state.lastMessageId, {
+          inline_keyboard: this.buildMultiKeyboard(questionId, item, state.multiSelected),
+        });
       } catch (err) {
-        logger.warn(`[telegram] Failed to prompt for other: ${err}`);
+        logger.warn(`[telegram] editMessageReplyMarkup failed: ${err}`);
       }
-      return;
+    }
+  }
+
+  /** Handle multi-select confirm callback. */
+  private async _handleConfirmAction(
+    questionId: string,
+    state: { answers: QuestionAnswerPayload[]; currentIdx: number; multiSelected: Set<number> },
+    item: QuestionItem,
+  ): Promise<void> {
+    const selected = [...state.multiSelected].sort((a, b) => a - b).map((i) => item.options![i]!);
+    if (selected.length === 0) return;
+    state.answers[state.currentIdx] = { selected };
+    state.currentIdx++;
+    await this.sendNextQuestion(questionId);
+  }
+
+  /** Handle "other" callback — switch to free-text mode. */
+  private async _handleOtherAction(state: {
+    chatId: number;
+    awaitingFreeText: boolean;
+  }): Promise<void> {
+    if (!this.poller) return;
+    state.awaitingFreeText = true;
+    try {
+      await this.poller.sendMessage(state.chatId, "💬 Reply with your custom answer:");
+    } catch (err) {
+      logger.warn(`[telegram] Failed to prompt for other: ${err}`);
     }
   }
 
@@ -675,44 +724,13 @@ export class TelegramChannel implements Channel {
     const text = `❓${progress}\n${header}${item.question}`;
 
     if (item.answerType === "free") {
-      state.awaitingFreeText = true;
-      state.multiSelected.clear();
-      try {
-        const sent = await this.poller.sendMessage(state.chatId, text);
-        if (sent?.message_id !== undefined) state.lastMessageId = sent.message_id;
-      } catch (err) {
-        logger.warn(`[telegram] Failed to send free-text question: ${err}`);
-      }
+      await this._sendFreeTextQuestion(state, text);
       return;
     }
 
     state.awaitingFreeText = false;
     state.multiSelected.clear();
-    const options = item.options ?? [];
-    const keyboard: TelegramInlineKeyboardButton[][] = [];
-    if (item.answerType === "single") {
-      for (let idx = 0; idx < options.length; idx++) {
-        keyboard.push([{ text: options[idx]!, callback_data: `q:${questionId}:sel:${idx}` }]);
-      }
-      if (item.allowOther) {
-        keyboard.push([
-          { text: "💬 Other (reply with text)", callback_data: `q:${questionId}:oth` },
-        ]);
-      }
-    } else {
-      // multi
-      for (let idx = 0; idx < options.length; idx++) {
-        keyboard.push([
-          { text: `☐ ${options[idx]!}`, callback_data: `q:${questionId}:tog:${idx}` },
-        ]);
-      }
-      if (item.allowOther) {
-        keyboard.push([
-          { text: "💬 Other (reply with text)", callback_data: `q:${questionId}:oth` },
-        ]);
-      }
-      keyboard.push([{ text: "✅ Confirm", callback_data: `q:${questionId}:cfm` }]);
-    }
+    const keyboard = this._buildQuestionKeyboard(questionId, item);
 
     try {
       const sent = await this.poller.sendMessage(state.chatId, text, undefined, {
@@ -722,6 +740,59 @@ export class TelegramChannel implements Channel {
     } catch (err) {
       logger.warn(`[telegram] Failed to send question with keyboard: ${err}`);
     }
+  }
+
+  /** Send a free-text question (no keyboard). */
+  private async _sendFreeTextQuestion(
+    state: {
+      chatId: number;
+      awaitingFreeText: boolean;
+      multiSelected: Set<number>;
+      lastMessageId?: number;
+    },
+    text: string,
+  ): Promise<void> {
+    if (!this.poller) return;
+    state.awaitingFreeText = true;
+    state.multiSelected.clear();
+    try {
+      const sent = await this.poller.sendMessage(state.chatId, text);
+      if (sent?.message_id !== undefined) state.lastMessageId = sent.message_id;
+    } catch (err) {
+      logger.warn(`[telegram] Failed to send free-text question: ${err}`);
+    }
+  }
+
+  /** Build the inline keyboard for a single-select or multi-select question item. */
+  private _buildQuestionKeyboard(
+    questionId: string,
+    item: QuestionItem,
+  ): TelegramInlineKeyboardButton[][] {
+    const options = item.options ?? [];
+    const keyboard: TelegramInlineKeyboardButton[][] = [];
+
+    if (item.answerType === "single") {
+      for (let idx = 0; idx < options.length; idx++) {
+        keyboard.push([{ text: options[idx]!, callback_data: `q:${questionId}:sel:${idx}` }]);
+      }
+    } else {
+      // multi
+      for (let idx = 0; idx < options.length; idx++) {
+        keyboard.push([
+          { text: `☐ ${options[idx]!}`, callback_data: `q:${questionId}:tog:${idx}` },
+        ]);
+      }
+    }
+
+    if (item.allowOther) {
+      keyboard.push([{ text: "💬 Other (reply with text)", callback_data: `q:${questionId}:oth` }]);
+    }
+
+    if (item.answerType === "multi") {
+      keyboard.push([{ text: "✅ Confirm", callback_data: `q:${questionId}:cfm` }]);
+    }
+
+    return keyboard;
   }
 
   /**
