@@ -135,11 +135,28 @@ export class SystemInstanceService {
 
   /**
    * Ensure the system instance is running. If provisioned but stopped, start it.
-   * No-op if not provisioned or already running.
+   * Also re-syncs the YAML template (workspace files + agent configs) if it has
+   * changed since last startup — so a redeploy updates cp-system without the user
+   * having to visit the dashboard.
+   *
+   * No-op if not provisioned.
    */
-  static async ensureRunning(registry: Registry, lifecycle: Lifecycle): Promise<void> {
+  static async ensureRunning(
+    registry: Registry,
+    lifecycle: Lifecycle,
+    db: Database.Database,
+    conn: ServerConnection,
+  ): Promise<void> {
     const instance = registry.getSystemInstance();
     if (!instance) return;
+
+    // Re-sync template on every startup — cheap (hash compare) and ensures
+    // redeploys propagate to the existing system instance.
+    try {
+      await SystemInstanceService._syncTemplateIfChanged(db, conn, instance);
+    } catch (err) {
+      logger.warn("[system-instance] Template sync on startup failed", { error: String(err) });
+    }
 
     if (isRuntimeRunning(instance.state_dir)) return;
 
