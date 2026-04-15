@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.72.10] — 2026-04-15
+
+### Fixed
+- **Questions now appear in real time in the UI** — the `question` tool emits a `question.asked` SSE event when it suspends the prompt loop, but neither `home-chat.ts` nor `runtime-pilot.ts` had a handler for it. The switch statement silently dropped the event in the default case, so subagent-initiated questions only appeared after the user pressed F5. Added a `question.asked` case in both components that calls `_refreshMessages()` / `_reloadLastMessages()`, mirroring the existing `suggestions.generated` handler.
+
+---
+
 ## [0.72.9] — 2026-04-15
 
 ### Fixed
