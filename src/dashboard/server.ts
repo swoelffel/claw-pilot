@@ -248,8 +248,9 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   // Rebuild search index on startup
   rebuildSearchIndex(deps.db);
 
-  // Auto-start system instance if provisioned but stopped
-  void SystemInstanceService.ensureRunning(registry, lifecycle).catch((err) =>
+  // Auto-start system instance if provisioned but stopped,
+  // and re-sync the YAML template if it has changed since last startup.
+  void SystemInstanceService.ensureRunning(registry, lifecycle, deps.db, deps.conn).catch((err) =>
     logger.warn("[system] failed to auto-start system instance", { error: String(err) }),
   );
 
