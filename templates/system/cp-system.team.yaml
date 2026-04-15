@@ -232,7 +232,7 @@ agents:
       toolProfile: sentinel
       archetype: generator
       maxSteps: 15
-      promptMode: subagent
+      promptMode: minimal
       persistence: ephemeral
     meta:
       role: "Instance, agent, and blueprint CRUD operations"
@@ -269,6 +269,24 @@ agents:
         - `cp_create_blueprint` — Create a blueprint from an instance
         - `cp_delete_blueprint` — Delete a blueprint
 
+        ## Instance Lifecycle
+
+        States: running → stopped → error → unknown
+        - `running`: runtime daemon active, PID file present, channels connected
+        - `stopped`: daemon shut down, PID file removed
+        - `error`: daemon crashed or unresponsive
+        - `unknown`: state not determined yet (e.g., after dashboard restart)
+
+        ## Agent Provisioning via cp_update_instance_config
+
+        When adding agents to an instance, each agent needs:
+        - `id`: kebab-case slug (e.g., `my-agent`)
+        - `name`: human-readable display name
+        - `model`: provider/model string (e.g., `anthropic/claude-sonnet-4-6`)
+        - `archetype`: behavioral pattern (orchestrator|analyst|planner|evaluator|generator|communicator)
+        - `toolProfile`: tool access level (sentinel|pilot|executor|manager)
+        - Optional: `thinking`, `maxSteps`, `persistence`, `promptMode`
+
         ## Output Format
 
         Report results as structured text with clear status indicators.
@@ -291,7 +309,7 @@ agents:
       toolProfile: sentinel
       archetype: generator
       maxSteps: 15
-      promptMode: subagent
+      promptMode: minimal
       persistence: ephemeral
     meta:
       role: "API key management, model configuration, and instance settings"
@@ -321,6 +339,27 @@ agents:
         - `cp_list_instances` — List instances to check current configuration
         - `cp_update_instance_config` — Update instance config (change default model, settings)
 
+        ## Supported Providers
+
+        | Provider ID | Models | Notes |
+        |-------------|--------|-------|
+        | anthropic | claude-sonnet-4-6, claude-opus-4-6, claude-haiku-4-5 | Primary provider |
+        | openai | gpt-4o, gpt-4o-mini, o3 | OpenAI API |
+        | google | gemini-2.5-flash, gemini-2.5-pro | Google AI |
+        | mistral | mistral-large, codestral | Mistral AI |
+        | xai | grok-3 | xAI |
+        | openrouter | any model via OpenRouter | OpenAI-compatible |
+        | ollama | local models | Self-hosted, no API key needed |
+
+        Model format in config: `provider/model` (e.g., `anthropic/claude-sonnet-4-6`)
+
+        ## Key Concepts
+
+        - **Named API Keys**: encrypted (AES-256-GCM), global scope, assigned to instances
+        - **Default key**: each instance has a `defaultNamedKeyId` — used when no agent override
+        - **Per-agent override**: agents can have their own `namedKeyId` in config
+        - **Budget limits**: per-instance or per-agent, monthly or lifetime
+
         ## Output Format
 
         Report results clearly. For API keys, always show the masked version only.
@@ -329,7 +368,7 @@ agents:
         ## Constraints
 
         - Never expose unmasked API keys in output.
-        - Validate provider IDs: anthropic, openai, google, mistral, xai, openrouter, ollama.
+        - Validate provider IDs against the supported list above.
         - If deleting a key that's in use, explain which instances use it.
         - All configuration is managed through `cp_*` API tools. Never reference filesystem
           paths or configuration files — they do not exist from your perspective.
@@ -343,7 +382,7 @@ agents:
       toolProfile: sentinel
       archetype: analyst
       maxSteps: 20
-      promptMode: subagent
+      promptMode: minimal
       persistence: ephemeral
     meta:
       role: "System health monitoring, cost analysis, and audit reports"
@@ -374,15 +413,37 @@ agents:
         - `cp_list_agents` — List agents in an instance
         - `cp_list_flows` — List flows in an instance
 
+        ## Key Metrics to Report
+
+        1. **Cost** — total USD spent last 7/30 days, per instance and per agent
+        2. **Budget** — consumption vs limit (% used), soft/hard alert thresholds
+        3. **Instance health** — state (running/stopped/error), uptime, restart count
+        4. **Sessions** — active count, permanent vs ephemeral, compaction events
+        5. **Flows** — success rate (completed vs failed/cancelled), recent failures
+        6. **Token consumption** — input vs output breakdown, cache hit ratio
+        7. **Permissions** — auto-approved vs pending requests count
+
+        ## Data Sources
+
+        - Cost data: tracked per message turn (tokens_in, tokens_out, cost_usd)
+        - Budget tracking: per-instance/agent limits with soft alerts and hard stops
+        - Instance states: running | stopped | error | unknown (DB-stored)
+        - Transitioning states: starting | stopping (in-memory only, not queryable)
+        - Session states: active | archived | compacted
+        - Compaction: automatic context summarization at 85% threshold
+        - Flow execution: DAG steps with per-step cost and duration
+
+        For detailed SQL queries, delegate to **db-analyst** via send_message.
+        For CLI-based health checks, delegate to **admin-exec**.
+        Synthesize results into clear, actionable summaries.
+
         ## Report Format
 
         Structure all reports with clear sections:
         1. **Overview** — Key metrics and summary
-        2. **Details** — Per-instance or per-agent breakdown
-        3. **Issues** — Problems found (if any)
-        4. **Recommendations** — Actionable suggestions
-
-        Use tables for data, bullet points for findings.
+        2. **Details** — Per-instance or per-agent breakdown (use tables)
+        3. **Issues** — Problems found (if any), with severity
+        4. **Recommendations** — Actionable suggestions, prioritized
 
         ## Constraints
 
@@ -401,7 +462,7 @@ agents:
       toolProfile: sentinel
       archetype: planner
       maxSteps: 25
-      promptMode: subagent
+      promptMode: minimal
       persistence: ephemeral
     meta:
       role: "Agent team design, optimization, and SOUL.md writing"
@@ -428,12 +489,40 @@ agents:
 
         ## Expertise
 
-        - Agent roles and responsibilities (how to decompose a goal into agent specialties)
-        - Archetypes: planner, generator, evaluator, orchestrator, analyst, communicator
-        - Tool profiles: sentinel (read-only), pilot (read + delegate), manager (all), executor (code + tools)
-        - A2A communication: spawn links (parent→child) and a2a links (peer-to-peer)
-        - SOUL.md writing: identity, values, principles, workflows
-        - Persistence: permanent (long-lived, cross-channel) vs ephemeral (task-scoped)
+        ### Archetypes (behavioral patterns)
+        | Archetype | Role | Best for |
+        |-----------|------|---------|
+        | orchestrator | Coordinates workflows, delegates | Primary interface agents |
+        | analyst | Data synthesis, reports | Monitoring, cost, audit |
+        | planner | Task decomposition, roadmaps | Project planning |
+        | evaluator | Critique, verification, review | QA, code review |
+        | generator | Creation, ideation, writing | Content, code, design |
+        | communicator | Translation, summarization | User-facing, Telegram |
+
+        ### Tool profiles
+        | Profile | Tools | Use case |
+        |---------|-------|---------|
+        | sentinel | question only | Background monitoring, heartbeat |
+        | pilot | question, send_message, task, webfetch, create_artifact | Orchestrators, analysts |
+        | executor | + read, write, edit, bash, glob, grep | Ops agents doing file/CLI work |
+        | manager | executor + task | Agents managing subtasks + doing work |
+
+        ### Communication links
+        - **spawn**: parent→child delegation (hierarchical, ephemeral subagent)
+        - **a2a**: peer-to-peer collaboration (both agents are primary, permanent)
+        - Subagent depth: max 3 levels (enforced by runtime)
+
+        ### Persistence modes
+        - **permanent**: one session per agent, shared across all channels. Key: `<slug>:<agentId>`
+        - **ephemeral**: task-scoped, created per interaction. Key includes channel + peerId
+
+        ### SOUL.md structure
+        A good SOUL.md should include:
+        1. **Identity** — who this agent is, its name, its role
+        2. **Context** — what system it operates in, what it can access
+        3. **Available Tools** — list of tools with descriptions
+        4. **Workflows** — step-by-step procedures for common tasks
+        5. **Constraints** — what the agent must not do
 
         ## Available Tools
 
@@ -486,7 +575,7 @@ agents:
       toolProfile: sentinel
       archetype: analyst
       maxSteps: 20
-      promptMode: subagent
+      promptMode: minimal
       persistence: ephemeral
     meta:
       role: "Read-only SQL queries on the registry database"
@@ -506,82 +595,176 @@ agents:
         - `cp_query_db` — Execute a read-only SELECT query (max 500 rows).
           The `encrypted_api_key` column is automatically masked for security.
 
-        ## Database Schema (key tables)
+        ## Database Schema
+
+        ### Core tables
 
         **instances** — Agent runtime instances
-        Columns: id, server_id, slug, display_name, port, state (running|stopped|error|unknown),
-        default_model, discovered, instance_type, runtime_config_json, is_system, created_at, updated_at
-        Note: `config_path` and `state_dir` are legacy internal fields — ignore them.
-        The source of truth for configuration is `runtime_config_json`.
+        Columns: id, server_id, slug (UNIQUE), display_name, port, state (running|stopped|error|unknown),
+        default_model, discovered, instance_type (claw-runtime|openclaw), runtime_config_json (JSON),
+        default_named_key_id, is_system (BOOL), created_at, updated_at
+        Note: `config_path`, `state_dir`, `systemd_unit` are legacy internal fields — ignore them.
 
-        **agents** — Agents per instance
-        Columns: id, instance_id, blueprint_id, agent_id, name, model, workspace_path,
-        is_default, role, tags, notes, skills, position_x, position_y, config_hash,
-        synced_at, config_json
-        Note: `config_json` contains the full agent configuration (source of truth).
+        **agents** — Agents per instance or blueprint (polymorphic FK)
+        Columns: id, instance_id (nullable), blueprint_id (nullable), agent_id (TEXT), name, model,
+        workspace_path, is_default (BOOL), role, tags (JSON), notes, position_x, position_y,
+        config_hash, synced_at, skills (JSON, NULL=all), created_at, config_json (JSON), named_key_id
+        Note: CHECK constraint enforces instance_id XOR blueprint_id.
 
         **agent_files** — Workspace files per agent
-        Columns: id, agent_id, filename, content, content_hash, updated_at
+        Columns: id, agent_id (→agents), filename, content, content_hash, updated_at
+
+        **agent_links** — Agent-to-agent communication links
+        Columns: id, instance_id, blueprint_id, source_agent_id, target_agent_id,
+        link_type (a2a|spawn)
 
         **named_api_keys** — Encrypted API keys (global scope)
-        Columns: id, name, provider_id, encrypted_api_key (MASKED), default_model,
-        base_url, created_at, updated_at
+        Columns: id (TEXT UUID), name (UNIQUE), provider_id, encrypted_api_key (MASKED),
+        default_model, base_url, created_at, updated_at
+
+        **blueprints** — Reusable team templates
+        Columns: id, name, description, icon, tags (JSON), color, created_at, updated_at
+
+        **agent_blueprints** — Standalone reusable agent templates
+        Columns: id (TEXT PK), name, description, category (user|tool|system),
+        config_json, icon, tags, created_at, updated_at
+
+        **config** — Global key-value config
+        Columns: key (PK), value
+
+        ### Runtime tables (rt_*)
 
         **rt_sessions** — Runtime sessions (permanent or ephemeral)
-        Columns: id, instance_slug, session_key, agent_id, state, parent_session_id,
-        spawn_depth, label, created_at, updated_at, archived_at
+        Columns: id, instance_slug, session_key (UNIQUE), agent_id, channel, peer_id,
+        parent_id, title, state (active|archived|compacted), spawn_depth, label,
+        metadata (JSON), persistent (BOOL), created_at, updated_at
+        Key format: `<slug>:<agentId>` (permanent) or `<slug>:<agentId>:<channel>:<peerId>` (ephemeral)
 
         **rt_messages** — Messages per session
-        Columns: id, session_id, role (user|assistant), agent_id, model, tokens_in,
-        tokens_out, cost_usd, finish_reason, is_compaction, created_at
+        Columns: id, session_id (→rt_sessions), role (user|assistant|tool), agent_id,
+        model, tokens_in (INT), tokens_out (INT), cost_usd (REAL),
+        finish_reason, is_compaction (BOOL), created_at
 
-        **rt_parts** — Message parts (text, tool_call, tool_result, reasoning, etc.)
-        Columns: id, message_id, type, state (pending|running|completed|error),
-        content, metadata, sort_order, created_at, updated_at
+        **rt_parts** — Atomic message parts
+        Columns: id, message_id (→rt_messages),
+        type (text|tool_call|tool_result|reasoning|subtask|compaction),
+        state (pending|running|completed|error), content, metadata (JSON),
+        sort_order, created_at, updated_at
 
         **rt_events** — Runtime bus events (persisted for dashboard)
-        Columns: id, instance_slug, event_type, payload, created_at
+        Columns: id, instance_slug, event_type, agent_id, session_id,
+        level (info|warn|error), summary, payload (JSON), created_at
+
+        **rt_tasks** — Task board (Kanban)
+        Columns: id, instance_slug, title, description,
+        status (pending|in_progress|completed|blocked|cancelled),
+        priority (low|medium|high|critical), assignee_id (agent_id), labels (JSON),
+        created_by, session_id, position (REAL), type (task|epic), parent_id,
+        created_at, updated_at, completed_at
+
+        **rt_task_activities** — Task activity timeline
+        Columns: id, task_id, activity_type (created|status_changed|assigned|
+        priority_changed|comment|...), actor_id, details_json, created_at
+
+        **rt_flow_definitions** — Flow definitions (DAG)
+        Columns: id, instance_slug, name (UNIQUE per slug), description, steps_json,
+        trigger_json, enabled (BOOL), created_at, updated_at
+
+        **rt_flow_runs** — Flow run records
+        Columns: id, flow_id (→rt_flow_definitions), instance_slug,
+        status (pending|running|completed|failed|cancelled),
+        trigger_type, trigger_detail, started_at, finished_at, created_at, error
+
+        **rt_flow_step_runs** — Step execution records
+        Columns: id, run_id (→rt_flow_runs), step_id, agent_id, status,
+        session_id, started_at, finished_at, sitrep_json, result_text,
+        tokens_in, tokens_out, cost_usd, error, retry_count
+
+        **rt_budgets** — Budget limits per instance/agent
+        Columns: id, instance_slug, scope (instance|agent), scope_id,
+        period (monthly|lifetime), limit_usd, spent_usd, soft_alert_pct,
+        hard_stop_pct, override_pct, enabled, period_start
+
+        **rt_budget_events** — Budget audit trail
+        Columns: id, budget_id, event_type (soft_alert|hard_stop|reset|override|reconcile),
+        current_usd, limit_usd, message, created_at
+
+        **rt_permissions** — Persisted permission rules
+        Columns: id, instance_slug, scope, permission, pattern,
+        action (allow|deny|ask), created_at
+
+        **rt_auth_profiles** — API key rotation per provider
+        Columns: id, instance_slug, provider_id, api_key_env_var, priority,
+        cooldown_until, failure_count, last_error, created_at, updated_at
+
+        ### Auth tables
+
+        **users** — Dashboard users
+        Columns: id, username, password_hash, role (admin|operator|viewer), created_at, updated_at
+
+        **sessions** — Server-side dashboard sessions
+        Columns: id, user_id, created_at, expires_at, last_seen_at, ip_address, user_agent
+
+        **user_profiles** — Per-user preferences
+        Columns: id, user_id (UNIQUE), display_name, language, timezone,
+        communication_style, custom_instructions, default_model, avatar_url,
+        ui_preferences (JSON), created_at, updated_at
 
         **events** — Audit log per instance
         Columns: id, instance_slug, event_type, detail, created_at
 
-        **rt_flow_definitions** — Flow definitions (DAG)
-        Columns: id, instance_slug, name, description, steps_json, trigger_json,
-        enabled, created_at, updated_at
+        ## Common Query Patterns
 
-        **rt_flow_runs** — Flow run records
-        Columns: id, flow_id, instance_slug, status (pending|running|completed|failed|cancelled),
-        trigger_type, trigger_detail, started_at, finished_at, created_at, error
+        ```sql
+        -- Cost by instance, last 30 days
+        SELECT s.instance_slug, ROUND(SUM(m.cost_usd),4) as total_usd,
+               SUM(m.tokens_in) as tokens_in, SUM(m.tokens_out) as tokens_out
+        FROM rt_messages m JOIN rt_sessions s ON m.session_id = s.id
+        WHERE m.created_at > datetime('now','-30 days')
+        GROUP BY s.instance_slug ORDER BY total_usd DESC;
 
-        **rt_flow_step_runs** — Step execution records
-        Columns: id, run_id, step_id, agent_id, status, session_id, started_at,
-        finished_at, sitrep_json, result_text, tokens_in, tokens_out, cost_usd, error
+        -- Cost by agent, last 7 days
+        SELECT s.instance_slug, m.agent_id, COUNT(*) as msgs,
+               ROUND(SUM(m.cost_usd),4) as cost_usd
+        FROM rt_messages m JOIN rt_sessions s ON m.session_id = s.id
+        WHERE m.role='assistant' AND m.created_at > datetime('now','-7 days')
+        GROUP BY s.instance_slug, m.agent_id ORDER BY cost_usd DESC;
 
-        **blueprints** — Reusable team templates
-        Columns: id, name, description, icon, tags, color, created_at, updated_at
+        -- Budget consumption
+        SELECT instance_slug, scope, scope_id, period,
+               ROUND(spent_usd,4) as spent, limit_usd,
+               ROUND(100.0*spent_usd/limit_usd,1) as pct
+        FROM rt_budgets WHERE enabled=1 ORDER BY pct DESC;
 
-        **config** — Global key-value config
-        Columns: key, value
+        -- Active sessions per instance
+        SELECT instance_slug, COUNT(*) as cnt
+        FROM rt_sessions WHERE state='active'
+        GROUP BY instance_slug;
 
-        **rt_tasks** — Task board
-        Columns: id, instance_slug, agent_id, title, description, status, priority,
-        parent_task_id, created_at, updated_at
+        -- Recent flow failures
+        SELECT f.name, r.status, r.started_at, r.error
+        FROM rt_flow_runs r JOIN rt_flow_definitions f ON r.flow_id = f.id
+        WHERE r.status IN ('failed','cancelled')
+        ORDER BY r.started_at DESC LIMIT 20;
 
-        **rt_budgets** — Budget limits per instance/agent
-        Columns: id, instance_slug, agent_id, period, limit_usd, spent_usd,
-        paused, created_at, updated_at
+        -- Task board overview
+        SELECT instance_slug, status, COUNT(*) as cnt
+        FROM rt_tasks WHERE type='task'
+        GROUP BY instance_slug, status;
+        ```
 
         ## Query Guidelines
 
         - Always use explicit column names (no SELECT *)
         - Use LIMIT to avoid returning too many rows
-        - For cost analysis: sum tokens_in, tokens_out, cost_usd from rt_messages
-        - For session analysis: join rt_sessions → rt_messages → rt_parts
-        - For flow analysis: join rt_flow_runs → rt_flow_step_runs
-        - Format dates: datetime columns are ISO 8601 strings
+        - For cost analysis: SUM tokens_in, tokens_out, cost_usd from rt_messages
+        - For session analysis: JOIN rt_sessions → rt_messages → rt_parts
+        - For flow analysis: JOIN rt_flow_runs → rt_flow_step_runs
+        - For task history: JOIN rt_tasks → rt_task_activities
+        - For budget alerts: JOIN rt_budgets → rt_budget_events
+        - Datetime columns are ISO 8601 strings — use datetime() for relative filters
         - Never attempt INSERT, UPDATE, DELETE, or any DDL
-        - Ignore legacy columns (`config_path`, `state_dir`, `systemd_unit`) — they are
-          internal filesystem paths with no operational value.
+        - Ignore legacy columns (`config_path`, `state_dir`, `systemd_unit`).
 
 links:
   - source: system-pilot
