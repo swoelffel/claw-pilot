@@ -192,25 +192,35 @@ async function runStep(
     depSitreps,
   });
 
-  // 3. Execute prompt loop
+  // 3. Execute prompt loop — inject `complete_step` tool scoped to THIS step
+  //    run. When the agent calls it, the tool writes sitrep_json directly to
+  //    rt_flow_step_runs.id = stepRun.id (see complete-step-tool.ts).
   const result = await executeStep(ctx, {
     agentId: stepDef.agentId,
     briefingText,
     flowName,
     stepId: stepDef.id,
+    stepRunId: stepRun.id,
     ...(stepDef.timeoutMs !== undefined ? { timeoutMs: stepDef.timeoutMs } : {}),
     ...(ctx.abort ? { abort: ctx.abort.signal } : {}),
   });
 
-  // 4. Extract SITREP from result
-  const sitrep = extractSitrep(result.text);
+  // 4. Read back the step run to see whether `complete_step` was invoked.
+  //    If it was, sitrep_json is already populated — that is the source of
+  //    truth. If not, fall back to regex-parsing the final text (legacy
+  //    path, still useful for edge cases and for non-flow callers).
+  const afterRun = getStepRun(ctx.db, runId, stepDef.id);
+  const sitrep: SitrepResult = afterRun?.sitrep_json
+    ? (JSON.parse(afterRun.sitrep_json) as SitrepResult)
+    : extractSitrep(result.text);
 
-  // 5. Update step run with results
+  // 5. Update step run with stats (and sitrep_json only if the tool didn't
+  //    already write it — never overwrite the agent's structured report).
   updateStepRun(ctx.db, stepRun.id, {
     status: "completed",
     sessionId: result.sessionId,
     resultText: result.text,
-    sitrepJson: JSON.stringify(sitrep),
+    ...(afterRun?.sitrep_json ? {} : { sitrepJson: JSON.stringify(sitrep) }),
     tokensIn: result.tokens.input,
     tokensOut: result.tokens.output,
     costUsd: result.costUsd,
