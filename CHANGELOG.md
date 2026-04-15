@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.73.2] — 2026-04-15
+
+### Added
+- **`complete_step` tool — structured, forced SITREP for flow steps.** The flow engine now injects a per-step-run tool called `complete_step` into the toolset of every flow step agent. The agent calls it with `{ outcome, summary, keyFindings }` as its final action; the tool writes the structured SITREP directly to `rt_flow_step_runs.sitrep_json` via a DB handle captured at construction time. This replaces the fragile regex parsing of free-text responses, which broke every time an agent ended its turn without printing the `OUTCOME:` block verbatim (observed on MAC runs #3 and #4 — `site-maintainer` did real work but never emitted a parseable SITREP, leading to false `partial`/`failure` outcomes). A custom `hasToolCall("complete_step")` stop condition ends the loop immediately when the tool fires, saving tokens.
+  - Scope: the tool is created via a factory (`createCompleteStepTool(db, stepRunId)`) and injected ONLY into flow step sessions via the new `extraTools` parameter. It is NOT registered in `BUILTIN_TOOLS`, so it is structurally invisible in permanent sessions, Telegram, web-chat, task sessions, and subagent delegations.
+  - Fallback: if a step finishes without calling `complete_step`, `extractSitrep(result.text)` still runs as a legacy escape hatch. Combined with the v0.73.1 `failure` default, a silent stop is now reliably surfaced.
+
+### Changed
+- `PromptLoopInput` and `RouterInput` gained an optional `extraTools?: Tool.Info[]` field — a generic injection point for caller-provided tools. `buildToolSetForLoop()` appends them to the tool set after `getToolsForAgent()`, bypassing the `toolProfile` filter (the caller is responsible for correctness).
+- Flow step briefing no longer instructs the agent to emit a markdown SITREP block; it now describes the mandatory `complete_step` tool call.
+- Flow engine reads `sitrep_json` back from the DB after each step: if `complete_step` was called, that value is trusted; otherwise `extractSitrep()` falls back to parsing the result text.
+
+---
+
 ## [0.73.1] — 2026-04-15
 
 ### Fixed

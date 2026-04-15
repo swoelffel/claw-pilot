@@ -7,6 +7,7 @@
 import { createSession } from "../session/session.js";
 import { ChannelRouter } from "../channel/router.js";
 import type { FlowEngineContext } from "./types.js";
+import { createCompleteStepTool } from "./complete-step-tool.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -24,6 +25,12 @@ interface StepExecutionInput {
   briefingText: string;
   flowName: string;
   stepId: string;
+  /**
+   * DB row id of the `rt_flow_step_runs` record for this step run. Passed so
+   * that the injected `complete_step` tool can write `sitrep_json` directly
+   * to this specific row — no correlation id or metadata plumbing required.
+   */
+  stepRunId: number;
   timeoutMs?: number;
   abort?: AbortSignal;
 }
@@ -70,8 +77,17 @@ export async function executeStep(
     }
   }
 
+  // 3. Build the `complete_step` tool bound to this specific step run.
+  //    The tool writes `sitrep_json` to the exact DB row when invoked, so
+  //    the engine can read it back after the session finishes — no text
+  //    parsing required. This tool is created per-step, injected only via
+  //    `extraTools` below, and has no presence in `BUILTIN_TOOLS`. It is
+  //    therefore invisible in permanent sessions, Telegram, task sessions,
+  //    and everywhere else that doesn't reach this factory.
+  const completeStepTool = createCompleteStepTool(db, input.stepRunId);
+
   try {
-    // 3. Route through ChannelRouter (uses runtime's initialized middlewares + agent registry)
+    // 4. Route through ChannelRouter (uses runtime's initialized middlewares + agent registry)
     //    Pass sessionId so messages are persisted in the mission session, not the permanent one.
     const result = await ChannelRouter.route({
       db,
@@ -86,6 +102,7 @@ export async function executeStep(
       sessionId: session.id,
       ...(ctx.workDir !== undefined ? { workDir: ctx.workDir } : {}),
       abort: abortController.signal,
+      extraTools: [completeStepTool],
     });
 
     return {

@@ -81,18 +81,27 @@ export function buildBriefing(
     sections.push("");
   }
 
-  // 5. Response format (must be prominent so LLMs reliably produce parseable markers)
-  sections.push("### MANDATORY response format");
-  sections.push("Your response MUST end with the following structured block, exactly as shown.");
-  sections.push("Do NOT omit it, do NOT rephrase the labels.\n");
-  sections.push("```");
-  sections.push("OUTCOME: success | failure | partial");
-  sections.push("SUMMARY: <1-2 sentence summary of what you found or did>");
-  sections.push("KEY FINDINGS:");
-  sections.push("- <finding 1>");
-  sections.push("- <finding 2>");
-  sections.push("- ...");
-  sections.push("```");
+  // 5. Mandatory completion action — the `complete_step` tool is injected
+  //    into the toolset by the flow engine. Calling it is the structured
+  //    exit point for this step. Without the call, the engine marks the
+  //    step as failed regardless of other work performed.
+  sections.push("### Mandatory completion action");
+  sections.push(
+    "When your mission is complete (or you cannot complete it), you MUST call the " +
+      "`complete_step` tool with:",
+  );
+  sections.push("");
+  sections.push('- `outcome`: `"success"` | `"failure"` | `"partial"`');
+  sections.push("- `summary`: 1–3 sentences describing what you did (or why you failed)");
+  sections.push("- `keyFindings`: array of notable observations, URLs, file paths, or decisions");
+  sections.push("");
+  sections.push(
+    "**Do NOT stop before calling `complete_step`.** This is not optional. " +
+      "If you finish your last tool call and have not yet called `complete_step`, " +
+      "call it immediately. The step is NOT registered as complete until you do. " +
+      "The engine considers any step that ends without a `complete_step` call as failed, " +
+      "regardless of what other work you performed.",
+  );
 
   return sections.join("\n");
 }
