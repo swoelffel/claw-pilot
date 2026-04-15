@@ -36,12 +36,23 @@ describe("extractSitrep", () => {
     expect(sitrep.outcome).toBe("partial");
   });
 
-  it("falls back to partial when no structured format found", () => {
+  // Regression: the previous default was "partial", which concealed agents that
+  // stopped mid-task without emitting any SITREP marker (observed on MAC in the
+  // web-maintenance flow — site-maintainer edited files, ran `git status`, and
+  // stopped without committing or reporting, yet was stored as outcome=partial
+  // with a misleading 500-char summary). "failure" is the honest default.
+  it("falls back to failure when no SITREP markers found", () => {
     const text = "I did some work but did not follow the format.";
     const sitrep = extractSitrep(text);
-    expect(sitrep.outcome).toBe("partial");
+    expect(sitrep.outcome).toBe("failure");
     expect(sitrep.summary).toBe(text);
     expect(sitrep.keyFindings).toHaveLength(0);
+  });
+
+  it("explicit OUTCOME: partial is still partial (not overridden by the fallback)", () => {
+    const sitrep = extractSitrep("OUTCOME: partial\nSUMMARY: Only 60% done.");
+    expect(sitrep.outcome).toBe("partial");
+    expect(sitrep.summary).toBe("Only 60% done.");
   });
 
   it("truncates long unformatted responses to 500 chars", () => {

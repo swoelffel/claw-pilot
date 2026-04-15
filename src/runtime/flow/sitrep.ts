@@ -32,7 +32,14 @@ export function extractSitrep(rawText: string): SitrepResult {
   const summaryMatch = SUMMARY_RE.exec(rawText);
   const findingsMatch = FINDINGS_RE.exec(rawText);
 
-  const outcome = (outcomeMatch?.[1]?.toLowerCase() ?? "partial") as SitrepResult["outcome"];
+  // When no OUTCOME: marker is found, the agent failed to emit a SITREP at all —
+  // this is a reporting failure, not a partial success. "partial" is reserved for
+  // agents that explicitly report incomplete work. "failure" truthfully signals
+  // "agent did not comply with the reporting contract, nothing verifiable was
+  // delivered". Engine-level behavior is unchanged: both outcomes already trigger
+  // propagateSkipDownstream() and hasUnsuccessfulSteps() — only the stored value
+  // changes, making flow logs and injected SITREPs honest.
+  const outcome = (outcomeMatch?.[1]?.toLowerCase() ?? "failure") as SitrepResult["outcome"];
   const summary = summaryMatch?.[1]?.trim() ?? rawText.slice(0, 500).trim();
 
   // Collect bullet lines from the KEY FINDINGS block, skipping blank lines and sub-headers

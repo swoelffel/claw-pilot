@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.73.1] — 2026-04-15
+
+### Fixed
+- **Missing SITREP now correctly maps to `outcome: "failure"` (was `"partial"`)** — when an agent finishes a flow step without emitting any `OUTCOME:` marker, `extractSitrep()` used to default to `outcome: "partial"` with a misleading first-500-chars summary. "partial" is semantically reserved for agents that explicitly report incomplete work; a missing SITREP is a reporting-contract failure and must be surfaced as such. Observed on MAC web-maintenance run #3: `site-maintainer` edited all files and ran `git status`, then stopped without committing/pushing, leaving an empty SITREP — but it was stored as `partial` and the misleading value propagated into `notify`'s dep context. Engine-level behavior is unchanged (both outcomes already trigger skip propagation and failed run status), only the stored value is now honest.
+- **Flow step briefings no longer inject permanent session history by default** — `buildBriefing()` used `step.briefing.includeLastN ?? 5`, which meant every flow step received the last 5 messages from the agent's permanent session as "Standing context". Those messages include `injectSitrep()` payloads from previous runs, which cross-contaminated new briefings with stale step names and outcomes. Observed on MAC run #3: the reporter hallucinated "write-content" (the step name from run #2, which no longer exists in run #3's definition) because run #2's SITREP was still in its permanent session's last-5-messages window. Default is now `0`; agents that genuinely need institutional memory across runs can opt-in via `step.briefing.includeLastN` in the flow definition JSON.
+
+---
+
 ## [0.73.0] — 2026-04-15
 
 ### Added
