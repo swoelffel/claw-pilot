@@ -14,6 +14,7 @@ import {
   getReadySteps,
   allStepsTerminal,
   hasFailedSteps,
+  hasUnsuccessfulSteps,
   getFlowDefinition,
   getStepRun,
 } from "../../core/repositories/flow-repository.js";
@@ -120,7 +121,7 @@ async function executeFlowDag(
       // Mark step as running before launching
       updateStepRun(ctx.db, stepRun.id, { status: "running" });
 
-      const promise = runStep(ctx, runId, flowName, stepDef)
+      const promise = runStep(ctx, runId, flowName, stepDef, stepDefs)
         .catch((err: unknown) => {
           logger.error("flow_step_error", {
             event: "flow_step_error",
@@ -134,6 +135,9 @@ async function executeFlowDag(
               status: "failed",
               error: err instanceof Error ? err.message : String(err),
             });
+            // A thrown exception is a non-success outcome — propagate skip
+            // to dependent steps that don't opt into continueOnFailure.
+            propagateSkipDownstream(ctx.db, runId, stepDefs, stepDef.id);
           }
         })
         .finally(() => {
@@ -149,9 +153,13 @@ async function executeFlowDag(
     }
   }
 
-  // 4. Determine final status
-  if (hasFailedSteps(ctx.db, runId)) {
-    updateFlowRunStatus(ctx.db, runId, "failed", "One or more steps failed");
+  // 4. Determine final status.
+  //    A run is "completed" only if every step finished with sitrep
+  //    outcome=success AND no step threw an exception. Any failure,
+  //    partial outcome, or malformed sitrep marks the run as failed,
+  //    even if dependent steps executed under `continueOnFailure`.
+  if (hasFailedSteps(ctx.db, runId) || hasUnsuccessfulSteps(ctx.db, runId)) {
+    updateFlowRunStatus(ctx.db, runId, "failed", "One or more steps did not succeed");
   } else {
     updateFlowRunStatus(ctx.db, runId, "completed");
   }
@@ -167,6 +175,7 @@ async function runStep(
   runId: number,
   flowName: string,
   stepDef: FlowStepDef,
+  stepDefs: FlowStepDef[],
 ): Promise<void> {
   const stepRun = getStepRun(ctx.db, runId, stepDef.id);
   if (!stepRun) return;
@@ -207,7 +216,16 @@ async function runStep(
     costUsd: result.costUsd,
   });
 
-  // 6. Inject SITREP into permanent session (SITREP up)
+  // 6. If the step did not report outcome=success, propagate skip to
+  //    dependent steps that do not opt into continueOnFailure. This
+  //    prevents the classic "cascade of partial failures" where a bad
+  //    upstream silently leaks into downstream steps that then run
+  //    against empty/invalid input.
+  if (sitrep.outcome !== "success") {
+    propagateSkipDownstream(ctx.db, runId, stepDefs, stepDef.id);
+  }
+
+  // 7. Inject SITREP into permanent session (SITREP up)
   injectSitrep(ctx.db, {
     instanceSlug: ctx.instanceSlug,
     agentId: stepDef.agentId,
@@ -256,5 +274,37 @@ function skipPendingSteps(db: Database.Database, runId: number): void {
     if (step.status === "pending") {
       updateStepRun(db, step.id, { status: "skipped" });
     }
+  }
+}
+
+/**
+ * Transitively mark as `skipped` every pending step whose dependency chain
+ * passes through `failedStepId`, unless the step sets `continueOnFailure`.
+ *
+ * Called after a step ends with a non-success outcome (either exception,
+ * sitrep outcome=failure, or sitrep outcome=partial). This prevents
+ * dependent steps from running with missing/invalid upstream output.
+ *
+ * Exported for unit testing — the `_` prefix marks it as internal.
+ */
+export function propagateSkipDownstream(
+  db: Database.Database,
+  runId: number,
+  stepDefs: FlowStepDef[],
+  failedStepId: string,
+): void {
+  for (const def of stepDefs) {
+    const deps = def.dependsOn ?? [];
+    if (!deps.includes(failedStepId)) continue;
+    if (def.continueOnFailure) continue;
+    const sr = getStepRun(db, runId, def.id);
+    if (!sr || sr.status !== "pending") continue;
+    updateStepRun(db, sr.id, {
+      status: "skipped",
+      error: `Skipped: dependency "${failedStepId}" did not finish with outcome=success`,
+    });
+    // Recurse — steps that depend on this newly-skipped step must also be
+    // skipped, unless they opt into continueOnFailure themselves.
+    propagateSkipDownstream(db, runId, stepDefs, def.id);
   }
 }

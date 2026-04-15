@@ -4,11 +4,13 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { initDatabase } from "../../../db/schema.js";
-import { _collectDepSitreps } from "../engine.js";
+import { _collectDepSitreps, propagateSkipDownstream } from "../engine.js";
+import type { FlowStepDef } from "../types.js";
 import {
   createFlowDefinition,
   createFlowRun,
   createStepRun,
+  getStepRun,
   updateStepRun,
 } from "../../../core/repositories/flow-repository.js";
 
@@ -107,5 +109,133 @@ describe("_collectDepSitreps", () => {
 
     const result = _collectDepSitreps(db, run.id, ["a"]);
     expect(result).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// propagateSkipDownstream
+// ---------------------------------------------------------------------------
+
+describe("propagateSkipDownstream", () => {
+  const setup = (stepDefs: FlowStepDef[]): { runId: number; stepDefs: FlowStepDef[] } => {
+    const flow = createFlowDefinition(db, {
+      instanceSlug: "inst-1",
+      name: "Test flow",
+      stepsJson: JSON.stringify(stepDefs),
+    });
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "inst-1",
+      triggerType: "manual",
+    });
+    for (const def of stepDefs) {
+      createStepRun(db, { runId: run.id, stepId: def.id, agentId: def.agentId });
+    }
+    return { runId: run.id, stepDefs };
+  };
+
+  // Regression: real-world scenario from web-maintenance run #2 —
+  // write-content returned outcome=partial, but open-pr was still executed
+  // because the old code only looked at step status (completed) not outcome.
+  it("marks pending dependent steps as skipped when a step fails upstream", () => {
+    const defs: FlowStepDef[] = [
+      { id: "a", agentId: "ag-a", prompt: "A" },
+      { id: "b", agentId: "ag-b", prompt: "B", dependsOn: ["a"] },
+    ];
+    const { runId, stepDefs } = setup(defs);
+
+    propagateSkipDownstream(db, runId, stepDefs, "a");
+
+    const b = getStepRun(db, runId, "b");
+    expect(b?.status).toBe("skipped");
+    expect(b?.error).toContain('dependency "a"');
+  });
+
+  it("does not skip a step with continueOnFailure=true", () => {
+    const defs: FlowStepDef[] = [
+      { id: "a", agentId: "ag-a", prompt: "A" },
+      {
+        id: "notify",
+        agentId: "ag-notify",
+        prompt: "Notify",
+        dependsOn: ["a"],
+        continueOnFailure: true,
+      },
+    ];
+    const { runId, stepDefs } = setup(defs);
+
+    propagateSkipDownstream(db, runId, stepDefs, "a");
+
+    const notify = getStepRun(db, runId, "notify");
+    expect(notify?.status).toBe("pending");
+  });
+
+  it("propagates skip transitively through a dependency chain", () => {
+    const defs: FlowStepDef[] = [
+      { id: "a", agentId: "ag", prompt: "A" },
+      { id: "b", agentId: "ag", prompt: "B", dependsOn: ["a"] },
+      { id: "c", agentId: "ag", prompt: "C", dependsOn: ["b"] },
+    ];
+    const { runId, stepDefs } = setup(defs);
+
+    propagateSkipDownstream(db, runId, stepDefs, "a");
+
+    expect(getStepRun(db, runId, "b")?.status).toBe("skipped");
+    expect(getStepRun(db, runId, "c")?.status).toBe("skipped");
+  });
+
+  it("stops propagation at a continueOnFailure step (does not skip its descendants)", () => {
+    // a → notify (continueOnFailure) → report
+    // When `a` fails: notify stays pending (will run), and report also stays
+    // pending because its parent (notify) has not yet produced a non-success
+    // outcome. It only becomes a candidate for skip once notify itself fails.
+    const defs: FlowStepDef[] = [
+      { id: "a", agentId: "ag", prompt: "A" },
+      {
+        id: "notify",
+        agentId: "ag",
+        prompt: "Notify",
+        dependsOn: ["a"],
+        continueOnFailure: true,
+      },
+      { id: "report", agentId: "ag", prompt: "Report", dependsOn: ["notify"] },
+    ];
+    const { runId, stepDefs } = setup(defs);
+
+    propagateSkipDownstream(db, runId, stepDefs, "a");
+
+    expect(getStepRun(db, runId, "notify")?.status).toBe("pending");
+    expect(getStepRun(db, runId, "report")?.status).toBe("pending");
+  });
+
+  it("leaves sibling steps alone (only marks direct/transitive dependents)", () => {
+    // a → b, c is an independent root
+    const defs: FlowStepDef[] = [
+      { id: "a", agentId: "ag", prompt: "A" },
+      { id: "b", agentId: "ag", prompt: "B", dependsOn: ["a"] },
+      { id: "c", agentId: "ag", prompt: "C" },
+    ];
+    const { runId, stepDefs } = setup(defs);
+
+    propagateSkipDownstream(db, runId, stepDefs, "a");
+
+    expect(getStepRun(db, runId, "b")?.status).toBe("skipped");
+    expect(getStepRun(db, runId, "c")?.status).toBe("pending");
+  });
+
+  it("does not overwrite a step that is already running/completed/failed", () => {
+    const defs: FlowStepDef[] = [
+      { id: "a", agentId: "ag", prompt: "A" },
+      { id: "b", agentId: "ag", prompt: "B", dependsOn: ["a"] },
+    ];
+    const { runId, stepDefs } = setup(defs);
+
+    const bRow = getStepRun(db, runId, "b");
+    if (!bRow) throw new Error("setup failed");
+    updateStepRun(db, bRow.id, { status: "running" });
+
+    propagateSkipDownstream(db, runId, stepDefs, "a");
+
+    expect(getStepRun(db, runId, "b")?.status).toBe("running");
   });
 });

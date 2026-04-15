@@ -6,6 +6,78 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.73.0] — 2026-04-15
+
+### Added
+- **Flow engine: outcome-driven control flow** — sitrep `outcome` now drives the DAG instead of being decorative metadata. When a step completes with `outcome=failure` / `outcome=partial` (or with a malformed/missing sitrep), every dependent step is eagerly marked `skipped` with an explanatory error message, unless the step opts in via the new `continueOnFailure: true` flag (typical for `notify` / cleanup steps that should run no matter what). The overall flow run is now marked `failed` whenever any step did not finish with `outcome=success`, instead of falsely reporting `completed` as long as no JS exception was thrown. Root cause: web-maintenance run #2 observed on MAC was marked `completed` despite `write-content` returning `outcome=partial` with empty summary, `open-pr` returning `outcome=failure`, and no PR actually being created.
+- `FlowStepDef.continueOnFailure?: boolean` — opt-in escape hatch for steps that should run despite upstream non-success. Default `false`.
+- `hasUnsuccessfulSteps(runId)` repository helper — counts completed steps whose sitrep outcome is not `success` (or is missing / malformed).
+- `propagateSkipDownstream()` engine helper — recursively marks dependent pending steps as `skipped`, respecting `continueOnFailure` to stop propagation on opt-in boundaries.
+- Comprehensive test coverage: 6 new tests for `propagateSkipDownstream`, 5 for `hasUnsuccessfulSteps`, 3 for `getReadySteps` with `continueOnFailure`.
+
+### Changed
+- `getReadySteps()` — a step with `continueOnFailure: true` is now considered ready when its dependencies are in any terminal state (`completed`, `failed`, or `skipped`). Regular steps still require every dependency to be `completed` with `outcome=success` (the engine guarantees this invariant by skipping dependents eagerly).
+- Final flow run status aggregation — `failed` if `hasFailedSteps() || hasUnsuccessfulSteps()`, `completed` otherwise.
+
+---
+
+## [0.72.13] — 2026-04-15
+
+### Fixed
+- **Flow engine: root steps without `dependsOn` no longer crash the DAG** — agents creating flows via `cp_create_flow` can legitimately omit `dependsOn` on root steps (the Zod schema marks it optional). But `FlowStepDef.dependsOn` was typed as required in `src/runtime/flow/types.ts`, and `engine.ts::collectDepSitreps` iterated it directly, throwing "dependsOn is not iterable" on the first step. Observed on MAC: the web-maintenance "Daily Web Maintenance" flow deadlocked on its first run because the `analyse` step crashed with no `dependsOn` field, leaving 3 downstream steps pending. `getReadySteps` already handled this correctly; only the engine's dep collection was missing the guard. Made `dependsOn` optional in the type and added a `?? []` guard before iteration. 5 new regression tests cover the omitted-field case in `getReadySteps` and `_collectDepSitreps`.
+
+---
+
+## [0.72.12] — 2026-04-15
+
+### Fixed
+- **CI: security audit steps no longer block the pipeline** — npm retired its legacy audit endpoints (`/npm/v1/security/audits/quick`, `/npm/v1/security/audits`) returning 410 Gone, causing the Quality job to fail before any other check ran. Marked both `pnpm audit` steps as `continue-on-error: true` so audit output remains visible in CI logs without blocking format, typecheck, lint, or complexity checks.
+
+---
+
+## [0.72.11] — 2026-04-15
+
+### Fixed
+- **Assistant text parts now split around tool calls in the timeline** — `StreamingState.textPartId` was never reset between Vercel AI SDK steps, so when the LLM produced text, then a tool call (question, A2A delegation), then more text in the next step, the pre- and post-tool-call text were appended to the **same** `text` part (sort_order 0), while the `tool_call` part was persisted in between with a higher sort_order. Timeline rendered as one merged text blob with the question/delegation card visually pushed after it. Reset `textPartId` + `accumulatedText` in `handleToolCallChunk` so the next text-delta creates a fresh part, correctly interleaved after the tool_call.
+
+---
+
+## [0.72.10] — 2026-04-15
+
+### Fixed
+- **Questions now appear in real time in the UI** — the `question` tool emits a `question.asked` SSE event when it suspends the prompt loop, but neither `home-chat.ts` nor `runtime-pilot.ts` had a handler for it. The switch statement silently dropped the event in the default case, so subagent-initiated questions only appeared after the user pressed F5. Added a `question.asked` case in both components that calls `_refreshMessages()` / `_reloadLastMessages()`, mirroring the existing `suggestions.generated` handler.
+
+---
+
+## [0.72.9] — 2026-04-15
+
+### Fixed
+- **cp-system subagents now load their SOUL.md** — the 5 subagents (admin-exec, config-exec, analyst, architect, db-analyst) had `promptMode: subagent` which restricted the system prompt to AGENTS.md only. Their rich SOUL.md content (DB schema, CLI commands, providers, archetypes) was written to disk but never injected into the LLM context. Switched to `promptMode: minimal` so SOUL.md + AGENTS.md + USER.md + memory files are all loaded.
+- **Template sync now runs at dashboard startup** — `_syncTemplateIfChanged` was only triggered via `POST /api/system/ensure` from the UI. After a redeploy, cp-system kept its stale workspace files + agent configs until a user clicked the provisioning button. Moved the sync call into `ensureRunning` so a redeploy is enough to propagate YAML template updates.
+- **Template sync now updates agent configs** — the existing sync only re-wrote workspace files, leaving `config_json` (promptMode, toolProfile, archetype) untouched. Extended to also UPDATE `agents.config_json` from the YAML's agent.config block while preserving per-agent DB-only metadata (role, tags, notes, position).
+- **E2E flow test** — `flow.e2e.test.ts` hardcoded `FLOW_PORT = 19165` which became obsolete since v0.72.8 introduced the OS username salt. Derive the port at runtime via `deriveWebChatPort(FLOW_SLUG)` so the test works under any username (CI runner, swoelffel, etc.).
+
+### Changed
+- **Enriched domain knowledge per cp-system agent in the YAML template**:
+  - **db-analyst**: complete DB schema (added rt_task_activities, rt_budget_events, rt_permissions, rt_auth_profiles, agent_links, agent_blueprints, users, user_profiles) + 6 ready-to-use SQL query patterns (cost, budget, sessions, flow failures, tasks)
+  - **analyst**: 7 key metrics to report + data source mapping
+  - **architect**: archetype/tool-profile tables + link types + SOUL.md structure guide
+  - **admin-exec**: instance lifecycle states + agent provisioning fields
+  - **config-exec**: supported providers table + named-key concepts
+
+---
+
+## [0.72.8] — 2026-04-14
+
+### Added
+- **Multi-user port isolation** — ClawPilot installations for different OS users on the same machine no longer collide on ports.
+  - `deriveWebChatPort` and `deriveInternalApiPort` now salt the hash with `os.userInfo().username`
+  - EADDRINUSE retry: up to 5 consecutive ports attempted before failing
+  - Port file discovery: runtime writes the actually-bound port to `stateDir/{api,webchat}.port`; dashboard reads from there with fallback to derivation
+  - DB migration v35: recalculates stored ports with the salted hash
+
+---
+
 ## [0.72.7] — 2026-04-14
 
 ### Changed

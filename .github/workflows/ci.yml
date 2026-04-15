@@ -26,8 +26,10 @@ jobs:
 
       - name: Security audit
         run: pnpm audit --audit-level=high
+        continue-on-error: true # npm retired legacy audit endpoints (410), awaiting pnpm fix
       - name: Security audit (production only)
         run: pnpm audit --audit-level=high --prod
+        continue-on-error: true # npm retired legacy audit endpoints (410), awaiting pnpm fix
       - name: Format check
         run: pnpm format:check
       - name: Typecheck (CLI + UI)
