@@ -33,7 +33,16 @@ export function buildBriefing(
     depSitreps: Array<{ stepId: string; sitrep: SitrepResult }>;
   },
 ): string {
-  const includeLastN = opts.step.briefing?.includeLastN ?? 5;
+  // Default 0: flow step context comes from dep SITREPs and the step prompt,
+  // not from the agent's permanent session history. Permanent session history
+  // accumulates SITREPs across runs and cross-contaminates future briefings
+  // (observed on MAC run #3: the reporter hallucinated "write-content" — a
+  // step name from run #2 — because the last 5 messages from its permanent
+  // session still contained run #2's injected SITREPs). Steps that genuinely
+  // need standing context can opt-in explicitly via step.briefing.includeLastN
+  // in the flow definition JSON (e.g., a continuity-tracking agent with
+  // institutional memory across runs).
+  const includeLastN = opts.step.briefing?.includeLastN ?? 0;
   const extraContext = opts.step.briefing?.extraContext;
 
   // 1. Extract standing context from permanent session
