@@ -6,6 +6,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.72.9] — 2026-04-15
+
+### Fixed
+- **cp-system subagents now load their SOUL.md** — the 5 subagents (admin-exec, config-exec, analyst, architect, db-analyst) had `promptMode: subagent` which restricted the system prompt to AGENTS.md only. Their rich SOUL.md content (DB schema, CLI commands, providers, archetypes) was written to disk but never injected into the LLM context. Switched to `promptMode: minimal` so SOUL.md + AGENTS.md + USER.md + memory files are all loaded.
+- **Template sync now runs at dashboard startup** — `_syncTemplateIfChanged` was only triggered via `POST /api/system/ensure` from the UI. After a redeploy, cp-system kept its stale workspace files + agent configs until a user clicked the provisioning button. Moved the sync call into `ensureRunning` so a redeploy is enough to propagate YAML template updates.
+- **Template sync now updates agent configs** — the existing sync only re-wrote workspace files, leaving `config_json` (promptMode, toolProfile, archetype) untouched. Extended to also UPDATE `agents.config_json` from the YAML's agent.config block while preserving per-agent DB-only metadata (role, tags, notes, position).
+- **E2E flow test** — `flow.e2e.test.ts` hardcoded `FLOW_PORT = 19165` which became obsolete since v0.72.8 introduced the OS username salt. Derive the port at runtime via `deriveWebChatPort(FLOW_SLUG)` so the test works under any username (CI runner, swoelffel, etc.).
+
+### Changed
+- **Enriched domain knowledge per cp-system agent in the YAML template**:
+  - **db-analyst**: complete DB schema (added rt_task_activities, rt_budget_events, rt_permissions, rt_auth_profiles, agent_links, agent_blueprints, users, user_profiles) + 6 ready-to-use SQL query patterns (cost, budget, sessions, flow failures, tasks)
+  - **analyst**: 7 key metrics to report + data source mapping
+  - **architect**: archetype/tool-profile tables + link types + SOUL.md structure guide
+  - **admin-exec**: instance lifecycle states + agent provisioning fields
+  - **config-exec**: supported providers table + named-key concepts
+
+---
+
+## [0.72.8] — 2026-04-14
+
+### Added
+- **Multi-user port isolation** — ClawPilot installations for different OS users on the same machine no longer collide on ports.
+  - `deriveWebChatPort` and `deriveInternalApiPort` now salt the hash with `os.userInfo().username`
+  - EADDRINUSE retry: up to 5 consecutive ports attempted before failing
+  - Port file discovery: runtime writes the actually-bound port to `stateDir/{api,webchat}.port`; dashboard reads from there with fallback to derivation
+  - DB migration v35: recalculates stored ports with the salted hash
+
+---
+
 ## [0.72.7] — 2026-04-14
 
 ### Changed
