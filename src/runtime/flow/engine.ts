@@ -172,7 +172,7 @@ async function runStep(
   if (!stepRun) return;
 
   // 1. Collect SITREPs from dependency steps
-  const depSitreps = collectDepSitreps(ctx.db, runId, stepDef.dependsOn);
+  const depSitreps = _collectDepSitreps(ctx.db, runId, stepDef.dependsOn);
 
   // 2. Build briefing
   const briefingText = buildBriefing(ctx.db, {
@@ -221,13 +221,21 @@ async function runStep(
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Collect SITREPs from completed dependency steps. */
-function collectDepSitreps(
+/**
+ * Collect SITREPs from completed dependency steps.
+ *
+ * Exported for unit testing — the internal `_` prefix marks it as not
+ * part of the public flow engine API. Root steps may omit `dependsOn`
+ * entirely in the stored JSON (Zod schema makes it optional), so this
+ * function MUST treat `undefined` as equivalent to `[]`.
+ */
+export function _collectDepSitreps(
   db: Database.Database,
   runId: number,
-  dependsOn: string[],
+  dependsOn: string[] | undefined,
 ): Array<{ stepId: string; sitrep: SitrepResult }> {
   const result: Array<{ stepId: string; sitrep: SitrepResult }> = [];
+  if (!dependsOn) return result;
   for (const depId of dependsOn) {
     const depStep = getStepRun(db, runId, depId);
     if (depStep?.sitrep_json) {

@@ -15,7 +15,12 @@ export interface FlowStepDef {
   id: string;
   agentId: string;
   prompt: string;
-  dependsOn: string[];
+  /**
+   * Other step ids this step waits on. Optional — root steps omit this field
+   * entirely in the stored JSON (matches the Zod schema in the flow creation
+   * tools and routes). Callers MUST treat `undefined` as equivalent to `[]`.
+   */
+  dependsOn?: string[];
   timeoutMs?: number;
   retries?: number;
   briefing?: {
