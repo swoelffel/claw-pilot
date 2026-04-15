@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.72.11] — 2026-04-15
+
+### Fixed
+- **Assistant text parts now split around tool calls in the timeline** — `StreamingState.textPartId` was never reset between Vercel AI SDK steps, so when the LLM produced text, then a tool call (question, A2A delegation), then more text in the next step, the pre- and post-tool-call text were appended to the **same** `text` part (sort_order 0), while the `tool_call` part was persisted in between with a higher sort_order. Timeline rendered as one merged text blob with the question/delegation card visually pushed after it. Reset `textPartId` + `accumulatedText` in `handleToolCallChunk` so the next text-delta creates a fresh part, correctly interleaved after the tool_call.
+
+---
+
 ## [0.72.10] — 2026-04-15
 
 ### Fixed
