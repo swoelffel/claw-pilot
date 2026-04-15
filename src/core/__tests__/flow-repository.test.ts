@@ -399,6 +399,32 @@ describe("getReadySteps", () => {
     expect(ready).toHaveLength(1);
     expect(ready[0]!.step_id).toBe("right");
   });
+
+  // Regression: agents creating flows via cp_create_flow may omit dependsOn
+  // on root steps (Zod schema marks it optional). Engine must treat undefined
+  // as []. Before the fix, this produced "dependsOn is not iterable".
+  it("treats missing dependsOn as empty array", () => {
+    const stepsJson = JSON.stringify([
+      { id: "root", agentId: "agent-1", prompt: "Root" }, // no dependsOn
+      { id: "child", agentId: "agent-2", prompt: "Child", dependsOn: ["root"] },
+    ]);
+    const flow = createFlowDefinition(db, {
+      instanceSlug: "inst-1",
+      name: "No depsOn",
+      stepsJson,
+    });
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "inst-1",
+      triggerType: "manual",
+    });
+    createStepRun(db, { runId: run.id, stepId: "root", agentId: "agent-1" });
+    createStepRun(db, { runId: run.id, stepId: "child", agentId: "agent-2" });
+
+    const ready = getReadySteps(db, run.id, stepsJson);
+    expect(ready).toHaveLength(1);
+    expect(ready[0]!.step_id).toBe("root");
+  });
 });
 
 describe("allStepsTerminal", () => {
