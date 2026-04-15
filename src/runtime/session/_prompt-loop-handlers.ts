@@ -154,6 +154,15 @@ export function handleToolCallChunk(
 ): void {
   const { db, bus, sessionId, messageId, state } = ctx;
   finalizeReasoning(db, state);
+  // Reset text accumulation so any text in the next SDK step creates a fresh
+  // `text` part, correctly ordered AFTER this tool_call. Without this, text
+  // streamed before and after a question/A2A tool call gets appended to the
+  // same pre-tool-call part (sort_order 0), producing a single concatenated
+  // blob in the timeline with the tool_call rendered visually "after" it.
+  if (state.textPartId) {
+    state.textPartId = undefined;
+    state.accumulatedText = "";
+  }
   state.stepCount++;
   createPart(db, {
     messageId,
