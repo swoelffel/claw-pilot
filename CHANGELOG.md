@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.72.13] — 2026-04-15
+
+### Fixed
+- **Flow engine: root steps without `dependsOn` no longer crash the DAG** — agents creating flows via `cp_create_flow` can legitimately omit `dependsOn` on root steps (the Zod schema marks it optional). But `FlowStepDef.dependsOn` was typed as required in `src/runtime/flow/types.ts`, and `engine.ts::collectDepSitreps` iterated it directly, throwing "dependsOn is not iterable" on the first step. Observed on MAC: the web-maintenance "Daily Web Maintenance" flow deadlocked on its first run because the `analyse` step crashed with no `dependsOn` field, leaving 3 downstream steps pending. `getReadySteps` already handled this correctly; only the engine's dep collection was missing the guard. Made `dependsOn` optional in the type and added a `?? []` guard before iteration. 5 new regression tests cover the omitted-field case in `getReadySteps` and `_collectDepSitreps`.
+
+---
+
 ## [0.72.12] — 2026-04-15
 
 ### Fixed
