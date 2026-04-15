@@ -1471,3 +1471,130 @@ describe("runPromptLoop — watchdog timeout", () => {
     expect(timeoutHandler).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Text part splitting around tool calls (regression test)
+//
+// Regression fix: handleToolCallChunk must reset state.textPartId so that text
+// streamed in the next SDK step creates a NEW text part rather than being
+// appended to the pre-tool-call part. Without this reset, pre- and post-tool
+// text end up concatenated in sort_order 0, and the tool_call part (question
+// card, A2A delegation…) appears visually after the merged blob.
+// ---------------------------------------------------------------------------
+
+describe("runPromptLoop — text parts split around tool calls", () => {
+  /** Fake tool that returns a fixed output — sufficient to let the SDK advance. */
+  function makeEchoTool(id: string): Tool.Info {
+    return {
+      id,
+      init: async () => ({
+        description: `Echo tool ${id}`,
+        parameters: z.object({ q: z.string() }),
+        execute: async () => ({ title: id, output: "answered", truncated: false }),
+      }),
+    };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const finishChunk = {
+    type: "finish" as const,
+    finishReason: { unified: "stop", raw: "stop" } as any,
+    usage: {
+      inputTokens: { total: 5, noCache: undefined, cacheRead: undefined, cacheWrite: undefined },
+      outputTokens: { total: 2, text: undefined, reasoning: undefined },
+    },
+  };
+
+  /**
+   * Three-step mock:
+   *   step 0: text "before" + tool-call "echo"
+   *   step 1 (after tool-result): text "after"
+   */
+  function textToolTextModel(): MockLanguageModelV3 {
+    let callCount = 0;
+    return new MockLanguageModelV3({
+      doStream: async () => {
+        const step = callCount++;
+        if (step === 0) {
+          return {
+            stream: simulateReadableStream({
+              chunks: [
+                { type: "stream-start", warnings: [] },
+                { type: "text-start", id: "t0" },
+                { type: "text-delta", id: "t0", delta: "before" },
+                { type: "text-end", id: "t0" },
+                {
+                  type: "tool-call",
+                  toolCallId: "call-0",
+                  toolName: "echo",
+                  input: JSON.stringify({ q: "x" }),
+                },
+                finishChunk,
+              ],
+              initialDelayInMs: 0,
+              chunkDelayInMs: 0,
+            }),
+            rawCall: { rawPrompt: null, rawSettings: {} },
+          };
+        }
+        // Continuation after tool-result
+        return {
+          stream: simulateReadableStream({
+            chunks: [
+              { type: "stream-start", warnings: [] },
+              { type: "text-start", id: "t1" },
+              { type: "text-delta", id: "t1", delta: "after" },
+              { type: "text-end", id: "t1" },
+              finishChunk,
+            ],
+            initialDelayInMs: 0,
+            chunkDelayInMs: 0,
+          }),
+          rawCall: { rawPrompt: null, rawSettings: {} },
+        };
+      },
+    });
+  }
+
+  it("creates separate text parts before and after a tool call", async () => {
+    vi.mocked(getTools).mockResolvedValueOnce([makeEchoTool("echo")]);
+
+    const session = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
+    const model = textToolTextModel();
+
+    await runPromptLoop({
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      sessionId: session.id,
+      userText: "go",
+      agentConfig: makeAgentConfig({ maxSteps: 5 }),
+      resolvedModel: makeResolvedModel(model),
+      workDir: undefined,
+    });
+
+    // The assistant message is the last message in the session.
+    const messages = listMessages(db, session.id);
+    const assistant = messages.filter((m) => m.role === "assistant").at(-1);
+    expect(assistant).toBeDefined();
+
+    const parts = listParts(db, assistant!.id);
+    const typed = parts.map((p) => ({
+      type: p.type,
+      content: p.content,
+      sortOrder: p.sortOrder,
+    }));
+
+    // Expect: text("before") → tool_call → text("after"), each with increasing sort_order.
+    const textParts = typed.filter((p) => p.type === "text");
+    const toolParts = typed.filter((p) => p.type === "tool_call");
+
+    expect(textParts).toHaveLength(2);
+    expect(toolParts).toHaveLength(1);
+    expect(textParts[0]!.content).toBe("before");
+    expect(textParts[1]!.content).toBe("after");
+
+    // Ordering: pre-text < tool_call < post-text
+    expect(textParts[0]!.sortOrder).toBeLessThan(toolParts[0]!.sortOrder);
+    expect(toolParts[0]!.sortOrder).toBeLessThan(textParts[1]!.sortOrder);
+  });
+});
