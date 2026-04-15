@@ -6,6 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.73.0] — 2026-04-15
+
+### Added
+- **Flow engine: outcome-driven control flow** — sitrep `outcome` now drives the DAG instead of being decorative metadata. When a step completes with `outcome=failure` / `outcome=partial` (or with a malformed/missing sitrep), every dependent step is eagerly marked `skipped` with an explanatory error message, unless the step opts in via the new `continueOnFailure: true` flag (typical for `notify` / cleanup steps that should run no matter what). The overall flow run is now marked `failed` whenever any step did not finish with `outcome=success`, instead of falsely reporting `completed` as long as no JS exception was thrown. Root cause: web-maintenance run #2 observed on MAC was marked `completed` despite `write-content` returning `outcome=partial` with empty summary, `open-pr` returning `outcome=failure`, and no PR actually being created.
+- `FlowStepDef.continueOnFailure?: boolean` — opt-in escape hatch for steps that should run despite upstream non-success. Default `false`.
+- `hasUnsuccessfulSteps(runId)` repository helper — counts completed steps whose sitrep outcome is not `success` (or is missing / malformed).
+- `propagateSkipDownstream()` engine helper — recursively marks dependent pending steps as `skipped`, respecting `continueOnFailure` to stop propagation on opt-in boundaries.
+- Comprehensive test coverage: 6 new tests for `propagateSkipDownstream`, 5 for `hasUnsuccessfulSteps`, 3 for `getReadySteps` with `continueOnFailure`.
+
+### Changed
+- `getReadySteps()` — a step with `continueOnFailure: true` is now considered ready when its dependencies are in any terminal state (`completed`, `failed`, or `skipped`). Regular steps still require every dependency to be `completed` with `outcome=success` (the engine guarantees this invariant by skipping dependents eagerly).
+- Final flow run status aggregation — `failed` if `hasFailedSteps() || hasUnsuccessfulSteps()`, `completed` otherwise.
+
+---
+
 ## [0.72.13] — 2026-04-15
 
 ### Fixed

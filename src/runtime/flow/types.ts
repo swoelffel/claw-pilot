@@ -23,6 +23,17 @@ export interface FlowStepDef {
   dependsOn?: string[];
   timeoutMs?: number;
   retries?: number;
+  /**
+   * When true, this step runs even if its upstream dependencies did not
+   * finish with `outcome: "success"` (either the sitrep outcome was
+   * failure/partial, or the dependency step itself threw an exception).
+   * Default: false — any non-success upstream causes this step to be
+   * marked `skipped` without running.
+   *
+   * Typical use case: a `notify` / cleanup step that should execute
+   * whatever happened, so the user gets a report of the failure.
+   */
+  continueOnFailure?: boolean;
   briefing?: {
     includeLastN?: number;
     extraContext?: string;

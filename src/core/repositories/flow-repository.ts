@@ -4,6 +4,7 @@
 // step execution records, and DAG-aware queries.
 
 import type Database from "better-sqlite3";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -356,16 +357,27 @@ export function getStepRun(
 // ---------------------------------------------------------------------------
 
 /**
- * Get steps that are pending and whose dependencies are all completed.
- * `stepsJson` is parsed to extract dependsOn edges; only steps whose
- * dependencies are all in "completed" status are returned.
+ * Get steps that are pending and whose dependencies are all in a terminal
+ * state suitable for the step to run.
+ *
+ * For a regular step: every dependency must be `completed` (engine ensures
+ * that sitrep outcome=success, because non-success upstreams eagerly mark
+ * dependents as `skipped`).
+ *
+ * For a step with `continueOnFailure: true`: dependencies may be in any
+ * terminal state (`completed`, `failed`, `skipped`). This lets trailing
+ * `notify` / cleanup steps run whatever happened upstream.
  */
 export function getReadySteps(
   db: Database.Database,
   runId: number,
   stepsJson: string,
 ): FlowStepRunRow[] {
-  const stepDefs = JSON.parse(stepsJson) as Array<{ id: string; dependsOn?: string[] }>;
+  const stepDefs = JSON.parse(stepsJson) as Array<{
+    id: string;
+    dependsOn?: string[];
+    continueOnFailure?: boolean;
+  }>;
   const stepRuns = getStepRunsForRun(db, runId);
 
   const statusMap = new Map<string, FlowStepStatus>();
@@ -373,12 +385,19 @@ export function getReadySteps(
     statusMap.set(sr.step_id, sr.status);
   }
 
+  const terminalStatuses: FlowStepStatus[] = ["completed", "failed", "skipped"];
+
   const readyIds: string[] = [];
   for (const def of stepDefs) {
     if (statusMap.get(def.id) !== "pending") continue;
     const deps = def.dependsOn ?? [];
-    const allDepsCompleted = deps.every((d) => statusMap.get(d) === "completed");
-    if (allDepsCompleted) readyIds.push(def.id);
+    const allDepsSatisfied = def.continueOnFailure
+      ? deps.every((d) => {
+          const s = statusMap.get(d);
+          return s !== undefined && terminalStatuses.includes(s);
+        })
+      : deps.every((d) => statusMap.get(d) === "completed");
+    if (allDepsSatisfied) readyIds.push(def.id);
   }
 
   return stepRuns.filter((sr) => readyIds.includes(sr.step_id));
@@ -401,4 +420,37 @@ export function hasFailedSteps(db: Database.Database, runId: number): boolean {
     .prepare("SELECT COUNT(*) AS cnt FROM rt_flow_step_runs WHERE run_id = ? AND status = 'failed'")
     .get(runId) as { cnt: number };
   return row.cnt > 0;
+}
+
+/**
+ * Check whether any completed step has a sitrep outcome other than "success"
+ * (i.e., `failure` or `partial`). A completed step whose sitrep is missing or
+ * malformed is also treated as unsuccessful, since the engine requires a
+ * parseable success marker to consider a step truly successful.
+ *
+ * This complements `hasFailedSteps()` (which only covers thrown exceptions)
+ * to give the engine a complete picture when computing the final run status.
+ */
+export function hasUnsuccessfulSteps(db: Database.Database, runId: number): boolean {
+  const rows = db
+    .prepare(
+      "SELECT step_id, sitrep_json FROM rt_flow_step_runs WHERE run_id = ? AND status = 'completed'",
+    )
+    .all(runId) as Array<{ step_id: string; sitrep_json: string | null }>;
+  for (const row of rows) {
+    if (!row.sitrep_json) return true;
+    let outcome: string | undefined;
+    try {
+      outcome = (JSON.parse(row.sitrep_json) as { outcome?: string }).outcome;
+    } catch (err) {
+      logger.debug("flow_sitrep_parse_failed_in_aggregation", {
+        runId,
+        stepId: row.step_id,
+        error: String(err),
+      });
+      return true;
+    }
+    if (outcome !== "success") return true;
+  }
+  return false;
 }

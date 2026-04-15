@@ -21,6 +21,7 @@ import {
   getReadySteps,
   allStepsTerminal,
   hasFailedSteps,
+  hasUnsuccessfulSteps,
 } from "../repositories/flow-repository.js";
 
 let tmpDir: string;
@@ -499,5 +500,204 @@ describe("hasFailedSteps", () => {
     updateStepRun(db, s1.id, { status: "failed", error: "Boom" });
 
     expect(hasFailedSteps(db, run.id)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// hasUnsuccessfulSteps
+// ---------------------------------------------------------------------------
+
+describe("hasUnsuccessfulSteps", () => {
+  it("returns false when every completed step has outcome=success", () => {
+    const flow = createFlowDefinition(db, {
+      instanceSlug: "inst-1",
+      name: "Test",
+      stepsJson: STEPS_LINEAR,
+    });
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "inst-1",
+      triggerType: "manual",
+    });
+    const s1 = createStepRun(db, { runId: run.id, stepId: "a", agentId: "agent-1" });
+    updateStepRun(db, s1.id, {
+      status: "completed",
+      sitrepJson: JSON.stringify({ outcome: "success", summary: "ok", keyFindings: [] }),
+    });
+
+    expect(hasUnsuccessfulSteps(db, run.id)).toBe(false);
+  });
+
+  // Regression: web-maintenance run #2 — write-content completed with
+  // outcome=partial, but hasFailedSteps (status='failed') returned false,
+  // so the run was marked completed despite a functional failure.
+  it("returns true when a completed step has outcome=partial", () => {
+    const flow = createFlowDefinition(db, {
+      instanceSlug: "inst-1",
+      name: "Test",
+      stepsJson: STEPS_LINEAR,
+    });
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "inst-1",
+      triggerType: "manual",
+    });
+    const s1 = createStepRun(db, { runId: run.id, stepId: "a", agentId: "agent-1" });
+    updateStepRun(db, s1.id, {
+      status: "completed",
+      sitrepJson: JSON.stringify({ outcome: "partial", summary: "", keyFindings: [] }),
+    });
+
+    expect(hasUnsuccessfulSteps(db, run.id)).toBe(true);
+  });
+
+  it("returns true when a completed step has outcome=failure", () => {
+    const flow = createFlowDefinition(db, {
+      instanceSlug: "inst-1",
+      name: "Test",
+      stepsJson: STEPS_LINEAR,
+    });
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "inst-1",
+      triggerType: "manual",
+    });
+    const s1 = createStepRun(db, { runId: run.id, stepId: "a", agentId: "agent-1" });
+    updateStepRun(db, s1.id, {
+      status: "completed",
+      sitrepJson: JSON.stringify({ outcome: "failure", summary: "nope", keyFindings: [] }),
+    });
+
+    expect(hasUnsuccessfulSteps(db, run.id)).toBe(true);
+  });
+
+  it("returns true when a completed step has no sitrep", () => {
+    // Defensive: a completed step without a parseable success marker
+    // cannot be claimed successful — the engine requires explicit confirmation.
+    const flow = createFlowDefinition(db, {
+      instanceSlug: "inst-1",
+      name: "Test",
+      stepsJson: STEPS_LINEAR,
+    });
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "inst-1",
+      triggerType: "manual",
+    });
+    const s1 = createStepRun(db, { runId: run.id, stepId: "a", agentId: "agent-1" });
+    updateStepRun(db, s1.id, { status: "completed" });
+
+    expect(hasUnsuccessfulSteps(db, run.id)).toBe(true);
+  });
+
+  it("ignores skipped and failed steps (those are covered by hasFailedSteps)", () => {
+    const flow = createFlowDefinition(db, {
+      instanceSlug: "inst-1",
+      name: "Test",
+      stepsJson: JSON.stringify([
+        { id: "a", agentId: "ag", prompt: "A" },
+        { id: "b", agentId: "ag", prompt: "B", dependsOn: ["a"] },
+      ]),
+    });
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "inst-1",
+      triggerType: "manual",
+    });
+    const sA = createStepRun(db, { runId: run.id, stepId: "a", agentId: "ag" });
+    const sB = createStepRun(db, { runId: run.id, stepId: "b", agentId: "ag" });
+    updateStepRun(db, sA.id, { status: "failed", error: "boom" });
+    updateStepRun(db, sB.id, { status: "skipped" });
+
+    // Neither step is "completed" so hasUnsuccessfulSteps must be false —
+    // the "failed" status is already covered by hasFailedSteps.
+    expect(hasUnsuccessfulSteps(db, run.id)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getReadySteps — continueOnFailure
+// ---------------------------------------------------------------------------
+
+describe("getReadySteps with continueOnFailure", () => {
+  it("does NOT mark a step ready when an upstream failed and continueOnFailure is absent", () => {
+    const stepsJson = JSON.stringify([
+      { id: "a", agentId: "ag", prompt: "A" },
+      { id: "b", agentId: "ag", prompt: "B", dependsOn: ["a"] },
+    ]);
+    const flow = createFlowDefinition(db, {
+      instanceSlug: "inst-1",
+      name: "Test",
+      stepsJson,
+    });
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "inst-1",
+      triggerType: "manual",
+    });
+    const sA = createStepRun(db, { runId: run.id, stepId: "a", agentId: "ag" });
+    createStepRun(db, { runId: run.id, stepId: "b", agentId: "ag" });
+    updateStepRun(db, sA.id, { status: "failed", error: "boom" });
+
+    const ready = getReadySteps(db, run.id, stepsJson);
+    expect(ready.map((s) => s.step_id)).not.toContain("b");
+  });
+
+  it("marks a step ready with continueOnFailure=true even when an upstream failed", () => {
+    const stepsJson = JSON.stringify([
+      { id: "a", agentId: "ag", prompt: "A" },
+      {
+        id: "notify",
+        agentId: "ag",
+        prompt: "Notify",
+        dependsOn: ["a"],
+        continueOnFailure: true,
+      },
+    ]);
+    const flow = createFlowDefinition(db, {
+      instanceSlug: "inst-1",
+      name: "Test",
+      stepsJson,
+    });
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "inst-1",
+      triggerType: "manual",
+    });
+    const sA = createStepRun(db, { runId: run.id, stepId: "a", agentId: "ag" });
+    createStepRun(db, { runId: run.id, stepId: "notify", agentId: "ag" });
+    updateStepRun(db, sA.id, { status: "failed", error: "boom" });
+
+    const ready = getReadySteps(db, run.id, stepsJson);
+    expect(ready.map((s) => s.step_id)).toContain("notify");
+  });
+
+  it("marks a step ready with continueOnFailure=true when an upstream was skipped", () => {
+    const stepsJson = JSON.stringify([
+      { id: "a", agentId: "ag", prompt: "A" },
+      {
+        id: "notify",
+        agentId: "ag",
+        prompt: "Notify",
+        dependsOn: ["a"],
+        continueOnFailure: true,
+      },
+    ]);
+    const flow = createFlowDefinition(db, {
+      instanceSlug: "inst-1",
+      name: "Test",
+      stepsJson,
+    });
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "inst-1",
+      triggerType: "manual",
+    });
+    const sA = createStepRun(db, { runId: run.id, stepId: "a", agentId: "ag" });
+    createStepRun(db, { runId: run.id, stepId: "notify", agentId: "ag" });
+    updateStepRun(db, sA.id, { status: "skipped" });
+
+    const ready = getReadySteps(db, run.id, stepsJson);
+    expect(ready.map((s) => s.step_id)).toContain("notify");
   });
 });
