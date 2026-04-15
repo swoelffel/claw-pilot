@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.72.12] — 2026-04-15
+
+### Fixed
+- **CI: security audit steps no longer block the pipeline** — npm retired its legacy audit endpoints (`/npm/v1/security/audits/quick`, `/npm/v1/security/audits`) returning 410 Gone, causing the Quality job to fail before any other check ran. Marked both `pnpm audit` steps as `continue-on-error: true` so audit output remains visible in CI logs without blocking format, typecheck, lint, or complexity checks.
+
+---
+
 ## [0.72.11] — 2026-04-15
 
 ### Fixed
