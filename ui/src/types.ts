@@ -188,10 +188,40 @@ export function getArchetypeFromLink(link: AgentLink): string {
 
 export interface AgentFileContent {
   filename: string;
+  /** Workspace-relative path (same as filename — kept separate for clarity). */
+  path?: string;
   content: string;
   content_hash: string;
   updated_at: string;
   editable: boolean;
+  /**
+   * Whether this file is part of the system prompt discovery set
+   * (see `resolveDiscoveryFiles` in `src/runtime/session/system-prompt.ts`).
+   * User-created files outside this set are still editable but do not
+   * automatically flow into the agent's prompt.
+   */
+  in_system_prompt?: boolean;
+}
+
+/** Single node in a workspace file tree returned by `GET /files`. */
+export type AgentFileTreeNode =
+  | {
+      type: "file";
+      path: string;
+      name: string;
+      size: number;
+      content_hash: string;
+      updated_at: string;
+    }
+  | {
+      type: "dir";
+      path: string;
+      name: string;
+      children: AgentFileTreeNode[];
+    };
+
+export interface AgentFileTreeResponse {
+  tree: AgentFileTreeNode[];
 }
 
 export interface BuilderData {

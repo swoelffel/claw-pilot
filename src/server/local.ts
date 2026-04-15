@@ -124,6 +124,14 @@ export class LocalConnection implements ServerConnection {
     return fs.readdir(dirPath);
   }
 
+  async readdirWithTypes(dirPath: string): Promise<Array<{ name: string; isDirectory: boolean }>> {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    return entries.map((entry) => ({
+      name: entry.name,
+      isDirectory: entry.isDirectory(),
+    }));
+  }
+
   async copyFile(src: string, dest: string): Promise<void> {
     await fs.copyFile(src, dest);
   }

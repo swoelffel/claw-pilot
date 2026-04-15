@@ -6,6 +6,7 @@ import type {
   SyncResult,
   BuilderData,
   AgentFileContent,
+  AgentFileTreeResponse,
   AgentLink,
   Blueprint,
   BlueprintBuilderData,
@@ -152,26 +153,54 @@ export async function fetchBuilderData(slug: string): Promise<BuilderData> {
   return apiFetch<BuilderData>(`/instances/${slug}/agents/builder`);
 }
 
+/** Encode a workspace-relative path for use in a URL (per-segment encoding). */
+function encodeWorkspacePath(relPath: string): string {
+  return relPath
+    .split("/")
+    .map((s) => encodeURIComponent(s))
+    .join("/");
+}
+
+export async function fetchAgentFileTree(
+  slug: string,
+  agentId: string,
+): Promise<AgentFileTreeResponse> {
+  return apiFetch<AgentFileTreeResponse>(`/instances/${slug}/agents/${agentId}/files`);
+}
+
 export async function fetchAgentFile(
   slug: string,
   agentId: string,
-  filename: string,
+  relPath: string,
 ): Promise<AgentFileContent> {
-  return apiFetch<AgentFileContent>(`/instances/${slug}/agents/${agentId}/files/${filename}`);
+  return apiFetch<AgentFileContent>(
+    `/instances/${slug}/agents/${agentId}/files/${encodeWorkspacePath(relPath)}`,
+  );
 }
 
 export async function updateAgentFile(
   instanceSlug: string,
   agentId: string,
-  filename: string,
+  relPath: string,
   content: string,
 ): Promise<AgentFileContent> {
   return apiFetch<AgentFileContent>(
-    `/instances/${instanceSlug}/agents/${agentId}/files/${filename}`,
+    `/instances/${instanceSlug}/agents/${agentId}/files/${encodeWorkspacePath(relPath)}`,
     {
       method: "PUT",
       body: JSON.stringify({ content }),
     },
+  );
+}
+
+export async function deleteAgentFile(
+  instanceSlug: string,
+  agentId: string,
+  relPath: string,
+): Promise<void> {
+  await apiFetch(
+    `/instances/${instanceSlug}/agents/${agentId}/files/${encodeWorkspacePath(relPath)}`,
+    { method: "DELETE" },
   );
 }
 
