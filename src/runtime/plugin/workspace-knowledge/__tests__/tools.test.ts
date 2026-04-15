@@ -1,0 +1,175 @@
+// Smoke test for workspace-knowledge plugin (ws_list_files + ws_search_files).
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { initDatabase } from "../../../../db/schema.js";
+import { createWorkspaceKnowledgeTools } from "../tools.js";
+import type Database from "better-sqlite3";
+import type { Tool } from "../../../tool/tool.js";
+
+const INSTANCE_SLUG = "test-instance";
+const AGENT_ID = "pilot";
+
+function makeCtx(): Tool.Context {
+  return { agentId: AGENT_ID } as Tool.Context;
+}
+
+async function execTool(
+  tools: Tool.Info[],
+  id: string,
+  args: Record<string, unknown>,
+): Promise<Tool.Result> {
+  const tool = tools.find((t) => t.id === id);
+  if (!tool) throw new Error(`tool ${id} not found`);
+  const def = await tool.init();
+  return def.execute(args, makeCtx());
+}
+
+describe("workspace-knowledge plugin", () => {
+  let db: Database.Database;
+  let agentDbId: number;
+
+  beforeAll(() => {
+    db = initDatabase(":memory:");
+
+    // Seed local server, instance and agent
+    const serverRes = db
+      .prepare("INSERT INTO servers (hostname, openclaw_home) VALUES (?, ?)")
+      .run("localhost", "/tmp/test");
+    const serverId = serverRes.lastInsertRowid as number;
+
+    const instanceRes = db
+      .prepare(
+        `INSERT INTO instances (server_id, slug, port, state, config_path, state_dir, systemd_unit)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        serverId,
+        INSTANCE_SLUG,
+        19001,
+        "stopped",
+        "/tmp/config",
+        "/tmp/state",
+        "claw-test.service",
+      );
+    const instanceId = instanceRes.lastInsertRowid as number;
+
+    const agentRes = db
+      .prepare(
+        `INSERT INTO agents (instance_id, agent_id, name, model, is_default, workspace_path)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(instanceId, AGENT_ID, "Pilot", "claude-opus-4", 1, "/tmp/workspace");
+    agentDbId = agentRes.lastInsertRowid as number;
+
+    // Seed workspace files: mix of excluded (SOUL, memory/) and visible ones
+    const upsert = db.prepare(
+      `INSERT INTO agent_files (agent_id, filename, content, content_hash, updated_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    );
+    upsert.run(agentDbId, "SOUL.md", "# Soul\nidentity", "h1", "2026-01-01T00:00:00Z");
+    upsert.run(agentDbId, "AGENTS.md", "# Agents\nprotocol", "h2", "2026-01-01T00:00:00Z");
+    upsert.run(
+      agentDbId,
+      "memory/facts.md",
+      "- memory fact about llama",
+      "h3",
+      "2026-01-01T00:00:00Z",
+    );
+    upsert.run(
+      agentDbId,
+      "notes.md",
+      "# Brainstorming ClawPort\nIdeas for future evolution.\nLlama mention here.",
+      "h4",
+      "2026-01-02T00:00:00Z",
+    );
+    upsert.run(
+      agentDbId,
+      "projects/refactor.md",
+      "# Plan: refactor tools\nSplit large modules.",
+      "h5",
+      "2026-01-02T00:00:00Z",
+    );
+    upsert.run(
+      agentDbId,
+      "drafts/email.md",
+      "description: Draft partnership email\n\nHello,\nThe llama approach ...",
+      "h6",
+      "2026-01-02T00:00:00Z",
+    );
+  });
+
+  afterAll(() => {
+    db.close();
+  });
+
+  it("creates exactly two tools with ws_ prefix", () => {
+    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+    expect(tools).toHaveLength(2);
+    const ids = tools.map((t) => t.id).sort();
+    expect(ids).toEqual(["ws_list_files", "ws_search_files"]);
+  });
+
+  it("ws_list_files excludes identity files and memory/* and includes user files", async () => {
+    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+    const result = await execTool(tools, "ws_list_files", {});
+    expect(result.output).not.toContain("SOUL.md");
+    expect(result.output).not.toContain("AGENTS.md");
+    expect(result.output).not.toContain("memory/facts.md");
+    expect(result.output).toContain("notes.md");
+    expect(result.output).toContain("projects/refactor.md");
+    expect(result.output).toContain("drafts/email.md");
+  });
+
+  it("ws_list_files extracts H1 title", async () => {
+    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+    const result = await execTool(tools, "ws_list_files", {});
+    expect(result.output).toContain('"Brainstorming ClawPort"');
+    expect(result.output).toContain('"Plan: refactor tools"');
+  });
+
+  it("ws_list_files extracts frontmatter description as title", async () => {
+    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+    const result = await execTool(tools, "ws_list_files", {});
+    expect(result.output).toContain('"Draft partnership email"');
+  });
+
+  it("ws_list_files scopes to subdirectory via dir arg", async () => {
+    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+    const result = await execTool(tools, "ws_list_files", { dir: "projects" });
+    expect(result.output).toContain("projects/refactor.md");
+    expect(result.output).not.toContain("notes.md");
+    expect(result.output).not.toContain("drafts/email.md");
+  });
+
+  it("ws_list_files returns message when agent not found in registry", async () => {
+    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+    const tool = tools.find((t) => t.id === "ws_list_files")!;
+    const def = await tool.init();
+    const result = await def.execute({}, { agentId: "nonexistent-agent" } as Tool.Context);
+    expect(result.output).toContain("Error");
+  });
+
+  it("ws_search_files finds matches across user files only", async () => {
+    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+    const result = await execTool(tools, "ws_search_files", { query: "llama" });
+    // Should match notes.md and drafts/email.md (both mention llama),
+    // but NOT memory/facts.md (excluded).
+    expect(result.output).toContain("notes.md");
+    expect(result.output).toContain("drafts/email.md");
+    expect(result.output).not.toContain("memory/facts.md");
+    // Highlighted excerpt must contain the match markers
+    expect(result.output).toMatch(/>>>llama<<</i);
+  });
+
+  it("ws_search_files returns no-matches message on miss", async () => {
+    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+    const result = await execTool(tools, "ws_search_files", { query: "zzzNotPresent" });
+    expect(result.output).toContain("No matches");
+  });
+
+  it("ws_search_files returns readable error on invalid FTS5 syntax", async () => {
+    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+    // Unbalanced quote triggers SQLite FTS5 syntax error
+    const result = await execTool(tools, "ws_search_files", { query: '"unbalanced' });
+    expect(result.output.toLowerCase()).toContain("search failed");
+  });
+});
