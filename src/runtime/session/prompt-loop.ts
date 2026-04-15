@@ -12,7 +12,7 @@
  * - _prompt-loop-handlers.ts — chunk handlers, watchdog, system prompt cache, auto-compaction
  */
 
-import { streamText, stepCountIs } from "ai";
+import { streamText, stepCountIs, hasToolCall } from "ai";
 import type Database from "better-sqlite3";
 import type { SessionId, InstanceSlug } from "../types.js";
 import type { RuntimeAgentConfig } from "../config/index.js";
@@ -95,6 +95,17 @@ export interface PromptLoopInput {
    * the sub-session via `subSessionId`.
    */
   userMetadata?: string;
+  /**
+   * Extra tools injected into the tool set at call time, beyond what the
+   * agent's `toolProfile` normally permits.
+   *
+   * This is the only way for callers to add tools that are NOT in `BUILTIN_TOOLS`
+   * (e.g. the `complete_step` tool created by the flow engine per step run).
+   * These tools are appended to the `Tool.Info[]` returned by `getToolsForAgent`
+   * and wired into the tool set with the same machinery as built-ins. They are
+   * invisible outside the caller that injects them — no global registration.
+   */
+  extraTools?: Tool.Info[];
 }
 
 export interface PromptLoopResult {
@@ -341,6 +352,14 @@ async function buildToolSetForLoop(
     agentKind: agentKindForTools,
   });
 
+  // Append caller-provided tools (e.g. the flow engine's `complete_step`).
+  // These are not part of `BUILTIN_TOOLS`, so they can only enter the tool
+  // set through this explicit injection — guaranteeing they stay scoped to
+  // the sessions their creator intends.
+  if (input.extraTools && input.extraTools.length > 0) {
+    toolInfos.push(...input.extraTools);
+  }
+
   const toolCtx: Tool.Context = {
     sessionId: input.sessionId,
     messageId: assistantMsgId,
@@ -452,13 +471,20 @@ async function executeStream(opts: ExecuteStreamInput): Promise<ExecuteStreamRes
     state: streamState,
   };
 
+  // When the caller injected a `complete_step` tool (flow engine), stop the
+  // loop as soon as the agent calls it — no point in consuming another step.
+  const hasCompleteStepTool = input.extraTools?.some((t) => t.id === "complete_step") ?? false;
+  const stopConditions = hasCompleteStepTool
+    ? [stepCountIs(agentConfig.maxSteps), hasToolCall("complete_step")]
+    : stepCountIs(agentConfig.maxSteps);
+
   const llmCallStart = Date.now();
   const streamResult = streamText({
     model: resolvedModel.languageModel,
     system: cachedSystem,
     messages: cachedMessages,
     tools: toolSet,
-    stopWhen: stepCountIs(agentConfig.maxSteps),
+    stopWhen: stopConditions,
     abortSignal: watchdog.fullAbort,
     ...(providerOptions !== undefined ? { providerOptions } : {}),
     onError: ({ error }) => {

@@ -16,6 +16,7 @@ import type { InboundMessage, OutboundMessage, InstanceSlug } from "../types.js"
 import type { RuntimeConfig } from "../config/index.js";
 import type { McpRegistry } from "../mcp/registry.js";
 import type { ProfileResolver } from "../profile/types.js";
+import type { Tool } from "../tool/tool.js";
 import {
   createSession,
   getSession,
@@ -67,6 +68,12 @@ export interface RouterInput {
   profileResolver?: ProfileResolver;
   /** Force use of an existing session (e.g. flow mission sessions) */
   sessionId?: string;
+  /**
+   * Extra tools injected into this specific route call, on top of what the
+   * agent's `toolProfile` normally permits. Used by the flow engine to inject
+   * `complete_step` per step run. Forwarded to `runPromptLoop`.
+   */
+  extraTools?: Tool.Info[];
 }
 
 export interface RouterResult {
@@ -173,6 +180,8 @@ export class ChannelRouter {
             // Inject model resolver for inter-agent calls (send_message/task)
             resolveTargetModel: (targetCfg) =>
               resolveModelForAgent(db, instanceSlug, targetCfg, config),
+            // Forward caller-provided extra tools (e.g. `complete_step` from the flow engine)
+            ...(input.extraTools !== undefined ? { extraTools: input.extraTools } : {}),
           }),
       });
 
