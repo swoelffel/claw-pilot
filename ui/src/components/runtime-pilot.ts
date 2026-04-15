@@ -678,6 +678,15 @@ export class RuntimePilot extends LitElement {
         break;
       }
 
+      // ── Question asked — reload so the question card renders immediately ─
+      // Fired when a question tool call suspends the prompt loop. Without this
+      // handler, subagent-initiated questions only appear after a manual F5.
+      case "question.asked": {
+        if (eventSessionId && eventSessionId !== this._activeSessionId) break;
+        void this._refreshMessages();
+        break;
+      }
+
       // ── System prompt real-time update ──────────────────────────────────
       case "session.system_prompt": {
         if (eventSessionId && eventSessionId !== this._activeSessionId) break;

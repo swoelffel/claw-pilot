@@ -461,6 +461,15 @@ export class HomeChat extends LitElement {
         break;
       }
 
+      // Question asked — reload so the question card renders immediately.
+      // Fired when a question tool call suspends the prompt loop. Without
+      // this handler, subagent-initiated questions only appear after a F5.
+      case "question.asked": {
+        if (eventSessionId && eventSessionId !== this._activeSessionId) break;
+        void this._refreshMessages();
+        break;
+      }
+
       default:
         // Ignore everything else (no event log, no context updates, no sub-agent merging)
         break;
