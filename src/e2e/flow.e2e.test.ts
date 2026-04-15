@@ -23,10 +23,12 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { startTestServer, type TestContext } from "./helpers/test-server.js";
 import { seedAdmin, seedLocalServer } from "./helpers/seed.js";
 import { NamedKeyRepository } from "../core/repositories/named-key-repository.js";
+import { deriveWebChatPort } from "../lib/platform.js";
 import type { Json } from "./helpers/types.js";
 
 const FLOW_SLUG = "flow-test-inst";
-const FLOW_PORT = 19165; // deriveWebChatPort("flow-test-inst")
+// Port depends on the OS username salt introduced in v0.72.8, so derive at runtime.
+const FLOW_PORT = deriveWebChatPort(FLOW_SLUG);
 
 describe("Flow: create instance → create agent → delete agent → delete instance", () => {
   let ctx: TestContext;
