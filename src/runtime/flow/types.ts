@@ -35,6 +35,16 @@ export interface FlowStepDef {
    */
   continueOnFailure?: boolean;
   briefing?: {
+    /**
+     * Number of recent messages to inject from the agent's permanent session
+     * as "standing context" in the mission briefing.
+     *
+     * Default: 0 (disabled for flow steps). Permanent session history
+     * accumulates SITREPs across runs and can contaminate future briefings
+     * with stale references to step names / agents that no longer exist.
+     * Opt-in explicitly (`> 0`) only when the agent genuinely needs
+     * institutional memory across runs (e.g., a continuity-tracking agent).
+     */
     includeLastN?: number;
     extraContext?: string;
   };
