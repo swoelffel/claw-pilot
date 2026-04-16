@@ -6,6 +6,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.73.5] — 2026-04-16
+
+### Added
+- **CRUD workspace file tree for agents** — The "Files" tab in the agent detail panel is now a full workspace file manager with a collapsible tree view. Users can see every file in an agent's workspace (including those created by the agent itself via its Write tool), create files at arbitrary relative paths (including subdirectories like `memory/`), and delete files. Backend uses recursive workspace scanning (`walkWorkspaceFiles`) replacing the hardcoded `DISCOVERABLE_FILES` loop; `agent_files.filename` now stores relative paths (e.g. `memory/facts.md`). New routes: `GET /files` (hierarchical tree), `GET/PUT/DELETE /files/*` (wildcard paths). Path validation (`validateWorkspaceRelativePath`) rejects traversal, absolute paths, reserved segments, and disallowed extensions (only `.md`, `.txt`, `.json`, `.yaml`, `.yml`, `.csv`, `.log` allowed). Blueprint agents retain the legacy flat-tabs UI.
+  - New UI components: `cp-agent-file-tree` (collapsible tree with per-directory "+" and per-file trash), `cp-new-file-dialog`, `cp-delete-file-dialog`.
+  - `ServerConnection.readdirWithTypes()` added for efficient recursive directory walking.
+- **Workspace knowledge plugin (`ws_list_files` + `ws_search_files`)** — New plugin `workspace-knowledge` registered for all instances gives every agent two tools to discover and search user-created workspace files on demand, with 0 permanent token cost in the system prompt.
+  - `ws_list_files(dir?)` — lists files outside the identity/memory whitelist with extracted titles (first H1 or frontmatter `description:`) and sizes (~22 tokens/file).
+  - `ws_search_files(query, dir?)` — FTS5 full-text search with BM25 ranking and snippet highlighting (~300 tokens/call for top-10 results).
+  - DB migration v36 adds `agent_files_fts` (content-backed FTS5 virtual table) with sync triggers on INSERT/UPDATE/DELETE.
+  - `AGENTS.md` template updated with a "Workspace files" section guiding agents on when to use these tools.
+
+### Changed
+- System prompt construction (`DISCOVERY_FILES_*` whitelists) is unchanged — workspace files outside the identity/memory set are accessible via the new tools but do not automatically enter the prompt.
+
+---
+
 ## [0.73.4] — 2026-04-16
 
 ### Added
