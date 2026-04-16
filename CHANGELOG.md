@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.73.4] — 2026-04-16
+
+### Added
+- **Configurable maxSteps per flow step (default 50, soft/hard cap with extension).** Flow step agents previously hit the global `maxSteps=20` cap before completing multi-tool missions (run #6: `site-maintainer` needed ~30 steps for clone → read × 6 → edit × 6 → git → PR → `complete_step`). Flow steps now default to 50 LLM steps (vs 20 for interactive sessions), configurable per step via `FlowStepDef.maxSteps` and the flow editor UI.
+  - **Soft cap + extension mechanism**: when the agent approaches `maxSteps`, a system reminder is injected offering two choices: call `complete_step` to finish, or call `request_step_extension` to get more steps. The extension tool mutates a shared state object that the `stopWhen` closure reads dynamically — no SDK restart needed. The hard cap is `softCap × 2` (capped at 200 absolute).
+  - **`request_step_extension` tool**: new factory tool injected alongside `complete_step` in flow step sessions only (NOT in `BUILTIN_TOOLS`). Takes `{ reason, additionalSteps }`, grants up to hard cap, denies if already at limit.
+  - **Flow editor UI**: new "Max steps" field in the Advanced panel, alongside Timeout and Retries. Defaults to 50, serialized only when non-default.
+
+### Changed
+- `PromptLoopInput` and `RouterInput` gained `maxSteps?: number` and `flowStepState?: FlowStepState` fields for the soft/hard cap mechanism.
+- Flow step system reminder is now flow-specific (mentions `complete_step` and `request_step_extension`) and appears 2 steps before the limit (instead of 1 for interactive sessions).
+
+---
+
 ## [0.73.3] — 2026-04-16
 
 ### Added

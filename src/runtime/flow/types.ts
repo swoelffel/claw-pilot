@@ -24,6 +24,17 @@ export interface FlowStepDef {
   timeoutMs?: number;
   retries?: number;
   /**
+   * Soft cap on the number of LLM steps the agent may consume for this step.
+   * Default when omitted: `FLOW_DEFAULT_MAX_STEPS` (50) — higher than the
+   * interactive session default (20) to accommodate multi-tool mission workflows
+   * (clone repo, read files, edit, commit, push, PR, complete_step).
+   *
+   * When the agent approaches this limit, a system reminder is injected
+   * giving it the choice to call `complete_step` or `request_step_extension`.
+   * Hard cap is `softCap × 2` (capped at 200).
+   */
+  maxSteps?: number;
+  /**
    * When true, this step runs even if its upstream dependencies did not
    * finish with `outcome: "success"` (either the sitrep outcome was
    * failure/partial, or the dependency step itself threw an exception).
