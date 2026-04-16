@@ -12,7 +12,8 @@
  * - _prompt-loop-handlers.ts — chunk handlers, watchdog, system prompt cache, auto-compaction
  */
 
-import { streamText, stepCountIs, hasToolCall } from "ai";
+import { streamText, stepCountIs, hasToolCall, InvalidToolInputError } from "ai";
+import type { ToolCallRepairFunction, ToolSet } from "ai";
 import type Database from "better-sqlite3";
 import type { SessionId, InstanceSlug } from "../types.js";
 import type { RuntimeAgentConfig } from "../config/index.js";
@@ -115,6 +116,81 @@ export interface PromptLoopResult {
   costUsd: number;
   steps: number;
 }
+
+// ---------------------------------------------------------------------------
+// Tool call repair
+// ---------------------------------------------------------------------------
+
+/**
+ * Auto-repair malformed tool call arguments by asking the LLM to fix them.
+ *
+ * When a model emits a tool call whose JSON arguments fail to parse (e.g.
+ * markdown bullets instead of a JSON array, missing quotes, trailing commas),
+ * the Vercel AI SDK calls this function before the step fails. We feed the
+ * malformed input + the error message back to the model as a user message so
+ * it can produce valid JSON on a retry step.
+ *
+ * This is global — it benefits every tool in every session type, not just
+ * flow steps. Typical saves: `complete_step` keyFindings as markdown bullets,
+ * `edit` with unescaped newlines in `new_string`, `bash` with multiline JSON.
+ */
+const repairToolCall: ToolCallRepairFunction<ToolSet> = async ({ toolCall, error }) => {
+  // Only attempt repair for invalid-input errors (not unknown tool names).
+  if (!InvalidToolInputError.isInstance(error)) return null;
+
+  // `toolCall.input` is the raw JSON string the model produced.
+  // Common failure mode (observed on MAC run #5): the model emits markdown
+  // bullets instead of a JSON array for list-valued fields like keyFindings.
+  // We attempt a lightweight local fix on the raw string. If the fixed
+  // string parses as valid JSON, we return it as the repaired tool call.
+  // If not, we return null so the SDK surfaces the error to the model on
+  // the next step, giving it a chance to self-correct.
+  try {
+    const raw = toolCall.input;
+    // Heuristic: find any field whose value is markdown bullets instead of
+    // a JSON array, and rewrap as ["item1", "item2", ...].
+    const patched = raw.replace(
+      /("[\w]+"\s*:\s*)\n((?:\s*[-*•]\s+.+\n?)+)/g,
+      (_match, prefix: string, bullets: string) => {
+        const items = bullets
+          .split("\n")
+          .filter((l) => /^\s*[-*•]\s+/.test(l))
+          .map((l) =>
+            l
+              .replace(/^\s*[-*•]\s+/, "")
+              .trim()
+              .replace(/\\/g, "\\\\")
+              .replace(/"/g, '\\"'),
+          )
+          .filter(Boolean);
+        return `${prefix}[${items.map((i) => `"${i}"`).join(", ")}]`;
+      },
+    );
+    if (patched !== raw) {
+      // Validate that the patched string is valid JSON before returning.
+      JSON.parse(patched);
+      logger.debug("tool_call_repair_local", {
+        toolName: toolCall.toolName,
+        repair: "markdown-bullets-to-array",
+      });
+      return { ...toolCall, input: patched };
+    }
+  } catch (err) {
+    logger.debug("tool_call_repair_local_failed", {
+      toolName: toolCall.toolName,
+      error: String(err),
+    });
+  }
+
+  // Local fix didn't work — return null so the SDK propagates the error
+  // to the model as a tool-result with the error message. The model gets
+  // a new step to self-correct its JSON.
+  logger.debug("tool_call_repair_deferred", {
+    toolName: toolCall.toolName,
+    error: String(error),
+  });
+  return null;
+};
 
 // ---------------------------------------------------------------------------
 // Main function
@@ -486,6 +562,7 @@ async function executeStream(opts: ExecuteStreamInput): Promise<ExecuteStreamRes
     tools: toolSet,
     stopWhen: stopConditions,
     abortSignal: watchdog.fullAbort,
+    experimental_repairToolCall: repairToolCall,
     ...(providerOptions !== undefined ? { providerOptions } : {}),
     onError: ({ error }) => {
       if (error instanceof Error) opts.onStreamError(error);
