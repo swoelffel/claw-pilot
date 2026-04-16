@@ -26,6 +26,7 @@ interface FlowStep {
   dependencies: string;
   timeout: number;
   retries: number;
+  maxSteps: number;
   _advancedOpen: boolean;
 }
 
@@ -44,6 +45,7 @@ function createEmptyStep(): FlowStep {
     dependencies: "",
     timeout: 60,
     retries: 0,
+    maxSteps: 50,
     _advancedOpen: false,
   };
 }
@@ -368,6 +370,7 @@ export class FlowEditor extends DialogMixin(LitElement) {
         dependsOn?: string[];
         timeoutMs?: number;
         retries?: number;
+        maxSteps?: number;
       }>;
       const trigger = JSON.parse(flow.trigger_json) as { type: string };
 
@@ -381,6 +384,7 @@ export class FlowEditor extends DialogMixin(LitElement) {
         dependencies: Array.isArray(s.dependsOn) ? s.dependsOn.join(", ") : "",
         timeout: s.timeoutMs ? Math.round(s.timeoutMs / 1000) : 60,
         retries: s.retries ?? 0,
+        maxSteps: s.maxSteps ?? 50,
         _advancedOpen: false,
       }));
       _stepCounter = this._steps.length;
@@ -447,6 +451,7 @@ export class FlowEditor extends DialogMixin(LitElement) {
           .filter(Boolean),
         ...(s.timeout && s.timeout !== 60 ? { timeoutMs: s.timeout * 1000 } : {}),
         ...(s.retries ? { retries: s.retries } : {}),
+        ...(s.maxSteps && s.maxSteps !== 50 ? { maxSteps: s.maxSteps } : {}),
       })),
     };
 
@@ -593,6 +598,26 @@ export class FlowEditor extends DialogMixin(LitElement) {
                           parseInt((e.target as HTMLInputElement).value, 10) || 0,
                         )}
                     />
+                  </div>
+                  <div class="field">
+                    <label>${msg("Max steps", { id: "fe-label-maxsteps" })}</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="200"
+                      .value=${String(step.maxSteps)}
+                      @input=${(e: Event) =>
+                        this._updateStep(
+                          index,
+                          "maxSteps",
+                          parseInt((e.target as HTMLInputElement).value, 10) || 50,
+                        )}
+                    />
+                    <span class="field-hint"
+                      >${msg("LLM steps limit — default 50 for flows", {
+                        id: "fe-hint-maxsteps",
+                      })}</span
+                    >
                   </div>
                 </div>
               </div>

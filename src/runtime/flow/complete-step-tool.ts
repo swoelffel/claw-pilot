@@ -18,6 +18,13 @@ import { z } from "zod";
 import { Tool } from "../tool/tool.js";
 import { updateStepRun } from "../../core/repositories/flow-repository.js";
 
+/**
+ * Default maxSteps for flow step sessions. Higher than the interactive default
+ * (20) to accommodate multi-tool mission workflows (clone repo → read files →
+ * edit × N → git add/commit/push → PR → complete_step).
+ */
+export const FLOW_DEFAULT_MAX_STEPS = 50;
+
 const CompleteStepSchema = z.object({
   outcome: z
     .enum(["success", "failure", "partial"])
