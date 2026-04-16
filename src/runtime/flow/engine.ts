@@ -201,6 +201,7 @@ async function runStep(
     flowName,
     stepId: stepDef.id,
     stepRunId: stepRun.id,
+    ...(stepDef.maxSteps !== undefined ? { maxSteps: stepDef.maxSteps } : {}),
     ...(stepDef.timeoutMs !== undefined ? { timeoutMs: stepDef.timeoutMs } : {}),
     ...(ctx.abort ? { abort: ctx.abort.signal } : {}),
   });

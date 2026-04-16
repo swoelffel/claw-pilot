@@ -107,6 +107,20 @@ export interface PromptLoopInput {
    * invisible outside the caller that injects them — no global registration.
    */
   extraTools?: Tool.Info[];
+  /**
+   * Override the agent's maxSteps for this call. Takes precedence over
+   * `agentConfig.maxSteps` when set (e.g. flow step sessions default to 50).
+   */
+  maxSteps?: number;
+  /**
+   * Mutable state shared with the flow engine's `request_step_extension` tool.
+   * When present, the prompt loop:
+   * - reads `state.effectiveMaxSteps` dynamically for the stopWhen condition
+   * - injects a flow-specific reminder 2 steps before the limit (offering
+   *   `complete_step` or `request_step_extension`)
+   * Non-flow callers leave this `undefined`.
+   */
+  flowStepState?: import("../flow/step-extension-tool.js").FlowStepState;
 }
 
 export interface PromptLoopResult {
@@ -521,13 +535,37 @@ async function executeStream(opts: ExecuteStreamInput): Promise<ExecuteStreamRes
 
   const streamState = createStreamingState();
 
-  const MAX_STEPS_REMINDER =
+  const INTERACTIVE_STEPS_REMINDER =
     `\n\n<system-reminder>This is your last allowed step. ` +
     `Conclude your work, summarize what was done, and stop.</system-reminder>`;
   let completedSteps = 0;
 
-  const getEffectiveSystem = () =>
-    completedSteps >= agentConfig.maxSteps - 1 ? systemPrompt + MAX_STEPS_REMINDER : systemPrompt;
+  // --- Effective maxSteps ---
+  // For flow steps: reads from the mutable `flowStepState.effectiveMaxSteps`
+  // which can grow when the agent calls `request_step_extension`.
+  // For interactive sessions: uses the static override or agent config.
+  const getEffectiveMaxSteps = (): number =>
+    input.flowStepState?.effectiveMaxSteps ?? input.maxSteps ?? agentConfig.maxSteps;
+
+  // Flow steps get the reminder 2 steps early (time to call complete_step or
+  // request_step_extension). Interactive sessions: 1 step (original behavior).
+  const isFlowStep = input.flowStepState !== undefined;
+  const stepsMargin = isFlowStep ? 2 : 1;
+
+  const getEffectiveSystem = (): string => {
+    const maxSt = getEffectiveMaxSteps();
+    if (completedSteps < maxSt - stepsMargin) return systemPrompt;
+    if (isFlowStep) {
+      return (
+        systemPrompt +
+        `\n\n<system-reminder>You are approaching your step limit ` +
+        `(${completedSteps + 1}/${maxSt}). Either call complete_step NOW to ` +
+        `report your results, or call request_step_extension if you need more ` +
+        `steps to finish your mission.</system-reminder>`
+      );
+    }
+    return systemPrompt + INTERACTIVE_STEPS_REMINDER;
+  };
 
   const {
     system: cachedSystem,
@@ -547,12 +585,16 @@ async function executeStream(opts: ExecuteStreamInput): Promise<ExecuteStreamRes
     state: streamState,
   };
 
-  // When the caller injected a `complete_step` tool (flow engine), stop the
-  // loop as soon as the agent calls it — no point in consuming another step.
+  // --- Stop conditions ---
+  // Flow steps: dynamic cap (reads getEffectiveMaxSteps each time) + early
+  // exit on complete_step. Interactive: static stepCountIs.
   const hasCompleteStepTool = input.extraTools?.some((t) => t.id === "complete_step") ?? false;
   const stopConditions = hasCompleteStepTool
-    ? [stepCountIs(agentConfig.maxSteps), hasToolCall("complete_step")]
-    : stepCountIs(agentConfig.maxSteps);
+    ? [
+        ({ steps }: { steps: unknown[] }) => steps.length >= getEffectiveMaxSteps(),
+        hasToolCall("complete_step"),
+      ]
+    : stepCountIs(getEffectiveMaxSteps());
 
   const llmCallStart = Date.now();
   const streamResult = streamText({

@@ -74,6 +74,19 @@ export interface RouterInput {
    * `complete_step` per step run. Forwarded to `runPromptLoop`.
    */
   extraTools?: Tool.Info[];
+  /**
+   * Override the agent's maxSteps for this specific call.
+   * Used by the flow engine to allow longer multi-tool missions (default 50)
+   * without changing the agent's permanent config.
+   */
+  maxSteps?: number;
+  /**
+   * Mutable state shared with the flow engine's step extension mechanism.
+   * When the agent calls `request_step_extension`, the tool increments
+   * `effectiveMaxSteps` on this object; the prompt loop's `stopWhen` reads
+   * it on every evaluation. Non-flow callers leave this `undefined`.
+   */
+  flowStepState?: import("../flow/step-extension-tool.js").FlowStepState;
 }
 
 export interface RouterResult {
@@ -182,6 +195,9 @@ export class ChannelRouter {
               resolveModelForAgent(db, instanceSlug, targetCfg, config),
             // Forward caller-provided extra tools (e.g. `complete_step` from the flow engine)
             ...(input.extraTools !== undefined ? { extraTools: input.extraTools } : {}),
+            // Forward flow-specific overrides (maxSteps soft cap + mutable extension state)
+            ...(input.maxSteps !== undefined ? { maxSteps: input.maxSteps } : {}),
+            ...(input.flowStepState !== undefined ? { flowStepState: input.flowStepState } : {}),
           }),
       });
 

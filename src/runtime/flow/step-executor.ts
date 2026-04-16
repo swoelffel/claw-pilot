@@ -7,7 +7,9 @@
 import { createSession } from "../session/session.js";
 import { ChannelRouter } from "../channel/router.js";
 import type { FlowEngineContext } from "./types.js";
-import { createCompleteStepTool } from "./complete-step-tool.js";
+import { createCompleteStepTool, FLOW_DEFAULT_MAX_STEPS } from "./complete-step-tool.js";
+import { createStepExtensionTool } from "./step-extension-tool.js";
+import type { FlowStepState } from "./step-extension-tool.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,6 +33,8 @@ interface StepExecutionInput {
    * to this specific row — no correlation id or metadata plumbing required.
    */
   stepRunId: number;
+  /** Soft cap on LLM steps for this step. Defaults to FLOW_DEFAULT_MAX_STEPS. */
+  maxSteps?: number;
   timeoutMs?: number;
   abort?: AbortSignal;
 }
@@ -77,14 +81,21 @@ export async function executeStep(
     }
   }
 
-  // 3. Build the `complete_step` tool bound to this specific step run.
-  //    The tool writes `sitrep_json` to the exact DB row when invoked, so
-  //    the engine can read it back after the session finishes — no text
-  //    parsing required. This tool is created per-step, injected only via
-  //    `extraTools` below, and has no presence in `BUILTIN_TOOLS`. It is
-  //    therefore invisible in permanent sessions, Telegram, task sessions,
-  //    and everywhere else that doesn't reach this factory.
+  // 3. Build per-step flow tools (complete_step + request_step_extension).
+  //    Both are factory tools — NOT in BUILTIN_TOOLS, invisible outside flow
+  //    step sessions.
   const completeStepTool = createCompleteStepTool(db, input.stepRunId);
+
+  // Mutable state shared between request_step_extension and the prompt loop's
+  // stopWhen / reminder logic. The soft cap defaults to FLOW_DEFAULT_MAX_STEPS
+  // (50) if not overridden in the step definition. The hard cap is 2× the soft
+  // cap, clamped at 200.
+  const softCap = input.maxSteps ?? FLOW_DEFAULT_MAX_STEPS;
+  const flowStepState: FlowStepState = {
+    effectiveMaxSteps: softCap,
+    hardCap: Math.min(softCap * 2, 200),
+  };
+  const extensionTool = createStepExtensionTool(flowStepState);
 
   try {
     // 4. Route through ChannelRouter (uses runtime's initialized middlewares + agent registry)
@@ -102,7 +113,9 @@ export async function executeStep(
       sessionId: session.id,
       ...(ctx.workDir !== undefined ? { workDir: ctx.workDir } : {}),
       abort: abortController.signal,
-      extraTools: [completeStepTool],
+      extraTools: [completeStepTool, extensionTool],
+      maxSteps: softCap,
+      flowStepState,
     });
 
     return {

@@ -37,6 +37,7 @@ const FlowStepSchema = z.object({
   dependsOn: z.array(z.string()).default([]),
   timeoutMs: z.number().int().min(1000).max(600_000).optional(),
   retries: z.number().int().min(0).max(5).optional(),
+  maxSteps: z.number().int().min(1).max(200).optional(),
   briefing: z
     .object({
       includeLastN: z.number().int().min(0).max(50).optional(),
