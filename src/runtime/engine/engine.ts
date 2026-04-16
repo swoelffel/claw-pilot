@@ -39,6 +39,7 @@ import { createChannels } from "./channel-factory.js";
 import { wirePluginsToBus } from "./plugin-wiring.js";
 import { registerPlugin, initPlugins, resetPlugins } from "../plugin/plugin.js";
 import { systemToolsPlugin } from "../plugin/system-tools/index.js";
+import { workspaceKnowledgePlugin } from "../plugin/workspace-knowledge/index.js";
 import { getRuntimeVersion } from "../_runtime-version.js";
 import { SYSTEM_INSTANCE_SLUG } from "../../core/system-instance.js";
 import { startHeartbeatRunner } from "../heartbeat/runner.js";
@@ -352,7 +353,12 @@ export class ClawRuntime {
       registerPlugin("system-tools", systemToolsPlugin);
     }
 
-    // 2c. Initialize all registered plugins — invokes factories, registers hooks.
+    // 2c. Register workspace knowledge plugin for every instance — exposes
+    //     ws_list_files and ws_search_files so agents can discover user-created
+    //     files without those files inflating the system prompt.
+    registerPlugin("workspace-knowledge", workspaceKnowledgePlugin);
+
+    // 2d. Initialize all registered plugins — invokes factories, registers hooks.
     //     Without this, plugin tools (e.g. cp_create_instance) are never loaded
     //     into the tool registry and agents silently fall back to the `invalid`
     //     tool when trying to call them.

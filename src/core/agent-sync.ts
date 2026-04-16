@@ -6,15 +6,28 @@ import type { Registry, InstanceRecord } from "./registry.js";
 import { normaliseModel } from "../lib/model-helpers.js";
 import { constants } from "../lib/constants.js";
 import { logger } from "../lib/logger.js";
+import { hasAllowedWorkspaceExtension, isIgnoredWorkspaceSegment } from "../lib/workspace-path.js";
 
 // ---------------------------------------------------------------------------
 // Constants (imported from single source of truth)
 // ---------------------------------------------------------------------------
 
-const DISCOVERABLE_FILES = constants.DISCOVERABLE_FILES;
-
-/** Subset of discoverable files that the UI is allowed to edit. */
+/**
+ * Subset of workspace files that the runtime includes in the system prompt
+ * (see `src/runtime/session/system-prompt.ts`). These are the only files
+ * that also have a guaranteed schema / provisioning template.
+ *
+ * Everything else in the workspace tree is user-managed (or agent-generated)
+ * and is now visible & editable via the UI file tree, but is NOT injected
+ * into the prompt automatically.
+ */
 export const EDITABLE_FILES: Set<string> = new Set(constants.EDITABLE_FILES);
+
+/** Maximum size (bytes) of a single workspace file synced into the DB cache. */
+const MAX_SYNC_FILE_SIZE = 1_048_576; // 1 MiB
+
+/** Maximum recursion depth when walking a workspace directory. */
+const MAX_WORKSPACE_DEPTH = 8;
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -73,6 +86,66 @@ interface ConfigAgent {
 
 function hashContent(content: string): string {
   return createHash("sha256").update(content, "utf8").digest("hex");
+}
+
+/**
+ * Recursively walk a workspace directory and return every allowed text/config
+ * file (relative path + content). Reserved segments (.git, node_modules,
+ * dotfiles, etc.) are skipped, as are files larger than `MAX_SYNC_FILE_SIZE`.
+ *
+ * Exported so both the provisioning sync (`AgentSync`) and the on-demand
+ * dashboard sync route (`POST /api/instances/:slug/agents/sync`) share one walker.
+ */
+export async function walkWorkspaceFiles(
+  conn: ServerConnection,
+  workspacePath: string,
+): Promise<Array<{ relPath: string; content: string }>> {
+  const results: Array<{ relPath: string; content: string }> = [];
+
+  const visit = async (absDir: string, relDir: string, depth: number): Promise<void> => {
+    if (depth > MAX_WORKSPACE_DEPTH) {
+      logger.debug("[agent-sync] depth limit reached", { absDir, depth });
+      return;
+    }
+    let entries: Array<{ name: string; isDirectory: boolean }>;
+    try {
+      entries = await conn.readdirWithTypes(absDir);
+    } catch (err) {
+      logger.debug("[agent-sync] readdir failed", { error: String(err), absDir });
+      return;
+    }
+
+    for (const entry of entries) {
+      if (isIgnoredWorkspaceSegment(entry.name)) continue;
+      const absEntry = `${absDir}/${entry.name}`;
+      const relEntry = relDir ? `${relDir}/${entry.name}` : entry.name;
+
+      if (entry.isDirectory) {
+        await visit(absEntry, relEntry, depth + 1);
+        continue;
+      }
+
+      if (!hasAllowedWorkspaceExtension(entry.name)) continue;
+
+      let content: string;
+      try {
+        content = await conn.readFile(absEntry);
+      } catch (err) {
+        logger.debug("[agent-sync] file unreadable", { error: String(err), absEntry });
+        continue;
+      }
+
+      if (Buffer.byteLength(content, "utf8") > MAX_SYNC_FILE_SIZE) {
+        logger.debug("[agent-sync] file too large, skipping", { absEntry });
+        continue;
+      }
+
+      results.push({ relPath: relEntry, content });
+    }
+  };
+
+  await visit(workspacePath, "", 0);
+  return results;
 }
 
 // ---------------------------------------------------------------------------
@@ -302,7 +375,16 @@ export class AgentSync {
   // Private: Sync workspace files for a single agent
   // ------------------------------------------------------------------
 
-  /** Sync discoverable workspace files for a single agent. */
+  /**
+   * Sync all workspace files for a single agent by recursively walking the
+   * workspace directory. Every text/config file with an allowed extension
+   * (see `ALLOWED_WORKSPACE_EXTENSIONS` in `src/lib/workspace-path.ts`) is
+   * upserted into the `agent_files` cache under its relative path
+   * (e.g. `SOUL.md`, `memory/facts.md`).
+   *
+   * Reserved segments (.git, node_modules, dotfiles, etc.) are skipped.
+   * Files exceeding `MAX_SYNC_FILE_SIZE` are skipped (logged at debug level).
+   */
   private async _syncAgentFiles(
     agentDbId: number,
     workspacePath: string,
@@ -316,38 +398,25 @@ export class AgentSync {
 
     const dbFiles = new Map(this.registry.listAgentFiles(agentDbId).map((f) => [f.filename, f]));
 
-    for (const filename of DISCOVERABLE_FILES) {
-      const filePath = `${workspacePath}/${filename}`;
-      let content: string;
+    const walked = await walkWorkspaceFiles(this.conn, workspacePath);
 
-      try {
-        content = await this.conn.readFile(filePath);
-      } catch (err) {
-        logger.debug("[agent-sync] file absent or unreadable", { error: String(err) });
-        if (dbFiles.has(filename)) {
-          this.registry.deleteAgentFile(agentDbId, filename);
-          filesChanged++;
-        }
-        dbFiles.delete(filename);
-        continue;
-      }
-
+    for (const { relPath, content } of walked) {
       const contentHash = hashContent(content);
-      const dbFile = dbFiles.get(filename);
+      const dbFile = dbFiles.get(relPath);
 
       if (!dbFile || dbFile.content_hash !== contentHash) {
-        this.registry.upsertAgentFile(agentDbId, { filename, content, contentHash });
+        this.registry.upsertAgentFile(agentDbId, { filename: relPath, content, contentHash });
         filesChanged++;
       }
 
       fileSummaries.push({
-        filename,
+        filename: relPath,
         content_hash: contentHash,
         size: Buffer.byteLength(content, "utf8"),
         updated_at: syncedAt,
       });
 
-      dbFiles.delete(filename);
+      dbFiles.delete(relPath);
     }
 
     // Remove DB files that are no longer on disk

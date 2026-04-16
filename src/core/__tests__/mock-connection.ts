@@ -90,6 +90,21 @@ export class MockConnection implements ServerConnection {
     return results;
   }
 
+  async readdirWithTypes(path: string): Promise<Array<{ name: string; isDirectory: boolean }>> {
+    const names = await this.readdir(path);
+    const prefix = path.endsWith("/") ? path : path + "/";
+    return names.map((name) => {
+      const full = prefix + name;
+      // A segment is a directory if any file/dir key starts with "<full>/" or
+      // if it has been explicitly registered as a dir.
+      const isDirectory =
+        this.dirs.has(full) ||
+        Array.from(this.files.keys()).some((k) => k.startsWith(full + "/")) ||
+        Array.from(this.dirs).some((d) => d.startsWith(full + "/"));
+      return { name, isDirectory };
+    });
+  }
+
   async copyFile(src: string, dest: string): Promise<void> {
     const content = this.files.get(src);
     if (content === undefined) throw new Error(`Source not found: ${src}`);

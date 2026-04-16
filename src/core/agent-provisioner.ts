@@ -5,13 +5,14 @@ import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
-import { EDITABLE_FILES } from "./agent-sync.js";
 import { createHash } from "node:crypto";
 import { constants } from "../lib/constants.js";
 import { loadWorkspaceTemplate, type TemplateVars } from "../lib/workspace-templates.js";
 import { exportRuntimeJsonSnapshot } from "../runtime/engine/config-loader.js";
 import { deleteSessionsByAgent } from "./repositories/runtime-session-repository.js";
 import { logger } from "../lib/logger.js";
+import { validateWorkspaceRelativePath } from "../lib/workspace-path.js";
+import { ClawPilotError } from "../lib/errors.js";
 
 // Resolve templates directory relative to this file
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -167,28 +168,70 @@ export class AgentProvisioner {
     this.exportSnapshot(instance);
   }
 
+  /**
+   * Create or update a workspace file at a relative path (e.g. `SOUL.md`,
+   * `memory/facts.md`). Creates parent directories as needed.
+   *
+   * Path validation (`validateWorkspaceRelativePath`) enforces:
+   *   - no path traversal, no absolute paths, no reserved segments
+   *   - only allowed text/config extensions (.md, .txt, .json, .yaml, .yml, .csv, .log)
+   *
+   * The legacy whitelist (`EDITABLE_FILES`) is no longer enforced — any allowed
+   * path can be created/updated from the UI.
+   */
   async updateAgentFile(
     instance: InstanceRecord,
     agentSlug: string,
-    filename: string,
+    relPath: string,
     content: string,
   ): Promise<void> {
     // 1. Lookup agent in DB
     const agent = this.registry.getAgentByAgentId(instance.id, agentSlug);
-    if (!agent) throw new Error(`Agent "${agentSlug}" not found`);
+    if (!agent) throw new ClawPilotError(`Agent "${agentSlug}" not found`, "AGENT_NOT_FOUND");
 
-    // 2. Guard: file must be editable
-    if (!EDITABLE_FILES.has(filename)) {
-      throw new Error(`File "${filename}" is not editable`);
-    }
+    // 2. Validate relative path (throws InvalidWorkspacePathError on failure)
+    const normalized = validateWorkspaceRelativePath(relPath);
 
-    // 3. Write to disk
-    const filePath = path.join(agent.workspace_path, filename);
+    // 3. Write to disk (conn.writeFile creates parent dirs recursively)
+    const filePath = path.join(agent.workspace_path, normalized);
     await this.conn.writeFile(filePath, content);
 
     // 4. Update SQLite cache
     const hash = createHash("sha256").update(content).digest("hex");
-    this.registry.upsertAgentFile(agent.id, { filename, content, contentHash: hash });
+    this.registry.upsertAgentFile(agent.id, {
+      filename: normalized,
+      content,
+      contentHash: hash,
+    });
+  }
+
+  /**
+   * Delete a workspace file at a relative path. Removes the file from disk
+   * and from the `agent_files` cache.
+   *
+   * Throws `InvalidWorkspacePathError` on invalid path, `ClawPilotError` if
+   * the agent or file does not exist.
+   */
+  async deleteAgentFile(
+    instance: InstanceRecord,
+    agentSlug: string,
+    relPath: string,
+  ): Promise<void> {
+    const agent = this.registry.getAgentByAgentId(instance.id, agentSlug);
+    if (!agent) throw new ClawPilotError(`Agent "${agentSlug}" not found`, "AGENT_NOT_FOUND");
+
+    const normalized = validateWorkspaceRelativePath(relPath);
+    const filePath = path.join(agent.workspace_path, normalized);
+
+    // Delete from disk first — if it fails, we keep the DB entry so the UI
+    // reflects reality. Use `force: true` semantics via LocalConnection.remove().
+    const existed = await this.conn.exists(filePath);
+    if (existed) {
+      await this.conn.remove(filePath);
+    }
+
+    // Always clear the DB entry (even if the file was already missing on disk).
+    this.registry.deleteAgentFile(agent.id, normalized);
   }
 
   /** Export runtime.json snapshot for debugging (best-effort). */

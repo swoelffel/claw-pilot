@@ -1393,6 +1393,49 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // v36: FTS5 full-text search on agent_files.content for the
+    // workspace-knowledge plugin (ws_search_files tool).
+    // Content-backed so snippet() is available for match highlighting.
+    version: 36,
+    up(db) {
+      // Defensive: test fixtures sometimes seed a stripped-down DB without the
+      // agent_files table. Skip this migration entirely if that's the case.
+      const hasAgentFiles = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_files'")
+        .get();
+      if (!hasAgentFiles) return;
+
+      db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS agent_files_fts USING fts5(
+          filename,
+          content,
+          content='agent_files',
+          content_rowid='id'
+        );
+
+        INSERT INTO agent_files_fts(rowid, filename, content)
+          SELECT id, filename, COALESCE(content, '') FROM agent_files;
+
+        CREATE TRIGGER IF NOT EXISTS agent_files_ai AFTER INSERT ON agent_files BEGIN
+          INSERT INTO agent_files_fts(rowid, filename, content)
+            VALUES (new.id, new.filename, COALESCE(new.content, ''));
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS agent_files_au AFTER UPDATE ON agent_files BEGIN
+          INSERT INTO agent_files_fts(agent_files_fts, rowid, filename, content)
+            VALUES('delete', old.id, old.filename, COALESCE(old.content, ''));
+          INSERT INTO agent_files_fts(rowid, filename, content)
+            VALUES (new.id, new.filename, COALESCE(new.content, ''));
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS agent_files_ad AFTER DELETE ON agent_files BEGIN
+          INSERT INTO agent_files_fts(agent_files_fts, rowid, filename, content)
+            VALUES('delete', old.id, old.filename, COALESCE(old.content, ''));
+        END;
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
