@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.73.3] — 2026-04-16
+
+### Added
+- **Automatic tool call repair for all sessions** — enabled `experimental_repairToolCall` on the Vercel AI SDK `streamText` call. When a model produces malformed JSON arguments (e.g. markdown bullets instead of a JSON array, observed on MAC run #5 where `complete_step` keyFindings was emitted as `\n  - item1\n  - item2` instead of `["item1", "item2"]`), the repair function first attempts a lightweight local fix (regex markdown-bullets → JSON array), and if that fails, returns `null` so the SDK surfaces the error to the model on the next step for self-correction. This is global — it benefits every tool in every session type (permanent, Telegram, web-chat, flow steps, subagent delegations), not just flow steps.
+
+---
+
 ## [0.73.2] — 2026-04-15
 
 ### Added
