@@ -331,14 +331,27 @@ describe("ClawRuntime", () => {
         expect(toolIds).toContain("cp_list_instances");
       });
 
-      it("does NOT register system-dashboard for non-system instances", async () => {
+      it("registers workspace-knowledge but NOT system-tools for non-system instances", async () => {
         const rt = new ClawRuntime(minimalConfig, db, SLUG);
         await rt.start();
 
         const hooks = getRegisteredHooks();
-        // No plugin has been registered for a regular instance, so no `tools`
-        // hook should exist.
-        expect(hooks.find((h) => typeof h.tools === "function")).toBeUndefined();
+        // workspace-knowledge registers a tools hook on every instance.
+        const toolsHook = hooks.find((h) => typeof h.tools === "function");
+        expect(toolsHook).toBeDefined();
+
+        // But the tools should be the ws_* ones, not the cp_* system tools.
+        const pluginTools = await toolsHook!.tools!({
+          instanceSlug: SLUG,
+          workDir: undefined,
+          version: "test",
+          db: {} as any,
+        });
+        const toolIds = pluginTools.map((t) => t.id);
+        expect(toolIds).toContain("ws_list_files");
+        expect(toolIds).toContain("ws_search_files");
+        expect(toolIds).not.toContain("cp_create_instance");
+        expect(toolIds).not.toContain("cp_list_instances");
       });
     });
   });

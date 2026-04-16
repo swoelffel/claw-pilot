@@ -30,3 +30,16 @@ Persistent memory files across sessions:
 
 Record important decisions and outcomes. Keep entries concise.
 Do not store secrets in memory files.
+
+## Workspace files
+
+Files you or the user create outside the identity and memory system
+(e.g. `notes.md`, `projects/plan.md`, `drafts/email.md`) live in your
+workspace directory. Two tools let you discover and search them:
+
+- `ws_list_files(dir?)` — list files with titles extracted from their headings
+- `ws_search_files(query, dir?)` — full-text search across workspace content
+
+When to use: when the user references notes, documents, drafts, configs, or
+project files they may have stored — run `ws_list_files` to orient yourself
+before asking them to repeat information you could find yourself.

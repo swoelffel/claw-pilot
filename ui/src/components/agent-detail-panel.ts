@@ -4,6 +4,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import {
   type AgentBuilderInfo,
+  type AgentFileTreeNode,
   type AgentLink,
   type PanelContext,
   type AgentMetaPatch,
@@ -14,8 +15,10 @@ import {
 } from "../types.js";
 import {
   fetchAgentFile,
+  fetchAgentFileTree,
   updateSpawnLinks,
   updateAgentFile,
+  deleteAgentFile,
   fetchBlueprintAgentFile,
   updateBlueprintAgentFile,
   updateBlueprintSpawnLinks,
@@ -33,8 +36,21 @@ import { sectionLabelStyles, spinnerStyles } from "../styles/shared.js";
 import { agentDetailPanelStyles } from "../styles/agent-detail-panel.styles.js";
 import { getToken } from "../services/auth-state.js";
 import "./agent-file-editor.js";
+import "./agent-file-tree.js";
+import "./workspace-file-dialogs.js";
 
-const EDITABLE_FILES = new Set(["AGENTS.md", "SOUL.md", "BOOTSTRAP.md", "USER.md", "HEARTBEAT.md"]);
+/**
+ * Walk a workspace tree in order and return the first file path found.
+ * Used to auto-select a file when the Files tab opens.
+ */
+function findFirstFile(tree: AgentFileTreeNode[]): string | null {
+  for (const node of tree) {
+    if (node.type === "file") return node.path;
+    const nested = findFirstFile(node.children);
+    if (nested) return nested;
+  }
+  return null;
+}
 
 @localized()
 @customElement("cp-agent-detail-panel")
@@ -151,12 +167,47 @@ export class AgentDetailPanel extends LitElement {
   private _loadFileFn: ((filename: string) => Promise<string>) | null = null;
   private _saveFileFn: ((filename: string, content: string) => Promise<void>) | null = null;
 
+  // ── Workspace file tree state (Files tab) ────────────────────────────────
+  // Instance-only: blueprints continue using the legacy flat tabs UI below.
+
+  @state() private _fileTree: AgentFileTreeNode[] = [];
+  @state() private _activeFilePath = "";
+  @state() private _treeError = "";
+  @state() private _newFileDialogOpen = false;
+  @state() private _newFileParentDir = "";
+  @state() private _deleteFileDialogOpen = false;
+  @state() private _deleteFileTarget = "";
+
   // ── Lifecycle ────────────────────────────────────────────────────────────
 
   private _selectTab(tab: string): void {
     this._activeTab = tab;
     if (tab === "heartbeat") {
       void this._loadHeartbeatHistory();
+    }
+    if (tab === "files") {
+      void this._refreshFileTree();
+    }
+  }
+
+  /** Fetch the workspace file tree for the current agent. Instance context only. */
+  private async _refreshFileTree(): Promise<void> {
+    if (this.context.kind !== "instance") {
+      // Blueprint agents keep the legacy flat tabs (agent.files[]).
+      this._fileTree = [];
+      return;
+    }
+    try {
+      const resp = await fetchAgentFileTree(this.context.slug, this.agent.agent_id);
+      this._fileTree = resp.tree;
+      this._treeError = "";
+      // Pick a default active file if none is set yet.
+      if (!this._activeFilePath) {
+        const firstFile = findFirstFile(this._fileTree);
+        if (firstFile) this._activeFilePath = firstFile;
+      }
+    } catch (err) {
+      this._treeError = userMessage(err);
     }
   }
 
@@ -1206,6 +1257,12 @@ export class AgentDetailPanel extends LitElement {
       this._pendingAdditions = new Set();
       this._dropdownOpen = false;
       this._error = "";
+      // Reset workspace tree state for the new agent.
+      this._fileTree = [];
+      this._activeFilePath = "";
+      this._treeError = "";
+      this._newFileDialogOpen = false;
+      this._deleteFileDialogOpen = false;
       // Initialise Info tab fields from the new agent
       this._initInfoFields();
     }
@@ -1549,11 +1606,135 @@ export class AgentDetailPanel extends LitElement {
         );
       } else {
         await updateAgentFile(this.context.slug, this.agent.agent_id, filename, content);
+        // Refresh tree — a new file might have been created implicitly.
+        void this._refreshFileTree();
       }
     };
   }
 
+  // ── Workspace file tree handlers ─────────────────────────────────────────
+
+  private _onFileSelect(ev: CustomEvent<{ path: string }>): void {
+    this._activeFilePath = ev.detail.path;
+  }
+
+  private _onFileNewRequested(ev: CustomEvent<{ parentDir: string }>): void {
+    this._newFileParentDir = ev.detail.parentDir;
+    this._newFileDialogOpen = true;
+  }
+
+  private _onFileDeleteRequested(ev: CustomEvent<{ path: string }>): void {
+    this._deleteFileTarget = ev.detail.path;
+    this._deleteFileDialogOpen = true;
+  }
+
+  private async _onNewFileConfirmed(
+    ev: CustomEvent<{ path: string; content: string }>,
+  ): Promise<void> {
+    if (this.context.kind !== "instance") return;
+    const dialog = this.renderRoot.querySelector("cp-new-file-dialog");
+    try {
+      await updateAgentFile(
+        this.context.slug,
+        this.agent.agent_id,
+        ev.detail.path,
+        ev.detail.content,
+      );
+      this._newFileDialogOpen = false;
+      this._activeFilePath = ev.detail.path;
+      await this._refreshFileTree();
+    } catch (err) {
+      dialog?.showError(userMessage(err));
+    }
+  }
+
+  private async _onDeleteFileConfirmed(ev: CustomEvent<{ path: string }>): Promise<void> {
+    if (this.context.kind !== "instance") return;
+    const dialog = this.renderRoot.querySelector("cp-delete-file-dialog");
+    try {
+      await deleteAgentFile(this.context.slug, this.agent.agent_id, ev.detail.path);
+      this._deleteFileDialogOpen = false;
+      if (this._activeFilePath === ev.detail.path) {
+        this._activeFilePath = "";
+      }
+      await this._refreshFileTree();
+    } catch (err) {
+      dialog?.showError(userMessage(err));
+    }
+  }
+
   // ── Render helpers ───────────────────────────────────────────────────────
+
+  /**
+   * Files tab renderer.
+   * - Instance agents: workspace tree + editor (CRUD).
+   * - Blueprint agents: flat tabs driven by `agent.files[]` (unchanged legacy UI).
+   */
+  private _renderFilesTab(fileTabs: string[]) {
+    if (this.context.kind === "blueprint") {
+      return html`
+        <cp-agent-file-editor
+          .files=${fileTabs}
+          .loadFile=${this._loadFileFn}
+          .saveFile=${this._saveFileFn}
+          .editableFiles=${null}
+        ></cp-agent-file-editor>
+      `;
+    }
+    return html`
+      <div class="workspace-files-layout">
+        <div class="workspace-files-tree">
+          <cp-agent-file-tree
+            .tree=${this._fileTree}
+            .activePath=${this._activeFilePath}
+            @file-select=${(e: CustomEvent<{ path: string }>) => this._onFileSelect(e)}
+            @file-new=${(e: CustomEvent<{ parentDir: string }>) => this._onFileNewRequested(e)}
+            @file-delete=${(e: CustomEvent<{ path: string }>) => this._onFileDeleteRequested(e)}
+          ></cp-agent-file-tree>
+        </div>
+        <div class="workspace-files-editor">
+          ${this._treeError ? html`<div class="tree-error">${this._treeError}</div>` : nothing}
+          ${this._activeFilePath
+            ? html`
+                <cp-agent-file-editor
+                  .files=${[this._activeFilePath]}
+                  .activeFile=${this._activeFilePath}
+                  .loadFile=${this._loadFileFn}
+                  .saveFile=${this._saveFileFn}
+                  .editableFiles=${null}
+                ></cp-agent-file-editor>
+              `
+            : html`<p class="workspace-files-empty">
+                ${msg("Select a file to view or edit.", { id: "adp-files-empty" })}
+              </p>`}
+        </div>
+      </div>
+      ${this._newFileDialogOpen
+        ? html`
+            <cp-new-file-dialog
+              .parentDir=${this._newFileParentDir}
+              @close-dialog=${() => {
+                this._newFileDialogOpen = false;
+              }}
+              @file-new-confirmed=${(e: CustomEvent<{ path: string; content: string }>) =>
+                void this._onNewFileConfirmed(e)}
+            ></cp-new-file-dialog>
+          `
+        : nothing}
+      ${this._deleteFileDialogOpen
+        ? html`
+            <cp-delete-file-dialog
+              .filePath=${this._deleteFileTarget}
+              @close-dialog=${() => {
+                this._deleteFileDialogOpen = false;
+              }}
+              @file-delete-confirmed=${(e: CustomEvent<{ path: string }>) =>
+                void this._onDeleteFileConfirmed(e)}
+            ></cp-delete-file-dialog>
+          `
+        : nothing}
+    `;
+  }
 
   private _renderInfo() {
     const a = this.agent;
@@ -1911,6 +2092,9 @@ export class AgentDetailPanel extends LitElement {
   override render() {
     const a = this.agent;
     const fileTabs = a.files.map((f) => f.filename);
+    // Instance agents now use the hierarchical tree (populated on Files tab open).
+    // The blueprint side keeps the legacy flat tabs driven by agent.files.
+    const hasFiles = this.context.kind === "instance" ? true : fileTabs.length > 0;
     const spawnLinks = this.links.filter(
       (l) => l.link_type === "spawn" && l.source_agent_id === a.agent_id,
     );
@@ -2041,7 +2225,7 @@ export class AgentDetailPanel extends LitElement {
               </button>
             `
           : nothing}
-        ${fileTabs.length > 0
+        ${hasFiles
           ? html`
               <button
                 class="tab ${this._activeTab === "files" ? "active" : ""}"
@@ -2090,14 +2274,7 @@ export class AgentDetailPanel extends LitElement {
                 ? this._renderToolsTab()
                 : this._activeTab === "skills"
                   ? this._renderSkillsTab()
-                  : html`
-                      <cp-agent-file-editor
-                        .files=${fileTabs}
-                        .loadFile=${this._loadFileFn}
-                        .saveFile=${this._saveFileFn}
-                        .editableFiles=${EDITABLE_FILES}
-                      ></cp-agent-file-editor>
-                    `}
+                  : this._renderFilesTab(fileTabs)}
       </div>
 
       ${this._pendingRemovals.size > 0 || this._pendingAdditions.size > 0

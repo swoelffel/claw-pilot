@@ -1282,4 +1282,42 @@ export const agentDetailPanelStyles = css`
     accent-color: var(--accent);
     margin: 0;
   }
+
+  /* ── Workspace files (tree + editor) ──────────────────────────────────── */
+
+  .workspace-files-layout {
+    display: grid;
+    grid-template-columns: minmax(180px, 240px) 1fr;
+    gap: 12px;
+    align-items: stretch;
+    min-height: 0;
+  }
+
+  .workspace-files-tree {
+    border-right: 1px solid var(--bg-border);
+    padding-right: 6px;
+    min-width: 0;
+  }
+
+  .workspace-files-editor {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .workspace-files-empty {
+    padding: 16px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-style: italic;
+  }
+
+  .tree-error {
+    margin: 0 0 10px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--state-error, #ef4444) 10%, transparent);
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
 `;

@@ -5,8 +5,7 @@ import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { apiError } from "../../../route-deps.js";
 import { getInstanceContext } from "../../_instance-middleware.js";
-import { constants } from "../../../../lib/constants.js";
-import { logger } from "../../../../lib/logger.js";
+import { walkWorkspaceFiles } from "../../../../core/agent-sync.js";
 
 export function registerAgentSyncRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, conn } = deps;
@@ -16,7 +15,8 @@ export function registerAgentSyncRoutes(app: Hono, deps: RouteDeps): void {
 
     try {
       // claw-runtime: agents are DB-only, no config file to sync from.
-      // We sync workspace files from disk -> DB.
+      // We sync workspace files from disk -> DB (recursive scan, all allowed
+      // text/config files — not just the prompt-discovery whitelist).
       const agents = registry.listAgents(slug);
       const links = registry.listAgentLinks(instance.id);
       let filesChanged = 0;
@@ -26,30 +26,16 @@ export function registerAgentSyncRoutes(app: Hono, deps: RouteDeps): void {
         if (!wp) continue;
 
         const dbFiles = new Map(registry.listAgentFiles(agent.id).map((f) => [f.filename, f]));
+        const walked = await walkWorkspaceFiles(conn, wp);
 
-        for (const filename of constants.DISCOVERABLE_FILES) {
-          let content: string;
-          try {
-            content = await conn.readFile(`${wp}/${filename}`);
-          } catch (err) {
-            logger.debug("[route:agents-sync] workspace file read failed", { error: String(err) });
-            // File absent — remove from DB if cached
-            if (dbFiles.has(filename)) {
-              registry.deleteAgentFile(agent.id, filename);
-              filesChanged++;
-            }
-            dbFiles.delete(filename);
-            continue;
-          }
-
+        for (const { relPath, content } of walked) {
           const contentHash = createHash("sha256").update(content, "utf8").digest("hex");
-          const dbFile = dbFiles.get(filename);
-
+          const dbFile = dbFiles.get(relPath);
           if (!dbFile || dbFile.content_hash !== contentHash) {
-            registry.upsertAgentFile(agent.id, { filename, content, contentHash });
+            registry.upsertAgentFile(agent.id, { filename: relPath, content, contentHash });
             filesChanged++;
           }
-          dbFiles.delete(filename);
+          dbFiles.delete(relPath);
         }
 
         // Remove DB files no longer on disk

@@ -1118,16 +1118,31 @@ describe("GET /api/instances/:slug/agents/:agentId/files/:filename", () => {
 // ---------------------------------------------------------------------------
 
 describe("PUT /api/instances/:slug/agents/:agentId/files/:filename", () => {
-  it("returns 403 for non-editable filename (MEMORY.md)", async () => {
+  it("returns 400 for paths with disallowed extension", async () => {
     seedInstance(ctx, "demo1", 18789);
-    const res = await ctx.app.request("/api/instances/demo1/agents/main/files/MEMORY.md", {
+    const res = await ctx.app.request("/api/instances/demo1/agents/main/files/malware.sh", {
       method: "PUT",
       headers: jsonHeaders(),
-      body: JSON.stringify({ content: "some content" }),
+      body: JSON.stringify({ content: "#!/bin/sh\nevil" }),
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(400);
     const body = await json(res);
-    expect(body.code).toBe("FILE_NOT_EDITABLE");
+    expect(body.code).toBe("INVALID_PATH");
+  });
+
+  it("returns 400 for path traversal attempts", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request(
+      "/api/instances/demo1/agents/main/files/" + encodeURIComponent("../escape.md"),
+      {
+        method: "PUT",
+        headers: jsonHeaders(),
+        body: JSON.stringify({ content: "ok" }),
+      },
+    );
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("INVALID_PATH");
   });
 
   it("returns 404 for unknown instance slug", async () => {
@@ -1212,6 +1227,122 @@ describe("PUT /api/instances/:slug/agents/:agentId/files/:filename", () => {
     expect(body.filename).toBe("SOUL.md");
     expect(body.content).toBe("# New soul content");
     expect(body.editable).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/instances/:slug/agents/:agentId/files — workspace tree
+// ---------------------------------------------------------------------------
+
+describe("GET /api/instances/:slug/agents/:agentId/files", () => {
+  it("returns an empty tree when no files exist", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const instance = ctx.registry.getInstance("demo1")!;
+    ctx.registry.createAgent(instance.id, {
+      agentId: "main",
+      name: "Main",
+      model: "claude-sonnet-4-20250514",
+      workspacePath: "/opt/openclaw/.openclaw-demo1/agents/main",
+      isDefault: true,
+    });
+
+    const res = await ctx.app.request("/api/instances/demo1/agents/main/files", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.tree).toEqual([]);
+  });
+
+  it("returns a hierarchical tree with folders and files sorted", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const instance = ctx.registry.getInstance("demo1")!;
+    ctx.registry.createAgent(instance.id, {
+      agentId: "main",
+      name: "Main",
+      model: "claude-sonnet-4-20250514",
+      workspacePath: "/opt/openclaw/.openclaw-demo1/agents/main",
+      isDefault: true,
+    });
+    const agentRecord = ctx.registry.getAgentByAgentId(instance.id, "main")!;
+    ctx.registry.upsertAgentFile(agentRecord.id, {
+      filename: "SOUL.md",
+      content: "# soul",
+      contentHash: "h1",
+    });
+    ctx.registry.upsertAgentFile(agentRecord.id, {
+      filename: "memory/facts.md",
+      content: "- fact",
+      contentHash: "h2",
+    });
+    ctx.registry.upsertAgentFile(agentRecord.id, {
+      filename: "memory/decisions.md",
+      content: "- decision",
+      contentHash: "h3",
+    });
+
+    const res = await ctx.app.request("/api/instances/demo1/agents/main/files", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.tree).toHaveLength(2);
+    // Directories first (memory), then files (SOUL.md)
+    expect(body.tree[0].type).toBe("dir");
+    expect(body.tree[0].name).toBe("memory");
+    expect(body.tree[0].children).toHaveLength(2);
+    expect(body.tree[0].children.map((c: { name: string }) => c.name)).toEqual([
+      "decisions.md",
+      "facts.md",
+    ]);
+    expect(body.tree[1].type).toBe("file");
+    expect(body.tree[1].path).toBe("SOUL.md");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /api/instances/:slug/agents/:agentId/files/* — delete workspace file
+// ---------------------------------------------------------------------------
+
+describe("DELETE /api/instances/:slug/agents/:agentId/files/*", () => {
+  it("returns 400 for path traversal", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request(
+      "/api/instances/demo1/agents/main/files/" + encodeURIComponent("../escape.md"),
+      { method: "DELETE", headers: authHeaders() },
+    );
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("INVALID_PATH");
+  });
+
+  it("returns 200 and removes file from registry when agent exists", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const instance = ctx.registry.getInstance("demo1")!;
+    ctx.registry.createAgent(instance.id, {
+      agentId: "main",
+      name: "Main",
+      model: "claude-sonnet-4-20250514",
+      workspacePath: "/opt/openclaw/.openclaw-demo1/agents/main",
+      isDefault: true,
+    });
+    const agentRecord = ctx.registry.getAgentByAgentId(instance.id, "main")!;
+    ctx.registry.upsertAgentFile(agentRecord.id, {
+      filename: "notes.md",
+      content: "hello",
+      contentHash: "h4",
+    });
+
+    const res = await ctx.app.request("/api/instances/demo1/agents/main/files/notes.md", {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.deleted).toBe(true);
+    expect(body.path).toBe("notes.md");
+
+    expect(ctx.registry.getAgentFileContent(agentRecord.id, "notes.md")).toBeUndefined();
   });
 });
 

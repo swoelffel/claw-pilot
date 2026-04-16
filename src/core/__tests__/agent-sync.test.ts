@@ -195,6 +195,49 @@ describe("AgentSync.sync()", () => {
     expect(filenames).toContain("HEARTBEAT.md");
   });
 
+  it("workspace files synced recursively — files in subdirectories are discovered", async () => {
+    const instance = seedInstance();
+    conn.files.set(CONFIG_PATH, MINIMAL_CONFIG);
+
+    const workspacePath = `${STATE_DIR}/workspaces/pilot`;
+    conn.files.set(`${workspacePath}/SOUL.md`, "# Soul");
+    conn.files.set(`${workspacePath}/memory/facts.md`, "- fact 1");
+    conn.files.set(`${workspacePath}/memory/decisions.md`, "- decision 1");
+    conn.files.set(`${workspacePath}/notes/2026-04.md`, "# April notes");
+
+    const agentSync = new AgentSync(conn, registry);
+    const result = await agentSync.sync(instance);
+
+    const mainAgent = result.agents.find((a) => a.agent_id === "pilot");
+    expect(mainAgent).toBeDefined();
+    const filenames = mainAgent!.files.map((f) => f.filename);
+
+    expect(filenames).toContain("SOUL.md");
+    expect(filenames).toContain("memory/facts.md");
+    expect(filenames).toContain("memory/decisions.md");
+    expect(filenames).toContain("notes/2026-04.md");
+  });
+
+  it("workspace files — non-text extensions are ignored", async () => {
+    const instance = seedInstance();
+    conn.files.set(CONFIG_PATH, MINIMAL_CONFIG);
+
+    const workspacePath = `${STATE_DIR}/workspaces/pilot`;
+    conn.files.set(`${workspacePath}/SOUL.md`, "# Soul");
+    conn.files.set(`${workspacePath}/malware.sh`, "#!/bin/sh\nevil");
+    conn.files.set(`${workspacePath}/binary.exe`, "MZ...");
+
+    const agentSync = new AgentSync(conn, registry);
+    const result = await agentSync.sync(instance);
+
+    const mainAgent = result.agents.find((a) => a.agent_id === "pilot");
+    const filenames = mainAgent!.files.map((f) => f.filename);
+
+    expect(filenames).toContain("SOUL.md");
+    expect(filenames).not.toContain("malware.sh");
+    expect(filenames).not.toContain("binary.exe");
+  });
+
   it("returns correct agent structure for multi-agent config", async () => {
     const instance = seedInstance();
     conn.files.set(CONFIG_PATH, MULTI_AGENT_CONFIG);

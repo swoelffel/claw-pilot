@@ -40,6 +40,13 @@ export interface ServerConnection {
   /** List directory contents */
   readdir(path: string): Promise<string[]>;
 
+  /**
+   * List directory contents with entry types.
+   * Used by workspace walkers that need to distinguish files from subdirectories
+   * without a second round-trip per entry.
+   */
+  readdirWithTypes(path: string): Promise<Array<{ name: string; isDirectory: boolean }>>;
+
   /** Copy file */
   copyFile(src: string, dest: string): Promise<void>;
 
