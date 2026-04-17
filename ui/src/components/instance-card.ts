@@ -692,11 +692,10 @@ export class InstanceCard extends LitElement {
             ${showSlug ? html`<div class="slug">${inst.slug}</div>` : nothing}
           </div>
           <div class="card-header-right">
-            <span class="badge ${stateClass}">
+            <span class="badge ${stateClass}" title=${this._stateLabel()}>
               ${this.instance.transitioning
                 ? html`<span class="spinner"></span>`
                 : html`<span class="state-dot"></span>`}
-              ${this._stateLabel()}
             </span>
             <div class="menu-anchor">
               <button
