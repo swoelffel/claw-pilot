@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.73.7] — 2026-04-17
+
+### Changed
+- **Instance card header simplified** — Removed state text label (`running`, `stopped`…) from the header badge; only the colored dot (or spinner) is displayed, with the state name as a `title` tooltip on hover. Also documented the conditional SYSTEM badge in the component spec.
+
+---
+
 ## [0.73.6] — 2026-04-17
 
 ### Changed
