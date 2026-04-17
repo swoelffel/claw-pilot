@@ -160,7 +160,7 @@ export class InstanceDashboard extends LitElement {
       :host {
         display: block;
         padding: var(--space-6);
-        max-width: 1400px;
+        max-width: 1200px;
         margin: 0 auto;
       }
 
@@ -190,8 +190,8 @@ export class InstanceDashboard extends LitElement {
       }
 
       .header-title {
-        font-size: 18px;
-        font-weight: 600;
+        font-size: 20px;
+        font-weight: 700;
         color: var(--text-primary);
         display: flex;
         align-items: center;
@@ -274,6 +274,12 @@ export class InstanceDashboard extends LitElement {
         border-radius: 50%;
         flex-shrink: 0;
       }
+      .kpi-clickable {
+        cursor: pointer;
+      }
+      .kpi-clickable:hover {
+        color: var(--accent);
+      }
 
       /* ── Layout ──────────────────────────────────────────────── */
 
@@ -293,6 +299,8 @@ export class InstanceDashboard extends LitElement {
       .dash-sidebar {
         position: sticky;
         top: var(--space-4);
+        max-height: calc(100vh - 56px - 32px);
+        overflow: hidden;
       }
 
       .widget-grid-2 {
@@ -367,9 +375,16 @@ export class InstanceDashboard extends LitElement {
         border-radius: 2px;
       }
 
+      .agent-row-clickable {
+        cursor: pointer;
+      }
+      .agent-row-clickable:hover .agent-name {
+        color: var(--accent);
+      }
+
       .agent-name {
         font-size: 13px;
-        font-weight: 500;
+        font-weight: 600;
         color: var(--text-primary);
         overflow: hidden;
         text-overflow: ellipsis;
@@ -872,9 +887,9 @@ export class InstanceDashboard extends LitElement {
         <button
           class="btn-back"
           @click=${() => this._navigate("cluster")}
-          title=${msg("Back to cluster", { id: "dashboard-back-cluster" })}
+          title=${msg("Back to instances", { id: "dashboard-back-instances" })}
         >
-          ← ${msg("Cluster", { id: "dashboard-cluster-label" })}
+          ← ${msg("Instances", { id: "dashboard-instances-label" })}
         </button>
         <div class="header-title">
           <span class="state-dot" style="background: ${stateColor(instanceState)}"></span>
@@ -917,11 +932,11 @@ export class InstanceDashboard extends LitElement {
     // Task counters
     const pending = this._tasks.filter((t) => t.status === "pending").length;
     const inProgress = this._tasks.filter((t) => t.status === "in_progress").length;
-    const blocked = this._tasks.filter((t) => t.status === "blocked").length;
-    const taskTotal = pending + inProgress + blocked;
+    const taskTotal = pending + inProgress;
 
-    // Alerts from heartbeat (from WS)
-    const alerts = inst?.pendingPermissions ?? 0;
+    // Alerts from heartbeat (from WS health_update payload)
+    const alerts =
+      ((inst as Record<string, unknown> | null)?.heartbeatAlerts as number | undefined) ?? 0;
 
     return html`
       <div class="kpi-bar">
@@ -935,25 +950,25 @@ export class InstanceDashboard extends LitElement {
           <span class="kpi-label">${msg("Gateway", { id: "dashboard-kpi-gateway" })}</span>
           <span class="kpi-value">${gatewayState}</span>
         </div>
-        <div class="kpi-pill">
+        <div class="kpi-pill kpi-clickable" @click=${() => this._navigate("agents-builder")}>
           <span class="kpi-label">${msg("Agents", { id: "dashboard-kpi-agents" })}</span>
           <span class="kpi-value">${agentCount}</span>
         </div>
-        <div class="kpi-pill">
+        <div class="kpi-pill kpi-clickable" @click=${() => this._navigate("tasks")}>
           <span class="kpi-label">${msg("Tasks", { id: "dashboard-kpi-tasks" })}</span>
           <span class="kpi-value">${taskTotal}</span>
         </div>
-        <div class="kpi-pill">
+        <div class="kpi-pill kpi-clickable" @click=${() => this._navigate("costs")}>
           <span class="kpi-label">${msg("Cost", { id: "dashboard-kpi-cost" })}</span>
           <span class="kpi-value">${cs ? fmtUsd(cs.totalCostUsd) : "—"}</span>
         </div>
-        <div class="kpi-pill">
+        <div class="kpi-pill kpi-clickable" @click=${() => this._navigate("costs")}>
           <span class="kpi-label">${msg("Tokens", { id: "dashboard-kpi-tokens" })}</span>
           <span class="kpi-value"
             >${cs ? fmtTokens(cs.totalTokensIn + cs.totalTokensOut) : "—"}</span
           >
         </div>
-        <div class="kpi-pill">
+        <div class="kpi-pill kpi-clickable" @click=${() => this._navigate("heartbeat")}>
           <span class="kpi-label">${msg("Alerts", { id: "dashboard-kpi-alerts" })}</span>
           <span class="kpi-value">${alerts}</span>
         </div>
@@ -982,8 +997,10 @@ export class InstanceDashboard extends LitElement {
     return html`
       <div class="widget">
         <div class="widget-header">
-          <span class="widget-label">${msg("Agents", { id: "dashboard-agents-title" })}</span>
-          <span class="widget-link" @click=${() => this._navigate("builder")}
+          <span class="widget-label"
+            >${msg("Agents", { id: "dashboard-agents-title" })} (${this._agents.length})</span
+          >
+          <span class="widget-link" @click=${() => this._navigate("agents-builder")}
             >${msg("Builder", { id: "dashboard-agents-link" })} →</span
           >
         </div>
@@ -993,7 +1010,10 @@ export class InstanceDashboard extends LitElement {
             </div>`
           : visible.map(
               (a) => html`
-                <div class="agent-row">
+                <div
+                  class="agent-row agent-row-clickable"
+                  @click=${() => this._navigate("agents-builder")}
+                >
                   <div
                     class="agent-stripe"
                     style="background: ${archetypeColor(a.archetype)}"
@@ -1006,7 +1026,7 @@ export class InstanceDashboard extends LitElement {
             )}
         ${remaining > 0
           ? html`
-              <div class="agent-more" @click=${() => this._navigate("builder")}>
+              <div class="agent-more" @click=${() => this._navigate("agents-builder")}>
                 + ${remaining} ${msg("more…", { id: "dashboard-agents-more" })}
               </div>
             `
@@ -1032,6 +1052,7 @@ export class InstanceDashboard extends LitElement {
     const pending = this._tasks.filter((t) => t.status === "pending").length;
     const inProgress = this._tasks.filter((t) => t.status === "in_progress").length;
     const blocked = this._tasks.filter((t) => t.status === "blocked").length;
+    const completed = this._tasks.filter((t) => t.status === "completed").length;
 
     return html`
       <div class="widget">
@@ -1043,14 +1064,14 @@ export class InstanceDashboard extends LitElement {
         </div>
         <div class="tasks-counters">
           <div class="task-counter">
-            <span class="task-counter-dot" style="background: var(--text-muted)"></span>
+            <span class="task-counter-dot" style="background: var(--state-warning)"></span>
             <span class="task-counter-label"
               >${msg("Pending", { id: "dashboard-tasks-pending" })}</span
             >
             <span class="task-counter-value">${pending}</span>
           </div>
           <div class="task-counter">
-            <span class="task-counter-dot" style="background: var(--state-info)"></span>
+            <span class="task-counter-dot" style="background: var(--accent)"></span>
             <span class="task-counter-label"
               >${msg("In Progress", { id: "dashboard-tasks-inprogress" })}</span
             >
@@ -1062,6 +1083,16 @@ export class InstanceDashboard extends LitElement {
               >${msg("Blocked", { id: "dashboard-tasks-blocked" })}</span
             >
             <span class="task-counter-value">${blocked}</span>
+          </div>
+          <div class="task-counter">
+            <span
+              style="width: 10px; height: 10px; flex-shrink: 0; text-align: center; font-size: 10px; line-height: 10px; color: var(--text-muted)"
+              >✓</span
+            >
+            <span class="task-counter-label"
+              >${msg("Completed", { id: "dashboard-tasks-completed" })}</span
+            >
+            <span class="task-counter-value">${completed}</span>
           </div>
         </div>
       </div>
@@ -1378,7 +1409,8 @@ export class InstanceDashboard extends LitElement {
     const inst = this._instance;
 
     const model = resolveModelDisplay(inst?.default_model ?? null);
-    const telegram = inst?.telegram_bot ?? "—";
+    const telegramBot = inst?.telegram_bot;
+    const telegramDisplay = telegramBot ? `✈ @${telegramBot}` : "—";
     const port = inst?.port ?? "—";
 
     return html`
@@ -1397,7 +1429,7 @@ export class InstanceDashboard extends LitElement {
           <span class="settings-label"
             >${msg("Telegram", { id: "dashboard-settings-telegram" })}</span
           >
-          <span class="settings-value">${telegram ? "✓" : "—"}</span>
+          <span class="settings-value">${telegramDisplay}</span>
         </div>
         <div class="settings-row">
           <span class="settings-label">${msg("Port", { id: "dashboard-settings-port" })}</span>

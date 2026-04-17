@@ -688,10 +688,11 @@ export class DashboardPilot extends LitElement {
     if (!text) return nothing;
     const isUser = m.role === "user";
     const bubbleClass = isUser ? "msg-user" : "msg-agent";
+    const senderName = isUser ? "you" : (m.agentId ?? "pilot");
     return html`
       <div class="msg-group">
         <div class="msg-meta" style=${isUser ? "text-align:right" : ""}>
-          ${this._formatTime(m.createdAt)}
+          ${this._formatTime(m.createdAt)} ${senderName}
         </div>
         <div class="msg-bubble ${bubbleClass}">${text}</div>
       </div>

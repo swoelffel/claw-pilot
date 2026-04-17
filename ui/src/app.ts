@@ -1048,6 +1048,7 @@ export class CpApp extends LitElement {
               class="nav-tab ${this._route.view === "cluster" ||
               this._route.view === "agents-builder" ||
               this._route.view === "instance-settings" ||
+              this._route.view === "instance-dashboard" ||
               this._route.view === "pilot" ||
               this._route.view === "costs" ||
               this._route.view === "activity" ||
