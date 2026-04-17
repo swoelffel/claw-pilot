@@ -1,7 +1,7 @@
 # claw-pilot — Functional Architecture
 
-> **Version**: 0.72.6
-> **Stack**: TypeScript ~6.0 / Node.js ESM, Lit ^3, SQLite (schema v34), Hono ^4.12
+> **Version**: 0.73.5
+> **Stack**: TypeScript ~6.0 / Node.js ESM, Lit ^3, SQLite (schema v36), Hono ^4.12
 > **Repo**: https://github.com/swoelffel/claw-pilot
 
 ---
@@ -50,12 +50,12 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
 
 | Document | Content | When to read |
 |---|---|---|
-| **[Data Model](data-model.md)** | SQLite tables (34), migrations, columns, port range | Touching the database |
+| **[Data Model](data-model.md)** | SQLite tables (36), migrations, columns, port range | Touching the database |
 | **[Code Structure](code-structure.md)** | Full `src/` directory layout (CLI, Core, Runtime, Dashboard, Lib) | Before coding — find where things live |
 | **[CLI Features](features-cli.md)** | 10 CLI commands with usage examples | Working on CLI |
 | **[Dashboard](dashboard.md)** | Security, auth, rate limiting, WebSocket monitor | Dashboard/API work |
 | **[API Reference](api-reference.md)** | 18 hash routes + ~150 REST endpoints by domain | Building integrations or UI |
-| **[Runtime Engine](runtime-engine.md)** | Config, 8 providers, daemon, channels, 12 tools, 26 bus events, flows | Runtime changes |
+| **[Runtime Engine](runtime-engine.md)** | Config, 8 providers, daemon, channels, 12+3 tools, 43+ bus events, flows, workspace-knowledge | Runtime changes |
 | **[SSE Architecture](../sse-architecture.md)** | Real-time streaming (3 SSE + 1 WS), reconnection, auth | Live features |
 
 ### Related docs
@@ -71,4 +71,4 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
 
 ---
 
-*Updated: 2026-04-14 — v0.72.6: schema v34, 20 repositories, ~150 API endpoints, 86 UI components, 18 routes*
+*Updated: 2026-04-16 — v0.73.5: schema v36, 20 repositories, ~160 API endpoints, 89 UI components, 18 routes*

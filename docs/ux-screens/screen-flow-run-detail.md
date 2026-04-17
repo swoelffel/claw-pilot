@@ -61,7 +61,19 @@ Detailed view of a single flow execution: step progress, SITREP extraction, toke
 
 ## SITREP Panel
 
-When a completed step has SITREP data (`sitrep_json`), it renders as an expandable panel below the step row showing structured extraction results.
+When a completed step has SITREP data (`sitrep_json`), it renders as an expandable panel below the step row. Since v0.73.2, SITREPs are structured:
+
+| Field | Description |
+|---|---|
+| **Outcome** | `success` (green), `failure` (red), `partial` (amber) badge |
+| **Summary** | 1-2000 char agent summary |
+| **Key findings** | Optional bullet list |
+
+A missing SITREP renders as `outcome: "failure"` with a note that the step completed without reporting.
+
+## Outcome-driven skipping (v0.73.0+)
+
+Steps with `outcome: "failure"` or `"partial"` automatically mark downstream dependent steps as `skipped` (displayed with `○` empty dot). Steps with `continueOnFailure: true` in the DAG definition are exempt from skip propagation and run regardless of upstream outcomes (visible as a gray "resilient" badge on the step row).
 
 ## Data Fetching
 
@@ -90,4 +102,4 @@ All strings use `msg("...", { id: "flow-run.*" })` prefix.
 
 ---
 
-*Since v0.68.0 (FLOW-001)*
+*Since v0.68.0 (FLOW-001) — SITREP schema + outcome-driven skipping since v0.73.0–v0.73.2*

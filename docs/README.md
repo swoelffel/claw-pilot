@@ -1,6 +1,6 @@
 # ClawPilot Documentation
 
-> **v0.72.6** — CLI + Web Dashboard for multi-agent AI orchestration
+> **v0.73.5** — CLI + Web Dashboard for multi-agent AI orchestration
 
 ## Quick orientation
 
@@ -12,7 +12,7 @@ ClawPilot orchestrates multiple AI agent instances on a Linux or macOS server. I
 |---|---|---|
 | [Architecture overview](architecture/README.md) | System diagram, how pieces fit together | First read |
 | [Code structure](architecture/code-structure.md) | Where to find things in `src/` | Before coding |
-| [Data model](architecture/data-model.md) | SQLite tables and migrations (schema v34) | Touching the database |
+| [Data model](architecture/data-model.md) | SQLite tables and migrations (schema v36) | Touching the database |
 | [API reference](architecture/api-reference.md) | 18 hash routes + ~150 REST endpoints | Building integrations or UI |
 | [Runtime engine](architecture/runtime-engine.md) | Config, providers, tools, bus events, flows | Runtime changes |
 | [CLI features](architecture/features-cli.md) | 10 CLI commands with examples | Working on CLI |
@@ -41,4 +41,4 @@ For code conventions, build commands, and test setup, see `CLAUDE.md` at the rep
 
 ---
 
-*Updated: 2026-04-14 — v0.72.6*
+*Updated: 2026-04-16 — v0.73.5*

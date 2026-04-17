@@ -44,7 +44,8 @@
 | `search_index_map` | v32 | Shadow mapping table for FTS5 index management |
 | `rt_flow_definitions` | v33 | Workflow definitions — name, steps DAG (JSON), trigger config (manual/bus), enabled |
 | `rt_flow_runs` | v33 | Workflow execution runs — status (5 states), trigger, timing, error |
-| `rt_flow_step_runs` | v33 | Per-step execution — agent, session, SITREP JSON, tokens, cost, retry count |
+| `rt_flow_step_runs` | v33 | Per-step execution — agent, session, SITREP JSON (`outcome`, `summary`, `keyFindings`), tokens, cost, retry count |
+| `agent_files_fts` | v36 | FTS5 virtual table — full-text search over `agent_files` content (content-backed, BM25 with snippet) |
 
 ## Added columns
 
@@ -59,9 +60,13 @@
 - `rt_tasks.parent_id` (v30) — self-referential FK for epic hierarchy
 - `instances.is_system` (v34) — system instance flag (HOMEBOT)
 
+**v35–v36**:
+- `ports` table: port derivation now includes username salt for multi-user isolation (v35)
+- `agent_files_fts` FTS5 virtual table (v36) + INSERT/UPDATE/DELETE triggers to keep index in sync; initial population from existing rows
+
 ## Migration rules
 
-**Current migration version: 34**
+**Current migration version: 36**
 
 **Default port range**: 18789–18838 (50 ports, 10 instances at 5-port intervals). Dashboard: 19000.
 
@@ -71,4 +76,4 @@ Full schema reference: [registry-db.md](../registry-db.md)
 
 ---
 
-*Updated: 2026-04-14 — v0.72.6, schema v34, 34 tables*
+*Updated: 2026-04-16 — v0.73.5, schema v36, 35 tables (+ FTS5 virtual table)*

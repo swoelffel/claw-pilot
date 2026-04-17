@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.73.6] — 2026-04-17
+
+### Changed
+- **File tree icons aligned to ClawPilot style** — Replaced emoji file (`📄`) and folder (`📁`) icons with geometric Unicode symbols (`◈` for files, `⊟` for folders), consistent with the rest of the UI (tool icons, context panel, instance card actions).
+- **VS Code-style "New file" and "New folder" toolbar buttons** — The text "New file…" button in the workspace file tree header is replaced by two SVG icon buttons (add-file and add-folder, matching VS Code's explorer toolbar), with appropriate `title` tooltips. The "New folder" action opens a dedicated dialog that asks for a folder name and auto-creates a `README.md` inside it.
+
+---
+
 ## [0.73.5] — 2026-04-16
 
 ### Added

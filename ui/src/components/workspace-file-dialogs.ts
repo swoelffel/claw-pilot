@@ -6,7 +6,7 @@
 //
 // Both close themselves on success (success event is re-dispatched by the
 // parent, which is responsible for calling the API and refreshing the tree).
-import { LitElement, html, css } from "lit";
+import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { DialogMixin } from "../lib/dialog-mixin.js";
@@ -146,6 +146,9 @@ export class NewFileDialog extends DialogMixin(LitElement) {
   /** Initial directory prefix (e.g. `memory` → field prefilled with `memory/`). */
   @property({ type: String }) parentDir = "";
 
+  /** When true, creates a folder (README.md inside) instead of a bare file. */
+  @property({ type: Boolean }) folderMode = false;
+
   @state() private _path = "";
   @state() private _content = "";
   @state() private _error = "";
@@ -163,24 +166,30 @@ export class NewFileDialog extends DialogMixin(LitElement) {
 
   private _validateClient(path: string): string | null {
     if (!path) return "Path is required";
-    if (path.endsWith("/")) return "Path must include a filename";
     if (path.startsWith("/")) return "Path must be relative";
     if (path.includes("..")) return "Path traversal is not allowed";
+    if (this.folderMode) {
+      if (path.includes("/")) return "Folder name must not contain slashes";
+      return null;
+    }
+    if (path.endsWith("/")) return "Path must include a filename";
     if (!/\.[A-Za-z0-9]+$/.test(path)) return "File must have an extension";
     return null;
   }
 
   private _submit(): void {
-    const err = this._validateClient(this._path.trim());
+    const raw = this._path.trim();
+    const err = this._validateClient(raw);
     if (err) {
       this._error = err;
       return;
     }
     this._submitting = true;
     this._error = "";
+    const path = this.folderMode ? `${raw}/README.md` : raw;
     this.dispatchEvent(
       new CustomEvent("file-new-confirmed", {
-        detail: { path: this._path.trim(), content: this._content },
+        detail: { path, content: this._content },
         bubbles: true,
         composed: true,
       }),
@@ -203,16 +212,24 @@ export class NewFileDialog extends DialogMixin(LitElement) {
       >
         <div class="dialog">
           <div class="dialog-header">
-            <span class="dialog-title">${msg("New workspace file", { id: "nfd-title" })}</span>
+            <span class="dialog-title">
+              ${this.folderMode
+                ? msg("New folder", { id: "nfd-title-folder" })
+                : msg("New workspace file", { id: "nfd-title" })}
+            </span>
             <button class="close-btn" @click=${this._close}>✕</button>
           </div>
           <div class="dialog-body">
             <div class="field">
-              <label>${msg("Path", { id: "nfd-path" })}</label>
+              <label>
+                ${this.folderMode
+                  ? msg("Folder name", { id: "nfd-folder-name" })
+                  : msg("Path", { id: "nfd-path" })}
+              </label>
               <input
                 type="text"
                 .value=${this._path}
-                placeholder="notes.md or memory/new.md"
+                placeholder=${this.folderMode ? "projects" : "notes.md or memory/new.md"}
                 @input=${(e: Event) => {
                   this._path = (e.target as HTMLInputElement).value;
                 }}
@@ -222,20 +239,28 @@ export class NewFileDialog extends DialogMixin(LitElement) {
                 autofocus
               />
               <span class="hint">
-                ${msg("Allowed extensions: .md, .txt, .json, .yaml, .yml, .csv, .log", {
-                  id: "nfd-hint",
-                })}
+                ${this.folderMode
+                  ? msg("A README.md will be created inside the folder.", {
+                      id: "nfd-hint-folder",
+                    })
+                  : msg("Allowed extensions: .md, .txt, .json, .yaml, .yml, .csv, .log", {
+                      id: "nfd-hint",
+                    })}
               </span>
             </div>
-            <div class="field">
-              <label>${msg("Initial content (optional)", { id: "nfd-content" })}</label>
-              <textarea
-                .value=${this._content}
-                @input=${(e: Event) => {
-                  this._content = (e.target as HTMLTextAreaElement).value;
-                }}
-              ></textarea>
-            </div>
+            ${this.folderMode
+              ? nothing
+              : html`
+                  <div class="field">
+                    <label>${msg("Initial content (optional)", { id: "nfd-content" })}</label>
+                    <textarea
+                      .value=${this._content}
+                      @input=${(e: Event) => {
+                        this._content = (e.target as HTMLTextAreaElement).value;
+                      }}
+                    ></textarea>
+                  </div>
+                `}
             ${this._error ? html`<div class="error-banner">${this._error}</div>` : ""}
           </div>
           <div class="dialog-footer">

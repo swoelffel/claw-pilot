@@ -97,6 +97,15 @@ Plugins can expose `tools()`, `routes()`, and tool definition transforms.
 
 **system-tools plugin** (v0.72.5): 22 `cp_*` admin tools that query `registry.db` directly via Registry, Lifecycle, Provisioner, and Destroyer. No dependency on dashboard REST API — each component connects to the DB independently.
 
+**workspace-knowledge plugin** (v0.73.5): auto-registered for all instances, exposing 2 tools with zero permanent token cost in the system prompt:
+
+| Tool | Args | Description |
+|---|---|---|
+| `ws_list_files(dir?)` | optional subdirectory | Lists user-created workspace files with extracted H1 title / frontmatter `description:` and size. Excludes identity/memory whitelisted files. |
+| `ws_search_files(query, dir?)` | FTS5 query + optional dir | Full-text BM25 search with snippet highlighting (top 10 results, ~300 tokens/call). |
+
+Workspace files are indexed via SQLite FTS5 (`agent_files_fts`, schema v36). Files stored at relative paths under `workspaces/<agentId>/` (e.g., `memory/facts.md`). Path validation via `validateWorkspaceRelativePath()` — allows `.md`, `.txt`, `.json`, `.yaml`, `.yml`, `.csv`, `.log`; rejects path traversal and reserved segments.
+
 ## Event bus (26 types)
 
 The bus is instance-scoped (`getBus(slug)`). 26 typed event types (typed via `EventDef<T, P>`):
@@ -122,16 +131,42 @@ For real-time delivery to the browser, see [SSE Architecture](../sse-architectur
 
 Separate SQLite FTS5 index in `memory-index.db`. Chunks MEMORY.md and memory/*.md (500 chars, 100 overlap). BM25 search. Temporal decay scoring. `memory_search` tool for agents.
 
-## Flow engine (FLOW-001)
+## Flow engine (FLOW-001, v0.73+)
 
 Declarative DAG workflow engine:
 
-- **engine.ts**: topological sort, fan-out/fan-in, `Promise.race` parallel execution
-- **step-executor.ts**: per-step timeout (1s-10min), retry (0-5), agent session
-- **briefing.ts**: mission briefing builder for step prompts
-- **sitrep.ts**: structured SITREP extraction from agent responses
+- **engine.ts**: topological sort, fan-out/fan-in, `Promise.race` parallel execution, outcome-driven control flow
+- **step-executor.ts**: per-step timeout (1s-10min), retry (0-5), configurable `maxSteps` (default 50), dynamic soft/hard cap extension
+- **briefing.ts**: mission briefing builder — `includeLastN` defaults to 0 (no cross-run context contamination)
+- **sitrep.ts**: structured SITREP extraction; `complete_step` tool (v0.73.2) writes directly to `rt_flow_step_runs.sitrep_json`
+- **complete-step-tool.ts**: mandatory tool injected into flow step sessions only (not permanent/Telegram/web-chat sessions)
+- **step-extension-tool.ts**: `request_step_extension` tool for dynamically extending the step limit without restarting the SDK
 
 Flow definitions are stored in `rt_flow_definitions` (steps as JSON DAG). Runs track status across 5 states: pending, running, completed, failed, cancelled.
+
+### SITREP schema (v0.73.2+)
+
+```typescript
+{
+  outcome: "success" | "failure" | "partial",
+  summary: string,          // 1-2000 chars
+  keyFindings: string[],    // optional, defaults to []
+}
+```
+
+### Outcome-driven control flow (v0.73.0+)
+
+- `outcome: "failure"` or `"partial"` (or missing/malformed SITREP) propagates `skipped` status to all downstream dependent steps
+- `FlowStepDef.continueOnFailure?: boolean` — opt-in flag for steps that must run regardless (e.g., notification or cleanup steps)
+- Overall run status: `failed` when any step has a non-success outcome, `completed` only when all steps succeed
+- Helper: `hasUnsuccessfulSteps(runId)` in `flow-repository.ts`
+
+### Configurable step limits (v0.73.4+)
+
+- Default: 50 LLM steps per flow step (vs 20 for interactive sessions)
+- Soft cap: system reminder injected 2 steps before limit, offering `complete_step` or `request_step_extension`
+- Hard cap: `softCap × 2`, absolute maximum 200
+- `FlowStepDef.maxSteps?: number` overrides per step (serialized in flow JSON only when non-default)
 
 ## Heartbeat system
 
@@ -143,6 +178,22 @@ Flow definitions are stored in `rt_flow_definitions` (steps as JSON DAG). Runs t
 - **5-phase status indicator**: `sending`, `thinking`, `using <tool>`, `responding`, `idle` — driven by `tool.call.started` and `tool.call.ended` bus events.
 - **Question UX**: multi-question cards with tabs (1-4 items), `answerType: single/multi/free`, `allowOther`, atomic submission.
 
+## Tool reliability (v0.73.3+)
+
+**Automatic tool call repair** (`experimental_repairToolCall` on Vercel AI SDK `streamText`):
+- Heuristic: markdown bullet lists → JSON array (common LLM malformation for `keyFindings`-style fields)
+- Pattern: `"fieldName":\n  - item1\n  - item2` → `"fieldName":["item1", "item2"]`
+- If local heuristic fails, returns `null` to let the SDK surface the error to the model for self-correction
+- Global scope: applies to all session types (permanent, Telegram, web-chat, flow steps, subagent delegations)
+
+## Prompt caching (v0.73.x)
+
+Anthropic prefix caching is applied transparently via `applyCaching()` in `message-builder.ts`:
+- Cache control point 1: system prompt (`cacheControl: { type: "ephemeral" }`) — rare change across steps
+- Cache control point 2: last 2 non-system messages — caches recent context
+- Only active for Anthropic provider (`providerId === "anthropic"`)
+- Reduces effective token cost on long sessions and flow runs
+
 ---
 
-*Updated: 2026-04-14 — v0.72.6: 8 providers, 12+1 tools, 26+ bus events, system-tools plugin (DB-direct), flow engine, reasoning streaming*
+*Updated: 2026-04-16 — v0.73.5: 8 providers, 12+3 tools (flow-step-only: complete_step, request_step_extension; plugin: ws_*), 43+ bus events, system-tools + workspace-knowledge plugins, outcome-driven flow control, tool repair, prompt caching*

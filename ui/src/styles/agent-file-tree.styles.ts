@@ -22,24 +22,29 @@ export const agentFileTreeStyles = css`
     letter-spacing: 0.5px;
   }
 
-  .btn-new-file {
-    font-size: 11px;
-    font-weight: 500;
-    padding: 3px 8px;
-    background: var(--accent);
-    color: var(--accent-contrast, #fff);
+  .tree-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .tree-header-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    background: none;
     border: none;
     border-radius: 3px;
+    color: var(--text-muted);
     cursor: pointer;
   }
 
-  .btn-new-file:hover {
-    opacity: 0.85;
-  }
-
-  .btn-new-file:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
+  .tree-header-icon-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
   }
 
   .tree-body {
