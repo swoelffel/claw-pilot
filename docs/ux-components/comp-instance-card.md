@@ -6,7 +6,7 @@
 
 ```
 ┌────────────────────────────────────────────┐
-│  My instance    ⚡ runtime  ● running  [···]  │  ← header
+│  My instance  SYSTEM      ●  [···]             │  ← header (● has title tooltip)
 │  default                                       │
 ├────────────────────────────────────────────┤
 │  ◉ Gateway  ✈ @my_bot  ⬡ 11 agents  ⚠ PERM   │  ← status bar
@@ -36,14 +36,14 @@ Flex row `justify-content: space-between`, `gap: 10px`.
 | Element | Description |
 |---|---|
 | **display_name** | `font-size: 16px`, `font-weight: 700`, `--text-primary`. If `display_name` is null, displays slug instead. |
+| **SYSTEM badge** *(conditional)* | Pill `10px`, `font-weight: 600`, `--accent` background, white text. Displayed only if `is_system` is true. |
 | **slug** *(conditional)* | `font-size: 11px`, `--text-muted`, monospace, `margin-top: 2px`. Displayed only if `display_name` is defined. |
 
 **Right side** (`card-header-right`, flex row `gap: 8px`):
 
 | Element | Description |
 |---|---|
-| **`⚡ runtime` badge** | Pill indigo violet `rgba(99,102,241,0.12)` / `#818cf8`. Always displayed. Indicates claw-runtime engine. |
-| **State badge** | Colored pill with glowing dot + state text label. |
+| **State dot** | Colored dot (or spinner when transitioning) with state label as `title` tooltip. No text label displayed. |
 | **`···` button** | 28×28px menu button. Opens action popover on click. `open` class when active. |
 
 **Badge states:**
