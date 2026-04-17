@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.74.0] — 2026-04-17
+
+### Added
+- **Persistent notification inbox (INBOX-001)** — Bell icon with unread badge in the app bar opens a notification drawer. Backend: `notifications` table (migration v37) with insert/query/dedup (15-min window) and auto-prune (30 days). API: `GET /api/notifications` (cursor-paginated), `GET /api/notifications/unread-count`, `PATCH /api/notifications/:id/read`, `POST /api/notifications/mark-all-read`. Bus-driven emitter generates notifications for budget alerts, task status changes, heartbeat failures, runtime errors, permission requests, and flow completions. UI: `<cp-notification-inbox>` Lit component with severity icons, relative timestamps, and mark-read actions. 815+ lines of tests.
+
+---
+
 ## [0.73.7] — 2026-04-17
 
 ### Changed

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-`claw-pilot` v0.73.7 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, permanent cross-channel sessions, and extensible middleware pipeline.
+`claw-pilot` v0.74.0 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, permanent cross-channel sessions, and extensible middleware pipeline.
 
 All instances use the **claw-runtime** engine — a native Node.js engine (`src/runtime/`), managed via PID file daemon.
 
@@ -16,7 +16,7 @@ GitHub: https://github.com/swoelffel/claw-pilot
 - **Runtime**: Node.js >= 22.12.0, ESM, pnpm
 - **CLI**: Commander.js + @inquirer/prompts
 - **HTTP/WS**: Hono + ws
-- **DB**: better-sqlite3 (SQLite, WAL mode, schema v36)
+- **DB**: better-sqlite3 (SQLite, WAL mode, schema v37)
 - **UI**: Lit web components + Vite
 - **Build**: tsdown (CLI) + vite (UI)
 - **Tests**: Vitest
@@ -65,7 +65,7 @@ src/
   commands/         # CLI commands — thin wrappers over core/
   core/             # All business logic
   dashboard/        # HTTP server (Hono) + WebSocket monitor
-  db/               # SQLite schema + migrations (schema.ts) — current version: 36
+  db/               # SQLite schema + migrations (schema.ts) — current version: 37
   lib/              # Shared utilities (logger, constants, errors, platform, poll, xdg, shell...)
   runtime/          # claw-runtime engine (bus, provider, session, tool, agent, plugin, middleware, mcp, channel, engine)
   server/           # ServerConnection interface + LocalConnection impl
@@ -114,6 +114,7 @@ docs/main-doc.md    # Redirect stub → architecture/README.md
 | `user_model_aliases` | Per-user model aliases |
 | `users` | Dashboard auth (admin/operator/viewer roles) |
 | `sessions` | Server-side dashboard sessions with TTL |
+| `notifications` | Persistent notification inbox — severity, dedup_key, is_read, auto-prune 30 days |
 
 Schema lives in `src/db/schema.ts`. Migrations run on DB open. **Always additive** — never DROP COLUMN/TABLE.
 
