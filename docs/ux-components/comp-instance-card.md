@@ -111,6 +111,7 @@ All items: `stopPropagation()` + `_menuOpen = false` before action.
 
 ## Behaviors
 
+- **Card click** (zones 2, 3, 4 — hors `···` et boutons start/stop): `navigate { view: "dashboard", slug }`. `cursor: pointer`. Hover : fond `--bg-hover` (transition 150ms).
 - **`···` click**: `stopPropagation()` + toggle `_menuOpen`
 - **Outside click**: close popover via `document click` listener (added in `connectedCallback`, removed in `disconnectedCallback`)
 - **PERM pill click**: `stopPropagation()` + `navigate { view: "pilot" }`
