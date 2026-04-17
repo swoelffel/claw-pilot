@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.74.1] — 2026-04-17
+
+### Fixed
+- **Knip dead code false positive** — Replaced inline `import("./types.js").NotificationsPage` with a named import in `ui/src/api.ts` so knip correctly detects the type as used.
+
+---
+
 ## [0.74.0] — 2026-04-17
 
 ### Added

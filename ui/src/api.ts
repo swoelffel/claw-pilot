@@ -51,6 +51,7 @@ import type {
   TaskActivity,
   EpicInfo,
   SearchResult,
+  NotificationsPage,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 import { getToken } from "./services/auth-state.js";
@@ -1274,10 +1275,7 @@ export async function fetchSystemReady(): Promise<{
 // Notification Inbox
 // ---------------------------------------------------------------------------
 
-export async function fetchNotifications(
-  cursor?: number,
-  limit = 20,
-): Promise<import("./types.js").NotificationsPage> {
+export async function fetchNotifications(cursor?: number, limit = 20): Promise<NotificationsPage> {
   const params = new URLSearchParams();
   params.set("limit", String(limit));
   if (cursor !== undefined) params.set("cursor", String(cursor));
