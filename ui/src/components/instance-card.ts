@@ -27,6 +27,15 @@ export class InstanceCard extends LitElement {
         position: relative;
       }
 
+      .card-body {
+        cursor: pointer;
+      }
+
+      .card-body:hover {
+        background: var(--bg-hover);
+        transition: background 150ms ease;
+      }
+
       /* ── Header ─────────────────────────────────────────── */
 
       .card-header {
@@ -714,18 +723,21 @@ export class InstanceCard extends LitElement {
           </div>
         </div>
 
-        <!-- Status bar -->
-        ${this._renderStatusBar()}
+        <!-- Clickable body → dashboard -->
+        <div class="card-body" @click=${() => this._navigate("instance-dashboard")}>
+          <!-- Status bar -->
+          ${this._renderStatusBar()}
 
-        <!-- Meta -->
-        <div class="meta">
-          ${model ? html`<div class="model-row">${model}</div>` : nothing}
-          <div class="tech-row">
-            <span class="port-value">:${inst.port}</span>
+          <!-- Meta -->
+          <div class="meta">
+            ${model ? html`<div class="model-row">${model}</div>` : nothing}
+            <div class="tech-row">
+              <span class="port-value">:${inst.port}</span>
+            </div>
           </div>
-        </div>
 
-        ${this._error ? html`<div class="error-msg">${this._error}</div>` : nothing}
+          ${this._error ? html`<div class="error-msg">${this._error}</div>` : nothing}
+        </div>
       </div>
     `;
   }
