@@ -25,6 +25,7 @@ export type Route =
   | { view: "tasks"; slug: string }
   | { view: "flows"; slug: string }
   | { view: "flow-run"; slug: string; runId: number }
+  | { view: "instance-dashboard"; slug: string }
   | { view: "profile" };
 
 /** Convert a Route to a hash string (without the leading #). */
@@ -56,6 +57,8 @@ export function routeToHash(route: Route): string {
       return `/instances/${route.slug}/flows`;
     case "flow-run":
       return `/instances/${route.slug}/flows/runs/${route.runId}`;
+    case "instance-dashboard":
+      return `/instances/${route.slug}/dashboard`;
     case "blueprints":
       return "/blueprints";
     case "blueprint-builder":
@@ -80,6 +83,10 @@ export function hashToRoute(hash: string): Route {
 
   // /instances (cluster view)
   if (path === "instances") return { view: "cluster" };
+
+  // /instances/:slug/dashboard
+  const dashboardMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/dashboard$/);
+  if (dashboardMatch) return { view: "instance-dashboard", slug: dashboardMatch[1]! };
 
   // /instances/:slug/builder
   const builderMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/builder$/);
