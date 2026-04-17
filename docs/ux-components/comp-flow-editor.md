@@ -51,6 +51,13 @@ Dialog for creating and editing flow definitions. Manages the DAG step structure
 | **Timeout** | Number | Seconds (default: 300, range: 1-600) |
 | **Retries** | Number | Retry count (default: 0, range: 0-5) |
 
+**Advanced panel** (v0.73.4+):
+
+| Field | Type | Notes |
+|---|---|---|
+| **Max steps** | Number | Max LLM steps for this step (default: 50). Serialized in JSON only when non-default. |
+| **Continue on failure** | Checkbox | When checked, this step runs even if upstream dependencies returned `failure`/`partial` outcome. Default: false. |
+
 ## Validation
 
 - Flow name required and unique per instance
@@ -81,4 +88,4 @@ Uses `msg("...", { id: "flow-editor.*" })` prefix.
 
 ---
 
-*Since v0.68.0 (FLOW-001)*
+*Since v0.68.0 (FLOW-001) — advanced step fields (maxSteps, continueOnFailure) since v0.73.4*

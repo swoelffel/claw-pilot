@@ -224,4 +224,4 @@ workspace-templates.ts workspace template rendering (Handlebars-style)
 
 ---
 
-*Updated: 2026-04-14 — v0.72.6*
+*Updated: 2026-04-16 — v0.73.5*

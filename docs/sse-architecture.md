@@ -320,4 +320,4 @@ Helper: `ui/src/services/debug.ts::debugSse(label, ...args)`.
 
 ---
 
-*Updated: 2026-04-14 — v0.72.6: 3 SSE streams, 1 WebSocket, 43 event types (11 categories), SSE proxy with transform layer*
+*Updated: 2026-04-16 — v0.73.5: 3 SSE streams, 1 WebSocket, 43 event types (11 categories), SSE proxy with transform layer*

@@ -170,6 +170,7 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 | Flow Editor | `cp-flow-editor` | [comp-flow-editor.md](ux-components/comp-flow-editor.md) |
 | Pilot Part: Reasoning | `cp-pilot-part-reasoning` | [comp-pilot-part-reasoning.md](ux-components/comp-pilot-part-reasoning.md) |
 | Pilot Part: Delegation Expand | `cp-pilot-part-delegation-expand` | [comp-pilot-part-delegation-expand.md](ux-components/comp-pilot-part-delegation-expand.md) |
+| Agent File Tree | `cp-agent-file-tree` | [comp-agent-file-tree.md](ux-components/comp-agent-file-tree.md) |
 
 ---
 
@@ -185,6 +186,8 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 | Instance Discovery | `cp-discover-dialog` | Instances view (empty) | [dialog-discover.md](ux-components/dialog-discover.md) |
 | New Blueprint | `cp-create-blueprint-dialog` | Blueprints view | [dialog-create-blueprint.md](ux-components/dialog-create-blueprint.md) |
 | New Agent Template | `cp-create-agent-template-dialog` | Agent Templates view | [dialog-create-agent-template.md](ux-components/dialog-create-agent-template.md) |
+| New Workspace File | `cp-new-file-dialog` | Agent Detail Panel (Files tab) | — |
+| Delete Workspace File | `cp-delete-file-dialog` | Agent Detail Panel (Files tab) | — |
 | Accessibility | — | All dialogs | [dialog-accessibility.md](ux-components/dialog-accessibility.md) |
 
 ---
@@ -218,3 +221,5 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 *Updated: 2026-04-13 - v0.71.0: Live reasoning streaming (collapsible "Thinking..." card), 5-phase status indicator (sending/thinking/using tool/responding/idle), delegation drill-down (clickable traces expand nested sub-sessions).*
 
 *Updated: 2026-04-14 - v0.72.6: SSE bridge (daemon/dashboard real-time sync), setup wizard replaced with form, system-tools plugin (DB-direct, 22 cp_* tools), zero complexity baseline. New routes: #/home, #/.../memory, #/.../heartbeat, #/.../session-logs, #/.../flows, #/.../flows/runs/:runId. New components: cp-home-chat, cp-home-wizard, cp-command-palette, cp-epic-tree, cp-flow-editor, cp-flow-list, cp-flow-run-detail, cp-pilot-part-reasoning, cp-pilot-part-delegation-expand. Total: 86 components, 18 routes.*
+
+*Updated: 2026-04-16 - v0.73.5: Workspace file manager (Files tab in agent detail panel) — cp-agent-file-tree (collapsible tree, per-dir create, per-file delete), cp-new-file-dialog, cp-delete-file-dialog. Backend: wildcard file routes (GET/PUT/DELETE /agents/:id/files/*), path validation, agent_files_fts FTS5 index. Flow improvements: outcome-driven control flow (continueOnFailure flag), structured complete_step tool, configurable maxSteps per step (default 50) with dynamic extension. workspace-knowledge plugin (ws_list_files, ws_search_files). Tool call repair + Anthropic prompt caching. Total: 89 components, 18 routes.*

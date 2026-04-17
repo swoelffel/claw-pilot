@@ -72,7 +72,7 @@
 | `PATCH` | `/api/instances/:slug/config/telegram/token` | Modify Telegram token |
 | `GET` | `/api/providers` | AI provider catalog |
 
-### Instances — Agents (10 endpoints)
+### Instances — Agents (13 endpoints)
 
 | Method | Route | Role |
 |---|---|---|
@@ -83,7 +83,10 @@
 | `PATCH` | `/api/instances/:slug/agents/:agentId/meta` | Update metadata |
 | `PATCH` | `/api/instances/:slug/agents/:agentId/position` | Canvas position |
 | `PATCH` | `/api/instances/:slug/agents/:agentId/spawn-links` | Spawn links |
-| `GET/PUT` | `/api/instances/:slug/agents/:agentId/files/:filename` | Workspace files |
+| `GET` | `/api/instances/:slug/agents/:agentId/files` | Workspace file tree (hierarchical JSON, v0.73.5) |
+| `GET` | `/api/instances/:slug/agents/:agentId/files/*` | Read single workspace file by relative path |
+| `PUT` | `/api/instances/:slug/agents/:agentId/files/*` | Create or update workspace file (path-validated) |
+| `DELETE` | `/api/instances/:slug/agents/:agentId/files/*` | Delete workspace file |
 | `GET` | `/api/instances/:slug/skills` | Available skills |
 | `POST` | `/api/instances/:slug/agents/sync` | Sync from disk |
 
@@ -246,4 +249,4 @@ Standalone reusable agent templates, independent of team blueprints and instance
 
 ---
 
-*Updated: 2026-04-14 — v0.72.6, ~150 REST endpoints, 18 hash routes*
+*Updated: 2026-04-16 — v0.73.5, ~160 REST endpoints, 18 hash routes*

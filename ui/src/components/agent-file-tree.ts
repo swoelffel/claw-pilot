@@ -84,6 +84,13 @@ export class AgentFileTree extends LitElement {
     );
   }
 
+  private _emitNewFolder(parentDir: string, ev?: Event): void {
+    ev?.stopPropagation();
+    this.dispatchEvent(
+      new CustomEvent("folder-new", { detail: { parentDir }, bubbles: true, composed: true }),
+    );
+  }
+
   private _renderNode(node: AgentFileTreeNode, depth: number): unknown {
     const indent = depth * 16;
     if (node.type === "file") {
@@ -95,7 +102,7 @@ export class AgentFileTree extends LitElement {
           @click=${() => this._emitSelect(node.path)}
           title=${node.path}
         >
-          <span class="tree-icon">📄</span>
+          <span class="tree-icon">◈</span>
           <span class="tree-name">${node.name}</span>
           ${this.readonly
             ? nothing
@@ -123,7 +130,7 @@ export class AgentFileTree extends LitElement {
         title=${node.path}
       >
         <span class="tree-chevron ${open ? "open" : ""}">▶</span>
-        <span class="tree-icon">📁</span>
+        <span class="tree-icon">⊟</span>
         <span class="tree-name">${node.name}</span>
         ${this.readonly
           ? nothing
@@ -152,9 +159,46 @@ export class AgentFileTree extends LitElement {
         ${this.readonly
           ? nothing
           : html`
-              <button class="btn-new-file" @click=${() => this._emitNew("")}>
-                ${msg("New file…", { id: "aft-new" })}
-              </button>
+              <div class="tree-header-actions">
+                <button
+                  class="tree-header-icon-btn"
+                  title=${msg("New file", { id: "aft-new-file" })}
+                  @click=${() => this._emitNew("")}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      clip-rule="evenodd"
+                      d="M9.5 1.1l3.4 3.5.1.4v2h-1V5H8V1H3v14h4v1H2.5l-.5-.5v-15l.5-.5h6.7l.3.1zM9 2v3h2.9L9 2zm4 14h-1v-2H9v-1h3v-2h1v2h2v1h-2v2z"
+                    />
+                  </svg>
+                </button>
+                <button
+                  class="tree-header-icon-btn"
+                  title=${msg("New folder", { id: "aft-new-folder" })}
+                  @click=${() => this._emitNewFolder("")}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      clip-rule="evenodd"
+                      d="M14.5 3H7.71l-.85-.85L6.51 2h-5l-.5.5v11l.5.5h13l.5-.5v-10L14.5 3zm-.51 8h-2v2h-1v-2h-2V10h2V8h1v2h2v1zm-7-4V6H5.5v1H4V5h3.5V4h1v3H7z"
+                    />
+                  </svg>
+                </button>
+              </div>
             `}
       </div>
       <div class="tree-body">
@@ -169,5 +213,8 @@ export class AgentFileTree extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "cp-agent-file-tree": AgentFileTree;
+  }
+  interface HTMLElementEventMap {
+    "folder-new": CustomEvent<{ parentDir: string }>;
   }
 }

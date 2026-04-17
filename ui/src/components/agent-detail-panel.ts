@@ -175,6 +175,7 @@ export class AgentDetailPanel extends LitElement {
   @state() private _treeError = "";
   @state() private _newFileDialogOpen = false;
   @state() private _newFileParentDir = "";
+  @state() private _newFolderMode = false;
   @state() private _deleteFileDialogOpen = false;
   @state() private _deleteFileTarget = "";
 
@@ -1619,6 +1620,13 @@ export class AgentDetailPanel extends LitElement {
   }
 
   private _onFileNewRequested(ev: CustomEvent<{ parentDir: string }>): void {
+    this._newFolderMode = false;
+    this._newFileParentDir = ev.detail.parentDir;
+    this._newFileDialogOpen = true;
+  }
+
+  private _onFolderNewRequested(ev: CustomEvent<{ parentDir: string }>): void {
+    this._newFolderMode = true;
     this._newFileParentDir = ev.detail.parentDir;
     this._newFileDialogOpen = true;
   }
@@ -1689,6 +1697,7 @@ export class AgentDetailPanel extends LitElement {
             .activePath=${this._activeFilePath}
             @file-select=${(e: CustomEvent<{ path: string }>) => this._onFileSelect(e)}
             @file-new=${(e: CustomEvent<{ parentDir: string }>) => this._onFileNewRequested(e)}
+            @folder-new=${(e: CustomEvent<{ parentDir: string }>) => this._onFolderNewRequested(e)}
             @file-delete=${(e: CustomEvent<{ path: string }>) => this._onFileDeleteRequested(e)}
           ></cp-agent-file-tree>
         </div>
@@ -1713,8 +1722,10 @@ export class AgentDetailPanel extends LitElement {
         ? html`
             <cp-new-file-dialog
               .parentDir=${this._newFileParentDir}
+              ?folderMode=${this._newFolderMode}
               @close-dialog=${() => {
                 this._newFileDialogOpen = false;
+                this._newFolderMode = false;
               }}
               @file-new-confirmed=${(e: CustomEvent<{ path: string; content: string }>) =>
                 void this._onNewFileConfirmed(e)}
