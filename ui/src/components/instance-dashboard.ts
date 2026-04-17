@@ -6,8 +6,29 @@ import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
 import { badgeStyles } from "../styles/shared.js";
-import { fetchCostSummary, fetchDailyCosts, fetchBuilderData, fetchTasks } from "../api.js";
-import type { InstanceInfo, CostSummary, DailyCost, AgentBuilderInfo, TaskInfo } from "../types.js";
+import {
+  fetchCostSummary,
+  fetchDailyCosts,
+  fetchBuilderData,
+  fetchTasks,
+  fetchRtEvents,
+  listFlows,
+  fetchHeartbeatHeatmap,
+  fetchRuntimeSessions,
+  fetchMemoryAgents,
+} from "../api.js";
+import type {
+  InstanceInfo,
+  CostSummary,
+  DailyCost,
+  AgentBuilderInfo,
+  TaskInfo,
+  RtEvent,
+  FlowDefinitionWithLastRun,
+  HeartbeatAgentStats,
+  RuntimeSession,
+  MemoryAgentSummary,
+} from "../types.js";
 import "./dashboard-pilot.js";
 
 // ---------------------------------------------------------------------------
@@ -55,6 +76,47 @@ function archetypeColor(archetype: string | null): string {
   }
 }
 
+/** Event level → CSS variable. */
+function levelColor(level: string): string {
+  switch (level) {
+    case "info":
+      return "var(--state-info)";
+    case "warn":
+      return "var(--state-warning)";
+    case "error":
+      return "var(--state-error)";
+    default:
+      return "var(--text-muted)";
+  }
+}
+
+/** Format duration in seconds to compact string. */
+function fmtDuration(seconds: number): string {
+  if (seconds >= 60) return `${Math.floor(seconds / 60)}m`;
+  return `${Math.round(seconds)}s`;
+}
+
+/** Format bytes to KB or MB. */
+function fmtBytes(bytes: number): string {
+  if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
+  if (bytes >= 1_024) return `${(bytes / 1_024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
+/** Resolve default_model JSON to a display string. */
+function resolveModelDisplay(raw: string | null): string {
+  if (!raw) return "—";
+  try {
+    const parsed = JSON.parse(raw) as { providerId?: string; modelId?: string };
+    if (parsed.modelId) {
+      return parsed.providerId ? `${parsed.providerId}/${parsed.modelId}` : parsed.modelId;
+    }
+  } catch {
+    // Not JSON — return as-is
+  }
+  return raw;
+}
+
 /** State dot color. */
 function stateColor(s: string | undefined): string {
   switch (s) {
@@ -73,7 +135,16 @@ function stateColor(s: string | undefined): string {
 // Widget error tracking
 // ---------------------------------------------------------------------------
 
-type WidgetKey = "agents" | "tasks" | "costs" | "dailyCosts";
+type WidgetKey =
+  | "agents"
+  | "tasks"
+  | "costs"
+  | "dailyCosts"
+  | "activity"
+  | "flows"
+  | "heartbeat"
+  | "sessions"
+  | "memory";
 
 // ---------------------------------------------------------------------------
 // Component
@@ -398,6 +469,163 @@ export class InstanceDashboard extends LitElement {
         font-family: var(--font-mono);
       }
 
+      /* ── Activity Widget ────────────────────────────────────── */
+
+      .event-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        padding: 4px 0;
+        border-bottom: 1px solid var(--bg-border);
+        font-size: 12px;
+      }
+      .event-row:last-child {
+        border-bottom: none;
+      }
+      .event-time {
+        font-family: var(--font-mono);
+        color: var(--text-muted);
+        font-size: 11px;
+        flex-shrink: 0;
+      }
+      .event-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .event-type {
+        font-family: var(--font-mono);
+        color: var(--text-primary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .event-agent {
+        color: var(--text-muted);
+        font-size: 11px;
+        margin-left: auto;
+        flex-shrink: 0;
+      }
+
+      /* ── Flows Widget ────────────────────────────────────────── */
+
+      .flow-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        padding: 4px 0;
+        border-bottom: 1px solid var(--bg-border);
+        font-size: 12px;
+      }
+      .flow-row:last-child {
+        border-bottom: none;
+      }
+      .flow-status {
+        flex-shrink: 0;
+        font-size: 13px;
+        width: 16px;
+        text-align: center;
+      }
+      .flow-name {
+        color: var(--text-primary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+      }
+      .flow-duration {
+        font-family: var(--font-mono);
+        color: var(--text-muted);
+        font-size: 11px;
+        flex-shrink: 0;
+      }
+
+      /* ── Heartbeat Widget ────────────────────────────────────── */
+
+      .heartbeat-row {
+        padding: 3px 0;
+        font-size: 11px;
+        color: var(--text-muted);
+        border-bottom: 1px solid var(--bg-border);
+      }
+      .heartbeat-row:last-child {
+        border-bottom: none;
+      }
+      .heartbeat-footer {
+        margin-top: var(--space-2);
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      /* ── Logs Widget ─────────────────────────────────────────── */
+
+      .logs-stat {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 3px 0;
+        font-size: 12px;
+      }
+      .logs-stat-label {
+        color: var(--text-muted);
+      }
+      .logs-stat-value {
+        font-weight: 700;
+        font-family: var(--font-mono);
+        color: var(--text-primary);
+      }
+
+      /* ── Memory Widget ───────────────────────────────────────── */
+
+      .memory-stat {
+        font-size: 13px;
+        color: var(--text-secondary);
+        padding: 2px 0;
+      }
+      .memory-stat strong {
+        color: var(--text-primary);
+        font-family: var(--font-mono);
+      }
+
+      /* ── Settings Widget ─────────────────────────────────────── */
+
+      .settings-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 4px 0;
+        font-size: 12px;
+        border-bottom: 1px solid var(--bg-border);
+      }
+      .settings-row:last-child {
+        border-bottom: none;
+      }
+      .settings-label {
+        color: var(--text-muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .settings-value {
+        color: var(--text-primary);
+        font-family: var(--font-mono);
+        font-size: 12px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 180px;
+        text-align: right;
+      }
+
+      /* ── Widget grid 3 columns ───────────────────────────────── */
+
+      .widget-grid-3 {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: var(--space-4);
+      }
+
       /* ── Responsive ──────────────────────────────────────────── */
 
       @media (max-width: 900px) {
@@ -418,7 +646,8 @@ export class InstanceDashboard extends LitElement {
       }
 
       @media (max-width: 600px) {
-        .widget-grid-2 {
+        .widget-grid-2,
+        .widget-grid-3 {
           grid-template-columns: 1fr;
         }
         .agent-row {
@@ -444,6 +673,11 @@ export class InstanceDashboard extends LitElement {
   @state() private _tasks: TaskInfo[] = [];
   @state() private _costSummary: CostSummary | null = null;
   @state() private _dailyCosts: DailyCost[] = [];
+  @state() private _events: RtEvent[] = [];
+  @state() private _flows: FlowDefinitionWithLastRun[] = [];
+  @state() private _heartbeatStats: HeartbeatAgentStats[] = [];
+  @state() private _sessions: RuntimeSession[] = [];
+  @state() private _memoryAgents: MemoryAgentSummary[] = [];
   @state() private _widgetErrors: Partial<Record<WidgetKey, string>> = {};
 
   private _wsHandler: ((e: Event) => void) | null = null;
@@ -515,6 +749,11 @@ export class InstanceDashboard extends LitElement {
       fetchTasks(this.slug),
       fetchCostSummary(this.slug, this._period),
       fetchDailyCosts(this.slug, this._period),
+      fetchRtEvents(this.slug, { limit: 5 }),
+      listFlows(this.slug),
+      fetchHeartbeatHeatmap(this.slug, 7),
+      fetchRuntimeSessions(this.slug, { state: "all", limit: 5 }),
+      fetchMemoryAgents(this.slug),
     ]);
 
     // 0. Agents (from builder data)
@@ -545,6 +784,41 @@ export class InstanceDashboard extends LitElement {
       errors.dailyCosts = String((results[3] as PromiseRejectedResult).reason);
     }
 
+    // 4. Activity events
+    if (results[4].status === "fulfilled") {
+      this._events = results[4].value.events;
+    } else {
+      errors.activity = String((results[4] as PromiseRejectedResult).reason);
+    }
+
+    // 5. Flows
+    if (results[5].status === "fulfilled") {
+      this._flows = results[5].value;
+    } else {
+      errors.flows = String((results[5] as PromiseRejectedResult).reason);
+    }
+
+    // 6. Heartbeat
+    if (results[6].status === "fulfilled") {
+      this._heartbeatStats = results[6].value.stats;
+    } else {
+      errors.heartbeat = String((results[6] as PromiseRejectedResult).reason);
+    }
+
+    // 7. Sessions
+    if (results[7].status === "fulfilled") {
+      this._sessions = results[7].value;
+    } else {
+      errors.sessions = String((results[7] as PromiseRejectedResult).reason);
+    }
+
+    // 8. Memory agents
+    if (results[8].status === "fulfilled") {
+      this._memoryAgents = results[8].value.agents;
+    } else {
+      errors.memory = String((results[8] as PromiseRejectedResult).reason);
+    }
+
     this._widgetErrors = errors;
   }
 
@@ -573,7 +847,14 @@ export class InstanceDashboard extends LitElement {
         <div class="dash-main">
           ${this._renderAgentsWidget()}
           <div class="widget-grid-2">${this._renderTasksWidget()} ${this._renderCostsWidget()}</div>
-          <!-- More widgets will be added in future tasks -->
+          ${this._renderActivityWidget()}
+          <div class="widget-grid-3">
+            ${this._renderFlowsWidget()} ${this._renderHeartbeatWidget()}
+            ${this._renderLogsWidget()}
+          </div>
+          <div class="widget-grid-2">
+            ${this._renderMemoryWidget()} ${this._renderSettingsWidget()}
+          </div>
         </div>
         <div class="dash-sidebar">
           <cp-dashboard-pilot .slug=${this.slug}></cp-dashboard-pilot>
@@ -841,6 +1122,286 @@ export class InstanceDashboard extends LitElement {
           <span class="cost-tokens"
             >${cs ? fmtTokens(cs.totalTokensIn + cs.totalTokensOut) : "—"} tokens</span
           >
+        </div>
+      </div>
+    `;
+  }
+  // ── Activity Widget ──────────────────────────────────────────
+
+  private _renderActivityWidget() {
+    if (this._widgetErrors.activity) {
+      return html`
+        <div class="widget">
+          <div class="widget-header">
+            <span class="widget-label">${msg("Activity", { id: "dashboard-activity-title" })}</span>
+          </div>
+          <div class="widget-error">${this._widgetErrors.activity}</div>
+        </div>
+      `;
+    }
+
+    return html`
+      <div class="widget">
+        <div class="widget-header">
+          <span class="widget-label">${msg("Activity", { id: "dashboard-activity-title" })}</span>
+          <span class="widget-link" @click=${() => this._navigate("activity")}
+            >${msg("Activity", { id: "dashboard-activity-link" })} →</span
+          >
+        </div>
+        ${this._events.length === 0
+          ? html`<div class="widget-empty">
+              ${msg("No activity", { id: "dashboard-activity-empty" })}
+            </div>`
+          : this._events.map((ev) => {
+              const d = new Date(ev.createdAt);
+              const hh = String(d.getHours()).padStart(2, "0");
+              const mm = String(d.getMinutes()).padStart(2, "0");
+              return html`
+                <div class="event-row">
+                  <span class="event-time">${hh}:${mm}</span>
+                  <span class="event-dot" style="background: ${levelColor(ev.level)}"></span>
+                  <span class="event-type">${ev.eventType}</span>
+                  <span class="event-agent">${ev.agentId ?? ""}</span>
+                </div>
+              `;
+            })}
+      </div>
+    `;
+  }
+
+  // ── Flows Widget ────────────────────────────────────────────
+
+  private _renderFlowsWidget() {
+    if (this._widgetErrors.flows) {
+      return html`
+        <div class="widget">
+          <div class="widget-header">
+            <span class="widget-label">${msg("Flows", { id: "dashboard-flows-title" })}</span>
+          </div>
+          <div class="widget-error">${this._widgetErrors.flows}</div>
+        </div>
+      `;
+    }
+
+    // Sort by lastRun started_at descending, take 3
+    const sorted = [...this._flows]
+      .filter((f) => f.lastRun)
+      .sort((a, b) => {
+        const ta = a.lastRun?.started_at ?? a.lastRun?.created_at ?? "";
+        const tb = b.lastRun?.started_at ?? b.lastRun?.created_at ?? "";
+        return tb.localeCompare(ta);
+      })
+      .slice(0, 3);
+
+    return html`
+      <div class="widget">
+        <div class="widget-header">
+          <span class="widget-label">${msg("Flows", { id: "dashboard-flows-title" })}</span>
+          <span class="widget-link" @click=${() => this._navigate("flows")}
+            >${msg("Flows", { id: "dashboard-flows-link" })} →</span
+          >
+        </div>
+        ${sorted.length === 0
+          ? html`<div class="widget-empty">
+              ${msg("No flows", { id: "dashboard-flows-empty" })}
+            </div>`
+          : sorted.map((f) => {
+              const run = f.lastRun!;
+              let icon = "○";
+              let color = "var(--text-muted)";
+              if (run.status === "completed") {
+                icon = "✓";
+                color = "var(--state-running)";
+              } else if (run.status === "failed") {
+                icon = "✗";
+                color = "var(--state-error)";
+              } else if (run.status === "running") {
+                icon = "●";
+                color = "var(--accent)";
+              }
+
+              let duration = "";
+              if (run.started_at) {
+                const start = new Date(run.started_at).getTime();
+                const end = run.finished_at ? new Date(run.finished_at).getTime() : Date.now();
+                duration = fmtDuration((end - start) / 1000);
+              }
+
+              return html`
+                <div class="flow-row">
+                  <span class="flow-status" style="color: ${color}">${icon}</span>
+                  <span class="flow-name">${f.name}</span>
+                  <span class="flow-duration">${duration}</span>
+                </div>
+              `;
+            })}
+      </div>
+    `;
+  }
+
+  // ── Heartbeat Widget ────────────────────────────────────────
+
+  private _renderHeartbeatWidget() {
+    if (this._widgetErrors.heartbeat) {
+      return html`
+        <div class="widget">
+          <div class="widget-header">
+            <span class="widget-label"
+              >${msg("Heartbeat", { id: "dashboard-heartbeat-title" })}</span
+            >
+          </div>
+          <div class="widget-error">${this._widgetErrors.heartbeat}</div>
+        </div>
+      `;
+    }
+
+    const visible = this._heartbeatStats.slice(0, 3);
+    const totalAlerts = this._heartbeatStats.reduce((sum, s) => sum + s.totalAlerts, 0);
+
+    return html`
+      <div class="widget">
+        <div class="widget-header">
+          <span class="widget-label">${msg("Heartbeat", { id: "dashboard-heartbeat-title" })}</span>
+          <span class="widget-link" @click=${() => this._navigate("heartbeat")}
+            >${msg("Heartbeat", { id: "dashboard-heartbeat-link" })} →</span
+          >
+        </div>
+        ${visible.length === 0
+          ? html`<div class="widget-empty">
+              ${msg("No heartbeat data", { id: "dashboard-heartbeat-empty" })}
+            </div>`
+          : html`
+              ${visible.map((s) => html` <div class="heartbeat-row">${s.agentId}</div> `)}
+              <div
+                class="heartbeat-footer"
+                style="color: ${totalAlerts > 0 ? "var(--state-error)" : "var(--text-muted)"}"
+              >
+                ⚠ ${totalAlerts} ${msg("alerts", { id: "dashboard-heartbeat-alerts" })}
+              </div>
+            `}
+      </div>
+    `;
+  }
+
+  // ── Logs Widget ─────────────────────────────────────────────
+
+  private _renderLogsWidget() {
+    if (this._widgetErrors.sessions) {
+      return html`
+        <div class="widget">
+          <div class="widget-header">
+            <span class="widget-label">${msg("Logs", { id: "dashboard-logs-title" })}</span>
+          </div>
+          <div class="widget-error">${this._widgetErrors.sessions}</div>
+        </div>
+      `;
+    }
+
+    const total = this._sessions.length;
+    const active = this._sessions.filter((s) => s.state === "active").length;
+    const lastUpdate =
+      this._sessions.length > 0
+        ? this._sessions
+            .map((s) => s.updatedAt)
+            .sort()
+            .reverse()[0]
+        : null;
+    const lastFmt = lastUpdate ? new Date(lastUpdate).toLocaleString() : "—";
+
+    return html`
+      <div class="widget">
+        <div class="widget-header">
+          <span class="widget-label">${msg("Logs", { id: "dashboard-logs-title" })}</span>
+          <span class="widget-link" @click=${() => this._navigate("session-logs")}
+            >${msg("Logs", { id: "dashboard-logs-link" })} →</span
+          >
+        </div>
+        <div class="logs-stat">
+          <span class="logs-stat-label">${msg("Sessions", { id: "dashboard-logs-sessions" })}</span>
+          <span class="logs-stat-value">${total}</span>
+        </div>
+        <div class="logs-stat">
+          <span class="logs-stat-label">${msg("Active", { id: "dashboard-logs-active" })}</span>
+          <span class="logs-stat-value">${active}</span>
+        </div>
+        <div class="logs-stat">
+          <span class="logs-stat-label"
+            >${msg("Last update", { id: "dashboard-logs-last-update" })}</span
+          >
+          <span class="logs-stat-value">${lastFmt}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Memory Widget ───────────────────────────────────────────
+
+  private _renderMemoryWidget() {
+    if (this._widgetErrors.memory) {
+      return html`
+        <div class="widget">
+          <div class="widget-header">
+            <span class="widget-label">${msg("Memory", { id: "dashboard-memory-title" })}</span>
+          </div>
+          <div class="widget-error">${this._widgetErrors.memory}</div>
+        </div>
+      `;
+    }
+
+    const agentsWithFiles = this._memoryAgents.filter((a) => a.fileCount > 0).length;
+    const totalFiles = this._memoryAgents.reduce((sum, a) => sum + a.fileCount, 0);
+    const totalSize = this._memoryAgents.reduce((sum, a) => sum + a.totalSize, 0);
+
+    return html`
+      <div class="widget">
+        <div class="widget-header">
+          <span class="widget-label">${msg("Memory", { id: "dashboard-memory-title" })}</span>
+          <span class="widget-link" @click=${() => this._navigate("memory")}
+            >${msg("Memory", { id: "dashboard-memory-link" })} →</span
+          >
+        </div>
+        <div class="memory-stat">
+          <strong>${agentsWithFiles}</strong>
+          ${msg("agents with files", { id: "dashboard-memory-agents-with-files" })}
+        </div>
+        <div class="memory-stat">
+          <strong>${totalFiles}</strong> ${msg("files", { id: "dashboard-memory-files" })} ·
+          <strong>${fmtBytes(totalSize)}</strong>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Settings Widget ─────────────────────────────────────────
+
+  private _renderSettingsWidget() {
+    const inst = this._instance;
+
+    const model = resolveModelDisplay(inst?.default_model ?? null);
+    const telegram = inst?.telegram_bot ?? "—";
+    const port = inst?.port ?? "—";
+
+    return html`
+      <div class="widget">
+        <div class="widget-header">
+          <span class="widget-label">${msg("Settings", { id: "dashboard-settings-title" })}</span>
+          <span class="widget-link" @click=${() => this._navigate("instance-settings")}
+            >${msg("Settings", { id: "dashboard-settings-link" })} →</span
+          >
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">${msg("Model", { id: "dashboard-settings-model" })}</span>
+          <span class="settings-value">${model}</span>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label"
+            >${msg("Telegram", { id: "dashboard-settings-telegram" })}</span
+          >
+          <span class="settings-value">${telegram ? "✓" : "—"}</span>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">${msg("Port", { id: "dashboard-settings-port" })}</span>
+          <span class="settings-value">${port}</span>
         </div>
       </div>
     `;
