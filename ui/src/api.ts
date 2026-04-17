@@ -1269,3 +1269,29 @@ export async function fetchSystemReady(): Promise<{
 }> {
   return apiFetch<{ ready: boolean; slug?: string; reason?: string }>("/system/ready");
 }
+
+// ---------------------------------------------------------------------------
+// Notification Inbox
+// ---------------------------------------------------------------------------
+
+export async function fetchNotifications(
+  cursor?: number,
+  limit = 20,
+): Promise<import("./types.js").NotificationsPage> {
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  if (cursor !== undefined) params.set("cursor", String(cursor));
+  return apiFetch(`/notifications?${params.toString()}`);
+}
+
+export async function fetchUnreadCount(): Promise<{ count: number }> {
+  return apiFetch("/notifications/unread-count");
+}
+
+export async function markNotificationRead(id: number): Promise<void> {
+  await apiFetch(`/notifications/${id}/read`, { method: "PATCH" });
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  await apiFetch("/notifications/mark-all-read", { method: "POST" });
+}

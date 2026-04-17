@@ -38,6 +38,8 @@ import { registerNamedKeyRoutes } from "./routes/named-keys.js";
 import { registerSearchRoutes } from "./routes/search.js";
 import { registerFlowRoutes } from "./routes/instances/flows.js";
 import { registerSystemInstanceRoutes } from "./routes/system-instance.js";
+import { registerNotificationRoutes } from "./routes/notifications.js";
+import { pruneNotifications } from "../core/repositories/notification-repository.js";
 import { SystemInstanceService } from "../core/system-instance.js";
 import { rebuildSearchIndex } from "../core/repositories/search-repository.js";
 import { ModelDiscoveryService } from "../core/model-discovery/service.js";
@@ -244,6 +246,14 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   registerSearchRoutes(app, deps);
   registerFlowRoutes(app, deps);
   registerSystemInstanceRoutes(app, deps);
+  registerNotificationRoutes(app, deps);
+
+  // Wire notification broadcaster: engines emit notifications → Monitor pushes to WS clients
+  Monitor.setNotificationBroadcaster((row) => monitor.broadcastNotification(row));
+
+  // Auto-prune old notifications (30 days) at startup and every 24h
+  pruneNotifications(deps.db);
+  setInterval(() => pruneNotifications(deps.db), 24 * 60 * 60 * 1000);
 
   // Rebuild search index on startup
   rebuildSearchIndex(deps.db);

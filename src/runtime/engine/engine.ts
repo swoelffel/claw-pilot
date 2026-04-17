@@ -51,6 +51,8 @@ import { toolErrorRecoveryMiddleware } from "../middleware/built-in/tool-error-r
 import { createSuggestionMiddleware } from "../middleware/built-in/suggestions.js";
 import { cleanupEphemeralSessions } from "../session/cleanup.js";
 import { wireEventPersistence } from "./event-persistence.js";
+import { wireNotificationEmitter } from "./notification-emitter.js";
+import { Monitor } from "../../dashboard/monitor.js";
 import { wireTaskNotifications } from "./task-wiring.js";
 import { pruneRtEvents } from "../../core/repositories/rt-event-repository.js";
 import {
@@ -95,6 +97,7 @@ export class ClawRuntime {
   private _stopHeartbeat: (() => void) | undefined;
   private _eventPersistenceUnsub: (() => void) | undefined;
   private _taskWiringUnsub: (() => void) | undefined;
+  private _notificationEmitterUnsub: (() => void) | undefined;
   private _cleanupTimer: ReturnType<typeof setInterval> | undefined;
   private _internalApi: InternalApiServer | undefined;
   private _abortControllers = new Map<string, AbortController>();
@@ -226,6 +229,7 @@ export class ClawRuntime {
     this._clearOptionalUnsub("_stopHeartbeat");
     this._clearOptionalUnsub("_eventPersistenceUnsub");
     this._clearOptionalUnsub("_taskWiringUnsub");
+    this._clearOptionalUnsub("_notificationEmitterUnsub");
 
     // 3f. Clear middleware registry
     clearMiddlewares();
@@ -421,7 +425,12 @@ export class ClawRuntime {
     // 3d. Wire event persistence to rt_events table
     this._eventPersistenceUnsub = wireEventPersistence(this.db, this.instanceSlug);
 
-    // 3e. Wire task assignment notifications
+    // 3e. Wire notification emitter (bus → persistent notifications)
+    this._notificationEmitterUnsub = wireNotificationEmitter(this.db, this.instanceSlug, (row) =>
+      Monitor.notifyNewNotification(row),
+    );
+
+    // 3f. Wire task assignment notifications
     this._taskWiringUnsub = wireTaskNotifications({
       db: this.db,
       instanceSlug: this.instanceSlug,
@@ -493,7 +502,12 @@ export class ClawRuntime {
 
   /** Call and clear an optional unsubscribe function stored on this instance. */
   private _clearOptionalUnsub(
-    key: "_subagentUnsubscribe" | "_stopHeartbeat" | "_eventPersistenceUnsub" | "_taskWiringUnsub",
+    key:
+      | "_subagentUnsubscribe"
+      | "_stopHeartbeat"
+      | "_eventPersistenceUnsub"
+      | "_taskWiringUnsub"
+      | "_notificationEmitterUnsub",
   ): void {
     const fn = this[key];
     if (fn) {

@@ -1436,6 +1436,33 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v37: Persistent notification inbox — cross-instance notifications
+    // with deduplication, read state, and auto-cleanup support.
+    version: 37,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS notifications (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          instance_slug   TEXT,
+          event_type      TEXT NOT NULL,
+          severity        TEXT NOT NULL DEFAULT 'info'
+                          CHECK(severity IN ('info','warning','error','success')),
+          title           TEXT NOT NULL,
+          body            TEXT,
+          link_route      TEXT,
+          dedup_key       TEXT,
+          is_read         INTEGER NOT NULL DEFAULT 0,
+          created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_notifications_read_created
+          ON notifications(is_read, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_notifications_dedup
+          ON notifications(dedup_key, created_at);
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

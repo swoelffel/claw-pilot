@@ -102,6 +102,12 @@ vi.mock("../../session/cleanup.js", () => ({
 vi.mock("../event-persistence.js", () => ({
   wireEventPersistence: vi.fn(() => vi.fn()),
 }));
+vi.mock("../notification-emitter.js", () => ({
+  wireNotificationEmitter: vi.fn(() => vi.fn()),
+}));
+vi.mock("../../../dashboard/monitor.js", () => ({
+  Monitor: { notifyNewNotification: vi.fn() },
+}));
 vi.mock("../task-wiring.js", () => ({
   wireTaskNotifications: vi.fn(() => vi.fn()),
 }));
