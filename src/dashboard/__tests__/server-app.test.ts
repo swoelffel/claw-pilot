@@ -39,6 +39,9 @@ vi.mock("../monitor.js", () => {
       addClient = vi.fn();
       setTransitioning = vi.fn();
       clearTransitioning = vi.fn();
+      broadcastNotification = vi.fn();
+      static setNotificationBroadcaster = vi.fn();
+      static notifyNewNotification = vi.fn();
     },
   };
 });
@@ -94,6 +97,10 @@ vi.mock("../routes/auth.js", () => ({ registerAuthRoutes: vi.fn() }));
 vi.mock("../routes/agent-blueprints.js", () => ({ registerAgentBlueprintRoutes: vi.fn() }));
 vi.mock("../routes/profile.js", () => ({ registerProfileRoutes: vi.fn() }));
 vi.mock("../routes/named-keys.js", () => ({ registerNamedKeyRoutes: vi.fn() }));
+vi.mock("../routes/notifications.js", () => ({ registerNotificationRoutes: vi.fn() }));
+vi.mock("../../core/repositories/notification-repository.js", () => ({
+  pruneNotifications: vi.fn(() => 0),
+}));
 
 import { initDatabase } from "../../db/schema.js";
 import { Registry } from "../../core/registry.js";

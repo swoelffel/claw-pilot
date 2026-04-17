@@ -8,7 +8,7 @@ import { getRuntimeStateDir } from "../lib/platform.js";
 import { runtimeConfigExists, loadRuntimeConfig } from "../runtime/index.js";
 
 interface WSMessage {
-  type: "health_update" | "instance_created" | "instance_destroyed" | "log_line";
+  type: "health_update" | "instance_created" | "instance_destroyed" | "log_line" | "notification";
   payload: unknown;
 }
 
@@ -217,6 +217,28 @@ export class Monitor {
       clearInterval(this.interval);
       this.interval = null;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Notification broadcasting
+  // ---------------------------------------------------------------------------
+
+  /** Global callback set by server.ts — called by notification emitters in each engine. */
+  private static _onNewNotification: ((row: unknown) => void) | null = null;
+
+  /** Set the global notification broadcaster. Called once during server setup. */
+  static setNotificationBroadcaster(fn: (row: unknown) => void): void {
+    Monitor._onNewNotification = fn;
+  }
+
+  /** Forward a notification from any engine to the WS broadcaster. */
+  static notifyNewNotification(row: unknown): void {
+    Monitor._onNewNotification?.(row);
+  }
+
+  /** Broadcast a new notification to all connected WS clients. */
+  broadcastNotification(notification: unknown): void {
+    this.broadcast({ type: "notification", payload: notification });
   }
 
   broadcast(msg: WSMessage): void {

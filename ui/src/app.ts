@@ -34,6 +34,7 @@ import "./components/profile-settings.js";
 import "./components/costs-dashboard.js";
 import "./components/activity-console.js";
 import "./components/live-stream-widget.js";
+import "./components/notification-inbox.js";
 import "./components/memory-browser.js";
 import "./components/heartbeat-heatmap.js";
 import "./components/session-logs.js";
@@ -1110,6 +1111,7 @@ export class CpApp extends LitElement {
             </svg>
             <span class="search-kbd">${navigator.platform?.includes("Mac") ? "⌘K" : "Ctrl+K"}</span>
           </button>
+          <cp-notification-inbox></cp-notification-inbox>
           <button
             class="btn-profile ${this._route.view === "profile" ? "active" : ""}"
             title=${msg("Profile", { id: "nav-profile" })}

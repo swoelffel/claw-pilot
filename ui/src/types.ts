@@ -860,6 +860,27 @@ export interface LiveStreamEvent {
 }
 
 // ---------------------------------------------------------------------------
+// Notification Inbox
+// ---------------------------------------------------------------------------
+
+export interface NotificationItem {
+  id: number;
+  instance_slug: string | null;
+  event_type: string;
+  severity: "info" | "warning" | "error" | "success";
+  title: string;
+  body: string | null;
+  link_route: string | null;
+  is_read: number;
+  created_at: string;
+}
+
+export interface NotificationsPage {
+  notifications: NotificationItem[];
+  nextCursor: number | null;
+}
+
+// ---------------------------------------------------------------------------
 // Memory Browser
 // ---------------------------------------------------------------------------
 
