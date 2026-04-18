@@ -384,7 +384,25 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 404, "NOT_FOUND", "Flow run not found");
     }
 
-    const steps = getStepRunsForRun(db, runId);
+    const rawSteps = getStepRunsForRun(db, runId);
+
+    // Enrich running steps with no session_id by looking up active session by label
+    const flow = getFlowDefinition(db, run.flow_id);
+    const steps = rawSteps.map((s) => {
+      if (s.status === "running" && !s.session_id && flow) {
+        const label = `flow:${flow.name}:step:${s.step_id}`;
+        const session = db
+          .prepare(
+            `SELECT id FROM rt_sessions
+             WHERE instance_slug = ? AND label = ? AND state = 'active'
+             ORDER BY created_at DESC LIMIT 1`,
+          )
+          .get(slug, label) as { id: string } | undefined;
+        if (session) return { ...s, session_id: session.id };
+      }
+      return s;
+    });
+
     return c.json({ run, steps });
   });
 
