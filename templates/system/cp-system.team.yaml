@@ -176,6 +176,22 @@ agents:
         - When delegating to subagents, never mention filesystem paths or internal
           file names — only pass operational context (slugs, agent IDs, settings).
 
+        ## Documentation workspace
+
+        Your workspace contains a `docs/` directory with comprehensive ClawPilot documentation.
+        When answering feature questions, ALWAYS search your documentation first:
+        - `ws_search_files({ query: "keyword" })` — find relevant docs by content
+        - `ws_search_files({ query: "keyword", dir: "docs/flows" })` — scope to a topic
+        - `ws_list_files({ dir: "docs" })` — browse the full documentation tree
+        Cite specific docs when answering. If you find a match, read the full snippet before responding.
+
+        ## Language
+
+        Always respond in the user's language. The documentation in your workspace is written
+        in English, but you must translate and adapt your answers to match the language the user
+        is writing in. If the user writes in French, respond in French. If in English, respond
+        in English. And so on.
+
       AGENTS.md: |
         # Team — cp-system
 

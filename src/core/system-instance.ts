@@ -37,6 +37,7 @@ export const SYSTEM_AGENT_NAME = "System Pilot";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SYSTEM_TEMPLATE_DIR = path.join(__dirname, "../templates/system");
 const CP_SYSTEM_TEMPLATE_HASH_KEY = "cp_system_template_hash";
+const WORKSPACE_DIR = path.join(SYSTEM_TEMPLATE_DIR, "workspace");
 
 // ---------------------------------------------------------------------------
 // SystemInstanceService
@@ -173,8 +174,9 @@ export class SystemInstanceService {
   // ---------------------------------------------------------------------------
 
   /**
-   * Compare the YAML template hash with the stored hash. If different, re-sync
-   * only the YAML-provided workspace files to disk + DB (preserves user content).
+   * Compare the template hash (YAML + external workspace files) with the stored hash.
+   * If different, re-sync workspace files to disk + DB and agent configs.
+   * Preserves USER.md, memory files, and per-agent metadata (role/tags/notes/position).
    */
   private static async _syncTemplateIfChanged(
     db: Database.Database,
@@ -192,14 +194,7 @@ export class SystemInstanceService {
       return;
     }
 
-    const currentHash = createHash("sha256").update(yamlContent).digest("hex");
-    const storedHash = db
-      .prepare("SELECT value FROM config WHERE key = ?")
-      .get(CP_SYSTEM_TEMPLATE_HASH_KEY) as { value: string } | undefined;
-
-    if (storedHash?.value === currentHash) return; // No change
-
-    // Parse the YAML
+    // Parse the YAML first — we need agent IDs to load external workspace files
     const result = parseAndValidateTeam(yamlContent);
     if (!result.success) {
       logger.warn("[system-instance] Template changed but YAML is invalid, skipping sync", {
@@ -209,13 +204,63 @@ export class SystemInstanceService {
     }
     const team = result.data;
 
-    // Re-sync workspace files AND agent config_json when the YAML template changes.
-    // Preserves USER.md, memory files, and per-agent metadata (role/tags/notes/position).
-    const stateDir = instance.state_dir;
+    // Build a combined hash: YAML content + all external workspace files (sorted for stability)
+    const hashInput = createHash("sha256").update(yamlContent);
+    for (const agent of team.agents) {
+      const externalFiles = await SystemInstanceService._loadWorkspaceFiles(agent.id);
+      const sortedKeys = Object.keys(externalFiles).sort();
+      for (const key of sortedKeys) {
+        hashInput.update(key).update(externalFiles[key] ?? "");
+      }
+      // Merge external files into agent (YAML takes priority)
+      if (Object.keys(externalFiles).length > 0) {
+        agent.files = { ...externalFiles, ...agent.files };
+      }
+    }
+    const currentHash = hashInput.digest("hex");
+
+    const storedHash = db
+      .prepare("SELECT value FROM config WHERE key = ?")
+      .get(CP_SYSTEM_TEMPLATE_HASH_KEY) as { value: string } | undefined;
+
+    if (storedHash?.value === currentHash) return; // No change
+
+    // Re-sync workspace files AND agent config_json.
+    const { filesUpdated, configsUpdated } = await SystemInstanceService._syncAgents(
+      db,
+      conn,
+      instance.state_dir,
+      team.agents,
+    );
+
+    // Store new hash
+    db.prepare(
+      "INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+    ).run(CP_SYSTEM_TEMPLATE_HASH_KEY, currentHash);
+
+    logger.info(
+      `[system-instance] Template re-synced: ${filesUpdated} files, ${configsUpdated} configs updated`,
+    );
+  }
+
+  /** Sync agent configs and workspace files to disk + DB. */
+  private static async _syncAgents(
+    db: Database.Database,
+    conn: ServerConnection,
+    stateDir: string,
+    agents: ReadonlyArray<{
+      readonly id: string;
+      readonly name: string;
+      readonly is_default: boolean;
+      readonly config?: Record<string, unknown> | undefined;
+      readonly files?: Record<string, string> | undefined;
+    }>,
+  ): Promise<{ filesUpdated: number; configsUpdated: number }> {
     let filesUpdated = 0;
     let configsUpdated = 0;
-    for (const agent of team.agents) {
-      // 1. Sync config_json from YAML — critical for promptMode, toolProfile, archetype, etc.
+
+    for (const agent of agents) {
+      // 1. Sync config_json from YAML
       if (agent.config) {
         const configJson = JSON.stringify({
           id: agent.id,
@@ -223,30 +268,32 @@ export class SystemInstanceService {
           isDefault: agent.is_default,
           ...agent.config,
         });
-        const result = db
+        const dbResult = db
           .prepare(
             `UPDATE agents SET config_json = ?
              WHERE agent_id = ? AND instance_id IN (SELECT id FROM instances WHERE slug = ?)`,
           )
           .run(configJson, agent.id, SYSTEM_INSTANCE_SLUG);
-        if (result.changes > 0) configsUpdated++;
+        if (dbResult.changes > 0) configsUpdated++;
       }
 
-      // 2. Sync workspace files
+      // 2. Sync workspace files (YAML-defined + external, already merged)
       if (!agent.files) continue;
       const workspacePath = path.join(stateDir, "workspaces", agent.id);
       await conn.mkdir(workspacePath);
 
+      const agentRecord = db
+        .prepare(
+          "SELECT a.id FROM agents a JOIN instances i ON a.instance_id = i.id WHERE i.slug = ? AND a.agent_id = ?",
+        )
+        .get(SYSTEM_INSTANCE_SLUG, agent.id) as { id: number } | undefined;
+
       for (const [filename, content] of Object.entries(agent.files)) {
-        await conn.writeFile(path.join(workspacePath, filename), content);
+        const filePath = path.join(workspacePath, filename);
+        await conn.mkdir(path.dirname(filePath));
+        await conn.writeFile(filePath, content);
         filesUpdated++;
 
-        // Update DB cache (agent_files)
-        const agentRecord = db
-          .prepare(
-            "SELECT a.id FROM agents a JOIN instances i ON a.instance_id = i.id WHERE i.slug = ? AND a.agent_id = ?",
-          )
-          .get(SYSTEM_INSTANCE_SLUG, agent.id) as { id: number } | undefined;
         if (agentRecord) {
           const contentHash = createHash("sha256").update(content).digest("hex");
           db.prepare(
@@ -261,17 +308,10 @@ export class SystemInstanceService {
       }
     }
 
-    // Store new hash
-    db.prepare(
-      "INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-    ).run(CP_SYSTEM_TEMPLATE_HASH_KEY, currentHash);
-
-    logger.info(
-      `[system-instance] Template re-synced: ${filesUpdated} files, ${configsUpdated} configs updated`,
-    );
+    return { filesUpdated, configsUpdated };
   }
 
-  /** Load and parse the system team YAML from templates. */
+  /** Load and parse the system team YAML from templates, merging external workspace files. */
   private static async _loadTeamFile() {
     const yamlPath = path.join(SYSTEM_TEMPLATE_DIR, "cp-system.team.yaml");
     const yamlContent = await fs.readFile(yamlPath, "utf-8");
@@ -283,7 +323,48 @@ export class SystemInstanceService {
         result.error.error;
       throw new Error(`Invalid cp-system.team.yaml: ${detail}`);
     }
-    return result.data;
+    const team = result.data;
+
+    // Merge external workspace files into each agent's files map.
+    // YAML-defined files take priority over external files on name conflict.
+    for (const agent of team.agents) {
+      const externalFiles = await SystemInstanceService._loadWorkspaceFiles(agent.id);
+      if (Object.keys(externalFiles).length === 0) continue;
+      agent.files = { ...externalFiles, ...agent.files };
+    }
+
+    return team;
+  }
+
+  /**
+   * Load external workspace files for an agent from templates/system/workspace/<agentId>/.
+   * Recursively reads all .md files and returns { relativePath: content }.
+   */
+  private static async _loadWorkspaceFiles(agentId: string): Promise<Record<string, string>> {
+    const agentDir = path.join(WORKSPACE_DIR, agentId);
+    const files: Record<string, string> = {};
+
+    async function scanDir(dir: string): Promise<void> {
+      let entries: import("node:fs").Dirent[];
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch (err) {
+        logger.debug("[system-instance] No workspace dir for agent", { dir, error: String(err) });
+        return;
+      }
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await scanDir(fullPath);
+        } else if (entry.isFile() && entry.name.endsWith(".md")) {
+          const relPath = path.relative(agentDir, fullPath);
+          files[relPath] = await fs.readFile(fullPath, "utf-8");
+        }
+      }
+    }
+
+    await scanDir(agentDir);
+    return files;
   }
 
   /**
