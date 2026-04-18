@@ -98,13 +98,23 @@ export function encrypt(plaintext: string): string {
  */
 export function decrypt(ciphertext: string): string {
   const key = getMasterKey();
-  const [ivHex, authTagHex, encryptedHex] = ciphertext.split(":");
-  if (!ivHex || !authTagHex || !encryptedHex) {
+  const parts = ciphertext.split(":");
+  if (parts.length !== 3) {
     throw new Error("Invalid ciphertext format — expected iv:authTag:ciphertext");
+  }
+  const [ivHex, authTagHex, encryptedHex] = parts as [string, string, string];
+  if (!ivHex || !authTagHex || !encryptedHex) {
+    throw new Error("Invalid ciphertext format — empty segment");
   }
   const iv = Buffer.from(ivHex, "hex");
   const authTag = Buffer.from(authTagHex, "hex");
   const encrypted = Buffer.from(encryptedHex, "hex");
+  if (iv.length !== IV_LENGTH) {
+    throw new Error(`Invalid IV length: expected ${IV_LENGTH}, got ${iv.length}`);
+  }
+  if (authTag.length !== AUTH_TAG_LENGTH) {
+    throw new Error(`Invalid auth tag length: expected ${AUTH_TAG_LENGTH}, got ${authTag.length}`);
+  }
   const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
   decipher.setAuthTag(authTag);
   return decipher.update(encrypted) + decipher.final("utf8");

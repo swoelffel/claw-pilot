@@ -69,6 +69,22 @@ describe("crypto", () => {
       parts[2] = "00" + parts[2]!.slice(2); // tamper — parts[2] always exists (iv:auth:ciphertext format)
       expect(() => decrypt(parts.join(":"))).toThrow();
     });
+
+    it("throws on wrong segment count (not exactly 3)", () => {
+      expect(() => decrypt("only:two")).toThrow("expected iv:authTag:ciphertext");
+      expect(() => decrypt("a:b:c:d")).toThrow("expected iv:authTag:ciphertext");
+      expect(() => decrypt("single")).toThrow("expected iv:authTag:ciphertext");
+    });
+
+    it("throws on truncated IV", () => {
+      // valid authTag (16B = 32 hex) + short IV (1B = 2 hex)
+      expect(() => decrypt("ab:" + "00".repeat(16) + ":cd")).toThrow("Invalid IV length");
+    });
+
+    it("throws on truncated auth tag", () => {
+      // valid IV (16B = 32 hex) + short authTag (1B = 2 hex)
+      expect(() => decrypt("00".repeat(16) + ":ab:cd")).toThrow("Invalid auth tag length");
+    });
   });
 
   // -------------------------------------------------------------------------

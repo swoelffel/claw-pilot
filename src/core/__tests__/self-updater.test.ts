@@ -122,6 +122,37 @@ describe("SelfUpdater — successful update", () => {
     expect(checkoutCmd).toBeDefined();
   });
 
+  it.each([
+    "v1.2.3; rm -rf /",
+    "v1.2.3 && curl evil",
+    "v1.2.3`whoami`",
+    "$(id)",
+    "../main",
+    "v1.2",
+    "release/1.0",
+    "",
+  ])("refuses to check out unsafe ref %s", async (badRef) => {
+    updater.run(undefined, undefined, badRef);
+    await flush();
+
+    const job = updater.getJob();
+    expect(job.status).toBe("error");
+    expect(job.message).toContain("unsafe ref");
+    const checkoutCmd = conn.commands.find((c) => c.includes("git") && c.includes("checkout"));
+    expect(checkoutCmd).toBeUndefined();
+  });
+
+  it.each(["v0.77.1", "v10.20.30", "v1.2.3-beta.4", "main"])(
+    "accepts safe ref %s",
+    async (goodRef) => {
+      updater.run(undefined, undefined, goodRef);
+      await flush();
+
+      const job = updater.getJob();
+      expect(job.status).toBe("done");
+    },
+  );
+
   it("restart service command is called last (systemctl or launchctl)", async () => {
     updater.run(undefined, undefined, "v0.11.0");
     await flush();
