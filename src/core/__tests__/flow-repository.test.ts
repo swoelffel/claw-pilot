@@ -22,6 +22,8 @@ import {
   allStepsTerminal,
   hasFailedSteps,
   hasUnsuccessfulSteps,
+  countFlowSessions,
+  listFlowSessions,
 } from "../repositories/flow-repository.js";
 
 let tmpDir: string;
@@ -699,5 +701,112 @@ describe("getReadySteps with continueOnFailure", () => {
 
     const ready = getReadySteps(db, run.id, stepsJson);
     expect(ready.map((s) => s.step_id)).toContain("notify");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Flow sessions (countFlowSessions / listFlowSessions)
+// ---------------------------------------------------------------------------
+
+describe("flow sessions", () => {
+  function seedFlowWithSessions() {
+    // Ensure the instance exists for FK on rt_sessions
+    db.prepare(
+      "INSERT OR IGNORE INTO servers (id, hostname, openclaw_home) VALUES (1, 'localhost', '/opt')",
+    ).run();
+    db.prepare(
+      "INSERT OR IGNORE INTO instances (slug, server_id, port, config_path, state_dir, systemd_unit) VALUES (?, 1, 18789, '/tmp/cfg', '/tmp/state', 'test')",
+    ).run("inst-1");
+
+    // Create a flow + run + step runs with sessions
+    const flow = createFlowDefinition(db, {
+      instanceSlug: "inst-1",
+      name: "SessionFlow",
+      stepsJson: STEPS_LINEAR,
+    });
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "inst-1",
+      triggerType: "manual",
+    });
+
+    // Create sessions in rt_sessions with different timestamps for cursor pagination
+    db.prepare(
+      "INSERT INTO rt_sessions (id, instance_slug, agent_id, channel, created_at) VALUES (?, ?, ?, ?, ?)",
+    ).run("sess-a", "inst-1", "agent-1", "web", "2026-01-01 10:00:00");
+    db.prepare(
+      "INSERT INTO rt_sessions (id, instance_slug, agent_id, channel, created_at) VALUES (?, ?, ?, ?, ?)",
+    ).run("sess-b", "inst-1", "agent-2", "web", "2026-01-01 11:00:00");
+
+    // Create step runs linking to sessions
+    const sA = createStepRun(db, { runId: run.id, stepId: "a", agentId: "agent-1" });
+    updateStepRun(db, sA.id, { sessionId: "sess-a", status: "completed" });
+    const sB = createStepRun(db, { runId: run.id, stepId: "b", agentId: "agent-2" });
+    updateStepRun(db, sB.id, { sessionId: "sess-b", status: "completed" });
+    // Step c has no session (still pending)
+    createStepRun(db, { runId: run.id, stepId: "c", agentId: "agent-3" });
+
+    // Add some messages to sess-a
+    db.prepare(
+      "INSERT INTO rt_messages (id, session_id, role, tokens_in, tokens_out, cost_usd) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run("msg-1", "sess-a", "user", 100, 0, 0);
+    db.prepare(
+      "INSERT INTO rt_messages (id, session_id, role, tokens_in, tokens_out, cost_usd) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run("msg-2", "sess-a", "assistant", 0, 500, 0.01);
+
+    return { flow, run };
+  }
+
+  it("countFlowSessions returns distinct count", () => {
+    const { flow } = seedFlowWithSessions();
+    expect(countFlowSessions(db, flow.id)).toBe(2);
+  });
+
+  it("countFlowSessions returns 0 for flow with no sessions", () => {
+    const flow = createFlowDefinition(db, {
+      instanceSlug: "inst-1",
+      name: "NoSessions",
+      stepsJson: STEPS_LINEAR,
+    });
+    expect(countFlowSessions(db, flow.id)).toBe(0);
+  });
+
+  it("listFlowSessions returns sessions with stats", () => {
+    const { flow } = seedFlowWithSessions();
+    const { sessions, hasMore } = listFlowSessions(db, flow.id);
+
+    expect(sessions).toHaveLength(2);
+    expect(hasMore).toBe(false);
+
+    // Sessions are ordered by created_at DESC — most recent first
+    // Both were created roughly at the same time, so we check both exist
+    const ids = sessions.map((s) => s.id);
+    expect(ids).toContain("sess-a");
+    expect(ids).toContain("sess-b");
+
+    // Check stats for sess-a (has 2 messages)
+    const sessA = sessions.find((s) => s.id === "sess-a")!;
+    expect(sessA.message_count).toBe(2);
+    expect(sessA.total_tokens).toBe(600); // 100+0+0+500
+    expect(sessA.total_cost_usd).toBe(0.01);
+    expect(sessA.prompt_loops).toBe(1); // 1 assistant message
+  });
+
+  it("listFlowSessions respects limit and cursor pagination", () => {
+    const { flow } = seedFlowWithSessions();
+
+    // First page: limit 1
+    const page1 = listFlowSessions(db, flow.id, { limit: 1 });
+    expect(page1.sessions).toHaveLength(1);
+    expect(page1.hasMore).toBe(true);
+
+    // Second page using cursor
+    const page2 = listFlowSessions(db, flow.id, {
+      limit: 1,
+      before: page1.sessions[0]!.created_at,
+    });
+    expect(page2.sessions).toHaveLength(1);
+    expect(page2.hasMore).toBe(false);
+    expect(page2.sessions[0]!.id).not.toBe(page1.sessions[0]!.id);
   });
 });

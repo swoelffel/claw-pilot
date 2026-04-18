@@ -232,6 +232,39 @@ describe("GET /api/instances/:slug/flows/:id", () => {
   });
 });
 
+describe("GET /api/instances/:slug/flows/:id/runs", () => {
+  it("returns runs with hasMore", async () => {
+    const createRes = await app.request("/api/instances/demo/flows", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ name: "RunsFlow", steps: VALID_STEPS }),
+    });
+    const { flow } = await json(createRes);
+
+    // Create 2 runs directly in DB
+    const { createFlowRun } = await import("../../core/repositories/flow-repository.js");
+    createFlowRun(db, { flowId: flow.id, instanceSlug: "demo", triggerType: "manual" });
+    createFlowRun(db, { flowId: flow.id, instanceSlug: "demo", triggerType: "manual" });
+
+    // Fetch with limit=1 → should have hasMore=true
+    const res1 = await app.request(`/api/instances/demo/flows/${flow.id}/runs?limit=1`, {
+      headers: authHeaders(),
+    });
+    expect(res1.status).toBe(200);
+    const body1 = await json(res1);
+    expect(body1.runs).toHaveLength(1);
+    expect(body1.hasMore).toBe(true);
+
+    // Fetch with limit=10 → should have hasMore=false
+    const res2 = await app.request(`/api/instances/demo/flows/${flow.id}/runs?limit=10`, {
+      headers: authHeaders(),
+    });
+    const body2 = await json(res2);
+    expect(body2.runs).toHaveLength(2);
+    expect(body2.hasMore).toBe(false);
+  });
+});
+
 describe("PATCH /api/instances/:slug/flows/:id", () => {
   it("updates flow name and description", async () => {
     const createRes = await app.request("/api/instances/demo/flows", {
@@ -272,6 +305,105 @@ describe("DELETE /api/instances/:slug/flows/:id", () => {
       headers: authHeaders(),
     });
     expect(getRes.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sessions
+// ---------------------------------------------------------------------------
+
+describe("GET /api/instances/:slug/flows/:id/sessions", () => {
+  it("returns sessions linked to a flow", async () => {
+    // 1. Create a flow
+    const createRes = await app.request("/api/instances/demo/flows", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ name: "SessFlow", steps: VALID_STEPS }),
+    });
+    const { flow } = await json(createRes);
+
+    // 2. Create a run + step runs + sessions directly in DB
+    const { createFlowRun, createStepRun, updateStepRun } =
+      await import("../../core/repositories/flow-repository.js");
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "demo",
+      triggerType: "manual",
+    });
+    db.prepare(
+      "INSERT INTO rt_sessions (id, instance_slug, agent_id, channel, label) VALUES (?, ?, ?, ?, ?)",
+    ).run("sess-flow-1", "demo", "pilot", "web", "flow:SessFlow:step:a");
+    const stepA = createStepRun(db, { runId: run.id, stepId: "a", agentId: "pilot" });
+    updateStepRun(db, stepA.id, { sessionId: "sess-flow-1", status: "completed" });
+
+    // 3. Fetch sessions endpoint
+    const res = await app.request(`/api/instances/demo/flows/${flow.id}/sessions`, {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.sessions).toHaveLength(1);
+    expect(body.sessions[0].id).toBe("sess-flow-1");
+    expect(body.hasMore).toBe(false);
+  });
+
+  it("returns empty when flow has no sessions", async () => {
+    const createRes = await app.request("/api/instances/demo/flows", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ name: "EmptyFlow", steps: VALID_STEPS }),
+    });
+    const { flow } = await json(createRes);
+
+    const res = await app.request(`/api/instances/demo/flows/${flow.id}/sessions`, {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.sessions).toHaveLength(0);
+  });
+
+  it("returns 404 for unknown flow", async () => {
+    const res = await app.request("/api/instances/demo/flows/99999/sessions", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("enriches flow list with sessionCount", async () => {
+    // Create flow
+    const createRes = await app.request("/api/instances/demo/flows", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ name: "CountFlow", steps: VALID_STEPS }),
+    });
+    const { flow } = await json(createRes);
+
+    // Verify sessionCount is 0 before sessions
+    const listRes1 = await app.request("/api/instances/demo/flows", { headers: authHeaders() });
+    const body1 = await json(listRes1);
+    const found1 = body1.flows.find((f: { id: number }) => f.id === flow.id);
+    expect(found1.sessionCount).toBe(0);
+
+    // Add session via run + step
+    const { createFlowRun, createStepRun, updateStepRun } =
+      await import("../../core/repositories/flow-repository.js");
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "demo",
+      triggerType: "manual",
+    });
+    db.prepare(
+      "INSERT INTO rt_sessions (id, instance_slug, agent_id, channel) VALUES (?, ?, ?, ?)",
+    ).run("sess-count-1", "demo", "pilot", "web");
+    const step = createStepRun(db, { runId: run.id, stepId: "a", agentId: "pilot" });
+    updateStepRun(db, step.id, { sessionId: "sess-count-1", status: "completed" });
+
+    // Verify sessionCount is now 1
+    const listRes2 = await app.request("/api/instances/demo/flows", { headers: authHeaders() });
+    const body2 = await json(listRes2);
+    const found2 = body2.flows.find((f: { id: number }) => f.id === flow.id);
+    expect(found2.sessionCount).toBe(1);
   });
 });
 

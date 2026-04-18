@@ -17,6 +17,9 @@ import {
   getStepRunsForRun,
   updateFlowRunStatus,
   updateStepRun,
+  countFlowSessions,
+  listFlowSessions,
+  getRunWorstOutcome,
 } from "../../../core/repositories/flow-repository.js";
 import {
   upsertSearchEntry,
@@ -248,12 +251,13 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
 
     const flows = listFlowDefinitions(db, slug);
 
-    // Enrich with last run info
+    // Enrich with last run info + session count
     const enriched = flows.map((f) => {
       const runs = listFlowRuns(db, slug, { flowId: f.id, limit: 1 });
       return {
         ...f,
         lastRun: runs[0] ?? null,
+        sessionCount: countFlowSessions(db, f.id),
       };
     });
 
@@ -357,9 +361,15 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
     const { slug } = getInstanceContext(c);
     const id = Number(c.req.param("id"));
 
-    const limit = Number(c.req.query("limit") ?? "20");
-    const runs = listFlowRuns(db, slug, { flowId: id, limit: Math.min(limit, 100) });
-    return c.json({ runs });
+    const limit = Math.min(Number(c.req.query("limit") ?? "20"), 100);
+    const rawRuns = listFlowRuns(db, slug, { flowId: id, limit: limit + 1 });
+    const hasMore = rawRuns.length > limit;
+    if (hasMore) rawRuns.pop();
+    const runs = rawRuns.map((r) => ({
+      ...r,
+      worstOutcome: getRunWorstOutcome(db, r.id),
+    }));
+    return c.json({ runs, hasMore });
   });
 
   // -------------------------------------------------------------------------
@@ -374,7 +384,25 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
       return apiError(c, 404, "NOT_FOUND", "Flow run not found");
     }
 
-    const steps = getStepRunsForRun(db, runId);
+    const rawSteps = getStepRunsForRun(db, runId);
+
+    // Enrich running steps with no session_id by looking up active session by label
+    const flow = getFlowDefinition(db, run.flow_id);
+    const steps = rawSteps.map((s) => {
+      if (s.status === "running" && !s.session_id && flow) {
+        const label = `flow:${flow.name}:step:${s.step_id}`;
+        const session = db
+          .prepare(
+            `SELECT id FROM rt_sessions
+             WHERE instance_slug = ? AND label = ? AND state = 'active'
+             ORDER BY created_at DESC LIMIT 1`,
+          )
+          .get(slug, label) as { id: string } | undefined;
+        if (session) return { ...s, session_id: session.id };
+      }
+      return s;
+    });
+
     return c.json({ run, steps });
   });
 
@@ -403,5 +431,28 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
 
     updateFlowRunStatus(db, runId, "cancelled");
     return c.json({ ok: true });
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/instances/:slug/flows/:id/sessions — list sessions for a flow
+  // -------------------------------------------------------------------------
+  app.get("/api/instances/:slug/flows/:id/sessions", (c) => {
+    const { slug } = getInstanceContext(c);
+    const id = Number(c.req.param("id"));
+
+    const flow = getFlowDefinition(db, id);
+    if (!flow || flow.instance_slug !== slug) {
+      return apiError(c, 404, "NOT_FOUND", "Flow not found");
+    }
+
+    const limit = Math.min(Number(c.req.query("limit") ?? "30"), 100);
+    const before = c.req.query("before") || undefined;
+
+    const result = listFlowSessions(db, id, {
+      limit,
+      ...(before !== undefined ? { before } : {}),
+    });
+
+    return c.json(result);
   });
 }

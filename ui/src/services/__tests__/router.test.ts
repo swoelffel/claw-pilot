@@ -77,6 +77,12 @@ describe("routeToHash", () => {
   it("profile → /profile", () => {
     expect(routeToHash({ view: "profile" })).toBe("/profile");
   });
+
+  it("flow-sessions → /instances/:slug/flows/:flowId/sessions", () => {
+    expect(routeToHash({ view: "flow-sessions", slug: "dev", flowId: 5 })).toBe(
+      "/instances/dev/flows/5/sessions",
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -163,6 +169,14 @@ describe("hashToRoute", () => {
     expect(hashToRoute("profile")).toEqual({ view: "profile" });
   });
 
+  it("instances/:slug/flows/:flowId/sessions → flow-sessions", () => {
+    expect(hashToRoute("instances/dev/flows/5/sessions")).toEqual({
+      view: "flow-sessions",
+      slug: "dev",
+      flowId: 5,
+    });
+  });
+
   it("unknown path → cluster (fallback)", () => {
     expect(hashToRoute("some/unknown/path")).toEqual({ view: "cluster" });
   });
@@ -191,6 +205,7 @@ describe("round-trip routeToHash ↔ hashToRoute", () => {
     { view: "blueprint-builder", blueprintId: 7 },
     { view: "agent-templates" },
     { view: "agent-template-detail", templateId: "abc-123" },
+    { view: "flow-sessions", slug: "dev", flowId: 5 },
     { view: "profile" },
   ];
 

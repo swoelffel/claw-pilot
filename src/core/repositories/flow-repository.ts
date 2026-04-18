@@ -414,6 +414,133 @@ export function allStepsTerminal(db: Database.Database, runId: number): boolean 
   return row.cnt === 0;
 }
 
+/**
+ * Compute the worst sitrep outcome for a run.
+ * Returns "failure" | "partial" | "success" | null (no sitreps).
+ */
+export function getRunWorstOutcome(
+  db: Database.Database,
+  runId: number,
+): "failure" | "partial" | "success" | null {
+  const rows = db
+    .prepare("SELECT status, sitrep_json FROM rt_flow_step_runs WHERE run_id = ?")
+    .all(runId) as Array<{ status: string; sitrep_json: string | null }>;
+
+  if (rows.length === 0) return null;
+
+  let hasFailure = false;
+  let hasPartial = false;
+  let hasSuccess = false;
+
+  for (const row of rows) {
+    if (row.status === "failed") return "failure";
+    if (row.status === "completed" && row.sitrep_json) {
+      try {
+        const sitrep = JSON.parse(row.sitrep_json) as { outcome?: string };
+        if (sitrep.outcome === "failure") hasFailure = true;
+        else if (sitrep.outcome === "partial") hasPartial = true;
+        else if (sitrep.outcome === "success") hasSuccess = true;
+      } catch (err) {
+        logger.debug("flow_worst_outcome_sitrep_parse_failed", {
+          runId,
+          error: String(err),
+        });
+      }
+    }
+  }
+
+  if (hasFailure) return "failure";
+  if (hasPartial) return "partial";
+  if (hasSuccess) return "success";
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Flow sessions (cross-join through runs → step runs → sessions)
+// ---------------------------------------------------------------------------
+
+export interface FlowSessionRow {
+  id: string;
+  agent_id: string;
+  state: string;
+  label: string | null;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  total_tokens: number;
+  total_cost_usd: number;
+  prompt_loops: number;
+}
+
+/** Count distinct sessions linked to a flow definition. */
+export function countFlowSessions(db: Database.Database, flowId: number): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(DISTINCT fsr.session_id) AS cnt
+       FROM rt_flow_runs fr
+       JOIN rt_flow_step_runs fsr ON fsr.run_id = fr.id
+       WHERE fr.flow_id = ? AND fsr.session_id IS NOT NULL`,
+    )
+    .get(flowId) as { cnt: number };
+  return row.cnt;
+}
+
+/** List sessions linked to a flow, most-recent-first, with message stats. */
+export function listFlowSessions(
+  db: Database.Database,
+  flowId: number,
+  opts?: { limit?: number; before?: string },
+): { sessions: FlowSessionRow[]; hasMore: boolean } {
+  const limit = opts?.limit ?? 30;
+  const params: unknown[] = [flowId];
+
+  let cursorClause = "";
+  if (opts?.before) {
+    cursorClause = "AND s.created_at < ?";
+    params.push(opts.before);
+  }
+
+  params.push(limit + 1);
+
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT
+         s.id,
+         s.agent_id,
+         s.state,
+         s.label,
+         s.created_at,
+         s.updated_at,
+         COALESCE(stats.message_count, 0) AS message_count,
+         COALESCE(stats.total_tokens, 0) AS total_tokens,
+         COALESCE(stats.total_cost_usd, 0) AS total_cost_usd,
+         COALESCE(stats.prompt_loops, 0) AS prompt_loops
+       FROM rt_flow_runs fr
+       JOIN rt_flow_step_runs fsr ON fsr.run_id = fr.id
+       JOIN rt_sessions s ON s.id = fsr.session_id
+       LEFT JOIN (
+         SELECT m.session_id,
+           COUNT(*) AS message_count,
+           SUM(COALESCE(m.tokens_in, 0) + COALESCE(m.tokens_out, 0)) AS total_tokens,
+           SUM(COALESCE(m.cost_usd, 0)) AS total_cost_usd,
+           SUM(CASE WHEN m.role = 'assistant' THEN 1 ELSE 0 END) AS prompt_loops
+         FROM rt_messages m
+         GROUP BY m.session_id
+       ) stats ON stats.session_id = s.id
+       WHERE fr.flow_id = ?
+         AND fsr.session_id IS NOT NULL
+         ${cursorClause}
+       ORDER BY s.created_at DESC
+       LIMIT ?`,
+    )
+    .all(...params) as FlowSessionRow[];
+
+  const hasMore = rows.length > limit;
+  if (hasMore) rows.pop();
+
+  return { sessions: rows, hasMore };
+}
+
 /** Check if any step run has failed. */
 export function hasFailedSteps(db: Database.Database, runId: number): boolean {
   const row = db
