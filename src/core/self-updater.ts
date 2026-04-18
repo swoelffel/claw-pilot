@@ -68,9 +68,26 @@ export class SelfUpdater {
     return this.conn.exec(`export PATH="${SelfUpdater._PATH}:$PATH" && ${cmd}`, opts);
   }
 
+  // Accept semver tags `vX.Y.Z[-suffix]` or the literal branch name `main`.
+  // Blocks shell metacharacters (e.g. `v1; rm -rf /`) from a hypothetically
+  // compromised GitHub release feed — defense in depth around the `git checkout` call.
+  private static readonly _SAFE_REF = /^(?:v\d+\.\d+\.\d+(?:-[A-Za-z0-9.]+)?|main)$/;
+
   private async _execute(jobId: string, tag?: string): Promise<void> {
     const installDir = this._resolveInstallDir();
     const targetRef = tag ?? "main";
+
+    if (!SelfUpdater._SAFE_REF.test(targetRef)) {
+      const err = `Refusing to check out unsafe ref "${targetRef}"`;
+      logger.error(`[self-updater] ${err}`);
+      this._job = {
+        ...this._job,
+        status: "error",
+        finishedAt: new Date().toISOString(),
+        message: err,
+      };
+      return;
+    }
 
     logger.info(`[self-updater] Starting claw-pilot update to ${targetRef} in ${installDir}`);
 
