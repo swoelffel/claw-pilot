@@ -536,6 +536,7 @@ export class FlowSessions extends LitElement {
 
   private _runObserver: IntersectionObserver | null = null;
   private _sseConnections = new Map<string, EventSource>();
+  private _pollTimer: number | undefined;
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -545,12 +546,14 @@ export class FlowSessions extends LitElement {
     super.connectedCallback();
     void this._loadFlowName();
     void this._loadRuns();
+    this._pollTimer = window.setInterval(() => void this._pollActiveRun(), 5_000);
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this._runObserver?.disconnect();
     this._disconnectAllSSE();
+    if (this._pollTimer !== undefined) clearInterval(this._pollTimer);
   }
 
   // ---------------------------------------------------------------------------
@@ -598,10 +601,54 @@ export class FlowSessions extends LitElement {
     this._disconnectAllSSE();
 
     try {
-      const { steps } = await fetchRunDetail(this.slug, run.id);
+      const { run: freshRun, steps } = await fetchRunDetail(this.slug, run.id);
+      this._selectedRun = {
+        ...freshRun,
+        ...(run.worstOutcome !== undefined ? { worstOutcome: run.worstOutcome } : {}),
+      };
       this._steps = steps;
     } catch (err) {
       this._error = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  /** Poll steps + run list while the selected run is active. */
+  private async _pollActiveRun(): Promise<void> {
+    const run = this._selectedRun;
+    if (!run) return;
+
+    const isActive = run.status === "running" || run.status === "pending";
+    if (!isActive) return;
+
+    try {
+      // 1. Refresh steps
+      const { run: freshRun, steps } = await fetchRunDetail(this.slug, run.id);
+      this._selectedRun = {
+        ...freshRun,
+        ...(run.worstOutcome !== undefined ? { worstOutcome: run.worstOutcome } : {}),
+      };
+      this._steps = steps;
+
+      // 2. For expanded running steps with a session, wire SSE + refresh messages
+      for (const step of steps) {
+        if (!this._expandedSteps.has(step.step_id)) continue;
+        if (!step.session_id) continue;
+
+        // Load messages if not yet loaded
+        if (!this._stepMessages.has(step.session_id)) {
+          void this._loadStepMessages(step);
+        }
+
+        // Connect SSE for running steps
+        if (step.status === "running" && !this._sseConnections.has(step.session_id)) {
+          this._connectSSE(step.session_id);
+        }
+      }
+
+      // 3. Refresh runs list (left panel status)
+      void this._loadRuns();
+    } catch {
+      // Silent — poll will retry
     }
   }
 
