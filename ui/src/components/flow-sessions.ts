@@ -50,13 +50,7 @@ function statusColor(status: AnyStatus): string {
 function fmtDate(iso: string | null): string {
   if (!iso) return "--";
   try {
-    const d = new Date(iso);
-    const now = Date.now();
-    const diff = now - d.getTime();
-    if (diff < 86_400_000) {
-      return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-    }
-    return d.toLocaleDateString("fr-FR", {
+    return new Date(iso).toLocaleString(undefined, {
       day: "2-digit",
       month: "short",
       hour: "2-digit",
