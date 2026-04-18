@@ -15,9 +15,6 @@
   "ignoreFiles": [
     "src/e2e/helpers/mock-llm-server.ts"
   ],
-  "ignoreDependencies": [
-    "@types/dompurify"
-  ],
   "ignoreExportsUsedInFile": true,
   "ignoreMembers": ["Summary"],
   "tags": ["-public"]
