@@ -21,6 +21,10 @@ pre-push:
       run: pnpm spellcheck
     circular:
       run: pnpm check:circular
+    knip:
+      run: pnpm knip --reporter compact
+    build:
+      run: pnpm build
     no-silent-catches:
       run: |
         count=$(grep -rn "catch {" src/ --include="*.ts" | grep -v __tests__ | grep -v e2e | wc -l | tr -d ' ')
