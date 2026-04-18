@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.77.3] — 2026-04-18
+
+### Added
+- **Renovate** (`renovate.json`) — Weekly grouped dependency PRs against `develop`, with dedicated groups for `ai-sdk`, `typescript-tooling`, `vitest`, and `lint-format`. Major bumps isolated with `breaking-change` label. Security advisories bypass the schedule.
+- **CodeQL** (`.github/workflows/codeql.yml`) — SAST scan on push + PR + weekly cron, `security-extended` + `security-and-quality` query packs, scoped to `src/` and `ui/src/`.
+- **Release automation** (`.github/workflows/release.yml`) — Triggered on `v*.*.*` tag pushes. Verifies tag/package.json alignment, extracts notes from CHANGELOG.md, generates a CycloneDX SBOM via `cdxgen` (pnpm-aware), creates the GitHub release with SBOM attached.
+
+### Changed
+- Release workflow replaces the manual `gh release create` step in the release runbook. Human still bumps version + commits + pushes tag.
+
+---
+
 ## [0.77.2] — 2026-04-18
 
 ### Security
