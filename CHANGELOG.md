@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.75.0] — 2026-04-18
+
+### Added
+- **System-pilot documentation workspace** — 45 documentation files in `templates/system/workspace/system-pilot/docs/` covering all ClawPilot features (instances, agents, flows, tasks, budgets, channels, monitoring, security, admin, UI, reference). Indexed by FTS5, searchable via `ws_search_files` at runtime.
+- **External workspace file loading** — `SystemInstanceService._loadWorkspaceFiles()` scans `templates/system/workspace/<agentId>/` recursively for `.md` files and merges them into the team YAML at provisioning and template sync time. Combined hash (YAML + workspace files) ensures updates propagate on deploy.
+- **System-pilot language directive** — SOUL.md updated with instructions to respond in the user's language and to search workspace docs before answering feature questions.
+
+---
+
 ## [0.74.1] — 2026-04-17
 
 ### Fixed
