@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.76.0] — 2026-04-18
+
+### Added
+- **Instance Dashboard screen** — New `#/instances/:slug/dashboard` route with a widget-based overview of a single instance. 2-column layout: 9 widgets (Agents, Tasks, Costs with sparkline, Activity, Flows, Heartbeat, Logs, Memory, Settings) + sticky mini-pilot sidebar.
+- **Dashboard mini-pilot** — SSE chat sidebar (`cp-dashboard-pilot`) with permanent session detection, text-only message bubbles, streaming status indicator (5 phases), and input bar.
+- **Clickable instance card** — Card body (status bar + meta) navigates to the instance dashboard on click.
+
+---
+
 ## [0.75.1] — 2026-04-18
 
 ### Fixed
