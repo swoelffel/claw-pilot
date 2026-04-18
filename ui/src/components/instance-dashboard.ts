@@ -170,7 +170,7 @@ export class InstanceDashboard extends LitElement {
         display: flex;
         align-items: center;
         gap: var(--space-4);
-        margin-bottom: var(--space-5);
+        margin-bottom: var(--space-4);
         flex-wrap: wrap;
       }
 
@@ -239,7 +239,7 @@ export class InstanceDashboard extends LitElement {
       .kpi-bar {
         display: flex;
         gap: var(--space-2);
-        margin-bottom: var(--space-5);
+        margin-bottom: var(--space-4);
         overflow-x: auto;
         padding-bottom: var(--space-1);
       }
@@ -286,7 +286,7 @@ export class InstanceDashboard extends LitElement {
       .dash-layout {
         display: grid;
         grid-template-columns: 1fr 340px;
-        gap: var(--space-5);
+        gap: var(--space-6);
         align-items: start;
       }
 
