@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.77.2] — 2026-04-18
+
+### Security
+- **self-updater ref validation** — `targetRef` is now validated against `^v\d+\.\d+\.\d+(-suffix)?|main$` before being passed to `git checkout`. Defense in depth against a theoretical GitHub API compromise that could have injected shell metacharacters into the update command. Unsafe refs abort the job cleanly with an "unsafe ref" error.
+- **crypto.decrypt hardening** — strict 3-segment format enforcement, non-empty part checks, and exact IV/authTag length validation (16B each). Previous destructuring silently accepted malformed ciphertext.
+
+### Added
+- 15 new tests covering unsafe-ref rejection, valid-ref acceptance, and decrypt edge cases (wrong segment count, truncated IV/authTag). Total suite: 2371 passed.
+
+---
+
 ## [0.77.1] — 2026-04-18
 
 ### Security
