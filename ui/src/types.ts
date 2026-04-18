@@ -1004,6 +1004,7 @@ export interface FlowRun {
   finished_at: string | null;
   created_at: string;
   error: string | null;
+  worstOutcome?: "failure" | "partial" | "success" | null;
 }
 
 export interface FlowStepRun {

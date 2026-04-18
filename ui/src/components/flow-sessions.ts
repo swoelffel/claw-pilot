@@ -110,6 +110,22 @@ function stringify(val: unknown): string {
   }
 }
 
+/** Color for a run, using worstOutcome when available (from enriched API response). */
+function runDisplayColor(run: FlowRun): string {
+  if (run.worstOutcome && (run.status === "failed" || run.status === "completed")) {
+    if (run.worstOutcome === "failure") return "var(--state-error)";
+    if (run.worstOutcome === "partial") return "var(--state-warning)";
+    if (run.worstOutcome === "success") return "var(--state-running)";
+  }
+  return statusColor(run.status);
+}
+
+/** Display label for a run status, accounting for partial outcomes. */
+function runDisplayLabel(run: FlowRun): string {
+  if (run.status === "failed" && run.worstOutcome === "partial") return "partially failed";
+  return run.status;
+}
+
 /** Effective color for a step, accounting for sitrep outcome on completed steps. */
 function stepEffectiveColor(step: FlowStepRun): string {
   if (step.status === "completed" && step.sitrep_json) {
@@ -122,45 +138,6 @@ function stepEffectiveColor(step: FlowStepRun): string {
     }
   }
   return statusColor(step.status);
-}
-
-/**
- * Effective color for a run, accounting for sitrep outcomes of its steps.
- * A "failed" run where no step has outcome "failure" (only "partial") → orange.
- */
-function runEffectiveColor(run: FlowRun, steps: FlowStepRun[]): string {
-  // Only refine for failed/completed runs with available steps
-  if (steps.length > 0 && (run.status === "failed" || run.status === "completed")) {
-    let hasFailure = false;
-    let hasPartial = false;
-    let hasStepFailed = false;
-
-    for (const s of steps) {
-      if (s.status === "failed") {
-        hasStepFailed = true;
-        break;
-      }
-      if (s.status === "completed" && s.sitrep_json) {
-        try {
-          const sitrep = JSON.parse(s.sitrep_json) as { outcome?: string };
-          if (sitrep.outcome === "failure") hasFailure = true;
-          else if (sitrep.outcome === "partial") hasPartial = true;
-        } catch {
-          // Malformed sitrep — ignore
-        }
-      }
-    }
-
-    // A step with DB status "failed" (exception) → run is truly red
-    if (hasStepFailed) return "var(--state-error)";
-    // A step with sitrep outcome "failure" → red
-    if (hasFailure) return "var(--state-error)";
-    // Only partial outcomes → orange
-    if (hasPartial) return "var(--state-warning)";
-    // All steps success → green (even if run.status is "failed" due to engine edge case)
-    return "var(--state-running)";
-  }
-  return statusColor(run.status);
 }
 
 /** Summarize step statuses for a run row label. */
@@ -802,7 +779,7 @@ export class FlowSessions extends LitElement {
         <div class="run-label">
           <span
             class="status-dot"
-            style="background:${statusColor(run.status)}${isRunning
+            style="background:${runDisplayColor(run)}${isRunning
               ? ";animation:pulse 1.2s infinite"
               : ""}"
           ></span>
@@ -816,7 +793,7 @@ export class FlowSessions extends LitElement {
           <span>·</span>
           <span>${fmtDuration(run.started_at, run.finished_at)}</span>
           <span>·</span>
-          <span style="color:${statusColor(run.status)}">${run.status}</span>
+          <span style="color:${runDisplayColor(run)}">${runDisplayLabel(run)}</span>
         </div>
       </div>
     `;
@@ -855,7 +832,7 @@ export class FlowSessions extends LitElement {
         <div class="run-header">
           <span
             class="status-dot"
-            style="background:${runEffectiveColor(run, this._steps)}${run.status === "running"
+            style="background:${runDisplayColor(run)}${run.status === "running"
               ? ";animation:pulse 1.2s infinite"
               : ""}"
           ></span>
@@ -864,7 +841,7 @@ export class FlowSessions extends LitElement {
             ${fmtDate(run.started_at ?? run.created_at)} ·
             ${fmtDuration(run.started_at, run.finished_at)} · ${fmtTokens(totalTokens)} tok ·
             ${fmtCost(totalCost)} ·
-            <span style="color:${runEffectiveColor(run, this._steps)}">${run.status}</span>
+            <span style="color:${runDisplayColor(run)}">${runDisplayLabel(run)}</span>
             (${stepsSummary(this._steps)} steps)
           </div>
         </div>

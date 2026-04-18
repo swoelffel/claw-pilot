@@ -19,6 +19,7 @@ import {
   updateStepRun,
   countFlowSessions,
   listFlowSessions,
+  getRunWorstOutcome,
 } from "../../../core/repositories/flow-repository.js";
 import {
   upsertSearchEntry,
@@ -361,9 +362,13 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
     const id = Number(c.req.param("id"));
 
     const limit = Math.min(Number(c.req.query("limit") ?? "20"), 100);
-    const runs = listFlowRuns(db, slug, { flowId: id, limit: limit + 1 });
-    const hasMore = runs.length > limit;
-    if (hasMore) runs.pop();
+    const rawRuns = listFlowRuns(db, slug, { flowId: id, limit: limit + 1 });
+    const hasMore = rawRuns.length > limit;
+    if (hasMore) rawRuns.pop();
+    const runs = rawRuns.map((r) => ({
+      ...r,
+      worstOutcome: getRunWorstOutcome(db, r.id),
+    }));
     return c.json({ runs, hasMore });
   });
 

@@ -414,6 +414,47 @@ export function allStepsTerminal(db: Database.Database, runId: number): boolean 
   return row.cnt === 0;
 }
 
+/**
+ * Compute the worst sitrep outcome for a run.
+ * Returns "failure" | "partial" | "success" | null (no sitreps).
+ */
+export function getRunWorstOutcome(
+  db: Database.Database,
+  runId: number,
+): "failure" | "partial" | "success" | null {
+  const rows = db
+    .prepare("SELECT status, sitrep_json FROM rt_flow_step_runs WHERE run_id = ?")
+    .all(runId) as Array<{ status: string; sitrep_json: string | null }>;
+
+  if (rows.length === 0) return null;
+
+  let hasFailure = false;
+  let hasPartial = false;
+  let hasSuccess = false;
+
+  for (const row of rows) {
+    if (row.status === "failed") return "failure";
+    if (row.status === "completed" && row.sitrep_json) {
+      try {
+        const sitrep = JSON.parse(row.sitrep_json) as { outcome?: string };
+        if (sitrep.outcome === "failure") hasFailure = true;
+        else if (sitrep.outcome === "partial") hasPartial = true;
+        else if (sitrep.outcome === "success") hasSuccess = true;
+      } catch (err) {
+        logger.debug("flow_worst_outcome_sitrep_parse_failed", {
+          runId,
+          error: String(err),
+        });
+      }
+    }
+  }
+
+  if (hasFailure) return "failure";
+  if (hasPartial) return "partial";
+  if (hasSuccess) return "success";
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Flow sessions (cross-join through runs → step runs → sessions)
 // ---------------------------------------------------------------------------
