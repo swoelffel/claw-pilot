@@ -299,8 +299,8 @@ export class InstanceDashboard extends LitElement {
       .dash-sidebar {
         position: sticky;
         top: var(--space-4);
-        max-height: calc(100vh - 56px - 32px);
-        overflow: hidden;
+        height: calc(100vh - 56px - 48px);
+        min-height: 400px;
       }
 
       .widget-grid-2 {

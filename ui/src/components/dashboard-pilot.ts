@@ -41,7 +41,7 @@ export class DashboardPilot extends LitElement {
         border: 1px solid var(--bg-border);
         border-radius: var(--radius-lg);
         height: 100%;
-        min-height: 400px;
+        min-height: 0;
         overflow: hidden;
       }
 
@@ -250,9 +250,13 @@ export class DashboardPilot extends LitElement {
     if (sessionId) {
       this._activeSessionId = sessionId;
       await this._loadMessages();
-      // Scroll to bottom on initial load (after render)
+      // Scroll to bottom on initial load — wait for Lit render + browser paint
       await this.updateComplete;
-      this._scrollToBottom(false);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          this._scrollToBottom(false);
+        });
+      });
       this._openStream();
       this._startPolling();
     } else {
