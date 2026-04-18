@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.77.4] — 2026-04-18
+
+### Added
+- **Branch coverage: dashboard routes** — 17 new tests covering `_internal-api-client.ts` (0% → 100% branches) and `instances/workspace-download.ts` (0% → 90% branches). Exercises Bearer auth wiring to the runtime daemon, fetch-level failures, best-effort event publish, path traversal, symlink escape, and content-disposition escaping.
+
+### Changed
+- **CI coverage thresholds** raised to lock in the gain: lines 59→60, statements 58→59, functions 61→63, branches 52→53. Prevents regression; actual coverage sits at 60.99 / 59.92 / 64.00 / 53.09.
+
+---
+
 ## [0.77.3] — 2026-04-18
 
 ### Added
