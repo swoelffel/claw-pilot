@@ -42,6 +42,7 @@ import "./components/task-board.js";
 import "./components/flow-list.js";
 import "./components/flow-editor.js";
 import "./components/flow-run-detail.js";
+import "./components/instance-dashboard.js";
 import "./components/budget-alert-banner.js";
 import "./components/command-palette.js";
 
@@ -763,6 +764,8 @@ export class CpApp extends LitElement {
       this._route = { view: "flows", slug: detail.slug };
     } else if (detail.view === "flow-run" && detail.slug && detail.runId !== undefined) {
       this._route = { view: "flow-run", slug: detail.slug, runId: detail.runId };
+    } else if (detail.view === "instance-dashboard" && detail.slug) {
+      this._route = { view: "instance-dashboard", slug: detail.slug };
     } else if (detail.view === "agents-builder" && detail.slug) {
       this._route = { view: "agents-builder", slug: detail.slug };
     } else if (detail.view === "blueprints") {
@@ -1003,6 +1006,12 @@ export class CpApp extends LitElement {
         ></cp-flow-run-detail>
       `;
     }
+    if (this._route.view === "instance-dashboard") {
+      return html`<cp-instance-dashboard
+        .slug=${this._route.slug}
+        @navigate=${this._navigate}
+      ></cp-instance-dashboard>`;
+    }
     return html``;
   }
 
@@ -1039,6 +1048,7 @@ export class CpApp extends LitElement {
               class="nav-tab ${this._route.view === "cluster" ||
               this._route.view === "agents-builder" ||
               this._route.view === "instance-settings" ||
+              this._route.view === "instance-dashboard" ||
               this._route.view === "pilot" ||
               this._route.view === "costs" ||
               this._route.view === "activity" ||

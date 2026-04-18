@@ -55,6 +55,7 @@ Since v0.7.1, navigation uses hash URLs (`#/...`). Browser back/forward and page
 |---|---|---|
 | `#/home` | Home screen (default) | `cp-home-screen` |
 | `#/` or `#/instances` | Instances view | `cp-cluster-view` |
+| `#/instances/:slug/dashboard` | Instance dashboard (synthetic overview) | `cp-instance-dashboard` |
 | `#/instances/:slug/builder` | Agent builder | `cp-agents-builder` |
 | `#/instances/:slug/settings` | Instance settings | `cp-instance-settings` |
 | `#/instances/:slug/pilot` | Interactive chat + LLM context panel | `cp-runtime-pilot` |
@@ -122,6 +123,7 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 | 0 | Login | `cp-login-view` | — (pre-auth) | — | [screen-login.md](ux-screens/screen-login.md) |
 | — | Home Screen | `cp-home-screen` | `#/home` | cp-home-wizard, cp-home-chat | [screen-home.md](ux-screens/screen-home.md) |
 | 1 | Instances | `cp-cluster-view` | `#/instances` | instance-card, create-dialog, delete-instance-dialog, discover-dialog | [screen-instances.md](ux-screens/screen-instances.md) |
+| 2a | Instance Dashboard | `cp-instance-dashboard` | `#/instances/:slug/dashboard` | — (self-contained) | [screen-instance-dashboard.md](ux-screens/screen-instance-dashboard.md) |
 | 2b | Instance Settings | `cp-instance-settings` | `#/instances/:slug/settings` | channels, mcp, permissions, config, skills (inline) | [screen-instance-settings.md](ux-screens/screen-instance-settings.md) |
 | 2c | Runtime Pilot | `cp-runtime-pilot` | `#/instances/:slug/pilot` | 22+ sub-components (inline) | [screen-runtime-pilot.md](ux-screens/screen-runtime-pilot.md) |
 | 2d | Cost Dashboard | `cp-costs-dashboard` | `#/instances/:slug/costs` | cp-budget-settings, cp-budget-alert-banner | [screen-costs-dashboard.md](ux-screens/screen-costs-dashboard.md) |
