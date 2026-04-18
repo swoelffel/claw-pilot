@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.77.0] — 2026-04-18
+
+### Added
+- **Flow Sessions screen** — New `#/instances/:slug/flows/:flowId/sessions` route with run-centric master/detail view. Left panel lists flow runs with status dots reflecting sitrep outcomes (green/orange/red). Right panel shows nested step accordions with lazy-loaded session messages, tool call expansion, and raw LLM toggle.
+- **Live SSE streaming** — Active flow runs poll every 5s, expanding running steps auto-connects SSE for real-time message streaming. Running steps resolved via session label lookup (session_id assigned post-completion).
+- **Sitrep-aware status colors** — Runs with only "partial" sitrep outcomes show orange ("partially failed") instead of red. Steps with non-success sitrep outcomes display accurate dot colors.
+- **Backend enrichment** — `worstOutcome` field on flow runs list, `hasMore` pagination on runs endpoint, `getRunWorstOutcome()` repository function, session label lookup for running steps.
+
+---
+
 ## [0.76.0] — 2026-04-18
 
 ### Added
