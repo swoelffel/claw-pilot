@@ -10,12 +10,12 @@ export default defineConfig({
       exclude: ["src/**/__tests__/**", "src/index.ts"],
       reporter: ["text", "html", "json-summary"],
       thresholds: {
-        // Quality session: 2157 tests, coverage ~60% lines.
         // Enforced by CI — raise after adding tests, never lower.
-        lines: 59,
-        statements: 58,
-        functions: 61,
-        branches: 52,
+        // Current: 2388 tests, 60.99% lines, 53.09% branches.
+        lines: 60,
+        statements: 59,
+        functions: 63,
+        branches: 53,
       },
     },
   },
