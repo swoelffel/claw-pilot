@@ -1241,6 +1241,17 @@ export async function cancelFlowRun(slug: string, runId: number): Promise<void> 
   await apiFetch(`/instances/${slug}/flow-runs/${runId}/cancel`, { method: "POST" });
 }
 
+export async function fetchFlowRuns(
+  slug: string,
+  flowId: number,
+  opts?: { limit?: number },
+): Promise<{ runs: FlowRun[]; hasMore: boolean }> {
+  const params = new URLSearchParams();
+  if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
+  const qs = params.toString();
+  return apiFetch(`/instances/${slug}/flows/${flowId}/runs${qs ? `?${qs}` : ""}`);
+}
+
 export async function fetchFlowSessions(
   slug: string,
   flowId: number,

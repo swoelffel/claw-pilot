@@ -1,32 +1,54 @@
 // ui/src/components/flow-sessions.ts
-// Flow Sessions — master/detail viewer for sessions linked to a flow definition.
-// Reuses existing session message APIs and SSE streaming.
+// Flow Sessions — run-centric master/detail with nested step accordions.
+// Left: flow runs list. Right: steps as accordions with lazy-loaded messages.
 
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
 import {
-  fetchFlowSessions,
+  fetchFlowRuns,
   getFlow,
+  getFlowRun as fetchRunDetail,
   fetchSessionMessages,
-  fetchSessionContext,
   getRuntimeChatStreamUrl,
 } from "../api.js";
-import type { FlowSession, PilotMessage, PilotPart, SessionContext } from "../types.js";
+import type { FlowRun, FlowStepRun, PilotMessage, PilotPart } from "../types.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const PAGE_SIZE = 30;
+const PAGE_SIZE = 20;
 const MSG_PAGE_SIZE = 50;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function fmtDate(iso: string): string {
+type AnyStatus = FlowRun["status"] | FlowStepRun["status"];
+
+function statusColor(status: AnyStatus): string {
+  switch (status) {
+    case "pending":
+      return "var(--text-muted)";
+    case "running":
+      return "var(--state-info)";
+    case "completed":
+      return "var(--state-running)";
+    case "failed":
+      return "var(--state-error)";
+    case "cancelled":
+      return "var(--state-warning)";
+    case "skipped":
+      return "var(--text-secondary)";
+    default:
+      return "var(--text-muted)";
+  }
+}
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return "--";
   try {
     const d = new Date(iso);
     const now = Date.now();
@@ -41,8 +63,21 @@ function fmtDate(iso: string): string {
       minute: "2-digit",
     });
   } catch {
-    return iso;
+    return iso ?? "--";
   }
+}
+
+function fmtDuration(startIso: string | null, endIso: string | null): string {
+  if (!startIso) return "--";
+  const start = new Date(startIso).getTime();
+  const end = endIso ? new Date(endIso).getTime() : Date.now();
+  const diffMs = end - start;
+  if (diffMs < 1_000) return `${diffMs}ms`;
+  const secs = Math.floor(diffMs / 1_000);
+  if (secs < 60) return `${secs}s`;
+  const mins = Math.floor(secs / 60);
+  const remSecs = secs % 60;
+  return `${mins}m ${remSecs}s`;
 }
 
 function fmtCost(usd: number | undefined): string {
@@ -81,11 +116,13 @@ function stringify(val: unknown): string {
   }
 }
 
-/** Extract a short label from the session label (e.g. "flow:maint:step:scan" → "scan"). */
-function shortLabel(label: string | null): string {
-  if (!label) return "session";
-  const parts = label.split(":");
-  return parts[parts.length - 1] ?? label;
+/** Summarize step statuses for a run row label. */
+function stepsSummary(steps: FlowStepRun[]): string {
+  if (steps.length === 0) return "";
+  const done = steps.filter(
+    (s) => s.status === "completed" || s.status === "failed" || s.status === "skipped",
+  ).length;
+  return `${done}/${steps.length}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -140,7 +177,7 @@ export class FlowSessions extends LitElement {
 
       .layout {
         display: grid;
-        grid-template-columns: 340px 1fr;
+        grid-template-columns: 320px 1fr;
         gap: var(--space-4);
         min-height: 600px;
       }
@@ -151,9 +188,9 @@ export class FlowSessions extends LitElement {
         }
       }
 
-      /* ── Session list (left panel) ──────────────────────────────── */
+      /* ── Run list (left panel) ──────────────────────────────────── */
 
-      .session-list {
+      .run-list {
         border: 1px solid var(--bg-border);
         border-radius: var(--radius-md);
         background: var(--bg-surface);
@@ -161,21 +198,21 @@ export class FlowSessions extends LitElement {
         max-height: 80vh;
       }
 
-      .session-item {
+      .run-item {
         padding: var(--space-3) var(--space-4);
         cursor: pointer;
         border-bottom: 1px solid var(--bg-border);
         transition: background 0.1s;
       }
-      .session-item:hover {
+      .run-item:hover {
         background: var(--bg-hover);
       }
-      .session-item.selected {
+      .run-item.selected {
         background: var(--accent-subtle, rgba(79, 110, 247, 0.08));
         border-left: 3px solid var(--accent);
       }
 
-      .session-label {
+      .run-label {
         font-size: 14px;
         font-weight: 600;
         color: var(--text-primary);
@@ -184,7 +221,7 @@ export class FlowSessions extends LitElement {
         gap: var(--space-2);
       }
 
-      .session-meta {
+      .run-meta {
         font-size: 12px;
         color: var(--text-muted);
         margin-top: 2px;
@@ -194,27 +231,10 @@ export class FlowSessions extends LitElement {
         flex-wrap: wrap;
       }
 
-      .badge {
-        font-size: 10px;
-        padding: 1px 6px;
-        border-radius: var(--radius-sm);
-        font-weight: 600;
-      }
-      .badge-active {
-        background: rgba(16, 185, 129, 0.15);
-        color: var(--state-running);
-      }
-      .badge-archived {
-        background: rgba(239, 68, 68, 0.15);
-        color: var(--state-error);
-      }
-
-      .active-dot {
+      .status-dot {
         width: 8px;
         height: 8px;
         border-radius: 50%;
-        background: var(--state-running);
-        animation: pulse 1.2s infinite;
         flex-shrink: 0;
       }
       @keyframes pulse {
@@ -234,55 +254,15 @@ export class FlowSessions extends LitElement {
         font-size: 12px;
       }
 
-      /* ── Conversation panel (right) ─────────────────────────────── */
+      /* ── Right panel ────────────────────────────────────────────── */
 
-      .conversation {
+      .detail-panel {
         border: 1px solid var(--bg-border);
         border-radius: var(--radius-md);
         background: var(--bg-base);
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        max-height: 80vh;
-      }
-
-      .panel-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: var(--space-3) var(--space-4);
-        border-bottom: 1px solid var(--bg-border);
-        background: var(--bg-surface);
-        flex-shrink: 0;
-      }
-
-      .panel-header-info {
-        font-size: 13px;
-        color: var(--text-secondary);
-      }
-      .panel-header-info strong {
-        color: var(--text-primary);
-      }
-
-      .toggle-raw {
-        display: flex;
-        align-items: center;
-        gap: var(--space-2);
-        font-size: 12px;
-        color: var(--text-muted);
-        cursor: pointer;
-      }
-      .toggle-raw input {
-        accent-color: var(--accent);
-      }
-
-      .panel-body {
-        flex: 1;
         overflow-y: auto;
+        max-height: 80vh;
         padding: var(--space-4);
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-3);
       }
 
       .panel-empty {
@@ -294,49 +274,105 @@ export class FlowSessions extends LitElement {
         font-size: 14px;
       }
 
-      .panel-footer {
+      .run-header {
         display: flex;
-        gap: var(--space-4);
-        padding: var(--space-2) var(--space-4);
-        border-top: 1px solid var(--bg-border);
+        align-items: center;
+        gap: var(--space-3);
+        margin-bottom: var(--space-4);
+        padding-bottom: var(--space-3);
+        border-bottom: 1px solid var(--bg-border);
+      }
+      .run-header-info {
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
+      .run-header-info strong {
+        color: var(--text-primary);
+      }
+
+      /* ── Step accordion ─────────────────────────────────────────── */
+
+      .step-accordion {
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-md);
+        margin-bottom: var(--space-3);
+        overflow: hidden;
+      }
+
+      .step-header {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-3) var(--space-4);
+        cursor: pointer;
         background: var(--bg-surface);
+        transition: background 0.1s;
+        user-select: none;
+      }
+      .step-header:hover {
+        background: var(--bg-hover);
+      }
+
+      .step-chevron {
+        font-size: 10px;
+        color: var(--text-muted);
+        flex-shrink: 0;
+        width: 12px;
+        text-align: center;
+      }
+
+      .step-id {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .step-agent {
         font-size: 12px;
+        color: var(--text-muted);
+      }
+
+      .step-stats {
+        margin-left: auto;
+        display: flex;
+        gap: var(--space-3);
+        font-size: 11px;
+        font-family: var(--font-mono);
         color: var(--text-muted);
         flex-shrink: 0;
       }
 
-      /* ── System prompt ──────────────────────────────────────────── */
-
-      .system-prompt {
-        border: 1px solid var(--bg-border);
-        border-radius: var(--radius-sm);
-        margin-bottom: var(--space-3);
+      .step-body {
+        border-top: 1px solid var(--bg-border);
+        padding: var(--space-4);
+        max-height: 600px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-3);
       }
 
-      .system-prompt-header {
-        padding: var(--space-2) var(--space-3);
-        background: var(--bg-surface);
-        cursor: pointer;
-        font-size: 12px;
+      .step-no-session {
+        text-align: center;
+        padding: var(--space-4);
         color: var(--text-muted);
+        font-size: 13px;
+        font-style: italic;
+      }
+
+      /* ── Toggle raw ─────────────────────────────────────────────── */
+
+      .toggle-raw {
         display: flex;
         align-items: center;
         gap: var(--space-2);
-      }
-      .system-prompt-header:hover {
-        color: var(--text-secondary);
-      }
-
-      .system-prompt-body {
-        padding: var(--space-3);
-        font-family: var(--font-mono);
         font-size: 12px;
-        white-space: pre-wrap;
-        word-break: break-word;
-        color: var(--text-secondary);
-        max-height: 400px;
-        overflow-y: auto;
-        border-top: 1px solid var(--bg-border);
+        color: var(--text-muted);
+        cursor: pointer;
+        margin-left: auto;
+      }
+      .toggle-raw input {
+        accent-color: var(--accent);
       }
 
       /* ── Messages ───────────────────────────────────────────────── */
@@ -462,21 +498,20 @@ export class FlowSessions extends LitElement {
   @property({ type: Number }) flowId = 0;
 
   @state() private _flowName = "";
-  @state() private _sessions: FlowSession[] = [];
-  @state() private _selectedSession: FlowSession | null = null;
-  @state() private _messages: PilotMessage[] = [];
-  @state() private _context: SessionContext | null = null;
+  @state() private _runs: FlowRun[] = [];
+  @state() private _selectedRun: FlowRun | null = null;
+  @state() private _steps: FlowStepRun[] = [];
+  @state() private _stepMessages = new Map<string, PilotMessage[]>();
+  @state() private _expandedSteps = new Set<string>();
+  @state() private _loadingSteps = new Set<string>();
   @state() private _rawMode = false;
-  @state() private _systemPromptOpen = false;
   @state() private _expandedTools = new Set<string>();
-  @state() private _hasMoreSessions = false;
-  @state() private _hasMoreMessages = false;
+  @state() private _hasMoreRuns = false;
   @state() private _loading = false;
-  @state() private _loadingMessages = false;
   @state() private _error = "";
 
-  private _sessionObserver: IntersectionObserver | null = null;
-  private _sseSource: EventSource | null = null;
+  private _runObserver: IntersectionObserver | null = null;
+  private _sseConnections = new Map<string, EventSource>();
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -485,13 +520,13 @@ export class FlowSessions extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     void this._loadFlowName();
-    void this._loadSessions();
+    void this._loadRuns();
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
-    this._sessionObserver?.disconnect();
-    this._disconnectSSE();
+    this._runObserver?.disconnect();
+    this._disconnectAllSSE();
   }
 
   // ---------------------------------------------------------------------------
@@ -508,25 +543,22 @@ export class FlowSessions extends LitElement {
     }
   }
 
-  private async _loadSessions(append = false): Promise<void> {
+  private async _loadRuns(append = false): Promise<void> {
     if (this._loading) return;
     this._loading = true;
     this._error = "";
 
     try {
-      const lastSession = append ? this._sessions[this._sessions.length - 1] : undefined;
-
-      const { sessions, hasMore } = await fetchFlowSessions(this.slug, this.flowId, {
+      const { runs, hasMore } = await fetchFlowRuns(this.slug, this.flowId, {
         limit: PAGE_SIZE,
-        ...(lastSession ? { before: lastSession.created_at } : {}),
       });
 
       if (append) {
-        this._sessions = [...this._sessions, ...sessions];
+        this._runs = [...this._runs, ...runs];
       } else {
-        this._sessions = sessions;
+        this._runs = runs;
       }
-      this._hasMoreSessions = hasMore;
+      this._hasMoreRuns = hasMore;
     } catch (err) {
       this._error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -534,55 +566,58 @@ export class FlowSessions extends LitElement {
     }
   }
 
-  private async _selectSession(session: FlowSession): Promise<void> {
-    this._selectedSession = session;
-    this._messages = [];
-    this._context = null;
-    this._systemPromptOpen = false;
-    this._expandedTools = new Set();
-    this._loadingMessages = true;
-
-    // Disconnect previous SSE before loading new session
-    this._disconnectSSE();
+  private async _selectRun(run: FlowRun): Promise<void> {
+    this._selectedRun = run;
+    this._steps = [];
+    this._stepMessages = new Map();
+    this._expandedSteps = new Set();
+    this._disconnectAllSSE();
 
     try {
-      const [messagesResult, context] = await Promise.all([
-        fetchSessionMessages(this.slug, session.id, { limit: MSG_PAGE_SIZE }),
-        fetchSessionContext(this.slug, session.id),
-      ]);
-      this._messages = messagesResult.messages;
-      this._hasMoreMessages = messagesResult.hasMore;
-      this._context = context;
-
-      // Connect SSE for active sessions
-      if (session.state === "active") {
-        this._connectSSE(session.id);
-      }
+      const { steps } = await fetchRunDetail(this.slug, run.id);
+      this._steps = steps;
     } catch (err) {
       this._error = err instanceof Error ? err.message : String(err);
-    } finally {
-      this._loadingMessages = false;
     }
   }
 
-  private async _loadMoreMessages(): Promise<void> {
-    if (this._loadingMessages || !this._selectedSession || !this._hasMoreMessages) return;
-    const firstMsg = this._messages[0];
-    if (!firstMsg) return;
+  private async _toggleStep(step: FlowStepRun): Promise<void> {
+    const next = new Set(this._expandedSteps);
+    if (next.has(step.step_id)) {
+      // Collapse
+      next.delete(step.step_id);
+      if (step.session_id) this._disconnectSSE(step.session_id);
+    } else {
+      // Expand
+      next.add(step.step_id);
+      if (step.session_id && !this._stepMessages.has(step.session_id)) {
+        await this._loadStepMessages(step);
+      }
+      // SSE for running steps
+      if (step.session_id && step.status === "running") {
+        this._connectSSE(step.session_id);
+      }
+    }
+    this._expandedSteps = next;
+  }
 
-    this._loadingMessages = true;
+  private async _loadStepMessages(step: FlowStepRun): Promise<void> {
+    if (!step.session_id) return;
+    const sid = step.session_id;
+    this._loadingSteps = new Set([...this._loadingSteps, step.step_id]);
+    this.requestUpdate();
+
     try {
-      const { messages, hasMore } = await fetchSessionMessages(
-        this.slug,
-        this._selectedSession.id,
-        { limit: MSG_PAGE_SIZE, before: firstMsg.id },
-      );
-      this._messages = [...messages, ...this._messages];
-      this._hasMoreMessages = hasMore;
-    } catch {
-      // User can retry by scrolling
+      const { messages } = await fetchSessionMessages(this.slug, sid, { limit: MSG_PAGE_SIZE });
+      const next = new Map(this._stepMessages);
+      next.set(sid, messages);
+      this._stepMessages = next;
+    } catch (err) {
+      this._error = err instanceof Error ? err.message : String(err);
     } finally {
-      this._loadingMessages = false;
+      const loading = new Set(this._loadingSteps);
+      loading.delete(step.step_id);
+      this._loadingSteps = loading;
     }
   }
 
@@ -591,34 +626,36 @@ export class FlowSessions extends LitElement {
   // ---------------------------------------------------------------------------
 
   private _connectSSE(sessionId: string): void {
-    this._disconnectSSE();
+    if (this._sseConnections.has(sessionId)) return;
     const url = getRuntimeChatStreamUrl(this.slug, sessionId);
-    this._sseSource = new EventSource(url, { withCredentials: true });
-    this._sseSource.onmessage = () => {
-      void this._refetchMessages();
+    const source = new EventSource(url, { withCredentials: true });
+    source.onmessage = () => {
+      void this._refetchStepMessages(sessionId);
     };
-    this._sseSource.onerror = () => {
-      // SSE reconnects automatically; no action needed
-    };
+    this._sseConnections.set(sessionId, source);
   }
 
-  private _disconnectSSE(): void {
-    if (this._sseSource) {
-      this._sseSource.close();
-      this._sseSource = null;
+  private _disconnectSSE(sessionId: string): void {
+    const source = this._sseConnections.get(sessionId);
+    if (source) {
+      source.close();
+      this._sseConnections.delete(sessionId);
     }
   }
 
-  private async _refetchMessages(): Promise<void> {
-    if (!this._selectedSession) return;
+  private _disconnectAllSSE(): void {
+    for (const source of this._sseConnections.values()) source.close();
+    this._sseConnections.clear();
+  }
+
+  private async _refetchStepMessages(sessionId: string): Promise<void> {
     try {
-      const { messages, hasMore } = await fetchSessionMessages(
-        this.slug,
-        this._selectedSession.id,
-        { limit: MSG_PAGE_SIZE },
-      );
-      this._messages = messages;
-      this._hasMoreMessages = hasMore;
+      const { messages } = await fetchSessionMessages(this.slug, sessionId, {
+        limit: MSG_PAGE_SIZE,
+      });
+      const next = new Map(this._stepMessages);
+      next.set(sessionId, messages);
+      this._stepMessages = next;
     } catch {
       // Silent — SSE will retry
     }
@@ -629,23 +666,23 @@ export class FlowSessions extends LitElement {
   // ---------------------------------------------------------------------------
 
   override updated(): void {
-    this._setupSessionSentinel();
+    this._setupRunSentinel();
   }
 
-  private _setupSessionSentinel(): void {
-    this._sessionObserver?.disconnect();
-    const sentinel = this.renderRoot.querySelector(".session-sentinel");
+  private _setupRunSentinel(): void {
+    this._runObserver?.disconnect();
+    const sentinel = this.renderRoot.querySelector(".run-sentinel");
     if (!sentinel) return;
 
-    this._sessionObserver = new IntersectionObserver(
+    this._runObserver = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting && this._hasMoreSessions && !this._loading) {
-          void this._loadSessions(true);
+        if (entries[0]?.isIntersecting && this._hasMoreRuns && !this._loading) {
+          void this._loadRuns(true);
         }
       },
-      { root: this.renderRoot.querySelector(".session-list"), threshold: 0.1 },
+      { root: this.renderRoot.querySelector(".run-list"), threshold: 0.1 },
     );
-    this._sessionObserver.observe(sentinel);
+    this._runObserver.observe(sentinel);
   }
 
   // ---------------------------------------------------------------------------
@@ -662,36 +699,46 @@ export class FlowSessions extends LitElement {
           ${msg("Flow Sessions", { id: "flow-sessions-title" })}
           ${this._flowName ? html` — ${this._flowName}` : nothing}
         </span>
+        <label class="toggle-raw">
+          <input
+            type="checkbox"
+            .checked=${this._rawMode}
+            @change=${(e: Event) => {
+              this._rawMode = (e.target as HTMLInputElement).checked;
+            }}
+          />
+          ${msg("Raw LLM", { id: "flow-sessions-raw-mode" })}
+        </label>
       </div>
 
       ${this._error ? html`<div class="error">${this._error}</div>` : nothing}
 
-      <div class="layout">${this._renderSessionList()} ${this._renderConversation()}</div>
+      <div class="layout">${this._renderRunList()} ${this._renderDetail()}</div>
     `;
   }
 
-  // --- Session list (left panel) ---
+  // --- Run list (left panel) ---
 
-  private _renderSessionList() {
-    if (this._loading && this._sessions.length === 0) {
-      return html`<div class="session-list">
+  private _renderRunList() {
+    if (this._loading && this._runs.length === 0) {
+      return html`<div class="run-list">
         <div class="spinner">${msg("Loading...", { id: "flow-sessions-loading" })}</div>
       </div>`;
     }
 
-    if (this._sessions.length === 0) {
-      return html`<div class="session-list">
+    if (this._runs.length === 0) {
+      return html`<div class="run-list">
         <div class="empty">
-          ${msg("No sessions found for this flow", { id: "flow-sessions-empty" })}
+          ${msg("No runs found for this flow", { id: "flow-sessions-no-runs" })}
         </div>
       </div>`;
     }
 
     return html`
-      <div class="session-list">
-        ${this._sessions.map((s) => this._renderSessionItem(s))}
-        ${this._hasMoreSessions
-          ? html`<div class="session-sentinel load-sentinel">
+      <div class="run-list">
+        ${this._runs.map((r) => this._renderRunItem(r))}
+        ${this._hasMoreRuns
+          ? html`<div class="run-sentinel load-sentinel">
               ${this._loading ? msg("Loading...", { id: "flow-sessions-loading" }) : ""}
             </div>`
           : nothing}
@@ -699,146 +746,129 @@ export class FlowSessions extends LitElement {
     `;
   }
 
-  private _renderSessionItem(s: FlowSession) {
-    const selected = this._selectedSession?.id === s.id;
-    const isActive = s.state === "active";
+  private _renderRunItem(run: FlowRun) {
+    const selected = this._selectedRun?.id === run.id;
+    const isRunning = run.status === "running";
 
     return html`
-      <div
-        class="session-item ${selected ? "selected" : ""}"
-        @click=${() => void this._selectSession(s)}
-      >
-        <div class="session-label">
-          ${isActive ? html`<span class="active-dot"></span>` : nothing}
-          <span>${shortLabel(s.label)}</span>
+      <div class="run-item ${selected ? "selected" : ""}" @click=${() => void this._selectRun(run)}>
+        <div class="run-label">
+          <span
+            class="status-dot"
+            style="background:${statusColor(run.status)}${isRunning
+              ? ";animation:pulse 1.2s infinite"
+              : ""}"
+          ></span>
+          <span>Run #${run.id}</span>
           <span style="font-weight:400;color:var(--text-muted);font-size:12px">
-            ${s.agent_id}
+            ${run.trigger_type}
           </span>
         </div>
-        <div class="session-meta">
-          <span>${fmtDate(s.created_at)}</span>
+        <div class="run-meta">
+          <span>${fmtDate(run.started_at ?? run.created_at)}</span>
           <span>·</span>
-          <span>${s.prompt_loops} ${msg("loops", { id: "flow-sessions-loops" })}</span>
+          <span>${fmtDuration(run.started_at, run.finished_at)}</span>
           <span>·</span>
-          <span>${fmtTokens(s.total_tokens)} tok</span>
-          <span>·</span>
-          <span>${fmtCost(s.total_cost_usd)}</span>
-          ${isActive
-            ? html`<span class="badge badge-active"
-                >${msg("active", { id: "flow-sessions-active" })}</span
-              >`
-            : html`<span class="badge badge-archived"
-                >${msg("archived", { id: "flow-sessions-archived" })}</span
-              >`}
+          <span style="color:${statusColor(run.status)}">${run.status}</span>
         </div>
       </div>
     `;
   }
 
-  // --- Conversation panel (right) ---
+  // --- Detail panel (right) ---
 
-  private _renderConversation() {
-    if (!this._selectedSession) {
+  private _renderDetail() {
+    if (!this._selectedRun) {
       return html`
-        <div class="conversation">
+        <div class="detail-panel">
           <div class="panel-empty">
-            ${msg("Select a session to view", { id: "flow-sessions-select" })}
+            ${msg("Select a run to view", { id: "flow-sessions-select-run" })}
           </div>
         </div>
       `;
     }
 
-    if (this._loadingMessages && this._messages.length === 0) {
+    if (this._steps.length === 0 && !this._error) {
       return html`
-        <div class="conversation">
+        <div class="detail-panel">
           <div class="panel-empty">${msg("Loading...", { id: "flow-sessions-loading" })}</div>
         </div>
       `;
     }
 
-    const ctx = this._context;
-    const totalTokensIn = this._messages.reduce((sum, m) => sum + (m.tokensIn ?? 0), 0);
-    const totalTokensOut = this._messages.reduce((sum, m) => sum + (m.tokensOut ?? 0), 0);
-    const totalCost = this._messages.reduce((sum, m) => sum + (m.costUsd ?? 0), 0);
-    const model = ctx?.agent.model ?? this._messages.find((m) => m.model)?.model ?? "";
+    const run = this._selectedRun;
+    const totalCost = this._steps.reduce((sum, s) => sum + (s.cost_usd ?? 0), 0);
+    const totalTokens = this._steps.reduce(
+      (sum, s) => sum + (s.tokens_in ?? 0) + (s.tokens_out ?? 0),
+      0,
+    );
 
     return html`
-      <div class="conversation">
-        <div class="panel-header">
-          <div class="panel-header-info">
-            <strong>${this._selectedSession.agent_id}</strong>
-            · ${fmtDate(this._selectedSession.created_at)} ${model ? html` · ${model}` : nothing}
-            ${this._selectedSession.state === "active"
-              ? html` · <span style="color:var(--state-running)">live</span>`
-              : nothing}
+      <div class="detail-panel">
+        <div class="run-header">
+          <span
+            class="status-dot"
+            style="background:${statusColor(run.status)}${run.status === "running"
+              ? ";animation:pulse 1.2s infinite"
+              : ""}"
+          ></span>
+          <div class="run-header-info">
+            <strong>Run #${run.id}</strong> · ${run.trigger_type} ·
+            ${fmtDate(run.started_at ?? run.created_at)} ·
+            ${fmtDuration(run.started_at, run.finished_at)} · ${fmtTokens(totalTokens)} tok ·
+            ${fmtCost(totalCost)} ·
+            <span style="color:${statusColor(run.status)}">${run.status}</span>
+            (${stepsSummary(this._steps)} steps)
           </div>
-          <label class="toggle-raw">
-            <input
-              type="checkbox"
-              .checked=${this._rawMode}
-              @change=${(e: Event) => {
-                this._rawMode = (e.target as HTMLInputElement).checked;
-              }}
-            />
-            ${msg("Raw LLM", { id: "flow-sessions-raw-mode" })}
-          </label>
         </div>
 
-        <div class="panel-body">
-          ${this._hasMoreMessages
-            ? html`<button
-                class="btn-back"
-                style="align-self:center"
-                @click=${() => void this._loadMoreMessages()}
-              >
-                ${this._loadingMessages
-                  ? msg("Loading...", { id: "flow-sessions-loading" })
-                  : msg("Load earlier messages", { id: "flow-sessions-load-earlier" })}
-              </button>`
-            : nothing}
-          ${this._renderSystemPrompt()} ${this._messages.map((m) => this._renderMessage(m))}
-        </div>
-
-        <div class="panel-footer">
-          <span>Tokens: ${fmtTokens(totalTokensIn)} in / ${fmtTokens(totalTokensOut)} out</span>
-          <span>${msg("Cost", { id: "flow-sessions-cost" })}: ${fmtCost(totalCost)}</span>
-          ${model ? html`<span>${model}</span>` : nothing}
-        </div>
+        ${this._steps.map((s) => this._renderStepAccordion(s))}
       </div>
     `;
   }
 
-  // --- System prompt ---
+  // --- Step accordion ---
 
-  private _renderSystemPrompt() {
-    const prompt = this._context?.systemPrompt;
-    if (!prompt) return nothing;
-
-    const sizeKb = (new TextEncoder().encode(prompt).length / 1024).toFixed(1);
-
-    if (this._rawMode) {
-      return html`
-        <div class="system-prompt">
-          <div class="system-prompt-header">
-            ${msg("System prompt", { id: "flow-sessions-system-prompt" })} (${sizeKb} KB)
-          </div>
-          <div class="system-prompt-body">${prompt}</div>
-        </div>
-      `;
-    }
+  private _renderStepAccordion(step: FlowStepRun) {
+    const expanded = this._expandedSteps.has(step.step_id);
+    const isRunning = step.status === "running";
+    const isLoading = this._loadingSteps.has(step.step_id);
+    const messages = step.session_id ? this._stepMessages.get(step.session_id) : undefined;
 
     return html`
-      <div class="system-prompt">
-        <div
-          class="system-prompt-header"
-          @click=${() => {
-            this._systemPromptOpen = !this._systemPromptOpen;
-          }}
-        >
-          <span>${this._systemPromptOpen ? "\u25bc" : "\u25b6"}</span>
-          ${msg("System prompt", { id: "flow-sessions-system-prompt" })} (${sizeKb} KB)
+      <div class="step-accordion">
+        <div class="step-header" @click=${() => void this._toggleStep(step)}>
+          <span class="step-chevron">${expanded ? "\u25bc" : "\u25b6"}</span>
+          <span
+            class="status-dot"
+            style="background:${statusColor(step.status)}${isRunning
+              ? ";animation:pulse 1.2s infinite"
+              : ""}"
+          ></span>
+          <span class="step-id">${step.step_id}</span>
+          <span class="step-agent">${step.agent_id}</span>
+          <div class="step-stats">
+            <span>${fmtDuration(step.started_at, step.finished_at)}</span>
+            <span>${fmtTokens((step.tokens_in ?? 0) + (step.tokens_out ?? 0))} tok</span>
+            <span>${fmtCost(step.cost_usd)}</span>
+          </div>
         </div>
-        ${this._systemPromptOpen ? html`<div class="system-prompt-body">${prompt}</div>` : nothing}
+
+        ${expanded
+          ? html`<div class="step-body">
+              ${!step.session_id
+                ? html`<div class="step-no-session">
+                    ${msg("No session yet", { id: "flow-sessions-no-session" })}
+                  </div>`
+                : isLoading && !messages
+                  ? html`<div class="spinner">
+                      ${msg("Loading...", { id: "flow-sessions-loading" })}
+                    </div>`
+                  : messages
+                    ? messages.map((m) => this._renderMessage(m))
+                    : nothing}
+            </div>`
+          : nothing}
       </div>
     `;
   }
@@ -870,22 +900,16 @@ export class FlowSessions extends LitElement {
     switch (p.type) {
       case "text":
         return html`<div class="msg-text">${p.content ?? ""}</div>`;
-
       case "tool_call":
         return this._renderToolCall(p);
-
       case "tool_result":
         return this._renderToolResult(p);
-
       case "reasoning":
         return html`<div class="reasoning-part">${p.content ?? ""}</div>`;
-
       case "compaction":
         return html`<div class="msg-text" style="font-style:italic">${p.content ?? ""}</div>`;
-
       case "suggestion":
         return html`<div class="msg-text" style="color:var(--text-muted)">${p.content ?? ""}</div>`;
-
       default:
         return this._rawMode
           ? html`<div class="msg-text">[${p.type}] ${p.content ?? ""}</div>`
@@ -909,7 +933,8 @@ export class FlowSessions extends LitElement {
     return html`
       <div
         class="tool-part tool-call"
-        @click=${() => {
+        @click=${(e: Event) => {
+          e.stopPropagation();
           const next = new Set(this._expandedTools);
           if (expanded) next.delete(p.id);
           else next.add(p.id);
@@ -948,7 +973,8 @@ export class FlowSessions extends LitElement {
     return html`
       <div
         class="tool-part tool-result"
-        @click=${() => {
+        @click=${(e: Event) => {
+          e.stopPropagation();
           const next = new Set(this._expandedTools);
           if (expanded) next.delete(p.id);
           else next.add(p.id);

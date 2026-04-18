@@ -360,9 +360,11 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
     const { slug } = getInstanceContext(c);
     const id = Number(c.req.param("id"));
 
-    const limit = Number(c.req.query("limit") ?? "20");
-    const runs = listFlowRuns(db, slug, { flowId: id, limit: Math.min(limit, 100) });
-    return c.json({ runs });
+    const limit = Math.min(Number(c.req.query("limit") ?? "20"), 100);
+    const runs = listFlowRuns(db, slug, { flowId: id, limit: limit + 1 });
+    const hasMore = runs.length > limit;
+    if (hasMore) runs.pop();
+    return c.json({ runs, hasMore });
   });
 
   // -------------------------------------------------------------------------

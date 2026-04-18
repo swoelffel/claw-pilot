@@ -232,6 +232,39 @@ describe("GET /api/instances/:slug/flows/:id", () => {
   });
 });
 
+describe("GET /api/instances/:slug/flows/:id/runs", () => {
+  it("returns runs with hasMore", async () => {
+    const createRes = await app.request("/api/instances/demo/flows", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ name: "RunsFlow", steps: VALID_STEPS }),
+    });
+    const { flow } = await json(createRes);
+
+    // Create 2 runs directly in DB
+    const { createFlowRun } = await import("../../core/repositories/flow-repository.js");
+    createFlowRun(db, { flowId: flow.id, instanceSlug: "demo", triggerType: "manual" });
+    createFlowRun(db, { flowId: flow.id, instanceSlug: "demo", triggerType: "manual" });
+
+    // Fetch with limit=1 → should have hasMore=true
+    const res1 = await app.request(`/api/instances/demo/flows/${flow.id}/runs?limit=1`, {
+      headers: authHeaders(),
+    });
+    expect(res1.status).toBe(200);
+    const body1 = await json(res1);
+    expect(body1.runs).toHaveLength(1);
+    expect(body1.hasMore).toBe(true);
+
+    // Fetch with limit=10 → should have hasMore=false
+    const res2 = await app.request(`/api/instances/demo/flows/${flow.id}/runs?limit=10`, {
+      headers: authHeaders(),
+    });
+    const body2 = await json(res2);
+    expect(body2.runs).toHaveLength(2);
+    expect(body2.hasMore).toBe(false);
+  });
+});
+
 describe("PATCH /api/instances/:slug/flows/:id", () => {
   it("updates flow name and description", async () => {
     const createRes = await app.request("/api/instances/demo/flows", {
