@@ -26,6 +26,7 @@ export type Route =
   | { view: "flows"; slug: string }
   | { view: "flow-run"; slug: string; runId: number }
   | { view: "instance-dashboard"; slug: string }
+  | { view: "flow-sessions"; slug: string; flowId: number }
   | { view: "profile" };
 
 /** Convert a Route to a hash string (without the leading #). */
@@ -59,6 +60,8 @@ export function routeToHash(route: Route): string {
       return `/instances/${route.slug}/flows/runs/${route.runId}`;
     case "instance-dashboard":
       return `/instances/${route.slug}/dashboard`;
+    case "flow-sessions":
+      return `/instances/${route.slug}/flows/${route.flowId}/sessions`;
     case "blueprints":
       return "/blueprints";
     case "blueprint-builder":
@@ -123,6 +126,15 @@ export function hashToRoute(hash: string): Route {
   // /instances/:slug/tasks
   const tasksMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/tasks$/);
   if (tasksMatch) return { view: "tasks", slug: tasksMatch[1]! };
+
+  // /instances/:slug/flows/:flowId/sessions
+  const flowSessionsMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/flows\/(\d+)\/sessions$/);
+  if (flowSessionsMatch)
+    return {
+      view: "flow-sessions",
+      slug: flowSessionsMatch[1]!,
+      flowId: Number(flowSessionsMatch[2]),
+    };
 
   // /instances/:slug/flows/runs/:runId
   const flowRunMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/flows\/runs\/(\d+)$/);

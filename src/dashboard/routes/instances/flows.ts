@@ -17,6 +17,8 @@ import {
   getStepRunsForRun,
   updateFlowRunStatus,
   updateStepRun,
+  countFlowSessions,
+  listFlowSessions,
 } from "../../../core/repositories/flow-repository.js";
 import {
   upsertSearchEntry,
@@ -248,12 +250,13 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
 
     const flows = listFlowDefinitions(db, slug);
 
-    // Enrich with last run info
+    // Enrich with last run info + session count
     const enriched = flows.map((f) => {
       const runs = listFlowRuns(db, slug, { flowId: f.id, limit: 1 });
       return {
         ...f,
         lastRun: runs[0] ?? null,
+        sessionCount: countFlowSessions(db, f.id),
       };
     });
 
@@ -403,5 +406,28 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
 
     updateFlowRunStatus(db, runId, "cancelled");
     return c.json({ ok: true });
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/instances/:slug/flows/:id/sessions — list sessions for a flow
+  // -------------------------------------------------------------------------
+  app.get("/api/instances/:slug/flows/:id/sessions", (c) => {
+    const { slug } = getInstanceContext(c);
+    const id = Number(c.req.param("id"));
+
+    const flow = getFlowDefinition(db, id);
+    if (!flow || flow.instance_slug !== slug) {
+      return apiError(c, 404, "NOT_FOUND", "Flow not found");
+    }
+
+    const limit = Math.min(Number(c.req.query("limit") ?? "30"), 100);
+    const before = c.req.query("before") || undefined;
+
+    const result = listFlowSessions(db, id, {
+      limit,
+      ...(before !== undefined ? { before } : {}),
+    });
+
+    return c.json(result);
   });
 }

@@ -243,6 +243,24 @@ export class FlowList extends LitElement {
         </div>
 
         <div class="flow-actions">
+          ${flow.sessionCount > 0
+            ? html`<button
+                class="btn-action btn-logs"
+                title=${msg("Session logs", { id: "flow-list-logs" })}
+                @click=${(e: Event) => {
+                  e.stopPropagation();
+                  this.dispatchEvent(
+                    new CustomEvent("navigate", {
+                      detail: { view: "flow-sessions", slug: this.slug, flowId: flow.id },
+                      bubbles: true,
+                      composed: true,
+                    }),
+                  );
+                }}
+              >
+                ${msg("Logs", { id: "flow-list-logs-btn" })} (${flow.sessionCount})
+              </button>`
+            : nothing}
           <button
             class="btn-action btn-run"
             ?disabled=${isRunning || !this._instanceRunning}
@@ -504,6 +522,14 @@ export class FlowList extends LitElement {
           background 0.15s,
           border-color 0.15s,
           color 0.15s;
+      }
+      .btn-logs {
+        color: var(--text-secondary);
+        border-color: var(--bg-border);
+      }
+      .btn-logs:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
       }
       .btn-run {
         color: var(--state-running);

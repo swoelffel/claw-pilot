@@ -977,6 +977,20 @@ export interface FlowDefinition {
 
 export interface FlowDefinitionWithLastRun extends FlowDefinition {
   lastRun: FlowRun | null;
+  sessionCount: number;
+}
+
+export interface FlowSession {
+  id: string;
+  agent_id: string;
+  state: "active" | "archived";
+  label: string | null;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  total_tokens: number;
+  total_cost_usd: number;
+  prompt_loops: number;
 }
 
 export interface FlowRun {

@@ -43,6 +43,7 @@ import "./components/flow-list.js";
 import "./components/flow-editor.js";
 import "./components/flow-run-detail.js";
 import "./components/instance-dashboard.js";
+import "./components/flow-sessions.js";
 import "./components/budget-alert-banner.js";
 import "./components/command-palette.js";
 
@@ -737,6 +738,7 @@ export class CpApp extends LitElement {
         blueprintId?: number;
         templateId?: string;
         runId?: number;
+        flowId?: number;
         section?: import("./types.js").SidebarSection;
       }>
     ).detail;
@@ -766,6 +768,8 @@ export class CpApp extends LitElement {
       this._route = { view: "flow-run", slug: detail.slug, runId: detail.runId };
     } else if (detail.view === "instance-dashboard" && detail.slug) {
       this._route = { view: "instance-dashboard", slug: detail.slug };
+    } else if (detail.view === "flow-sessions" && detail.slug && detail.flowId !== undefined) {
+      this._route = { view: "flow-sessions", slug: detail.slug, flowId: detail.flowId };
     } else if (detail.view === "agents-builder" && detail.slug) {
       this._route = { view: "agents-builder", slug: detail.slug };
     } else if (detail.view === "blueprints") {
@@ -1011,6 +1015,19 @@ export class CpApp extends LitElement {
         .slug=${this._route.slug}
         @navigate=${this._navigate}
       ></cp-instance-dashboard>`;
+    }
+    if (this._route.view === "flow-sessions") {
+      return html`
+        <cp-budget-alert-banner
+          .slug=${this._route.slug}
+          @navigate=${this._navigate}
+        ></cp-budget-alert-banner>
+        <cp-flow-sessions
+          .slug=${this._route.slug}
+          .flowId=${this._route.flowId}
+          @navigate=${this._navigate}
+        ></cp-flow-sessions>
+      `;
     }
     return html``;
   }
