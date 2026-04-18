@@ -110,6 +110,20 @@ function stringify(val: unknown): string {
   }
 }
 
+/** Effective color for a step, accounting for sitrep outcome on completed steps. */
+function stepEffectiveColor(step: FlowStepRun): string {
+  if (step.status === "completed" && step.sitrep_json) {
+    try {
+      const sitrep = JSON.parse(step.sitrep_json) as { outcome?: string };
+      if (sitrep.outcome === "failure") return "var(--state-error)";
+      if (sitrep.outcome === "partial") return "var(--state-warning)";
+    } catch {
+      // Malformed sitrep — treat as normal completed
+    }
+  }
+  return statusColor(step.status);
+}
+
 /** Summarize step statuses for a run row label. */
 function stepsSummary(steps: FlowStepRun[]): string {
   if (steps.length === 0) return "";
@@ -835,7 +849,7 @@ export class FlowSessions extends LitElement {
           <span class="step-chevron">${expanded ? "\u25bc" : "\u25b6"}</span>
           <span
             class="status-dot"
-            style="background:${statusColor(step.status)}${isRunning
+            style="background:${stepEffectiveColor(step)}${isRunning
               ? ";animation:pulse 1.2s infinite"
               : ""}"
           ></span>
