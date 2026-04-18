@@ -52,7 +52,7 @@ import { createSuggestionMiddleware } from "../middleware/built-in/suggestions.j
 import { cleanupEphemeralSessions } from "../session/cleanup.js";
 import { wireEventPersistence } from "./event-persistence.js";
 import { wireNotificationEmitter } from "./notification-emitter.js";
-import { Monitor } from "../../dashboard/monitor.js";
+import { notifyNewNotification } from "../../lib/notification-bridge.js";
 import { wireTaskNotifications } from "./task-wiring.js";
 import { pruneRtEvents } from "../../core/repositories/rt-event-repository.js";
 import {
@@ -427,7 +427,7 @@ export class ClawRuntime {
 
     // 3e. Wire notification emitter (bus → persistent notifications)
     this._notificationEmitterUnsub = wireNotificationEmitter(this.db, this.instanceSlug, (row) =>
-      Monitor.notifyNewNotification(row),
+      notifyNewNotification(row),
     );
 
     // 3f. Wire task assignment notifications

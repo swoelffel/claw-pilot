@@ -105,8 +105,8 @@ vi.mock("../event-persistence.js", () => ({
 vi.mock("../notification-emitter.js", () => ({
   wireNotificationEmitter: vi.fn(() => vi.fn()),
 }));
-vi.mock("../../../dashboard/monitor.js", () => ({
-  Monitor: { notifyNewNotification: vi.fn() },
+vi.mock("../../../lib/notification-bridge.js", () => ({
+  notifyNewNotification: vi.fn(),
 }));
 vi.mock("../task-wiring.js", () => ({
   wireTaskNotifications: vi.fn(() => vi.fn()),

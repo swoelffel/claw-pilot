@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.75.1] — 2026-04-18
+
+### Fixed
+- **Circular dependency** — Extracted notification bridge from `dashboard/monitor.ts` into `lib/notification-bridge.ts` to break `monitor.ts → runtime/index.ts → engine.ts → monitor.ts` cycle that failed CI `madge --circular` check.
+
+---
+
 ## [0.75.0] — 2026-04-18
 
 ### Added

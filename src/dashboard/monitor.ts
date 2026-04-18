@@ -6,6 +6,7 @@ import { constants } from "../lib/constants.js";
 import { logger } from "../lib/logger.js";
 import { getRuntimeStateDir } from "../lib/platform.js";
 import { runtimeConfigExists, loadRuntimeConfig } from "../runtime/index.js";
+import { setNotificationBroadcaster as setNotificationBroadcasterBridge } from "../lib/notification-bridge.js";
 
 interface WSMessage {
   type: "health_update" | "instance_created" | "instance_destroyed" | "log_line" | "notification";
@@ -223,17 +224,9 @@ export class Monitor {
   // Notification broadcasting
   // ---------------------------------------------------------------------------
 
-  /** Global callback set by server.ts — called by notification emitters in each engine. */
-  private static _onNewNotification: ((row: unknown) => void) | null = null;
-
-  /** Set the global notification broadcaster. Called once during server setup. */
+  /** @deprecated Use `setNotificationBroadcaster` from `lib/notification-bridge.js` directly. */
   static setNotificationBroadcaster(fn: (row: unknown) => void): void {
-    Monitor._onNewNotification = fn;
-  }
-
-  /** Forward a notification from any engine to the WS broadcaster. */
-  static notifyNewNotification(row: unknown): void {
-    Monitor._onNewNotification?.(row);
+    setNotificationBroadcasterBridge(fn);
   }
 
   /** Broadcast a new notification to all connected WS clients. */
