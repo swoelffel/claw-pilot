@@ -6,6 +6,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.77.1] — 2026-04-18
+
+### Security
+- **hono** bumped to 4.12.14 — patches HTML injection in JSX SSR (GHSA-458j-xx4x-4375, moderate).
+- **dompurify** bumped to 3.4.0 — patches ADD_TAGS bypass (GHSA-39q2-94rc-95cp, moderate).
+- **brace-expansion** pinned to ≥5.0.5 via pnpm override — patches DoS via zero-step sequence in devDep transitive chain (moderate).
+
+### Changed
+- **Dependencies** — Bumped `@ai-sdk/*`, `ai`, `@openrouter/ai-sdk-provider` (2.5.1→2.8.0), `marked`, `nanoid`, `eslint`, `oxlint`, `prettier`, `tsdown`, `typescript`, `@typescript-eslint/*`, `lefthook`, `eslint-plugin-sonarjs` to latest patch/minor.
+- **Vitest 4 migration** — `vitest.e2e.config.ts` moved `poolOptions.forks` to top-level `forks` (API change in Vitest 4).
+
+### Removed
+- **@types/dompurify** — deprecated; DOMPurify ≥3 ships its own TypeScript definitions.
+
+---
+
 ## [0.77.0] — 2026-04-18
 
 ### Added
