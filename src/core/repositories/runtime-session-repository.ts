@@ -261,6 +261,23 @@ export function purgeArchivedSessions(db: Database.Database, instanceSlug: strin
 }
 
 /**
+ * Count all messages belonging to the session identified by a given session_key.
+ * Returns 0 if no matching session exists.
+ * Used to guard one-shot operations (e.g. kickoff) against re-entry.
+ */
+export function countMessagesBySessionKey(db: Database.Database, sessionKey: string): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) as cnt
+       FROM rt_messages m
+       JOIN rt_sessions s ON s.id = m.session_id
+       WHERE s.session_key = ?`,
+    )
+    .get(sessionKey) as { cnt: number } | undefined;
+  return row?.cnt ?? 0;
+}
+
+/**
  * Delete ALL sessions for a specific agent in an instance.
  * Messages and parts cascade automatically via FK ON DELETE CASCADE.
  * Used during agent deletion to prevent orphan sessions in the pilot screen.
