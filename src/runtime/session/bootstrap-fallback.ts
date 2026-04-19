@@ -1,3 +1,4 @@
+// cspell:disable
 // src/runtime/session/bootstrap-fallback.ts
 //
 // Localized first-contact greeting used by the kickoff route when the user

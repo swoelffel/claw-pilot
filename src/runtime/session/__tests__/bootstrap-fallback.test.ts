@@ -1,3 +1,4 @@
+// cspell:disable
 import { describe, it, expect } from "vitest";
 import { getKickoffGreeting, SUPPORTED_GREETING_LANGS } from "../bootstrap-fallback.js";
 
