@@ -22,6 +22,27 @@ describe("bootstrap-fallback", () => {
     expect(g).toMatch(/introduce yourself/i);
   });
 
+  it("falls back to English when language is null", () => {
+    const g = getKickoffGreeting(null);
+    expect(g).toMatch(/introduce yourself/i);
+  });
+
+  it("returns the German greeting for 'de'", () => {
+    expect(getKickoffGreeting("de")).toMatch(/Stell dich bitte vor/i);
+  });
+
+  it("returns the Spanish greeting for 'es'", () => {
+    expect(getKickoffGreeting("es")).toMatch(/preséntate/i);
+  });
+
+  it("returns the Italian greeting for 'it'", () => {
+    expect(getKickoffGreeting("it")).toMatch(/Presentati/i);
+  });
+
+  it("returns the Portuguese greeting for 'pt'", () => {
+    expect(getKickoffGreeting("pt")).toMatch(/Apresenta-te/i);
+  });
+
   it("exports the six supported languages", () => {
     expect(SUPPORTED_GREETING_LANGS).toEqual(["en", "fr", "de", "es", "it", "pt"]);
   });
