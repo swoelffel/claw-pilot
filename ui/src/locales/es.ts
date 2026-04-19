@@ -636,4 +636,8 @@ export const templates = {
   "wizard-timezone-label": "Zona horaria",
   "wizard-setting-up": "Configurando...",
   "wizard-get-started": "Comenzar",
+
+  // onboarding-start-cta.ts
+  "startCta.label": "Empezar",
+  "startCta.subtitle": "Saluda a tu Pilot",
 };

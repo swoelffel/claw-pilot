@@ -592,6 +592,25 @@ export async function postRuntimeChat(
   });
 }
 
+export interface AgentKickoffResponse {
+  greeting: string;
+  sessionId: string;
+}
+
+/**
+ * Trigger the first prompt-loop turn for an empty permanent session.
+ * Backed by POST /api/instances/:slug/agents/:agentId/kickoff.
+ */
+export async function postAgentKickoff(
+  slug: string,
+  agentId: string,
+): Promise<AgentKickoffResponse> {
+  return apiFetch<AgentKickoffResponse>(`/instances/${slug}/agents/${agentId}/kickoff`, {
+    method: "POST",
+    body: "{}",
+  });
+}
+
 /** Abort an active prompt loop for a session. */
 export async function abortSession(slug: string, sessionId: string): Promise<{ aborted: boolean }> {
   return apiFetch<{ aborted: boolean }>(`/instances/${slug}/runtime/sessions/${sessionId}/abort`, {

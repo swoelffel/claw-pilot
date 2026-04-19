@@ -34,6 +34,7 @@ import "./pilot/pilot-messages.js";
 import "./pilot/pilot-input.js";
 import "./pilot/pilot-context-panel.js";
 import "./pilot/pilot-filter-bar.js";
+import "./cp-start-cta.js";
 
 // Extended status machine — `thinking` (reasoning stream) and `tool` (tool call
 // in flight) are derived from delta events to give the user fine-grained feedback.
@@ -751,6 +752,15 @@ export class RuntimePilot extends LitElement {
     void messageId; // suppress unused warning
   }
 
+  // ── Kickoff (Start CTA) ───────────────────────────────────────────────────
+
+  private _onKickoffDone = (e: Event): void => {
+    const detail = (e as CustomEvent<{ sessionId: string; greeting: string }>).detail;
+    if (!this._activeSessionId && detail?.sessionId) {
+      this._activeSessionId = detail.sessionId;
+    }
+  };
+
   // ── Send message ──────────────────────────────────────────────────────────
 
   private async _onSendMessage(
@@ -944,30 +954,38 @@ export class RuntimePilot extends LitElement {
             @filter-change=${this._onFilterChange}
           ></cp-pilot-filter-bar>
 
-          <cp-pilot-messages
-            .messages=${this._messages}
-            .filters=${this._filters}
-            .currentAgentId=${agentId}
-            .streamingText=${this._streamingText}
-            .streamingReasoning=${this._streamingReasoning}
-            .streamingReasoningPartId=${this._streamingReasoningPartId}
-            .streamingAgentId=${this._streamingAgentId}
-            .status=${this._status}
-            .hasMore=${this._hasMore}
-            .subagentResults=${this._subagentResults}
-            .slug=${this.slug}
-            @load-more=${this._loadMore}
-          ></cp-pilot-messages>
+          ${this._messages.length === 0 && this._status !== "loading" && agentId
+            ? html`<cp-start-cta
+                .slug=${this.slug}
+                .agentId=${agentId}
+                @cp-kickoff-done=${this._onKickoffDone}
+              ></cp-start-cta>`
+            : html`
+                <cp-pilot-messages
+                  .messages=${this._messages}
+                  .filters=${this._filters}
+                  .currentAgentId=${agentId}
+                  .streamingText=${this._streamingText}
+                  .streamingReasoning=${this._streamingReasoning}
+                  .streamingReasoningPartId=${this._streamingReasoningPartId}
+                  .streamingAgentId=${this._streamingAgentId}
+                  .status=${this._status}
+                  .hasMore=${this._hasMore}
+                  .subagentResults=${this._subagentResults}
+                  .slug=${this.slug}
+                  @load-more=${this._loadMore}
+                ></cp-pilot-messages>
 
-          ${this._error ? html`<div class="error-banner">${this._error}</div>` : nothing}
+                ${this._error ? html`<div class="error-banner">${this._error}</div>` : nothing}
 
-          <cp-pilot-input
-            .disabled=${isDisabled}
-            .streaming=${isStreaming}
-            .lockReason=${lockReason}
-            @send-message=${this._onSendMessage}
-            @abort-request=${this._onAbortRequest}
-          ></cp-pilot-input>
+                <cp-pilot-input
+                  .disabled=${isDisabled}
+                  .streaming=${isStreaming}
+                  .lockReason=${lockReason}
+                  @send-message=${this._onSendMessage}
+                  @abort-request=${this._onAbortRequest}
+                ></cp-pilot-input>
+              `}
         </div>
 
         <cp-pilot-context-panel

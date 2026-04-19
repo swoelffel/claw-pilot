@@ -10,6 +10,7 @@ import { registerAgentUpdateRoutes } from "./agents/update.js";
 import { registerAgentFileRoutes } from "./agents/files.js";
 import { registerAgentSpawnLinkRoutes } from "./agents/spawn-links.js";
 import { registerAgentSkillsRoutes } from "./agents/skills.js";
+import { registerAgentKickoffRoutes } from "./agents/kickoff.js";
 
 export function registerAgentRoutes(app: Hono, deps: RouteDeps): void {
   // Registration order matters for Hono — specific paths before parameterized ones
@@ -19,6 +20,7 @@ export function registerAgentRoutes(app: Hono, deps: RouteDeps): void {
   registerAgentUpdateRoutes(app, deps); // PATCH .../agents/:id/position, .../agents/:id/meta
   registerAgentSpawnLinkRoutes(app, deps); // PATCH .../agents/:id/spawn-links
   registerAgentFileRoutes(app, deps); // GET/PUT .../agents/:id/files/:filename
+  registerAgentKickoffRoutes(app, deps); // POST .../agents/:id/kickoff
   registerAgentCreateRoutes(app, deps); // POST .../agents
   registerAgentDeleteRoutes(app, deps); // DELETE .../agents/:id
 }
