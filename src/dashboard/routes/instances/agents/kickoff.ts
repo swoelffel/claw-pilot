@@ -13,6 +13,7 @@ import { getInstanceContext } from "../../_instance-middleware.js";
 import { callRuntimeApi } from "../../_internal-api-client.js";
 import { buildPermanentSessionKey } from "../../../../runtime/session/session.js";
 import { getKickoffGreeting } from "../../../../runtime/session/bootstrap-fallback.js";
+import { countMessagesBySessionKey } from "../../../../core/repositories/runtime-session-repository.js";
 import { logger } from "../../../../lib/logger.js";
 
 interface ChatResponse {
@@ -53,17 +54,7 @@ export function registerAgentKickoffRoutes(app: Hono, deps: RouteDeps): void {
 
     // 2. Check permanent session message count
     const sessionKey = buildPermanentSessionKey(slug, agentId);
-    const messageCount =
-      (
-        db
-          .prepare(
-            `SELECT COUNT(*) as cnt
-           FROM rt_messages m
-           JOIN rt_sessions s ON s.id = m.session_id
-           WHERE s.session_key = ?`,
-          )
-          .get(sessionKey) as { cnt: number } | undefined
-      )?.cnt ?? 0;
+    const messageCount = countMessagesBySessionKey(db, sessionKey);
 
     if (messageCount > 0) {
       return apiError(
