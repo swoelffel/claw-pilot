@@ -6,6 +6,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.78.0] — 2026-04-19
+
+### Added
+- **Onboarding Start CTA** — A centered, animated "Start" button appears on any empty permanent agent session (home screen + `/pilot/:slug`). Clicking it triggers the first prompt-loop turn so the agent introduces itself.
+- **Kickoff route** `POST /api/instances/:slug/agents/:agentId/kickoff` — Validates the permanent session is empty (409 `KICKOFF_ALREADY_DONE` otherwise), picks a localized greeting from the user's language profile, forwards it to the runtime via the existing `callRuntimeApi` path. Reuses the existing `BOOTSTRAP.md` one-shot mechanism in `system-prompt.ts` — no change to the prompt loader.
+- **System pilot `BOOTSTRAP.md`** (`templates/system/workspace/system-pilot/BOOTSTRAP.md`) — Ships first-contact instructions so the Pilot's introduction works out of the box after a fresh install.
+- **Localized greetings** (`src/runtime/session/bootstrap-fallback.ts`) — Six languages (en, fr, de, es, it, pt) with English fallback. Used when an agent has no `BOOTSTRAP.md`.
+- **i18n strings** `startCta.label` and `startCta.subtitle` in all six locale files.
+- **Lit component** `<cp-start-cta>` — Circular button with halo pulse, spinner loading state, `prefers-reduced-motion: reduce` support, dispatches `cp-kickoff-start` / `cp-kickoff-done` events.
+
+### Changed
+- `home-chat.ts` and `runtime-pilot.ts` now mount `<cp-start-cta>` in place of the composer when the session has zero messages and is not loading.
+- New repository helper `countMessagesBySessionKey` in `src/core/repositories/runtime-session-repository.ts` (extracted from inline SQL per project convention).
+
+---
+
 ## [0.77.4] — 2026-04-18
 
 ### Added
