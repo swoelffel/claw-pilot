@@ -35,19 +35,12 @@ Add a central, animated "Start" CTA that appears on any **empty permanent sessio
 **New route:** `POST /api/instances/:slug/agents/:agentId/kickoff`
 
 - Validates that the permanent session `<slug>:<agentId>` is empty (`rt_messages` count === 0 for that `session_id`). Returns `409 KICKOFF_ALREADY_DONE` otherwise.
-- Resolves the agent config and locates its workspace directory via existing helpers.
-- Calls the prompt-loop with a dedicated input shape carrying `isFirstRun: true`. No visible user message is pushed to `rt_messages` — the loop runs "agent-first" (assistant turn only).
+- Builds a synthetic kickoff directive (not persisted as a visible user message) asking the agent to introduce itself using its BOOTSTRAP content, then calls the existing prompt-loop entry point.
 - Streams via the existing WS channel so the frontend picks up parts live.
 
-**System prompt injection:** `src/runtime/session/system-prompt.ts`
+**Reuse of existing `BOOTSTRAP.md` mechanism.** `src/runtime/session/system-prompt.ts` already handles `BOOTSTRAP.md` (in the agent's workspace root — `<workDir>/workspaces/<agentId>/BOOTSTRAP.md`) as a one-shot: read on the first call, appended to the system prompt, then marked `bootstrapDone` in the workspace state so subsequent calls skip it. This **already implements** the first-run injection. No change required in `system-prompt.ts` — the kickoff route simply triggers the first prompt-loop call, which naturally consumes BOOTSTRAP.md.
 
-- When `isFirstRun === true`:
-  1. Try to read `<workDir>/agents/<agentId>/bootstrap.md` via `readWorkspaceFileCached()`.
-  2. If present, append it as a `## First contact instructions` section after the existing `SOUL.md` / `IDENTITY.md` blocks.
-  3. If absent, append a hard-coded generic template localized in the 6 supported languages, derived from `user_profiles.language`. The generic template asks the agent to introduce itself, list three capabilities, and propose two or three next steps.
-- The flag is request-scoped: it never persists, it is only true on the kickoff call.
-
-**Agent-first turn:** the prompt-loop already supports assistant-only turns (compaction, title generation). The kickoff uses the same primitive — no new path, just a new entry point.
+**Fallback when `BOOTSTRAP.md` is missing or a stub:** `src/runtime/session/bootstrap-fallback.ts` (new) — returns a generic first-contact directive localized in the 6 supported languages, derived from `user_profiles.language`. The kickoff route embeds this directive in its synthetic user-turn text when the agent workspace has no usable BOOTSTRAP.md (detected by peeking the file before calling prompt-loop).
 
 **No schema migration.** Existing tables suffice. Emptiness of `rt_messages` is the flag.
 
@@ -70,16 +63,17 @@ Add a central, animated "Start" CTA that appears on any **empty permanent sessio
 1. UI queries session emptiness on mount.
 2. If empty → renders CTA; otherwise normal chat.
 3. User clicks Start → UI disables the button, shows spinner, POSTs `/kickoff`.
-4. Backend validates emptiness, calls prompt-loop with `isFirstRun=true`, appends bootstrap section to system prompt.
+4. Backend validates emptiness, builds a synthetic kickoff directive, calls prompt-loop. The existing BOOTSTRAP.md one-shot mechanism injects the bootstrap content into the system prompt automatically on this first call.
 5. Prompt-loop produces an assistant-only turn; parts stream to the WS monitor.
 6. UI receives the first `rt.part.append` for this session → unmounts CTA, mounts normal chat view with the streaming message already in place.
 7. Any subsequent reload never re-shows the CTA (messages exist now).
 
-## 6. `bootstrap.md` convention
+## 6. `BOOTSTRAP.md` convention (existing, extended)
 
-- **Path:** `<workDir>/agents/<agentId>/bootstrap.md` (same folder as `SOUL.md`, `IDENTITY.md`).
-- **Status:** optional. Absence → generic i18n fallback.
-- **Recommended structure** (documented in `docs/agents.md` and in `templates/system/workspace/system-pilot/docs/agents/`):
+- **Path:** `<workDir>/workspaces/<agentId>/BOOTSTRAP.md` (this is the existing location used by the discovery mechanism in `system-prompt.ts`).
+- **Status:** optional. Absence or a stub (`# AgentName` with one line) → generic i18n fallback used in the kickoff directive.
+- **Lifecycle:** consumed one-shot on the first prompt-loop call (tracked via `bootstrapDone` in the workspace state file). Subsequent turns no longer include it in the system prompt.
+- **Recommended structure** (documented in `docs/ux-components/start-cta.md` and in `templates/workspace/BOOTSTRAP.md`):
   ```markdown
   # Bootstrap — First contact
 
@@ -89,7 +83,7 @@ Add a central, animated "Start" CTA that appears on any **empty permanent sessio
   3. Propose two or three actionable starting points tailored to your role.
   4. End with an open question.
   ```
-- **Provided out of the box** for `cp-system`: `templates/system/workspace/system-pilot/agents/<pilot-agent-id>/bootstrap.md`. Uses the data collected by the wizard (user first name, language, timezone) through standard workspace file variable substitution.
+- **Provided for `cp-system`:** ship a meaningful `BOOTSTRAP.md` in `templates/system/workspace/system-pilot/BOOTSTRAP.md` (the template copied into the workspace when `ensureSystemInstance()` runs). It references the wizard data (user first name, language) via runtime placeholders already handled by the workspace file loader.
 
 ## 7. UX
 
@@ -152,16 +146,16 @@ Add a central, animated "Start" CTA that appears on any **empty permanent sessio
 | Area | File(s) | Change type |
 |---|---|---|
 | Backend route | `src/dashboard/routes/instances/agents/kickoff.ts` (new) | add |
-| Route registration | `src/dashboard/routes/instances/agents/index.ts` | edit |
-| System prompt | `src/runtime/session/system-prompt.ts` | edit |
-| Fallback templates | `src/runtime/session/bootstrap-fallback.ts` (new) | add |
-| Docs | `docs/agents.md`, `docs/ux-components/start-cta.md` (new) | add/edit |
+| Route registration | parent registrar that mounts agent routes | edit |
+| Fallback directive | `src/runtime/session/bootstrap-fallback.ts` (new) | add |
+| Docs | `docs/ux-components/start-cta.md` (new) | add |
 | UI component | `ui/src/components/cp-start-cta.ts` (new) | add |
 | UI integration | `ui/src/components/home-screen.ts`, `ui/src/components/home-chat.ts` | edit |
-| UI service | `ui/src/services/session-state.ts` (new) | add |
 | i18n | `ui/src/locales/*.ts` (6 files) | edit |
-| System bootstrap | `templates/system/workspace/system-pilot/agents/.../bootstrap.md` (new) | add |
+| System BOOTSTRAP | `templates/system/workspace/system-pilot/BOOTSTRAP.md` (new) | add |
 | Tests | backend `__tests__` + UI `__tests__` + one e2e | add |
+
+No change to `src/runtime/session/system-prompt.ts` — its existing BOOTSTRAP.md one-shot logic is exactly what we need.
 
 ## 12. Open points deferred to implementation plan
 
