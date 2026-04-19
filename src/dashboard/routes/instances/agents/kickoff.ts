@@ -15,11 +15,7 @@ import { buildPermanentSessionKey } from "../../../../runtime/session/session.js
 import { getKickoffGreeting } from "../../../../runtime/session/bootstrap-fallback.js";
 import { countMessagesBySessionKey } from "../../../../core/repositories/runtime-session-repository.js";
 import { logger } from "../../../../lib/logger.js";
-
-interface ChatResponse {
-  sessionId: string;
-  [key: string]: unknown;
-}
+import type { ChatResponse } from "../../../../runtime/engine/internal-api.js";
 
 /**
  * Register the kickoff route.
