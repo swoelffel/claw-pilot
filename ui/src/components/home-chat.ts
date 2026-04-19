@@ -28,6 +28,7 @@ import { debugSse } from "../services/debug.js";
 import "./pilot/pilot-header.js";
 import "./pilot/pilot-messages.js";
 import "./pilot/pilot-input.js";
+import "./cp-start-cta.js";
 
 type HomeChatStatus = "idle" | "loading" | "sending" | "thinking" | "tool" | "streaming" | "error";
 
@@ -570,6 +571,17 @@ export class HomeChat extends LitElement {
     });
   }
 
+  // ── Kickoff CTA ───────────────────────────────────────────────────────────
+
+  private _onKickoffDone = (e: Event): void => {
+    const detail = (e as CustomEvent<{ sessionId: string; greeting: string }>).detail;
+    if (!this._activeSessionId && detail?.sessionId) {
+      this._activeSessionId = detail.sessionId;
+      this._startPolling();
+    }
+    // The WS stream will deliver the first parts; no additional action needed.
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   override render() {
@@ -600,30 +612,38 @@ export class HomeChat extends LitElement {
         @suggestion-click=${this._onSuggestionClick}
         @question-answered=${this._onQuestionAnswered}
       >
-        <cp-pilot-messages
-          .messages=${this._messages}
-          .filters=${HOME_FILTERS}
-          .currentAgentId=${"system-pilot"}
-          .streamingText=${this._streamingText}
-          .streamingReasoning=${this._streamingReasoning}
-          .streamingReasoningPartId=${this._streamingReasoningPartId}
-          .streamingAgentId=${this._streamingAgentId}
-          .status=${this._status}
-          .hasMore=${this._hasMore}
-          .subagentResults=${{}}
-          .slug=${this.slug}
-          @load-more=${this._loadMore}
-        ></cp-pilot-messages>
+        ${this._messages.length === 0 && this._status !== "loading"
+          ? html`<cp-start-cta
+              .slug=${this.slug}
+              .agentId=${"system-pilot"}
+              @cp-kickoff-done=${this._onKickoffDone}
+            ></cp-start-cta>`
+          : html`
+              <cp-pilot-messages
+                .messages=${this._messages}
+                .filters=${HOME_FILTERS}
+                .currentAgentId=${"system-pilot"}
+                .streamingText=${this._streamingText}
+                .streamingReasoning=${this._streamingReasoning}
+                .streamingReasoningPartId=${this._streamingReasoningPartId}
+                .streamingAgentId=${this._streamingAgentId}
+                .status=${this._status}
+                .hasMore=${this._hasMore}
+                .subagentResults=${{}}
+                .slug=${this.slug}
+                @load-more=${this._loadMore}
+              ></cp-pilot-messages>
 
-        ${this._error ? html`<div class="error-banner">${this._error}</div>` : nothing}
+              ${this._error ? html`<div class="error-banner">${this._error}</div>` : nothing}
 
-        <cp-pilot-input
-          .disabled=${isDisabled}
-          .streaming=${isStreaming}
-          .lockReason=${lockReason}
-          @send-message=${this._onSendMessage}
-          @abort-request=${this._onAbortRequest}
-        ></cp-pilot-input>
+              <cp-pilot-input
+                .disabled=${isDisabled}
+                .streaming=${isStreaming}
+                .lockReason=${lockReason}
+                @send-message=${this._onSendMessage}
+                @abort-request=${this._onAbortRequest}
+              ></cp-pilot-input>
+            `}
       </div>
     `;
   }
