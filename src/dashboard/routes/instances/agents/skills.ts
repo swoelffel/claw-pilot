@@ -3,8 +3,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { unzip as fflateUnzip } from "fflate";
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { apiError } from "../../../route-deps.js";
@@ -14,7 +13,29 @@ import { listAvailableSkills, type SkillEntry } from "../../../../runtime/tool/b
 import { constants } from "../../../../lib/constants.js";
 import { logger } from "../../../../lib/logger.js";
 
-const execFileAsync = promisify(execFile);
+/**
+ * Extract a ZIP buffer into a directory using fflate (pure JS, no system dep).
+ * Writes all files preserving nested directory structure.
+ */
+async function extractZipToDir(zipBuffer: Uint8Array, extractDir: string): Promise<void> {
+  const files = await new Promise<Record<string, Uint8Array>>((resolve, reject) => {
+    fflateUnzip(zipBuffer, (err, data) => {
+      if (err) reject(err);
+      else resolve(data);
+    });
+  });
+
+  for (const [entryPath, content] of Object.entries(files)) {
+    // Skip directory entries (end with /) and reject path traversal attempts
+    if (entryPath.endsWith("/")) continue;
+    if (entryPath.includes("..") || path.isAbsolute(entryPath)) {
+      throw new Error(`Unsafe path in archive: ${entryPath}`);
+    }
+    const destPath = path.join(extractDir, entryPath);
+    await fs.mkdir(path.dirname(destPath), { recursive: true });
+    await fs.writeFile(destPath, content);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -200,14 +221,17 @@ async function handleSkillUpload(c: HonoContext, stateDir: string): Promise<Resp
   }
 
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "cp-skill-"));
-  const zipPath = path.join(tmpDir, "skill.zip");
   const extractDir = path.join(tmpDir, "extracted");
 
   try {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    await fs.writeFile(zipPath, buffer);
+    const buffer = new Uint8Array(await file.arrayBuffer());
     await fs.mkdir(extractDir, { recursive: true });
-    await execFileAsync("unzip", ["-o", zipPath, "-d", extractDir]);
+    try {
+      await extractZipToDir(buffer, extractDir);
+    } catch (err) {
+      logger.warn("[route:skills] zip extraction failed", { error: String(err) });
+      return apiError(c, 400, "INVALID_ZIP", "Failed to extract ZIP archive");
+    }
 
     const skillRoot = await findSkillRoot(extractDir);
     if (!skillRoot) {
