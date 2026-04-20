@@ -40,6 +40,7 @@ provisioner.ts            instance creation (wizard)
 agent-provisioner.ts      add agents to existing instance
 registry.ts               facade over 20 repositories
 registry-types.ts         types InstanceRecord, AgentRecord, BlueprintRecord, AgentBlueprintRecord, etc.
+capabilities.ts           edition differentiation — see docs/architecture/capability-registry.md
 repositories/             20 SQLite repositories:
   server-repository.ts      — servers table
   instance-repository.ts    — instances table
