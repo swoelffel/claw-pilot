@@ -107,7 +107,7 @@ import { initDatabase } from "../../db/schema.js";
 import { Registry } from "../../core/registry.js";
 import { MockConnection } from "../../core/__tests__/mock-connection.js";
 import { SessionStore } from "../session-store.js";
-import { hashPassword } from "../../core/auth.js";
+import { hashPassword } from "../../core/auth/index.js";
 import { constants } from "../../lib/constants.js";
 import { buildDashboardApp } from "../server.js";
 import type { DashboardOptions } from "../server.js";
