@@ -222,6 +222,66 @@ describe("initDatabase — fresh database", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Tests — admin user_profiles backfill
+// ---------------------------------------------------------------------------
+
+describe("initDatabase — admin user_profiles backfill", () => {
+  it("creates a default profile row when admin user has none (historical install)", () => {
+    // Bootstrap the schema, then insert an admin user without a profile row.
+    // This mirrors the CHRONOS case: admin created by `auth setup` after
+    // migration v17 already ran against an empty users table.
+    const db = initDatabase(dbPath);
+    db.prepare("DELETE FROM user_profiles").run();
+    db.prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')").run(
+      "test-admin",
+      "scrypt:x:y",
+    );
+    db.close();
+
+    const reopened = initDatabase(dbPath);
+    const profile = reopened
+      .prepare(
+        `SELECT p.language, p.communication_style
+         FROM user_profiles p
+         JOIN users u ON u.id = p.user_id
+         WHERE u.username = ?`,
+      )
+      .get("test-admin") as { language: string; communication_style: string } | undefined;
+    expect(profile).toBeDefined();
+    expect(profile?.language).toBe("fr");
+    expect(profile?.communication_style).toBe("concise");
+    reopened.close();
+  });
+
+  it("is idempotent — does not duplicate existing profile rows", () => {
+    const db = initDatabase(dbPath);
+    db.prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')").run(
+      "test-admin",
+      "scrypt:x:y",
+    );
+    db.close();
+
+    const r1 = initDatabase(dbPath);
+    r1.prepare(
+      "UPDATE user_profiles SET language = 'en' WHERE user_id = (SELECT id FROM users WHERE username = ?)",
+    ).run("test-admin");
+    r1.close();
+
+    const r2 = initDatabase(dbPath);
+    const profiles = r2
+      .prepare(
+        `SELECT p.language FROM user_profiles p
+         JOIN users u ON u.id = p.user_id
+         WHERE u.username = ?`,
+      )
+      .all("test-admin") as { language: string }[];
+    expect(profiles).toHaveLength(1);
+    expect(profiles[0]?.language).toBe("en");
+    r2.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Tests — migration v1 → v4
 // ---------------------------------------------------------------------------
 

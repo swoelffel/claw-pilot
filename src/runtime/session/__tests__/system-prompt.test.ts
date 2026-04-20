@@ -465,6 +465,43 @@ describe("buildSystemPrompt — general structure", () => {
   });
 
   /**
+   * Objective: when a user profile is injected, its language directive reaches
+   * both the <user_profile> block AND the <behavior> block, so the agent cannot
+   * fall back to the greeting language on a short first turn.
+   * Regression guard for the kickoff-language bug.
+   */
+  it("[positive] injects user profile language and hardened behavior directive", async () => {
+    // A workspace directory must exist for profile injection to run through
+    // the workspace-discovery path (readUserMdFile). We stub existsSync so
+    // the workspace resolves and mockReadFileSync throws ENOENT for every
+    // file — only the dynamic <user_profile> block should reach the prompt.
+    const workDir = "/workspace";
+    const wsDir = `${workDir}/workspaces/agent1`;
+    mockExistsSync.mockImplementation((p) => p === wsDir);
+
+    const ctx = makeCtx({
+      workDir,
+      userProfile: {
+        userId: 1,
+        displayName: null,
+        language: "fr",
+        timezone: "Europe/Paris",
+        communicationStyle: "concise",
+        customInstructions: null,
+        defaultModel: null,
+        avatarUrl: null,
+        uiPreferences: null,
+      },
+    });
+
+    const prompt = await buildSystemPrompt(ctx);
+
+    expect(prompt).toContain("<user_profile>");
+    expect(prompt).toContain("Language: fr");
+    expect(prompt).toContain("If <user_profile> specifies a Language");
+  });
+
+  /**
    * Objective: inline systemPrompt takes priority over workspace discovery.
    * Negative test: if systemPrompt is set, workspace files must NOT be read.
    */
