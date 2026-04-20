@@ -16,6 +16,7 @@ import { SessionStore } from "../session-store.js";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { registerNamedKeyRoutes } from "../routes/named-keys.js";
+import { TEST_ADMIN } from "./_helpers/inject-admin-user.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -55,9 +56,7 @@ function createTestApp(): TestContext {
     if (auth !== expectedBearer) {
       return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
     }
-    // Synthetic admin user required by permission() middleware which reads c.get("user").
-    // The bare test harness has no server-level auth middleware, so we inject it here.
-    c.set("user", { id: "test", username: "admin", role: "admin", source: "session" });
+    c.set("user", { ...TEST_ADMIN });
     await next();
   });
 

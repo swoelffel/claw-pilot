@@ -19,6 +19,7 @@ import {
 import { registerAuthRoutes } from "../routes/auth.js";
 import { constants } from "../../lib/constants.js";
 import type { RouteDeps } from "../route-deps.js";
+import { injectAdminUser } from "./_helpers/inject-admin-user.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -94,15 +95,7 @@ async function createTestApp(): Promise<TestCtx> {
   };
 
   const app = new Hono();
-  // Synthetic admin user on context — required because permission() middleware
-  // reads c.get("user") set by the server-level auth middleware. In this bare
-  // test harness there is no server-level auth middleware, so we inject a
-  // synthetic admin user. The /me and /logout handlers still perform their own
-  // auth checks (session cookie / bearer), so 401 cases remain correct.
-  app.use("*", async (c, next) => {
-    c.set("user", { id: "test", username: "admin", role: "admin", source: "session" });
-    await next();
-  });
+  app.use("*", injectAdminUser());
   registerAuthRoutes(app, deps, TEST_TOKEN);
 
   return { app, sessionStore, db };

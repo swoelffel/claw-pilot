@@ -410,17 +410,29 @@ export function registerAgentBlueprintRoutes(app: Hono, deps: RouteDeps): void {
   );
   app.get(
     "/api/agent-blueprints/:id/files/:filename",
-    permission({ action: ACTIONS.AGENT_BLUEPRINT_FILE_READ, resource: abId }),
+    permission({
+      action: ACTIONS.AGENT_BLUEPRINT_FILE_READ,
+      resource: abId,
+      attributes: (c) => ({ filename: c.req.param("filename") }),
+    }),
     (c) => handleReadBlueprintFile(c, deps),
   );
   app.put(
     "/api/agent-blueprints/:id/files/:filename",
-    permission({ action: ACTIONS.AGENT_BLUEPRINT_FILE_UPDATE, resource: abId }),
+    permission({
+      action: ACTIONS.AGENT_BLUEPRINT_FILE_UPDATE,
+      resource: abId,
+      attributes: (c) => ({ filename: c.req.param("filename") }),
+    }),
     async (c) => handleWriteBlueprintFile(c, deps),
   );
   app.delete(
     "/api/agent-blueprints/:id/files/:filename",
-    permission({ action: ACTIONS.AGENT_BLUEPRINT_FILE_DELETE, resource: abId }),
+    permission({
+      action: ACTIONS.AGENT_BLUEPRINT_FILE_DELETE,
+      resource: abId,
+      attributes: (c) => ({ filename: c.req.param("filename") }),
+    }),
     (c) => handleDeleteBlueprintFile(c, deps),
   );
   app.post(

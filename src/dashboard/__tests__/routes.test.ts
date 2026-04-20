@@ -25,6 +25,7 @@ import type { HealthStatus } from "../../core/health.js";
 import type { SelfUpdateStatus } from "../../core/self-update-checker.js";
 import type { SelfUpdateJob } from "../../core/self-updater.js";
 import { disposeBus } from "../../runtime/index.js";
+import { TEST_ADMIN } from "./_helpers/inject-admin-user.js";
 
 // ---------------------------------------------------------------------------
 // Test token
@@ -149,9 +150,7 @@ function createTestApp(): TestContext {
     if (auth !== expectedBearer) {
       return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
     }
-    // Synthetic admin user required by permission() middleware which reads c.get("user").
-    // The bare test harness has no server-level auth middleware, so we inject it here.
-    c.set("user", { id: "test", username: "admin", role: "admin", source: "session" });
+    c.set("user", { ...TEST_ADMIN });
     await next();
   });
 
