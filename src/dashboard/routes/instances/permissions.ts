@@ -16,6 +16,9 @@ import { getInstanceContext } from "../_instance-middleware.js";
 import { publishRuntimeEvent } from "../_internal-api-client.js";
 import { logger } from "../../../lib/logger.js";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type HonoContext = any;
+
 // ---------------------------------------------------------------------------
 // Zod schema — body de POST /reply
 // ---------------------------------------------------------------------------
@@ -47,6 +50,8 @@ interface RtPermissionRow {
 
 export function registerPermissionRoutes(app: Hono, deps: RouteDeps): void {
   const { db } = deps;
+  const attr = (c: HonoContext) => ({ slug: c.req.param("slug") });
+  const rid = (c: HonoContext) => c.req.param("id");
 
   // -------------------------------------------------------------------------
   // GET /api/instances/:slug/runtime/permissions
@@ -57,7 +62,7 @@ export function registerPermissionRoutes(app: Hono, deps: RouteDeps): void {
     permission({
       action: ACTIONS.INSTANCE_RUNTIME_PERMISSION_LIST,
       resource: { kind: "runtime-permission" },
-      attributes: (c) => ({ slug: c.req.param("slug") }),
+      attributes: attr,
     }),
     (c) => {
       const { slug } = getInstanceContext(c);
@@ -90,8 +95,8 @@ export function registerPermissionRoutes(app: Hono, deps: RouteDeps): void {
     "/api/instances/:slug/runtime/permissions/:id",
     permission({
       action: ACTIONS.INSTANCE_RUNTIME_PERMISSION_DELETE,
-      resource: { kind: "runtime-permission", id: (c) => c.req.param("id") },
-      attributes: (c) => ({ slug: c.req.param("slug") }),
+      resource: { kind: "runtime-permission", id: rid },
+      attributes: attr,
     }),
     (c) => {
       const { slug } = getInstanceContext(c);
@@ -126,7 +131,7 @@ export function registerPermissionRoutes(app: Hono, deps: RouteDeps): void {
     permission({
       action: ACTIONS.INSTANCE_RUNTIME_PERMISSION_REPLY,
       resource: { kind: "runtime-permission" },
-      attributes: (c) => ({ slug: c.req.param("slug") }),
+      attributes: attr,
     }),
     async (c) => {
       const { slug } = getInstanceContext(c);

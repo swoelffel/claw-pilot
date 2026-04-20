@@ -362,6 +362,8 @@ function handleListFlowSessions(c: HonoContext, db: DB, slug: string): Response 
 
 export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
   const { db, registry } = deps;
+  const attr = (c: HonoContext) => ({ slug: c.req.param("slug") });
+  const rid = (c: HonoContext) => c.req.param("id");
 
   // GET /api/instances/:slug/flows — list flow definitions
   app.get(
@@ -369,7 +371,7 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
     permission({
       action: ACTIONS.FLOW_LIST,
       resource: { kind: "flow" },
-      attributes: (c) => ({ slug: c.req.param("slug") }),
+      attributes: attr,
     }),
     (c) => {
       const { slug } = getInstanceContext(c);
@@ -395,8 +397,8 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
     "/api/instances/:slug/flows/:id",
     permission({
       action: ACTIONS.FLOW_READ,
-      resource: { kind: "flow", id: (c) => c.req.param("id") },
-      attributes: (c) => ({ slug: c.req.param("slug") }),
+      resource: { kind: "flow", id: rid },
+      attributes: attr,
     }),
     (c) => {
       const { slug } = getInstanceContext(c);
@@ -418,7 +420,7 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
     permission({
       action: ACTIONS.FLOW_CREATE,
       resource: { kind: "flow" },
-      attributes: (c) => ({ slug: c.req.param("slug") }),
+      attributes: attr,
     }),
     async (c) => {
       return handleCreateFlow(c, db, registry);
@@ -430,8 +432,8 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
     "/api/instances/:slug/flows/:id",
     permission({
       action: ACTIONS.FLOW_UPDATE,
-      resource: { kind: "flow", id: (c) => c.req.param("id") },
-      attributes: (c) => ({ slug: c.req.param("slug") }),
+      resource: { kind: "flow", id: rid },
+      attributes: attr,
     }),
     async (c) => {
       return handleUpdateFlow(c, db);
@@ -443,8 +445,8 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
     "/api/instances/:slug/flows/:id",
     permission({
       action: ACTIONS.FLOW_DELETE,
-      resource: { kind: "flow", id: (c) => c.req.param("id") },
-      attributes: (c) => ({ slug: c.req.param("slug") }),
+      resource: { kind: "flow", id: rid },
+      attributes: attr,
     }),
     (c) => {
       const { slug } = getInstanceContext(c);
@@ -467,8 +469,8 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
     "/api/instances/:slug/flows/:id/run",
     permission({
       action: ACTIONS.FLOW_RUN,
-      resource: { kind: "flow", id: (c) => c.req.param("id") },
-      attributes: (c) => ({ slug: c.req.param("slug") }),
+      resource: { kind: "flow", id: rid },
+      attributes: attr,
     }),
     async (c) => {
       const { slug } = getInstanceContext(c);
@@ -481,8 +483,8 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
     "/api/instances/:slug/flows/:id/runs",
     permission({
       action: ACTIONS.FLOW_RUNS_LIST,
-      resource: { kind: "flow", id: (c) => c.req.param("id") },
-      attributes: (c) => ({ slug: c.req.param("slug") }),
+      resource: { kind: "flow", id: rid },
+      attributes: attr,
     }),
     (c) => {
       const { slug } = getInstanceContext(c);
@@ -496,7 +498,7 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
     permission({
       action: ACTIONS.FLOW_RUN_READ,
       resource: { kind: "flow", id: (c) => c.req.param("runId") },
-      attributes: (c) => ({ slug: c.req.param("slug") }),
+      attributes: attr,
     }),
     (c) => {
       const { slug } = getInstanceContext(c);
@@ -510,7 +512,7 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
     permission({
       action: ACTIONS.FLOW_RUN_CANCEL,
       resource: { kind: "flow", id: (c) => c.req.param("runId") },
-      attributes: (c) => ({ slug: c.req.param("slug") }),
+      attributes: attr,
     }),
     (c) => {
       const { slug } = getInstanceContext(c);
@@ -523,8 +525,8 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
     "/api/instances/:slug/flows/:id/sessions",
     permission({
       action: ACTIONS.FLOW_SESSIONS_LIST,
-      resource: { kind: "flow", id: (c) => c.req.param("id") },
-      attributes: (c) => ({ slug: c.req.param("slug") }),
+      resource: { kind: "flow", id: rid },
+      attributes: attr,
     }),
     (c) => {
       const { slug } = getInstanceContext(c);

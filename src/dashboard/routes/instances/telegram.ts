@@ -138,7 +138,7 @@ export function registerTelegramRoutes(app: Hono, deps: RouteDeps): void {
     permission({
       action: ACTIONS.INSTANCE_TELEGRAM_PAIRING_DELETE,
       resource: { kind: "instance", id: (c) => c.req.param("slug") },
-      attributes: (c) => ({ slug: c.req.param("slug"), code: c.req.param("code") }),
+      attributes: (c) => ({ code: c.req.param("code") }),
     }),
     (c) => {
       const code = c.req.param("code").toUpperCase().replace(/-/g, "");
