@@ -309,26 +309,17 @@ All events are defined in `src/runtime/bus/events.ts` with typed payloads via `E
 
 ## Debug
 
-Opt-in diagnostic logging is split into categories. Enable only what you need
-in browser devtools (effective on the next call site evaluation — no reload
-required):
+SSE bus events received by the UI can be logged to the devtools console by
+enabling `cp:debug-sse` in `localStorage`:
 
 ```javascript
-localStorage.setItem("cp:debug-sse", "1");     // SSE bus events received
-localStorage.setItem("cp:debug-chat", "1");    // chat/pilot state transitions
-localStorage.setItem("cp:debug-render", "1");  // render collisions / guards
-localStorage.setItem("cp:debug-api", "1");     // outbound API calls
-
-// Or enable all at once:
-localStorage.setItem("cp:debug", "1");
-
-// Disable:
-localStorage.removeItem("cp:debug-sse");
+localStorage.setItem("cp:debug-sse", "1");
+// All SSE events now logged under the [cp:sse] prefix (no reload needed).
 ```
 
-Helpers (all no-op unless the matching flag is set): `ui/src/services/debug.ts`
-exports `debugSse`, `debugChat`, `debugRender`, `debugApi`. Call sites live in
-`ui/src/components/home-chat.ts` and `ui/src/components/runtime-pilot.ts`.
+This flag is one of several UI diagnostic helpers — see
+[debugging.md](./debugging.md) for the full catalogue (chat state, render
+guards, API calls) and guidelines for adding new call sites.
 
 ---
 
