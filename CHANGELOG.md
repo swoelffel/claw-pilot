@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.80.2] — 2026-04-20
+
+### Added
+- **Opt-in UI debug logging** — `ui/src/services/debug.ts` now exports four granular helpers (`debugSse`, `debugChat`, `debugRender`, `debugApi`) each gated by its own `localStorage` flag (`cp:debug-sse|chat|render|api`, or `cp:debug` for all). Zero runtime cost when disabled. Call sites seeded in `home-chat.ts` and `runtime-pilot.ts` at the spots useful during streaming diagnostics.
+- **`docs/debugging.md`** — dedicated hub documenting the UI debug flags, how to enable them from devtools, how to add new categories, and where call sites currently live. `docs/sse-architecture.md` now cross-links to it instead of duplicating the content.
+
+---
+
 ## [0.80.1] — 2026-04-20
 
 ### Fixed
