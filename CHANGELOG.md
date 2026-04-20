@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.80.3] — 2026-04-20
+
+### Added
+- **`CapabilityRegistry`** (`src/core/capabilities.ts`) — single source of truth for differentiating Community vs future Enterprise edition behavior. Exposes `capabilities.has(cap)`, `capabilities.require(cap)`, `capabilities.list()`. Community impl returns `true` for the "core" set and `false` for future "enterprise" capabilities (`sso-oidc`, `sso-saml`, `rbac-fine`, `abac`, `audit-siem`, `multi-server`, `plugin-signature`, `vault-secrets`, …). This is hook **H5** of the Enterprise Edition preparation (Phase 0) — see `ai-docs/plan-enterprise-edition.md`.
+- **Architecture doc** `docs/architecture/capability-registry.md` — rationale, API, usage patterns, and consumer roadmap for subsequent hooks (H1–H4, H6–H7).
+
+---
+
 ## [0.80.2] — 2026-04-20
 
 ### Added
