@@ -36,6 +36,7 @@ import {
 import { resolveAgentWorkspacePath } from "../core/agent-workspace.js";
 import { getDataDir } from "../lib/platform.js";
 import { Registry } from "../core/registry.js";
+import { CommunityProfileResolver } from "../runtime/profile/community-resolver.js";
 import type { RuntimeConfig } from "../runtime/index.js";
 
 /**
@@ -289,7 +290,8 @@ async function startForeground(
   const userEnvDir = getDataDir();
   loadEnvFile(userEnvDir);
 
-  const runtime = new ClawRuntime(config, db, slug, stateDir);
+  const profileResolver = new CommunityProfileResolver(new Registry(db).userProfiles);
+  const runtime = new ClawRuntime(config, db, slug, stateDir, profileResolver);
 
   // Write PID file so lifecycle/health can detect us
   const pidPath = getRuntimePidPath(stateDir);

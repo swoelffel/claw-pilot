@@ -286,16 +286,15 @@ export class HomeWizard extends LitElement {
         defaultModel: this._selectedModel,
       });
 
-      // 2. Save profile (best-effort)
-      try {
-        await patchProfile({
-          ...(this._displayName ? { displayName: this._displayName } : {}),
-          language: this._language,
-          ...(this._timezone ? { timezone: this._timezone } : {}),
-        });
-      } catch {
-        // Profile save is non-critical — continue with provisioning
-      }
+      // 2. Save profile. The agent language (used for greetings and prompt
+      // injection) comes from this row — silently swallowing a failure here
+      // leaves the profile empty and makes the agent reply in English even
+      // when the user picked another language.
+      await patchProfile({
+        ...(this._displayName ? { displayName: this._displayName } : {}),
+        language: this._language,
+        ...(this._timezone ? { timezone: this._timezone } : {}),
+      });
 
       // 3. Provision and start system instance
       await ensureSystemInstance(result.key.id);

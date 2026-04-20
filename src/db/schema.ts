@@ -1589,5 +1589,37 @@ export function initDatabase(dbPath: string): Database.Database {
     }
   }
 
+  ensureAdminUserProfile(db);
+
   return db;
+}
+
+// Historical installs (pre-onboarding-wizard) have an admin user without a
+// matching user_profiles row, because the wizard only runs when no API key
+// exists. Without a profile row, agent kickoff reads language=undefined and
+// falls back to English. Insert a default row so profile-driven features work
+// out of the box. Idempotent. No-op on partial DBs that lack the required
+// tables (some migration tests pre-seed a reduced schema).
+function ensureAdminUserProfile(db: Database.Database): void {
+  const tables = db
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('users', 'user_profiles')",
+    )
+    .all() as { name: string }[];
+  if (tables.length < 2) return;
+
+  const orphan = db
+    .prepare(
+      `SELECT u.id FROM users u
+       LEFT JOIN user_profiles p ON p.user_id = u.id
+       WHERE u.role = 'admin' AND p.id IS NULL
+       LIMIT 1`,
+    )
+    .get() as { id: number } | undefined;
+  if (!orphan) return;
+
+  db.prepare("INSERT INTO user_profiles (user_id) VALUES (?)").run(orphan.id);
+  logger.info("[schema] backfilled default user_profiles row for admin user", {
+    userId: orphan.id,
+  });
 }
