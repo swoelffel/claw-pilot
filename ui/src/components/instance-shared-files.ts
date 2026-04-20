@@ -2,7 +2,8 @@
 //
 // Admin panel for the instance shared workspace (v38).
 // Files live at `<stateDir>/workspaces/shared/` on the server and are
-// read-only for agents (via ws_list_files / ws_search_files).
+// readable by every agent of the instance via ws_list_files / ws_search_files
+// (entries prefixed with @shared/).
 
 import { LitElement, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
@@ -16,24 +17,38 @@ import {
 } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
-import { buttonStyles, errorBannerStyles, spinnerStyles } from "../styles/shared.js";
+import { errorBannerStyles, spinnerStyles } from "../styles/shared.js";
 import "./agent-file-tree.js";
+import "./agent-file-editor.js";
+import "./workspace-file-dialogs.js";
 
 @localized()
 @customElement("cp-instance-shared-files")
 export class InstanceSharedFiles extends LitElement {
-  static override styles = [tokenStyles, buttonStyles, errorBannerStyles, spinnerStyles];
+  static override styles = [tokenStyles, errorBannerStyles, spinnerStyles];
 
   @property({ type: String }) slug = "";
 
   @state() private _tree: AgentFileTreeNode[] = [];
   @state() private _activePath = "";
-  @state() private _content = "";
-  @state() private _originalContent = "";
   @state() private _loading = true;
   @state() private _error = "";
-  @state() private _saving = false;
-  @state() private _toast = "";
+
+  @state() private _newFileDialogOpen = false;
+  @state() private _newFileParentDir = "";
+  @state() private _newFolderMode = false;
+
+  @state() private _deleteDialogOpen = false;
+  @state() private _deleteTarget = "";
+
+  private _loadFileFn = (filename: string): Promise<string> => {
+    return fetchSharedFile(this.slug, filename).then((f) => f.content);
+  };
+
+  private _saveFileFn = async (filename: string, content: string): Promise<void> => {
+    await updateSharedFile(this.slug, filename, content);
+    await this._loadTree();
+  };
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -48,7 +63,6 @@ export class InstanceSharedFiles extends LitElement {
 
   private async _loadTree(): Promise<void> {
     if (!this.slug) return;
-    this._loading = true;
     this._error = "";
     try {
       const res = await fetchSharedFileTree(this.slug);
@@ -60,134 +74,114 @@ export class InstanceSharedFiles extends LitElement {
     }
   }
 
-  private async _loadFile(path: string): Promise<void> {
-    this._error = "";
-    this._activePath = path;
-    try {
-      const file = await fetchSharedFile(this.slug, path);
-      this._content = file.content;
-      this._originalContent = file.content;
-    } catch (err) {
-      this._error = userMessage(err);
-    }
+  private _onFileSelect(e: CustomEvent<{ path: string }>): void {
+    this._activePath = e.detail.path;
   }
 
-  private async _save(): Promise<void> {
-    if (!this._activePath) return;
-    this._saving = true;
-    this._error = "";
+  private _onFileNewRequested(e: CustomEvent<{ parentDir: string }>): void {
+    this._newFolderMode = false;
+    this._newFileParentDir = e.detail.parentDir;
+    this._newFileDialogOpen = true;
+  }
+
+  private _onFolderNewRequested(e: CustomEvent<{ parentDir: string }>): void {
+    this._newFolderMode = true;
+    this._newFileParentDir = e.detail.parentDir;
+    this._newFileDialogOpen = true;
+  }
+
+  private _onFileDeleteRequested(e: CustomEvent<{ path: string }>): void {
+    this._deleteTarget = e.detail.path;
+    this._deleteDialogOpen = true;
+  }
+
+  private async _onNewFileConfirmed(
+    e: CustomEvent<{ path: string; content: string }>,
+  ): Promise<void> {
+    const dialog = this.renderRoot.querySelector("cp-new-file-dialog");
     try {
-      await updateSharedFile(this.slug, this._activePath, this._content);
-      this._originalContent = this._content;
-      this._toast = msg("Saved", { id: "isf-saved" });
-      setTimeout(() => (this._toast = ""), 2000);
+      await updateSharedFile(this.slug, e.detail.path, e.detail.content);
+      this._newFileDialogOpen = false;
+      this._activePath = e.detail.path;
       await this._loadTree();
     } catch (err) {
-      this._error = userMessage(err);
-    } finally {
-      this._saving = false;
+      dialog?.showError(userMessage(err));
     }
   }
 
-  private async _delete(path: string): Promise<void> {
-    if (
-      !window.confirm(msg("Delete this file from the shared workspace?", { id: "isf-confirm-del" }))
-    )
-      return;
-    this._error = "";
+  private async _onDeleteFileConfirmed(e: CustomEvent<{ path: string }>): Promise<void> {
+    const dialog = this.renderRoot.querySelector("cp-delete-file-dialog");
     try {
-      await deleteSharedFile(this.slug, path);
-      if (this._activePath === path) {
-        this._activePath = "";
-        this._content = "";
-        this._originalContent = "";
-      }
+      await deleteSharedFile(this.slug, e.detail.path);
+      this._deleteDialogOpen = false;
+      if (this._activePath === e.detail.path) this._activePath = "";
       await this._loadTree();
     } catch (err) {
-      this._error = userMessage(err);
+      dialog?.showError(userMessage(err));
     }
-  }
-
-  private async _newFile(parentDir: string): Promise<void> {
-    const name = window.prompt(msg("New file name (e.g. README.md)", { id: "isf-new-prompt" }));
-    if (!name) return;
-    const relPath = parentDir ? `${parentDir}/${name}` : name;
-    try {
-      await updateSharedFile(this.slug, relPath, "");
-      await this._loadTree();
-      void this._loadFile(relPath);
-    } catch (err) {
-      this._error = userMessage(err);
-    }
-  }
-
-  private _onTreeSelect(e: CustomEvent<{ path: string }>): void {
-    void this._loadFile(e.detail.path);
-  }
-
-  private _onTreeDelete(e: CustomEvent<{ path: string }>): void {
-    void this._delete(e.detail.path);
-  }
-
-  private _onTreeNew(e: CustomEvent<{ parentDir: string }>): void {
-    void this._newFile(e.detail.parentDir);
   }
 
   override render() {
     if (this._loading) {
       return html`<div class="spinner"></div>`;
     }
-    const dirty = this._content !== this._originalContent && this._activePath !== "";
     return html`
       <div class="shared-files">
         <p class="hint">
           ${msg(
-            "Files here live under workspaces/shared and are readable by every agent of this instance via ws_list_files / ws_search_files (prefixed with @shared/). Agents cannot write here.",
+            "Files placed here are readable by every agent of this instance via ws_list_files and ws_search_files (prefixed with @shared/). Use this space for team-wide reference documents.",
             { id: "isf-hint" },
           )}
         </p>
         ${this._error ? html`<div class="error-banner">${this._error}</div>` : nothing}
-        ${this._toast ? html`<div class="toast">${this._toast}</div>` : nothing}
         <div class="layout">
-          <aside class="tree-pane">
+          <div class="tree-pane">
             <cp-agent-file-tree
               .tree=${this._tree}
               .activePath=${this._activePath}
-              .readonly=${false}
-              @file-select=${this._onTreeSelect}
-              @file-delete=${this._onTreeDelete}
-              @file-new=${this._onTreeNew}
+              @file-select=${this._onFileSelect}
+              @file-new=${this._onFileNewRequested}
+              @folder-new=${this._onFolderNewRequested}
+              @file-delete=${this._onFileDeleteRequested}
             ></cp-agent-file-tree>
-          </aside>
-          <section class="editor-pane">
+          </div>
+          <div class="editor-pane">
             ${this._activePath
               ? html`
-                  <header class="editor-header">
-                    <strong>${this._activePath}</strong>
-                    <button
-                      class="btn btn-primary"
-                      ?disabled=${!dirty || this._saving}
-                      @click=${this._save}
-                    >
-                      ${this._saving
-                        ? msg("Saving…", { id: "isf-saving" })
-                        : msg("Save", { id: "isf-save" })}
-                    </button>
-                  </header>
-                  <textarea
-                    class="editor"
-                    .value=${this._content}
-                    @input=${(e: InputEvent) =>
-                      (this._content = (e.target as HTMLTextAreaElement).value)}
-                  ></textarea>
+                  <cp-agent-file-editor
+                    .files=${[this._activePath]}
+                    .activeFile=${this._activePath}
+                    .loadFile=${this._loadFileFn}
+                    .saveFile=${this._saveFileFn}
+                    .editableFiles=${null}
+                  ></cp-agent-file-editor>
                 `
-              : html`<div class="placeholder">
-                  ${msg("Select a file on the left or create a new one.", {
+              : html`<p class="placeholder">
+                  ${msg("Select a file to view or edit, or create a new one.", {
                     id: "isf-placeholder",
                   })}
-                </div>`}
-          </section>
+                </p>`}
+          </div>
         </div>
+        ${this._newFileDialogOpen
+          ? html`
+              <cp-new-file-dialog
+                .parentDir=${this._newFileParentDir}
+                .folderMode=${this._newFolderMode}
+                @close-dialog=${() => (this._newFileDialogOpen = false)}
+                @file-new-confirmed=${this._onNewFileConfirmed}
+              ></cp-new-file-dialog>
+            `
+          : nothing}
+        ${this._deleteDialogOpen
+          ? html`
+              <cp-delete-file-dialog
+                .filePath=${this._deleteTarget}
+                @close-dialog=${() => (this._deleteDialogOpen = false)}
+                @file-delete-confirmed=${this._onDeleteFileConfirmed}
+              ></cp-delete-file-dialog>
+            `
+          : nothing}
       </div>
       <style>
         .shared-files {
@@ -216,38 +210,12 @@ export class InstanceSharedFiles extends LitElement {
         .editor-pane {
           display: flex;
           flex-direction: column;
-          gap: 8px;
-        }
-        .editor-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 8px;
-        }
-        .editor {
-          flex: 1;
           min-height: 320px;
-          font-family: var(--cp-font-mono, ui-monospace, monospace);
-          font-size: 13px;
-          padding: 8px;
-          border: 1px solid var(--cp-color-border, #333);
-          border-radius: 6px;
-          background: var(--cp-color-surface, #111);
-          color: inherit;
-          resize: vertical;
         }
         .placeholder {
           color: var(--cp-color-text-muted, #888);
           padding: 20px;
           text-align: center;
-        }
-        .toast {
-          background: var(--cp-color-success-bg, #154f30);
-          color: var(--cp-color-success-text, #b7f5c7);
-          padding: 6px 10px;
-          border-radius: 4px;
-          font-size: 12px;
-          align-self: flex-start;
         }
       </style>
     `;
