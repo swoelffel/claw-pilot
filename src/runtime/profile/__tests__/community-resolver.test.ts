@@ -6,7 +6,7 @@ import * as fs from "node:fs";
 import { initDatabase } from "../../../db/schema.js";
 import { UserProfileRepository } from "../../../core/repositories/user-profile-repository.js";
 import { CommunityProfileResolver } from "../community-resolver.js";
-import { hashPassword } from "../../../core/auth.js";
+import { hashPassword } from "../../../core/auth/index.js";
 import type Database from "better-sqlite3";
 
 let tmpDir: string;

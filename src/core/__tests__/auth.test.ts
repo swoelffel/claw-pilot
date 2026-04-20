@@ -1,6 +1,6 @@
 // src/core/__tests__/auth.test.ts
 import { describe, it, expect } from "vitest";
-import { hashPassword, verifyPassword, generatePassword } from "../auth.js";
+import { hashPassword, verifyPassword, generatePassword } from "../auth/index.js";
 
 describe("hashPassword / verifyPassword", () => {
   it("returns a string in scrypt:<salt>:<hash> format", async () => {

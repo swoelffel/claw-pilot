@@ -3,7 +3,7 @@ import type { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
-import { verifyPassword } from "../../core/auth.js";
+import { authenticate } from "../../core/auth/index.js";
 import { constants } from "../../lib/constants.js";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
@@ -19,13 +19,6 @@ const LoginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
 });
-
-interface UserRow {
-  id: number;
-  username: string;
-  password_hash: string;
-  role: string;
-}
 
 export function registerAuthRoutes(app: Hono, deps: RouteDeps, token: string): void {
   const { registry, sessionStore } = deps;
@@ -46,18 +39,18 @@ export function registerAuthRoutes(app: Hono, deps: RouteDeps, token: string): v
     }
     const { username, password } = parsed.data;
 
-    // Lookup user
-    const db = registry.getDb();
-    const user = db
-      .prepare("SELECT id, username, password_hash, role FROM users WHERE username = ?")
-      .get(username) as UserRow | undefined;
+    // Delegate to the registered AuthProvider for "password". The provider
+    // encapsulates the user lookup and credential verification; routing
+    // stays agnostic so Enterprise SSO can plug in additional kinds without
+    // touching this handler.
+    const result = await authenticate("password", { username, password });
 
-    const valid = user ? await verifyPassword(password, user.password_hash) : false;
-
-    if (!user || !valid) {
+    if (!result.ok) {
       registry.logEvent(null, "auth_login_failed", `username=${username}`);
       return apiError(c, 401, "INVALID_CREDENTIALS", "Invalid credentials");
     }
+
+    const user = result.user;
 
     // Create session
     const ip =

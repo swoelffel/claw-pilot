@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { withContext } from "./_context.js";
-import { hashPassword, generatePassword } from "../core/auth.js";
+import { hashPassword, generatePassword } from "../core/auth/index.js";
 import { SessionStore } from "../dashboard/session-store.js";
 import { constants } from "../lib/constants.js";
 

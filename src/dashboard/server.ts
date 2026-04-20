@@ -32,6 +32,11 @@ import { registerBlueprintRoutes } from "./routes/blueprints.js";
 import { registerTeamRoutes } from "./routes/teams.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerAuthRoutes } from "./routes/auth.js";
+import {
+  PasswordProvider,
+  registerAuthProvider,
+  unregisterAuthProvider,
+} from "../core/auth/index.js";
 import { registerAgentBlueprintRoutes } from "./routes/agent-blueprints.js";
 import { registerProfileRoutes } from "./routes/profile.js";
 import { registerNamedKeyRoutes } from "./routes/named-keys.js";
@@ -195,6 +200,14 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
     db,
     modelDiscovery,
   };
+
+  // Register the default password-based auth backend. Enterprise editions
+  // register additional SSO providers (OIDC, SAML, Azure AD) in their own
+  // bootstrap path, gated behind the matching capability. We replace any
+  // prior registration so repeat bootstraps (tests, in-process restarts)
+  // bind to the current DB handle.
+  unregisterAuthProvider("password");
+  registerAuthProvider(new PasswordProvider(db));
 
   // Auth routes — registered BEFORE the auth middleware so /api/auth/login is public
   registerAuthRoutes(app, deps, token);
