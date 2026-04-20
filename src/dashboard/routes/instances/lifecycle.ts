@@ -3,6 +3,8 @@
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
+import { permission } from "../../middleware/permission.js";
+import { ACTIONS } from "../../middleware/permission-actions.js";
 import { getInstanceContext } from "../_instance-middleware.js";
 import type { WizardAnswers } from "../../../core/config-generator.js";
 import { Destroyer } from "../../../core/destroyer.js";
@@ -185,159 +187,211 @@ async function handleConversations(c: HonoContext, conn: RouteDeps["conn"]): Pro
   }
 }
 
-export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
-  const { registry, conn, health, lifecycle, monitor, tokenCache, xdgRuntimeDir } = deps;
+/** Handle GET /api/instances — list all instances with health + gateway token. */
+async function handleListInstances(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { registry, health, tokenCache } = deps;
+  const statuses = await health.checkAll();
+  const enriched = await Promise.all(
+    statuses.map(async (s) => {
+      const instance = registry.getInstance(s.slug);
+      const gatewayToken = instance ? await tokenCache.get(s.slug, instance.state_dir) : null;
+      return { ...instance, ...s, gatewayToken };
+    }),
+  );
+  return c.json(enriched);
+}
 
-  app.get("/api/instances", async (c) => {
-    const statuses = await health.checkAll();
-    const enriched = await Promise.all(
-      statuses.map(async (s) => {
-        const instance = registry.getInstance(s.slug);
-        const gatewayToken = instance ? await tokenCache.get(s.slug, instance.state_dir) : null;
-        return { ...instance, ...s, gatewayToken };
-      }),
+/** Handle GET /api/instances/:slug — single instance detail. */
+async function handleGetInstance(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { health, tokenCache } = deps;
+  const { instance, slug } = getInstanceContext(c);
+  const [status, gatewayToken] = await Promise.all([
+    health.check(slug),
+    tokenCache.get(slug, instance.state_dir),
+  ]);
+  return c.json({ instance, status, gatewayToken });
+}
+
+/** Handle GET /api/instances/:slug/health. */
+async function handleInstanceHealth(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const slug = c.req.param("slug");
+  try {
+    const status = await deps.health.check(slug);
+    return c.json(status);
+  } catch (err) {
+    return apiError(c, 500, "INTERNAL_ERROR", err instanceof Error ? err.message : "Unknown error");
+  }
+}
+
+/** Handle POST /api/instances/:slug/start. */
+async function handleStart(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { lifecycle, monitor } = deps;
+  const slug = c.req.param("slug");
+  monitor.setTransitioning(slug, "starting");
+  try {
+    await lifecycle.start(slug);
+    notifySystemStateChanged("instance", "update");
+    return c.json({ ok: true });
+  } catch (err) {
+    if (err instanceof InstanceNotFoundError) return apiError(c, 404, "NOT_FOUND", err.message);
+    return apiError(
+      c,
+      500,
+      "LIFECYCLE_FAILED",
+      err instanceof Error ? err.message : "Start failed",
     );
-    return c.json(enriched);
-  });
+  } finally {
+    monitor.clearTransitioning(slug);
+  }
+}
 
-  app.get("/api/instances/:slug", async (c) => {
-    const { instance, slug } = getInstanceContext(c);
-    const [status, gatewayToken] = await Promise.all([
-      health.check(slug),
-      tokenCache.get(slug, instance.state_dir),
-    ]);
-    return c.json({ instance, status, gatewayToken });
-  });
+/** Handle POST /api/instances/:slug/stop. */
+async function handleStop(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { registry, lifecycle, monitor } = deps;
+  const slug = c.req.param("slug");
+  const stopTarget = registry.getInstance(slug);
+  if (stopTarget && stopTarget.is_system === 1) {
+    return apiError(c, 403, "CANNOT_STOP_SYSTEM", "Cannot stop the system instance");
+  }
+  monitor.setTransitioning(slug, "stopping");
+  try {
+    await lifecycle.stop(slug);
+    notifySystemStateChanged("instance", "update");
+    return c.json({ ok: true });
+  } catch (err) {
+    if (err instanceof InstanceNotFoundError) return apiError(c, 404, "NOT_FOUND", err.message);
+    return apiError(c, 500, "LIFECYCLE_FAILED", err instanceof Error ? err.message : "Stop failed");
+  } finally {
+    monitor.clearTransitioning(slug);
+  }
+}
 
-  app.get("/api/instances/:slug/health", async (c) => {
-    const slug = c.req.param("slug");
-    try {
-      const status = await health.check(slug);
-      return c.json(status);
-    } catch (err) {
-      return apiError(
-        c,
-        500,
-        "INTERNAL_ERROR",
-        err instanceof Error ? err.message : "Unknown error",
-      );
+/** Handle POST /api/instances/:slug/restart. */
+async function handleRestart(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { lifecycle, monitor } = deps;
+  const slug = c.req.param("slug");
+  monitor.setTransitioning(slug, "starting");
+  try {
+    await lifecycle.restart(slug);
+    return c.json({ ok: true });
+  } catch (err) {
+    if (err instanceof InstanceNotFoundError) return apiError(c, 404, "NOT_FOUND", err.message);
+    return apiError(
+      c,
+      500,
+      "LIFECYCLE_FAILED",
+      err instanceof Error ? err.message : "Restart failed",
+    );
+  } finally {
+    monitor.clearTransitioning(slug);
+  }
+}
+
+/** Handle DELETE /api/instances/:slug. */
+async function handleDeleteInstance(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { registry, conn, tokenCache, xdgRuntimeDir } = deps;
+  const slug = c.req.param("slug");
+  try {
+    const target = registry.getInstance(slug);
+    if (target && target.is_system === 1) {
+      return apiError(c, 403, "CANNOT_DELETE_SYSTEM", "Cannot delete the system instance");
     }
-  });
+    const destroyer = new Destroyer(conn, registry, xdgRuntimeDir);
+    await destroyer.destroy(slug);
+    tokenCache.invalidate(slug);
+    removeSearchEntry(deps.db, "instance", slug);
+    notifySystemStateChanged("instance", "delete");
+    return c.json({ ok: true, slug });
+  } catch (err) {
+    if (err instanceof InstanceNotFoundError) return apiError(c, 404, "NOT_FOUND", err.message);
+    return apiError(
+      c,
+      500,
+      "DESTROY_FAILED",
+      err instanceof Error ? err.message : "Destroy failed",
+    );
+  }
+}
 
-  app.post("/api/instances/:slug/start", async (c) => {
-    const slug = c.req.param("slug");
-    monitor.setTransitioning(slug, "starting");
-    try {
-      await lifecycle.start(slug);
-      notifySystemStateChanged("instance", "update");
-      return c.json({ ok: true });
-    } catch (err) {
-      if (err instanceof InstanceNotFoundError) {
-        return apiError(c, 404, "NOT_FOUND", err.message);
-      }
-      return apiError(
-        c,
-        500,
-        "LIFECYCLE_FAILED",
-        err instanceof Error ? err.message : "Start failed",
-      );
-    } finally {
-      monitor.clearTransitioning(slug);
-    }
-  });
-
-  app.post("/api/instances/:slug/stop", async (c) => {
-    const slug = c.req.param("slug");
-    // Guard: cannot stop the system instance
-    const stopTarget = registry.getInstance(slug);
-    if (stopTarget && stopTarget.is_system === 1) {
-      return apiError(c, 403, "CANNOT_STOP_SYSTEM", "Cannot stop the system instance");
-    }
-    monitor.setTransitioning(slug, "stopping");
-    try {
-      await lifecycle.stop(slug);
-      notifySystemStateChanged("instance", "update");
-      return c.json({ ok: true });
-    } catch (err) {
-      if (err instanceof InstanceNotFoundError) {
-        return apiError(c, 404, "NOT_FOUND", err.message);
-      }
-      return apiError(
-        c,
-        500,
-        "LIFECYCLE_FAILED",
-        err instanceof Error ? err.message : "Stop failed",
-      );
-    } finally {
-      monitor.clearTransitioning(slug);
-    }
-  });
-
-  app.post("/api/instances/:slug/restart", async (c) => {
-    const slug = c.req.param("slug");
-    monitor.setTransitioning(slug, "starting");
-    try {
-      await lifecycle.restart(slug);
-      return c.json({ ok: true });
-    } catch (err) {
-      if (err instanceof InstanceNotFoundError) {
-        return apiError(c, 404, "NOT_FOUND", err.message);
-      }
-      return apiError(
-        c,
-        500,
-        "LIFECYCLE_FAILED",
-        err instanceof Error ? err.message : "Restart failed",
-      );
-    } finally {
-      monitor.clearTransitioning(slug);
-    }
-  });
-
-  app.delete("/api/instances/:slug", async (c) => {
-    const slug = c.req.param("slug");
-    try {
-      // Guard: cannot delete the system instance
-      const target = registry.getInstance(slug);
-      if (target && target.is_system === 1) {
-        return apiError(c, 403, "CANNOT_DELETE_SYSTEM", "Cannot delete the system instance");
-      }
-      const destroyer = new Destroyer(conn, registry, xdgRuntimeDir);
-      await destroyer.destroy(slug);
-      tokenCache.invalidate(slug);
-      removeSearchEntry(deps.db, "instance", slug);
-      notifySystemStateChanged("instance", "delete");
-      return c.json({ ok: true, slug });
-    } catch (err) {
-      if (err instanceof InstanceNotFoundError) {
-        return apiError(c, 404, "NOT_FOUND", err.message);
-      }
-      return apiError(
-        c,
-        500,
-        "DESTROY_FAILED",
-        err instanceof Error ? err.message : "Destroy failed",
-      );
-    }
-  });
-
+export function registerLifecycleRoutes(app: Hono, deps: RouteDeps): void {
+  app.get(
+    "/api/instances",
+    permission({ action: ACTIONS.INSTANCE_LIST, resource: { kind: "instance" } }),
+    async (c) => handleListInstances(c, deps),
+  );
+  app.get(
+    "/api/instances/:slug",
+    permission({
+      action: ACTIONS.INSTANCE_READ,
+      resource: { kind: "instance", id: (c) => c.req.param("slug") },
+    }),
+    async (c) => handleGetInstance(c, deps),
+  );
+  app.get(
+    "/api/instances/:slug/health",
+    permission({
+      action: ACTIONS.INSTANCE_HEALTH,
+      resource: { kind: "instance", id: (c) => c.req.param("slug") },
+    }),
+    async (c) => handleInstanceHealth(c, deps),
+  );
+  app.post(
+    "/api/instances/:slug/start",
+    permission({
+      action: ACTIONS.INSTANCE_START,
+      resource: { kind: "instance", id: (c) => c.req.param("slug") },
+    }),
+    async (c) => handleStart(c, deps),
+  );
+  app.post(
+    "/api/instances/:slug/stop",
+    permission({
+      action: ACTIONS.INSTANCE_STOP,
+      resource: { kind: "instance", id: (c) => c.req.param("slug") },
+    }),
+    async (c) => handleStop(c, deps),
+  );
+  app.post(
+    "/api/instances/:slug/restart",
+    permission({
+      action: ACTIONS.INSTANCE_RESTART,
+      resource: { kind: "instance", id: (c) => c.req.param("slug") },
+    }),
+    async (c) => handleRestart(c, deps),
+  );
+  app.delete(
+    "/api/instances/:slug",
+    permission({
+      action: ACTIONS.INSTANCE_DELETE,
+      resource: { kind: "instance", id: (c) => c.req.param("slug") },
+    }),
+    async (c) => handleDeleteInstance(c, deps),
+  );
   // GET /api/next-port — derive port from slug (deterministic, no allocation needed)
-  app.get("/api/next-port", (c) => {
-    const slug = c.req.query("slug");
-    if (slug && /^[a-z][a-z0-9-]*$/.test(slug)) {
-      return c.json({ port: deriveWebChatPort(slug) });
-    }
-    // Fallback: return a default port (slug not yet known)
-    return c.json({ port: deriveWebChatPort("default") });
-  });
-
+  app.get(
+    "/api/next-port",
+    permission({ action: ACTIONS.INSTANCE_NEXT_PORT, resource: { kind: "instance" } }),
+    (c) => {
+      const slug = c.req.query("slug");
+      if (slug && /^[a-z][a-z0-9-]*$/.test(slug)) {
+        return c.json({ port: deriveWebChatPort(slug) });
+      }
+      return c.json({ port: deriveWebChatPort("default") });
+    },
+  );
   // POST /api/instances — provision a new instance
-  app.post("/api/instances", async (c) => {
-    return handleProvision(c, deps);
-  });
-
+  app.post(
+    "/api/instances",
+    permission({ action: ACTIONS.INSTANCE_CREATE, resource: { kind: "instance" } }),
+    async (c) => handleProvision(c, deps),
+  );
   // GET /api/instances/:slug/conversations
-  app.get("/api/instances/:slug/conversations", async (c) => {
-    return handleConversations(c, conn);
-  });
+  app.get(
+    "/api/instances/:slug/conversations",
+    permission({
+      action: ACTIONS.INSTANCE_CONVERSATIONS_READ,
+      resource: { kind: "instance", id: (c) => c.req.param("slug") },
+    }),
+    async (c) => handleConversations(c, deps.conn),
+  );
 }

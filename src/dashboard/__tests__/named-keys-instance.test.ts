@@ -18,6 +18,7 @@ import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { registerInstanceRoutes } from "../routes/instances.js";
 import { NamedKeyRepository } from "../../core/repositories/named-key-repository.js";
+import { injectAdminUser } from "./_helpers/inject-admin-user.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -74,6 +75,7 @@ function createTestApp(): TestContext {
     }
     await next();
   });
+  app.use("/api/*", injectAdminUser());
 
   const deps: RouteDeps = {
     registry,

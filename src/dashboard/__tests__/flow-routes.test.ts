@@ -13,6 +13,7 @@ import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { registerFlowRoutes } from "../routes/instances/flows.js";
 import { instanceMiddleware } from "../routes/_instance-middleware.js";
+import { injectAdminUser } from "./_helpers/inject-admin-user.js";
 
 const TEST_TOKEN = "test-flow-token-64chars-hex-0123456789abcdef0123456789abcdef012";
 
@@ -52,6 +53,7 @@ beforeEach(() => {
     if (auth !== expectedBearer) return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
     await next();
   });
+  app.use("/api/*", injectAdminUser());
 
   const deps: RouteDeps = {
     registry,

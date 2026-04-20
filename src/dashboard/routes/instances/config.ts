@@ -3,6 +3,8 @@
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
+import { permission } from "../../middleware/permission.js";
+import { ACTIONS } from "../../middleware/permission-actions.js";
 import { getInstanceContext } from "../_instance-middleware.js";
 import { logger } from "../../../lib/logger.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
@@ -366,76 +368,103 @@ async function handlePatchConfig(c: HonoContext, deps: RouteDeps): Promise<Respo
 
 export function registerConfigRoutes(app: Hono, deps: RouteDeps): void {
   // GET /api/instances/:slug/config — structured config for the settings UI
-  app.get("/api/instances/:slug/config", async (c) => {
-    return handleGetConfig(c, deps);
-  });
+  app.get(
+    "/api/instances/:slug/config",
+    permission({
+      action: ACTIONS.INSTANCE_CONFIG_READ,
+      resource: { kind: "instance", id: (c) => c.req.param("slug") },
+    }),
+    async (c) => {
+      return handleGetConfig(c, deps);
+    },
+  );
 
   // PATCH /api/instances/:slug/config — apply partial config changes
-  app.patch("/api/instances/:slug/config", async (c) => {
-    return handlePatchConfig(c, deps);
-  });
+  app.patch(
+    "/api/instances/:slug/config",
+    permission({
+      action: ACTIONS.INSTANCE_CONFIG_UPDATE,
+      resource: { kind: "instance", id: (c) => c.req.param("slug") },
+    }),
+    async (c) => {
+      return handlePatchConfig(c, deps);
+    },
+  );
 
   // PATCH /api/instances/:slug/config/telegram/token — write/remove bot token in .env
-  app.patch("/api/instances/:slug/config/telegram/token", async (c) => {
-    const { slug } = getInstanceContext(c);
+  app.patch(
+    "/api/instances/:slug/config/telegram/token",
+    permission({
+      action: ACTIONS.INSTANCE_CONFIG_TELEGRAM_TOKEN_UPDATE,
+      resource: { kind: "instance", id: (c) => c.req.param("slug") },
+    }),
+    async (c) => {
+      const { slug } = getInstanceContext(c);
 
-    let token: string | null;
-    try {
-      const raw = (await c.req.json()) as { token?: unknown };
-      if (raw.token !== undefined && raw.token !== null && typeof raw.token !== "string") {
-        return apiError(c, 400, "INVALID_BODY", "token must be a string or null");
-      }
-      token = (raw.token as string | null | undefined) ?? null;
-    } catch (err) {
-      logger.warn("[route:config] JSON parse failed on telegram token", { error: String(err) });
-      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
-    }
-
-    const stateDir = getRuntimeStateDir(slug);
-    const envPath = `${stateDir}/.env`;
-
-    try {
-      // Get the botTokenEnvVar name from config (default: TELEGRAM_BOT_TOKEN)
-      let varName = "TELEGRAM_BOT_TOKEN";
-      const config = deps.registry.getRuntimeConfig(slug);
-      if (config) {
-        varName = config.telegram.botTokenEnvVar;
-      } else if (runtimeConfigExists(stateDir)) {
-        try {
-          const fileConfig = loadRuntimeConfig(stateDir);
-          varName = fileConfig.telegram.botTokenEnvVar;
-        } catch (err) {
-          logger.debug("[route:config] runtime.json fallback load failed", { error: String(err) });
-          /* use default */
+      let token: string | null;
+      try {
+        const raw = (await c.req.json()) as { token?: unknown };
+        if (raw.token !== undefined && raw.token !== null && typeof raw.token !== "string") {
+          return apiError(c, 400, "INVALID_BODY", "token must be a string or null");
         }
+        token = (raw.token as string | null | undefined) ?? null;
+      } catch (err) {
+        logger.warn("[route:config] JSON parse failed on telegram token", { error: String(err) });
+        return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
       }
 
-      // Write or remove token via helper
-      if (token !== null) {
-        await writeEnvVar(envPath, varName, token);
-      } else {
-        await removeEnvVar(envPath, varName);
-      }
+      const stateDir = getRuntimeStateDir(slug);
+      const envPath = `${stateDir}/.env`;
 
-      logger.info(`[config] PATCH telegram/token slug=${slug} configured=${token !== null}`);
-      return c.json({ configured: token !== null });
-    } catch (err) {
-      logger.error(
-        `[config] PATCH telegram/token error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return apiError(c, 500, "TOKEN_WRITE_FAILED", "Failed to write token to .env");
-    }
-  });
+      try {
+        // Get the botTokenEnvVar name from config (default: TELEGRAM_BOT_TOKEN)
+        let varName = "TELEGRAM_BOT_TOKEN";
+        const config = deps.registry.getRuntimeConfig(slug);
+        if (config) {
+          varName = config.telegram.botTokenEnvVar;
+        } else if (runtimeConfigExists(stateDir)) {
+          try {
+            const fileConfig = loadRuntimeConfig(stateDir);
+            varName = fileConfig.telegram.botTokenEnvVar;
+          } catch (err) {
+            logger.debug("[route:config] runtime.json fallback load failed", {
+              error: String(err),
+            });
+            /* use default */
+          }
+        }
+
+        // Write or remove token via helper
+        if (token !== null) {
+          await writeEnvVar(envPath, varName, token);
+        } else {
+          await removeEnvVar(envPath, varName);
+        }
+
+        logger.info(`[config] PATCH telegram/token slug=${slug} configured=${token !== null}`);
+        return c.json({ configured: token !== null });
+      } catch (err) {
+        logger.error(
+          `[config] PATCH telegram/token error for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return apiError(c, 500, "TOKEN_WRITE_FAILED", "Failed to write token to .env");
+      }
+    },
+  );
 
   // GET /api/providers — list available providers with their model catalogs
   // Uses dynamic discovery service (merges static catalog with discovered models).
-  app.get("/api/providers", async (c) => {
-    const providers = deps.modelDiscovery.getProviders();
+  app.get(
+    "/api/providers",
+    permission({ action: ACTIONS.PROVIDER_LIST, resource: { kind: "provider" } }),
+    async (c) => {
+      const providers = deps.modelDiscovery.getProviders();
 
-    if (!providers.some((p) => p.isDefault)) {
-      providers[0]!.isDefault = true;
-    }
+      if (!providers.some((p) => p.isDefault)) {
+        providers[0]!.isDefault = true;
+      }
 
-    return c.json({ canReuseCredentials: false, sourceInstance: null, providers });
-  });
+      return c.json({ canReuseCredentials: false, sourceInstance: null, providers });
+    },
+  );
 }

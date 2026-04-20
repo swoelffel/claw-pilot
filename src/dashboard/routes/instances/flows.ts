@@ -5,6 +5,8 @@ import { z } from "zod";
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
+import { permission } from "../../middleware/permission.js";
+import { ACTIONS } from "../../middleware/permission-actions.js";
 import { getInstanceContext } from "../_instance-middleware.js";
 import {
   createFlowDefinition,
@@ -236,6 +238,124 @@ async function handleUpdateFlow(c: HonoContext, db: DB): Promise<Response> {
   return c.json({ flow: updated });
 }
 
+/** Handle POST /flows/:id/run — trigger manual flow execution. */
+async function handleTriggerFlowRun(c: HonoContext, db: DB, slug: string): Promise<Response> {
+  const id = Number(c.req.param("id"));
+
+  const rtGuard = runtimeGuard(c, slug);
+  if (rtGuard) return rtGuard;
+
+  const flow = getFlowDefinition(db, id);
+  if (!flow || flow.instance_slug !== slug) {
+    return apiError(c, 404, "NOT_FOUND", "Flow not found");
+  }
+
+  if (!flow.enabled) {
+    return apiError(c, 400, "FLOW_DISABLED", "Flow is disabled");
+  }
+
+  const activeRuns = listFlowRuns(db, slug, { flowId: id, status: "running" });
+  if (activeRuns.length > 0) {
+    return apiError(c, 409, "ALREADY_RUNNING", "A run is already in progress for this flow");
+  }
+
+  try {
+    const result = await callRuntimeApi<{ runId: number }>(slug, `/internal/flows/${id}/run`, {
+      triggerType: "manual",
+    });
+    return c.json({ runId: result.runId }, 202);
+  } catch (startErr: unknown) {
+    logger.error("flow_start_failed", {
+      event: "flow_start_failed",
+      slug,
+      flowId: id,
+      error: String(startErr),
+    });
+    return apiError(c, 500, "FLOW_START_FAILED", String(startErr));
+  }
+}
+
+/** Handle GET /flow-runs/:runId — get run detail + step runs. */
+function handleGetFlowRunDetail(c: HonoContext, db: DB, slug: string): Response {
+  const runId = Number(c.req.param("runId"));
+
+  const run = getFlowRun(db, runId);
+  if (!run || run.instance_slug !== slug) {
+    return apiError(c, 404, "NOT_FOUND", "Flow run not found");
+  }
+
+  const rawSteps = getStepRunsForRun(db, runId);
+
+  // Enrich running steps with no session_id by looking up active session by label
+  const flow = getFlowDefinition(db, run.flow_id);
+  const steps = rawSteps.map((s) => {
+    if (s.status === "running" && !s.session_id && flow) {
+      const label = `flow:${flow.name}:step:${s.step_id}`;
+      const session = db
+        .prepare(
+          `SELECT id FROM rt_sessions
+           WHERE instance_slug = ? AND label = ? AND state = 'active'
+           ORDER BY created_at DESC LIMIT 1`,
+        )
+        .get(slug, label) as { id: string } | undefined;
+      if (session) return { ...s, session_id: session.id };
+    }
+    return s;
+  });
+
+  return c.json({ run, steps });
+}
+
+/** Handle POST /flow-runs/:runId/cancel — cancel a running flow. */
+function handleCancelFlowRun(c: HonoContext, db: DB, slug: string): Response {
+  const runId = Number(c.req.param("runId"));
+
+  const run = getFlowRun(db, runId);
+  if (!run || run.instance_slug !== slug) {
+    return apiError(c, 404, "NOT_FOUND", "Flow run not found");
+  }
+  if (run.status !== "running" && run.status !== "pending") {
+    return apiError(c, 400, "NOT_CANCELLABLE", `Run is already ${run.status}`);
+  }
+
+  const steps = getStepRunsForRun(db, runId);
+  for (const step of steps) {
+    if (step.status === "pending") {
+      updateStepRun(db, step.id, { status: "skipped" });
+    }
+  }
+
+  updateFlowRunStatus(db, runId, "cancelled");
+  return c.json({ ok: true });
+}
+
+/** Handle GET /flows/:id/runs — list runs for a flow. */
+function handleListFlowRuns(c: HonoContext, db: DB, slug: string): Response {
+  const id = Number(c.req.param("id"));
+  const limit = Math.min(Number(c.req.query("limit") ?? "20"), 100);
+  const rawRuns = listFlowRuns(db, slug, { flowId: id, limit: limit + 1 });
+  const hasMore = rawRuns.length > limit;
+  if (hasMore) rawRuns.pop();
+  const runs = rawRuns.map((r) => ({ ...r, worstOutcome: getRunWorstOutcome(db, r.id) }));
+  return c.json({ runs, hasMore });
+}
+
+/** Handle GET /flows/:id/sessions — list sessions for a flow. */
+function handleListFlowSessions(c: HonoContext, db: DB, slug: string): Response {
+  const id = Number(c.req.param("id"));
+  const flow = getFlowDefinition(db, id);
+  if (!flow || flow.instance_slug !== slug) {
+    return apiError(c, 404, "NOT_FOUND", "Flow not found");
+  }
+  const limit = Math.min(Number(c.req.query("limit") ?? "30"), 100);
+  const before = c.req.query("before") || undefined;
+  const result = listFlowSessions(db, id, {
+    limit,
+    ...(before !== undefined ? { before } : {}),
+  });
+  return c.json(result);
+}
+
 // ---------------------------------------------------------------------------
 // Route registration
 // ---------------------------------------------------------------------------
@@ -243,216 +363,172 @@ async function handleUpdateFlow(c: HonoContext, db: DB): Promise<Response> {
 export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
   const { db, registry } = deps;
 
-  // -------------------------------------------------------------------------
   // GET /api/instances/:slug/flows — list flow definitions
-  // -------------------------------------------------------------------------
-  app.get("/api/instances/:slug/flows", (c) => {
-    const { slug } = getInstanceContext(c);
+  app.get(
+    "/api/instances/:slug/flows",
+    permission({
+      action: ACTIONS.FLOW_LIST,
+      resource: { kind: "flow" },
+      attributes: (c) => ({ slug: c.req.param("slug") }),
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
 
-    const flows = listFlowDefinitions(db, slug);
+      const flows = listFlowDefinitions(db, slug);
 
-    // Enrich with last run info + session count
-    const enriched = flows.map((f) => {
-      const runs = listFlowRuns(db, slug, { flowId: f.id, limit: 1 });
-      return {
-        ...f,
-        lastRun: runs[0] ?? null,
-        sessionCount: countFlowSessions(db, f.id),
-      };
-    });
+      // Enrich with last run info + session count
+      const enriched = flows.map((f) => {
+        const runs = listFlowRuns(db, slug, { flowId: f.id, limit: 1 });
+        return {
+          ...f,
+          lastRun: runs[0] ?? null,
+          sessionCount: countFlowSessions(db, f.id),
+        };
+      });
 
-    return c.json({ flows: enriched });
-  });
+      return c.json({ flows: enriched });
+    },
+  );
 
-  // -------------------------------------------------------------------------
   // GET /api/instances/:slug/flows/:id — get flow definition + recent runs
-  // -------------------------------------------------------------------------
-  app.get("/api/instances/:slug/flows/:id", (c) => {
-    const { slug } = getInstanceContext(c);
-    const id = Number(c.req.param("id"));
+  app.get(
+    "/api/instances/:slug/flows/:id",
+    permission({
+      action: ACTIONS.FLOW_READ,
+      resource: { kind: "flow", id: (c) => c.req.param("id") },
+      attributes: (c) => ({ slug: c.req.param("slug") }),
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
+      const id = Number(c.req.param("id"));
 
-    const flow = getFlowDefinition(db, id);
-    if (!flow || flow.instance_slug !== slug) {
-      return apiError(c, 404, "NOT_FOUND", "Flow not found");
-    }
+      const flow = getFlowDefinition(db, id);
+      if (!flow || flow.instance_slug !== slug) {
+        return apiError(c, 404, "NOT_FOUND", "Flow not found");
+      }
 
-    const runs = listFlowRuns(db, slug, { flowId: id, limit: 10 });
-    return c.json({ flow, runs });
-  });
+      const runs = listFlowRuns(db, slug, { flowId: id, limit: 10 });
+      return c.json({ flow, runs });
+    },
+  );
 
-  // -------------------------------------------------------------------------
   // POST /api/instances/:slug/flows — create flow definition
-  // -------------------------------------------------------------------------
-  app.post("/api/instances/:slug/flows", async (c) => {
-    return handleCreateFlow(c, db, registry);
-  });
+  app.post(
+    "/api/instances/:slug/flows",
+    permission({
+      action: ACTIONS.FLOW_CREATE,
+      resource: { kind: "flow" },
+      attributes: (c) => ({ slug: c.req.param("slug") }),
+    }),
+    async (c) => {
+      return handleCreateFlow(c, db, registry);
+    },
+  );
 
-  // -------------------------------------------------------------------------
   // PATCH /api/instances/:slug/flows/:id — update flow definition
-  // -------------------------------------------------------------------------
-  app.patch("/api/instances/:slug/flows/:id", async (c) => {
-    return handleUpdateFlow(c, db);
-  });
+  app.patch(
+    "/api/instances/:slug/flows/:id",
+    permission({
+      action: ACTIONS.FLOW_UPDATE,
+      resource: { kind: "flow", id: (c) => c.req.param("id") },
+      attributes: (c) => ({ slug: c.req.param("slug") }),
+    }),
+    async (c) => {
+      return handleUpdateFlow(c, db);
+    },
+  );
 
-  // -------------------------------------------------------------------------
   // DELETE /api/instances/:slug/flows/:id — delete flow definition
-  // -------------------------------------------------------------------------
-  app.delete("/api/instances/:slug/flows/:id", (c) => {
-    const { slug } = getInstanceContext(c);
-    const id = Number(c.req.param("id"));
+  app.delete(
+    "/api/instances/:slug/flows/:id",
+    permission({
+      action: ACTIONS.FLOW_DELETE,
+      resource: { kind: "flow", id: (c) => c.req.param("id") },
+      attributes: (c) => ({ slug: c.req.param("slug") }),
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
+      const id = Number(c.req.param("id"));
 
-    const existing = getFlowDefinition(db, id);
-    if (!existing || existing.instance_slug !== slug) {
-      return apiError(c, 404, "NOT_FOUND", "Flow not found");
-    }
+      const existing = getFlowDefinition(db, id);
+      if (!existing || existing.instance_slug !== slug) {
+        return apiError(c, 404, "NOT_FOUND", "Flow not found");
+      }
 
-    deleteFlowDefinition(db, id);
-    removeSearchEntry(db, "flow", String(id));
+      deleteFlowDefinition(db, id);
+      removeSearchEntry(db, "flow", String(id));
 
-    return c.json({ ok: true });
-  });
+      return c.json({ ok: true });
+    },
+  );
 
-  // -------------------------------------------------------------------------
   // POST /api/instances/:slug/flows/:id/run — trigger manual execution
-  // -------------------------------------------------------------------------
-  app.post("/api/instances/:slug/flows/:id/run", async (c) => {
-    const { slug } = getInstanceContext(c);
-    const id = Number(c.req.param("id"));
+  app.post(
+    "/api/instances/:slug/flows/:id/run",
+    permission({
+      action: ACTIONS.FLOW_RUN,
+      resource: { kind: "flow", id: (c) => c.req.param("id") },
+      attributes: (c) => ({ slug: c.req.param("slug") }),
+    }),
+    async (c) => {
+      const { slug } = getInstanceContext(c);
+      return handleTriggerFlowRun(c, db, slug);
+    },
+  );
 
-    // Runtime must be running to execute flows
-    const rtGuard = runtimeGuard(c, slug);
-    if (rtGuard) return rtGuard;
-
-    const flow = getFlowDefinition(db, id);
-    if (!flow || flow.instance_slug !== slug) {
-      return apiError(c, 404, "NOT_FOUND", "Flow not found");
-    }
-
-    if (!flow.enabled) {
-      return apiError(c, 400, "FLOW_DISABLED", "Flow is disabled");
-    }
-
-    // Guard: no double-trigger
-    const activeRuns = listFlowRuns(db, slug, { flowId: id, status: "running" });
-    if (activeRuns.length > 0) {
-      return apiError(c, 409, "ALREADY_RUNNING", "A run is already in progress for this flow");
-    }
-
-    try {
-      const result = await callRuntimeApi<{ runId: number }>(slug, `/internal/flows/${id}/run`, {
-        triggerType: "manual",
-      });
-      return c.json({ runId: result.runId }, 202);
-    } catch (startErr: unknown) {
-      logger.error("flow_start_failed", {
-        event: "flow_start_failed",
-        slug,
-        flowId: id,
-        error: String(startErr),
-      });
-      return apiError(c, 500, "FLOW_START_FAILED", String(startErr));
-    }
-  });
-
-  // -------------------------------------------------------------------------
   // GET /api/instances/:slug/flows/:id/runs — list runs for a flow
-  // -------------------------------------------------------------------------
-  app.get("/api/instances/:slug/flows/:id/runs", (c) => {
-    const { slug } = getInstanceContext(c);
-    const id = Number(c.req.param("id"));
+  app.get(
+    "/api/instances/:slug/flows/:id/runs",
+    permission({
+      action: ACTIONS.FLOW_RUNS_LIST,
+      resource: { kind: "flow", id: (c) => c.req.param("id") },
+      attributes: (c) => ({ slug: c.req.param("slug") }),
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
+      return handleListFlowRuns(c, db, slug);
+    },
+  );
 
-    const limit = Math.min(Number(c.req.query("limit") ?? "20"), 100);
-    const rawRuns = listFlowRuns(db, slug, { flowId: id, limit: limit + 1 });
-    const hasMore = rawRuns.length > limit;
-    if (hasMore) rawRuns.pop();
-    const runs = rawRuns.map((r) => ({
-      ...r,
-      worstOutcome: getRunWorstOutcome(db, r.id),
-    }));
-    return c.json({ runs, hasMore });
-  });
-
-  // -------------------------------------------------------------------------
   // GET /api/instances/:slug/flow-runs/:runId — get run detail + step runs
-  // -------------------------------------------------------------------------
-  app.get("/api/instances/:slug/flow-runs/:runId", (c) => {
-    const { slug } = getInstanceContext(c);
-    const runId = Number(c.req.param("runId"));
+  app.get(
+    "/api/instances/:slug/flow-runs/:runId",
+    permission({
+      action: ACTIONS.FLOW_RUN_READ,
+      resource: { kind: "flow", id: (c) => c.req.param("runId") },
+      attributes: (c) => ({ slug: c.req.param("slug") }),
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
+      return handleGetFlowRunDetail(c, db, slug);
+    },
+  );
 
-    const run = getFlowRun(db, runId);
-    if (!run || run.instance_slug !== slug) {
-      return apiError(c, 404, "NOT_FOUND", "Flow run not found");
-    }
-
-    const rawSteps = getStepRunsForRun(db, runId);
-
-    // Enrich running steps with no session_id by looking up active session by label
-    const flow = getFlowDefinition(db, run.flow_id);
-    const steps = rawSteps.map((s) => {
-      if (s.status === "running" && !s.session_id && flow) {
-        const label = `flow:${flow.name}:step:${s.step_id}`;
-        const session = db
-          .prepare(
-            `SELECT id FROM rt_sessions
-             WHERE instance_slug = ? AND label = ? AND state = 'active'
-             ORDER BY created_at DESC LIMIT 1`,
-          )
-          .get(slug, label) as { id: string } | undefined;
-        if (session) return { ...s, session_id: session.id };
-      }
-      return s;
-    });
-
-    return c.json({ run, steps });
-  });
-
-  // -------------------------------------------------------------------------
   // POST /api/instances/:slug/flow-runs/:runId/cancel — cancel a running flow
-  // -------------------------------------------------------------------------
-  app.post("/api/instances/:slug/flow-runs/:runId/cancel", (c) => {
-    const { slug } = getInstanceContext(c);
-    const runId = Number(c.req.param("runId"));
+  app.post(
+    "/api/instances/:slug/flow-runs/:runId/cancel",
+    permission({
+      action: ACTIONS.FLOW_RUN_CANCEL,
+      resource: { kind: "flow", id: (c) => c.req.param("runId") },
+      attributes: (c) => ({ slug: c.req.param("slug") }),
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
+      return handleCancelFlowRun(c, db, slug);
+    },
+  );
 
-    const run = getFlowRun(db, runId);
-    if (!run || run.instance_slug !== slug) {
-      return apiError(c, 404, "NOT_FOUND", "Flow run not found");
-    }
-    if (run.status !== "running" && run.status !== "pending") {
-      return apiError(c, 400, "NOT_CANCELLABLE", `Run is already ${run.status}`);
-    }
-
-    // Mark pending steps as skipped
-    const steps = getStepRunsForRun(db, runId);
-    for (const step of steps) {
-      if (step.status === "pending") {
-        updateStepRun(db, step.id, { status: "skipped" });
-      }
-    }
-
-    updateFlowRunStatus(db, runId, "cancelled");
-    return c.json({ ok: true });
-  });
-
-  // -------------------------------------------------------------------------
   // GET /api/instances/:slug/flows/:id/sessions — list sessions for a flow
-  // -------------------------------------------------------------------------
-  app.get("/api/instances/:slug/flows/:id/sessions", (c) => {
-    const { slug } = getInstanceContext(c);
-    const id = Number(c.req.param("id"));
-
-    const flow = getFlowDefinition(db, id);
-    if (!flow || flow.instance_slug !== slug) {
-      return apiError(c, 404, "NOT_FOUND", "Flow not found");
-    }
-
-    const limit = Math.min(Number(c.req.query("limit") ?? "30"), 100);
-    const before = c.req.query("before") || undefined;
-
-    const result = listFlowSessions(db, id, {
-      limit,
-      ...(before !== undefined ? { before } : {}),
-    });
-
-    return c.json(result);
-  });
+  app.get(
+    "/api/instances/:slug/flows/:id/sessions",
+    permission({
+      action: ACTIONS.FLOW_SESSIONS_LIST,
+      resource: { kind: "flow", id: (c) => c.req.param("id") },
+      attributes: (c) => ({ slug: c.req.param("slug") }),
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
+      return handleListFlowSessions(c, db, slug);
+    },
+  );
 }
