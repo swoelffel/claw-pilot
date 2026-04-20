@@ -78,3 +78,68 @@ export function resetPermissionChecker(): void {
 export function getPermissionChecker(): PermissionChecker {
   return current;
 }
+
+// --- Hono middleware factory ---
+
+import type { Context, MiddlewareHandler } from "hono";
+
+export interface PermissionSpec {
+  action: string;
+  resource: {
+    kind: string;
+    /** Resolve the resource id from the request context (params, body, etc.). */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    id?: (c: Context<any, any, any>) => string | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    orgId?: (c: Context<any, any, any>) => string | undefined;
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  attributes?: (c: Context<any, any, any>) => Record<string, unknown>;
+}
+
+/**
+ * Hono middleware factory. Each annotated route declares its permission
+ * metadata explicitly; the middleware reads the authenticated user from the
+ * Hono context (`c.get("user")`, published by the auth middleware), builds a
+ * PermissionContext, dispatches to the registered PermissionChecker, and
+ * either calls next() or returns 403 PERMISSION_DENIED.
+ *
+ * @param spec permission metadata for the route (action + resource + optional attributes)
+ */
+export function permission(spec: PermissionSpec): MiddlewareHandler {
+  return async (c, next) => {
+    const user = c.get("user") as AuthenticatedUser | undefined;
+    if (!user) {
+      return c.json({ error: "Unauthenticated", code: "UNAUTHENTICATED" }, 401);
+    }
+
+    const id = spec.resource.id?.(c);
+    const orgId = spec.resource.orgId?.(c);
+    const attributes = spec.attributes?.(c);
+
+    const ctx: PermissionContext = {
+      user,
+      action: spec.action,
+      resource: {
+        kind: spec.resource.kind,
+        ...(id !== undefined ? { id } : {}),
+        ...(orgId !== undefined ? { orgId } : {}),
+      },
+      ...(attributes !== undefined ? { attributes } : {}),
+    };
+
+    const decision = await getPermissionChecker().check(ctx);
+    if (decision.allow) {
+      return next();
+    }
+
+    return c.json(
+      {
+        error: decision.reason,
+        code: "PERMISSION_DENIED",
+        ...(decision.requiresApproval ? { requiresApproval: true } : {}),
+      },
+      403,
+    );
+  };
+}
