@@ -206,6 +206,40 @@ export async function deleteAgentFile(
   );
 }
 
+// ---------------------------------------------------------------------------
+// Instance shared workspace (v38)
+// ---------------------------------------------------------------------------
+
+export async function fetchSharedFileTree(slug: string): Promise<AgentFileTreeResponse> {
+  return apiFetch<AgentFileTreeResponse>(`/instances/${slug}/shared-files`);
+}
+
+export async function fetchSharedFile(slug: string, relPath: string): Promise<AgentFileContent> {
+  return apiFetch<AgentFileContent>(
+    `/instances/${slug}/shared-files/${encodeWorkspacePath(relPath)}`,
+  );
+}
+
+export async function updateSharedFile(
+  slug: string,
+  relPath: string,
+  content: string,
+): Promise<AgentFileContent> {
+  return apiFetch<AgentFileContent>(
+    `/instances/${slug}/shared-files/${encodeWorkspacePath(relPath)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ content }),
+    },
+  );
+}
+
+export async function deleteSharedFile(slug: string, relPath: string): Promise<void> {
+  await apiFetch(`/instances/${slug}/shared-files/${encodeWorkspacePath(relPath)}`, {
+    method: "DELETE",
+  });
+}
+
 export async function updateAgentPosition(
   slug: string,
   agentId: string,

@@ -82,4 +82,17 @@ export const constants = {
 
   // Model discovery
   MODEL_DISCOVERY_POLL_INTERVAL_MS: 24 * 60 * 60 * 1000, // 24h
+
+  // ---------------------------------------------------------------------------
+  // Instance shared workspace (v38)
+  // ---------------------------------------------------------------------------
+
+  /** Sub-directory name inside `workspaces/` holding the instance shared workspace. */
+  SHARED_WORKSPACE_DIR: "shared",
+
+  /**
+   * Agent slugs reserved for system purposes. Rejected by agent creation flows.
+   * - "shared" collides with `<stateDir>/workspaces/shared/` (instance shared workspace).
+   */
+  RESERVED_AGENT_SLUGS: ["shared"] as const,
 } as const;

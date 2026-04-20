@@ -172,4 +172,59 @@ describe("workspace-knowledge plugin", () => {
     const result = await execTool(tools, "ws_search_files", { query: '"unbalanced' });
     expect(result.output.toLowerCase()).toContain("search failed");
   });
+
+  // ---------------------------------------------------------------------------
+  // Instance shared workspace (v38) — ws_* tools expose files from
+  // `instance_shared_files` under the `@shared/` prefix alongside the agent
+  // workspace.
+  // ---------------------------------------------------------------------------
+  describe("shared workspace (v38)", () => {
+    beforeAll(() => {
+      const instanceRow = db
+        .prepare("SELECT id FROM instances WHERE slug = ?")
+        .get(INSTANCE_SLUG) as { id: number };
+      const upsert = db.prepare(
+        `INSERT INTO instance_shared_files (instance_id, filename, content, content_hash, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      );
+      upsert.run(
+        instanceRow.id,
+        "README.md",
+        "# Instance guide\nTeam-wide reference with llama mention.",
+        "sh1",
+        "2026-04-20T00:00:00Z",
+      );
+      upsert.run(
+        instanceRow.id,
+        "docs/onboarding.md",
+        "# Onboarding\nWelcome aboard.",
+        "sh2",
+        "2026-04-20T00:00:00Z",
+      );
+    });
+
+    it("ws_list_files includes shared files under @shared/ prefix", async () => {
+      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+      const result = await execTool(tools, "ws_list_files", {});
+      expect(result.output).toContain("@shared/README.md");
+      expect(result.output).toContain("@shared/docs/onboarding.md");
+      expect(result.output).toContain("Your workspace");
+      expect(result.output).toContain("Shared workspace");
+    });
+
+    it("ws_list_files scopes to shared with @shared/ prefix in dir", async () => {
+      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+      const result = await execTool(tools, "ws_list_files", { dir: "@shared" });
+      expect(result.output).toContain("@shared/README.md");
+      expect(result.output).not.toContain("notes.md");
+    });
+
+    it("ws_search_files finds matches in the shared workspace", async () => {
+      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+      const result = await execTool(tools, "ws_search_files", { query: "llama" });
+      // Matches from both scopes should appear, shared ones prefixed with @shared/
+      expect(result.output).toContain("@shared/README.md");
+      expect(result.output).toContain("notes.md");
+    });
+  });
 });

@@ -85,10 +85,102 @@ interface FileRow {
   content: string | null;
 }
 
+/** Resolve the instance DB id from its slug. */
+function resolveInstanceDbId(db: Database.Database, instanceSlug: string): number | null {
+  const row = db.prepare("SELECT id FROM instances WHERE slug = ?").get(instanceSlug) as
+    | { id: number }
+    | undefined;
+  return row?.id ?? null;
+}
+
+/** Format a single file listing entry. */
+function formatEntry(filename: string, content: string | null): string {
+  const size = Buffer.byteLength(content ?? "", "utf8");
+  const title = extractTitle(content ?? "");
+  const sizeStr = size >= 1024 ? `${(size / 1024).toFixed(1)} KB` : `${size} B`;
+  return title ? `- ${filename} (${sizeStr}) — "${title}"` : `- ${filename} (${sizeStr})`;
+}
+
+/**
+ * Resolve scope prefixes from a raw `dir` argument. A dir starting with
+ * "@shared" targets the shared workspace only; any other dir applies to both.
+ */
+interface DirScope {
+  agentPrefix: string | null;
+  sharedPrefix: string | null;
+  includeAgent: boolean;
+}
+function resolveDirScope(rawDir: string | null): DirScope {
+  if (!rawDir) return { agentPrefix: null, sharedPrefix: null, includeAgent: true };
+  if (rawDir === "@shared" || rawDir.startsWith("@shared/")) {
+    const sub = rawDir === "@shared" ? "" : rawDir.slice("@shared/".length);
+    return {
+      agentPrefix: null,
+      sharedPrefix: sub ? sub.replace(/\/+$/, "") + "/" : null,
+      includeAgent: false,
+    };
+  }
+  const normalized = rawDir.replace(/\/+$/, "") + "/";
+  return { agentPrefix: normalized, sharedPrefix: normalized, includeAgent: true };
+}
+
+function listAgentEntries(
+  db: Database.Database,
+  agentDbId: number,
+  prefix: string | null,
+): string[] {
+  const rows = db
+    .prepare("SELECT filename, content FROM agent_files WHERE agent_id = ? ORDER BY filename")
+    .all(agentDbId) as FileRow[];
+  const out: string[] = [];
+  for (const row of rows) {
+    if (isExcluded(row.filename)) continue;
+    if (prefix && !row.filename.startsWith(prefix)) continue;
+    out.push(formatEntry(row.filename, row.content));
+  }
+  return out;
+}
+
+function listSharedEntries(
+  db: Database.Database,
+  instanceDbId: number,
+  prefix: string | null,
+): string[] {
+  const rows = db
+    .prepare(
+      `SELECT filename, content FROM instance_shared_files
+         WHERE instance_id = ? ORDER BY filename`,
+    )
+    .all(instanceDbId) as FileRow[];
+  const out: string[] = [];
+  for (const row of rows) {
+    if (prefix && !row.filename.startsWith(prefix)) continue;
+    out.push(formatEntry(`@shared/${row.filename}`, row.content));
+  }
+  return out;
+}
+
+/** Assemble the final listing sections output. */
+function formatListingSections(agentEntries: string[], sharedEntries: string[]): string {
+  const sections: string[] = [];
+  if (agentEntries.length > 0) {
+    sections.push(`## Your workspace\n${agentEntries.join("\n")}`);
+  }
+  if (sharedEntries.length > 0) {
+    sections.push(
+      `## Shared workspace (read-only, shared with all agents of this instance)\n` +
+        sharedEntries.join("\n"),
+    );
+  }
+  return sections.join("\n\n");
+}
+
 function createListTool(db: Database.Database, instanceSlug: InstanceSlug): Tool.Info {
   return Tool.define("ws_list_files", {
     description:
-      "List user-created files in your workspace directory. " +
+      "List user-created files in your workspace AND in the instance shared " +
+      "workspace (read-only, shared with all agents of the instance). " +
+      "Entries from the shared workspace are prefixed with '@shared/'. " +
       "Returns each file's path, size, and a short title extracted from the " +
       "first H1 heading or frontmatter 'description:' value. " +
       "Does NOT include identity files (SOUL.md, AGENTS.md, BOOTSTRAP.md, " +
@@ -97,12 +189,12 @@ function createListTool(db: Database.Database, instanceSlug: InstanceSlug): Tool
       "Use this tool when the user references notes, documents, drafts, or " +
       "project files they may have stored in the workspace, before asking them " +
       "to repeat information you could find yourself. " +
-      "Pass dir to scope the listing to a subdirectory (e.g. 'projects').",
+      "Pass dir to scope the listing (supports '@shared/<path>' to scope shared).",
     parameters: z.object({
       dir: z
         .string()
         .optional()
-        .describe("Optional subdirectory to scope listing (e.g. 'projects')"),
+        .describe("Optional subdirectory to scope listing (e.g. 'projects' or '@shared/docs')"),
     }),
     async execute(args, ctx) {
       const agentDbId = resolveAgentDbId(db, instanceSlug, ctx.agentId);
@@ -113,32 +205,29 @@ function createListTool(db: Database.Database, instanceSlug: InstanceSlug): Tool
           truncated: false,
         };
       }
+      const instanceDbId = resolveInstanceDbId(db, instanceSlug);
+      const rawDir = args.dir ?? null;
+      const scope = resolveDirScope(rawDir);
 
-      const rows = db
-        .prepare("SELECT filename, content FROM agent_files WHERE agent_id = ? ORDER BY filename")
-        .all(agentDbId) as FileRow[];
+      const agentEntries = scope.includeAgent
+        ? listAgentEntries(db, agentDbId, scope.agentPrefix)
+        : [];
+      const sharedEntries =
+        instanceDbId !== null ? listSharedEntries(db, instanceDbId, scope.sharedPrefix) : [];
 
-      const dirPrefix = args.dir ? args.dir.replace(/\/+$/, "") + "/" : null;
-      const entries: string[] = [];
-      for (const row of rows) {
-        if (isExcluded(row.filename)) continue;
-        if (dirPrefix && !row.filename.startsWith(dirPrefix)) continue;
-        const size = Buffer.byteLength(row.content ?? "", "utf8");
-        const title = extractTitle(row.content ?? "");
-        const sizeStr = size >= 1024 ? `${(size / 1024).toFixed(1)} KB` : `${size} B`;
-        entries.push(
-          title ? `- ${row.filename} (${sizeStr}) — "${title}"` : `- ${row.filename} (${sizeStr})`,
-        );
+      const totalCount = agentEntries.length + sharedEntries.length;
+      if (totalCount === 0) {
+        const output = rawDir
+          ? `No workspace files found under "${rawDir}".`
+          : "No user-created workspace files.";
+        return { title: "workspace files (0)", output, truncated: false };
       }
 
-      const output =
-        entries.length === 0
-          ? args.dir
-            ? `No workspace files found under "${args.dir}".`
-            : "No user-created workspace files."
-          : entries.join("\n");
-
-      return { title: `workspace files (${entries.length})`, output, truncated: false };
+      return {
+        title: `workspace files (${totalCount})`,
+        output: formatListingSections(agentEntries, sharedEntries),
+        truncated: false,
+      };
     },
   });
 }
@@ -152,16 +241,92 @@ interface SearchRow {
   excerpt: string;
 }
 
+/** Search error shape — either valid rows or a user-facing error message. */
+type SearchOutcome = { ok: true; rows: SearchRow[] } | { ok: false; error: string };
+
+function searchAgentFts(db: Database.Database, agentDbId: number, query: string): SearchOutcome {
+  try {
+    const rows = db
+      .prepare(
+        `SELECT af.filename,
+                snippet(agent_files_fts, 1, '>>>', '<<<', '…', 15) AS excerpt
+           FROM agent_files_fts
+           JOIN agent_files af ON af.id = agent_files_fts.rowid
+           WHERE agent_files_fts MATCH ?
+             AND af.agent_id = ?
+           ORDER BY rank
+           LIMIT 10`,
+      )
+      .all(query, agentDbId) as SearchRow[];
+    return { ok: true, rows };
+  } catch (err) {
+    logger.debug("[ws_search_files] FTS5 query failed (agent)", { error: String(err) });
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+function searchSharedFts(db: Database.Database, instanceDbId: number, query: string): SearchRow[] {
+  try {
+    return db
+      .prepare(
+        `SELECT sf.filename,
+                snippet(instance_shared_files_fts, 1, '>>>', '<<<', '…', 15) AS excerpt
+           FROM instance_shared_files_fts
+           JOIN instance_shared_files sf ON sf.id = instance_shared_files_fts.rowid
+           WHERE instance_shared_files_fts MATCH ?
+             AND sf.instance_id = ?
+           ORDER BY rank
+           LIMIT 10`,
+      )
+      .all(query, instanceDbId) as SearchRow[];
+  } catch (err) {
+    logger.debug("[ws_search_files] FTS5 query failed (shared)", { error: String(err) });
+    return [];
+  }
+}
+
+function filterAgentMatches(rows: SearchRow[], prefix: string | null): string[] {
+  const out: string[] = [];
+  for (const r of rows) {
+    if (isExcluded(r.filename)) continue;
+    if (prefix && !r.filename.startsWith(prefix)) continue;
+    out.push(`${r.filename}:\n  ${r.excerpt}`);
+  }
+  return out;
+}
+
+function filterSharedMatches(rows: SearchRow[], prefix: string | null): string[] {
+  const out: string[] = [];
+  for (const r of rows) {
+    if (prefix && !r.filename.startsWith(prefix)) continue;
+    out.push(`@shared/${r.filename}:\n  ${r.excerpt}`);
+  }
+  return out;
+}
+
+function formatSearchSections(agentMatches: string[], sharedMatches: string[]): string {
+  const sections: string[] = [];
+  if (agentMatches.length > 0) {
+    sections.push(`## Your workspace\n${agentMatches.join("\n\n")}`);
+  }
+  if (sharedMatches.length > 0) {
+    sections.push(`## Shared workspace\n${sharedMatches.join("\n\n")}`);
+  }
+  return sections.join("\n\n");
+}
+
 function createSearchTool(db: Database.Database, instanceSlug: InstanceSlug): Tool.Info {
   return Tool.define("ws_search_files", {
     description:
-      "Full-text search across your workspace files. " +
-      "Returns up to 10 matches with a highlighted excerpt (matches wrapped in " +
-      "'>>>' / '<<<'). Does NOT search identity files or memory files. " +
+      "Full-text search across your workspace AND the instance shared workspace. " +
+      "Returns up to 10 matches per scope with a highlighted excerpt (matches wrapped in " +
+      "'>>>' / '<<<'). Shared-workspace matches are prefixed with '@shared/'. " +
+      "Does NOT search identity files or memory files. " +
       "Use this to find where a topic, keyword, or concept appears across " +
       "workspace documents — faster than reading each file. " +
       'The query supports FTS5 syntax: terms (AND by default), OR, "phrase", ' +
-      "prefix* and NOT. Pass dir to scope the search to a subdirectory.",
+      "prefix* and NOT. Pass dir to scope the search to a subdirectory " +
+      "(supports '@shared/<path>' to scope shared-only).",
     parameters: z.object({
       query: z
         .string()
@@ -169,7 +334,10 @@ function createSearchTool(db: Database.Database, instanceSlug: InstanceSlug): To
         .describe(
           'FTS5 query (terms separated by space are ANDed; supports OR, NOT, "phrase", prefix*)',
         ),
-      dir: z.string().optional().describe("Optional subdirectory to scope search"),
+      dir: z
+        .string()
+        .optional()
+        .describe("Optional subdirectory to scope search (e.g. '@shared/docs')"),
     }),
     async execute(args, ctx) {
       const agentDbId = resolveAgentDbId(db, instanceSlug, ctx.agentId);
@@ -180,40 +348,31 @@ function createSearchTool(db: Database.Database, instanceSlug: InstanceSlug): To
           truncated: false,
         };
       }
+      const instanceDbId = resolveInstanceDbId(db, instanceSlug);
+      const scope = resolveDirScope(args.dir ?? null);
 
-      let rows: SearchRow[];
-      try {
-        rows = db
-          .prepare(
-            `SELECT af.filename,
-                    snippet(agent_files_fts, 1, '>>>', '<<<', '…', 15) AS excerpt
-               FROM agent_files_fts
-               JOIN agent_files af ON af.id = agent_files_fts.rowid
-               WHERE agent_files_fts MATCH ?
-                 AND af.agent_id = ?
-               ORDER BY rank
-               LIMIT 10`,
-          )
-          .all(args.query, agentDbId) as SearchRow[];
-      } catch (err) {
-        logger.debug("[ws_search_files] FTS5 query failed", { error: String(err) });
-        return {
-          title: "workspace search error",
-          output:
-            `Search failed: ${err instanceof Error ? err.message : String(err)}. ` +
-            `Check your FTS5 syntax (terms, "phrase", prefix*, OR, NOT).`,
-          truncated: false,
-        };
+      let agentMatches: string[] = [];
+      if (scope.includeAgent) {
+        const outcome = searchAgentFts(db, agentDbId, args.query);
+        if (!outcome.ok) {
+          return {
+            title: "workspace search error",
+            output:
+              `Search failed: ${outcome.error}. ` +
+              `Check your FTS5 syntax (terms, "phrase", prefix*, OR, NOT).`,
+            truncated: false,
+          };
+        }
+        agentMatches = filterAgentMatches(outcome.rows, scope.agentPrefix);
       }
 
-      const dirPrefix = args.dir ? args.dir.replace(/\/+$/, "") + "/" : null;
-      const filtered = rows.filter((r) => {
-        if (isExcluded(r.filename)) return false;
-        if (dirPrefix && !r.filename.startsWith(dirPrefix)) return false;
-        return true;
-      });
+      const sharedMatches =
+        instanceDbId !== null
+          ? filterSharedMatches(searchSharedFts(db, instanceDbId, args.query), scope.sharedPrefix)
+          : [];
 
-      if (filtered.length === 0) {
+      const total = agentMatches.length + sharedMatches.length;
+      if (total === 0) {
         return {
           title: "workspace search (0)",
           output: `No matches for query "${args.query}".`,
@@ -221,10 +380,9 @@ function createSearchTool(db: Database.Database, instanceSlug: InstanceSlug): To
         };
       }
 
-      const output = filtered.map((r) => `${r.filename}:\n  ${r.excerpt}`).join("\n\n");
       return {
-        title: `workspace search (${filtered.length})`,
-        output,
+        title: `workspace search (${total})`,
+        output: formatSearchSections(agentMatches, sharedMatches),
         truncated: false,
       };
     },

@@ -6,7 +6,8 @@ export type SidebarSection =
   | "channels"
   | "mcp"
   | "permissions"
-  | "config";
+  | "config"
+  | "shared-files";
 
 // ---------------------------------------------------------------------------
 // Skills

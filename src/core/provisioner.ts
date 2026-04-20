@@ -132,6 +132,7 @@ export class Provisioner {
     await this.conn.mkdir(getInstancesDir(), { mode: constants.DIR_MODE });
     await this.conn.mkdir(stateDir, { mode: constants.DIR_MODE });
     await this.conn.mkdir(path.join(stateDir, "workspaces"));
+    await this.conn.mkdir(path.join(stateDir, "workspaces", constants.SHARED_WORKSPACE_DIR));
     await this.conn.mkdir(logsDir);
   }
 

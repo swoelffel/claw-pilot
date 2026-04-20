@@ -50,7 +50,15 @@ export class AgentProvisioner {
   ) {}
 
   async createAgent(instance: InstanceRecord, data: CreateAgentData): Promise<void> {
-    // 1. Validate slug uniqueness
+    // 1a. Reject reserved slugs (e.g. "shared" — conflicts with instance shared workspace).
+    if ((constants.RESERVED_AGENT_SLUGS as readonly string[]).includes(data.agentSlug)) {
+      throw new ClawPilotError(
+        `The slug "${data.agentSlug}" is reserved for the instance shared workspace.`,
+        "INVALID_AGENT_ID",
+      );
+    }
+
+    // 1b. Validate slug uniqueness
     const existing = this.registry.getAgentByAgentId(instance.id, data.agentSlug);
     if (existing) throw new Error(`Agent "${data.agentSlug}" already exists`);
 

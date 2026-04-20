@@ -11,6 +11,25 @@ import type { CreateAgentData } from "../../../../core/agent-provisioner.js";
 import { upsertSearchEntry } from "../../../../core/repositories/search-repository.js";
 import { buildAgentPayload } from "../../_helpers.js";
 import { logger } from "../../../../lib/logger.js";
+import { constants } from "../../../../lib/constants.js";
+
+const RESERVED_AGENT_SLUGS = new Set<string>(constants.RESERVED_AGENT_SLUGS);
+
+/** Returns an error code + message when the agent slug is invalid, else null. */
+function validateAgentSlug(slug: string | undefined): { message: string } | null {
+  if (!slug) return null;
+  if (!/^[a-z][a-z0-9-]*$/.test(slug) || slug.length < 2 || slug.length > 30) {
+    return {
+      message: "Invalid agentSlug: must be 2-30 lowercase alphanumeric chars with hyphens",
+    };
+  }
+  if (RESERVED_AGENT_SLUGS.has(slug)) {
+    return {
+      message: `The slug "${slug}" is reserved for the instance shared workspace.`,
+    };
+  }
+  return null;
+}
 
 const FromTemplateSchema = z.object({
   blueprintId: z.string().min(1),
@@ -18,7 +37,10 @@ const FromTemplateSchema = z.object({
     .string()
     .regex(/^[a-z][a-z0-9-]*$/)
     .min(2)
-    .max(30),
+    .max(30)
+    .refine((s) => !RESERVED_AGENT_SLUGS.has(s), {
+      message: "This agent slug is reserved (conflicts with the instance shared workspace).",
+    }),
   name: z.string().min(1).max(100).optional(),
   provider: z.string().min(1),
   model: z.string().min(1),
@@ -41,17 +63,9 @@ export function registerAgentCreateRoutes(app: Hono, deps: RouteDeps): void {
           "Missing required fields: agentSlug, name, provider, model",
         );
       }
-      if (
-        !/^[a-z][a-z0-9-]*$/.test(body.agentSlug) ||
-        body.agentSlug.length < 2 ||
-        body.agentSlug.length > 30
-      ) {
-        return apiError(
-          c,
-          400,
-          "INVALID_AGENT_ID",
-          "Invalid agentSlug: must be 2-30 lowercase alphanumeric chars with hyphens",
-        );
+      const slugError = validateAgentSlug(body.agentSlug);
+      if (slugError) {
+        return apiError(c, 400, "INVALID_AGENT_ID", slugError.message);
       }
     } catch (err) {
       logger.warn("[route:agents-create] JSON parse failed", { error: String(err) });
