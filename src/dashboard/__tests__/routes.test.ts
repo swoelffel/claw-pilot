@@ -817,6 +817,24 @@ describe("POST /api/instances/:slug/agents", () => {
     expect(body.code).toBe("INVALID_AGENT_ID");
   });
 
+  it("rejects the reserved slug 'shared'", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/agents", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        agentSlug: "shared",
+        name: "Shared",
+        provider: "anthropic",
+        model: "claude-haiku-4-5",
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("INVALID_AGENT_ID");
+    expect(String(body.message ?? body.error ?? "")).toMatch(/reserved/i);
+  });
+
   it("returns 201 and creates agent with valid body", async () => {
     seedInstance(ctx, "demo1", 18789);
     const res = await ctx.app.request("/api/instances/demo1/agents", {
@@ -2357,5 +2375,81 @@ describe("GET /api/instances/:slug/runtime/heartbeat/history", () => {
     for (const tick of body.ticks) {
       expect(tick.createdAt).not.toBe(sessionCreatedAt);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Instance shared workspace routes (v38)
+// ---------------------------------------------------------------------------
+
+describe("Instance shared workspace routes (/shared-files)", () => {
+  it("GET returns an empty tree for a fresh instance", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/shared-files", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.tree).toEqual([]);
+  });
+
+  it("PUT creates a file, GET reads it back, DELETE removes it", async () => {
+    seedInstance(ctx, "demo1", 18789);
+
+    const putRes = await ctx.app.request("/api/instances/demo1/shared-files/README.md", {
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ content: "# Team doc\nShared across agents." }),
+    });
+    expect(putRes.status).toBe(200);
+    const putBody = await json(putRes);
+    expect(putBody.filename).toBe("README.md");
+    expect(putBody.content).toContain("Team doc");
+
+    const getRes = await ctx.app.request("/api/instances/demo1/shared-files/README.md", {
+      headers: authHeaders(),
+    });
+    expect(getRes.status).toBe(200);
+    const getBody = await json(getRes);
+    expect(getBody.content).toContain("Team doc");
+
+    const treeRes = await ctx.app.request("/api/instances/demo1/shared-files", {
+      headers: authHeaders(),
+    });
+    const treeBody = await json(treeRes);
+    expect(treeBody.tree.map((n: { path: string }) => n.path)).toContain("README.md");
+
+    const delRes = await ctx.app.request("/api/instances/demo1/shared-files/README.md", {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+    expect(delRes.status).toBe(200);
+
+    const gone = await ctx.app.request("/api/instances/demo1/shared-files/README.md", {
+      headers: authHeaders(),
+    });
+    expect(gone.status).toBe(404);
+  });
+
+  it("GET on an unknown file returns 404", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    const res = await ctx.app.request("/api/instances/demo1/shared-files/nope.md", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("PUT rejects a disallowed file extension", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    // validateWorkspaceRelativePath whitelists .md/.txt/.json/.yaml/.yml/.csv/.log;
+    // .sh (shell script) is rejected.
+    const res = await ctx.app.request("/api/instances/demo1/shared-files/payload.sh", {
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ content: "x" }),
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("INVALID_PATH");
   });
 });

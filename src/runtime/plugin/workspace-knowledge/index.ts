@@ -10,6 +10,6 @@ import { createWorkspaceKnowledgeTools } from "./tools.js";
 export const workspaceKnowledgePlugin: Plugin = (input) => {
   if (!input.db) return {};
   return {
-    tools: () => createWorkspaceKnowledgeTools(input.db, input.instanceSlug),
+    tools: () => createWorkspaceKnowledgeTools(input.db, input.instanceSlug, input.workDir),
   };
 };

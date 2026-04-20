@@ -447,6 +447,13 @@ export const templates = {
   "profile-instructions-hint": "Markdown supporté. Maximum 10 000 caractères.",
   "profile-char-count": "caractères",
 
+  // instance-shared-files.ts
+  "settings-shared-files": "Espace partagé",
+  "settings-shared-files-header": "Espace partagé",
+  "isf-hint":
+    "Les fichiers déposés ici sont partagés avec tous les agents de cette instance via ws_list_files, ws_search_files, ws_write_shared_file et ws_delete_shared_file (préfixés par @shared/). À utiliser pour des documents de référence partagés et la collaboration inter-agents.",
+  "isf-placeholder": "Sélectionnez un fichier à consulter ou modifier, ou créez-en un nouveau.",
+
   // instance-skills.ts
   "settings-skills": "Skills",
   "skills-section-title": "Skills",
