@@ -6,7 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
-## [Unreleased]
+## [0.80.6] — 2026-04-20
 
 ### Added
 - **Permission middleware extension point** (`src/dashboard/middleware/permission.ts`): contract for pluggable `PermissionChecker`, registration API, `permission()` Hono middleware factory, and `ACTIONS` catalogue. Every dashboard mutation route and sensitive read route is annotated with `permission({ action, resource })`. The auth middleware publishes an `AuthenticatedUser` on the Hono context with a `source: "session" | "bearer"` discriminator. Community ships `NullPermissionChecker` (always allow) since Community is mono-user admin by design. Enterprise can register a `FineGrainedRBACChecker` without modifying any dashboard route. This is hook **H1** of the Enterprise Edition preparation (Phase 0). See `ai-docs/plan-enterprise-edition.md` and `docs/architecture/permission-middleware.md`.
