@@ -19,6 +19,7 @@ import {
 import { registerAuthRoutes } from "../routes/auth.js";
 import { constants } from "../../lib/constants.js";
 import type { RouteDeps } from "../route-deps.js";
+import { injectAdminUser } from "./_helpers/inject-admin-user.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -94,6 +95,7 @@ async function createTestApp(): Promise<TestCtx> {
   };
 
   const app = new Hono();
+  app.use("*", injectAdminUser());
   registerAuthRoutes(app, deps, TEST_TOKEN);
 
   return { app, sessionStore, db };

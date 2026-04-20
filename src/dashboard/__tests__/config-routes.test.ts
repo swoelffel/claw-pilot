@@ -54,6 +54,7 @@ import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { registerConfigRoutes } from "../routes/instances/config.js";
 import { instanceMiddleware } from "../routes/_instance-middleware.js";
+import { injectAdminUser } from "./_helpers/inject-admin-user.js";
 import { writeEnvVar, removeEnvVar } from "../../lib/dotenv.js";
 import { isCryptoAvailable } from "../../lib/crypto.js";
 import type { RuntimeConfig } from "../../runtime/index.js";
@@ -166,6 +167,7 @@ beforeEach(() => {
     }
     await next();
   });
+  app.use("/api/*", injectAdminUser());
 
   lifecycle = {
     restart: vi.fn().mockResolvedValue(undefined),
@@ -593,6 +595,7 @@ describe("GET /api/providers", () => {
       }
       await next();
     });
+    app2.use("/api/*", injectAdminUser());
 
     const deps2: RouteDeps = {
       registry,

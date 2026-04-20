@@ -16,6 +16,7 @@ import { SessionStore } from "../session-store.js";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { registerNamedKeyRoutes } from "../routes/named-keys.js";
+import { TEST_ADMIN } from "./_helpers/inject-admin-user.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -55,6 +56,7 @@ function createTestApp(): TestContext {
     if (auth !== expectedBearer) {
       return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
     }
+    c.set("user", { ...TEST_ADMIN });
     await next();
   });
 

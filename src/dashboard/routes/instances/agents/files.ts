@@ -11,6 +11,8 @@
 import type { Context, Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { apiError } from "../../../route-deps.js";
+import { permission } from "../../../middleware/permission.js";
+import { ACTIONS } from "../../../middleware/permission-actions.js";
 import { getInstanceContext } from "../../_instance-middleware.js";
 import { AgentProvisioner } from "../../../../core/agent-provisioner.js";
 import {
@@ -60,186 +62,242 @@ function invalidPath(c: Context, err: unknown): Response {
 }
 
 // ---------------------------------------------------------------------------
+// Extracted route handlers
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type HonoContext = any;
+
+/** Handle PUT /agents/:agentId/files/* — create or update a workspace file. */
+async function handleFileUpdate(
+  c: HonoContext,
+  registry: RouteDeps["registry"],
+  conn: RouteDeps["conn"],
+): Promise<Response> {
+  const { instance, slug } = getInstanceContext(c);
+  const agentId = c.req.param("agentId");
+
+  const extracted = extractRelPath(new URL(c.req.url).pathname, slug, agentId);
+  if ("error" in extracted) return apiError(c, 400, "INVALID_PATH", extracted.error);
+
+  let relPath: string;
+  try {
+    relPath = validateWorkspaceRelativePath(extracted.relPath);
+  } catch (err) {
+    return invalidPath(c, err);
+  }
+
+  const agentRecord = registry.getAgentByAgentId(instance.id, agentId);
+  if (!agentRecord) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
+
+  let body: { content?: string };
+  try {
+    body = (await c.req.json()) as { content?: string };
+  } catch (err) {
+    logger.warn("[route:agents-files] JSON parse failed", { error: String(err) });
+    return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+  }
+  if (typeof body.content !== "string") {
+    return apiError(c, 400, "FIELD_REQUIRED", "content is required");
+  }
+  if (body.content.length > 1_048_576) {
+    return apiError(c, 413, "CONTENT_TOO_LARGE", "File content exceeds 1MB limit");
+  }
+
+  try {
+    const provisioner = new AgentProvisioner(conn, registry);
+    await provisioner.updateAgentFile(instance, agentId, relPath, body.content);
+  } catch (err: unknown) {
+    if (err instanceof InvalidWorkspacePathError) {
+      return apiError(c, 400, "INVALID_PATH", err.message);
+    }
+    if (err instanceof InstanceNotFoundError) {
+      return apiError(c, 404, "FILE_NOT_FOUND", err.message);
+    }
+    if (err instanceof ClawPilotError && err.code === "AGENT_NOT_FOUND") {
+      return apiError(c, 404, "AGENT_NOT_FOUND", err.message);
+    }
+    return apiError(
+      c,
+      500,
+      "FILE_SAVE_FAILED",
+      err instanceof Error ? err.message : "File save failed",
+    );
+  }
+
+  // Notify the runtime daemon that a workspace file changed.
+  // Best-effort: if the daemon is not running, the next startup reloads fresh files.
+  const filePath = path.join(instance.state_dir, "workspaces", agentId, relPath);
+  void publishRuntimeEvent(slug, "workspace.file.changed", {
+    instanceSlug: slug,
+    agentId,
+    filename: relPath,
+    filePath,
+  });
+
+  const updatedFile = registry.getAgentFileContent(agentRecord.id, relPath);
+  return c.json(
+    {
+      filename: relPath,
+      path: relPath,
+      content: updatedFile?.content ?? body.content,
+      content_hash: updatedFile?.content_hash ?? "",
+      updated_at: updatedFile?.updated_at ?? new Date().toISOString(),
+      editable: true,
+      in_system_prompt: EDITABLE_FILES.has(relPath),
+    },
+    200,
+  );
+}
+
+/** Handle DELETE /agents/:agentId/files/* — delete a workspace file. */
+async function handleFileDelete(
+  c: HonoContext,
+  registry: RouteDeps["registry"],
+  conn: RouteDeps["conn"],
+): Promise<Response> {
+  const { instance, slug } = getInstanceContext(c);
+  const agentId = c.req.param("agentId");
+
+  const extracted = extractRelPath(new URL(c.req.url).pathname, slug, agentId);
+  if ("error" in extracted) return apiError(c, 400, "INVALID_PATH", extracted.error);
+
+  let relPath: string;
+  try {
+    relPath = validateWorkspaceRelativePath(extracted.relPath);
+  } catch (err) {
+    return invalidPath(c, err);
+  }
+
+  const agentRecord = registry.getAgentByAgentId(instance.id, agentId);
+  if (!agentRecord) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
+
+  try {
+    const provisioner = new AgentProvisioner(conn, registry);
+    await provisioner.deleteAgentFile(instance, agentId, relPath);
+  } catch (err: unknown) {
+    if (err instanceof InvalidWorkspacePathError) {
+      return apiError(c, 400, "INVALID_PATH", err.message);
+    }
+    if (err instanceof ClawPilotError && err.code === "AGENT_NOT_FOUND") {
+      return apiError(c, 404, "AGENT_NOT_FOUND", err.message);
+    }
+    return apiError(
+      c,
+      500,
+      "FILE_DELETE_FAILED",
+      err instanceof Error ? err.message : "File delete failed",
+    );
+  }
+
+  const filePath = path.join(instance.state_dir, "workspaces", agentId, relPath);
+  void publishRuntimeEvent(slug, "workspace.file.changed", {
+    instanceSlug: slug,
+    agentId,
+    filename: relPath,
+    filePath,
+    deleted: true,
+  });
+
+  return c.json({ deleted: true, path: relPath }, 200);
+}
+
+// ---------------------------------------------------------------------------
 // Route registration
 // ---------------------------------------------------------------------------
 
 export function registerAgentFileRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, conn } = deps;
+  const attr = (c: HonoContext) => ({ slug: c.req.param("slug") });
+  const attrWithPath = (c: HonoContext) => ({ slug: c.req.param("slug"), path: c.req.path });
+  const aid = (c: HonoContext) => c.req.param("agentId");
 
   // GET /api/instances/:slug/agents/:agentId/files — list workspace as a tree
-  app.get("/api/instances/:slug/agents/:agentId/files", (c) => {
-    const { instance } = getInstanceContext(c);
-    const agentId = c.req.param("agentId");
+  app.get(
+    "/api/instances/:slug/agents/:agentId/files",
+    permission({
+      action: ACTIONS.AGENT_FILES_READ,
+      resource: { kind: "agent", id: aid },
+      attributes: attr,
+    }),
+    (c) => {
+      const { instance } = getInstanceContext(c);
+      const agentId = c.req.param("agentId");
 
-    const agent = registry.getAgentByAgentId(instance.id, agentId);
-    if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
+      const agent = registry.getAgentByAgentId(instance.id, agentId);
+      if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
-    const rows = registry.listAgentFiles(agent.id).map((f) => ({
-      filename: f.filename,
-      size: Buffer.byteLength(f.content ?? "", "utf8"),
-      content_hash: f.content_hash ?? "",
-      updated_at: f.updated_at ?? "",
-    }));
-    return c.json({ tree: buildFileTree(rows) });
-  });
+      const rows = registry.listAgentFiles(agent.id).map((f) => ({
+        filename: f.filename,
+        size: Buffer.byteLength(f.content ?? "", "utf8"),
+        content_hash: f.content_hash ?? "",
+        updated_at: f.updated_at ?? "",
+      }));
+      return c.json({ tree: buildFileTree(rows) });
+    },
+  );
 
   // GET /api/instances/:slug/agents/:agentId/files/* — fetch a single workspace file
-  app.get("/api/instances/:slug/agents/:agentId/files/*", (c) => {
-    const { instance, slug } = getInstanceContext(c);
-    const agentId = c.req.param("agentId");
+  app.get(
+    "/api/instances/:slug/agents/:agentId/files/*",
+    permission({
+      action: ACTIONS.AGENT_FILE_READ,
+      resource: { kind: "agent", id: aid },
+      attributes: attrWithPath,
+    }),
+    (c) => {
+      const { instance, slug } = getInstanceContext(c);
+      const agentId = c.req.param("agentId");
 
-    const extracted = extractRelPath(new URL(c.req.url).pathname, slug, agentId);
-    if ("error" in extracted) return apiError(c, 400, "INVALID_PATH", extracted.error);
+      const extracted = extractRelPath(new URL(c.req.url).pathname, slug, agentId);
+      if ("error" in extracted) return apiError(c, 400, "INVALID_PATH", extracted.error);
 
-    let relPath: string;
-    try {
-      relPath = validateWorkspaceRelativePath(extracted.relPath);
-    } catch (err) {
-      return invalidPath(c, err);
-    }
-
-    const agent = registry.getAgentByAgentId(instance.id, agentId);
-    if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
-
-    const file = registry.getAgentFileContent(agent.id, relPath);
-    if (!file) return apiError(c, 404, "FILE_NOT_FOUND", "File not found");
-
-    // Files outside the prompt-discovery whitelist are still editable.
-    // The `in_system_prompt` flag tells the UI whether edits affect the system prompt.
-    return c.json({
-      filename: file.filename,
-      path: file.filename,
-      content: file.content ?? "",
-      content_hash: file.content_hash ?? "",
-      updated_at: file.updated_at ?? "",
-      editable: true,
-      in_system_prompt: EDITABLE_FILES.has(relPath),
-    });
-  });
-
-  // PUT /api/instances/:slug/agents/:agentId/files/* — create or update a workspace file
-  app.put("/api/instances/:slug/agents/:agentId/files/*", async (c) => {
-    const { instance, slug } = getInstanceContext(c);
-    const agentId = c.req.param("agentId");
-
-    const extracted = extractRelPath(new URL(c.req.url).pathname, slug, agentId);
-    if ("error" in extracted) return apiError(c, 400, "INVALID_PATH", extracted.error);
-
-    let relPath: string;
-    try {
-      relPath = validateWorkspaceRelativePath(extracted.relPath);
-    } catch (err) {
-      return invalidPath(c, err);
-    }
-
-    const agentRecord = registry.getAgentByAgentId(instance.id, agentId);
-    if (!agentRecord) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
-
-    let body: { content?: string };
-    try {
-      body = await c.req.json<{ content?: string }>();
-    } catch (err) {
-      logger.warn("[route:agents-files] JSON parse failed", { error: String(err) });
-      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
-    }
-    if (typeof body.content !== "string") {
-      return apiError(c, 400, "FIELD_REQUIRED", "content is required");
-    }
-    if (body.content.length > 1_048_576) {
-      return apiError(c, 413, "CONTENT_TOO_LARGE", "File content exceeds 1MB limit");
-    }
-
-    try {
-      const provisioner = new AgentProvisioner(conn, registry);
-      await provisioner.updateAgentFile(instance, agentId, relPath, body.content);
-    } catch (err: unknown) {
-      if (err instanceof InvalidWorkspacePathError) {
-        return apiError(c, 400, "INVALID_PATH", err.message);
+      let relPath: string;
+      try {
+        relPath = validateWorkspaceRelativePath(extracted.relPath);
+      } catch (err) {
+        return invalidPath(c, err);
       }
-      if (err instanceof InstanceNotFoundError) {
-        return apiError(c, 404, "FILE_NOT_FOUND", err.message);
-      }
-      if (err instanceof ClawPilotError && err.code === "AGENT_NOT_FOUND") {
-        return apiError(c, 404, "AGENT_NOT_FOUND", err.message);
-      }
-      return apiError(
-        c,
-        500,
-        "FILE_SAVE_FAILED",
-        err instanceof Error ? err.message : "File save failed",
-      );
-    }
 
-    // Notify the runtime daemon that a workspace file changed.
-    // Best-effort: if the daemon is not running, the next startup reloads fresh files.
-    const filePath = path.join(instance.state_dir, "workspaces", agentId, relPath);
-    void publishRuntimeEvent(slug, "workspace.file.changed", {
-      instanceSlug: slug,
-      agentId,
-      filename: relPath,
-      filePath,
-    });
+      const agent = registry.getAgentByAgentId(instance.id, agentId);
+      if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
-    const updatedFile = registry.getAgentFileContent(agentRecord.id, relPath);
-    return c.json(
-      {
-        filename: relPath,
-        path: relPath,
-        content: updatedFile?.content ?? body.content,
-        content_hash: updatedFile?.content_hash ?? "",
-        updated_at: updatedFile?.updated_at ?? new Date().toISOString(),
+      const file = registry.getAgentFileContent(agent.id, relPath);
+      if (!file) return apiError(c, 404, "FILE_NOT_FOUND", "File not found");
+
+      // Files outside the prompt-discovery whitelist are still editable.
+      // The `in_system_prompt` flag tells the UI whether edits affect the system prompt.
+      return c.json({
+        filename: file.filename,
+        path: file.filename,
+        content: file.content ?? "",
+        content_hash: file.content_hash ?? "",
+        updated_at: file.updated_at ?? "",
         editable: true,
         in_system_prompt: EDITABLE_FILES.has(relPath),
-      },
-      200,
-    );
-  });
+      });
+    },
+  );
+
+  // PUT /api/instances/:slug/agents/:agentId/files/* — create or update a workspace file
+  app.put(
+    "/api/instances/:slug/agents/:agentId/files/*",
+    permission({
+      action: ACTIONS.AGENT_FILE_UPDATE,
+      resource: { kind: "agent", id: aid },
+      attributes: attrWithPath,
+    }),
+    (c) => handleFileUpdate(c, registry, conn),
+  );
 
   // DELETE /api/instances/:slug/agents/:agentId/files/* — delete a workspace file
-  app.delete("/api/instances/:slug/agents/:agentId/files/*", async (c) => {
-    const { instance, slug } = getInstanceContext(c);
-    const agentId = c.req.param("agentId");
-
-    const extracted = extractRelPath(new URL(c.req.url).pathname, slug, agentId);
-    if ("error" in extracted) return apiError(c, 400, "INVALID_PATH", extracted.error);
-
-    let relPath: string;
-    try {
-      relPath = validateWorkspaceRelativePath(extracted.relPath);
-    } catch (err) {
-      return invalidPath(c, err);
-    }
-
-    const agentRecord = registry.getAgentByAgentId(instance.id, agentId);
-    if (!agentRecord) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
-
-    try {
-      const provisioner = new AgentProvisioner(conn, registry);
-      await provisioner.deleteAgentFile(instance, agentId, relPath);
-    } catch (err: unknown) {
-      if (err instanceof InvalidWorkspacePathError) {
-        return apiError(c, 400, "INVALID_PATH", err.message);
-      }
-      if (err instanceof ClawPilotError && err.code === "AGENT_NOT_FOUND") {
-        return apiError(c, 404, "AGENT_NOT_FOUND", err.message);
-      }
-      return apiError(
-        c,
-        500,
-        "FILE_DELETE_FAILED",
-        err instanceof Error ? err.message : "File delete failed",
-      );
-    }
-
-    const filePath = path.join(instance.state_dir, "workspaces", agentId, relPath);
-    void publishRuntimeEvent(slug, "workspace.file.changed", {
-      instanceSlug: slug,
-      agentId,
-      filename: relPath,
-      filePath,
-      deleted: true,
-    });
-
-    return c.json({ deleted: true, path: relPath }, 200);
-  });
+  app.delete(
+    "/api/instances/:slug/agents/:agentId/files/*",
+    permission({
+      action: ACTIONS.AGENT_FILE_DELETE,
+      resource: { kind: "agent", id: aid },
+      attributes: attrWithPath,
+    }),
+    (c) => handleFileDelete(c, registry, conn),
+  );
 }

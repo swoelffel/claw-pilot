@@ -15,6 +15,7 @@ import { SessionStore } from "../session-store.js";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { registerNotificationRoutes } from "../routes/notifications.js";
+import { TEST_ADMIN } from "./_helpers/inject-admin-user.js";
 import {
   insertNotification,
   countUnread,
@@ -68,6 +69,7 @@ beforeEach(() => {
     if (auth !== expectedBearer) {
       return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
     }
+    c.set("user", { ...TEST_ADMIN });
     await next();
   });
 

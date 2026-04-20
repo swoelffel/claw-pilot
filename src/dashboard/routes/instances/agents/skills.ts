@@ -7,6 +7,8 @@ import { unzip as fflateUnzip } from "fflate";
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { apiError } from "../../../route-deps.js";
+import { permission } from "../../../middleware/permission.js";
+import { ACTIONS } from "../../../middleware/permission-actions.js";
 import { getInstanceContext } from "../../_instance-middleware.js";
 import { getRuntimeStateDir } from "../../../../lib/platform.js";
 import { listAvailableSkills, type SkillEntry } from "../../../../runtime/tool/built-in/skill.js";
@@ -268,143 +270,166 @@ async function handleSkillUpload(c: HonoContext, stateDir: string): Promise<Resp
 // ---------------------------------------------------------------------------
 
 export function registerAgentSkillsRoutes(app: Hono, _deps: RouteDeps): void {
+  const attr = (c: HonoContext) => ({ slug: c.req.param("slug") });
+  const sname = (c: HonoContext) => c.req.param("name");
+
   // ── GET /api/instances/:slug/skills — list available skills ──────────────
 
-  app.get("/api/instances/:slug/skills", async (c) => {
-    const { slug } = getInstanceContext(c);
+  app.get(
+    "/api/instances/:slug/skills",
+    permission({ action: ACTIONS.SKILL_LIST, resource: { kind: "skill" }, attributes: attr }),
+    async (c) => {
+      const { slug } = getInstanceContext(c);
 
-    const stateDir = getRuntimeStateDir(slug);
+      const stateDir = getRuntimeStateDir(slug);
 
-    try {
-      const entries = await listAvailableSkills(stateDir);
-      const skills = entries.map((e) => toSkillInfo(e, stateDir));
-      return c.json({ available: true, skills } satisfies SkillsListResponse);
-    } catch (err) {
-      logger.debug("[route:skills] listAvailableSkills failed", { error: String(err) });
-      // Filesystem or runtime error — return empty list
-      return c.json({ available: false, skills: [] } satisfies SkillsListResponse);
-    }
-  });
+      try {
+        const entries = await listAvailableSkills(stateDir);
+        const skills = entries.map((e) => toSkillInfo(e, stateDir));
+        return c.json({ available: true, skills } satisfies SkillsListResponse);
+      } catch (err) {
+        logger.debug("[route:skills] listAvailableSkills failed", { error: String(err) });
+        // Filesystem or runtime error — return empty list
+        return c.json({ available: false, skills: [] } satisfies SkillsListResponse);
+      }
+    },
+  );
 
   // ── POST /api/instances/:slug/skills/upload — upload a ZIP ───────────────
 
-  app.post("/api/instances/:slug/skills/upload", async (c) => {
-    const { slug } = getInstanceContext(c);
-    const stateDir = getRuntimeStateDir(slug);
-    return handleSkillUpload(c, stateDir);
-  });
+  app.post(
+    "/api/instances/:slug/skills/upload",
+    permission({ action: ACTIONS.SKILL_UPLOAD, resource: { kind: "skill" }, attributes: attr }),
+    async (c) => {
+      const { slug } = getInstanceContext(c);
+      const stateDir = getRuntimeStateDir(slug);
+      return handleSkillUpload(c, stateDir);
+    },
+  );
 
   // ── POST /api/instances/:slug/skills/install — install from GitHub ───────
 
-  app.post("/api/instances/:slug/skills/install", async (c) => {
-    const { slug } = getInstanceContext(c);
+  app.post(
+    "/api/instances/:slug/skills/install",
+    permission({ action: ACTIONS.SKILL_INSTALL, resource: { kind: "skill" }, attributes: attr }),
+    async (c) => {
+      const { slug } = getInstanceContext(c);
 
-    const stateDir = getRuntimeStateDir(slug);
+      const stateDir = getRuntimeStateDir(slug);
 
-    // 1. Parse body
-    const body = await c.req.json<{ url?: string }>();
-    if (!body.url || typeof body.url !== "string") {
-      return apiError(c, 400, "MISSING_URL", "A 'url' field with a GitHub URL is required");
-    }
-
-    // 2. Parse GitHub URL
-    const parsed = parseGitHubUrl(body.url);
-    if (!parsed) {
-      return apiError(
-        c,
-        400,
-        "INVALID_GITHUB_URL",
-        "URL must match https://github.com/{owner}/{repo}/tree/{branch}/{path}",
-      );
-    }
-
-    // 3. Derive skill name from the last path segment
-    const segments = parsed.dirPath.split("/").filter(Boolean);
-    const skillName = segments[segments.length - 1] ?? "unknown";
-    if (!SKILL_NAME_RE.test(skillName)) {
-      return apiError(
-        c,
-        400,
-        "INVALID_NAME",
-        "Skill name must be alphanumeric with hyphens/underscores",
-      );
-    }
-
-    // 4. Fetch directory listing from GitHub Contents API
-    let files: Array<{ relativePath: string; downloadUrl: string }>;
-    try {
-      files = await listGitHubFiles(parsed.owner, parsed.repo, parsed.dirPath, parsed.branch);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      return apiError(c, 502, "GITHUB_FETCH_FAILED", `Failed to fetch from GitHub: ${msg}`);
-    }
-
-    // 5. Verify SKILL.md is present
-    const hasSkillMd = files.some((f) => f.relativePath === "SKILL.md");
-    if (!hasSkillMd) {
-      return apiError(c, 400, "NO_SKILL_MD", "No SKILL.md found in the GitHub directory");
-    }
-
-    // 6. Download each file and write to workspace
-    const targetDir = path.join(stateDir, "skills", skillName);
-    await fs.mkdir(targetDir, { recursive: true });
-
-    let filesWritten = 0;
-    for (const file of files) {
-      try {
-        const res = await fetchWithTimeout(file.downloadUrl, GITHUB_FETCH_TIMEOUT_MS);
-        if (!res.ok) continue;
-        const content = await res.text();
-        const destPath = path.join(targetDir, file.relativePath);
-        await fs.mkdir(path.dirname(destPath), { recursive: true });
-        await fs.writeFile(destPath, content, "utf-8");
-        filesWritten++;
-      } catch (err) {
-        logger.warn("[route:skills] GitHub file download failed", { error: String(err) });
-        // Skip individual file errors — best-effort download
+      // 1. Parse body
+      const body = await c.req.json<{ url?: string }>();
+      if (!body.url || typeof body.url !== "string") {
+        return apiError(c, 400, "MISSING_URL", "A 'url' field with a GitHub URL is required");
       }
-    }
 
-    return c.json({ ok: true, name: skillName, filesCount: filesWritten });
-  });
+      // 2. Parse GitHub URL
+      const parsed = parseGitHubUrl(body.url);
+      if (!parsed) {
+        return apiError(
+          c,
+          400,
+          "INVALID_GITHUB_URL",
+          "URL must match https://github.com/{owner}/{repo}/tree/{branch}/{path}",
+        );
+      }
+
+      // 3. Derive skill name from the last path segment
+      const segments = parsed.dirPath.split("/").filter(Boolean);
+      const skillName = segments[segments.length - 1] ?? "unknown";
+      if (!SKILL_NAME_RE.test(skillName)) {
+        return apiError(
+          c,
+          400,
+          "INVALID_NAME",
+          "Skill name must be alphanumeric with hyphens/underscores",
+        );
+      }
+
+      // 4. Fetch directory listing from GitHub Contents API
+      let files: Array<{ relativePath: string; downloadUrl: string }>;
+      try {
+        files = await listGitHubFiles(parsed.owner, parsed.repo, parsed.dirPath, parsed.branch);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        return apiError(c, 502, "GITHUB_FETCH_FAILED", `Failed to fetch from GitHub: ${msg}`);
+      }
+
+      // 5. Verify SKILL.md is present
+      const hasSkillMd = files.some((f) => f.relativePath === "SKILL.md");
+      if (!hasSkillMd) {
+        return apiError(c, 400, "NO_SKILL_MD", "No SKILL.md found in the GitHub directory");
+      }
+
+      // 6. Download each file and write to workspace
+      const targetDir = path.join(stateDir, "skills", skillName);
+      await fs.mkdir(targetDir, { recursive: true });
+
+      let filesWritten = 0;
+      for (const file of files) {
+        try {
+          const res = await fetchWithTimeout(file.downloadUrl, GITHUB_FETCH_TIMEOUT_MS);
+          if (!res.ok) continue;
+          const content = await res.text();
+          const destPath = path.join(targetDir, file.relativePath);
+          await fs.mkdir(path.dirname(destPath), { recursive: true });
+          await fs.writeFile(destPath, content, "utf-8");
+          filesWritten++;
+        } catch (err) {
+          logger.warn("[route:skills] GitHub file download failed", { error: String(err) });
+          // Skip individual file errors — best-effort download
+        }
+      }
+
+      return c.json({ ok: true, name: skillName, filesCount: filesWritten });
+    },
+  );
 
   // ── DELETE /api/instances/:slug/skills/:name — delete a workspace skill ──
 
-  app.delete("/api/instances/:slug/skills/:name", async (c) => {
-    const { slug } = getInstanceContext(c);
+  app.delete(
+    "/api/instances/:slug/skills/:name",
+    permission({
+      action: ACTIONS.SKILL_DELETE,
+      resource: { kind: "skill", id: sname },
+      attributes: attr,
+    }),
+    async (c) => {
+      const { slug } = getInstanceContext(c);
 
-    const skillName = c.req.param("name");
-    if (!SKILL_NAME_RE.test(skillName)) {
-      return apiError(
-        c,
-        400,
-        "INVALID_NAME",
-        "Skill name must be alphanumeric with hyphens/underscores",
-      );
-    }
+      const skillName = c.req.param("name");
+      if (!SKILL_NAME_RE.test(skillName)) {
+        return apiError(
+          c,
+          400,
+          "INVALID_NAME",
+          "Skill name must be alphanumeric with hyphens/underscores",
+        );
+      }
 
-    // Only workspace skills (under stateDir/skills/) can be deleted
-    const stateDir = getRuntimeStateDir(slug);
-    const skillDir = path.join(stateDir, "skills", skillName);
+      // Only workspace skills (under stateDir/skills/) can be deleted
+      const stateDir = getRuntimeStateDir(slug);
+      const skillDir = path.join(stateDir, "skills", skillName);
 
-    // Verify the directory exists and is under workspace
-    try {
-      await fs.access(skillDir);
-    } catch (err) {
-      logger.debug("[route:skills] skill access check failed", { error: String(err) });
-      return apiError(c, 404, "NOT_FOUND", `Skill '${skillName}' not found in workspace`);
-    }
+      // Verify the directory exists and is under workspace
+      try {
+        await fs.access(skillDir);
+      } catch (err) {
+        logger.debug("[route:skills] skill access check failed", { error: String(err) });
+        return apiError(c, 404, "NOT_FOUND", `Skill '${skillName}' not found in workspace`);
+      }
 
-    // Safety check: ensure the resolved path is inside stateDir/skills/
-    const realSkillDir = await fs.realpath(skillDir);
-    const realSkillsBase = await fs
-      .realpath(path.join(stateDir, "skills"))
-      .catch(() => path.join(stateDir, "skills"));
-    if (!realSkillDir.startsWith(realSkillsBase + path.sep)) {
-      return apiError(c, 403, "FORBIDDEN", "Can only delete workspace skills");
-    }
+      // Safety check: ensure the resolved path is inside stateDir/skills/
+      const realSkillDir = await fs.realpath(skillDir);
+      const realSkillsBase = await fs
+        .realpath(path.join(stateDir, "skills"))
+        .catch(() => path.join(stateDir, "skills"));
+      if (!realSkillDir.startsWith(realSkillsBase + path.sep)) {
+        return apiError(c, 403, "FORBIDDEN", "Can only delete workspace skills");
+      }
 
-    await fs.rm(skillDir, { recursive: true, force: true });
-    return c.json({ ok: true });
-  });
+      await fs.rm(skillDir, { recursive: true, force: true });
+      return c.json({ ok: true });
+    },
+  );
 }

@@ -12,6 +12,7 @@ import { SessionStore } from "../session-store.js";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { registerSearchRoutes } from "../routes/search.js";
+import { TEST_ADMIN } from "./_helpers/inject-admin-user.js";
 import {
   upsertSearchEntry,
   rebuildSearchIndex,
@@ -46,6 +47,7 @@ beforeEach(() => {
   app.use("/api/*", async (c, next) => {
     const auth = c.req.header("Authorization") ?? "";
     if (auth !== expectedBearer) return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
+    c.set("user", { ...TEST_ADMIN });
     await next();
   });
 

@@ -11,6 +11,8 @@ import { isCryptoAvailable } from "../../lib/crypto.js";
 import { logger } from "../../lib/logger.js";
 import { NamedKeyRepository } from "../../core/repositories/named-key-repository.js";
 import { notifySystemStateChanged } from "./_system-state-notify.js";
+import { permission } from "../middleware/permission.js";
+import { ACTIONS } from "../middleware/permission-actions.js";
 
 // ---------------------------------------------------------------------------
 // Validation schemas
@@ -57,146 +59,170 @@ export function registerNamedKeyRoutes(app: Hono, deps: RouteDeps): void {
   // -------------------------------------------------------------------------
   // GET /api/named-keys — list all keys (masked)
   // -------------------------------------------------------------------------
-  app.get("/api/named-keys", (c) => {
-    if (!isCryptoAvailable()) {
-      return c.json({ keys: [], cryptoAvailable: false });
-    }
+  app.get(
+    "/api/named-keys",
+    permission({ action: ACTIONS.NAMED_KEY_READ, resource: { kind: "named-key" } }),
+    (c) => {
+      if (!isCryptoAvailable()) {
+        return c.json({ keys: [], cryptoAvailable: false });
+      }
 
-    const keys = namedKeyRepo.listAll();
-    return c.json({ keys, cryptoAvailable: true });
-  });
+      const keys = namedKeyRepo.listAll();
+      return c.json({ keys, cryptoAvailable: true });
+    },
+  );
 
   // -------------------------------------------------------------------------
   // POST /api/named-keys — create a named key
   // -------------------------------------------------------------------------
-  app.post("/api/named-keys", async (c) => {
-    if (!isCryptoAvailable()) {
-      return apiError(c, 503, "CRYPTO_UNAVAILABLE", "MASTER_ENCRYPTION_KEY is not configured");
-    }
-
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch (err) {
-      logger.warn("[route:named-keys] JSON parse failed on create", { error: String(err) });
-      return apiError(c, 400, "INVALID_BODY", "Invalid JSON body");
-    }
-
-    const parsed = CreateNamedKeySchema.safeParse(body);
-    if (!parsed.success) {
-      return apiError(c, 400, "VALIDATION_ERROR", parsed.error.message);
-    }
-
-    const data = parsed.data;
-
-    try {
-      const key = namedKeyRepo.create({
-        name: data.name,
-        providerId: data.providerId,
-        apiKey: data.apiKey,
-        defaultModel: data.defaultModel,
-        baseUrl: data.baseUrl ?? null,
-      });
-      // Trigger model re-discovery for this provider (non-blocking)
-      void deps.modelDiscovery.invalidateProvider(data.providerId);
-      notifySystemStateChanged("named-key", "create");
-      return c.json({ ok: true, key });
-    } catch (err) {
-      if (isUniqueConstraintError(err)) {
-        return apiError(
-          c,
-          409,
-          "DUPLICATE_NAME",
-          `A named key with name "${data.name}" already exists`,
-        );
+  app.post(
+    "/api/named-keys",
+    permission({ action: ACTIONS.NAMED_KEY_CREATE, resource: { kind: "named-key" } }),
+    async (c) => {
+      if (!isCryptoAvailable()) {
+        return apiError(c, 503, "CRYPTO_UNAVAILABLE", "MASTER_ENCRYPTION_KEY is not configured");
       }
-      throw err;
-    }
-  });
+
+      let body: unknown;
+      try {
+        body = await c.req.json();
+      } catch (err) {
+        logger.warn("[route:named-keys] JSON parse failed on create", { error: String(err) });
+        return apiError(c, 400, "INVALID_BODY", "Invalid JSON body");
+      }
+
+      const parsed = CreateNamedKeySchema.safeParse(body);
+      if (!parsed.success) {
+        return apiError(c, 400, "VALIDATION_ERROR", parsed.error.message);
+      }
+
+      const data = parsed.data;
+
+      try {
+        const key = namedKeyRepo.create({
+          name: data.name,
+          providerId: data.providerId,
+          apiKey: data.apiKey,
+          defaultModel: data.defaultModel,
+          baseUrl: data.baseUrl ?? null,
+        });
+        // Trigger model re-discovery for this provider (non-blocking)
+        void deps.modelDiscovery.invalidateProvider(data.providerId);
+        notifySystemStateChanged("named-key", "create");
+        return c.json({ ok: true, key });
+      } catch (err) {
+        if (isUniqueConstraintError(err)) {
+          return apiError(
+            c,
+            409,
+            "DUPLICATE_NAME",
+            `A named key with name "${data.name}" already exists`,
+          );
+        }
+        throw err;
+      }
+    },
+  );
 
   // -------------------------------------------------------------------------
   // PUT /api/named-keys/:id — update name, defaultModel, baseUrl, apiKey
   // -------------------------------------------------------------------------
-  app.put("/api/named-keys/:id", async (c) => {
-    const idParam = c.req.param("id");
-    const id = parseInt(idParam, 10);
-    if (isNaN(id)) {
-      return apiError(c, 400, "INVALID_ID", "Key id must be a number");
-    }
-
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch (err) {
-      logger.warn("[route:named-keys] JSON parse failed on update", { error: String(err) });
-      return apiError(c, 400, "INVALID_BODY", "Invalid JSON body");
-    }
-
-    const parsed = UpdateNamedKeySchema.safeParse(body);
-    if (!parsed.success) {
-      return apiError(c, 400, "VALIDATION_ERROR", parsed.error.message);
-    }
-
-    // Verify key exists before attempting update
-    const existing = namedKeyRepo.getById(id);
-    if (!existing) {
-      return apiError(c, 404, "NOT_FOUND", `Named key ${id} not found`);
-    }
-
-    const updateData = parsed.data;
-
-    try {
-      const key = namedKeyRepo.update(id, {
-        ...(updateData.name !== undefined ? { name: updateData.name } : {}),
-        ...(updateData.defaultModel !== undefined ? { defaultModel: updateData.defaultModel } : {}),
-        ...(updateData.baseUrl !== undefined ? { baseUrl: updateData.baseUrl } : {}),
-        ...(updateData.apiKey !== undefined ? { apiKey: updateData.apiKey } : {}),
-      });
-      // Re-discover models if API key changed (non-blocking)
-      if (updateData.apiKey !== undefined) {
-        void deps.modelDiscovery.invalidateProvider(existing.providerId);
+  app.put(
+    "/api/named-keys/:id",
+    permission({
+      action: ACTIONS.NAMED_KEY_UPDATE,
+      resource: { kind: "named-key", id: (c) => c.req.param("id") },
+    }),
+    async (c) => {
+      const idParam = c.req.param("id");
+      const id = parseInt(idParam, 10);
+      if (isNaN(id)) {
+        return apiError(c, 400, "INVALID_ID", "Key id must be a number");
       }
-      notifySystemStateChanged("named-key", "update");
-      return c.json({ ok: true, key });
-    } catch (err) {
-      if (isUniqueConstraintError(err)) {
-        return apiError(c, 409, "DUPLICATE_NAME", `A named key with that name already exists`);
+
+      let body: unknown;
+      try {
+        body = await c.req.json();
+      } catch (err) {
+        logger.warn("[route:named-keys] JSON parse failed on update", { error: String(err) });
+        return apiError(c, 400, "INVALID_BODY", "Invalid JSON body");
       }
-      throw err;
-    }
-  });
+
+      const parsed = UpdateNamedKeySchema.safeParse(body);
+      if (!parsed.success) {
+        return apiError(c, 400, "VALIDATION_ERROR", parsed.error.message);
+      }
+
+      // Verify key exists before attempting update
+      const existing = namedKeyRepo.getById(id);
+      if (!existing) {
+        return apiError(c, 404, "NOT_FOUND", `Named key ${id} not found`);
+      }
+
+      const updateData = parsed.data;
+
+      try {
+        const key = namedKeyRepo.update(id, {
+          ...(updateData.name !== undefined ? { name: updateData.name } : {}),
+          ...(updateData.defaultModel !== undefined
+            ? { defaultModel: updateData.defaultModel }
+            : {}),
+          ...(updateData.baseUrl !== undefined ? { baseUrl: updateData.baseUrl } : {}),
+          ...(updateData.apiKey !== undefined ? { apiKey: updateData.apiKey } : {}),
+        });
+        // Re-discover models if API key changed (non-blocking)
+        if (updateData.apiKey !== undefined) {
+          void deps.modelDiscovery.invalidateProvider(existing.providerId);
+        }
+        notifySystemStateChanged("named-key", "update");
+        return c.json({ ok: true, key });
+      } catch (err) {
+        if (isUniqueConstraintError(err)) {
+          return apiError(c, 409, "DUPLICATE_NAME", `A named key with that name already exists`);
+        }
+        throw err;
+      }
+    },
+  );
 
   // -------------------------------------------------------------------------
   // DELETE /api/named-keys/:id — delete. 409 if still assigned to instances.
   // -------------------------------------------------------------------------
-  app.delete("/api/named-keys/:id", (c) => {
-    const idParam = c.req.param("id");
-    const id = parseInt(idParam, 10);
-    if (isNaN(id)) {
-      return apiError(c, 400, "INVALID_ID", "Key id must be a number");
-    }
-
-    const existing = namedKeyRepo.getById(id);
-    if (!existing) {
-      return apiError(c, 404, "NOT_FOUND", `Named key ${id} not found`);
-    }
-
-    try {
-      namedKeyRepo.delete(id);
-      // Re-discover models for the provider (may now have no key)
-      void deps.modelDiscovery.invalidateProvider(existing.providerId);
-      notifySystemStateChanged("named-key", "delete");
-      return c.json({ ok: true });
-    } catch (err) {
-      if (isForeignKeyError(err)) {
-        return apiError(
-          c,
-          409,
-          "KEY_IN_USE",
-          "Named key is still assigned to one or more instances",
-        );
+  app.delete(
+    "/api/named-keys/:id",
+    permission({
+      action: ACTIONS.NAMED_KEY_DELETE,
+      resource: { kind: "named-key", id: (c) => c.req.param("id") },
+    }),
+    (c) => {
+      const idParam = c.req.param("id");
+      const id = parseInt(idParam, 10);
+      if (isNaN(id)) {
+        return apiError(c, 400, "INVALID_ID", "Key id must be a number");
       }
-      throw err;
-    }
-  });
+
+      const existing = namedKeyRepo.getById(id);
+      if (!existing) {
+        return apiError(c, 404, "NOT_FOUND", `Named key ${id} not found`);
+      }
+
+      try {
+        namedKeyRepo.delete(id);
+        // Re-discover models for the provider (may now have no key)
+        void deps.modelDiscovery.invalidateProvider(existing.providerId);
+        notifySystemStateChanged("named-key", "delete");
+        return c.json({ ok: true });
+      } catch (err) {
+        if (isForeignKeyError(err)) {
+          return apiError(
+            c,
+            409,
+            "KEY_IN_USE",
+            "Named key is still assigned to one or more instances",
+          );
+        }
+        throw err;
+      }
+    },
+  );
 }

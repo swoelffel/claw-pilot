@@ -7,6 +7,8 @@
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
+import { permission } from "../../middleware/permission.js";
+import { ACTIONS } from "../../middleware/permission-actions.js";
 import { getInstanceContext } from "../_instance-middleware.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
 import { readEnvFileSync } from "../../../lib/env-reader.js";
@@ -70,80 +72,94 @@ export function registerMcpRoutes(app: Hono, deps: RouteDeps): void {
   // GET /api/instances/:slug/mcp/tools
   // Returns the list of MCP tools available for the instance.
   // ---------------------------------------------------------------------------
-  app.get("/api/instances/:slug/mcp/tools", async (c) => {
-    const { slug } = getInstanceContext(c);
+  app.get(
+    "/api/instances/:slug/mcp/tools",
+    permission({
+      action: ACTIONS.INSTANCE_MCP_TOOLS_READ,
+      resource: { kind: "instance", id: (c) => c.req.param("slug") },
+    }),
+    async (c) => {
+      const { slug } = getInstanceContext(c);
 
-    const mcpRegistry = await getMcpRegistryForSlug(slug, registry);
-    if (!mcpRegistry) {
-      return c.json({ tools: [] });
-    }
+      const mcpRegistry = await getMcpRegistryForSlug(slug, registry);
+      if (!mcpRegistry) {
+        return c.json({ tools: [] });
+      }
 
-    let toolInfos;
-    try {
-      toolInfos = await mcpRegistry.getTools();
-    } catch (err) {
-      logger.warn("[route:mcp] MCP tools fetch failed", { error: String(err) });
-      return apiError(c, 500, "MCP_TOOLS_FETCH_FAILED", "Failed to fetch MCP tools");
-    }
+      let toolInfos;
+      try {
+        toolInfos = await mcpRegistry.getTools();
+      } catch (err) {
+        logger.warn("[route:mcp] MCP tools fetch failed", { error: String(err) });
+        return apiError(c, 500, "MCP_TOOLS_FETCH_FAILED", "Failed to fetch MCP tools");
+      }
 
-    const tools = toolInfos.map((t) => {
-      // Tool ID format: "<sanitized_serverId>_<sanitized_toolName>"
-      // Extract serverId from the prefix (up to the first underscore segment that matches a server)
-      const status = mcpRegistry.getStatus();
-      const serverId =
-        Object.keys(status).find((id) =>
-          t.id.startsWith(id.replace(/[^a-zA-Z0-9_]/g, "_") + "_"),
-        ) ??
-        t.id.split("_")[0] ??
-        "";
+      const tools = toolInfos.map((t) => {
+        // Tool ID format: "<sanitized_serverId>_<sanitized_toolName>"
+        // Extract serverId from the prefix (up to the first underscore segment that matches a server)
+        const status = mcpRegistry.getStatus();
+        const serverId =
+          Object.keys(status).find((id) =>
+            t.id.startsWith(id.replace(/[^a-zA-Z0-9_]/g, "_") + "_"),
+          ) ??
+          t.id.split("_")[0] ??
+          "";
 
-      return {
-        id: t.id,
-        serverId,
-        name: t.id,
-      };
-    });
+        return {
+          id: t.id,
+          serverId,
+          name: t.id,
+        };
+      });
 
-    return c.json({ tools });
-  });
+      return c.json({ tools });
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/mcp/status
   // Returns the connection status of each MCP server for the instance.
   // ---------------------------------------------------------------------------
-  app.get("/api/instances/:slug/mcp/status", async (c) => {
-    const { slug } = getInstanceContext(c);
+  app.get(
+    "/api/instances/:slug/mcp/status",
+    permission({
+      action: ACTIONS.INSTANCE_MCP_STATUS,
+      resource: { kind: "instance", id: (c) => c.req.param("slug") },
+    }),
+    async (c) => {
+      const { slug } = getInstanceContext(c);
 
-    const mcpRegistry = await getMcpRegistryForSlug(slug, registry);
-    if (!mcpRegistry) {
-      return c.json({ servers: [] });
-    }
+      const mcpRegistry = await getMcpRegistryForSlug(slug, registry);
+      if (!mcpRegistry) {
+        return c.json({ servers: [] });
+      }
 
-    const statusMap = mcpRegistry.getStatus();
-    const stateDir = getRuntimeStateDir(slug);
-    const config = loadConfigDbFirst(registry, slug, stateDir);
-    if (!config) {
-      return c.json({ servers: [] });
-    }
+      const statusMap = mcpRegistry.getStatus();
+      const stateDir = getRuntimeStateDir(slug);
+      const config = loadConfigDbFirst(registry, slug, stateDir);
+      if (!config) {
+        return c.json({ servers: [] });
+      }
 
-    const servers = Object.entries(statusMap).map(([id, s]) => {
-      const serverConfig = config.mcpServers.find((srv) => srv.id === id);
-      const toolCount =
-        s.status === "connected"
-          ? mcpRegistry.getClient(id)?.status.status === "connected"
-            ? undefined
-            : 0
-          : 0;
+      const servers = Object.entries(statusMap).map(([id, s]) => {
+        const serverConfig = config.mcpServers.find((srv) => srv.id === id);
+        const toolCount =
+          s.status === "connected"
+            ? mcpRegistry.getClient(id)?.status.status === "connected"
+              ? undefined
+              : 0
+            : 0;
 
-      return {
-        id,
-        type: serverConfig?.type ?? "unknown",
-        connected: s.status === "connected",
-        toolCount: toolCount ?? 0,
-        lastError: s.status === "failed" ? s.error : null,
-      };
-    });
+        return {
+          id,
+          type: serverConfig?.type ?? "unknown",
+          connected: s.status === "connected",
+          toolCount: toolCount ?? 0,
+          lastError: s.status === "failed" ? s.error : null,
+        };
+      });
 
-    return c.json({ servers });
-  });
+      return c.json({ servers });
+    },
+  );
 }

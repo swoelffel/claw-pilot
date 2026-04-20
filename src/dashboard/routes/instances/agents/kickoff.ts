@@ -9,6 +9,8 @@
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { apiError } from "../../../route-deps.js";
+import { permission } from "../../../middleware/permission.js";
+import { ACTIONS } from "../../../middleware/permission-actions.js";
 import { getInstanceContext } from "../../_instance-middleware.js";
 import { callRuntimeApi } from "../../_internal-api-client.js";
 import { buildPermanentSessionKey } from "../../../../runtime/session/session.js";
@@ -21,8 +23,13 @@ import type { ChatResponse } from "../../../../runtime/engine/internal-api.js";
  * Register the kickoff route.
  * Task 3 will call this from the main router — nothing is registered here beyond this function.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type HonoContext = any;
+
 export function registerAgentKickoffRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, db } = deps;
+  const attr = (c: HonoContext) => ({ slug: c.req.param("slug") });
+  const aid = (c: HonoContext) => c.req.param("agentId");
 
   // -------------------------------------------------------------------------
   // POST /api/instances/:slug/agents/:agentId/kickoff
@@ -33,52 +40,60 @@ export function registerAgentKickoffRoutes(app: Hono, deps: RouteDeps): void {
   // Error 409 KICKOFF_ALREADY_DONE — permanent session already has messages
   // Error 502 RUNTIME_UNREACHABLE  — runtime call failed
   // -------------------------------------------------------------------------
-  app.post("/api/instances/:slug/agents/:agentId/kickoff", async (c) => {
-    const { instance, slug } = getInstanceContext(c);
-    const agentId = c.req.param("agentId");
+  app.post(
+    "/api/instances/:slug/agents/:agentId/kickoff",
+    permission({
+      action: ACTIONS.AGENT_KICKOFF,
+      resource: { kind: "agent", id: aid },
+      attributes: attr,
+    }),
+    async (c) => {
+      const { instance, slug } = getInstanceContext(c);
+      const agentId = c.req.param("agentId");
 
-    // 1. Resolve agent — verify it belongs to this instance
-    const agent = registry.getAgentByAgentId(instance.id, agentId);
-    if (!agent) {
-      return apiError(
-        c,
-        404,
-        "AGENT_NOT_FOUND",
-        `Agent '${agentId}' not found on instance '${slug}'`,
-      );
-    }
+      // 1. Resolve agent — verify it belongs to this instance
+      const agent = registry.getAgentByAgentId(instance.id, agentId);
+      if (!agent) {
+        return apiError(
+          c,
+          404,
+          "AGENT_NOT_FOUND",
+          `Agent '${agentId}' not found on instance '${slug}'`,
+        );
+      }
 
-    // 2. Check permanent session message count
-    const sessionKey = buildPermanentSessionKey(slug, agentId);
-    const messageCount = countMessagesBySessionKey(db, sessionKey);
+      // 2. Check permanent session message count
+      const sessionKey = buildPermanentSessionKey(slug, agentId);
+      const messageCount = countMessagesBySessionKey(db, sessionKey);
 
-    if (messageCount > 0) {
-      return apiError(
-        c,
-        409,
-        "KICKOFF_ALREADY_DONE",
-        "Permanent session already has messages — kickoff can only run once",
-      );
-    }
+      if (messageCount > 0) {
+        return apiError(
+          c,
+          409,
+          "KICKOFF_ALREADY_DONE",
+          "Permanent session already has messages — kickoff can only run once",
+        );
+      }
 
-    // 3. Pick the localized greeting (from admin profile — single-user mode)
-    const profile = registry.getAdminProfile();
-    const greeting = getKickoffGreeting(profile?.language);
+      // 3. Pick the localized greeting (from admin profile — single-user mode)
+      const profile = registry.getAdminProfile();
+      const greeting = getKickoffGreeting(profile?.language);
 
-    // 4. Forward greeting to the runtime chat endpoint
-    let result: ChatResponse;
-    try {
-      result = await callRuntimeApi<ChatResponse>(slug, "/internal/chat", {
-        message: greeting,
-        agentId,
-        sessionId: sessionKey,
-      });
-    } catch (err) {
-      logger.warn("[route:kickoff] runtime call failed", { error: String(err), slug, agentId });
-      return apiError(c, 502, "RUNTIME_UNREACHABLE", "Could not reach the runtime daemon");
-    }
+      // 4. Forward greeting to the runtime chat endpoint
+      let result: ChatResponse;
+      try {
+        result = await callRuntimeApi<ChatResponse>(slug, "/internal/chat", {
+          message: greeting,
+          agentId,
+          sessionId: sessionKey,
+        });
+      } catch (err) {
+        logger.warn("[route:kickoff] runtime call failed", { error: String(err), slug, agentId });
+        return apiError(c, 502, "RUNTIME_UNREACHABLE", "Could not reach the runtime daemon");
+      }
 
-    // 5. Return 202 — the prompt loop is now running asynchronously
-    return c.json({ greeting, sessionId: result.sessionId ?? sessionKey }, 202);
-  });
+      // 5. Return 202 — the prompt loop is now running asynchronously
+      return c.json({ greeting, sessionId: result.sessionId ?? sessionKey }, 202);
+    },
+  );
 }

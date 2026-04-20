@@ -9,109 +9,119 @@ import { AgentSync } from "../../../core/agent-sync.js";
 import { InstanceDiscovery } from "../../../core/discovery.js";
 import { getInstancesDir } from "../../../lib/platform.js";
 import { z } from "zod";
+import { permission } from "../../middleware/permission.js";
+import { ACTIONS } from "../../middleware/permission-actions.js";
 
 export function registerDiscoverRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, conn, lifecycle, xdgRuntimeDir } = deps;
 
   // POST /api/instances/discover — scan system for new claw-runtime instances (no DB write)
-  app.post("/api/instances/discover", async (c) => {
-    try {
-      const instancesDir = getInstancesDir();
-      const discovery = new InstanceDiscovery(conn, registry, instancesDir, xdgRuntimeDir);
-      const result = await discovery.scan();
+  app.post(
+    "/api/instances/discover",
+    permission({ action: ACTIONS.INSTANCE_DISCOVER, resource: { kind: "instance" } }),
+    async (c) => {
+      try {
+        const instancesDir = getInstancesDir();
+        const discovery = new InstanceDiscovery(conn, registry, instancesDir, xdgRuntimeDir);
+        const result = await discovery.scan();
 
-      const found = result.newInstances.map((inst) => ({
-        slug: inst.slug,
-        stateDir: inst.stateDir,
-        port: inst.port,
-        agentCount: inst.agents.length,
-        runtimeRunning: inst.runtimeRunning,
-        defaultModel: inst.defaultModel,
-        source: inst.source,
-      }));
+        const found = result.newInstances.map((inst) => ({
+          slug: inst.slug,
+          stateDir: inst.stateDir,
+          port: inst.port,
+          agentCount: inst.agents.length,
+          runtimeRunning: inst.runtimeRunning,
+          defaultModel: inst.defaultModel,
+          source: inst.source,
+        }));
 
-      return c.json({ found });
-    } catch (err) {
-      logger.error(`[discover] scan error: ${err instanceof Error ? err.message : String(err)}`);
-      return apiError(
-        c,
-        500,
-        "DISCOVER_FAILED",
-        err instanceof Error ? err.message : "Discovery failed",
-      );
-    }
-  });
+        return c.json({ found });
+      } catch (err) {
+        logger.error(`[discover] scan error: ${err instanceof Error ? err.message : String(err)}`);
+        return apiError(
+          c,
+          500,
+          "DISCOVER_FAILED",
+          err instanceof Error ? err.message : "Discovery failed",
+        );
+      }
+    },
+  );
 
   const AdoptBodySchema = z.object({
     slugs: z.array(z.string()).min(1).max(20),
   });
 
   // POST /api/instances/discover/adopt — adopt discovered instances into DB
-  app.post("/api/instances/discover/adopt", async (c) => {
-    let body: { slugs: string[] };
-    try {
-      const raw = await c.req.json();
-      const parsed = AdoptBodySchema.safeParse(raw);
-      if (!parsed.success) {
+  app.post(
+    "/api/instances/discover/adopt",
+    permission({ action: ACTIONS.INSTANCE_DISCOVER_ADOPT, resource: { kind: "instance" } }),
+    async (c) => {
+      let body: { slugs: string[] };
+      try {
+        const raw = await c.req.json();
+        const parsed = AdoptBodySchema.safeParse(raw);
+        if (!parsed.success) {
+          return apiError(
+            c,
+            400,
+            "INVALID_BODY",
+            `Invalid body: ${parsed.error.issues.map((i) => i.message).join("; ")}`,
+          );
+        }
+        body = parsed.data;
+      } catch (err) {
+        logger.warn("[route:discover] JSON parse failed on adopt", { error: String(err) });
+        return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+      }
+
+      try {
+        const instancesDir = getInstancesDir();
+        const hostname = await conn.hostname();
+        const server = registry.upsertLocalServer(hostname, instancesDir);
+
+        const discovery = new InstanceDiscovery(conn, registry, instancesDir, xdgRuntimeDir);
+        const result = await discovery.scan();
+
+        const adopted: string[] = [];
+        const errors: string[] = [];
+
+        for (const slug of body.slugs) {
+          const instance = result.newInstances.find((i) => i.slug === slug);
+          if (!instance) {
+            errors.push(`${slug}: not found in scan results (may already be registered)`);
+            continue;
+          }
+          try {
+            const agentSync = new AgentSync(conn, registry);
+            await discovery.adopt(instance, server.id, agentSync);
+            logger.info(`[discover] adopted instance: ${slug}`);
+
+            // Restart the runtime so it picks up any changes
+            lifecycle.restart(slug).catch((err: unknown) => {
+              logger.dim(`[discover] restart after adopt failed for ${slug} (non-fatal): ${err}`);
+            });
+
+            adopted.push(slug);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : "Unknown error";
+            errors.push(`${slug}: ${msg}`);
+            logger.error(`[discover] adopt error for ${slug}: ${msg}`);
+          }
+        }
+
+        return c.json({ adopted, errors });
+      } catch (err) {
+        logger.error(
+          `[discover] adopt scan error: ${err instanceof Error ? err.message : String(err)}`,
+        );
         return apiError(
           c,
-          400,
-          "INVALID_BODY",
-          `Invalid body: ${parsed.error.issues.map((i) => i.message).join("; ")}`,
+          500,
+          "DISCOVER_FAILED",
+          err instanceof Error ? err.message : "Discovery failed",
         );
       }
-      body = parsed.data;
-    } catch (err) {
-      logger.warn("[route:discover] JSON parse failed on adopt", { error: String(err) });
-      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
-    }
-
-    try {
-      const instancesDir = getInstancesDir();
-      const hostname = await conn.hostname();
-      const server = registry.upsertLocalServer(hostname, instancesDir);
-
-      const discovery = new InstanceDiscovery(conn, registry, instancesDir, xdgRuntimeDir);
-      const result = await discovery.scan();
-
-      const adopted: string[] = [];
-      const errors: string[] = [];
-
-      for (const slug of body.slugs) {
-        const instance = result.newInstances.find((i) => i.slug === slug);
-        if (!instance) {
-          errors.push(`${slug}: not found in scan results (may already be registered)`);
-          continue;
-        }
-        try {
-          const agentSync = new AgentSync(conn, registry);
-          await discovery.adopt(instance, server.id, agentSync);
-          logger.info(`[discover] adopted instance: ${slug}`);
-
-          // Restart the runtime so it picks up any changes
-          lifecycle.restart(slug).catch((err: unknown) => {
-            logger.dim(`[discover] restart after adopt failed for ${slug} (non-fatal): ${err}`);
-          });
-
-          adopted.push(slug);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : "Unknown error";
-          errors.push(`${slug}: ${msg}`);
-          logger.error(`[discover] adopt error for ${slug}: ${msg}`);
-        }
-      }
-
-      return c.json({ adopted, errors });
-    } catch (err) {
-      logger.error(
-        `[discover] adopt scan error: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return apiError(
-        c,
-        500,
-        "DISCOVER_FAILED",
-        err instanceof Error ? err.message : "Discovery failed",
-      );
-    }
-  });
+    },
+  );
 }

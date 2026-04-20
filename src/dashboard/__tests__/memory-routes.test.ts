@@ -16,6 +16,7 @@ import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { registerMemoryRoutes } from "../routes/instances/memory.js";
 import { instanceMiddleware } from "../routes/_instance-middleware.js";
+import { injectAdminUser } from "./_helpers/inject-admin-user.js";
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -91,6 +92,7 @@ beforeEach(() => {
     }
     await next();
   });
+  app.use("/api/*", injectAdminUser());
 
   const deps: RouteDeps = {
     registry,

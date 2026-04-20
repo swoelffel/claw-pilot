@@ -6,6 +6,7 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { registerWorkspaceDownloadRoutes } from "../workspace-download.js";
 import type { RouteDeps } from "../../../route-deps.js";
+import { injectAdminUser } from "../../../__tests__/_helpers/inject-admin-user.js";
 
 // Minimal deps — the route only uses getInstanceContext, never the deps object.
 const fakeDeps = {} as RouteDeps;
@@ -23,6 +24,7 @@ beforeEach(async () => {
   const raw = await fs.mkdtemp(path.join(os.tmpdir(), "cp-wsd-"));
   stateDir = await fs.realpath(raw);
   app = new Hono();
+  app.use("/api/instances/:slug/*", injectAdminUser());
   app.use("/api/instances/:slug/*", async (c, next) => {
     // `instance` / `slug` context keys are set by instanceMiddleware in production;
     // cast to the loose Context shape to bypass the strict Hono Variables inference.

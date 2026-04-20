@@ -5,6 +5,8 @@ import { z } from "zod";
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../../route-deps.js";
 import { apiError } from "../../../route-deps.js";
+import { permission } from "../../../middleware/permission.js";
+import { ACTIONS } from "../../../middleware/permission-actions.js";
 import { getInstanceContext } from "../../_instance-middleware.js";
 import { AgentProvisioner } from "../../../../core/agent-provisioner.js";
 import type { CreateAgentData } from "../../../../core/agent-provisioner.js";
@@ -46,168 +48,174 @@ const FromTemplateSchema = z.object({
   model: z.string().min(1),
 });
 
-export function registerAgentCreateRoutes(app: Hono, deps: RouteDeps): void {
-  const { registry, conn, lifecycle } = deps;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type HonoContext = any;
 
-  app.post("/api/instances/:slug/agents", async (c) => {
-    const { instance, slug } = getInstanceContext(c);
+/** Build the standard agent list response payload after create/from-template. */
+function buildAgentListResponse(
+  instance: ReturnType<typeof getInstanceContext>["instance"],
+  registry: RouteDeps["registry"],
+) {
+  const agents = registry.listAgents(instance.slug);
+  const links = registry.listAgentLinks(instance.id);
+  return {
+    instance: {
+      slug: instance.slug,
+      display_name: instance.display_name,
+      port: instance.port,
+      state: instance.state,
+      default_model: instance.default_model,
+    },
+    agents: agents.map((agent) => buildAgentPayload(agent, registry.listAgentFiles(agent.id))),
+    links: links.map((l) => ({
+      source_agent_id: l.source_agent_id,
+      target_agent_id: l.target_agent_id,
+      link_type: l.link_type,
+    })),
+  };
+}
 
-    let body: CreateAgentData;
-    try {
-      body = (await c.req.json()) as CreateAgentData;
-      if (!body.agentSlug || !body.name || !body.provider || !body.model) {
-        return apiError(
-          c,
-          400,
-          "FIELD_REQUIRED",
-          "Missing required fields: agentSlug, name, provider, model",
-        );
-      }
-      const slugError = validateAgentSlug(body.agentSlug);
-      if (slugError) {
-        return apiError(c, 400, "INVALID_AGENT_ID", slugError.message);
-      }
-    } catch (err) {
-      logger.warn("[route:agents-create] JSON parse failed", { error: String(err) });
-      return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
-    }
+/** Handle POST /agents/from-template — create an agent from an agent blueprint. */
+async function handleFromTemplate(
+  c: HonoContext,
+  registry: RouteDeps["registry"],
+  conn: RouteDeps["conn"],
+  lifecycle: RouteDeps["lifecycle"],
+  db: RouteDeps["db"],
+): Promise<Response> {
+  const { instance, slug } = getInstanceContext(c);
 
-    try {
-      const provisioner = new AgentProvisioner(conn, registry);
-      await provisioner.createAgent(instance, body);
-    } catch (err: unknown) {
-      return apiError(
-        c,
-        500,
-        "AGENT_CREATE_FAILED",
-        err instanceof Error ? err.message : "Agent create failed",
-      );
-    }
+  const rawBody = await c.req.json().catch(() => null);
+  const parsed = FromTemplateSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+  }
+  const { blueprintId, agentSlug, name, provider, model } = parsed.data;
 
-    upsertSearchEntry(deps.db, {
-      entityType: "agent",
-      entityId: `${slug}:${body.agentSlug}`,
-      title: body.name || body.agentSlug,
-      subtitle: slug,
-      routeHash: `/instances/${slug}/builder`,
-    });
+  const blueprint = registry.getAgentBlueprint(blueprintId);
+  if (!blueprint) {
+    return apiError(c, 404, "NOT_FOUND", `Agent blueprint not found: ${blueprintId}`);
+  }
 
-    // Restart daemon fire-and-forget
-    lifecycle.restart(slug).catch(() => {
-      /* best-effort restart */
-    });
+  const agentData: CreateAgentData = {
+    agentSlug,
+    name: name ?? blueprint.name,
+    role: "",
+    provider,
+    model,
+  };
 
-    const agents = registry.listAgents(instance.slug);
-    const links = registry.listAgentLinks(instance.id);
-    return c.json(
-      {
-        instance: {
-          slug: instance.slug,
-          display_name: instance.display_name,
-          port: instance.port,
-          state: instance.state,
-          default_model: instance.default_model,
-        },
-        agents: agents.map((agent) => buildAgentPayload(agent, registry.listAgentFiles(agent.id))),
-        links: links.map((l) => ({
-          source_agent_id: l.source_agent_id,
-          target_agent_id: l.target_agent_id,
-          link_type: l.link_type,
-        })),
-      },
-      201,
+  try {
+    const provisioner = new AgentProvisioner(conn, registry);
+    await provisioner.createAgent(instance, agentData);
+  } catch (err: unknown) {
+    return apiError(
+      c,
+      500,
+      "AGENT_CREATE_FAILED",
+      err instanceof Error ? err.message : "Agent create failed",
     );
-  });
+  }
 
-  // --- POST /api/instances/:slug/agents/from-template ---
-  // Creates an agent in the instance using an agent blueprint as a template.
-  // The blueprint's workspace files are copied to the new agent's workspace.
-  app.post("/api/instances/:slug/agents/from-template", async (c) => {
-    const { instance, slug } = getInstanceContext(c);
-
-    const rawBody = await c.req.json().catch(() => null);
-    const parsed = FromTemplateSchema.safeParse(rawBody);
-    if (!parsed.success) {
-      return apiError(c, 400, "INVALID_BODY", parsed.error.message);
-    }
-    const { blueprintId, agentSlug, name, provider, model } = parsed.data;
-
-    // Verify blueprint exists
-    const blueprint = registry.getAgentBlueprint(blueprintId);
-    if (!blueprint) {
-      return apiError(c, 404, "NOT_FOUND", `Agent blueprint not found: ${blueprintId}`);
-    }
-
-    // Create the agent via the standard provisioner
-    const agentData: CreateAgentData = {
-      agentSlug,
-      name: name ?? blueprint.name,
-      role: "",
-      provider,
-      model,
-    };
-
-    try {
-      const provisioner = new AgentProvisioner(conn, registry);
-      await provisioner.createAgent(instance, agentData);
-    } catch (err: unknown) {
-      return apiError(
-        c,
-        500,
-        "AGENT_CREATE_FAILED",
-        err instanceof Error ? err.message : "Agent create failed",
-      );
-    }
-
-    // Overwrite the agent's workspace files with the blueprint's files
-    const blueprintFiles = registry.listAgentBlueprintFiles(blueprintId);
-    const agentRecord = registry.getAgentByAgentId(instance.id, agentSlug);
-    if (agentRecord && blueprintFiles.length > 0) {
-      const provisioner = new AgentProvisioner(conn, registry);
-      for (const bpFile of blueprintFiles) {
-        if (bpFile.content) {
-          try {
-            await provisioner.updateAgentFile(instance, agentSlug, bpFile.filename, bpFile.content);
-          } catch (err) {
-            logger.debug("[route:agents-create] template file copy failed", { error: String(err) });
-            // Non-editable file or write failure — skip silently
-          }
+  // Overwrite the agent's workspace files with the blueprint's files
+  const blueprintFiles = registry.listAgentBlueprintFiles(blueprintId);
+  const agentRecord = registry.getAgentByAgentId(instance.id, agentSlug);
+  if (agentRecord && blueprintFiles.length > 0) {
+    const provisioner = new AgentProvisioner(conn, registry);
+    for (const bpFile of blueprintFiles) {
+      if (bpFile.content) {
+        try {
+          await provisioner.updateAgentFile(instance, agentSlug, bpFile.filename, bpFile.content);
+        } catch (err) {
+          logger.debug("[route:agents-create] template file copy failed", { error: String(err) });
+          // Non-editable file or write failure — skip silently
         }
       }
     }
+  }
 
-    upsertSearchEntry(deps.db, {
-      entityType: "agent",
-      entityId: `${slug}:${agentSlug}`,
-      title: agentData.name || agentSlug,
-      subtitle: slug,
-      routeHash: `/instances/${slug}/builder`,
-    });
-
-    // Restart daemon fire-and-forget
-    lifecycle.restart(slug).catch(() => {
-      /* best-effort restart */
-    });
-
-    const agents = registry.listAgents(instance.slug);
-    const links = registry.listAgentLinks(instance.id);
-    return c.json(
-      {
-        instance: {
-          slug: instance.slug,
-          display_name: instance.display_name,
-          port: instance.port,
-          state: instance.state,
-          default_model: instance.default_model,
-        },
-        agents: agents.map((agent) => buildAgentPayload(agent, registry.listAgentFiles(agent.id))),
-        links: links.map((l) => ({
-          source_agent_id: l.source_agent_id,
-          target_agent_id: l.target_agent_id,
-          link_type: l.link_type,
-        })),
-      },
-      201,
-    );
+  upsertSearchEntry(db, {
+    entityType: "agent",
+    entityId: `${slug}:${agentSlug}`,
+    title: agentData.name || agentSlug,
+    subtitle: slug,
+    routeHash: `/instances/${slug}/builder`,
   });
+
+  lifecycle.restart(slug).catch(() => {
+    /* best-effort restart */
+  });
+
+  return c.json(buildAgentListResponse(instance, registry), 201);
+}
+
+export function registerAgentCreateRoutes(app: Hono, deps: RouteDeps): void {
+  const { registry, conn, lifecycle } = deps;
+  const attr = (c: HonoContext) => ({ slug: c.req.param("slug") });
+
+  app.post(
+    "/api/instances/:slug/agents",
+    permission({ action: ACTIONS.AGENT_CREATE, resource: { kind: "agent" }, attributes: attr }),
+    async (c) => {
+      const { instance, slug } = getInstanceContext(c);
+
+      let body: CreateAgentData;
+      try {
+        body = (await c.req.json()) as CreateAgentData;
+        if (!body.agentSlug || !body.name || !body.provider || !body.model) {
+          return apiError(
+            c,
+            400,
+            "FIELD_REQUIRED",
+            "Missing required fields: agentSlug, name, provider, model",
+          );
+        }
+        const slugError = validateAgentSlug(body.agentSlug);
+        if (slugError) {
+          return apiError(c, 400, "INVALID_AGENT_ID", slugError.message);
+        }
+      } catch (err) {
+        logger.warn("[route:agents-create] JSON parse failed", { error: String(err) });
+        return apiError(c, 400, "INVALID_JSON", "Invalid JSON body");
+      }
+
+      try {
+        const provisioner = new AgentProvisioner(conn, registry);
+        await provisioner.createAgent(instance, body);
+      } catch (err: unknown) {
+        return apiError(
+          c,
+          500,
+          "AGENT_CREATE_FAILED",
+          err instanceof Error ? err.message : "Agent create failed",
+        );
+      }
+
+      upsertSearchEntry(deps.db, {
+        entityType: "agent",
+        entityId: `${slug}:${body.agentSlug}`,
+        title: body.name || body.agentSlug,
+        subtitle: slug,
+        routeHash: `/instances/${slug}/builder`,
+      });
+
+      lifecycle.restart(slug).catch(() => {
+        /* best-effort restart */
+      });
+
+      return c.json(buildAgentListResponse(instance, registry), 201);
+    },
+  );
+
+  // --- POST /api/instances/:slug/agents/from-template ---
+  // Creates an agent in the instance using an agent blueprint as a template.
+  app.post(
+    "/api/instances/:slug/agents/from-template",
+    permission({
+      action: ACTIONS.AGENT_FROM_TEMPLATE,
+      resource: { kind: "agent" },
+      attributes: attr,
+    }),
+    (c) => handleFromTemplate(c, registry, conn, lifecycle, deps.db),
+  );
 }

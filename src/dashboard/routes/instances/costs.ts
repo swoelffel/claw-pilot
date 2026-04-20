@@ -11,6 +11,8 @@ import {
   getCostsByModel,
   type CostPeriod,
 } from "../../../core/repositories/cost-repository.js";
+import { permission } from "../../middleware/permission.js";
+import { ACTIONS } from "../../middleware/permission-actions.js";
 
 const VALID_PERIODS = new Set<CostPeriod>(["7d", "30d", "all"]);
 
@@ -19,80 +21,116 @@ function parsePeriod(raw: string | undefined): CostPeriod {
   return "7d";
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type HonoContext = any;
+
 export function registerCostsRoutes(app: Hono, deps: RouteDeps): void {
   const { db } = deps;
+  const attr = (c: HonoContext) => ({ slug: c.req.param("slug") });
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/costs/summary
   // ---------------------------------------------------------------------------
-  app.get("/api/instances/:slug/costs/summary", (c) => {
-    const { slug } = getInstanceContext(c);
+  app.get(
+    "/api/instances/:slug/costs/summary",
+    permission({
+      action: ACTIONS.INSTANCE_COSTS_SUMMARY,
+      resource: { kind: "costs" },
+      attributes: attr,
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
 
-    const period = parsePeriod(c.req.query("period"));
-    const row = getCostSummary(db, slug, period);
-    return c.json({
-      messageCount: row.message_count,
-      totalTokensIn: row.total_tokens_in,
-      totalTokensOut: row.total_tokens_out,
-      totalCostUsd: row.total_cost_usd,
-      period,
-    });
-  });
+      const period = parsePeriod(c.req.query("period"));
+      const row = getCostSummary(db, slug, period);
+      return c.json({
+        messageCount: row.message_count,
+        totalTokensIn: row.total_tokens_in,
+        totalTokensOut: row.total_tokens_out,
+        totalCostUsd: row.total_cost_usd,
+        period,
+      });
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/costs/daily
   // ---------------------------------------------------------------------------
-  app.get("/api/instances/:slug/costs/daily", (c) => {
-    const { slug } = getInstanceContext(c);
+  app.get(
+    "/api/instances/:slug/costs/daily",
+    permission({
+      action: ACTIONS.INSTANCE_COSTS_DAILY,
+      resource: { kind: "costs" },
+      attributes: attr,
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
 
-    const period = parsePeriod(c.req.query("period"));
-    const rows = getDailyCosts(db, slug, period);
-    return c.json(
-      rows.map((r) => ({
-        day: r.day,
-        model: r.model ?? "unknown",
-        tokensIn: r.tokens_in,
-        tokensOut: r.tokens_out,
-        costUsd: r.cost_usd,
-      })),
-    );
-  });
+      const period = parsePeriod(c.req.query("period"));
+      const rows = getDailyCosts(db, slug, period);
+      return c.json(
+        rows.map((r) => ({
+          day: r.day,
+          model: r.model ?? "unknown",
+          tokensIn: r.tokens_in,
+          tokensOut: r.tokens_out,
+          costUsd: r.cost_usd,
+        })),
+      );
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/costs/by-agent
   // ---------------------------------------------------------------------------
-  app.get("/api/instances/:slug/costs/by-agent", (c) => {
-    const { slug } = getInstanceContext(c);
+  app.get(
+    "/api/instances/:slug/costs/by-agent",
+    permission({
+      action: ACTIONS.INSTANCE_COSTS_BY_AGENT,
+      resource: { kind: "costs" },
+      attributes: attr,
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
 
-    const period = parsePeriod(c.req.query("period"));
-    const rows = getCostsByAgent(db, slug, period);
-    return c.json(
-      rows.map((r) => ({
-        agentId: r.agent_id ?? "unknown",
-        tokensIn: r.tokens_in,
-        tokensOut: r.tokens_out,
-        costUsd: r.cost_usd,
-        messageCount: r.message_count,
-      })),
-    );
-  });
+      const period = parsePeriod(c.req.query("period"));
+      const rows = getCostsByAgent(db, slug, period);
+      return c.json(
+        rows.map((r) => ({
+          agentId: r.agent_id ?? "unknown",
+          tokensIn: r.tokens_in,
+          tokensOut: r.tokens_out,
+          costUsd: r.cost_usd,
+          messageCount: r.message_count,
+        })),
+      );
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/costs/by-model
   // ---------------------------------------------------------------------------
-  app.get("/api/instances/:slug/costs/by-model", (c) => {
-    const { slug } = getInstanceContext(c);
+  app.get(
+    "/api/instances/:slug/costs/by-model",
+    permission({
+      action: ACTIONS.INSTANCE_COSTS_BY_MODEL,
+      resource: { kind: "costs" },
+      attributes: attr,
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
 
-    const period = parsePeriod(c.req.query("period"));
-    const rows = getCostsByModel(db, slug, period);
-    return c.json(
-      rows.map((r) => ({
-        model: r.model ?? "unknown",
-        tokensIn: r.tokens_in,
-        tokensOut: r.tokens_out,
-        costUsd: r.cost_usd,
-        messageCount: r.message_count,
-      })),
-    );
-  });
+      const period = parsePeriod(c.req.query("period"));
+      const rows = getCostsByModel(db, slug, period);
+      return c.json(
+        rows.map((r) => ({
+          model: r.model ?? "unknown",
+          tokensIn: r.tokens_in,
+          tokensOut: r.tokens_out,
+          costUsd: r.cost_usd,
+          messageCount: r.message_count,
+        })),
+      );
+    },
+  );
 }

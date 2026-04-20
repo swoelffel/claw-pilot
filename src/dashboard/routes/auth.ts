@@ -1,7 +1,7 @@
 // src/dashboard/routes/auth.ts
+import { timingSafeEqual } from "node:crypto";
 import type { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { authenticate } from "../../core/auth/index.js";
 import { constants } from "../../lib/constants.js";
@@ -31,6 +31,7 @@ export function registerAuthRoutes(app: Hono, deps: RouteDeps, token: string): v
   });
 
   // POST /api/auth/login — authenticate and create a session
+  // no permission() — public endpoint, auth runs INSIDE the handler
   app.post("/api/auth/login", loginRateLimiter, async (c) => {
     const body = await c.req.json().catch(() => null);
     const parsed = LoginSchema.safeParse(body);
@@ -76,6 +77,10 @@ export function registerAuthRoutes(app: Hono, deps: RouteDeps, token: string): v
   });
 
   // POST /api/auth/logout — invalidate session and clear cookie
+  // no permission() — auth-flow endpoint: it tears down identity. Like
+  // /api/auth/login, it is registered before the global auth middleware so
+  // c.get("user") would be undefined here. Semantically it is the wrong
+  // place to gate on permissions anyway.
   app.post("/api/auth/logout", (c) => {
     const sid = getCookie(c, constants.SESSION_COOKIE_NAME);
     if (sid) {
@@ -86,6 +91,10 @@ export function registerAuthRoutes(app: Hono, deps: RouteDeps, token: string): v
   });
 
   // GET /api/auth/me — return current session info + token for WS
+  // no permission() — auth-flow endpoint: it reports whether a caller is
+  // authenticated, so it runs its own session/bearer validation inline and
+  // must be reachable without prior c.get("user"). Same rationale as
+  // /api/auth/login and /api/auth/logout.
   app.get("/api/auth/me", (c) => {
     // 1. Try session cookie
     const sid = getCookie(c, constants.SESSION_COOKIE_NAME);

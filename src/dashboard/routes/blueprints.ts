@@ -13,6 +13,8 @@ import { listBuiltinBlueprints } from "../../core/builtin-blueprints.js";
 import { logger } from "../../lib/logger.js";
 import { upsertSearchEntry, removeSearchEntry } from "../../core/repositories/search-repository.js";
 import { notifySystemStateChanged } from "./_system-state-notify.js";
+import { permission } from "../middleware/permission.js";
+import { ACTIONS } from "../middleware/permission-actions.js";
 
 // ---------------------------------------------------------------------------
 // Zod schemas for request validation
@@ -515,74 +517,162 @@ export function registerBlueprintRoutes(app: Hono, deps: RouteDeps) {
   const { registry } = deps;
 
   // GET /api/blueprints — list all blueprints (DB + built-in)
-  app.get("/api/blueprints", async (c) => {
-    return handleListBlueprints(c, registry);
-  });
+  app.get(
+    "/api/blueprints",
+    permission({ action: ACTIONS.BLUEPRINT_LIST, resource: { kind: "blueprint" } }),
+    async (c) => {
+      return handleListBlueprints(c, registry);
+    },
+  );
 
   // POST /api/blueprints — create a blueprint
-  app.post("/api/blueprints", async (c) => {
-    return handleCreateBlueprint(c, deps);
-  });
+  app.post(
+    "/api/blueprints",
+    permission({ action: ACTIONS.BLUEPRINT_CREATE, resource: { kind: "blueprint" } }),
+    async (c) => {
+      return handleCreateBlueprint(c, deps);
+    },
+  );
 
   // POST /api/blueprints/import-builtin/:slug — import a built-in blueprint
-  app.post("/api/blueprints/import-builtin/:slug", async (c) => {
-    return handleImportBuiltin(c, deps);
-  });
+  app.post(
+    "/api/blueprints/import-builtin/:slug",
+    permission({
+      action: ACTIONS.BLUEPRINT_IMPORT_BUILTIN,
+      resource: { kind: "blueprint", id: (c) => c.req.param("slug") },
+    }),
+    async (c) => {
+      return handleImportBuiltin(c, deps);
+    },
+  );
 
   // GET /api/blueprints/:id — blueprint detail
-  app.get("/api/blueprints/:id", (c) => {
-    const id = Number(c.req.param("id"));
-    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
-    const blueprint = registry.getBlueprint(id);
-    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
-    return c.json(blueprint);
-  });
+  app.get(
+    "/api/blueprints/:id",
+    permission({
+      action: ACTIONS.BLUEPRINT_READ,
+      resource: { kind: "blueprint", id: (c) => c.req.param("id") },
+    }),
+    (c) => {
+      const id = Number(c.req.param("id"));
+      if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
+      const blueprint = registry.getBlueprint(id);
+      if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
+      return c.json(blueprint);
+    },
+  );
 
   // PUT /api/blueprints/:id — update a blueprint
-  app.put("/api/blueprints/:id", async (c) => {
-    return handleUpdateBlueprint(c, deps);
-  });
+  app.put(
+    "/api/blueprints/:id",
+    permission({
+      action: ACTIONS.BLUEPRINT_UPDATE,
+      resource: { kind: "blueprint", id: (c) => c.req.param("id") },
+    }),
+    async (c) => {
+      return handleUpdateBlueprint(c, deps);
+    },
+  );
 
   // DELETE /api/blueprints/:id — delete a blueprint
-  app.delete("/api/blueprints/:id", (c) => {
-    const id = Number(c.req.param("id"));
-    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
-    const blueprint = registry.getBlueprint(id);
-    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
-    registry.deleteBlueprint(id);
-    removeSearchEntry(deps.db, "blueprint", String(id));
-    notifySystemStateChanged("blueprint", "delete");
-    return c.json({ ok: true });
-  });
+  app.delete(
+    "/api/blueprints/:id",
+    permission({
+      action: ACTIONS.BLUEPRINT_DELETE,
+      resource: { kind: "blueprint", id: (c) => c.req.param("id") },
+    }),
+    (c) => {
+      const id = Number(c.req.param("id"));
+      if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
+      const blueprint = registry.getBlueprint(id);
+      if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
+      registry.deleteBlueprint(id);
+      removeSearchEntry(deps.db, "blueprint", String(id));
+      notifySystemStateChanged("blueprint", "delete");
+      return c.json({ ok: true });
+    },
+  );
 
   // GET /api/blueprints/:id/builder — full builder payload
-  app.get("/api/blueprints/:id/builder", (c) => {
-    const id = Number(c.req.param("id"));
-    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
-    const payload = buildBlueprintPayload(id, registry);
-    if (!payload) return apiError(c, 404, "NOT_FOUND", "Not found");
-    return c.json(payload);
-  });
+  app.get(
+    "/api/blueprints/:id/builder",
+    permission({
+      action: ACTIONS.BLUEPRINT_BUILDER_READ,
+      resource: { kind: "blueprint", id: (c) => c.req.param("id") },
+    }),
+    (c) => {
+      const id = Number(c.req.param("id"));
+      if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
+      const payload = buildBlueprintPayload(id, registry);
+      if (!payload) return apiError(c, 404, "NOT_FOUND", "Not found");
+      return c.json(payload);
+    },
+  );
 
   // POST /api/blueprints/:id/agents — create agent in blueprint
-  app.post("/api/blueprints/:id/agents", async (c) => {
-    return handleCreateBlueprintAgent(c, deps);
-  });
+  app.post(
+    "/api/blueprints/:id/agents",
+    permission({
+      action: ACTIONS.BLUEPRINT_AGENT_CREATE,
+      resource: { kind: "blueprint", id: (c) => c.req.param("id") },
+    }),
+    async (c) => {
+      return handleCreateBlueprintAgent(c, deps);
+    },
+  );
 
-  app.patch("/api/blueprints/:id/agents/:agentId/meta", async (c) =>
-    handleUpdateAgentMeta(c, registry),
+  app.patch(
+    "/api/blueprints/:id/agents/:agentId/meta",
+    permission({
+      action: ACTIONS.BLUEPRINT_AGENT_UPDATE,
+      resource: { kind: "blueprint", id: (c) => c.req.param("id") },
+      attributes: (c) => ({ agentId: c.req.param("agentId") }),
+    }),
+    async (c) => handleUpdateAgentMeta(c, registry),
   );
-  app.delete("/api/blueprints/:id/agents/:agentId", (c) => handleDeleteAgent(c, registry));
-  app.patch("/api/blueprints/:id/agents/:agentId/position", async (c) =>
-    handleUpdatePosition(c, registry),
+  app.delete(
+    "/api/blueprints/:id/agents/:agentId",
+    permission({
+      action: ACTIONS.BLUEPRINT_AGENT_DELETE,
+      resource: { kind: "blueprint", id: (c) => c.req.param("id") },
+      attributes: (c) => ({ agentId: c.req.param("agentId") }),
+    }),
+    (c) => handleDeleteAgent(c, registry),
   );
-  app.get("/api/blueprints/:id/agents/:agentId/files/:filename", (c) =>
-    handleReadFile(c, registry),
+  app.patch(
+    "/api/blueprints/:id/agents/:agentId/position",
+    permission({
+      action: ACTIONS.BLUEPRINT_AGENT_UPDATE,
+      resource: { kind: "blueprint", id: (c) => c.req.param("id") },
+      attributes: (c) => ({ agentId: c.req.param("agentId") }),
+    }),
+    async (c) => handleUpdatePosition(c, registry),
   );
-  app.put("/api/blueprints/:id/agents/:agentId/files/:filename", async (c) =>
-    handleWriteFile(c, registry),
+  app.get(
+    "/api/blueprints/:id/agents/:agentId/files/:filename",
+    permission({
+      action: ACTIONS.BLUEPRINT_AGENT_FILE_READ,
+      resource: { kind: "blueprint", id: (c) => c.req.param("id") },
+      attributes: (c) => ({ agentId: c.req.param("agentId"), filename: c.req.param("filename") }),
+    }),
+    (c) => handleReadFile(c, registry),
   );
-  app.patch("/api/blueprints/:id/agents/:agentId/spawn-links", async (c) =>
-    handleSpawnLinks(c, registry),
+  app.put(
+    "/api/blueprints/:id/agents/:agentId/files/:filename",
+    permission({
+      action: ACTIONS.BLUEPRINT_AGENT_FILE_UPDATE,
+      resource: { kind: "blueprint", id: (c) => c.req.param("id") },
+      attributes: (c) => ({ agentId: c.req.param("agentId"), filename: c.req.param("filename") }),
+    }),
+    async (c) => handleWriteFile(c, registry),
+  );
+  app.patch(
+    "/api/blueprints/:id/agents/:agentId/spawn-links",
+    permission({
+      action: ACTIONS.BLUEPRINT_AGENT_UPDATE,
+      resource: { kind: "blueprint", id: (c) => c.req.param("id") },
+      attributes: (c) => ({ agentId: c.req.param("agentId") }),
+    }),
+    async (c) => handleSpawnLinks(c, registry),
   );
 }
