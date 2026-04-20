@@ -74,11 +74,16 @@ beforeEach(() => {
   app = new Hono();
 
   const expectedBearer = `Bearer ${TEST_TOKEN}`;
+  // Combined auth + user-injection middleware: checks bearer token (mimicking
+  // server-level auth), then sets c.get("user") so that permission() middleware
+  // has the authenticated user on context. Without this, permission() would 401
+  // on every request because the bare Hono app has no server-level auth middleware.
   app.use("/api/*", async (c, next) => {
     const auth = c.req.header("Authorization") ?? "";
     if (auth !== expectedBearer) {
       return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
     }
+    c.set("user", { id: "1", username: "admin", role: "admin", source: "bearer" });
     await next();
   });
 

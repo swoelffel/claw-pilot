@@ -8,6 +8,8 @@ import { constants } from "../../lib/constants.js";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
 import { createRateLimiter } from "../rate-limit.js";
+import { permission } from "../middleware/permission.js";
+import { ACTIONS } from "../middleware/permission-actions.js";
 
 /** Timing-safe Bearer token comparison */
 function safeTokenCompare(a: string, b: string): boolean {
@@ -31,6 +33,7 @@ export function registerAuthRoutes(app: Hono, deps: RouteDeps, token: string): v
   });
 
   // POST /api/auth/login — authenticate and create a session
+  // no permission() — public endpoint, auth runs INSIDE the handler
   app.post("/api/auth/login", loginRateLimiter, async (c) => {
     const body = await c.req.json().catch(() => null);
     const parsed = LoginSchema.safeParse(body);
@@ -76,48 +79,56 @@ export function registerAuthRoutes(app: Hono, deps: RouteDeps, token: string): v
   });
 
   // POST /api/auth/logout — invalidate session and clear cookie
-  app.post("/api/auth/logout", (c) => {
-    const sid = getCookie(c, constants.SESSION_COOKIE_NAME);
-    if (sid) {
-      sessionStore.delete(sid);
-    }
-    deleteCookie(c, constants.SESSION_COOKIE_NAME, { path: "/" });
-    return c.json({ ok: true });
-  });
+  app.post(
+    "/api/auth/logout",
+    permission({ action: ACTIONS.AUTH_LOGOUT, resource: { kind: "auth" } }),
+    (c) => {
+      const sid = getCookie(c, constants.SESSION_COOKIE_NAME);
+      if (sid) {
+        sessionStore.delete(sid);
+      }
+      deleteCookie(c, constants.SESSION_COOKIE_NAME, { path: "/" });
+      return c.json({ ok: true });
+    },
+  );
 
   // GET /api/auth/me — return current session info + token for WS
-  app.get("/api/auth/me", (c) => {
-    // 1. Try session cookie
-    const sid = getCookie(c, constants.SESSION_COOKIE_NAME);
-    if (sid) {
-      const session = sessionStore.validate(sid);
-      if (session) {
-        const db = registry.getDb();
-        const user = db
-          .prepare("SELECT username, role FROM users WHERE id = ?")
-          .get(session.userId) as { username: string; role: string } | undefined;
-        if (user) {
-          return c.json({
-            authenticated: true,
-            username: user.username,
-            role: user.role,
-            token,
-          });
+  app.get(
+    "/api/auth/me",
+    permission({ action: ACTIONS.AUTH_ME, resource: { kind: "auth" } }),
+    (c) => {
+      // 1. Try session cookie
+      const sid = getCookie(c, constants.SESSION_COOKIE_NAME);
+      if (sid) {
+        const session = sessionStore.validate(sid);
+        if (session) {
+          const db = registry.getDb();
+          const user = db
+            .prepare("SELECT username, role FROM users WHERE id = ?")
+            .get(session.userId) as { username: string; role: string } | undefined;
+          if (user) {
+            return c.json({
+              authenticated: true,
+              username: user.username,
+              role: user.role,
+              token,
+            });
+          }
         }
       }
-    }
 
-    // 2. Fallback: Bearer token (programmatic access)
-    const auth = c.req.header("authorization") ?? "";
-    if (safeTokenCompare(auth, expectedBearer)) {
-      return c.json({
-        authenticated: true,
-        username: constants.ADMIN_USERNAME,
-        role: "admin",
-        token,
-      });
-    }
+      // 2. Fallback: Bearer token (programmatic access)
+      const auth = c.req.header("authorization") ?? "";
+      if (safeTokenCompare(auth, expectedBearer)) {
+        return c.json({
+          authenticated: true,
+          username: constants.ADMIN_USERNAME,
+          role: "admin",
+          token,
+        });
+      }
 
-    return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
-  });
+      return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
+    },
+  );
 }
