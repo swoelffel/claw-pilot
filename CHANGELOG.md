@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.78.1] — 2026-04-20
+
+### Fixed
+- **Skills ZIP upload** — `POST /api/instances/:slug/skills/upload` was failing with HTTP 500 on systems without the `unzip` binary installed (e.g. production Debian 12). Replaced `execFile("unzip", ...)` with the pure-JS `fflate` library (zero native deps). Added path traversal safety check and 6 new tests covering upload scenarios (missing file, no SKILL.md, root/nested SKILL.md, path traversal rejection).
+
+---
+
 ## [0.78.0] — 2026-04-19
 
 ### Added
