@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.80.5] — 2026-04-20
+
+### Added
+- **`AuthProvider` abstraction** (`src/core/auth/`) — the monolithic `src/core/auth.ts` is refactored into a pluggable provider pattern. Exposes `AuthProvider` interface (`kind`, `authenticate(credentials)`), a registry (`registerAuthProvider`, `authenticate(kind, credentials)` dispatcher), and a default `PasswordProvider` (scrypt) registered at dashboard bootstrap. Dashboard `POST /api/auth/login` now routes through `authenticate("password", …)` instead of inlining the SELECT + scrypt verification. This is hook **H2** of the Enterprise Edition preparation (Phase 0) — Enterprise will register `OIDCProvider`, `SAMLProvider`, `AzureADProvider` without touching Community code. See `ai-docs/plan-enterprise-edition.md`.
+- **Architecture doc** `docs/architecture/auth-providers.md` — API, registration pattern, multi-provider coexistence, bearer identity handling, Enterprise extension roadmap.
+
+---
+
 ## [0.80.4] — 2026-04-20
 
 ### Dependencies
