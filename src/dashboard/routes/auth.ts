@@ -1,7 +1,7 @@
 // src/dashboard/routes/auth.ts
+import { timingSafeEqual } from "node:crypto";
 import type { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { authenticate } from "../../core/auth/index.js";
 import { constants } from "../../lib/constants.js";
