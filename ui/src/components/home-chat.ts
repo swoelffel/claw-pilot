@@ -24,7 +24,7 @@ import {
 import { tokenStyles } from "../styles/tokens.js";
 import { errorBannerStyles } from "../styles/shared.js";
 import { getToken } from "../services/auth-state.js";
-import { debugSse } from "../services/debug.js";
+import { debugSse, debugChat, debugRender, debugApi } from "../services/debug.js";
 import "./pilot/pilot-header.js";
 import "./pilot/pilot-messages.js";
 import "./pilot/pilot-input.js";
@@ -188,6 +188,10 @@ export class HomeChat extends LitElement {
 
   private async _loadMessages(before?: string): Promise<void> {
     if (!this._activeSessionId) return;
+    debugApi("home-chat fetchSessionMessages loadMessages", {
+      sessionId: this._activeSessionId,
+      before,
+    });
     try {
       const { messages, hasMore } = await fetchSessionMessages(this.slug, this._activeSessionId, {
         limit: 50,
@@ -219,6 +223,9 @@ export class HomeChat extends LitElement {
     ) {
       return;
     }
+    debugApi("home-chat fetchSessionMessages refresh", {
+      sessionId: this._activeSessionId,
+    });
     try {
       const { messages } = await fetchSessionMessages(this.slug, this._activeSessionId, {
         limit: 20,
@@ -231,6 +238,10 @@ export class HomeChat extends LitElement {
 
   private async _reloadLastMessages(): Promise<void> {
     if (!this._activeSessionId) return;
+    debugApi("home-chat fetchSessionMessages reloadLast", {
+      sessionId: this._activeSessionId,
+      streamingActive: this._streamingText.length > 0,
+    });
     try {
       const { messages } = await fetchSessionMessages(this.slug, this._activeSessionId, {
         limit: 5,
@@ -365,6 +376,15 @@ export class HomeChat extends LitElement {
   private _handleBusEvent(event: PilotBusEvent): void {
     const p = event.payload;
     const eventSessionId = p.sessionId as string | undefined;
+    debugSse("home-chat recv", event.type, {
+      sessionId: eventSessionId,
+      activeSessionId: this._activeSessionId,
+      role: p.role,
+      agentId: p.agentId,
+      messageId: p.messageId,
+      partType: p.partType,
+      deltaLen: typeof p.delta === "string" ? (p.delta as string).length : undefined,
+    });
 
     // Adopt incoming session if we don't have one yet (e.g. first message via Telegram)
     if (!this._activeSessionId && eventSessionId) {
@@ -404,6 +424,11 @@ export class HomeChat extends LitElement {
           this._streamingAgentId = (p.agentId as string | undefined) ?? "";
           this._streamingMessageId = (p.messageId as string | undefined) ?? null;
           if (this._status !== "sending") this._status = "sending";
+          debugChat("home-chat start streaming assistant", {
+            messageId: this._streamingMessageId,
+            agentId: this._streamingAgentId,
+            status: this._status,
+          });
         } else if (p.role === "user") {
           // Message from another channel (Telegram, CLI, etc.) — load it immediately
           void this._reloadLastMessages();
@@ -449,6 +474,7 @@ export class HomeChat extends LitElement {
           this._currentToolName = null;
           this._streamingMessageId = null;
           this._status = "idle";
+          debugChat("home-chat stream ended (idle)", { status: this._status });
           // Ensure the final messages (assistant reply, tool results, etc.)
           // are rendered — message.updated/created may have been missed.
           void this._reloadLastMessages();
@@ -464,6 +490,7 @@ export class HomeChat extends LitElement {
         this._currentToolName = null;
         this._streamingMessageId = null;
         this._status = "idle";
+        debugChat("home-chat session ended", { status: this._status });
         break;
       }
 
@@ -604,6 +631,22 @@ export class HomeChat extends LitElement {
       this._status === "tool";
     const lockReason: "pending_question" | "" = this._hasPendingQuestion ? "pending_question" : "";
     const totalTokens = this._tokensIn + this._tokensOut;
+
+    // Diagnostic guard: if the in-flight assistant message id also appears
+    // in the persisted list without the filter kicking in, the timeline
+    // would render the same reply twice. The filter below is the fix; this
+    // log only fires when `cp:debug-render` is enabled and surfaces any
+    // regression of that invariant.
+    if (
+      this._streamingMessageId &&
+      this._streamingText.length > 0 &&
+      this._messages.some((m) => m.id === this._streamingMessageId)
+    ) {
+      debugRender("home-chat filtering in-flight assistant row", {
+        streamingMessageId: this._streamingMessageId,
+        streamingTextLen: this._streamingText.length,
+      });
+    }
 
     return html`
       <cp-pilot-header
