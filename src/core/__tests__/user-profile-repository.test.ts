@@ -5,7 +5,7 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import { initDatabase } from "../../db/schema.js";
 import { UserProfileRepository } from "../repositories/user-profile-repository.js";
-import { hashPassword } from "../auth.js";
+import { hashPassword } from "../auth/index.js";
 
 let tmpDir: string;
 let dbPath: string;

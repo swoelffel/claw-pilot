@@ -1,6 +1,8 @@
-// src/core/auth.ts
+// src/core/auth/providers/password.ts
 import { scrypt, randomBytes, timingSafeEqual } from "node:crypto";
-import { logger } from "../lib/logger.js";
+import type Database from "better-sqlite3";
+import { logger } from "../../../lib/logger.js";
+import type { AuthProvider, AuthResult } from "../provider.js";
 
 const SCRYPT_KEYLEN = 64;
 const SCRYPT_COST = 16384; // N=2^14, OWASP recommendation
@@ -28,7 +30,10 @@ function scryptAsync(
 
 /**
  * Hash a password using scrypt.
- * Returns a string in the format: "scrypt:<salt_hex_32>:<hash_hex_128>"
+ * Returns a string in the format: "scrypt:<salt_hex_32>:<hash_hex_128>".
+ *
+ * Public utility — consumed by user-creation flows (CLI `auth` command,
+ * e2e seed helpers). Not tied to any specific AuthProvider instance.
  */
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
@@ -82,4 +87,64 @@ export function generatePassword(): string {
     password += PASSWORD_ALPHABET[bytes[i]! % PASSWORD_ALPHABET.length];
   }
   return password;
+}
+
+/** Credentials shape accepted by `PasswordProvider.authenticate()`. */
+export interface PasswordCredentials {
+  username: string;
+  password: string;
+}
+
+interface UserRow {
+  id: number;
+  username: string;
+  password_hash: string;
+  role: string;
+}
+
+/**
+ * Default Community auth backend: looks up a user in the `users` table and
+ * verifies their password with scrypt.
+ *
+ * Instantiated once per dashboard process and registered via
+ * `registerAuthProvider()` during bootstrap. Carries the `db` handle needed
+ * to perform the user lookup.
+ */
+export class PasswordProvider implements AuthProvider {
+  readonly kind = "password";
+
+  constructor(private readonly db: Database.Database) {}
+
+  async authenticate(credentials: unknown): Promise<AuthResult> {
+    if (!isPasswordCredentials(credentials)) {
+      return {
+        ok: false,
+        code: "INVALID_CREDENTIALS_SHAPE",
+        message: "Expected { username, password }",
+      };
+    }
+
+    const { username, password } = credentials;
+
+    const row = this.db
+      .prepare("SELECT id, username, password_hash, role FROM users WHERE username = ?")
+      .get(username) as UserRow | undefined;
+
+    const valid = row ? await verifyPassword(password, row.password_hash) : false;
+
+    if (!row || !valid) {
+      return { ok: false, code: "INVALID_CREDENTIALS", message: "Invalid credentials" };
+    }
+
+    return {
+      ok: true,
+      user: { id: row.id, username: row.username, role: row.role },
+    };
+  }
+}
+
+function isPasswordCredentials(value: unknown): value is PasswordCredentials {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v["username"] === "string" && typeof v["password"] === "string";
 }

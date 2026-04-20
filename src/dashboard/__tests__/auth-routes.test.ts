@@ -10,7 +10,12 @@ import { initDatabase } from "../../db/schema.js";
 import { Registry } from "../../core/registry.js";
 import { MockConnection } from "../../core/__tests__/mock-connection.js";
 import { SessionStore } from "../session-store.js";
-import { hashPassword } from "../../core/auth.js";
+import {
+  clearAuthProviders,
+  hashPassword,
+  PasswordProvider,
+  registerAuthProvider,
+} from "../../core/auth/index.js";
 import { registerAuthRoutes } from "../routes/auth.js";
 import { constants } from "../../lib/constants.js";
 import type { RouteDeps } from "../route-deps.js";
@@ -51,6 +56,11 @@ async function createTestApp(): Promise<TestCtx> {
   const registry = new Registry(db);
   const conn = new MockConnection();
   const sessionStore = new SessionStore(db);
+
+  // Bind the password auth provider to this test's DB. Each createTestApp()
+  // call gets a fresh in-memory DB, so we reset the registry to rebind.
+  clearAuthProviders();
+  registerAuthProvider(new PasswordProvider(db));
 
   // Insert admin user with known password
   const hash = await hashPassword(TEST_PASSWORD);

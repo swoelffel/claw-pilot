@@ -2,7 +2,7 @@
 // DB seeding helpers for e2e tests
 
 import type Database from "better-sqlite3";
-import { hashPassword } from "../../core/auth.js";
+import { hashPassword } from "../../core/auth/index.js";
 import { constants } from "../../lib/constants.js";
 import type { Registry } from "../../core/registry.js";
 

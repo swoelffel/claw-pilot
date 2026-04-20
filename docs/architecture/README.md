@@ -57,6 +57,7 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
 | **[API Reference](api-reference.md)** | 18 hash routes + ~150 REST endpoints by domain | Building integrations or UI |
 | **[Runtime Engine](runtime-engine.md)** | Config, 8 providers, daemon, channels, 12+3 tools, 43+ bus events, flows, workspace-knowledge | Runtime changes |
 | **[Capability Registry](capability-registry.md)** | Community/Enterprise differentiation hook, `capabilities.has(...)` contract | Adding enterprise-gated features or writing a consumer hook |
+| **[Auth Providers](auth-providers.md)** | Pluggable authentication backends, `AuthProvider` contract, `PasswordProvider` default | Adding a new auth backend (SSO) or touching the login route |
 | **[SSE Architecture](../sse-architecture.md)** | Real-time streaming (3 SSE + 1 WS), reconnection, auth | Live features |
 
 ### Related docs
