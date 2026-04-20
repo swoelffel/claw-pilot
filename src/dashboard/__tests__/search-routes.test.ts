@@ -46,6 +46,9 @@ beforeEach(() => {
   app.use("/api/*", async (c, next) => {
     const auth = c.req.header("Authorization") ?? "";
     if (auth !== expectedBearer) return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
+    // Synthetic admin user required by permission() middleware which reads c.get("user").
+    // The bare test harness has no server-level auth middleware, so we inject it here.
+    c.set("user", { id: "test", username: "admin", role: "admin", source: "session" });
     await next();
   });
 

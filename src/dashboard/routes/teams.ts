@@ -3,6 +3,8 @@ import type { Hono } from "hono";
 import type { RouteDeps } from "../route-deps.js";
 import { apiError } from "../route-deps.js";
 import { instanceGuard } from "../../lib/guards.js";
+import { permission } from "../middleware/permission.js";
+import { ACTIONS } from "../middleware/permission-actions.js";
 import {
   exportInstanceTeam,
   exportBlueprintTeam,
@@ -46,158 +48,167 @@ function handleTeamValidationError(
   return apiError(c, 400, "VALIDATION_FAILED", humanMessage);
 }
 
-export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
+/** Handle GET /api/instances/:slug/team/export. */
+async function handleExportInstanceTeam(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { registry, conn } = deps;
+  const slug = c.req.param("slug");
+  const instance = registry.getInstance(slug);
+  const guard = instanceGuard(c, instance);
+  if (guard) return guard;
+  try {
+    const team = await exportInstanceTeam(conn, registry, instance!);
+    const yaml = serializeTeamYaml(team);
+    return new Response(yaml, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/yaml; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${slug}-team.yaml"`,
+      },
+    });
+  } catch (err) {
+    return apiError(c, 500, "EXPORT_FAILED", err instanceof Error ? err.message : "Export failed");
+  }
+}
+
+/** Handle POST /api/instances/:slug/team/import. */
+async function handleImportInstanceTeam(c: HonoContext, deps: RouteDeps): Promise<Response> {
   const { registry, conn, xdgRuntimeDir } = deps;
-
-  // GET /api/instances/:slug/team/export — export instance team as YAML
-  app.get("/api/instances/:slug/team/export", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
-
-    try {
-      const team = await exportInstanceTeam(conn, registry, instance!);
-      const yaml = serializeTeamYaml(team);
-      return new Response(yaml, {
-        status: 200,
-        headers: {
-          "Content-Type": "text/yaml; charset=utf-8",
-          "Content-Disposition": `attachment; filename="${slug}-team.yaml"`,
-        },
-      });
-    } catch (err) {
-      return apiError(
-        c,
-        500,
-        "EXPORT_FAILED",
-        err instanceof Error ? err.message : "Export failed",
-      );
-    }
-  });
-
-  // POST /api/instances/:slug/team/import — import team YAML into instance
-  app.post("/api/instances/:slug/team/import", async (c) => {
-    const slug = c.req.param("slug");
-    const instance = registry.getInstance(slug);
-    const guard = instanceGuard(c, instance);
-    if (guard) return guard;
-    const inst = instance!;
-
-    const dryRun = c.req.query("dry_run") === "true";
-
-    let yamlContent: string;
-    try {
-      yamlContent = await c.req.text();
-    } catch (err) {
-      logger.warn("[route:teams] request body read failed for instance import", {
-        error: String(err),
-      });
-      return apiError(c, 400, "INVALID_BODY", "Could not read request body");
-    }
-
-    logger.info(`[team-import] instance=${slug} dry_run=${dryRun} size=${yamlContent.length}B`);
-
-    const parsed = parseAndValidateTeam(yamlContent);
-    const validationError = handleTeamValidationError(c, parsed, `instance=${slug}`);
-    if (validationError) return validationError;
-    if (!parsed.success) return apiError(c, 400, "VALIDATION_FAILED", "Validation failed");
-
-    logger.info(
-      `[team-import] Validated OK — ${parsed.data.agents.length} agents, ${parsed.data.links.length} links`,
+  const slug = c.req.param("slug");
+  const instance = registry.getInstance(slug);
+  const guard = instanceGuard(c, instance);
+  if (guard) return guard;
+  const inst = instance!;
+  const dryRun = c.req.query("dry_run") === "true";
+  let yamlContent: string;
+  try {
+    yamlContent = await c.req.text();
+  } catch (err) {
+    logger.warn("[route:teams] request body read failed for instance import", {
+      error: String(err),
+    });
+    return apiError(c, 400, "INVALID_BODY", "Could not read request body");
+  }
+  logger.info(`[team-import] instance=${slug} dry_run=${dryRun} size=${yamlContent.length}B`);
+  const parsed = parseAndValidateTeam(yamlContent);
+  const validationError = handleTeamValidationError(c, parsed, `instance=${slug}`);
+  if (validationError) return validationError;
+  if (!parsed.success) return apiError(c, 400, "VALIDATION_FAILED", "Validation failed");
+  logger.info(
+    `[team-import] Validated OK — ${parsed.data.agents.length} agents, ${parsed.data.links.length} links`,
+  );
+  try {
+    const result = await importInstanceTeam(
+      registry.getDb(),
+      registry,
+      conn,
+      inst,
+      parsed.data,
+      xdgRuntimeDir,
+      dryRun,
     );
+    logger.info(`[team-import] ${dryRun ? "Dry-run" : "Import"} complete for instance=${slug}`);
+    rebuildSearchIndex(deps.db);
+    return c.json(result);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Import failed";
+    logger.error(`[team-import] Import error for instance=${slug}: ${msg}`);
+    if (err instanceof Error && err.stack) logger.error(err.stack);
+    return apiError(c, 500, "IMPORT_FAILED", msg);
+  }
+}
 
-    try {
-      const result = await importInstanceTeam(
-        registry.getDb(),
-        registry,
-        conn,
-        inst,
-        parsed.data,
-        xdgRuntimeDir,
-        dryRun,
-      );
-      logger.info(`[team-import] ${dryRun ? "Dry-run" : "Import"} complete for instance=${slug}`);
-      rebuildSearchIndex(deps.db);
-      return c.json(result);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Import failed";
-      logger.error(`[team-import] Import error for instance=${slug}: ${msg}`);
-      if (err instanceof Error && err.stack) logger.error(err.stack);
-      return apiError(c, 500, "IMPORT_FAILED", msg);
-    }
-  });
+/** Handle GET /api/blueprints/:id/team/export. */
+function handleExportBlueprintTeam(c: HonoContext, deps: RouteDeps): Response {
+  const { registry } = deps;
+  const id = Number(c.req.param("id"));
+  if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
+  const blueprint = registry.getBlueprint(id);
+  if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
+  try {
+    const team = exportBlueprintTeam(registry, id);
+    const yaml = serializeTeamYaml(team);
+    const filename = `${blueprint.name.toLowerCase().replace(/\s+/g, "-")}-team.yaml`;
+    return new Response(yaml, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/yaml; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+      },
+    });
+  } catch (err) {
+    return apiError(c, 500, "EXPORT_FAILED", err instanceof Error ? err.message : "Export failed");
+  }
+}
 
-  // GET /api/blueprints/:id/team/export — export blueprint team as YAML
-  app.get("/api/blueprints/:id/team/export", (c) => {
-    const id = Number(c.req.param("id"));
-    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
+/** Handle POST /api/blueprints/:id/team/import. */
+async function handleImportBlueprintTeam(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { registry } = deps;
+  const id = Number(c.req.param("id"));
+  if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
+  const blueprint = registry.getBlueprint(id);
+  if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
+  const dryRun = c.req.query("dry_run") === "true";
+  let yamlContent: string;
+  try {
+    yamlContent = await c.req.text();
+  } catch (err) {
+    logger.warn("[route:teams] request body read failed for blueprint import", {
+      error: String(err),
+    });
+    return apiError(c, 400, "INVALID_BODY", "Could not read request body");
+  }
+  logger.info(`[team-import] blueprint=${id} dry_run=${dryRun} size=${yamlContent.length}B`);
+  const parsed = parseAndValidateTeam(yamlContent);
+  const validationError = handleTeamValidationError(c, parsed, `blueprint=${id}`);
+  if (validationError) return validationError;
+  if (!parsed.success) return apiError(c, 400, "VALIDATION_FAILED", "Validation failed");
+  logger.info(
+    `[team-import] Validated OK — ${parsed.data.agents.length} agents, ${parsed.data.links.length} links`,
+  );
+  try {
+    const result = await importBlueprintTeam(registry.getDb(), registry, id, parsed.data, dryRun);
+    logger.info(`[team-import] ${dryRun ? "Dry-run" : "Import"} complete for blueprint=${id}`);
+    rebuildSearchIndex(deps.db);
+    return c.json(result);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Import failed";
+    logger.error(`[team-import] Import error for blueprint=${id}: ${msg}`);
+    if (err instanceof Error && err.stack) logger.error(err.stack);
+    return apiError(c, 500, "IMPORT_FAILED", msg);
+  }
+}
 
-    const blueprint = registry.getBlueprint(id);
-    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
-
-    try {
-      const team = exportBlueprintTeam(registry, id);
-      const yaml = serializeTeamYaml(team);
-      const filename = `${blueprint.name.toLowerCase().replace(/\s+/g, "-")}-team.yaml`;
-      return new Response(yaml, {
-        status: 200,
-        headers: {
-          "Content-Type": "text/yaml; charset=utf-8",
-          "Content-Disposition": `attachment; filename="${filename}"`,
-        },
-      });
-    } catch (err) {
-      return apiError(
-        c,
-        500,
-        "EXPORT_FAILED",
-        err instanceof Error ? err.message : "Export failed",
-      );
-    }
-  });
-
-  // POST /api/blueprints/:id/team/import — import team YAML into blueprint
-  app.post("/api/blueprints/:id/team/import", async (c) => {
-    const id = Number(c.req.param("id"));
-    if (isNaN(id)) return apiError(c, 400, "FIELD_INVALID", "Invalid id");
-
-    const blueprint = registry.getBlueprint(id);
-    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Not found");
-
-    const dryRun = c.req.query("dry_run") === "true";
-
-    let yamlContent: string;
-    try {
-      yamlContent = await c.req.text();
-    } catch (err) {
-      logger.warn("[route:teams] request body read failed for blueprint import", {
-        error: String(err),
-      });
-      return apiError(c, 400, "INVALID_BODY", "Could not read request body");
-    }
-
-    logger.info(`[team-import] blueprint=${id} dry_run=${dryRun} size=${yamlContent.length}B`);
-
-    const parsed = parseAndValidateTeam(yamlContent);
-    const validationError = handleTeamValidationError(c, parsed, `blueprint=${id}`);
-    if (validationError) return validationError;
-    if (!parsed.success) return apiError(c, 400, "VALIDATION_FAILED", "Validation failed");
-
-    logger.info(
-      `[team-import] Validated OK — ${parsed.data.agents.length} agents, ${parsed.data.links.length} links`,
-    );
-
-    try {
-      const result = await importBlueprintTeam(registry.getDb(), registry, id, parsed.data, dryRun);
-      logger.info(`[team-import] ${dryRun ? "Dry-run" : "Import"} complete for blueprint=${id}`);
-      rebuildSearchIndex(deps.db);
-      return c.json(result);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Import failed";
-      logger.error(`[team-import] Import error for blueprint=${id}: ${msg}`);
-      if (err instanceof Error && err.stack) logger.error(err.stack);
-      return apiError(c, 500, "IMPORT_FAILED", msg);
-    }
-  });
+export function registerTeamRoutes(app: Hono, deps: RouteDeps) {
+  app.get(
+    "/api/instances/:slug/team/export",
+    permission({
+      action: ACTIONS.TEAM_EXPORT,
+      resource: { kind: "team", id: (c) => c.req.param("slug") },
+    }),
+    async (c) => handleExportInstanceTeam(c, deps),
+  );
+  app.post(
+    "/api/instances/:slug/team/import",
+    permission({
+      action: ACTIONS.TEAM_IMPORT,
+      resource: { kind: "team", id: (c) => c.req.param("slug") },
+    }),
+    async (c) => handleImportInstanceTeam(c, deps),
+  );
+  app.get(
+    "/api/blueprints/:id/team/export",
+    permission({
+      action: ACTIONS.TEAM_EXPORT,
+      resource: { kind: "team", id: (c) => c.req.param("id") },
+    }),
+    (c) => handleExportBlueprintTeam(c, deps),
+  );
+  app.post(
+    "/api/blueprints/:id/team/import",
+    permission({
+      action: ACTIONS.TEAM_IMPORT,
+      resource: { kind: "team", id: (c) => c.req.param("id") },
+    }),
+    async (c) => handleImportBlueprintTeam(c, deps),
+  );
 }

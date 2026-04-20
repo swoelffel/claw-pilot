@@ -26,6 +26,8 @@ import { constants } from "../../lib/constants.js";
 import { logger } from "../../lib/logger.js";
 import { loadWorkspaceTemplate } from "../../lib/workspace-templates.js";
 import { upsertSearchEntry, removeSearchEntry } from "../../core/repositories/search-repository.js";
+import { permission } from "../middleware/permission.js";
+import { ACTIONS } from "../middleware/permission-actions.js";
 
 // ---------------------------------------------------------------------------
 // Zod schemas for request validation
@@ -225,146 +227,215 @@ async function handleImportAgentBlueprint(c: HonoContext, deps: RouteDeps): Prom
 }
 
 // ---------------------------------------------------------------------------
+// Additional extracted handlers (split to keep registerAgentBlueprintRoutes ≤ 150 lines)
+// ---------------------------------------------------------------------------
+
+/** Handle GET /api/agent-blueprints/:id — detail with files summary. */
+function handleReadAgentBlueprint(c: HonoContext, deps: RouteDeps): Response {
+  const { registry } = deps;
+  const id = c.req.param("id");
+  const blueprint = registry.getAgentBlueprint(id);
+  if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
+  return c.json({
+    ...blueprint,
+    files: formatBlueprintFiles(registry.listAgentBlueprintFiles(id)),
+  });
+}
+
+/** Handle PUT /api/agent-blueprints/:id — update metadata. */
+async function handleUpdateAgentBlueprint(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { registry } = deps;
+  const id = c.req.param("id");
+  const existing = registry.getAgentBlueprint(id);
+  if (!existing) return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
+  const body = await c.req.json().catch(() => null);
+  const parsed = UpdateSchema.safeParse(body);
+  if (!parsed.success) return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+  const d = parsed.data;
+  const updated = registry.updateAgentBlueprint(id, {
+    ...(d.name !== undefined ? { name: d.name } : {}),
+    ...("description" in d ? { description: d.description ?? null } : {}),
+    ...(d.category !== undefined ? { category: d.category } : {}),
+    ...(d.configJson !== undefined ? { configJson: d.configJson } : {}),
+    ...("icon" in d ? { icon: d.icon ?? null } : {}),
+    ...("tags" in d ? { tags: d.tags ?? null } : {}),
+  });
+  if (updated) indexAgentBlueprint(deps.db, updated);
+  return c.json(updated);
+}
+
+/** Handle DELETE /api/agent-blueprints/:id — delete cascade. */
+function handleDeleteAgentBlueprint(c: HonoContext, deps: RouteDeps): Response {
+  const { registry } = deps;
+  const id = c.req.param("id");
+  if (!registry.getAgentBlueprint(id))
+    return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
+  registry.deleteAgentBlueprint(id);
+  removeSearchEntry(deps.db, "agent_blueprint", id);
+  return c.json({ ok: true });
+}
+
+/** Handle POST /api/agent-blueprints/:id/clone — deep clone. */
+async function handleCloneAgentBlueprint(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { registry } = deps;
+  const id = c.req.param("id");
+  const body = await c.req.json().catch(() => ({}));
+  const parsed = CloneSchema.safeParse(body);
+  const clone = registry.cloneAgentBlueprint(id, parsed.success ? parsed.data.name : undefined);
+  if (!clone) return apiError(c, 404, "NOT_FOUND", "Source agent blueprint not found");
+  indexAgentBlueprint(deps.db, clone);
+  return c.json(
+    { ...clone, files: formatBlueprintFiles(registry.listAgentBlueprintFiles(clone.id)) },
+    201,
+  );
+}
+
+/** Handle GET /api/agent-blueprints/:id/files/:filename — read file. */
+function handleReadBlueprintFile(c: HonoContext, deps: RouteDeps): Response {
+  const { registry } = deps;
+  const id = c.req.param("id");
+  const filename = c.req.param("filename");
+  if (!registry.getAgentBlueprint(id))
+    return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
+  const file = registry.getAgentBlueprintFile(id, filename);
+  if (!file) return apiError(c, 404, "NOT_FOUND", `File not found: ${filename}`);
+  return c.json({
+    filename: file.filename,
+    content: file.content,
+    content_hash: file.content_hash,
+    updated_at: file.updated_at,
+  });
+}
+
+/** Handle PUT /api/agent-blueprints/:id/files/:filename — write file. */
+async function handleWriteBlueprintFile(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { registry } = deps;
+  const id = c.req.param("id");
+  const filename = c.req.param("filename");
+  if (!registry.getAgentBlueprint(id))
+    return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body.content !== "string")
+    return apiError(c, 400, "INVALID_BODY", 'Body must be { "content": "..." }');
+  if ((body.content as string).length > 1_000_000)
+    return apiError(c, 413, "FILE_TOO_LARGE", "File content exceeds 1MB limit");
+  registry.upsertAgentBlueprintFile(id, filename, body.content as string);
+  const saved = registry.getAgentBlueprintFile(id, filename);
+  return c.json({
+    filename: saved!.filename,
+    content: saved!.content,
+    content_hash: saved!.content_hash,
+    updated_at: saved!.updated_at,
+  });
+}
+
+/** Handle DELETE /api/agent-blueprints/:id/files/:filename — delete file. */
+function handleDeleteBlueprintFile(c: HonoContext, deps: RouteDeps): Response {
+  const { registry } = deps;
+  const id = c.req.param("id");
+  if (!registry.getAgentBlueprint(id))
+    return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
+  registry.deleteAgentBlueprintFile(id, c.req.param("filename"));
+  return c.json({ ok: true });
+}
+
+/** Handle GET /api/agent-blueprints/:id/export — export as YAML. */
+function handleExportAgentBlueprint(c: HonoContext, deps: RouteDeps): Response {
+  const { registry } = deps;
+  const id = c.req.param("id");
+  const blueprint = registry.getAgentBlueprint(id);
+  if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
+  const files = registry.listAgentBlueprintFiles(id);
+  const filesMap: Record<string, string> = {};
+  for (const f of files) {
+    if (f.content) filesMap[f.filename] = f.content;
+  }
+  const doc = {
+    version: "1",
+    name: blueprint.name,
+    ...(blueprint.description ? { description: blueprint.description } : {}),
+    category: blueprint.category,
+    ...(blueprint.icon ? { icon: blueprint.icon } : {}),
+    ...(blueprint.tags ? { tags: blueprint.tags } : {}),
+    ...(Object.keys(filesMap).length > 0 ? { files: filesMap } : {}),
+  };
+  const yaml = stringify(doc, { lineWidth: 0 });
+  const filename = `${blueprint.name.toLowerCase().replace(/\s+/g, "-")}-template.yaml`;
+  return new Response(yaml, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/yaml; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Route registration
 // ---------------------------------------------------------------------------
 
 export function registerAgentBlueprintRoutes(app: Hono, deps: RouteDeps): void {
-  const { registry } = deps;
+  const abKind = { kind: "agent-blueprint" } as const;
+  const abId = { kind: "agent-blueprint", id: (c: HonoContext) => c.req.param("id") } as const;
 
-  app.get("/api/agent-blueprints", (c) => c.json(registry.listAgentBlueprints()));
-
-  app.post("/api/agent-blueprints", async (c) => handleCreateAgentBlueprint(c, deps));
-
-  app.get("/api/agent-blueprints/:id", (c) => {
-    const id = c.req.param("id");
-    const blueprint = registry.getAgentBlueprint(id);
-    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
-    return c.json({
-      ...blueprint,
-      files: formatBlueprintFiles(registry.listAgentBlueprintFiles(id)),
-    });
-  });
-
-  app.put("/api/agent-blueprints/:id", async (c) => {
-    const id = c.req.param("id");
-    const existing = registry.getAgentBlueprint(id);
-    if (!existing) return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
-
-    const body = await c.req.json().catch(() => null);
-    const parsed = UpdateSchema.safeParse(body);
-    if (!parsed.success) return apiError(c, 400, "INVALID_BODY", parsed.error.message);
-
-    const d = parsed.data;
-    const updated = registry.updateAgentBlueprint(id, {
-      ...(d.name !== undefined ? { name: d.name } : {}),
-      ...("description" in d ? { description: d.description ?? null } : {}),
-      ...(d.category !== undefined ? { category: d.category } : {}),
-      ...(d.configJson !== undefined ? { configJson: d.configJson } : {}),
-      ...("icon" in d ? { icon: d.icon ?? null } : {}),
-      ...("tags" in d ? { tags: d.tags ?? null } : {}),
-    });
-    if (updated) indexAgentBlueprint(deps.db, updated);
-    return c.json(updated);
-  });
-
-  app.delete("/api/agent-blueprints/:id", (c) => {
-    const id = c.req.param("id");
-    if (!registry.getAgentBlueprint(id))
-      return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
-    registry.deleteAgentBlueprint(id);
-    removeSearchEntry(deps.db, "agent_blueprint", id);
-    return c.json({ ok: true });
-  });
-
-  app.post("/api/agent-blueprints/:id/clone", async (c) => {
-    const id = c.req.param("id");
-    const body = await c.req.json().catch(() => ({}));
-    const parsed = CloneSchema.safeParse(body);
-    const clone = registry.cloneAgentBlueprint(id, parsed.success ? parsed.data.name : undefined);
-    if (!clone) return apiError(c, 404, "NOT_FOUND", "Source agent blueprint not found");
-    indexAgentBlueprint(deps.db, clone);
-    return c.json(
-      { ...clone, files: formatBlueprintFiles(registry.listAgentBlueprintFiles(clone.id)) },
-      201,
-    );
-  });
-
-  app.get("/api/agent-blueprints/:id/files/:filename", (c) => {
-    const id = c.req.param("id");
-    const filename = c.req.param("filename");
-    if (!registry.getAgentBlueprint(id))
-      return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
-    const file = registry.getAgentBlueprintFile(id, filename);
-    if (!file) return apiError(c, 404, "NOT_FOUND", `File not found: ${filename}`);
-    return c.json({
-      filename: file.filename,
-      content: file.content,
-      content_hash: file.content_hash,
-      updated_at: file.updated_at,
-    });
-  });
-
-  app.put("/api/agent-blueprints/:id/files/:filename", async (c) => {
-    const id = c.req.param("id");
-    const filename = c.req.param("filename");
-    if (!registry.getAgentBlueprint(id))
-      return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
-    const body = await c.req.json().catch(() => null);
-    if (!body || typeof body.content !== "string")
-      return apiError(c, 400, "INVALID_BODY", 'Body must be { "content": "..." }');
-    if ((body.content as string).length > 1_000_000)
-      return apiError(c, 413, "FILE_TOO_LARGE", "File content exceeds 1MB limit");
-    registry.upsertAgentBlueprintFile(id, filename, body.content as string);
-    const saved = registry.getAgentBlueprintFile(id, filename);
-    return c.json({
-      filename: saved!.filename,
-      content: saved!.content,
-      content_hash: saved!.content_hash,
-      updated_at: saved!.updated_at,
-    });
-  });
-
-  app.delete("/api/agent-blueprints/:id/files/:filename", (c) => {
-    const id = c.req.param("id");
-    if (!registry.getAgentBlueprint(id))
-      return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
-    registry.deleteAgentBlueprintFile(id, c.req.param("filename"));
-    return c.json({ ok: true });
-  });
-
-  app.post("/api/agent-blueprints/from-agent", async (c) => handleFromAgent(c, deps));
-
-  app.get("/api/agent-blueprints/:id/export", (c) => {
-    const id = c.req.param("id");
-    const blueprint = registry.getAgentBlueprint(id);
-    if (!blueprint) return apiError(c, 404, "NOT_FOUND", "Agent blueprint not found");
-
-    const files = registry.listAgentBlueprintFiles(id);
-    const filesMap: Record<string, string> = {};
-    for (const f of files) {
-      if (f.content) filesMap[f.filename] = f.content;
-    }
-
-    const doc = {
-      version: "1",
-      name: blueprint.name,
-      ...(blueprint.description ? { description: blueprint.description } : {}),
-      category: blueprint.category,
-      ...(blueprint.icon ? { icon: blueprint.icon } : {}),
-      ...(blueprint.tags ? { tags: blueprint.tags } : {}),
-      ...(Object.keys(filesMap).length > 0 ? { files: filesMap } : {}),
-    };
-
-    const yaml = stringify(doc, { lineWidth: 0 });
-    const filename = `${blueprint.name.toLowerCase().replace(/\s+/g, "-")}-template.yaml`;
-    return new Response(yaml, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/yaml; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${filename}"`,
-      },
-    });
-  });
-
-  app.post("/api/agent-blueprints/import", async (c) => handleImportAgentBlueprint(c, deps));
+  app.get(
+    "/api/agent-blueprints",
+    permission({ action: ACTIONS.AGENT_BLUEPRINT_LIST, resource: abKind }),
+    (c) => c.json(deps.registry.listAgentBlueprints()),
+  );
+  app.post(
+    "/api/agent-blueprints",
+    permission({ action: ACTIONS.AGENT_BLUEPRINT_CREATE, resource: abKind }),
+    async (c) => handleCreateAgentBlueprint(c, deps),
+  );
+  app.get(
+    "/api/agent-blueprints/:id",
+    permission({ action: ACTIONS.AGENT_BLUEPRINT_READ, resource: abId }),
+    (c) => handleReadAgentBlueprint(c, deps),
+  );
+  app.put(
+    "/api/agent-blueprints/:id",
+    permission({ action: ACTIONS.AGENT_BLUEPRINT_UPDATE, resource: abId }),
+    async (c) => handleUpdateAgentBlueprint(c, deps),
+  );
+  app.delete(
+    "/api/agent-blueprints/:id",
+    permission({ action: ACTIONS.AGENT_BLUEPRINT_DELETE, resource: abId }),
+    (c) => handleDeleteAgentBlueprint(c, deps),
+  );
+  app.post(
+    "/api/agent-blueprints/:id/clone",
+    permission({ action: ACTIONS.AGENT_BLUEPRINT_CLONE, resource: abId }),
+    async (c) => handleCloneAgentBlueprint(c, deps),
+  );
+  app.get(
+    "/api/agent-blueprints/:id/files/:filename",
+    permission({ action: ACTIONS.AGENT_BLUEPRINT_FILE_READ, resource: abId }),
+    (c) => handleReadBlueprintFile(c, deps),
+  );
+  app.put(
+    "/api/agent-blueprints/:id/files/:filename",
+    permission({ action: ACTIONS.AGENT_BLUEPRINT_FILE_UPDATE, resource: abId }),
+    async (c) => handleWriteBlueprintFile(c, deps),
+  );
+  app.delete(
+    "/api/agent-blueprints/:id/files/:filename",
+    permission({ action: ACTIONS.AGENT_BLUEPRINT_FILE_DELETE, resource: abId }),
+    (c) => handleDeleteBlueprintFile(c, deps),
+  );
+  app.post(
+    "/api/agent-blueprints/from-agent",
+    permission({ action: ACTIONS.AGENT_BLUEPRINT_FROM_AGENT, resource: abKind }),
+    async (c) => handleFromAgent(c, deps),
+  );
+  app.get(
+    "/api/agent-blueprints/:id/export",
+    permission({ action: ACTIONS.AGENT_BLUEPRINT_EXPORT, resource: abId }),
+    (c) => handleExportAgentBlueprint(c, deps),
+  );
+  app.post(
+    "/api/agent-blueprints/import",
+    permission({ action: ACTIONS.AGENT_BLUEPRINT_IMPORT, resource: abKind }),
+    async (c) => handleImportAgentBlueprint(c, deps),
+  );
 }
