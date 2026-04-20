@@ -10,6 +10,8 @@ import { apiError } from "../../route-deps.js";
 import { getInstanceContext } from "../_instance-middleware.js";
 import { mimeFromExtension } from "../../../lib/mime.js";
 import { logger } from "../../../lib/logger.js";
+import { permission } from "../../middleware/permission.js";
+import { ACTIONS } from "../../middleware/permission-actions.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -22,65 +24,78 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024;
 // Route registration
 // ---------------------------------------------------------------------------
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type HonoContext = any;
+
 export function registerWorkspaceDownloadRoutes(app: Hono, _deps: RouteDeps): void {
-  app.get("/api/instances/:slug/workspace/download", async (c) => {
-    const { instance } = getInstanceContext(c);
+  const attr = (c: HonoContext) => ({ slug: c.req.param("slug") });
 
-    const filePath = c.req.query("path");
-    if (!filePath) {
-      return apiError(c, 400, "MISSING_PATH", "Query parameter 'path' is required");
-    }
+  app.get(
+    "/api/instances/:slug/workspace/download",
+    permission({
+      action: ACTIONS.WORKSPACE_DOWNLOAD,
+      resource: { kind: "workspace" },
+      attributes: attr,
+    }),
+    async (c) => {
+      const { instance } = getInstanceContext(c);
 
-    // Resolve and validate the file is within the instance state directory
-    const stateDir = instance.state_dir;
-    const resolved = path.resolve(filePath);
-    let real: string;
-    try {
-      real = await fs.realpath(resolved);
-    } catch (err) {
-      logger.debug("[route:workspace-download] realpath failed", { error: String(err) });
-      return apiError(c, 404, "FILE_NOT_FOUND", "File not found");
-    }
+      const filePath = c.req.query("path");
+      if (!filePath) {
+        return apiError(c, 400, "MISSING_PATH", "Query parameter 'path' is required");
+      }
 
-    // Path traversal + symlink escape protection
-    if (!real.startsWith(stateDir + path.sep) && real !== stateDir) {
-      return apiError(c, 403, "FORBIDDEN", "Access denied");
-    }
+      // Resolve and validate the file is within the instance state directory
+      const stateDir = instance.state_dir;
+      const resolved = path.resolve(filePath);
+      let real: string;
+      try {
+        real = await fs.realpath(resolved);
+      } catch (err) {
+        logger.debug("[route:workspace-download] realpath failed", { error: String(err) });
+        return apiError(c, 404, "FILE_NOT_FOUND", "File not found");
+      }
 
-    // Read file and check constraints
-    let stat: Awaited<ReturnType<typeof fs.stat>>;
-    try {
-      stat = await fs.stat(real);
-    } catch (err) {
-      logger.debug("[route:workspace-download] stat failed", { error: String(err) });
-      return apiError(c, 404, "FILE_NOT_FOUND", "File not found");
-    }
+      // Path traversal + symlink escape protection
+      if (!real.startsWith(stateDir + path.sep) && real !== stateDir) {
+        return apiError(c, 403, "FORBIDDEN", "Access denied");
+      }
 
-    if (!stat.isFile()) {
-      return apiError(c, 400, "NOT_A_FILE", "Path is not a file");
-    }
+      // Read file and check constraints
+      let stat: Awaited<ReturnType<typeof fs.stat>>;
+      try {
+        stat = await fs.stat(real);
+      } catch (err) {
+        logger.debug("[route:workspace-download] stat failed", { error: String(err) });
+        return apiError(c, 404, "FILE_NOT_FOUND", "File not found");
+      }
 
-    if (stat.size > MAX_FILE_SIZE) {
-      return apiError(
-        c,
-        413,
-        "FILE_TOO_LARGE",
-        `File exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`,
-      );
-    }
+      if (!stat.isFile()) {
+        return apiError(c, 400, "NOT_A_FILE", "Path is not a file");
+      }
 
-    // Read and serve
-    const data = await fs.readFile(real);
-    const filename = path.basename(real);
-    const ext = path.extname(filename);
-    const mime = mimeFromExtension(ext);
+      if (stat.size > MAX_FILE_SIZE) {
+        return apiError(
+          c,
+          413,
+          "FILE_TOO_LARGE",
+          `File exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`,
+        );
+      }
 
-    return new Response(data, {
-      headers: {
-        "content-type": mime,
-        "content-disposition": `attachment; filename="${filename.replace(/"/g, '\\"')}"`,
-        "content-length": String(data.length),
-      },
-    });
-  });
+      // Read and serve
+      const data = await fs.readFile(real);
+      const filename = path.basename(real);
+      const ext = path.extname(filename);
+      const mime = mimeFromExtension(ext);
+
+      return new Response(data, {
+        headers: {
+          "content-type": mime,
+          "content-disposition": `attachment; filename="${filename.replace(/"/g, '\\"')}"`,
+          "content-length": String(data.length),
+        },
+      });
+    },
+  );
 }

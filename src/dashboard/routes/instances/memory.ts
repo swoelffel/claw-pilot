@@ -8,6 +8,8 @@ import { apiError } from "../../route-deps.js";
 import { getInstanceContext } from "../_instance-middleware.js";
 import { resolveAgentWorkspacePath } from "../../../core/agent-workspace.js";
 import { logger } from "../../../lib/logger.js";
+import { permission } from "../../middleware/permission.js";
+import { ACTIONS } from "../../middleware/permission-actions.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -197,109 +199,145 @@ async function handleMemorySearch(
 
 export function registerMemoryRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, conn } = deps;
+  const attr = (c: HonoContext) => ({ slug: c.req.param("slug") });
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/memory/agents
   // List agents that have memory files in their workspace.
   // ---------------------------------------------------------------------------
-  app.get("/api/instances/:slug/memory/agents", async (c) => {
-    const { instance, slug } = getInstanceContext(c);
+  app.get(
+    "/api/instances/:slug/memory/agents",
+    permission({
+      action: ACTIONS.MEMORY_AGENTS_LIST,
+      resource: { kind: "memory" },
+      attributes: attr,
+    }),
+    async (c) => {
+      const { instance, slug } = getInstanceContext(c);
 
-    const agents = registry.listAgents(slug);
-    const results: Array<{
-      agentId: string;
-      name: string;
-      fileCount: number;
-      totalSize: number;
-      lastModified: string | null;
-    }> = [];
+      const agents = registry.listAgents(slug);
+      const results: Array<{
+        agentId: string;
+        name: string;
+        fileCount: number;
+        totalSize: number;
+        lastModified: string | null;
+      }> = [];
 
-    for (const agent of agents) {
-      const wsDir = resolveAgentWorkspacePath(instance.state_dir, agent.agent_id, undefined);
+      for (const agent of agents) {
+        const wsDir = resolveAgentWorkspacePath(instance.state_dir, agent.agent_id, undefined);
 
-      if (!(await conn.exists(wsDir))) continue;
+        if (!(await conn.exists(wsDir))) continue;
 
-      const files = await listMemoryFiles(conn, wsDir);
-      if (files.length === 0) continue;
+        const files = await listMemoryFiles(conn, wsDir);
+        if (files.length === 0) continue;
 
-      const totalSize = files.reduce((sum, f) => sum + f.size, 0);
-      const lastModified = await getLastModified(conn, wsDir, files);
+        const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+        const lastModified = await getLastModified(conn, wsDir, files);
 
-      results.push({
-        agentId: agent.agent_id,
-        name: agent.name,
-        fileCount: files.length,
-        totalSize,
-        lastModified,
-      });
-    }
+        results.push({
+          agentId: agent.agent_id,
+          name: agent.name,
+          fileCount: files.length,
+          totalSize,
+          lastModified,
+        });
+      }
 
-    return c.json({ agents: results });
-  });
+      return c.json({ agents: results });
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/memory/agents/:agentId/files
   // List memory files for a specific agent.
   // ---------------------------------------------------------------------------
-  app.get("/api/instances/:slug/memory/agents/:agentId/files", async (c) => {
-    const { instance } = getInstanceContext(c);
-    const agentId = c.req.param("agentId");
+  app.get(
+    "/api/instances/:slug/memory/agents/:agentId/files",
+    permission({
+      action: ACTIONS.MEMORY_AGENT_FILES_LIST,
+      resource: { kind: "memory" },
+      attributes: (c: HonoContext) => ({
+        slug: c.req.param("slug"),
+        agentId: c.req.param("agentId"),
+      }),
+    }),
+    async (c) => {
+      const { instance } = getInstanceContext(c);
+      const agentId = c.req.param("agentId");
 
-    const agent = registry.getAgentByAgentId(instance.id, agentId);
-    if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
+      const agent = registry.getAgentByAgentId(instance.id, agentId);
+      if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
-    const wsDir = resolveAgentWorkspacePath(instance.state_dir, agentId, undefined);
-    if (!(await conn.exists(wsDir))) {
-      return c.json({ agentId, files: [] });
-    }
+      const wsDir = resolveAgentWorkspacePath(instance.state_dir, agentId, undefined);
+      if (!(await conn.exists(wsDir))) {
+        return c.json({ agentId, files: [] });
+      }
 
-    const files = await listMemoryFiles(conn, wsDir);
-    return c.json({ agentId, files });
-  });
+      const files = await listMemoryFiles(conn, wsDir);
+      return c.json({ agentId, files });
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/memory/agents/:agentId/files/:filename{.+}
   // Return the content of a single memory file.
   // ---------------------------------------------------------------------------
-  app.get("/api/instances/:slug/memory/agents/:agentId/files/:filename{.+}", async (c) => {
-    const { instance } = getInstanceContext(c);
-    const agentId = c.req.param("agentId");
-    const filename = c.req.param("filename");
+  app.get(
+    "/api/instances/:slug/memory/agents/:agentId/files/:filename{.+}",
+    permission({
+      action: ACTIONS.MEMORY_AGENT_FILE_READ,
+      resource: { kind: "memory" },
+      attributes: (c: HonoContext) => ({
+        slug: c.req.param("slug"),
+        agentId: c.req.param("agentId"),
+        filename: c.req.param("filename"),
+      }),
+    }),
+    async (c) => {
+      const { instance } = getInstanceContext(c);
+      const agentId = c.req.param("agentId");
+      const filename = c.req.param("filename");
 
-    const agent = registry.getAgentByAgentId(instance.id, agentId);
-    if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
+      const agent = registry.getAgentByAgentId(instance.id, agentId);
+      if (!agent) return apiError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
 
-    // Security: validate filename against whitelist
-    if (!VALID_MEMORY_PATH.test(filename)) {
-      return apiError(c, 400, "INVALID_PATH", "Invalid memory file path");
-    }
+      // Security: validate filename against whitelist
+      if (!VALID_MEMORY_PATH.test(filename)) {
+        return apiError(c, 400, "INVALID_PATH", "Invalid memory file path");
+      }
 
-    const wsDir = resolveAgentWorkspacePath(instance.state_dir, agentId, undefined);
-    const filePath = path.join(wsDir, filename);
+      const wsDir = resolveAgentWorkspacePath(instance.state_dir, agentId, undefined);
+      const filePath = path.join(wsDir, filename);
 
-    if (!(await conn.exists(filePath))) {
-      return apiError(c, 404, "FILE_NOT_FOUND", "Memory file not found");
-    }
+      if (!(await conn.exists(filePath))) {
+        return apiError(c, 404, "FILE_NOT_FOUND", "Memory file not found");
+      }
 
-    try {
-      const content = await conn.readFile(filePath);
-      return c.json({
-        agentId,
-        path: filename,
-        content,
-        size: Buffer.byteLength(content, "utf-8"),
-      });
-    } catch (err) {
-      logger.warn("[route:memory] memory file read error", { error: String(err) });
-      return apiError(c, 500, "READ_ERROR", "Failed to read memory file");
-    }
-  });
+      try {
+        const content = await conn.readFile(filePath);
+        return c.json({
+          agentId,
+          path: filename,
+          content,
+          size: Buffer.byteLength(content, "utf-8"),
+        });
+      } catch (err) {
+        logger.warn("[route:memory] memory file read error", { error: String(err) });
+        return apiError(c, 500, "READ_ERROR", "Failed to read memory file");
+      }
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/memory/search
   // Search across memory files (case-insensitive substring match).
   // ---------------------------------------------------------------------------
-  app.get("/api/instances/:slug/memory/search", async (c) => {
-    return handleMemorySearch(c, registry, conn);
-  });
+  app.get(
+    "/api/instances/:slug/memory/search",
+    permission({ action: ACTIONS.MEMORY_SEARCH, resource: { kind: "memory" }, attributes: attr }),
+    async (c) => {
+      return handleMemorySearch(c, registry, conn);
+    },
+  );
 }

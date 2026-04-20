@@ -15,6 +15,7 @@ import { registerTaskRoutes } from "../routes/instances/tasks.js";
 import { instanceMiddleware } from "../routes/_instance-middleware.js";
 import { disposeBus } from "../../runtime/bus/index.js";
 import type { InstanceSlug } from "../../runtime/types.js";
+import { injectAdminUser } from "./_helpers/inject-admin-user.js";
 
 const TEST_TOKEN = "test-task-token-64chars-hex-0123456789abcdef0123456789abcdef00";
 
@@ -46,6 +47,7 @@ beforeEach(() => {
     if (auth !== expectedBearer) return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
     await next();
   });
+  app.use("/api/*", injectAdminUser());
 
   const deps: RouteDeps = {
     registry,

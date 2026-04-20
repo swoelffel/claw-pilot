@@ -29,6 +29,8 @@ import {
   removeSearchEntry,
 } from "../../../core/repositories/search-repository.js";
 import { notifyAndWakeAgent, toJson, VALID_STATUSES, VALID_TYPES } from "./_tasks-shared.js";
+import { permission } from "../../middleware/permission.js";
+import { ACTIONS } from "../../middleware/permission-actions.js";
 
 // ---------------------------------------------------------------------------
 // Zod schemas for request validation
@@ -180,134 +182,185 @@ async function handleUpdateTask(
 
 export function registerTaskCrudRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, db } = deps;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const attr = (c: HonoContext) => ({ slug: c.req.param("slug") });
+  const rid = (c: HonoContext) => c.req.param("id");
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/tasks
   // ---------------------------------------------------------------------------
-  app.get("/api/instances/:slug/tasks", (c) => {
-    const { slug } = getInstanceContext(c);
+  app.get(
+    "/api/instances/:slug/tasks",
+    permission({ action: ACTIONS.TASK_LIST, resource: { kind: "task" }, attributes: attr }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
 
-    const status = c.req.query("status") as TaskStatus | undefined;
-    if (status && !VALID_STATUSES.has(status)) {
-      return apiError(c, 400, "INVALID_STATUS", "Invalid status filter");
-    }
-    const type = c.req.query("type") as TaskType | undefined;
-    if (type && !VALID_TYPES.has(type)) {
-      return apiError(c, 400, "INVALID_TYPE", "Invalid type filter");
-    }
-    let rows = getTasksForInstance(db, slug, status);
-    if (type) {
-      rows = rows.filter((r) => r.type === type);
-    }
-    return c.json(rows.map(toJson));
-  });
+      const status = c.req.query("status") as TaskStatus | undefined;
+      if (status && !VALID_STATUSES.has(status)) {
+        return apiError(c, 400, "INVALID_STATUS", "Invalid status filter");
+      }
+      const type = c.req.query("type") as TaskType | undefined;
+      if (type && !VALID_TYPES.has(type)) {
+        return apiError(c, 400, "INVALID_TYPE", "Invalid type filter");
+      }
+      let rows = getTasksForInstance(db, slug, status);
+      if (type) {
+        rows = rows.filter((r) => r.type === type);
+      }
+      return c.json(rows.map(toJson));
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/tasks/counts
   // ---------------------------------------------------------------------------
-  app.get("/api/instances/:slug/tasks/counts", (c) => {
-    const { slug } = getInstanceContext(c);
+  app.get(
+    "/api/instances/:slug/tasks/counts",
+    permission({ action: ACTIONS.TASK_COUNTS, resource: { kind: "task" }, attributes: attr }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
 
-    return c.json(getTaskCountsByStatus(db, slug));
-  });
+      return c.json(getTaskCountsByStatus(db, slug));
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/tasks/:id
   // ---------------------------------------------------------------------------
-  app.get("/api/instances/:slug/tasks/:id", (c) => {
-    const { slug } = getInstanceContext(c);
+  app.get(
+    "/api/instances/:slug/tasks/:id",
+    permission({
+      action: ACTIONS.TASK_READ,
+      resource: { kind: "task", id: rid },
+      attributes: attr,
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
 
-    const id = Number(c.req.param("id"));
-    const task = getTask(db, id);
-    if (!task || task.instance_slug !== slug) {
-      return apiError(c, 404, "NOT_FOUND", "Task not found");
-    }
-    const comments = getComments(db, id);
-    const json: Record<string, unknown> = {
-      ...toJson(task),
-      comments: comments.map((cm) => ({
-        id: cm.id,
-        taskId: cm.task_id,
-        authorId: cm.author_id,
-        content: cm.content,
-        createdAt: cm.created_at,
-      })),
-    };
+      const id = Number(c.req.param("id"));
+      const task = getTask(db, id);
+      if (!task || task.instance_slug !== slug) {
+        return apiError(c, 404, "NOT_FOUND", "Task not found");
+      }
+      const comments = getComments(db, id);
+      const json: Record<string, unknown> = {
+        ...toJson(task),
+        comments: comments.map((cm) => ({
+          id: cm.id,
+          taskId: cm.task_id,
+          authorId: cm.author_id,
+          content: cm.content,
+          createdAt: cm.created_at,
+        })),
+      };
 
-    // If child task, include parent info
-    if (task.parent_id) {
-      const parent = getTask(db, task.parent_id);
-      if (parent) json.parent = { id: parent.id, title: parent.title };
-    }
-    // If epic, include children + progress
-    if (task.type === "epic") {
-      const children = getChildTasks(db, id);
-      json.children = children.map(toJson);
-      json.progress = getEpicProgress(db, id);
-    }
+      // If child task, include parent info
+      if (task.parent_id) {
+        const parent = getTask(db, task.parent_id);
+        if (parent) json.parent = { id: parent.id, title: parent.title };
+      }
+      // If epic, include children + progress
+      if (task.type === "epic") {
+        const children = getChildTasks(db, id);
+        json.children = children.map(toJson);
+        json.progress = getEpicProgress(db, id);
+      }
 
-    return c.json(json);
-  });
+      return c.json(json);
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // POST /api/instances/:slug/tasks
   // ---------------------------------------------------------------------------
-  app.post("/api/instances/:slug/tasks", async (c) => {
-    return handleCreateTask(c, db, registry);
-  });
+  app.post(
+    "/api/instances/:slug/tasks",
+    permission({ action: ACTIONS.TASK_CREATE, resource: { kind: "task" }, attributes: attr }),
+    async (c) => {
+      return handleCreateTask(c, db, registry);
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // PATCH /api/instances/:slug/tasks/:id
   // ---------------------------------------------------------------------------
-  app.patch("/api/instances/:slug/tasks/:id", async (c) => {
-    return handleUpdateTask(c, db, registry);
-  });
+  app.patch(
+    "/api/instances/:slug/tasks/:id",
+    permission({
+      action: ACTIONS.TASK_UPDATE,
+      resource: { kind: "task", id: rid },
+      attributes: attr,
+    }),
+    async (c) => {
+      return handleUpdateTask(c, db, registry);
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // DELETE /api/instances/:slug/tasks/:id
   // ---------------------------------------------------------------------------
-  app.delete("/api/instances/:slug/tasks/:id", (c) => {
-    const { slug } = getInstanceContext(c);
+  app.delete(
+    "/api/instances/:slug/tasks/:id",
+    permission({
+      action: ACTIONS.TASK_DELETE,
+      resource: { kind: "task", id: rid },
+      attributes: attr,
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
 
-    const id = Number(c.req.param("id"));
-    const existing = getTask(db, id);
-    if (!existing || existing.instance_slug !== slug) {
-      return apiError(c, 404, "NOT_FOUND", "Task not found");
-    }
+      const id = Number(c.req.param("id"));
+      const existing = getTask(db, id);
+      if (!existing || existing.instance_slug !== slug) {
+        return apiError(c, 404, "NOT_FOUND", "Task not found");
+      }
 
-    deleteTask(db, id);
-    removeSearchEntry(db, "task", String(id));
-    return c.json({ ok: true });
-  });
+      deleteTask(db, id);
+      removeSearchEntry(db, "task", String(id));
+      return c.json({ ok: true });
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/epics
   // ---------------------------------------------------------------------------
-  app.get("/api/instances/:slug/epics", (c) => {
-    const { slug } = getInstanceContext(c);
+  app.get(
+    "/api/instances/:slug/epics",
+    permission({ action: ACTIONS.EPIC_LIST, resource: { kind: "epic" }, attributes: attr }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
 
-    const epics = getEpicsForInstance(db, slug);
-    return c.json(
-      epics.map((e) => ({
-        ...toJson(e),
-        progress: getEpicProgress(db, e.id),
-      })),
-    );
-  });
+      const epics = getEpicsForInstance(db, slug);
+      return c.json(
+        epics.map((e) => ({
+          ...toJson(e),
+          progress: getEpicProgress(db, e.id),
+        })),
+      );
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/epics/:id/children
   // ---------------------------------------------------------------------------
-  app.get("/api/instances/:slug/epics/:id/children", (c) => {
-    const { slug } = getInstanceContext(c);
+  app.get(
+    "/api/instances/:slug/epics/:id/children",
+    permission({
+      action: ACTIONS.EPIC_CHILDREN,
+      resource: { kind: "epic", id: rid },
+      attributes: attr,
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
 
-    const id = Number(c.req.param("id"));
-    const epic = getTask(db, id);
-    if (!epic || epic.instance_slug !== slug || epic.type !== "epic") {
-      return apiError(c, 404, "NOT_FOUND", "Epic not found");
-    }
+      const id = Number(c.req.param("id"));
+      const epic = getTask(db, id);
+      if (!epic || epic.instance_slug !== slug || epic.type !== "epic") {
+        return apiError(c, 404, "NOT_FOUND", "Epic not found");
+      }
 
-    const children = getChildTasks(db, id);
-    return c.json(children.map(toJson));
-  });
+      const children = getChildTasks(db, id);
+      return c.json(children.map(toJson));
+    },
+  );
 }

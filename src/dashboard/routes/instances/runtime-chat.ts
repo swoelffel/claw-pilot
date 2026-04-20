@@ -9,6 +9,8 @@ import { getInstanceContext } from "../_instance-middleware.js";
 import { callRuntimeApi } from "../_internal-api-client.js";
 import { runtimeGuard } from "../_runtime-guard.js";
 import { proxyRuntimeSSE } from "../_sse-proxy.js";
+import { permission } from "../../middleware/permission.js";
+import { ACTIONS } from "../../middleware/permission-actions.js";
 
 // ---------------------------------------------------------------------------
 // AI SDK error extraction
@@ -95,74 +97,99 @@ function parseResponseBodyMessage(body: string | undefined): string | undefined 
   return undefined;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type HonoContext = any;
+
 export function registerRuntimeChatRoutes(app: Hono, _deps: RouteDeps): void {
+  const attr = (c: HonoContext) => ({ slug: c.req.param("slug") });
+
   // ---------------------------------------------------------------------------
   // POST /api/instances/:slug/runtime/chat
   // Send a message to a runtime agent and get a response
   // Body: { message: string, agentId?: string, sessionId?: string, model?: string }
   // ---------------------------------------------------------------------------
-  app.post("/api/instances/:slug/runtime/chat", async (c) => {
-    const { slug } = getInstanceContext(c);
+  app.post(
+    "/api/instances/:slug/runtime/chat",
+    permission({ action: ACTIONS.RUNTIME_CHAT, resource: { kind: "runtime" }, attributes: attr }),
+    async (c) => {
+      const { slug } = getInstanceContext(c);
 
-    let body: {
-      message?: string;
-      agentId?: string;
-      sessionId?: string;
-      model?: string;
-      files?: Array<{ name: string; mimeType: string; data: string }>;
-    };
-    try {
-      body = await c.req.json();
-    } catch (err) {
-      logger.warn("[route:runtime] JSON parse failed on chat", { error: String(err) });
-      return apiError(c, 400, "INVALID_JSON", "Request body must be valid JSON");
-    }
+      let body: {
+        message?: string;
+        agentId?: string;
+        sessionId?: string;
+        model?: string;
+        files?: Array<{ name: string; mimeType: string; data: string }>;
+      };
+      try {
+        body = await c.req.json();
+      } catch (err) {
+        logger.warn("[route:runtime] JSON parse failed on chat", { error: String(err) });
+        return apiError(c, 400, "INVALID_JSON", "Request body must be valid JSON");
+      }
 
-    if (!body.message || typeof body.message !== "string" || !body.message.trim()) {
-      return apiError(c, 400, "MISSING_MESSAGE", "Field 'message' is required");
-    }
+      if (!body.message || typeof body.message !== "string" || !body.message.trim()) {
+        return apiError(c, 400, "MISSING_MESSAGE", "Field 'message' is required");
+      }
 
-    // Runtime must be running for chat
-    const rtGuard = runtimeGuard(c, slug);
-    if (rtGuard) return rtGuard;
+      // Runtime must be running for chat
+      const rtGuard = runtimeGuard(c, slug);
+      if (rtGuard) return rtGuard;
 
-    try {
-      const result = await callRuntimeApi<Record<string, unknown>>(slug, "/internal/chat", body);
-      return c.json(result);
-    } catch (err) {
-      const detail = extractApiErrorDetail(err);
-      logger.error(`[POST /runtime/chat] proxy failed: ${detail.logMessage}`);
-      return apiError(c, detail.httpStatus, "PROMPT_LOOP_FAILED", detail.userMessage);
-    }
-  });
+      try {
+        const result = await callRuntimeApi<Record<string, unknown>>(slug, "/internal/chat", body);
+        return c.json(result);
+      } catch (err) {
+        const detail = extractApiErrorDetail(err);
+        logger.error(`[POST /runtime/chat] proxy failed: ${detail.logMessage}`);
+        return apiError(c, detail.httpStatus, "PROMPT_LOOP_FAILED", detail.userMessage);
+      }
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // POST /api/instances/:slug/runtime/sessions/:sessionId/abort
   // Abort an active prompt loop for a session.
   // ---------------------------------------------------------------------------
-  app.post("/api/instances/:slug/runtime/sessions/:sessionId/abort", async (c) => {
-    const { slug } = getInstanceContext(c);
+  app.post(
+    "/api/instances/:slug/runtime/sessions/:sessionId/abort",
+    permission({
+      action: ACTIONS.RUNTIME_CHAT_ABORT,
+      resource: { kind: "runtime" },
+      attributes: (c: HonoContext) => ({
+        slug: c.req.param("slug"),
+        sessionId: c.req.param("sessionId"),
+      }),
+    }),
+    async (c) => {
+      const { slug } = getInstanceContext(c);
 
-    const rtGuard = runtimeGuard(c, slug);
-    if (rtGuard) return rtGuard;
+      const rtGuard = runtimeGuard(c, slug);
+      if (rtGuard) return rtGuard;
 
-    const sessionId = c.req.param("sessionId");
-    try {
-      const result = await callRuntimeApi<{ ok: boolean; aborted: boolean }>(
-        slug,
-        `/internal/sessions/${sessionId}/abort`,
-        {},
-        { timeoutMs: 5000 },
-      );
-      if (!result.aborted) {
-        return apiError(c, 404, "NO_ACTIVE_PROMPT_LOOP", "No active prompt loop for this session");
+      const sessionId = c.req.param("sessionId");
+      try {
+        const result = await callRuntimeApi<{ ok: boolean; aborted: boolean }>(
+          slug,
+          `/internal/sessions/${sessionId}/abort`,
+          {},
+          { timeoutMs: 5000 },
+        );
+        if (!result.aborted) {
+          return apiError(
+            c,
+            404,
+            "NO_ACTIVE_PROMPT_LOOP",
+            "No active prompt loop for this session",
+          );
+        }
+        return c.json({ aborted: true });
+      } catch (err) {
+        logger.error("abort_proxy_failed", { error: String(err) });
+        return apiError(c, 502, "RUNTIME_UNREACHABLE", "Could not reach runtime daemon");
       }
-      return c.json({ aborted: true });
-    } catch (err) {
-      logger.error("abort_proxy_failed", { error: String(err) });
-      return apiError(c, 502, "RUNTIME_UNREACHABLE", "Could not reach runtime daemon");
-    }
-  });
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/runtime/chat/stream?sessionId=<id>
@@ -206,15 +233,23 @@ export function registerRuntimeChatRoutes(app: Hono, _deps: RouteDeps): void {
     "suggestions.generated",
   ].join(",");
 
-  app.get("/api/instances/:slug/runtime/chat/stream", (c) => {
-    const { slug } = getInstanceContext(c);
-    const sessionId = c.req.query("sessionId") || undefined;
+  app.get(
+    "/api/instances/:slug/runtime/chat/stream",
+    permission({
+      action: ACTIONS.RUNTIME_CHAT_STREAM,
+      resource: { kind: "runtime" },
+      attributes: attr,
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
+      const sessionId = c.req.query("sessionId") || undefined;
 
-    return streamSSE(c, async (stream) => {
-      await proxyRuntimeSSE(stream, slug, {
-        ...(sessionId !== undefined ? { sessionId } : {}),
-        types: CHAT_RELEVANT_TYPES,
+      return streamSSE(c, async (stream) => {
+        await proxyRuntimeSSE(stream, slug, {
+          ...(sessionId !== undefined ? { sessionId } : {}),
+          types: CHAT_RELEVANT_TYPES,
+        });
       });
-    });
-  });
+    },
+  );
 }

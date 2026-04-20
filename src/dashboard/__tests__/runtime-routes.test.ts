@@ -108,6 +108,7 @@ import {
 import { listMessages, listParts } from "../../runtime/index.js";
 
 import { callRuntimeApi } from "../routes/_internal-api-client.js";
+import { injectAdminUser } from "./_helpers/inject-admin-user.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -158,6 +159,7 @@ beforeEach(() => {
     }
     await next();
   });
+  app.use("/api/*", injectAdminUser());
 
   const deps: RouteDeps = {
     registry,

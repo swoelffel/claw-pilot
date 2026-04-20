@@ -20,6 +20,8 @@ import {
   getPersistedSystemPrompt,
 } from "../../../runtime/index.js";
 import { loadMergedConfigDbFirst } from "../_config-helpers.js";
+import { permission } from "../../middleware/permission.js";
+import { ACTIONS } from "../../middleware/permission-actions.js";
 
 // ---------------------------------------------------------------------------
 // Extracted helpers for session context
@@ -271,46 +273,68 @@ export function registerRuntimeMessageRoutes(app: Hono, deps: RouteDeps): void {
   //   limit  — max messages to return (default 50, max 200)
   //   before — ULID cursor: return messages created before this message ID
   // ---------------------------------------------------------------------------
-  app.get("/api/instances/:slug/runtime/sessions/:sessionId/messages", (c) => {
-    const sessionId = c.req.param("sessionId");
+  app.get(
+    "/api/instances/:slug/runtime/sessions/:sessionId/messages",
+    permission({
+      action: ACTIONS.RUNTIME_SESSION_MESSAGES_READ,
+      resource: { kind: "runtime" },
+      attributes: (c: HonoContext) => ({
+        slug: c.req.param("slug"),
+        sessionId: c.req.param("sessionId"),
+      }),
+    }),
+    (c) => {
+      const sessionId = c.req.param("sessionId");
 
-    const limitParam = c.req.query("limit");
-    const limit = Math.min(parseInt(limitParam ?? "50", 10) || 50, 200);
-    const before = c.req.query("before");
+      const limitParam = c.req.query("limit");
+      const limit = Math.min(parseInt(limitParam ?? "50", 10) || 50, 200);
+      const before = c.req.query("before");
 
-    const allMessages = listMessages(db, sessionId);
+      const allMessages = listMessages(db, sessionId);
 
-    // Apply cursor filter if provided (messages before the given ID, sorted by createdAt)
-    let filtered = allMessages;
-    if (before) {
-      const pivotIdx = allMessages.findIndex((m) => m.id === before);
-      if (pivotIdx !== -1) {
-        filtered = allMessages.slice(0, pivotIdx);
+      // Apply cursor filter if provided (messages before the given ID, sorted by createdAt)
+      let filtered = allMessages;
+      if (before) {
+        const pivotIdx = allMessages.findIndex((m) => m.id === before);
+        if (pivotIdx !== -1) {
+          filtered = allMessages.slice(0, pivotIdx);
+        }
       }
-    }
 
-    // Take the last `limit` messages (most recent end of the slice)
-    const paged = filtered.slice(-limit);
-    const hasMore = filtered.length > limit;
+      // Take the last `limit` messages (most recent end of the slice)
+      const paged = filtered.slice(-limit);
+      const hasMore = filtered.length > limit;
 
-    const enriched = paged.map((msg) => ({
-      ...msg,
-      createdAt: msg.createdAt instanceof Date ? msg.createdAt.toISOString() : msg.createdAt,
-      parts: listParts(db, msg.id).map((p) => ({
-        ...p,
-        createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
-        updatedAt: p.updatedAt instanceof Date ? p.updatedAt.toISOString() : p.updatedAt,
-      })),
-    }));
+      const enriched = paged.map((msg) => ({
+        ...msg,
+        createdAt: msg.createdAt instanceof Date ? msg.createdAt.toISOString() : msg.createdAt,
+        parts: listParts(db, msg.id).map((p) => ({
+          ...p,
+          createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
+          updatedAt: p.updatedAt instanceof Date ? p.updatedAt.toISOString() : p.updatedAt,
+        })),
+      }));
 
-    return c.json({ messages: enriched, hasMore });
-  });
+      return c.json({ messages: enriched, hasMore });
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // GET /api/instances/:slug/runtime/sessions/:sessionId/context
   // Returns a synthetic view of what the LLM "sees" for the current session.
   // ---------------------------------------------------------------------------
-  app.get("/api/instances/:slug/runtime/sessions/:sessionId/context", async (c) => {
-    return handleSessionContext(c, registry, db);
-  });
+  app.get(
+    "/api/instances/:slug/runtime/sessions/:sessionId/context",
+    permission({
+      action: ACTIONS.RUNTIME_SESSION_CONTEXT_READ,
+      resource: { kind: "runtime" },
+      attributes: (c: HonoContext) => ({
+        slug: c.req.param("slug"),
+        sessionId: c.req.param("sessionId"),
+      }),
+    }),
+    async (c) => {
+      return handleSessionContext(c, registry, db);
+    },
+  );
 }
