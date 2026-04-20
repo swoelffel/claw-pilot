@@ -6,6 +6,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.79.0] — 2026-04-20
+
+### Added
+- **Instance shared workspace** — Per-instance shared file space at `<stateDir>/workspaces/shared/` accessible by every agent of the instance. Auto-created at install; auto-healed on agent-sync for legacy instances.
+- **Schema v38** — New `instance_shared_files` table + `instance_shared_files_fts` FTS5 mirror (symmetrical to `agent_files` / `agent_files_fts`). Additive migration, triggers keep FTS in sync.
+- **Dashboard UI** — New "Shared files" tab in instance settings (`cp-instance-shared-files`) reusing `cp-agent-file-editor` + `cp-new-file-dialog` + `cp-delete-file-dialog`. Tree + markdown preview + tabs. i18n across en/fr/de/es/it/pt.
+- **HTTP routes** — `GET/PUT/DELETE /api/instances/:slug/shared-files` and `/shared-files/*` for tree, read, create/update, delete. Path validation via `validateWorkspaceRelativePath`, 1 MB cap.
+- **Agent runtime tools** — Two new tools in the `workspace-knowledge` plugin: `ws_write_shared_file(path, content)` and `ws_delete_shared_file(path)` let agents collaborate on the shared workspace. Gating delegated to the existing per-tool permission system. `ws_list_files` / `ws_search_files` now include `@shared/<path>` entries alongside the agent's own workspace.
+- **Reserved agent slug** — `shared` is now rejected at agent creation (both HTTP route and `AgentProvisioner`) — it would collide with `workspaces/shared/`.
+- **SOUL.md template** — Documents the shared workspace and collaboration etiquette so new agents are aware of the capability.
+- **Tree builder helper** — `buildFileTree()` extracted to `src/dashboard/routes/_file-tree.ts` and reused by both agent-files and shared-files routes.
+
+### Changed
+- `AgentSync.sync()` now also walks the shared workspace and reconciles `instance_shared_files`. The `changes` result includes a `sharedFilesChanged` counter. Triggering `POST /api/instances/:slug/agents/sync` is the documented way to re-index after an out-of-band disk edit.
+- `createWorkspaceKnowledgeTools()` factory signature extended with an optional `workDir` parameter (required for the write/delete tools to hit disk).
+
+---
+
 ## [0.78.1] — 2026-04-20
 
 ### Fixed
