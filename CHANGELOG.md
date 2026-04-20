@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.80.0] — 2026-04-20
+
+### Fixed
+- **Agent kickoff language** — agents replied in English even when the user had selected another language. Four combined issues were fixed:
+  - `initDatabase` now backfills a default `user_profiles` row for the admin user when missing. Historical installs were stuck without a profile because the onboarding wizard only triggers when no API key exists.
+  - The onboarding wizard no longer silently swallows `PATCH /api/profile` failures — errors surface in the existing error banner.
+  - `ClawRuntime` is now instantiated with a `CommunityProfileResolver`, so the `<user_profile>` block (with the user's `Language: <code>`) is injected into the system prompt of every session — not just kickoffs.
+  - The system-prompt `<behavior>` block now prioritizes the profile language over "match the user's message" on every turn, so short first turns can't drift to English.
+
+---
+
 ## [0.79.1] — 2026-04-20
 
 ### Fixed
