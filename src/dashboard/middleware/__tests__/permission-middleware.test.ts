@@ -8,6 +8,7 @@ import {
   type PermissionContext,
 } from "../permission.js";
 
+// TODO(T4): remove cast once ContextVariableMap is augmented in server.ts
 type LooseContext = { set: (k: string, v: unknown) => void };
 
 function mkApp(user: AuthenticatedUser | null, mw: ReturnType<typeof permission>): Hono {

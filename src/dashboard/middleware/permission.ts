@@ -10,6 +10,7 @@
 // tool-call permissions persisted in the rt_permissions table. Do not merge
 // the two concerns.
 
+import type { Context, MiddlewareHandler } from "hono";
 import { ClawPilotError } from "../../lib/errors.js";
 
 export interface AuthenticatedUser {
@@ -80,8 +81,6 @@ export function getPermissionChecker(): PermissionChecker {
 }
 
 // --- Hono middleware factory ---
-
-import type { Context, MiddlewareHandler } from "hono";
 
 export interface PermissionSpec {
   action: string;
