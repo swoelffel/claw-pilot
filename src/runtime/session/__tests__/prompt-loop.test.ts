@@ -454,6 +454,34 @@ describe("runPromptLoop — bus events", () => {
 
     expect(updatedIds).toContain(result.messageId);
   });
+
+  it("MessageCreated for assistant role carries the agentId", async () => {
+    // Regression guard for the home-chat double-render bug: the UI needs the
+    // agentId on the event to correctly label the streaming bubble and to
+    // bind it to the persisted message id.
+    const session = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
+    const model = textStreamModel("hi");
+    const bus = getBus(INSTANCE_SLUG);
+
+    const created: { role: string; agentId: string | undefined }[] = [];
+    bus.subscribe(MessageCreated, (payload) => {
+      created.push({ role: payload.role, agentId: payload.agentId });
+    });
+
+    await runPromptLoop({
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      sessionId: session.id,
+      userText: "hello",
+      agentConfig: makeAgentConfig(),
+      resolvedModel: makeResolvedModel(model),
+      workDir: undefined,
+    });
+
+    const assistantEvent = created.find((e) => e.role === "assistant");
+    expect(assistantEvent).toBeDefined();
+    expect(assistantEvent?.agentId).toBe("main");
+  });
 });
 
 // ---------------------------------------------------------------------------

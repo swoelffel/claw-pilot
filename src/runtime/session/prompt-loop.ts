@@ -261,7 +261,12 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       model: `${resolvedModel.providerId}/${resolvedModel.modelId}`,
     });
     assistantMsgId = assistantMsg.id;
-    bus.publish(MessageCreated, { sessionId, messageId: assistantMsg.id, role: "assistant" });
+    bus.publish(MessageCreated, {
+      sessionId,
+      messageId: assistantMsg.id,
+      role: "assistant",
+      agentId: agentConfig.id,
+    });
 
     // 5. Build tool set
     const toolSet = await buildToolSetForLoop(input, session, assistantMsg.id, watchdog.onLongWait);

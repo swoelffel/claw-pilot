@@ -96,6 +96,13 @@ export class HomeChat extends LitElement {
   @state() private _streamingReasoningPartId: string | null = null;
   @state() private _currentToolName: string | null = null;
   @state() private _streamingAgentId = "";
+  /** Message id of the assistant turn currently being streamed. Used to hide
+   * the persisted shell of that message from the timeline while the streaming
+   * bubble is visible — otherwise the same reply renders twice (one partial
+   * row from the DB, one live row from the delta stream). Cleared once the
+   * stream ends (session idle / session ended) so the persisted message takes
+   * over with its final content. */
+  @state() private _streamingMessageId: string | null = null;
   @state() private _tokensIn = 0;
   @state() private _tokensOut = 0;
   @state() private _costUsd = 0;
@@ -144,6 +151,7 @@ export class HomeChat extends LitElement {
     this._messages = [];
     this._hasMore = false;
     this._streamingText = "";
+    this._streamingMessageId = null;
     this._activeSessionId = "";
     this._reconnectDelay = SSE_RECONNECT_INITIAL_MS;
 
@@ -238,15 +246,6 @@ export class HomeChat extends LitElement {
     const existingIds = new Set(this._messages.map((m) => m.id));
     const newMsgs = fresh.filter((m) => !existingIds.has(m.id));
     const updatedMsgs = this._messages.map((m) => fresh.find((nm) => nm.id === m.id) ?? m);
-    // [DOUBLE-RENDER-DEBUG] temporary — log merge decisions.
-    // eslint-disable-next-line no-console
-    console.log("[DOUBLE-RENDER] mergeMessages", {
-      freshCount: fresh.length,
-      freshIds: fresh.map((m) => ({ id: m.id, role: m.role, agentId: m.agentId })),
-      newCount: newMsgs.length,
-      streamingActive: this._streamingText.length > 0,
-      streamingAgentId: this._streamingAgentId,
-    });
     if (newMsgs.length > 0 || updatedMsgs.some((m, i) => m !== this._messages[i])) {
       this._messages = [...updatedMsgs, ...newMsgs];
       this._updateCumulativeStats();
@@ -366,31 +365,6 @@ export class HomeChat extends LitElement {
   private _handleBusEvent(event: PilotBusEvent): void {
     const p = event.payload;
     const eventSessionId = p.sessionId as string | undefined;
-    // [DOUBLE-RENDER-DEBUG] temporary — diagnose double-render during streaming.
-    // Remove once the root cause is confirmed and fixed.
-    // eslint-disable-next-line no-console
-    console.log("[DOUBLE-RENDER]", event.type, {
-      sessionId: eventSessionId,
-      activeSessionId: this._activeSessionId,
-      role: p.role,
-      agentId: p.agentId,
-      messageId: p.messageId,
-      partType: p.partType,
-      partId: p.partId,
-      deltaLen: typeof p.delta === "string" ? (p.delta as string).length : undefined,
-      streamingTextLen: this._streamingText.length,
-      streamingAgentId: this._streamingAgentId,
-      messagesCount: this._messages.length,
-      lastMessage:
-        this._messages.length > 0
-          ? {
-              id: this._messages[this._messages.length - 1]!.id,
-              role: this._messages[this._messages.length - 1]!.role,
-              agentId: this._messages[this._messages.length - 1]!.agentId,
-              partsLen: this._messages[this._messages.length - 1]!.parts?.length,
-            }
-          : null,
-    });
 
     // Adopt incoming session if we don't have one yet (e.g. first message via Telegram)
     if (!this._activeSessionId && eventSessionId) {
@@ -428,6 +402,7 @@ export class HomeChat extends LitElement {
           this._streamingReasoningPartId = null;
           this._currentToolName = null;
           this._streamingAgentId = (p.agentId as string | undefined) ?? "";
+          this._streamingMessageId = (p.messageId as string | undefined) ?? null;
           if (this._status !== "sending") this._status = "sending";
         } else if (p.role === "user") {
           // Message from another channel (Telegram, CLI, etc.) — load it immediately
@@ -472,6 +447,7 @@ export class HomeChat extends LitElement {
           this._streamingReasoning = "";
           this._streamingReasoningPartId = null;
           this._currentToolName = null;
+          this._streamingMessageId = null;
           this._status = "idle";
           // Ensure the final messages (assistant reply, tool results, etc.)
           // are rendered — message.updated/created may have been missed.
@@ -486,6 +462,7 @@ export class HomeChat extends LitElement {
         this._streamingReasoning = "";
         this._streamingReasoningPartId = null;
         this._currentToolName = null;
+        this._streamingMessageId = null;
         this._status = "idle";
         break;
       }
@@ -628,22 +605,6 @@ export class HomeChat extends LitElement {
     const lockReason: "pending_question" | "" = this._hasPendingQuestion ? "pending_question" : "";
     const totalTokens = this._tokensIn + this._tokensOut;
 
-    // [DOUBLE-RENDER-DEBUG] temporary — flag the render frames where a persisted
-    // assistant bubble AND a streaming bubble would both be visible at once.
-    const lastMsg = this._messages[this._messages.length - 1];
-    const collision =
-      this._streamingText.length > 0 && lastMsg !== undefined && lastMsg.role === "assistant";
-    if (collision) {
-      // eslint-disable-next-line no-console
-      console.warn("[DOUBLE-RENDER] COLLISION in render", {
-        status: this._status,
-        streamingTextLen: this._streamingText.length,
-        streamingAgentId: this._streamingAgentId,
-        lastMessageId: lastMsg.id,
-        lastMessageAgentId: lastMsg.agentId,
-      });
-    }
-
     return html`
       <cp-pilot-header
         agentId="system-pilot"
@@ -670,7 +631,9 @@ export class HomeChat extends LitElement {
             ></cp-start-cta>`
           : html`
               <cp-pilot-messages
-                .messages=${this._messages}
+                .messages=${this._streamingMessageId
+                  ? this._messages.filter((m) => m.id !== this._streamingMessageId)
+                  : this._messages}
                 .filters=${HOME_FILTERS}
                 .currentAgentId=${"system-pilot"}
                 .streamingText=${this._streamingText}
