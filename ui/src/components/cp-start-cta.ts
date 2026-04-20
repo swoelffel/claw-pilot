@@ -49,10 +49,6 @@ export class StartCta extends LitElement {
       animation: none;
       opacity: 0.85;
     }
-    .subtitle {
-      font-size: 14px;
-      color: var(--text-secondary, #888);
-    }
     .error {
       font-size: 13px;
       color: var(--danger, #ef4444);
@@ -124,7 +120,6 @@ export class StartCta extends LitElement {
           ? html`<div class="spinner" role="status"></div>`
           : msg("Start", { id: "startCta.label" })}
       </button>
-      <div class="subtitle">${msg("Say hello to your Pilot", { id: "startCta.subtitle" })}</div>
       ${this._error ? html`<div class="error">${this._error}</div>` : ""}
     `;
   }

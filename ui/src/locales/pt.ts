@@ -646,5 +646,4 @@ export const templates = {
 
   // onboarding-start-cta.ts
   "startCta.label": "Começar",
-  "startCta.subtitle": "Cumprimenta o teu Pilot",
 };
