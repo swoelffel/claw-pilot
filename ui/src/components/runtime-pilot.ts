@@ -28,7 +28,7 @@ import {
 import { tokenStyles } from "../styles/tokens.js";
 import { errorBannerStyles } from "../styles/shared.js";
 import { getToken } from "../services/auth-state.js";
-import { debugSse } from "../services/debug.js";
+import { debugSse, debugChat, debugRender, debugApi } from "../services/debug.js";
 import "./pilot/pilot-header.js";
 import "./pilot/pilot-messages.js";
 import "./pilot/pilot-input.js";
@@ -355,6 +355,10 @@ export class RuntimePilot extends LitElement {
 
   private async _loadMessages(before?: string): Promise<void> {
     if (!this._activeSessionId) return;
+    debugApi("runtime-pilot fetchSessionMessages loadMessages", {
+      sessionId: this._activeSessionId,
+      before,
+    });
     try {
       const { messages, hasMore } = await fetchSessionMessages(this.slug, this._activeSessionId, {
         limit: 50,
@@ -398,6 +402,9 @@ export class RuntimePilot extends LitElement {
     ) {
       return;
     }
+    debugApi("runtime-pilot fetchSessionMessages refresh", {
+      sessionId: this._activeSessionId,
+    });
     try {
       const { messages } = await fetchSessionMessages(this.slug, this._activeSessionId, {
         limit: 20,
@@ -549,6 +556,15 @@ export class RuntimePilot extends LitElement {
   private _handleBusEvent(event: PilotBusEvent): void {
     const p = event.payload;
     const eventSessionId = p.sessionId as string | undefined;
+    debugSse("runtime-pilot recv", event.type, {
+      sessionId: eventSessionId,
+      activeSessionId: this._activeSessionId,
+      role: p.role,
+      agentId: p.agentId,
+      messageId: p.messageId,
+      partType: p.partType,
+      deltaLen: typeof p.delta === "string" ? (p.delta as string).length : undefined,
+    });
 
     // If we don't have a session yet but an event arrives with a sessionId,
     // adopt it as our active session (handles the case where a message arrives
@@ -594,6 +610,11 @@ export class RuntimePilot extends LitElement {
           this._streamingMessageId = (p.messageId as string | undefined) ?? null;
           // Keep status as "sending" until the first delta tells us the phase
           if (this._status !== "sending") this._status = "sending";
+          debugChat("runtime-pilot start streaming assistant", {
+            messageId: this._streamingMessageId,
+            agentId: this._streamingAgentId,
+            status: this._status,
+          });
         } else if (p.role === "user") {
           // Message from another channel (Telegram, CLI, etc.) — load it immediately
           void this._reloadLastMessages();
@@ -643,6 +664,7 @@ export class RuntimePilot extends LitElement {
           this._currentToolName = null;
           this._streamingMessageId = null;
           this._status = "idle";
+          debugChat("runtime-pilot stream ended (idle)", { status: this._status });
           // Ensure the final messages are rendered — individual
           // message.updated/created events may have been missed.
           void this._reloadLastMessages();
@@ -658,6 +680,7 @@ export class RuntimePilot extends LitElement {
         this._currentToolName = null;
         this._streamingMessageId = null;
         this._status = "idle";
+        debugChat("runtime-pilot session ended", { status: this._status });
         break;
       }
 
@@ -748,6 +771,11 @@ export class RuntimePilot extends LitElement {
 
   private async _reloadLastMessages(messageId?: string): Promise<void> {
     if (!this._activeSessionId) return;
+    debugApi("runtime-pilot fetchSessionMessages reloadLast", {
+      sessionId: this._activeSessionId,
+      triggerMessageId: messageId,
+      streamingActive: this._streamingText.length > 0,
+    });
     try {
       // Reload the last few messages to pick up the completed message with parts
       const { messages } = await fetchSessionMessages(this.slug, this._activeSessionId, {
@@ -934,6 +962,20 @@ export class RuntimePilot extends LitElement {
     const agentId = this._context?.agent.id ?? "";
     const agentName = this._context?.agent.name ?? agentId;
     const model = this._context?.agent.model ?? "";
+
+    // Diagnostic guard: surfaces any regression of the in-flight filter that
+    // protects the timeline from rendering the same assistant reply twice
+    // during streaming. Only emits when `cp:debug-render` is enabled.
+    if (
+      this._streamingMessageId &&
+      this._streamingText.length > 0 &&
+      this._messages.some((m) => m.id === this._streamingMessageId)
+    ) {
+      debugRender("runtime-pilot filtering in-flight assistant row", {
+        streamingMessageId: this._streamingMessageId,
+        streamingTextLen: this._streamingText.length,
+      });
+    }
 
     return html`
       ${this._renderNavBar()}

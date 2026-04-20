@@ -309,14 +309,17 @@ All events are defined in `src/runtime/bus/events.ts` with typed payloads via `E
 
 ## Debug
 
-Toggle SSE diagnostic logging in browser devtools:
+SSE bus events received by the UI can be logged to the devtools console by
+enabling `cp:debug-sse` in `localStorage`:
 
 ```javascript
 localStorage.setItem("cp:debug-sse", "1");
-// Reload — all SSE events logged under [cp:sse] prefix
+// All SSE events now logged under the [cp:sse] prefix (no reload needed).
 ```
 
-Helper: `ui/src/services/debug.ts::debugSse(label, ...args)`.
+This flag is one of several UI diagnostic helpers — see
+[debugging.md](./debugging.md) for the full catalogue (chat state, render
+guards, API calls) and guidelines for adding new call sites.
 
 ---
 
