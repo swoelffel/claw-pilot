@@ -230,6 +230,147 @@ describe("GET /api/instances/:slug/skills", () => {
 });
 
 // ===========================================================================
+// POST /api/instances/:slug/skills/upload — ZIP upload
+// ===========================================================================
+
+describe("POST /api/instances/:slug/skills/upload", () => {
+  /** Build a valid ZIP and return an ArrayBuffer suitable for File constructor. */
+  async function makeZip(files: Record<string, string>): Promise<ArrayBuffer> {
+    const { zip } = await import("fflate");
+    const entries: Record<string, Uint8Array> = {};
+    for (const [name, content] of Object.entries(files)) {
+      entries[name] = new TextEncoder().encode(content);
+    }
+    const u8 = await new Promise<Uint8Array>((resolve, reject) => {
+      zip(entries, (err, data) => {
+        if (err) reject(err);
+        else resolve(data);
+      });
+    });
+    // Copy into a fresh ArrayBuffer (not ArrayBufferLike) for BlobPart compatibility
+    const buf = new ArrayBuffer(u8.byteLength);
+    new Uint8Array(buf).set(u8);
+    return buf;
+  }
+
+  it("returns 401 without auth", async () => {
+    const res = await ctx.app.request("/api/instances/demo/skills/upload", { method: "POST" });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 400 when file field is missing", async () => {
+    seedInstance(ctx, "demo", 18789);
+    const fd = new FormData();
+    const res = await ctx.app.request("/api/instances/demo/skills/upload", {
+      method: "POST",
+      headers: authHeaders(),
+      body: fd,
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("MISSING_FILE");
+  });
+
+  it("returns 400 when ZIP has no SKILL.md", async () => {
+    seedInstance(ctx, "demo", 18789);
+    const zipBuf = await makeZip({ "README.md": "# no skill here" });
+
+    const fd = new FormData();
+    fd.append("file", new File([zipBuf], "skill.zip", { type: "application/zip" }));
+
+    const res = await ctx.app.request("/api/instances/demo/skills/upload", {
+      method: "POST",
+      headers: authHeaders(),
+      body: fd,
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("NO_SKILL_MD");
+  });
+
+  it("extracts ZIP with SKILL.md at root and installs the skill", async () => {
+    seedInstance(ctx, "demo", 18789);
+    const skillMd = "---\nname: my-upload\ndescription: Uploaded skill\n---\n\n# Hello";
+    const zipBuf = await makeZip({
+      "SKILL.md": skillMd,
+      "assets/note.txt": "some data",
+    });
+
+    const fd = new FormData();
+    fd.append("file", new File([zipBuf], "my-upload.zip", { type: "application/zip" }));
+
+    const res = await ctx.app.request("/api/instances/demo/skills/upload", {
+      method: "POST",
+      headers: authHeaders(),
+      body: fd,
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.ok).toBe(true);
+    expect(body.name).toBe("my-upload");
+
+    const writtenMd = await fsp.readFile(
+      path.join(ctx.stateDir, "skills", "my-upload", "SKILL.md"),
+      "utf-8",
+    );
+    expect(writtenMd).toBe(skillMd);
+
+    const writtenAsset = await fsp.readFile(
+      path.join(ctx.stateDir, "skills", "my-upload", "assets", "note.txt"),
+      "utf-8",
+    );
+    expect(writtenAsset).toBe("some data");
+  });
+
+  it("extracts ZIP with SKILL.md in a single subdirectory", async () => {
+    seedInstance(ctx, "demo", 18789);
+    const skillMd = "---\nname: nested-skill\ndescription: Nested\n---\n\n# Nested";
+    const zipBuf = await makeZip({
+      "nested-skill/SKILL.md": skillMd,
+    });
+
+    const fd = new FormData();
+    fd.append("file", new File([zipBuf], "nested-skill.zip", { type: "application/zip" }));
+
+    const res = await ctx.app.request("/api/instances/demo/skills/upload", {
+      method: "POST",
+      headers: authHeaders(),
+      body: fd,
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.name).toBe("nested-skill");
+
+    const written = await fsp.readFile(
+      path.join(ctx.stateDir, "skills", "nested-skill", "SKILL.md"),
+      "utf-8",
+    );
+    expect(written).toBe(skillMd);
+  });
+
+  it("rejects ZIP entries with path traversal", async () => {
+    seedInstance(ctx, "demo", 18789);
+    const skillMd = "---\nname: bad\ndescription: x\n---";
+    const zipBuf = await makeZip({
+      "SKILL.md": skillMd,
+      "../evil.txt": "escape",
+    });
+
+    const fd = new FormData();
+    fd.append("file", new File([zipBuf], "bad.zip", { type: "application/zip" }));
+
+    const res = await ctx.app.request("/api/instances/demo/skills/upload", {
+      method: "POST",
+      headers: authHeaders(),
+      body: fd,
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("INVALID_ZIP");
+  });
+});
+
+// ===========================================================================
 // POST /api/instances/:slug/skills/install — GitHub install
 // ===========================================================================
 
