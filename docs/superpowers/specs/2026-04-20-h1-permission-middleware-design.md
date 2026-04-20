@@ -23,6 +23,7 @@ export interface AuthenticatedUser {
   id: string;
   username: string;
   role: string; // "admin" | "operator" | "viewer" (schema slot)
+  source: "session" | "bearer"; // how the request authenticated
 }
 
 export interface PermissionContext {
@@ -76,7 +77,11 @@ The capability `rbac-fine` is the Enterprise switch for *Enterprise's own* check
 
 Annotate **every mutation route** (POST/PATCH/PUT/DELETE) and **read routes that expose sensitive data** (named keys, secrets, audit feeds) with the `permission()` middleware. Each route declares `{ action, resource }` explicitly so Enterprise can key decisions on the exact verb and resource kind without pattern-matching the URL.
 
-Initial action taxonomy (enumerated in one place, `src/dashboard/middleware/permission-actions.ts`, as a string union):
+The `action` field in `PermissionContext` is typed as a plain `string` — Enterprise can register any action it wants without depending on a Community-controlled union (preserves R3: frozen-path byte-identity even if Enterprise invents new actions).
+
+For ergonomics, Community exports an `ACTIONS` const (`src/dashboard/middleware/permission-actions.ts`) with a flat catalogue of the actions Community itself annotates. Route modules import from this const — typos surface at build time. Convention: `"<resource-kind>.<verb>"`, lowercase, dot-separated, no plural forms (`agent.create`, not `agents.create`).
+
+Initial action catalogue:
 
 - `agent.*` (create/read/update/delete/start/stop/kickoff)
 - `agent-blueprint.*`
