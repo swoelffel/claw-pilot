@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.79.1] — 2026-04-20
+
+### Fixed
+- **Onboarding start CTA** — removed the "Say hello to your Pilot" subtitle below the Start button on `/home` and `/pilot`. Only the Start button remains. i18n key `startCta.subtitle` removed from all six locales.
+
+---
+
 ## [0.79.0] — 2026-04-20
 
 ### Added
