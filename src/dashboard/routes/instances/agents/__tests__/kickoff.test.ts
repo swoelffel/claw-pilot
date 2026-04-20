@@ -30,6 +30,7 @@ import { apiError } from "../../../../route-deps.js";
 import type { RouteDeps } from "../../../../route-deps.js";
 import { instanceMiddleware } from "../../../_instance-middleware.js";
 import { registerAgentKickoffRoutes } from "../kickoff.js";
+import { injectAdminUser } from "../../../../__tests__/_helpers/inject-admin-user.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -98,7 +99,7 @@ beforeEach(() => {
 
   app = new Hono();
 
-  // Auth middleware
+  // Auth middleware — validates bearer token and injects synthetic admin user
   const expectedBearer = `Bearer ${TEST_TOKEN}`;
   app.use("/api/*", async (c, next) => {
     const auth = c.req.header("Authorization") ?? "";
@@ -107,6 +108,7 @@ beforeEach(() => {
     }
     await next();
   });
+  app.use("/api/*", injectAdminUser());
 
   const deps = makeTestDeps(registry, db, conn);
 

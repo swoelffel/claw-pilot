@@ -34,6 +34,7 @@ vi.mock("../../lib/platform.js", async (importOriginal) => {
 // Import AFTER mock setup so the route module picks up the mocked function
 const { registerAgentSkillsRoutes } = await import("../routes/instances/agents/skills.js");
 import { instanceMiddleware } from "../routes/_instance-middleware.js";
+import { injectAdminUser } from "./_helpers/inject-admin-user.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -84,6 +85,7 @@ function createTestApp(): TestContext {
     }
     await next();
   });
+  app.use("/api/*", injectAdminUser());
 
   const deps: RouteDeps = {
     registry,
