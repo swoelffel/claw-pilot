@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.80.4] — 2026-04-20
+
+### Dependencies
+- **`@inquirer/prompts`** 8.4.1 → 8.4.2 (patch — fix freeze on some Windows terminals).
+- **`marked`** 18.0.1 → 18.0.2 (patch — bug fixes).
+
+### Tooling
+- **`knip`** 6.4.1 → 6.5.0, **`vite`** 8.0.8 → 8.0.9 (dev deps).
+- **GitHub Actions**: `github/codeql-action` v3 → v4, `actions/setup-node` 6.3.0 → 6.4.0, `pnpm/action-setup` 6.0.0 → 6.0.1.
+
+---
+
 ## [0.80.3] — 2026-04-20
 
 ### Added
