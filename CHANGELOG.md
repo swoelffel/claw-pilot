@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.80.1] — 2026-04-20
+
+### Fixed
+- **Home chat double render** — on the `/home` screen (and `/pilot` full inspector), the assistant reply was painted twice during streaming: once as the persisted row coming back from `_reloadLastMessages`, once as the live streaming bubble. Track the in-flight assistant `messageId` and hide the matching row from the timeline while the stream is active. Cleared on session idle/ended/abort.
+- **Missing `agentId` on `MessageCreated`** — the bus event published at the start of an assistant turn did not carry the agent id, so the streaming bubble fell back to the generic "agent" label. Added `agentId` to the payload and to both publish sites (prompt-loop, compaction). Regression-tested in `prompt-loop.test.ts`.
+
+---
+
 ## [0.80.0] — 2026-04-20
 
 ### Fixed
