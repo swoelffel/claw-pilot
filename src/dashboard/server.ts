@@ -48,6 +48,13 @@ import { pruneNotifications } from "../core/repositories/notification-repository
 import { SystemInstanceService } from "../core/system-instance.js";
 import { rebuildSearchIndex } from "../core/repositories/search-repository.js";
 import { ModelDiscoveryService } from "../core/model-discovery/service.js";
+import type { AuthenticatedUser } from "./middleware/permission.js";
+
+declare module "hono" {
+  interface ContextVariableMap {
+    user: AuthenticatedUser;
+  }
+}
 
 /** Result returned by buildDashboardApp — contains the wired Hono app and cleanup helpers. */
 export interface DashboardAppResult {
@@ -104,6 +111,84 @@ export interface DashboardOptions {
 function safeTokenCompare(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   return timingSafeEqual(Buffer.from(a, "utf-8"), Buffer.from(b, "utf-8"));
+}
+
+/**
+ * Register auth middleware on /api/* routes.
+ * Three auth paths, in priority order:
+ *   1. Session cookie → look up DB user row, publish with source="session"
+ *   2. Bearer token   → publish synthetic admin identity with source="bearer"
+ *   3. Query-token (SSE fallback) → same synthetic identity
+ *
+ * Extension-Point: permission-middleware
+ */
+function registerAuthMiddleware(
+  app: Hono,
+  token: string,
+  sessionStore: SessionStore,
+  db: import("better-sqlite3").Database,
+): void {
+  const expectedBearer = `Bearer ${token}`;
+  const PUBLIC_ROUTES = ["/api/auth/login"];
+
+  app.use("/api/*", async (c, next) => {
+    // Skip auth for public routes
+    if (PUBLIC_ROUTES.some((r) => c.req.path === r)) {
+      return next();
+    }
+
+    // 1. Try session cookie (priority)
+    const sid = getCookie(c, constants.SESSION_COOKIE_NAME);
+    if (sid) {
+      const session = sessionStore.validate(sid);
+      if (session) {
+        const userRow = db
+          .prepare("SELECT id, username, role FROM users WHERE id = ?")
+          .get(session.userId) as
+          | { id: number | string; username: string; role: string }
+          | undefined;
+        if (userRow) {
+          c.set("user", {
+            id: String(userRow.id),
+            username: userRow.username,
+            role: userRow.role,
+            source: "session",
+          });
+          return next();
+        }
+        // Session refers to a deleted user — fall through to next auth path
+      }
+    }
+
+    // 2. Fallback: Bearer token (backward compat + programmatic access)
+    const auth = c.req.header("Authorization") ?? "";
+    if (safeTokenCompare(auth, expectedBearer)) {
+      c.set("user", {
+        id: "bearer",
+        username: "bearer",
+        role: "admin",
+        source: "bearer",
+      });
+      return next();
+    }
+
+    // 3. SSE fallback: EventSource cannot set custom headers, so accept
+    //    ?token=<bearer> as a last resort (timing-safe compare). Used by
+    //    the UI's EventSource for /runtime/chat/stream. The cookie path
+    //    above is still preferred when the browser sends it.
+    const queryToken = c.req.query("token");
+    if (queryToken && safeTokenCompare(`Bearer ${queryToken}`, expectedBearer)) {
+      c.set("user", {
+        id: "bearer",
+        username: "bearer",
+        role: "admin",
+        source: "bearer",
+      });
+      return next();
+    }
+
+    return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
+  });
 }
 
 /** Register public healthcheck, security headers, request-id, and rate-limit middleware. */
@@ -212,42 +297,8 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   // Auth routes — registered BEFORE the auth middleware so /api/auth/login is public
   registerAuthRoutes(app, deps, token);
 
-  // Auth middleware for API routes — dual auth: session cookie (priority) then Bearer token
-  const expectedBearer = `Bearer ${token}`;
-  const PUBLIC_ROUTES = ["/api/auth/login"];
-
-  app.use("/api/*", async (c, next) => {
-    // Skip auth for public routes
-    if (PUBLIC_ROUTES.some((r) => c.req.path === r)) {
-      return next();
-    }
-
-    // 1. Try session cookie (priority)
-    const sid = getCookie(c, constants.SESSION_COOKIE_NAME);
-    if (sid) {
-      const session = sessionStore.validate(sid);
-      if (session) {
-        return next();
-      }
-    }
-
-    // 2. Fallback: Bearer token (backward compat + programmatic access)
-    const auth = c.req.header("Authorization") ?? "";
-    if (safeTokenCompare(auth, expectedBearer)) {
-      return next();
-    }
-
-    // 3. SSE fallback: EventSource cannot set custom headers, so accept
-    //    ?token=<bearer> as a last resort (timing-safe compare). Used by
-    //    the UI's EventSource for /runtime/chat/stream. The cookie path
-    //    above is still preferred when the browser sends it.
-    const queryToken = c.req.query("token");
-    if (queryToken && safeTokenCompare(`Bearer ${queryToken}`, expectedBearer)) {
-      return next();
-    }
-
-    return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
-  });
+  // Auth middleware for API routes — see registerAuthMiddleware above
+  registerAuthMiddleware(app, token, sessionStore, db);
 
   registerInstanceRoutes(app, deps);
   registerBlueprintRoutes(app, deps);
