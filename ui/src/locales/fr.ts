@@ -451,7 +451,7 @@ export const templates = {
   "settings-shared-files": "Espace partagé",
   "settings-shared-files-header": "Espace partagé",
   "isf-hint":
-    "Les fichiers déposés ici sont accessibles en lecture par tous les agents de cette instance via ws_list_files et ws_search_files (préfixés par @shared/). À utiliser pour des documents de référence partagés par toute l'équipe.",
+    "Les fichiers déposés ici sont partagés avec tous les agents de cette instance via ws_list_files, ws_search_files, ws_write_shared_file et ws_delete_shared_file (préfixés par @shared/). À utiliser pour des documents de référence partagés et la collaboration inter-agents.",
   "isf-placeholder": "Sélectionnez un fichier à consulter ou modifier, ou créez-en un nouveau.",
 
   // instance-skills.ts

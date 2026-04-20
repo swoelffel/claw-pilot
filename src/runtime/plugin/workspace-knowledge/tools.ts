@@ -1,18 +1,25 @@
 // src/runtime/plugin/workspace-knowledge/tools.ts
 //
-// Two tools exposed to every agent for discovering user-created files in its
+// Tools exposed to every agent for the workspace and the instance shared
 // workspace:
-//   ws_list_files(dir?)          — hierarchical listing with extracted titles
-//   ws_search_files(query, dir?) — FTS5 full-text search over workspace content
+//   ws_list_files(dir?)                 — hierarchical listing with titles
+//   ws_search_files(query, dir?)        — FTS5 full-text search
+//   ws_write_shared_file(path, content) — write to the instance shared workspace
+//   ws_delete_shared_file(path)         — delete from the instance shared workspace
 //
 // Identity files (SOUL.md, AGENTS.md, BOOTSTRAP.md, USER.md, HEARTBEAT.md,
-// MEMORY.md) and memory/*.md files are filtered out — they are handled by
-// the system-prompt discovery layer and the memory subsystem respectively.
+// MEMORY.md) and memory/*.md files are filtered out of listings — they are
+// handled by the system-prompt discovery layer and the memory subsystem.
 
 import type Database from "better-sqlite3";
+import { createHash } from "node:crypto";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { z } from "zod";
 import { Tool } from "../../tool/tool.js";
+import { constants } from "../../../lib/constants.js";
 import { logger } from "../../../lib/logger.js";
+import { validateWorkspaceRelativePath } from "../../../lib/workspace-path.js";
 import type { InstanceSlug } from "../../types.js";
 
 // ---------------------------------------------------------------------------
@@ -168,7 +175,7 @@ function formatListingSections(agentEntries: string[], sharedEntries: string[]):
   }
   if (sharedEntries.length > 0) {
     sections.push(
-      `## Shared workspace (read-only, shared with all agents of this instance)\n` +
+      `## Shared workspace (read/write, shared with all agents of this instance)\n` +
         sharedEntries.join("\n"),
     );
   }
@@ -179,7 +186,7 @@ function createListTool(db: Database.Database, instanceSlug: InstanceSlug): Tool
   return Tool.define("ws_list_files", {
     description:
       "List user-created files in your workspace AND in the instance shared " +
-      "workspace (read-only, shared with all agents of the instance). " +
+      "workspace (shared read/write with all agents of the instance). " +
       "Entries from the shared workspace are prefixed with '@shared/'. " +
       "Returns each file's path, size, and a short title extracted from the " +
       "first H1 heading or frontmatter 'description:' value. " +
@@ -390,12 +397,196 @@ function createSearchTool(db: Database.Database, instanceSlug: InstanceSlug): To
 }
 
 // ---------------------------------------------------------------------------
+// Shared-workspace write/delete tools
+// ---------------------------------------------------------------------------
+//
+// These tools let agents collaborate on the instance shared workspace.
+// Writes go to disk (best-effort) AND to `instance_shared_files` so agents
+// see the change via ws_list_files / ws_search_files immediately.
+//
+// Gating: writing to a shared, potentially important document is powerful.
+// Use the existing tool permission system (allow/ask/deny per tool) to
+// restrict who can call these tools on a given instance.
+// ---------------------------------------------------------------------------
+
+function upsertSharedFile(
+  db: Database.Database,
+  instanceDbId: number,
+  filename: string,
+  content: string,
+): string {
+  const hash = createHash("sha256").update(content, "utf8").digest("hex");
+  db.prepare(
+    `INSERT INTO instance_shared_files (instance_id, filename, content, content_hash, updated_at)
+       VALUES (?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(instance_id, filename) DO UPDATE SET
+         content = excluded.content,
+         content_hash = excluded.content_hash,
+         updated_at = excluded.updated_at`,
+  ).run(instanceDbId, filename, content, hash);
+  return hash;
+}
+
+function createWriteSharedTool(
+  db: Database.Database,
+  instanceSlug: InstanceSlug,
+  workDir: string | undefined,
+): Tool.Info {
+  return Tool.define("ws_write_shared_file", {
+    description:
+      "Create or overwrite a file in the instance shared workspace. " +
+      "The file becomes immediately visible to every agent of the instance " +
+      "under the `@shared/<path>` prefix via ws_list_files / ws_search_files. " +
+      "Use this for team-wide reference documents, shared notes or " +
+      "handover files. Path must be workspace-relative with an allowed " +
+      "extension (.md, .txt, .json, .yaml, .yml, .csv, .log). Maximum 1 MB.",
+    parameters: z.object({
+      path: z
+        .string()
+        .min(1)
+        .describe("Workspace-relative path inside the shared workspace (e.g. 'notes/ideas.md')"),
+      content: z.string().describe("Full file content (UTF-8). Max 1 MB."),
+    }),
+    async execute(args) {
+      let relPath: string;
+      try {
+        relPath = validateWorkspaceRelativePath(args.path);
+      } catch (err) {
+        return {
+          title: "shared write error",
+          output: `Invalid path: ${err instanceof Error ? err.message : String(err)}`,
+          truncated: false,
+        };
+      }
+      if (Buffer.byteLength(args.content, "utf8") > 1_048_576) {
+        return {
+          title: "shared write error",
+          output: "Content exceeds 1 MB limit.",
+          truncated: false,
+        };
+      }
+      const instanceDbId = resolveInstanceDbId(db, instanceSlug);
+      if (instanceDbId === null) {
+        return {
+          title: "shared write error",
+          output: "Could not resolve instance in registry.",
+          truncated: false,
+        };
+      }
+
+      // Best-effort disk write so the file survives a DB resync.
+      if (workDir) {
+        const sharedDir = path.join(workDir, "workspaces", constants.SHARED_WORKSPACE_DIR);
+        const filePath = path.join(sharedDir, relPath);
+        try {
+          await fs.mkdir(path.dirname(filePath), { recursive: true });
+          await fs.writeFile(filePath, args.content, "utf8");
+        } catch (err) {
+          logger.warn("[ws_write_shared_file] disk write failed", {
+            error: String(err),
+            filePath,
+          });
+          return {
+            title: "shared write error",
+            output: `Disk write failed: ${err instanceof Error ? err.message : String(err)}`,
+            truncated: false,
+          };
+        }
+      }
+
+      try {
+        upsertSharedFile(db, instanceDbId, relPath, args.content);
+      } catch (err) {
+        logger.warn("[ws_write_shared_file] DB upsert failed", { error: String(err) });
+        return {
+          title: "shared write error",
+          output: `DB upsert failed: ${err instanceof Error ? err.message : String(err)}`,
+          truncated: false,
+        };
+      }
+
+      return {
+        title: "shared write ok",
+        output: `Wrote @shared/${relPath} (${Buffer.byteLength(args.content, "utf8")} bytes).`,
+        truncated: false,
+      };
+    },
+  });
+}
+
+function createDeleteSharedTool(
+  db: Database.Database,
+  instanceSlug: InstanceSlug,
+  workDir: string | undefined,
+): Tool.Info {
+  return Tool.define("ws_delete_shared_file", {
+    description:
+      "Delete a file from the instance shared workspace. The file is removed " +
+      "from disk and from the index. This affects every agent of the instance.",
+    parameters: z.object({
+      path: z.string().min(1).describe("Workspace-relative path inside the shared workspace"),
+    }),
+    async execute(args) {
+      let relPath: string;
+      try {
+        relPath = validateWorkspaceRelativePath(args.path);
+      } catch (err) {
+        return {
+          title: "shared delete error",
+          output: `Invalid path: ${err instanceof Error ? err.message : String(err)}`,
+          truncated: false,
+        };
+      }
+      const instanceDbId = resolveInstanceDbId(db, instanceSlug);
+      if (instanceDbId === null) {
+        return {
+          title: "shared delete error",
+          output: "Could not resolve instance in registry.",
+          truncated: false,
+        };
+      }
+
+      if (workDir) {
+        const filePath = path.join(workDir, "workspaces", constants.SHARED_WORKSPACE_DIR, relPath);
+        try {
+          await fs.rm(filePath, { force: true });
+        } catch (err) {
+          logger.debug("[ws_delete_shared_file] disk remove failed (non-fatal)", {
+            error: String(err),
+            filePath,
+          });
+        }
+      }
+
+      const res = db
+        .prepare("DELETE FROM instance_shared_files WHERE instance_id = ? AND filename = ?")
+        .run(instanceDbId, relPath);
+
+      return {
+        title: "shared delete ok",
+        output:
+          res.changes > 0
+            ? `Deleted @shared/${relPath}.`
+            : `@shared/${relPath} did not exist (nothing to delete).`,
+        truncated: false,
+      };
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Public factory
 // ---------------------------------------------------------------------------
 
 export function createWorkspaceKnowledgeTools(
   db: Database.Database,
   instanceSlug: InstanceSlug,
+  workDir?: string,
 ): Tool.Info[] {
-  return [createListTool(db, instanceSlug), createSearchTool(db, instanceSlug)];
+  return [
+    createListTool(db, instanceSlug),
+    createSearchTool(db, instanceSlug),
+    createWriteSharedTool(db, instanceSlug, workDir),
+    createDeleteSharedTool(db, instanceSlug, workDir),
+  ];
 }

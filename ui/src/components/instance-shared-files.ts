@@ -129,7 +129,7 @@ export class InstanceSharedFiles extends LitElement {
       <div class="shared-files">
         <p class="hint">
           ${msg(
-            "Files placed here are readable by every agent of this instance via ws_list_files and ws_search_files (prefixed with @shared/). Use this space for team-wide reference documents.",
+            "Files placed here are shared with every agent of this instance via ws_list_files, ws_search_files, ws_write_shared_file and ws_delete_shared_file (prefixed with @shared/). Use this space for team-wide reference documents and cross-agent collaboration.",
             { id: "isf-hint" },
           )}
         </p>
