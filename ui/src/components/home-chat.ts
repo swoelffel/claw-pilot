@@ -96,6 +96,13 @@ export class HomeChat extends LitElement {
   @state() private _streamingReasoningPartId: string | null = null;
   @state() private _currentToolName: string | null = null;
   @state() private _streamingAgentId = "";
+  /** Message id of the assistant turn currently being streamed. Used to hide
+   * the persisted shell of that message from the timeline while the streaming
+   * bubble is visible — otherwise the same reply renders twice (one partial
+   * row from the DB, one live row from the delta stream). Cleared once the
+   * stream ends (session idle / session ended) so the persisted message takes
+   * over with its final content. */
+  @state() private _streamingMessageId: string | null = null;
   @state() private _tokensIn = 0;
   @state() private _tokensOut = 0;
   @state() private _costUsd = 0;
@@ -144,6 +151,7 @@ export class HomeChat extends LitElement {
     this._messages = [];
     this._hasMore = false;
     this._streamingText = "";
+    this._streamingMessageId = null;
     this._activeSessionId = "";
     this._reconnectDelay = SSE_RECONNECT_INITIAL_MS;
 
@@ -394,6 +402,7 @@ export class HomeChat extends LitElement {
           this._streamingReasoningPartId = null;
           this._currentToolName = null;
           this._streamingAgentId = (p.agentId as string | undefined) ?? "";
+          this._streamingMessageId = (p.messageId as string | undefined) ?? null;
           if (this._status !== "sending") this._status = "sending";
         } else if (p.role === "user") {
           // Message from another channel (Telegram, CLI, etc.) — load it immediately
@@ -438,6 +447,7 @@ export class HomeChat extends LitElement {
           this._streamingReasoning = "";
           this._streamingReasoningPartId = null;
           this._currentToolName = null;
+          this._streamingMessageId = null;
           this._status = "idle";
           // Ensure the final messages (assistant reply, tool results, etc.)
           // are rendered — message.updated/created may have been missed.
@@ -452,6 +462,7 @@ export class HomeChat extends LitElement {
         this._streamingReasoning = "";
         this._streamingReasoningPartId = null;
         this._currentToolName = null;
+        this._streamingMessageId = null;
         this._status = "idle";
         break;
       }
@@ -620,7 +631,9 @@ export class HomeChat extends LitElement {
             ></cp-start-cta>`
           : html`
               <cp-pilot-messages
-                .messages=${this._messages}
+                .messages=${this._streamingMessageId
+                  ? this._messages.filter((m) => m.id !== this._streamingMessageId)
+                  : this._messages}
                 .filters=${HOME_FILTERS}
                 .currentAgentId=${"system-pilot"}
                 .streamingText=${this._streamingText}

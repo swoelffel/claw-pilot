@@ -88,7 +88,14 @@ export const SessionStatusChanged = defineEvent<
 
 export const MessageCreated = defineEvent<
   "message.created",
-  { sessionId: SessionId; messageId: MessageId; role: "user" | "assistant" }
+  {
+    sessionId: SessionId;
+    messageId: MessageId;
+    role: "user" | "assistant";
+    /** Agent id that owns this message. Absent for user messages from external
+     * channels (Telegram, CLI) that are not bound to a specific agent yet. */
+    agentId?: string;
+  }
 >("message.created");
 
 export const MessageUpdated = defineEvent<

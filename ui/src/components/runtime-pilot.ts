@@ -206,6 +206,10 @@ export class RuntimePilot extends LitElement {
   @state() private _streamingReasoningPartId: string | null = null;
   @state() private _currentToolName: string | null = null;
   @state() private _streamingAgentId = "";
+  /** Assistant message id currently being streamed. While set, the matching
+   * persisted entry is hidden from the timeline to avoid a double-render
+   * (the live streaming bubble already shows the in-flight content). */
+  @state() private _streamingMessageId: string | null = null;
   @state() private _context: SessionContext | null = null;
   @state() private _panelOpen = true;
   @state() private _filters: TimelineFilters = RuntimePilot._loadFilters();
@@ -297,6 +301,7 @@ export class RuntimePilot extends LitElement {
     this._messages = [];
     this._hasMore = false;
     this._streamingText = "";
+    this._streamingMessageId = null;
     this._events = [];
     this._context = null;
     this._activeSessionId = "";
@@ -586,6 +591,7 @@ export class RuntimePilot extends LitElement {
           this._streamingReasoningPartId = null;
           this._currentToolName = null;
           this._streamingAgentId = (p.agentId as string | undefined) ?? "";
+          this._streamingMessageId = (p.messageId as string | undefined) ?? null;
           // Keep status as "sending" until the first delta tells us the phase
           if (this._status !== "sending") this._status = "sending";
         } else if (p.role === "user") {
@@ -635,6 +641,7 @@ export class RuntimePilot extends LitElement {
           this._streamingReasoning = "";
           this._streamingReasoningPartId = null;
           this._currentToolName = null;
+          this._streamingMessageId = null;
           this._status = "idle";
           // Ensure the final messages are rendered — individual
           // message.updated/created events may have been missed.
@@ -649,6 +656,7 @@ export class RuntimePilot extends LitElement {
         this._streamingReasoning = "";
         this._streamingReasoningPartId = null;
         this._currentToolName = null;
+        this._streamingMessageId = null;
         this._status = "idle";
         break;
       }
@@ -824,6 +832,7 @@ export class RuntimePilot extends LitElement {
     this._status = "idle";
     this._streamingText = "";
     this._streamingAgentId = "";
+    this._streamingMessageId = null;
   }
 
   // ── Suggestion click ────────────────────────────────────────────────────
@@ -962,7 +971,9 @@ export class RuntimePilot extends LitElement {
               ></cp-start-cta>`
             : html`
                 <cp-pilot-messages
-                  .messages=${this._messages}
+                  .messages=${this._streamingMessageId
+                    ? this._messages.filter((m) => m.id !== this._streamingMessageId)
+                    : this._messages}
                   .filters=${this._filters}
                   .currentAgentId=${agentId}
                   .streamingText=${this._streamingText}

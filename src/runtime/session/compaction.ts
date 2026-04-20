@@ -264,6 +264,7 @@ export async function compact(input: CompactionInput): Promise<CompactionResult>
       sessionId,
       messageId: compactionMsg.id,
       role: "assistant",
+      agentId: agentConfig.id,
     });
 
     // Add a compaction part with the summary
