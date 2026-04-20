@@ -238,6 +238,15 @@ export class HomeChat extends LitElement {
     const existingIds = new Set(this._messages.map((m) => m.id));
     const newMsgs = fresh.filter((m) => !existingIds.has(m.id));
     const updatedMsgs = this._messages.map((m) => fresh.find((nm) => nm.id === m.id) ?? m);
+    // [DOUBLE-RENDER-DEBUG] temporary — log merge decisions.
+    // eslint-disable-next-line no-console
+    console.log("[DOUBLE-RENDER] mergeMessages", {
+      freshCount: fresh.length,
+      freshIds: fresh.map((m) => ({ id: m.id, role: m.role, agentId: m.agentId })),
+      newCount: newMsgs.length,
+      streamingActive: this._streamingText.length > 0,
+      streamingAgentId: this._streamingAgentId,
+    });
     if (newMsgs.length > 0 || updatedMsgs.some((m, i) => m !== this._messages[i])) {
       this._messages = [...updatedMsgs, ...newMsgs];
       this._updateCumulativeStats();
@@ -357,6 +366,31 @@ export class HomeChat extends LitElement {
   private _handleBusEvent(event: PilotBusEvent): void {
     const p = event.payload;
     const eventSessionId = p.sessionId as string | undefined;
+    // [DOUBLE-RENDER-DEBUG] temporary — diagnose double-render during streaming.
+    // Remove once the root cause is confirmed and fixed.
+    // eslint-disable-next-line no-console
+    console.log("[DOUBLE-RENDER]", event.type, {
+      sessionId: eventSessionId,
+      activeSessionId: this._activeSessionId,
+      role: p.role,
+      agentId: p.agentId,
+      messageId: p.messageId,
+      partType: p.partType,
+      partId: p.partId,
+      deltaLen: typeof p.delta === "string" ? (p.delta as string).length : undefined,
+      streamingTextLen: this._streamingText.length,
+      streamingAgentId: this._streamingAgentId,
+      messagesCount: this._messages.length,
+      lastMessage:
+        this._messages.length > 0
+          ? {
+              id: this._messages[this._messages.length - 1]!.id,
+              role: this._messages[this._messages.length - 1]!.role,
+              agentId: this._messages[this._messages.length - 1]!.agentId,
+              partsLen: this._messages[this._messages.length - 1]!.parts?.length,
+            }
+          : null,
+    });
 
     // Adopt incoming session if we don't have one yet (e.g. first message via Telegram)
     if (!this._activeSessionId && eventSessionId) {
@@ -593,6 +627,22 @@ export class HomeChat extends LitElement {
       this._status === "tool";
     const lockReason: "pending_question" | "" = this._hasPendingQuestion ? "pending_question" : "";
     const totalTokens = this._tokensIn + this._tokensOut;
+
+    // [DOUBLE-RENDER-DEBUG] temporary — flag the render frames where a persisted
+    // assistant bubble AND a streaming bubble would both be visible at once.
+    const lastMsg = this._messages[this._messages.length - 1];
+    const collision =
+      this._streamingText.length > 0 && lastMsg !== undefined && lastMsg.role === "assistant";
+    if (collision) {
+      // eslint-disable-next-line no-console
+      console.warn("[DOUBLE-RENDER] COLLISION in render", {
+        status: this._status,
+        streamingTextLen: this._streamingText.length,
+        streamingAgentId: this._streamingAgentId,
+        lastMessageId: lastMsg.id,
+        lastMessageAgentId: lastMsg.agentId,
+      });
+    }
 
     return html`
       <cp-pilot-header
