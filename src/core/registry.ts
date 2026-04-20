@@ -24,6 +24,8 @@ import { BlueprintRepository } from "./repositories/blueprint-repository.js";
 import { AgentBlueprintRepository } from "./repositories/agent-blueprint-repository.js";
 import { UserProfileRepository } from "./repositories/user-profile-repository.js";
 import { RuntimeConfigRepository } from "./repositories/runtime-config-repository.js";
+import { InstanceSharedFileRepository } from "./repositories/instance-shared-file-repository.js";
+import type { InstanceSharedFileRecord } from "./repositories/instance-shared-file-repository.js";
 import type { InstanceRecord } from "./registry-types.js";
 
 // ---------------------------------------------------------------------------
@@ -60,6 +62,7 @@ export class Registry {
   private agentBlueprints: AgentBlueprintRepository;
   private _userProfiles: UserProfileRepository;
   private _runtimeConfig: RuntimeConfigRepository;
+  private sharedFiles: InstanceSharedFileRepository;
 
   constructor(private db: Database.Database) {
     this.servers = new ServerRepository(db);
@@ -72,6 +75,7 @@ export class Registry {
     this.agentBlueprints = new AgentBlueprintRepository(db);
     this._userProfiles = new UserProfileRepository(db);
     this._runtimeConfig = new RuntimeConfigRepository(db);
+    this.sharedFiles = new InstanceSharedFileRepository(db);
   }
 
   /** Expose the underlying database handle for transaction-level operations. */
@@ -306,6 +310,23 @@ export class Registry {
     fn: Parameters<RuntimeConfigRepository["patchRuntimeConfig"]>[1],
   ) {
     return this._runtimeConfig.patchRuntimeConfig(slug, fn);
+  }
+
+  // --- Instance Shared Files (v38) ---
+  listSharedFiles(instanceId: number): InstanceSharedFileRecord[] {
+    return this.sharedFiles.listSharedFiles(instanceId);
+  }
+  getSharedFileContent(instanceId: number, filename: string) {
+    return this.sharedFiles.getSharedFileContent(instanceId, filename);
+  }
+  upsertSharedFile(
+    instanceId: number,
+    data: Parameters<InstanceSharedFileRepository["upsertSharedFile"]>[1],
+  ) {
+    return this.sharedFiles.upsertSharedFile(instanceId, data);
+  }
+  deleteSharedFile(instanceId: number, filename: string) {
+    return this.sharedFiles.deleteSharedFile(instanceId, filename);
   }
 
   // --- User Profiles ---

@@ -1463,6 +1463,64 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v38: Instance-level shared workspace. One `workspaces/shared` directory
+    // per instance, readable by all agents of that instance via the ws_* tools,
+    // editable only via the dashboard UI. Symmetrical with agent_files +
+    // agent_files_fts (see v36).
+    version: 38,
+    up(db) {
+      const hasInstances = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='instances'")
+        .get();
+      if (!hasInstances) return;
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS instance_shared_files (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          instance_id     INTEGER NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
+          filename        TEXT NOT NULL,
+          content         TEXT,
+          content_hash    TEXT,
+          updated_at      TEXT,
+          UNIQUE(instance_id, filename)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_instance_shared_files_instance
+          ON instance_shared_files(instance_id);
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS instance_shared_files_fts USING fts5(
+          filename,
+          content,
+          content='instance_shared_files',
+          content_rowid='id'
+        );
+
+        INSERT INTO instance_shared_files_fts(rowid, filename, content)
+          SELECT id, filename, COALESCE(content, '') FROM instance_shared_files;
+
+        CREATE TRIGGER IF NOT EXISTS instance_shared_files_ai
+          AFTER INSERT ON instance_shared_files BEGIN
+          INSERT INTO instance_shared_files_fts(rowid, filename, content)
+            VALUES (new.id, new.filename, COALESCE(new.content, ''));
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS instance_shared_files_au
+          AFTER UPDATE ON instance_shared_files BEGIN
+          INSERT INTO instance_shared_files_fts(instance_shared_files_fts, rowid, filename, content)
+            VALUES('delete', old.id, old.filename, COALESCE(old.content, ''));
+          INSERT INTO instance_shared_files_fts(rowid, filename, content)
+            VALUES (new.id, new.filename, COALESCE(new.content, ''));
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS instance_shared_files_ad
+          AFTER DELETE ON instance_shared_files BEGIN
+          INSERT INTO instance_shared_files_fts(instance_shared_files_fts, rowid, filename, content)
+            VALUES('delete', old.id, old.filename, COALESCE(old.content, ''));
+        END;
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

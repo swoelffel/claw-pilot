@@ -19,6 +19,7 @@ import { registerHeartbeatRoutes } from "./heartbeat.js";
 import { registerWorkspaceDownloadRoutes } from "./workspace-download.js";
 import { registerBudgetRoutes } from "./budgets.js";
 import { registerTaskRoutes } from "./tasks.js";
+import { registerSharedFilesRoutes } from "./shared-files.js";
 
 export function registerInstanceRoutes(app: Hono, deps: RouteDeps): void {
   // /discover must be registered before /:slug to avoid Hono route collision
@@ -41,4 +42,5 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps): void {
   registerMemoryRoutes(app, deps);
   registerHeartbeatRoutes(app, deps);
   registerWorkspaceDownloadRoutes(app, deps);
+  registerSharedFilesRoutes(app, deps);
 }

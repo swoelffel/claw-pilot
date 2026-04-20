@@ -7,6 +7,7 @@ import { normaliseModel } from "../lib/model-helpers.js";
 import { constants } from "../lib/constants.js";
 import { logger } from "../lib/logger.js";
 import { hasAllowedWorkspaceExtension, isIgnoredWorkspaceSegment } from "../lib/workspace-path.js";
+import * as path from "node:path";
 
 // ---------------------------------------------------------------------------
 // Constants (imported from single source of truth)
@@ -42,6 +43,7 @@ export interface AgentSyncResult {
     agentsUpdated: string[];
     filesChanged: number;
     linksChanged: number;
+    sharedFilesChanged: number;
   };
 }
 
@@ -184,6 +186,10 @@ export class AgentSync {
     // 4. Extract and persist agent links
     const { links, linksChanged } = this._extractAndMergeLinks(instance, agentsList);
 
+    // 5. Sync the instance shared workspace (v38) — self-healing: create the
+    //    directory if missing (legacy instances provisioned before v38).
+    const sharedFilesChanged = await this._syncSharedWorkspace(instance);
+
     return {
       agents: syncedAgents,
       links,
@@ -193,8 +199,57 @@ export class AgentSync {
         agentsUpdated,
         filesChanged: totalFilesChanged,
         linksChanged,
+        sharedFilesChanged,
       },
     };
+  }
+
+  // ------------------------------------------------------------------
+  // Private: Sync shared workspace (v38)
+  // ------------------------------------------------------------------
+
+  /**
+   * Ensure `<stateDir>/workspaces/shared/` exists, walk it, and reconcile the
+   * `instance_shared_files` table. Symmetrical with `_syncAgentFiles()`.
+   */
+  private async _syncSharedWorkspace(instance: InstanceRecord): Promise<number> {
+    const sharedPath = path.join(instance.state_dir, "workspaces", constants.SHARED_WORKSPACE_DIR);
+
+    // Self-heal: mkdir is recursive, idempotent.
+    try {
+      await this.conn.mkdir(sharedPath);
+    } catch (err) {
+      logger.debug("[agent-sync] shared workspace mkdir failed", {
+        error: String(err),
+        sharedPath,
+      });
+    }
+
+    const dbFiles = new Map(this.registry.listSharedFiles(instance.id).map((f) => [f.filename, f]));
+
+    const walked = await walkWorkspaceFiles(this.conn, sharedPath);
+
+    let filesChanged = 0;
+    for (const { relPath, content } of walked) {
+      const contentHash = hashContent(content);
+      const dbFile = dbFiles.get(relPath);
+      if (!dbFile || dbFile.content_hash !== contentHash) {
+        this.registry.upsertSharedFile(instance.id, {
+          filename: relPath,
+          content,
+          contentHash,
+        });
+        filesChanged++;
+      }
+      dbFiles.delete(relPath);
+    }
+
+    for (const [filename] of dbFiles) {
+      this.registry.deleteSharedFile(instance.id, filename);
+      filesChanged++;
+    }
+
+    return filesChanged;
   }
 
   // ------------------------------------------------------------------

@@ -26,6 +26,7 @@ import "./instance-permissions.js";
 import "./instance-config.js";
 import "./instance-channels.js";
 import "./instance-skills.js";
+import "./instance-shared-files.js";
 
 @localized()
 @customElement("cp-instance-settings")
@@ -305,6 +306,10 @@ export class InstanceSettings extends LitElement {
       {
         id: "config",
         label: msg("Config", { id: "settings-config" }),
+      },
+      {
+        id: "shared-files" as const,
+        label: msg("Shared files", { id: "settings-shared-files" }),
       },
     ];
 
@@ -755,6 +760,16 @@ export class InstanceSettings extends LitElement {
             ? html`
                 <div class="section">
                   <cp-instance-config .slug=${this.slug} .active=${true}></cp-instance-config>
+                </div>
+              `
+            : nothing}
+          ${this._activeSection === "shared-files"
+            ? html`
+                <div class="section">
+                  <div class="section-header">
+                    ${msg("Shared files", { id: "settings-shared-files-header" })}
+                  </div>
+                  <cp-instance-shared-files .slug=${this.slug}></cp-instance-shared-files>
                 </div>
               `
             : nothing}

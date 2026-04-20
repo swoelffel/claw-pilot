@@ -1,5 +1,9 @@
-// Smoke test for workspace-knowledge plugin (ws_list_files + ws_search_files).
+// Smoke test for workspace-knowledge plugin (ws_list_files + ws_search_files
+// + ws_write_shared_file + ws_delete_shared_file).
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { initDatabase } from "../../../../db/schema.js";
 import { createWorkspaceKnowledgeTools } from "../tools.js";
 import type Database from "better-sqlite3";
@@ -101,11 +105,16 @@ describe("workspace-knowledge plugin", () => {
     db.close();
   });
 
-  it("creates exactly two tools with ws_ prefix", () => {
+  it("creates the four ws_* tools", () => {
     const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
-    expect(tools).toHaveLength(2);
+    expect(tools).toHaveLength(4);
     const ids = tools.map((t) => t.id).sort();
-    expect(ids).toEqual(["ws_list_files", "ws_search_files"]);
+    expect(ids).toEqual([
+      "ws_delete_shared_file",
+      "ws_list_files",
+      "ws_search_files",
+      "ws_write_shared_file",
+    ]);
   });
 
   it("ws_list_files excludes identity files and memory/* and includes user files", async () => {
@@ -171,5 +180,119 @@ describe("workspace-knowledge plugin", () => {
     // Unbalanced quote triggers SQLite FTS5 syntax error
     const result = await execTool(tools, "ws_search_files", { query: '"unbalanced' });
     expect(result.output.toLowerCase()).toContain("search failed");
+  });
+
+  // ---------------------------------------------------------------------------
+  // Instance shared workspace (v38) — ws_* tools expose files from
+  // `instance_shared_files` under the `@shared/` prefix alongside the agent
+  // workspace.
+  // ---------------------------------------------------------------------------
+  describe("shared workspace (v38)", () => {
+    beforeAll(() => {
+      const instanceRow = db
+        .prepare("SELECT id FROM instances WHERE slug = ?")
+        .get(INSTANCE_SLUG) as { id: number };
+      const upsert = db.prepare(
+        `INSERT INTO instance_shared_files (instance_id, filename, content, content_hash, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      );
+      upsert.run(
+        instanceRow.id,
+        "README.md",
+        "# Instance guide\nTeam-wide reference with llama mention.",
+        "sh1",
+        "2026-04-20T00:00:00Z",
+      );
+      upsert.run(
+        instanceRow.id,
+        "docs/onboarding.md",
+        "# Onboarding\nWelcome aboard.",
+        "sh2",
+        "2026-04-20T00:00:00Z",
+      );
+    });
+
+    it("ws_list_files includes shared files under @shared/ prefix", async () => {
+      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+      const result = await execTool(tools, "ws_list_files", {});
+      expect(result.output).toContain("@shared/README.md");
+      expect(result.output).toContain("@shared/docs/onboarding.md");
+      expect(result.output).toContain("Your workspace");
+      expect(result.output).toContain("Shared workspace");
+    });
+
+    it("ws_list_files scopes to shared with @shared/ prefix in dir", async () => {
+      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+      const result = await execTool(tools, "ws_list_files", { dir: "@shared" });
+      expect(result.output).toContain("@shared/README.md");
+      expect(result.output).not.toContain("notes.md");
+    });
+
+    it("ws_search_files finds matches in the shared workspace", async () => {
+      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+      const result = await execTool(tools, "ws_search_files", { query: "llama" });
+      // Matches from both scopes should appear, shared ones prefixed with @shared/
+      expect(result.output).toContain("@shared/README.md");
+      expect(result.output).toContain("notes.md");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // ws_write_shared_file / ws_delete_shared_file
+  // ---------------------------------------------------------------------------
+  describe("write/delete shared (v38)", () => {
+    let tmpWorkDir: string;
+
+    beforeAll(() => {
+      tmpWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), "cp-shared-test-"));
+    });
+
+    afterAll(() => {
+      fs.rmSync(tmpWorkDir, { recursive: true, force: true });
+    });
+
+    it("ws_write_shared_file writes to disk AND DB, then listing shows it", async () => {
+      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, tmpWorkDir);
+      const write = await execTool(tools, "ws_write_shared_file", {
+        path: "notes/handoff.md",
+        content: "# Handoff\nSharing results with teammates.",
+      });
+      expect(write.output).toContain("Wrote @shared/notes/handoff.md");
+
+      // Disk
+      const abs = path.join(tmpWorkDir, "workspaces", "shared", "notes", "handoff.md");
+      expect(fs.existsSync(abs)).toBe(true);
+      expect(fs.readFileSync(abs, "utf-8")).toContain("Handoff");
+
+      // DB — visible via ws_list_files under @shared/ prefix
+      const list = await execTool(tools, "ws_list_files", {});
+      expect(list.output).toContain("@shared/notes/handoff.md");
+    });
+
+    it("ws_write_shared_file rejects an invalid path", async () => {
+      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, tmpWorkDir);
+      const r = await execTool(tools, "ws_write_shared_file", {
+        path: "../escape.md",
+        content: "x",
+      });
+      expect(r.title).toBe("shared write error");
+    });
+
+    it("ws_delete_shared_file removes from disk AND DB", async () => {
+      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, tmpWorkDir);
+      await execTool(tools, "ws_write_shared_file", {
+        path: "to-delete.md",
+        content: "bye",
+      });
+      const abs = path.join(tmpWorkDir, "workspaces", "shared", "to-delete.md");
+      expect(fs.existsSync(abs)).toBe(true);
+
+      const del = await execTool(tools, "ws_delete_shared_file", { path: "to-delete.md" });
+      expect(del.output).toContain("Deleted @shared/to-delete.md");
+      expect(fs.existsSync(abs)).toBe(false);
+
+      const list = await execTool(tools, "ws_list_files", {});
+      expect(list.output).not.toContain("@shared/to-delete.md");
+    });
   });
 });
