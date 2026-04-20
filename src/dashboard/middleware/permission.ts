@@ -55,6 +55,7 @@ let registered = false;
  * Replace the default checker. Called exactly once at bootstrap by editions
  * that ship a non-null checker (e.g. Enterprise). A second call throws a
  * ClawPilotError with code "PERMISSION_CHECKER_ALREADY_REGISTERED".
+ * @param checker The PermissionChecker implementation to register.
  */
 export function registerPermissionChecker(checker: PermissionChecker): void {
   if (registered) {
