@@ -212,5 +212,3 @@ export const ACTIONS = {
   RUNTIME_TOOLS_READ: "runtime.tools-read",
   RUNTIME_QUESTION_ANSWER: "runtime.question-answer",
 } as const;
-
-export type Action = (typeof ACTIONS)[keyof typeof ACTIONS];
