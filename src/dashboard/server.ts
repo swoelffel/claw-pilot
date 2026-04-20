@@ -50,12 +50,6 @@ import { rebuildSearchIndex } from "../core/repositories/search-repository.js";
 import { ModelDiscoveryService } from "../core/model-discovery/service.js";
 import type { AuthenticatedUser } from "./middleware/permission.js";
 
-declare module "hono" {
-  interface ContextVariableMap {
-    user: AuthenticatedUser;
-  }
-}
-
 /** Result returned by buildDashboardApp — contains the wired Hono app and cleanup helpers. */
 export interface DashboardAppResult {
   app: Hono;
@@ -126,7 +120,7 @@ function registerAuthMiddleware(
   app: Hono,
   token: string,
   sessionStore: SessionStore,
-  db: import("better-sqlite3").Database,
+  db: Database.Database,
 ): void {
   const expectedBearer = `Bearer ${token}`;
   const PUBLIC_ROUTES = ["/api/auth/login"];
@@ -153,7 +147,7 @@ function registerAuthMiddleware(
             username: userRow.username,
             role: userRow.role,
             source: "session",
-          });
+          } satisfies AuthenticatedUser);
           return next();
         }
         // Session refers to a deleted user — fall through to next auth path
@@ -168,7 +162,7 @@ function registerAuthMiddleware(
         username: "bearer",
         role: "admin",
         source: "bearer",
-      });
+      } satisfies AuthenticatedUser);
       return next();
     }
 
@@ -183,7 +177,7 @@ function registerAuthMiddleware(
         username: "bearer",
         role: "admin",
         source: "bearer",
-      });
+      } satisfies AuthenticatedUser);
       return next();
     }
 

@@ -92,8 +92,7 @@ vi.mock("../../core/repositories/notification-repository.js", () => ({
 vi.mock("../routes/search.js", () => ({
   registerSearchRoutes: vi.fn((app: Hono) => {
     app.get("/api/_probe", (c) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const user = (c as any).get("user") ?? null;
+      const user = c.get("user") ?? null;
       return c.json({ user });
     });
   }),
@@ -101,6 +100,9 @@ vi.mock("../routes/search.js", () => ({
 
 // NOTE: auth routes are NOT mocked — we need real login to get a session cookie.
 
+// Import permission module to pull in Hono ContextVariableMap augmentation
+// (AuthenticatedUser → c.get("user") typed without cast).
+import "../middleware/permission.js";
 import { initDatabase } from "../../db/schema.js";
 import { Registry } from "../../core/registry.js";
 import { MockConnection } from "../../core/__tests__/mock-connection.js";

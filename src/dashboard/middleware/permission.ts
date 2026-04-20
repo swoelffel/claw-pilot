@@ -22,6 +22,16 @@ export interface AuthenticatedUser {
   source: "session" | "bearer";
 }
 
+// The AuthenticatedUser contract is published on the Hono context by the
+// dashboard auth middleware (src/dashboard/server.ts). Augmenting Hono's
+// ContextVariableMap here lets every consumer that imports this module
+// get a typed `c.get("user")` without further configuration.
+declare module "hono" {
+  interface ContextVariableMap {
+    user: AuthenticatedUser;
+  }
+}
+
 export interface PermissionContext {
   user: AuthenticatedUser;
   /** Dotted action identifier, e.g. "agent.create", "named-key.read". */

@@ -8,13 +8,10 @@ import {
   type PermissionContext,
 } from "../permission.js";
 
-// TODO(T4): remove cast once ContextVariableMap is augmented in server.ts
-type LooseContext = { set: (k: string, v: unknown) => void };
-
 function mkApp(user: AuthenticatedUser | null, mw: ReturnType<typeof permission>): Hono {
   const app = new Hono();
   app.use("*", async (c, next) => {
-    if (user) (c as unknown as LooseContext).set("user", user);
+    if (user) c.set("user", user);
     await next();
   });
   app.post("/agents", mw, (c) => c.json({ ok: true }));
@@ -89,7 +86,7 @@ describe("permission() middleware", () => {
     });
     const app = new Hono();
     app.use("*", async (c, next) => {
-      (c as unknown as LooseContext).set("user", ADMIN);
+      c.set("user", ADMIN);
       await next();
     });
     app.delete(
@@ -119,7 +116,7 @@ describe("permission() middleware", () => {
     });
     const app = new Hono();
     app.use("*", async (c, next) => {
-      (c as unknown as LooseContext).set("user", ADMIN);
+      c.set("user", ADMIN);
       await next();
     });
     app.post(
