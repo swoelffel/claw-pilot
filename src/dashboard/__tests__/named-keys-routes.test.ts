@@ -426,3 +426,94 @@ describe("DELETE /api/named-keys/:id", () => {
     expect(listBody.keys).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Corrupt ciphertext resilience
+// ---------------------------------------------------------------------------
+
+describe("GET /api/named-keys — corrupt ciphertext resilience", () => {
+  it("returns 200 with apiKeyMasked=[corrupt] instead of 500 when a key has malformed ciphertext", async () => {
+    // Bypass the normal create path to inject a row with an empty ciphertext
+    // segment (iv:authTag: with no payload) — the exact format observed in the wild.
+    ctx.db
+      .prepare(
+        `INSERT INTO named_api_keys (name, provider_id, encrypted_api_key, default_model)
+         VALUES ('broken-key', 'opencode', '00112233445566778899aabbccddeeff:00112233445566778899aabbccddeeff:', 'some-model')`,
+      )
+      .run();
+
+    const res = await ctx.app.request("/api/named-keys", { headers: authHeaders() });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.keys).toHaveLength(1);
+    expect(body.keys[0].name).toBe("broken-key");
+    expect(body.keys[0].apiKeyMasked).toBe("[corrupt]");
+  });
+
+  it("accepts empty apiKey for keyless providers (requiresKey=false)", async () => {
+    // OpenCode Zen has requiresKey=false in the catalog.
+    const res = await ctx.app.request("/api/named-keys", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        name: "opencode-free",
+        providerId: "opencode",
+        apiKey: "",
+        defaultModel: "opencode/minimax-m2.5-free",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.ok).toBe(true);
+    expect(body.key.providerId).toBe("opencode");
+    // The mask for an empty key should be the 4-char fallback.
+    expect(body.key.apiKeyMasked).toBe("****");
+  });
+
+  it("rejects empty apiKey with 400 API_KEY_REQUIRED for providers that require one", async () => {
+    const res = await ctx.app.request("/api/named-keys", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        name: "anthropic-empty",
+        providerId: "anthropic",
+        apiKey: "",
+        defaultModel: "claude-3-5-sonnet",
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.code).toBe("API_KEY_REQUIRED");
+  });
+
+  it("lists healthy keys alongside corrupt ones without crashing", async () => {
+    // One valid key
+    await ctx.app.request("/api/named-keys", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        name: "good-key",
+        providerId: "anthropic",
+        apiKey: "sk-ant-healthy",
+        defaultModel: "claude-3-5-sonnet",
+      }),
+    });
+
+    // One corrupt key injected directly
+    ctx.db
+      .prepare(
+        `INSERT INTO named_api_keys (name, provider_id, encrypted_api_key, default_model)
+         VALUES ('corrupt-key', 'opencode', '::', 'some-model')`,
+      )
+      .run();
+
+    const res = await ctx.app.request("/api/named-keys", { headers: authHeaders() });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.keys).toHaveLength(2);
+    const corrupt = body.keys.find((k: { name: string }) => k.name === "corrupt-key");
+    const healthy = body.keys.find((k: { name: string }) => k.name === "good-key");
+    expect(corrupt.apiKeyMasked).toBe("[corrupt]");
+    expect(healthy.apiKeyMasked).not.toBe("[corrupt]");
+  });
+});

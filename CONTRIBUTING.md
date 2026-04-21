@@ -15,168 +15,226 @@ Please read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) (short and lightweight). We
 ### Prerequisites
 
 - **Node.js**: >= 22.12.0
-- **pnpm**: >= 9
-- **Operating System**: Linux (Ubuntu/Debian recommended) with systemd user services enabled
+- **pnpm**: 10.33.0 (pinned via `packageManager` field in `package.json`)
+- **Operating System**: Linux (Ubuntu/Debian) or macOS — systemd user services on Linux, launchd on macOS
 - **Git**: For version control
 
 ### Repository Install
 
 ```sh
-# Clone the repository
 git clone https://github.com/swoelffel/claw-pilot.git
 cd claw-pilot
-
-# Install dependencies
 pnpm install
-
-# Build the project
 pnpm build
 ```
 
+`pnpm install` triggers `lefthook install`, which registers pre-commit and pre-push hooks. **Do not skip hooks** (no `--no-verify`) — CI runs the same checks and will reject the PR.
+
 ## How to Run
 
-### CLI in Dev Mode
+### Dev mode (CLI + UI with hot reload)
 
 ```sh
 pnpm dev
 ```
-
-This runs the CLI with hot reload using tsdown's watch mode.
-
-### Dashboard in Dev Mode
-
-The dashboard is part of the UI build. For development with hot reload:
-
-```sh
-pnpm dev
-```
-
-### Running Both Concurrently
-
-The `dev` script runs both CLI and UI in watch mode concurrently.
 
 ### Logs
 
-- **CLI logs**: Printed to stdout/stderr
-- **Dashboard logs**: Printed to stdout when running via `claw-pilot dashboard`
-- **Instance logs**: View via `claw-pilot logs <slug>` (use `-f` for live tail)
+- **CLI logs**: stdout/stderr
+- **Dashboard logs**: stdout when running via `claw-pilot dashboard`
+- **Instance logs**: `claw-pilot logs <slug>` (use `-f` for live tail)
+
+## Git workflow — **READ BEFORE YOUR FIRST PR**
+
+claw-pilot uses a **strict gitflow**. Getting this right prevents the single most common source of friction for new contributors.
+
+### Branch structure
+
+| Branch | Role | Who writes to it |
+|---|---|---|
+| `main` | Production stable | **Only** release PRs from `develop` (version bump + tag) |
+| `develop` | Integration branch | All feature PRs merge here first |
+| `feature/*` | Your work | You branch off `develop` and PR back to `develop` |
+
+### The golden rules
+
+1. **Always branch off `develop`**, never `main`. `main` is behind `develop` most of the time.
+2. **Always PR against `develop`**, never `main`. PRs targeting `main` will be closed and asked to retarget.
+3. **Never bump `package.json` version in a feature PR.** The version bump is reserved for release PRs (`develop → main`) by the maintainer. Bumping in a feature PR causes hard merge conflicts the moment anyone else's PR lands.
+4. **Never push directly to `develop` or `main`.** Use a feature branch and open a PR, even for one-line fixes.
+
+### Recommended flow
+
+```sh
+# 1. Sync develop
+git checkout develop
+git pull origin develop
+
+# 2. Create feature branch
+git checkout -b feature/your-feature-name
+
+# 3. Code, commit (conventional commits — see below), push
+git push -u origin feature/your-feature-name
+
+# 4. Open PR via GitHub CLI or web UI — target MUST be develop
+gh pr create --base develop --title "feat: ..." --body "..."
+```
+
+### Branch naming
+
+- Features: `feature/kebab-case-description`
+- Bug fixes: `fix/kebab-case-description`
+- Documentation: `docs/kebab-case-description`
+- One branch = one PR = one focused change.
+
+### Conventional commits (enforced by commitlint)
+
+Commit subjects follow [conventional commits](https://www.conventionalcommits.org/) and must be **lowercase**:
+
+```
+feat(scope): short imperative description
+fix(scope): short imperative description
+docs(scope): short imperative description
+chore(scope): short imperative description
+refactor(scope): short imperative description
+test(scope): short imperative description
+```
+
+Examples:
+- `feat(dashboard): add keyless provider support to named-keys`
+- `fix(ui): reset part-question state on call prop change`
+- `docs(contributing): clarify develop-first workflow`
+
+The commit-msg lefthook runs `commitlint` — invalid subjects are rejected locally before you can push.
+
+## Pre-commit and pre-push hooks (lefthook)
+
+Registered automatically by `pnpm install`. They exist to keep CI fast and green.
+
+| Stage | Checks |
+|---|---|
+| **pre-commit** | `prettier --check`, `oxlint --deny-warnings`, `tsc --noEmit` (backend + UI) |
+| **commit-msg** | `commitlint` (conventional commits, lowercase subject) |
+| **pre-push** | `vitest run`, `cspell`, `no-silent-catches` gate, `knip`, `madge` circular-check, full `pnpm build` |
+
+If a hook fails, **fix the underlying issue** — don't skip with `--no-verify`. CI enforces the same rules and your PR will be rejected anyway.
 
 ## Testing & Quality
 
-### Run Tests
+### Run the full local check suite before pushing
 
 ```sh
-pnpm test:run
+pnpm typecheck:all    # tsc --noEmit on backend + UI
+pnpm lint:all         # oxlint on src/ + ui/src/
+pnpm test:run         # vitest run (~2500 tests)
+pnpm format:check     # prettier --check (CI mode)
+pnpm spellcheck       # cspell (en + fr)
 ```
 
-For watch mode during development:
+Or run everything at once via the pre-push hook by pushing to a feature branch.
+
+### Running a single test
 
 ```sh
-pnpm test
+pnpm vitest run src/dashboard/__tests__/routes.test.ts
+pnpm vitest run -t "POST /api/instances/:slug/start"
 ```
 
-### Lint
+**PRs must include tests** for any new functionality or bug fix. Coverage thresholds are enforced in `vitest.config.ts`.
 
-```sh
-pnpm lint
-```
+## Before making architectural changes
 
-### Typecheck
+Read the relevant docs in `docs/architecture/` first — design decisions are documented and reviewers will expect your change to fit the existing model.
 
-```sh
-pnpm typecheck
-```
+Key references:
+- [docs/architecture/](docs/architecture/) — functional architecture (split into focused files)
+- [docs/ux-design.md](docs/ux-design.md) — UX index, tokens, routing, screen/component map
+- [docs/registry-db.md](docs/registry-db.md) — SQLite schema reference (migrations are **additive only**)
+- [docs/sse-architecture.md](docs/sse-architecture.md) — real-time streaming (SSE + WS)
+- [CLAUDE.md](CLAUDE.md) — conventions, naming, common pitfalls (written for AI agents but 100% applicable to humans)
 
-### Build
+For large changes (> ~200 lines diff or affecting multiple subsystems), **open a Discussion first** to align on approach before writing code.
 
-```sh
-pnpm build         # Build CLI + UI
-pnpm build:cli     # Build CLI only
-```
+## Community ↔ Enterprise discipline
 
-**PRs must include tests when relevant** for any new functionality or bug fixes.
+claw-pilot is preparing a closed-source Enterprise fork. Five discipline rules exist to keep the Community repo mergeable into Enterprise via byte-identical merges on frozen paths. **They apply to every PR.**
 
-## Repository Structure
+| Rule | What it means in practice |
+|---|---|
+| R1 — No proprietary flags | Never write `if (process.env.ENTERPRISE)`, `if (isEnterprise)`, `if (license.tier === …)`. Use the `CapabilityRegistry` (`src/core/capabilities.ts`) if you need feature gating. |
+| R2 — `org_id` slot on new tables | Every new user-facing table in `src/db/schema.ts` must include `org_id TEXT NULL`. Exceptions (config/lookup/tech tables) go in `scripts/orgid-exceptions.json`. |
+| R3 — Extend, don't modify frozen paths | Inside `src/core/`, `src/runtime/`, `src/db/`, `src/dashboard/routes/`, `src/server/` — prefer adding a hook over modifying existing logic. If modification is unavoidable, add a commit trailer `Extension-Point: <hook-name>` explaining what the extension point is. |
+| R4 — Enterprise features need a Community hook first | Any Enterprise-bound feature that would touch a frozen path must first land a Community PR adding the extension hook. (Mostly relevant to the maintainer.) |
+| R5 — Secrets via `SecretProvider` | Never `process.env.XXX_SECRET` or `fs.readFile('/path/to/secret')`. Use `secretProvider.get(name)`. |
 
-```
-claw-pilot/
-  src/
-    commands/       CLI commands — thin wrappers over core/
-    core/           Business logic (registry, discovery, provisioner, agent-sync, blueprints)
-    dashboard/      Hono HTTP server + WebSocket monitor
-    db/             SQLite schema and migrations
-    lib/            Utilities (logger, errors, constants, platform, xdg, shell)
-    server/         ServerConnection abstraction (LocalConnection)
-    wizard/         Interactive creation wizard (@inquirer/prompts)
-  ui/src/
-    components/    Lit web components
-    locales/       i18n strings (en, fr, de, es, it, pt)
-  templates/       Workspace bootstrap files (SOUL.md, AGENTS.md, TOOLS.md)
-  docs/            Technical specifications
-```
-
-## Contribution Workflow
-
-We use a standard fork-based workflow:
-
-1. **Open an issue** (optional but recommended for large changes) — helps discuss approach before implementation
-2. **Create a feature branch** from `main`
-3. **Implement** your changes
-4. **Add or update tests** as needed
-5. **Run quality checks**: `pnpm typecheck && pnpm lint && pnpm test:run`
-6. **Open a PR** against `main`
-
-### Branch Naming
-
-- Features: `feature/description`
-- Bug fixes: `fix/description`
-- Documentation: `docs/description`
+Tooling to enforce these rules automatically (`pnpm lint:discipline`, CI gate) is landing in a future hook (H9). Until then, reviewers check manually. If you're unsure whether your change touches these areas, ask in the PR — the reviewer will guide you.
 
 ## Commit & PR Guidelines
 
 ### PR Title
 
-Use a clear, descriptive title. Example:
+Follow conventional commits:
 - `feat: add blueprint export functionality`
 - `fix: resolve port conflict on instance restart`
 - `docs: clarify installation prerequisites`
 
+Keep under 70 characters. Use the body for details.
+
 ### PR Size
 
-Keep PRs small and focused when PR possible. Larges are harder to review and test.
+Keep PRs small and focused. Large PRs are harder to review and more likely to hit merge conflicts. If a change naturally splits into independent pieces, open separate PRs.
 
-### Linking Issues
+### PR Body
 
-Link issues using GitHub keywords:
-- `Fixes #123` — closes issue when PR merges
-- `Closes #123` — same as Fixes
-- `Relates to #123` — contextual link
+Use the [PR template](.github/pull_request_template.md) — it's loaded automatically when you open a PR. The checklist at the bottom is not optional: reviewers use it to triage.
 
-### UI Changes
+### Linking issues
 
-For UI changes, include screenshots or GIFs demonstrating the change.
+- `Fixes #123` — closes the issue when the PR merges
+- `Closes #123` — synonym of Fixes
+- `Relates to #123` — contextual link without auto-close
+
+### UI changes
+
+Include screenshots or a short screen recording demonstrating the change. A before/after pair is even better.
+
+## Fork workflow
+
+External contributors work from a GitHub fork. The flow is identical to the one above — the only difference is `origin` points to your fork and you may want an `upstream` remote pointing to this repo to keep `develop` in sync:
+
+```sh
+git clone https://github.com/YOUR_USERNAME/claw-pilot.git
+cd claw-pilot
+git remote add upstream https://github.com/swoelffel/claw-pilot.git
+
+# Before each new feature branch:
+git fetch upstream
+git checkout develop
+git merge upstream/develop    # or: git rebase upstream/develop
+git push origin develop
+```
+
+**Note on CI for fork PRs**: GitHub Actions runs a restricted subset on PRs from forks (no secrets available). If a reviewer asks you to run a specific check locally, please do so and paste the output in the PR thread.
 
 ## Triage Labels
 
-We use the following labels to categorize issues:
-
 | Label | Description |
-|-------|-------------|
+|---|---|
 | `good first issue` | Suitable for first-time contributors |
 | `help wanted` | Looking for community help |
 | `bug` | Something isn't working as expected |
 | `feature` | New feature request |
 | `docs` | Documentation improvements |
 | `refactor` | Code refactoring |
-| `question` | General questions |
+| `question` | General question |
 
 ## Security
 
 **Do not file public issues for security vulnerabilities.**
 
-If you discover a security issue, please report it responsibly:
+If you discover a security issue:
 
-1. Check if there's a [Security Advisory](https://github.com/swoelffel/claw-pilot/security/advisories) template
-2. Or contact the maintainer directly through GitHub
+1. Use the [Security Advisory](https://github.com/swoelffel/claw-pilot/security/advisories) flow on GitHub, or
+2. Contact the maintainer directly through GitHub.
 
 We appreciate responsible disclosure and will work with you to address the issue.

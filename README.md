@@ -304,7 +304,7 @@ Pre-push hooks: spellcheck + test:run. Commits follow conventional commits (comm
 | [`docs/ux-components/`](docs/ux-components/) | Individual component and dialog docs (29 components) |
 | [`docs/design-rules.md`](docs/design-rules.md) | Design system, anti-patterns, delivery checklist |
 | [`docs/i18n.md`](docs/i18n.md) | i18n architecture — adding languages, translation workflow |
-| [`docs/registry-db.md`](docs/registry-db.md) | Database schema (v34), migration history, recovery procedures |
+| [`docs/registry-db.md`](docs/registry-db.md) | Database schema (v38), migration history, recovery procedures |
 | [`CLAUDE.md`](CLAUDE.md) | Development conventions, key patterns, common pitfalls |
 | [`CHANGELOG.md`](CHANGELOG.md) | Detailed release notes |
 
@@ -314,7 +314,24 @@ Pre-push hooks: spellcheck + test:run. Commits follow conventional commits (comm
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 
-- **v0.69.0** (current) — HOMEBOT: chatbot home screen, system instance with 6 pre-configured flows, 22-tool admin plugin
+- **v0.80.9** (current) — UI fixes (question cards render without F5, state reset), named-keys keyless provider support, crypto empty-string round-trip; contributor docs rewrite (develop-first gitflow)
+- **v0.80.8** — `ServerRegistry` abstraction (hook H3): single entry point for "which server serves which resource"; Community ships `SingleServerRegistry`, Enterprise will plug `FederatedServerRegistry`
+- **v0.80.7** — CodeQL triage — 0 open alerts: 5 true positives fixed, 21 false positives dismissed with justification
+- **v0.80.6** — Enterprise Edition preparation Phase 0: pluggable permission middleware (`permission()` Hono factory, `ACTIONS` catalogue, `NullPermissionChecker`)
+- **v0.80.5** — `AuthProvider` abstraction: pluggable auth registry, `PasswordProvider` (scrypt); Enterprise hook for OIDC/SAML/Azure AD
+- **v0.80.3** — `CapabilityRegistry`: single source of truth for Community vs Enterprise feature gating
+- **v0.79.0** — Instance shared workspace: per-instance `workspaces/shared/` directory accessible by all agents, new dashboard tab, schema v38
+- **v0.78.0** — Onboarding Start CTA: animated kickoff button, `POST /kickoff` route, system `BOOTSTRAP.md` for first-contact intro
+- **v0.77.0** — Flow Sessions screen: run-centric master/detail view, sitrep-aware status colors, live SSE streaming for active runs
+- **v0.76.0** — Instance Dashboard screen: widget-based overview (9 widgets), mini-pilot sidebar, clickable instance card
+- **v0.75.0** — System-pilot documentation workspace: 45 embedded `.md` files, external workspace file loading, `ws_search_files` tool
+- **v0.74.0** — INBOX-001: persistent notification inbox, bell badge, `notifications` table (v37), bus-driven emitter for 6 event types
+- **v0.73.5** — CRUD workspace file tree: full file manager in agent panel, `ws_list_files` + `ws_search_files` plugin tools
+- **v0.73.0** — Flow engine: outcome-driven DAG control flow, `complete_step` structured SITREP tool, automatic tool-call repair
+- **v0.72.8** — Multi-user port isolation: OS username salt prevents port collisions between co-hosted installs
+- **v0.71.0** — Live reasoning streaming: collapsible "Thinking…" card for extended thinking tokens; 5-phase pilot status indicator
+- **v0.70.0** — Lean Home chat (`cp-home-chat`), live ClawPilot state in system prompts, bundled-question detection
+- **v0.69.0** — HOMEBOT: chatbot home screen, system instance with 6 pre-configured flows, 22-tool admin plugin
 - **v0.68.0** — FLOW-001: declarative DAG workflow engine, agent execution refactor (dashboard → runtime proxy)
 - **v0.67.0** — SEARCH-001: command palette (Cmd+K), FTS5 global search across 5 entity types
 - **v0.66.0** — TIMELINE-001: activity timeline per task, 9 activity types with field-level tracking

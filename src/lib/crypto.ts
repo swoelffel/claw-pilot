@@ -85,6 +85,12 @@ function getMasterKey(): Buffer {
  * Returns `<iv_hex>:<auth_tag_hex>:<ciphertext_hex>`.
  */
 export function encrypt(plaintext: string): string {
+  // Empty plaintext short-circuits to an empty ciphertext. Historically we
+  // encrypted anyway, which produced "iv:authTag:" (ciphertext segment empty).
+  // That value failed decrypt()'s non-empty-segment check and propagated as a
+  // 500 out of list endpoints. Storing "" is unambiguous and safe: nothing to
+  // protect, and decrypt("") round-trips to "".
+  if (plaintext === "") return "";
   const key = getMasterKey();
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
@@ -97,6 +103,8 @@ export function encrypt(plaintext: string): string {
  * Decrypt a ciphertext string produced by `encrypt()`.
  */
 export function decrypt(ciphertext: string): string {
+  // Round-trip for keyless providers (encrypt("") returns "").
+  if (ciphertext === "") return "";
   const key = getMasterKey();
   const parts = ciphertext.split(":");
   if (parts.length !== 3) {

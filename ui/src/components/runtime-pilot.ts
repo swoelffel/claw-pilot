@@ -713,9 +713,12 @@ export class RuntimePilot extends LitElement {
       // ── Question asked — reload so the question card renders immediately ─
       // Fired when a question tool call suspends the prompt loop. Without this
       // handler, subagent-initiated questions only appear after a manual F5.
+      // Must use _reloadLastMessages (no status guard) instead of
+      // _refreshMessages — the latter bails out when _status is "tool",
+      // which is always the case here because tool.call.started fires first.
       case "question.asked": {
         if (eventSessionId && eventSessionId !== this._activeSessionId) break;
-        void this._refreshMessages();
+        void this._reloadLastMessages();
         break;
       }
 
