@@ -75,7 +75,7 @@ export class SystemInstanceService {
       // Ensure flows are provisioned (idempotent)
       await SystemInstanceService._provisionFlows(db, SYSTEM_INSTANCE_SLUG);
       // Re-sync workspace files if the YAML template changed (e.g. after code deploy)
-      await SystemInstanceService._syncTemplateIfChanged(db, conn, existing);
+      await SystemInstanceService._syncTemplateIfChanged(db, conn, existing, registry);
       return existing;
     }
 
@@ -157,7 +157,7 @@ export class SystemInstanceService {
     // Re-sync template on every startup — cheap (hash compare) and ensures
     // redeploys propagate to the existing system instance.
     try {
-      await SystemInstanceService._syncTemplateIfChanged(db, conn, instance);
+      await SystemInstanceService._syncTemplateIfChanged(db, conn, instance, registry);
     } catch (err) {
       logger.warn("[system-instance] Template sync on startup failed", { error: String(err) });
     }
@@ -185,6 +185,7 @@ export class SystemInstanceService {
     db: Database.Database,
     conn: ServerConnection,
     instance: InstanceRecord,
+    registry: Registry,
   ): Promise<void> {
     const yamlPath = path.join(SYSTEM_TEMPLATE_DIR, "cp-system.team.yaml");
     let yamlContent: string;
@@ -237,12 +238,28 @@ export class SystemInstanceService {
 
     if (storedHash?.value === currentHash) return; // No change
 
-    // Re-sync workspace files AND agent config_json.
-    const { filesUpdated, configsUpdated } = await SystemInstanceService._syncAgents(
+    // Re-sync workspace files AND agent config_json. Creates new agents introduced
+    // by the YAML via upsert; existing agents absent from the YAML are NOT deleted
+    // nor archived (their sessions + history are preserved).
+    const { filesUpdated, configsUpdated, agentsCreated } = await SystemInstanceService._syncAgents(
       db,
       conn,
-      instance.state_dir,
+      instance,
       team.agents,
+      registry,
+    );
+
+    // Re-sync agent_links from YAML. `replaceAgentLinks` wipes all links for the
+    // instance and re-inserts only those declared in the YAML, so removing an
+    // agent from the YAML also removes its spawn/a2a links (even though the
+    // agent row itself remains).
+    registry.replaceAgentLinks(
+      instance.id,
+      team.links.map((l) => ({
+        sourceAgentId: l.source,
+        targetAgentId: l.target,
+        linkType: l.type,
+      })),
     );
 
     // Re-sync shared workspace (templates/system/workspace/shared/** → <stateDir>/workspaces/shared/).
@@ -259,8 +276,10 @@ export class SystemInstanceService {
     ).run(CP_SYSTEM_TEMPLATE_HASH_KEY, currentHash);
 
     logger.info(
-      `[system-instance] Template re-synced: ${filesUpdated} agent files, ${configsUpdated} configs, ` +
-        `${sharedStats.written} shared written, ${sharedStats.deleted} shared deleted`,
+      `[system-instance] Template re-synced: ${agentsCreated} agents created, ` +
+        `${configsUpdated} configs updated, ${filesUpdated} agent files written, ` +
+        `${sharedStats.written} shared written, ${sharedStats.deleted} shared deleted, ` +
+        `${team.links.length} links`,
     );
   }
 
@@ -381,11 +400,15 @@ export class SystemInstanceService {
     return files;
   }
 
-  /** Sync agent configs and workspace files to disk + DB. */
+  /**
+   * Sync agent configs and workspace files to disk + DB.
+   * Uses `registry.upsertAgent` to create new agents introduced by the YAML and
+   * update existing ones; returns counts of creations / updates / files written.
+   */
   private static async _syncAgents(
     db: Database.Database,
     conn: ServerConnection,
-    stateDir: string,
+    instance: InstanceRecord,
     agents: ReadonlyArray<{
       readonly id: string;
       readonly name: string;
@@ -393,31 +416,78 @@ export class SystemInstanceService {
       readonly config?: Record<string, unknown> | undefined;
       readonly files?: Record<string, string> | undefined;
     }>,
-  ): Promise<{ filesUpdated: number; configsUpdated: number }> {
+    registry: Registry,
+  ): Promise<{ filesUpdated: number; configsUpdated: number; agentsCreated: number }> {
     let filesUpdated = 0;
     let configsUpdated = 0;
+    let agentsCreated = 0;
+
+    // Resolve the instance's default model once — used as fallback when an
+    // agent's YAML block doesn't specify one. `parseAgentConfig` requires
+    // `model` to be a non-empty string; omitting it would cause the stored
+    // config_json to fail re-parse and fall back to a minimal-defaulted
+    // config (toolProfile "executor", no archetype, etc.).
+    let instanceDefaultModel: string | undefined;
+    try {
+      const row = db
+        .prepare("SELECT default_named_key_id FROM instances WHERE id = ?")
+        .get(instance.id) as { default_named_key_id: number | null } | undefined;
+      if (row?.default_named_key_id != null) {
+        const keyRepo = new NamedKeyRepository(db);
+        const key = keyRepo.getById(row.default_named_key_id);
+        instanceDefaultModel = key?.defaultModel ?? undefined;
+      }
+    } catch (err) {
+      logger.debug("[system-instance] Cannot read instance default model", {
+        error: String(err),
+      });
+    }
 
     for (const agent of agents) {
-      // 1. Sync config_json from YAML
-      if (agent.config) {
-        const configJson = JSON.stringify({
-          id: agent.id,
-          name: agent.name,
-          isDefault: agent.is_default,
-          ...agent.config,
-        });
-        const dbResult = db
-          .prepare(
-            `UPDATE agents SET config_json = ?
-             WHERE agent_id = ? AND instance_id IN (SELECT id FROM instances WHERE slug = ?)`,
-          )
-          .run(configJson, agent.id, SYSTEM_INSTANCE_SLUG);
-        if (dbResult.changes > 0) configsUpdated++;
-      }
+      // Resolve workspace path + upsert agent row (creates if missing).
+      const workspacePath = path.join(instance.state_dir, "workspaces", agent.id);
+      const preExisting = registry.getAgentByAgentId(instance.id, agent.id);
 
-      // 2. Sync workspace files (YAML-defined + external, already merged)
+      const extractedModel =
+        agent.config && typeof (agent.config as { model?: unknown }).model === "string"
+          ? (agent.config as { model: string }).model
+          : undefined;
+
+      // Pick a model for the stored config_json. Precedence:
+      // 1. Explicit `config.model` in the YAML (rare — we usually rely on defaults).
+      // 2. The pre-existing agent's model (re-sync case: don't drop what's there).
+      // 3. The instance default model derived from its named API key.
+      // 4. A safe fallback so parseAgentConfig doesn't fail.
+      const effectiveModel =
+        extractedModel ??
+        preExisting?.model ??
+        instanceDefaultModel ??
+        "anthropic/claude-sonnet-4-5";
+
+      const configJson = agent.config
+        ? JSON.stringify({
+            id: agent.id,
+            name: agent.name,
+            model: effectiveModel,
+            isDefault: agent.is_default,
+            ...agent.config,
+          })
+        : null;
+
+      registry.upsertAgent(instance.id, {
+        agentId: agent.id,
+        name: agent.name,
+        model: effectiveModel,
+        workspacePath,
+        isDefault: agent.is_default,
+        configJson,
+      });
+
+      if (!preExisting) agentsCreated++;
+      else if (configJson) configsUpdated++;
+
+      // Sync workspace files (YAML-defined + external, already merged).
       if (!agent.files) continue;
-      const workspacePath = path.join(stateDir, "workspaces", agent.id);
       await conn.mkdir(workspacePath);
 
       const agentRecord = db
@@ -446,7 +516,7 @@ export class SystemInstanceService {
       }
     }
 
-    return { filesUpdated, configsUpdated };
+    return { filesUpdated, configsUpdated, agentsCreated };
   }
 
   /** Load and parse the system team YAML from templates, merging external workspace files. */

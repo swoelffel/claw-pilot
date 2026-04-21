@@ -433,6 +433,7 @@ async function buildToolSetForLoop(
 
   const pluginInput: PluginInput = {
     instanceSlug,
+    agentId: agentConfig.id,
     workDir,
     version: getRuntimeVersion(),
     db,
