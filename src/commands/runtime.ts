@@ -17,6 +17,7 @@ import {
 import { initDatabase } from "../db/schema.js";
 import { ensureMasterEncryptionKey } from "../lib/crypto.js";
 import { bootstrapSecretProvider } from "../core/secrets/bootstrap.js";
+import { bootstrapAuditBus, shutdownAuditBus } from "../core/audit/index.js";
 import {
   ClawRuntime,
   loadRuntimeConfig,
@@ -282,6 +283,10 @@ async function startForeground(
   // Open DB early so we can read config from it
   const db = initDatabase(getDbPath());
 
+  // Register the default audit sinks (file + db). Runtime-only events
+  // (tool calls) land in rt_audit_events and in the daily JSONL file.
+  bootstrapAuditBus(db);
+
   // Load config: DB first, then file fallback, then create default
   const config = loadOrCreateConfig(db, slug, stateDir, ensureConfig);
 
@@ -383,6 +388,7 @@ function registerShutdownHandlers(
       } catch (err) {
         logger.debug("[runtime-cmd] PID file cleanup failed", { error: String(err) });
       }
+      await shutdownAuditBus();
       db.close();
       process.exit(0);
     }

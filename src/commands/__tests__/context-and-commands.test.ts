@@ -40,6 +40,11 @@ vi.mock("../../core/secrets/bootstrap.js", () => ({
   bootstrapSecretProvider: vi.fn(),
 }));
 
+vi.mock("../../core/audit/index.js", () => ({
+  bootstrapAuditBus: vi.fn(),
+  shutdownAuditBus: vi.fn().mockResolvedValue(undefined),
+}));
+
 // --- Imports (after mocks) ------------------------------------------------
 
 import { withContext } from "../_context.js";

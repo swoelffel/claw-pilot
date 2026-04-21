@@ -9,6 +9,7 @@ import { constants } from "../lib/constants.js";
 import { LocalConnection } from "../server/local.js";
 import { bootstrapServerRegistry, serverRegistry } from "../server/registry.js";
 import { bootstrapSecretProvider } from "../core/secrets/bootstrap.js";
+import { bootstrapAuditBus } from "../core/audit/index.js";
 import { SessionStore } from "../dashboard/session-store.js";
 import { parsePositiveInt } from "../lib/validate.js";
 import * as fs from "node:fs/promises";
@@ -25,6 +26,7 @@ export function dashboardCommand(): Command {
       const registry = new Registry(db);
       bootstrapServerRegistry(db, new LocalConnection());
       bootstrapSecretProvider();
+      bootstrapAuditBus(db);
       const conn = serverRegistry.getLocal().connection;
       const port = parsePositiveInt(opts.port, "--port");
 

@@ -6,6 +6,7 @@ import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 import { getDbPath } from "../lib/platform.js";
 import { bootstrapServerRegistry } from "../server/registry.js";
 import { bootstrapSecretProvider } from "../core/secrets/bootstrap.js";
+import { bootstrapAuditBus, shutdownAuditBus } from "../core/audit/index.js";
 import type { ServerConnection } from "../server/connection.js";
 import type { Database } from "better-sqlite3";
 
@@ -27,9 +28,11 @@ export async function withContext<T>(fn: (ctx: CommandContext) => Promise<T>): P
     const conn = new LocalConnection();
     bootstrapServerRegistry(db, conn);
     bootstrapSecretProvider();
+    bootstrapAuditBus(db);
     const xdgRuntimeDir = await resolveXdgRuntimeDir(conn);
     return await fn({ db, registry, conn, xdgRuntimeDir });
   } finally {
+    await shutdownAuditBus();
     db.close();
   }
 }

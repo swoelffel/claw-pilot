@@ -443,11 +443,17 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     ws.on("message", onFirstMessage);
   });
 
-  // Graceful shutdown — clean up resources on SIGTERM (systemd stop)
+  // Graceful shutdown — clean up resources on SIGTERM (systemd stop).
+  // `shutdownAuditBus()` flushes the audit buffer to every sink before we
+  // exit; without it a SIGTERM during high traffic drops the tail of events.
   process.once("SIGTERM", () => {
     cleanup();
     server.close();
-    db.close();
-    process.exit(0);
+    void (async () => {
+      const { shutdownAuditBus } = await import("../core/audit/index.js");
+      await shutdownAuditBus();
+      db.close();
+      process.exit(0);
+    })();
   });
 }
