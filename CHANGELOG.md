@@ -6,7 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
-## [Unreleased]
+## [0.81.0] — 2026-04-21
+
+> **🎖️ Milestone : Phase 0 Enterprise Edition preparation — complete.**
+> All 9 hooks (H1–H9) landed. The Community codebase is now fully prepared for the upcoming Enterprise Edition fork: pluggable authentication, fine-grained permission, pluggable server & secret providers, audit event bus, plugin signature + API hardening, and automated discipline gates. The fork of `claw-pilot-enterprise` (closed source, private repository) can now proceed.
+
 
 ### Added
 - **Discipline gates — automated Community ↔ Enterprise firewall (H9)** — four of the five discipline rules from `CLAUDE.md` are now enforced automatically so PRs touching the frozen paths can be reviewed agent-first. New `eslint-plugin-clawpilot-discipline` ships two custom rules: `no-enterprise-flag` (R1 — forbids `process.env.ENTERPRISE*`, `isEnterprise`, `license.tier`, `isPaid`, `isPro` — use `capabilities.has(...)` instead) and `no-direct-secret-access` (R5 — forbids `process.env.*_KEY|*_TOKEN|*_PASSWORD` and `fs.read*("/.../secret")` — use `secretProvider.get(name)` instead, with `src/lib/crypto.ts` and `src/core/secrets/providers/env.ts` allowlisted for the chicken/egg root key). New `scripts/lint-orgid-slot.ts` diffs `src/db/schema.ts` vs the base branch and fails any new table that does not carry an `org_id TEXT NULL` slot (allowlist in `scripts/orgid-exceptions.json` for global/lookup/infra tables). New `scripts/lint-core-modifications.ts` fails any PR that modifies a frozen path (`src/core/`, `src/runtime/`, `src/db/`, `src/dashboard/routes/`, `src/server/`) without an `Extension-Point:` trailer on at least one commit — escape hatch: PR label `core-modification-approved`. Wired into `lefthook.yml` (pre-commit R1/R5 + pre-push R2) and `.github/workflows/ci.yml` (new `discipline-gates` job for R1/R2/R3/R5). See `docs/architecture/discipline-gates.md`.
