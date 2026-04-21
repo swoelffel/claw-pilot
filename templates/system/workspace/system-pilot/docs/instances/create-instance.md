@@ -79,7 +79,7 @@ To launch the instance:
 
 Instance configuration is stored in the `instances` table of `registry.db`, specifically in the `runtime_config_json` column. This database record is the **source of truth**.
 
-A `runtime.json` file may exist in the instance state directory (`~/.claw-pilot/instances/<slug>/`), but this is a debug snapshot only — never edit it manually. Always use the API or CLI to modify configuration.
+> ⚠️ **Do not read or edit `runtime.json`.** A legacy `runtime.json` file may still exist in the instance state directory (`~/.claw-pilot/instances/<slug>/`), but it is a **deprecated debug snapshot** — it is NOT kept in sync with the current state. Never grep it, never parse it, never trust it. All current configuration and state live in `registry.db` and must be queried via the `cp_*` tools, the dashboard API, or (for raw inspection) `sqlite3`. See [../reference/data-sources.md](../reference/data-sources.md) for the canonical source per concept.
 
 ## Blueprint Deployment
 
