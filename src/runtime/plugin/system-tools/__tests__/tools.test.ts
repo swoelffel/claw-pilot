@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { initDatabase } from "../../../../db/schema.js";
 import { createSystemTools } from "../tools.js";
+import { systemToolsPlugin } from "../index.js";
 import {
   bootstrapTestRegistry,
   resetServerRegistry,
@@ -85,5 +86,81 @@ describe("system-tools plugin", () => {
     const result = await def.execute({}, {} as never);
     const parsed = JSON.parse(result.output);
     expect(Array.isArray(parsed)).toBe(true);
+  });
+
+  describe("per-agent tool scoping", () => {
+    const VERSION = "0.0.0-test";
+    const WORKDIR = "/tmp/test";
+
+    async function toolsFor(agentId: string | undefined): Promise<string[]> {
+      const hooks = await systemToolsPlugin({
+        instanceSlug: "cp-system",
+        ...(agentId !== undefined ? { agentId } : {}),
+        workDir: WORKDIR,
+        version: VERSION,
+        db,
+      });
+      const tools = hooks.tools
+        ? await hooks.tools({
+            instanceSlug: "cp-system",
+            ...(agentId !== undefined ? { agentId } : {}),
+            workDir: WORKDIR,
+            version: VERSION,
+            db,
+          })
+        : [];
+      return tools.map((t) => t.id).sort();
+    }
+
+    it("system-pilot gets read-only tools only (no cp_create_*, no cp_delete_*, no cp_query_db)", async () => {
+      const ids = await toolsFor("system-pilot");
+      expect(ids).toEqual(
+        [
+          "cp_get_instance",
+          "cp_instance_costs",
+          "cp_list_agents",
+          "cp_list_blueprints",
+          "cp_list_flows",
+          "cp_list_instances",
+          "cp_list_named_keys",
+          "cp_system_health",
+        ].sort(),
+      );
+      expect(ids).not.toContain("cp_create_instance");
+      expect(ids).not.toContain("cp_delete_instance");
+      expect(ids).not.toContain("cp_query_db");
+    });
+
+    it("ops gets all tools except cp_query_db", async () => {
+      const ids = await toolsFor("ops");
+      expect(ids).toContain("cp_create_instance");
+      expect(ids).toContain("cp_delete_instance");
+      expect(ids).toContain("cp_start_instance");
+      expect(ids).toContain("cp_list_instances");
+      expect(ids).not.toContain("cp_query_db");
+      expect(ids).toHaveLength(21);
+    });
+
+    it("analyst gets read-only tools + cp_query_db (no mutations)", async () => {
+      const ids = await toolsFor("analyst");
+      expect(ids).toContain("cp_query_db");
+      expect(ids).toContain("cp_list_instances");
+      expect(ids).toContain("cp_system_health");
+      expect(ids).not.toContain("cp_create_instance");
+      expect(ids).not.toContain("cp_delete_instance");
+      expect(ids).toHaveLength(9);
+    });
+
+    it("unknown / legacy agent gets the full tool surface for backwards compat", async () => {
+      const ids = await toolsFor("admin-exec");
+      expect(ids).toHaveLength(22);
+      expect(ids).toContain("cp_query_db");
+      expect(ids).toContain("cp_create_instance");
+    });
+
+    it("missing agentId (init time) gets the full tool surface", async () => {
+      const ids = await toolsFor(undefined);
+      expect(ids).toHaveLength(22);
+    });
   });
 });
