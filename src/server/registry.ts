@@ -150,6 +150,16 @@ export function getServerRegistry(): ServerRegistry {
 }
 
 /**
+ * Idempotent bootstrap used by withContext() and dashboard server startup.
+ * No-ops if the registry is already registered (since this function may be
+ * called multiple times across nested command invocations).
+ */
+export function bootstrapServerRegistry(db: Database.Database, conn: ServerConnection): void {
+  if (locked) return;
+  registerServerRegistry(new SingleServerRegistry(db, conn));
+}
+
+/**
  * Unlike `capabilities`, `serverRegistry` has no default Community
  * implementation. All methods throw `SERVER_REGISTRY_NOT_REGISTERED` until
  * `registerServerRegistry()` is called during bootstrap (see

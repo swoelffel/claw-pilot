@@ -32,6 +32,10 @@ vi.mock("../../core/registry.js", () => ({
   }),
 }));
 
+vi.mock("../../server/registry.js", () => ({
+  bootstrapServerRegistry: vi.fn(),
+}));
+
 // --- Imports (after mocks) ------------------------------------------------
 
 import { withContext } from "../_context.js";

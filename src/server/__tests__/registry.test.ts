@@ -5,6 +5,7 @@ import {
   getServerRegistry,
   serverRegistry,
   SingleServerRegistry,
+  bootstrapServerRegistry,
   type ServerRegistry,
   type ServerNode,
 } from "../registry.js";
@@ -91,6 +92,17 @@ describe("SingleServerRegistry", () => {
     expect(reg.get("999")).toBeNull();
     const routed = reg.route({ kind: "instance", id: "whatever" });
     expect(routed.kind).toBe("local");
+  });
+});
+
+describe("bootstrapServerRegistry", () => {
+  afterEach(() => resetServerRegistry());
+
+  it("is idempotent — second call is a no-op", () => {
+    const db = makeBootstrappedDb();
+    bootstrapServerRegistry(db, new LocalConnection());
+    expect(() => bootstrapServerRegistry(db, new LocalConnection())).not.toThrow();
+    expect(serverRegistry.getLocal().hostname).toBe("testhost");
   });
 });
 
