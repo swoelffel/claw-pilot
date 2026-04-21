@@ -6,6 +6,7 @@ import { initDatabase } from "../db/schema.js";
 import { Registry } from "../core/registry.js";
 import { InstanceDiscovery } from "../core/discovery.js";
 import { LocalConnection } from "../server/local.js";
+import { bootstrapServerRegistry } from "../server/registry.js";
 import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 import { logger } from "../lib/logger.js";
 import type { ServerConnection } from "../server/connection.js";
@@ -125,6 +126,7 @@ export function initCommand(): Command {
         const hostname = await conn.hostname();
         const instancesDir = getInstancesDir();
         const server = registry.upsertLocalServer(hostname, instancesDir);
+        bootstrapServerRegistry(db, conn);
 
         // 4. Discover existing claw-runtime instances
         logger.info("\nScanning for existing claw-runtime instances...");

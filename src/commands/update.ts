@@ -63,6 +63,8 @@ export function updateCommand(): Command {
       }
 
       // Lancer la mise a jour
+      // Update command runs without a DB context — ServerRegistry bootstrap
+      // is not possible here. Direct LocalConnection is the legitimate path.
       const conn = new LocalConnection();
       const updater = new SelfUpdater(conn);
 
