@@ -89,6 +89,8 @@ async function fetchSkillIndex(indexUrl: string): Promise<RemoteSkillIndex | nul
  * Resolve a single remote skill: use cache if available, otherwise download.
  * Returns null if the skill entry is invalid or download fails.
  */
+const SAFE_SKILL_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
 async function resolveRemoteSkill(skill: {
   name: string;
   description?: string;
@@ -96,9 +98,22 @@ async function resolveRemoteSkill(skill: {
 }): Promise<SkillEntry | null> {
   if (!skill.name || typeof skill.name !== "string" || !skill.name.trim()) return null;
   if (!skill.url || typeof skill.url !== "string" || !skill.url.trim()) return null;
+  if (!SAFE_SKILL_NAME.test(skill.name)) {
+    logger.debug("[tool:skill] remote skill name rejected", { name: skill.name });
+    return null;
+  }
 
   const localDir = path.join(SKILL_CACHE_DIR, skill.name);
   const localPath = path.join(localDir, "SKILL.md");
+  // Defense in depth: ensure the resolved cache path stays inside SKILL_CACHE_DIR
+  // even if skill.name ever bypasses the regex above.
+  const resolvedDir = path.resolve(localDir);
+  if (
+    resolvedDir !== path.resolve(SKILL_CACHE_DIR, skill.name) ||
+    !resolvedDir.startsWith(path.resolve(SKILL_CACHE_DIR) + path.sep)
+  ) {
+    return null;
+  }
 
   // Cache hit — reuse existing file
   const cached = await tryCache(localDir, localPath, skill);

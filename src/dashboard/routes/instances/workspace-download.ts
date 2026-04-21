@@ -61,38 +61,46 @@ export function registerWorkspaceDownloadRoutes(app: Hono, _deps: RouteDeps): vo
         return apiError(c, 403, "FORBIDDEN", "Access denied");
       }
 
-      // Read file and check constraints
-      let stat: Awaited<ReturnType<typeof fs.stat>>;
+      // Open once, stat + read through the same handle so size + content
+      // always correspond to the same inode (avoids TOCTOU).
+      let fh: Awaited<ReturnType<typeof fs.open>>;
       try {
-        stat = await fs.stat(real);
+        fh = await fs.open(real, "r");
       } catch (err) {
-        logger.debug("[route:workspace-download] stat failed", { error: String(err) });
+        logger.debug("[route:workspace-download] open failed", { error: String(err) });
         return apiError(c, 404, "FILE_NOT_FOUND", "File not found");
       }
-
-      if (!stat.isFile()) {
-        return apiError(c, 400, "NOT_A_FILE", "Path is not a file");
+      let data: Buffer;
+      try {
+        const stat = await fh.stat();
+        if (!stat.isFile()) {
+          return apiError(c, 400, "NOT_A_FILE", "Path is not a file");
+        }
+        if (stat.size > MAX_FILE_SIZE) {
+          return apiError(
+            c,
+            413,
+            "FILE_TOO_LARGE",
+            `File exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`,
+          );
+        }
+        data = await fh.readFile();
+      } finally {
+        await fh.close();
       }
-
-      if (stat.size > MAX_FILE_SIZE) {
-        return apiError(
-          c,
-          413,
-          "FILE_TOO_LARGE",
-          `File exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`,
-        );
-      }
-
-      // Read and serve
-      const data = await fs.readFile(real);
       const filename = path.basename(real);
       const ext = path.extname(filename);
       const mime = mimeFromExtension(ext);
 
+      // RFC 5987 / 6266 encoding for filename: strip control chars, URL-encode.
+      // This prevents header injection (CR/LF) and correctly handles unicode.
+      // eslint-disable-next-line no-control-regex -- stripping CR/LF/NUL is the whole point
+      const safeFilename = filename.replace(/[\r\n\u0000]/g, "");
+      const encoded = encodeURIComponent(safeFilename);
       return new Response(data, {
         headers: {
           "content-type": mime,
-          "content-disposition": `attachment; filename="${filename.replace(/"/g, '\\"')}"`,
+          "content-disposition": `attachment; filename="${encoded}"; filename*=UTF-8''${encoded}`,
           "content-length": String(data.length),
         },
       });

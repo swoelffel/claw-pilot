@@ -75,6 +75,9 @@ function checkCommand(): Command {
     });
 }
 
+// codeql[js/clear-text-logging]: intentional. This function displays the initial
+// admin password exactly once, at account creation, so the operator can save it
+// before it is hashed and discarded. No other code path logs a password.
 function displayPasswordBox(password: string): void {
   const border = "─".repeat(51);
   console.log(`┌${border}┐`);

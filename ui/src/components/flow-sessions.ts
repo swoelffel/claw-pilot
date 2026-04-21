@@ -57,7 +57,7 @@ function fmtDate(iso: string | null): string {
       minute: "2-digit",
     });
   } catch {
-    return iso ?? "--";
+    return iso;
   }
 }
 
