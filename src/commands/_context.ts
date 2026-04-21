@@ -4,12 +4,14 @@ import { Registry } from "../core/registry.js";
 import { LocalConnection } from "../server/local.js";
 import { resolveXdgRuntimeDir } from "../lib/xdg.js";
 import { getDbPath } from "../lib/platform.js";
+import { bootstrapServerRegistry } from "../server/registry.js";
+import type { ServerConnection } from "../server/connection.js";
 import type { Database } from "better-sqlite3";
 
 export interface CommandContext {
   db: Database;
   registry: Registry;
-  conn: LocalConnection;
+  conn: ServerConnection;
   xdgRuntimeDir: string;
 }
 
@@ -22,6 +24,7 @@ export async function withContext<T>(fn: (ctx: CommandContext) => Promise<T>): P
   try {
     const registry = new Registry(db);
     const conn = new LocalConnection();
+    bootstrapServerRegistry(db, conn);
     const xdgRuntimeDir = await resolveXdgRuntimeDir(conn);
     return await fn({ db, registry, conn, xdgRuntimeDir });
   } finally {

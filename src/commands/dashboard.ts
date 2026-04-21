@@ -7,6 +7,7 @@ import { logger } from "../lib/logger.js";
 import { generateDashboardToken, ensureMasterEncryptionKey } from "../lib/crypto.js";
 import { constants } from "../lib/constants.js";
 import { LocalConnection } from "../server/local.js";
+import { bootstrapServerRegistry, serverRegistry } from "../server/registry.js";
 import { SessionStore } from "../dashboard/session-store.js";
 import { parsePositiveInt } from "../lib/validate.js";
 import * as fs from "node:fs/promises";
@@ -21,7 +22,8 @@ export function dashboardCommand(): Command {
       // db.close() is not called because the process exits after startDashboard() resolves.
       const db = initDatabase(getDbPath());
       const registry = new Registry(db);
-      const conn = new LocalConnection();
+      bootstrapServerRegistry(db, new LocalConnection());
+      const conn = serverRegistry.getLocal().connection;
       const port = parsePositiveInt(opts.port, "--port");
 
       // Verify that an admin account exists before starting the dashboard
