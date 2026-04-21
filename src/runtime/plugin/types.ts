@@ -126,6 +126,13 @@ export interface PluginHooks {
 
 export interface PluginInput {
   instanceSlug: InstanceSlug;
+  /**
+   * Agent ID currently requesting the plugin input. Undefined at plugin init
+   * time (no agent context yet); set to the agent's id when `tools(ctx)` is
+   * called during a prompt loop. Plugins that expose agent-scoped tool sets
+   * read this to filter.
+   */
+  agentId?: string;
   /** Working directory of the instance */
   workDir: string | undefined;
   /** Runtime version */
