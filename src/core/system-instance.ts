@@ -20,6 +20,7 @@ import { parseAndValidateTeam } from "./team-import.js";
 import { createFlowDefinition, listFlowDefinitions } from "./repositories/flow-repository.js";
 import { isRuntimeRunning } from "../lib/platform.js";
 import { logger } from "../lib/logger.js";
+import { constants } from "../lib/constants.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -37,7 +38,9 @@ export const SYSTEM_AGENT_NAME = "System Pilot";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SYSTEM_TEMPLATE_DIR = path.join(__dirname, "../templates/system");
 const CP_SYSTEM_TEMPLATE_HASH_KEY = "cp_system_template_hash";
+const CP_SYSTEM_SHARED_TEMPLATE_FILES_KEY = "cp_system_shared_template_files";
 const WORKSPACE_DIR = path.join(SYSTEM_TEMPLATE_DIR, "workspace");
+const SHARED_TEMPLATE_DIR = path.join(WORKSPACE_DIR, constants.SHARED_WORKSPACE_DIR);
 
 // ---------------------------------------------------------------------------
 // SystemInstanceService
@@ -204,7 +207,8 @@ export class SystemInstanceService {
     }
     const team = result.data;
 
-    // Build a combined hash: YAML content + all external workspace files (sorted for stability)
+    // Build a combined hash: YAML content + all external per-agent workspace files
+    // + all shared workspace files (sorted for stability).
     const hashInput = createHash("sha256").update(yamlContent);
     for (const agent of team.agents) {
       const externalFiles = await SystemInstanceService._loadWorkspaceFiles(agent.id);
@@ -216,6 +220,14 @@ export class SystemInstanceService {
       if (Object.keys(externalFiles).length > 0) {
         agent.files = { ...externalFiles, ...agent.files };
       }
+    }
+    const sharedFiles = await SystemInstanceService._loadSharedWorkspaceFiles();
+    const sortedSharedKeys = Object.keys(sharedFiles).sort();
+    for (const key of sortedSharedKeys) {
+      hashInput
+        .update("@shared/")
+        .update(key)
+        .update(sharedFiles[key] ?? "");
     }
     const currentHash = hashInput.digest("hex");
 
@@ -233,14 +245,140 @@ export class SystemInstanceService {
       team.agents,
     );
 
+    // Re-sync shared workspace (templates/system/workspace/shared/** → <stateDir>/workspaces/shared/).
+    const sharedStats = await SystemInstanceService._syncSharedWorkspace(
+      db,
+      conn,
+      instance,
+      sharedFiles,
+    );
+
     // Store new hash
     db.prepare(
       "INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
     ).run(CP_SYSTEM_TEMPLATE_HASH_KEY, currentHash);
 
     logger.info(
-      `[system-instance] Template re-synced: ${filesUpdated} files, ${configsUpdated} configs updated`,
+      `[system-instance] Template re-synced: ${filesUpdated} agent files, ${configsUpdated} configs, ` +
+        `${sharedStats.written} shared written, ${sharedStats.deleted} shared deleted`,
     );
+  }
+
+  /**
+   * Sync shared workspace files from `templates/system/workspace/shared/` to the
+   * instance's `<stateDir>/workspaces/shared/` directory and the
+   * `instance_shared_files` table.
+   *
+   * Only template-owned files are managed: a prior list is kept in the `config`
+   * table under `cp_system_shared_template_files`. Files that the template no
+   * longer owns are removed. User-created shared files (via `ws_write_shared_file`)
+   * are NOT touched.
+   */
+  private static async _syncSharedWorkspace(
+    db: Database.Database,
+    conn: ServerConnection,
+    instance: InstanceRecord,
+    sharedFiles: Record<string, string>,
+  ): Promise<{ written: number; deleted: number }> {
+    const sharedDir = path.join(instance.state_dir, "workspaces", constants.SHARED_WORKSPACE_DIR);
+    await conn.mkdir(sharedDir);
+
+    // Load the previous list of template-owned filenames.
+    const prevRow = db
+      .prepare("SELECT value FROM config WHERE key = ?")
+      .get(CP_SYSTEM_SHARED_TEMPLATE_FILES_KEY) as { value: string } | undefined;
+    let prevOwned: string[] = [];
+    if (prevRow?.value) {
+      try {
+        prevOwned = JSON.parse(prevRow.value) as string[];
+      } catch (err) {
+        logger.warn("[system-instance] Cannot parse previous shared template file list", {
+          error: String(err),
+        });
+      }
+    }
+    const prevOwnedSet = new Set(prevOwned);
+    const currentOwned = Object.keys(sharedFiles);
+    const currentOwnedSet = new Set(currentOwned);
+
+    let written = 0;
+    let deleted = 0;
+
+    // Write / upsert current template-owned files.
+    for (const [relPath, content] of Object.entries(sharedFiles)) {
+      const filePath = path.join(sharedDir, relPath);
+      await conn.mkdir(path.dirname(filePath));
+      await conn.writeFile(filePath, content);
+      const contentHash = createHash("sha256").update(content).digest("hex");
+      db.prepare(
+        `INSERT INTO instance_shared_files (instance_id, filename, content, content_hash, updated_at)
+         VALUES (?, ?, ?, ?, datetime('now'))
+         ON CONFLICT (instance_id, filename) DO UPDATE SET
+           content = excluded.content,
+           content_hash = excluded.content_hash,
+           updated_at = excluded.updated_at`,
+      ).run(instance.id, relPath, content, contentHash);
+      written++;
+    }
+
+    // Delete files that were previously template-owned but no longer are.
+    for (const relPath of prevOwnedSet) {
+      if (currentOwnedSet.has(relPath)) continue;
+      const filePath = path.join(sharedDir, relPath);
+      try {
+        await fs.unlink(filePath);
+      } catch (err) {
+        logger.debug("[system-instance] Cannot unlink stale shared file", {
+          filePath,
+          error: String(err),
+        });
+      }
+      db.prepare("DELETE FROM instance_shared_files WHERE instance_id = ? AND filename = ?").run(
+        instance.id,
+        relPath,
+      );
+      deleted++;
+    }
+
+    // Store current owned list for next sync.
+    db.prepare(
+      "INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+    ).run(CP_SYSTEM_SHARED_TEMPLATE_FILES_KEY, JSON.stringify(currentOwned.sort()));
+
+    return { written, deleted };
+  }
+
+  /**
+   * Load shared workspace files from `templates/system/workspace/shared/`.
+   * Recursively reads all .md files and returns `{ relativePath: content }`.
+   */
+  private static async _loadSharedWorkspaceFiles(): Promise<Record<string, string>> {
+    const files: Record<string, string> = {};
+
+    async function scanDir(dir: string): Promise<void> {
+      let entries: import("node:fs").Dirent[];
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch (err) {
+        logger.debug("[system-instance] No shared workspace dir", {
+          dir,
+          error: String(err),
+        });
+        return;
+      }
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await scanDir(fullPath);
+        } else if (entry.isFile() && entry.name.endsWith(".md")) {
+          const relPath = path.relative(SHARED_TEMPLATE_DIR, fullPath);
+          files[relPath] = await fs.readFile(fullPath, "utf-8");
+        }
+      }
+    }
+
+    await scanDir(SHARED_TEMPLATE_DIR);
+    return files;
   }
 
   /** Sync agent configs and workspace files to disk + DB. */
