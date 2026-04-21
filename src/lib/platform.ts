@@ -162,10 +162,25 @@ export function deriveInternalApiPort(slug: string): number {
 
 /**
  * Resolve the internal API token for dashboard→runtime IPC.
- * Checks env `CLAW_RUNTIME_INTERNAL_TOKEN`, falls back to dev token.
+ *
+ * R5 — reads go through the `SecretProvider`. The env provider resolves
+ * `CLAW_RUNTIME_INTERNAL_TOKEN` from `process.env` or the global `.env`
+ * file; the slug-scoped dev fallback is preserved when the secret is
+ * absent so local development still works without configuration.
  */
-export function resolveInternalApiToken(slug: string): string {
-  return process.env["CLAW_RUNTIME_INTERNAL_TOKEN"] ?? `internal-dev-${slug}`;
+export async function resolveInternalApiToken(slug: string): Promise<string> {
+  const { getSecretProvider, isSecretProviderRegistered } =
+    await import("../core/secrets/index.js");
+  const name = "CLAW_RUNTIME_INTERNAL_TOKEN";
+  // Tolerate calls before bootstrap (e.g. unit tests that mount a dashboard
+  // route without a full withContext) — fall back to the dev token instead
+  // of throwing. Production paths always bootstrap the provider early.
+  if (!isSecretProviderRegistered()) {
+    return process.env[name] ?? `internal-dev-${slug}`;
+  }
+  const provider = getSecretProvider();
+  if (await provider.has(name)) return provider.get(name);
+  return `internal-dev-${slug}`;
 }
 
 // ---------------------------------------------------------------------------

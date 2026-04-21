@@ -442,7 +442,7 @@ export class ClawRuntime {
   /** Create and connect channels, start internal API server. */
   private async _initChannelsAndApi(): Promise<void> {
     // 4. Create and connect channels
-    this._channels = createChannels(this.config, this.instanceSlug, this.db);
+    this._channels = await createChannels(this.config, this.instanceSlug, this.db);
     const messageHandler = this._buildMessageHandler();
     for (const channel of this._channels) {
       channel.onMessage(messageHandler);
@@ -462,7 +462,7 @@ export class ClawRuntime {
     try {
       this._internalApi = new InternalApiServer({
         port: deriveInternalApiPort(this.instanceSlug),
-        token: resolveInternalApiToken(this.instanceSlug),
+        token: await resolveInternalApiToken(this.instanceSlug),
         slug: this.instanceSlug,
         handlers: this._buildInternalApiHandlers(),
       });

@@ -19,6 +19,7 @@ import type { Channel } from "../channel/channel.js";
 import { WebChatChannel } from "../channel/web-chat.js";
 import { TelegramChannel } from "../channel/telegram/channel.js";
 import { deriveWebChatPort } from "../../lib/platform.js";
+import { getSecretProvider } from "../../core/secrets/index.js";
 
 // ---------------------------------------------------------------------------
 // createChannels
@@ -32,17 +33,17 @@ import { deriveWebChatPort } from "../../lib/platform.js";
  * @param db      - SQLite database (needed for Telegram pairing code generation)
  * @returns       Array of Channel instances (not yet connected)
  */
-export function createChannels(
+export async function createChannels(
   config: RuntimeConfig,
   slug: InstanceSlug,
   db: Database.Database,
-): Channel[] {
+): Promise<Channel[]> {
   const channels: Channel[] = [];
 
   // Web chat channel
   if (config.webChat.enabled) {
     const port = deriveWebChatPort(slug);
-    const token = resolveWebChatToken(slug);
+    const token = await resolveWebChatToken(slug);
     channels.push(
       new WebChatChannel({
         port,
@@ -77,20 +78,24 @@ export function createChannels(
 // deriveWebChatPort is imported from ../../lib/platform.js
 
 /**
- * Resolve the web-chat auth token for an instance.
+ * Resolve the web-chat auth token for an instance, via the SecretProvider (R5).
  *
  * Priority:
- *   1. CLAW_RUNTIME_WEB_TOKEN_<SLUG_UPPER> env var
- *   2. CLAW_RUNTIME_WEB_TOKEN env var
+ *   1. CLAW_RUNTIME_WEB_TOKEN_<SLUG_UPPER>
+ *   2. CLAW_RUNTIME_WEB_TOKEN
  *   3. Fallback: slug-based deterministic token (dev/test only)
  *
- * In production, the token should be set via env var or the dashboard.
+ * The env provider resolves `process.env` first (matching the legacy
+ * lookup) before falling back to the global `.env` file. In production,
+ * the token should be set via env var, `.env`, or an Enterprise backend.
  */
-function resolveWebChatToken(slug: InstanceSlug): string {
+async function resolveWebChatToken(slug: InstanceSlug): Promise<string> {
   const slugKey = slug.toUpperCase().replace(/-/g, "_");
-  return (
-    process.env[`CLAW_RUNTIME_WEB_TOKEN_${slugKey}`] ??
-    process.env["CLAW_RUNTIME_WEB_TOKEN"] ??
-    `dev-token-${slug}`
-  );
+  const provider = getSecretProvider();
+  const scopedName = `CLAW_RUNTIME_WEB_TOKEN_${slugKey}`;
+  if (await provider.has(scopedName)) return provider.get(scopedName);
+  if (await provider.has("CLAW_RUNTIME_WEB_TOKEN")) {
+    return provider.get("CLAW_RUNTIME_WEB_TOKEN");
+  }
+  return `dev-token-${slug}`;
 }

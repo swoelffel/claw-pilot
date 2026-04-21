@@ -33,6 +33,7 @@ import {
 } from "../../bus/events.js";
 import type { QuestionItem } from "../../bus/events.js";
 import { resolveQuestion } from "../../tool/built-in/question.js";
+import { getSecretProvider, isSecretProviderRegistered } from "../../../core/secrets/index.js";
 import type { QuestionAnswerPayload } from "../../tool/built-in/question.js";
 import type { OutboundArtifact } from "../../types.js";
 
@@ -97,10 +98,34 @@ export class TelegramChannel implements Channel {
     this.handler = handler;
   }
 
+  /**
+   * Resolve the bot token via the SecretProvider (R5). The env provider
+   * reads `process.env[botTokenEnvVar]` first, matching the legacy lookup,
+   * then falls back to the global `.env` file. Returns `undefined` when
+   * the token is absent so callers can handle the not-configured path.
+   */
+  private async resolveBotToken(): Promise<string | undefined> {
+    const name = this.options.botTokenEnvVar;
+    // Tolerate calls before bootstrap (e.g. unit tests instantiating the
+    // channel without a full withContext) — fall back to process.env.
+    if (!isSecretProviderRegistered()) {
+      const raw = process.env[name];
+      return raw && raw.length > 0 ? raw : undefined;
+    }
+    const provider = getSecretProvider();
+    if (!(await provider.has(name))) return undefined;
+    try {
+      return await provider.get(name);
+    } catch (err) {
+      logger.debug("[telegram] bot token resolution failed", { error: String(err) });
+      return undefined;
+    }
+  }
+
   async connect(): Promise<void> {
     if (this.poller) return; // idempotent
 
-    const token = process.env[this.options.botTokenEnvVar];
+    const token = await this.resolveBotToken();
     if (!token) {
       // Token not set — Telegram is enabled in config but not yet configured.
       // This is expected on a fresh install. Log a warning and skip silently
@@ -160,7 +185,7 @@ export class TelegramChannel implements Channel {
       throw new ChannelError("telegram", `Invalid peerId: ${message.peerId}`);
     }
 
-    const token = process.env[this.options.botTokenEnvVar];
+    const token = await this.resolveBotToken();
     if (!token) {
       throw new ChannelError(
         "telegram",
@@ -332,7 +357,7 @@ export class TelegramChannel implements Channel {
       code = record.code;
     }
 
-    const token = process.env[this.options.botTokenEnvVar];
+    const token = await this.resolveBotToken();
     if (!token) return;
 
     // Format code as XXXX-XXXX for readability

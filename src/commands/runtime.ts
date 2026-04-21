@@ -16,6 +16,7 @@ import {
 } from "../lib/platform.js";
 import { initDatabase } from "../db/schema.js";
 import { ensureMasterEncryptionKey } from "../lib/crypto.js";
+import { bootstrapSecretProvider } from "../core/secrets/bootstrap.js";
 import {
   ClawRuntime,
   loadRuntimeConfig,
@@ -266,6 +267,14 @@ async function startForeground(
 ): Promise<void> {
   // Load environment variables from .env file
   loadEnvFile(stateDir);
+
+  // Bootstrap the SecretProvider before any consumer reads a secret
+  // (MASTER_ENCRYPTION_KEY, channel tokens). Uses the global data dir so
+  // the master key is persisted to ~/.claw-pilot/.env (shared across
+  // instances), matching the pre-H4 behaviour. Per-instance secrets
+  // (bot tokens) are already loaded into process.env by loadEnvFile()
+  // above, so the env provider resolves them without a file round-trip.
+  bootstrapSecretProvider();
 
   // Ensure master encryption key is available (for named API key decryption)
   await ensureMasterEncryptionKey();

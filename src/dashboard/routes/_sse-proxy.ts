@@ -125,7 +125,7 @@ export async function proxyRuntimeSSE(
   params?: ProxySSEParams,
 ): Promise<void> {
   const url = _buildUpstreamUrl(slug, params);
-  const token = resolveInternalApiToken(slug);
+  const token = await resolveInternalApiToken(slug);
 
   // AbortController wired to browser disconnect
   const ac = new AbortController();

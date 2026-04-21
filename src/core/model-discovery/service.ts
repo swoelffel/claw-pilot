@@ -26,6 +26,7 @@ import { PROVIDER_CATALOG } from "../../lib/provider-catalog.js";
 import { MODEL_CATALOG } from "../../runtime/provider/models.js";
 import { PROVIDER_ENV_VARS } from "../../lib/providers.js";
 import { isCryptoAvailable } from "../../lib/crypto.js";
+import { getSecretProvider } from "../secrets/index.js";
 import { NamedKeyRepository } from "../repositories/named-key-repository.js";
 import { logger } from "../../lib/logger.js";
 import { constants } from "../../lib/constants.js";
@@ -153,7 +154,7 @@ export class ModelDiscoveryService {
 
     try {
       // Resolve API key
-      const { apiKey, baseUrl } = this._resolveCredentials(providerId);
+      const { apiKey, baseUrl } = await this._resolveCredentials(providerId);
 
       // Skip auth-requiring providers without a key
       if (!NO_AUTH_PROVIDERS.has(providerId) && !apiKey) {
@@ -283,10 +284,10 @@ export class ModelDiscoveryService {
   // Private — credential resolution
   // -------------------------------------------------------------------------
 
-  private _resolveCredentials(providerId: ProviderId): {
+  private async _resolveCredentials(providerId: ProviderId): Promise<{
     apiKey: string | undefined;
     baseUrl: string | undefined;
-  } {
+  }> {
     let apiKey: string | undefined;
     let baseUrl: string | undefined;
 
@@ -307,11 +308,15 @@ export class ModelDiscoveryService {
       }
     }
 
-    // 2. Fallback to env vars
+    // 2. Fallback to env vars — resolved via SecretProvider (R5). The env
+    //    provider reads process.env first, preserving the legacy lookup.
     if (!apiKey) {
       const envVar = PROVIDER_ENV_VARS[providerId];
       if (envVar) {
-        apiKey = process.env[envVar];
+        const provider = getSecretProvider();
+        if (await provider.has(envVar)) {
+          apiKey = await provider.get(envVar);
+        }
       }
     }
 
