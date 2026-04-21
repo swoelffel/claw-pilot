@@ -6,6 +6,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.80.9] — 2026-04-21
+
+### Fixed
+- **UI — question cards render without F5** (#138) : `home-chat` and `runtime-pilot` now call `_reloadLastMessages` on the `question.asked` event instead of `_refreshMessages`. The latter short-circuits when `_status === "tool"`, which is always the case at question time since `tool.call.started` fires first. Subagent-initiated questions are now visible immediately.
+- **UI — question state reset on call prop change** (#138) : `part-question` now resets `_activeTab`, `_tabStates`, `_submitting`, `_answered`, and `_initialized` in `willUpdate()` when the `call` prop changes, preventing stale interaction state from leaking into a reused Lit element (e.g., consecutive question tool calls on the same agent).
+- **Named keys — keyless provider support** (#138) : `POST /api/named-keys` now accepts an empty `apiKey` when the provider has `requiresKey=false` in the catalog (e.g., OpenCode Zen). Providers with `requiresKey=true` (Anthropic, OpenAI, …) still return `400 API_KEY_REQUIRED`. Unknown providers default to required as a safe fallback.
+- **Named keys — crypto empty-string round-trip** (#138) : `encrypt("")` and `decrypt("")` now short-circuit to `""`. Previously, `encrypt("")` produced `"iv:authTag:"` — a ciphertext format rejected by the stricter `decrypt()` added in v0.77.2, which crashed `GET /api/named-keys` with a 500 as soon as a keyless entry was stored.
+- **Named keys — corrupt-row resilience** (#138) : `rowToRecord()` in `NamedKeyRepository` now catches decrypt failures per row and surfaces the entry as `apiKeyMasked: "[corrupt]"` instead of bubbling up and 500-ing the whole list endpoint. Existing corrupt entries from older code paths stay deletable through the UI.
+
+### Changed
+- **Named-keys route refactor** (#138) : `handleCreate`, `handleUpdate`, `handleDelete` extracted out of `registerNamedKeyRoutes` to stay under the 150-line function length cap. No behavior change.
+
+### Docs
+- **Contributor workflow rewritten** (#140) : `CONTRIBUTING.md` is now the single source of truth for the public contribution flow. Fixes incorrect instructions to branch off and PR against `main` — the actual gitflow is develop-first. Adds golden rules (no version bump in feature PRs, no hook skipping), conventional commits spec, lefthook stage breakdown, fork workflow with upstream sync, Community/Enterprise discipline (R1–R5), and macOS in prerequisites.
+- **PR template enriched** (#140) : adds an explicit workflow checklist (base branch = `develop`, no version bump, branch naming, conventional commits) so gates are visible at PR creation time.
+- **CLAUDE.md pointer** (#140) : short "Contribution workflow" section points to `CONTRIBUTING.md`, ensuring AI agents opening the repo internalize the develop-first rule immediately.
+- **README changelog catch-up** (#139) : bullet list in README was stuck at v0.69.0. Added 15 entries covering v0.70.0 → v0.80.9 with one-liner summaries for each milestone (live reasoning streaming, Flow Sessions, Instance Dashboard, notification inbox, shared workspace, Enterprise Edition Phase 0 hooks, ServerRegistry, CodeQL triage). Also corrected docs table schema reference from v34 → v38.
+
+---
+
 ## [0.80.8] — 2026-04-21
 
 ### Added

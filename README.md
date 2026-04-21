@@ -314,7 +314,8 @@ Pre-push hooks: spellcheck + test:run. Commits follow conventional commits (comm
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 
-- **v0.80.8** (current) — `ServerRegistry` abstraction (hook H3): single entry point for "which server serves which resource"; Community ships `SingleServerRegistry`, Enterprise will plug `FederatedServerRegistry`
+- **v0.80.9** (current) — UI fixes (question cards render without F5, state reset), named-keys keyless provider support, crypto empty-string round-trip; contributor docs rewrite (develop-first gitflow)
+- **v0.80.8** — `ServerRegistry` abstraction (hook H3): single entry point for "which server serves which resource"; Community ships `SingleServerRegistry`, Enterprise will plug `FederatedServerRegistry`
 - **v0.80.7** — CodeQL triage — 0 open alerts: 5 true positives fixed, 21 false positives dismissed with justification
 - **v0.80.6** — Enterprise Edition preparation Phase 0: pluggable permission middleware (`permission()` Hono factory, `ACTIONS` catalogue, `NullPermissionChecker`)
 - **v0.80.5** — `AuthProvider` abstraction: pluggable auth registry, `PasswordProvider` (scrypt); Enterprise hook for OIDC/SAML/Azure AD
