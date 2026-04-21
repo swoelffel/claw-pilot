@@ -133,6 +133,10 @@ import { clearMiddlewares, registerMiddleware } from "../../middleware/index.js"
 import { getRegisteredHooks } from "../../plugin/hooks.js";
 import { resetPlugins } from "../../plugin/plugin.js";
 import { SYSTEM_INSTANCE_SLUG } from "../../../core/system-instance.js";
+import {
+  bootstrapTestRegistry,
+  resetServerRegistry,
+} from "../../../server/__tests__/_helpers/with-registry.js";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -187,12 +191,14 @@ describe("ClawRuntime", () => {
     db.prepare(
       "INSERT INTO servers (id, hostname, openclaw_home) VALUES (1, 'localhost', '/opt/claw-pilot')",
     ).run();
+    bootstrapTestRegistry(db, "localhost", "/opt/claw-pilot");
     db.prepare(
       "INSERT INTO instances (server_id, slug, port, state, config_path, state_dir, systemd_unit) VALUES (1, 'test-inst', 18789, 'running', '/tmp/config.json', '/tmp/state', 'claw-pilot@test-inst')",
     ).run();
   });
 
   afterEach(() => {
+    resetServerRegistry();
     db.close();
     vi.restoreAllMocks();
     vi.useRealTimers();
