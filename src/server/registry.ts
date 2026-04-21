@@ -1,6 +1,9 @@
 // src/server/registry.ts
+import type Database from "better-sqlite3";
 import { ClawPilotError } from "../lib/errors.js";
 import type { ServerConnection } from "./connection.js";
+import { capabilities } from "../core/capabilities.js";
+import { ServerRepository } from "../core/repositories/server-repository.js";
 
 export type ServerKind = "local" | "remote";
 
@@ -42,6 +45,47 @@ export interface ServerRegistry {
   route(resource: ResourceRef): ServerNode;
 }
 
+const SINGLE_BRAND: unique symbol = Symbol("single-server-registry");
+
+export class SingleServerRegistry implements ServerRegistry {
+  readonly [SINGLE_BRAND] = true;
+  private readonly node: ServerNode;
+
+  constructor(db: Database.Database, connection: ServerConnection) {
+    const row = new ServerRepository(db).getLocalServer();
+    if (!row) {
+      throw new ClawPilotError(
+        "ServerRegistry requires a local server row — run Registry.upsertLocalServer() first",
+        "SERVER_REGISTRY_NOT_BOOTSTRAPPED",
+      );
+    }
+    this.node = {
+      id: String(row.id),
+      kind: "local",
+      hostname: row.hostname,
+      connection,
+    };
+  }
+
+  list(): readonly ServerNode[] {
+    return [this.node];
+  }
+  get(id: string): ServerNode | null {
+    return id === this.node.id ? this.node : null;
+  }
+  getLocal(): ServerNode {
+    return this.node;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  route(_resource: ResourceRef): ServerNode {
+    return this.node;
+  }
+}
+
+function isSingleRegistry(impl: ServerRegistry): boolean {
+  return (impl as unknown as Record<symbol, unknown>)[SINGLE_BRAND] === true;
+}
+
 let current: ServerRegistry | null = null;
 let locked = false;
 
@@ -55,6 +99,12 @@ export function registerServerRegistry(impl: ServerRegistry): void {
     throw new ClawPilotError(
       "ServerRegistry already locked — registerServerRegistry() must be called exactly once during bootstrap",
       "SERVER_REGISTRY_LOCKED",
+    );
+  }
+  if (!isSingleRegistry(impl) && !capabilities.has("multi-server")) {
+    throw new ClawPilotError(
+      "Registering a non-single ServerRegistry requires the 'multi-server' capability",
+      "MULTI_SERVER_CAPABILITY_REQUIRED",
     );
   }
   current = impl;
