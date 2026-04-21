@@ -893,10 +893,13 @@ function createSystemStatusTools(deps: ToolDeps): Tool.Info[] {
           };
         }
 
-        // Guard against destructive keywords even within sub-expressions
-        const upper = trimmed.toUpperCase();
+        // Guard against destructive keywords even within sub-expressions. Match
+        // on word boundaries so column names that contain a keyword substring
+        // (e.g. `created_at`, `updated_at`, `deleted_at`, `altered_by`) are not
+        // flagged as forbidden — only standalone keywords are.
         for (const keyword of ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "ATTACH"]) {
-          if (upper.includes(keyword)) {
+          const pattern = new RegExp(`\\b${keyword}\\b`, "i");
+          if (pattern.test(trimmed)) {
             return {
               title: "query db",
               output: `Error: Query contains forbidden keyword "${keyword}". Only read-only SELECT queries are allowed.`,

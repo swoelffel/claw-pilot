@@ -79,6 +79,41 @@ describe("system-tools plugin", () => {
     expect(parsed.rows[0].cnt).toBe(0);
   });
 
+  it("cp_query_db allows SELECT on columns whose names contain forbidden keywords", async () => {
+    // Regression: the destructive-keyword filter used `String.includes` which
+    // matched "CREATE" inside `created_at` and blocked legitimate SELECTs.
+    const tools = createSystemTools(db, "cp-system");
+    const queryTool = tools.find((t) => t.id === "cp_query_db")!;
+    const def = await queryTool.init();
+
+    const queries = [
+      "SELECT created_at FROM rt_sessions LIMIT 1",
+      "SELECT updated_at FROM rt_sessions LIMIT 1",
+      "SELECT id, created_at, updated_at FROM rt_sessions WHERE created_at > datetime('now', '-1 day')",
+    ];
+    for (const sql of queries) {
+      const result = await def.execute({ sql }, {} as never);
+      expect(result.output).not.toContain("forbidden keyword");
+    }
+  });
+
+  it("cp_query_db still rejects standalone destructive keywords", async () => {
+    const tools = createSystemTools(db, "cp-system");
+    const queryTool = tools.find((t) => t.id === "cp_query_db")!;
+    const def = await queryTool.init();
+
+    // These should all be blocked (SELECT prefix but keyword in sub-expression).
+    const blocked = [
+      "SELECT * FROM (DELETE FROM rt_sessions RETURNING *) t",
+      "SELECT * FROM instances; DROP TABLE instances",
+      "SELECT * FROM (UPDATE rt_sessions SET state = 'archived' RETURNING id) t",
+    ];
+    for (const sql of blocked) {
+      const result = await def.execute({ sql }, {} as never);
+      expect(result.output).toContain("forbidden keyword");
+    }
+  });
+
   it("cp_list_named_keys returns empty array on fresh DB", async () => {
     const tools = createSystemTools(db, "cp-system");
     const keysTool = tools.find((t) => t.id === "cp_list_named_keys")!;
