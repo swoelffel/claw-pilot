@@ -10,9 +10,20 @@ vi.mock("../../../lib/logger.js", () => ({
   logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 
+vi.mock("../../../core/audit/emitter.js", () => ({
+  emitAudit: vi.fn(),
+}));
+
 import { registerHooks, clearHooks } from "../hooks.js";
 import { logger } from "../../../lib/logger.js";
 import { registerPlugin, initPlugins, loadPluginFromFile, resetPlugins } from "../plugin.js";
+import { emitAudit } from "../../../core/audit/emitter.js";
+import {
+  NullPluginVerifier,
+  registerPluginVerifier,
+  resetPluginVerifier,
+  type PluginVerifier,
+} from "../verifier.js";
 
 const mockInput: PluginInput = {
   instanceSlug: "test" as PluginInput["instanceSlug"],
@@ -24,6 +35,8 @@ const mockInput: PluginInput = {
 beforeEach(() => {
   vi.clearAllMocks();
   resetPlugins();
+  resetPluginVerifier();
+  registerPluginVerifier(new NullPluginVerifier());
 });
 
 describe("registerPlugin", () => {
@@ -164,6 +177,51 @@ describe("loadPluginFromFile", () => {
     await expect(loadPluginFromFile("/nonexistent/plugin.js")).rejects.toThrow(
       "Plugin file not found",
     );
+  });
+
+  it("throws PLUGIN_REJECTED and emits audit event when verifier refuses", async () => {
+    const { writeFileSync, rmSync, mkdtempSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { tmpdir } = await import("node:os");
+
+    const dir = mkdtempSync(join(tmpdir(), "plugin-verify-"));
+    const file = join(dir, "rejected.mjs");
+    writeFileSync(file, "export default () => ({});\n");
+
+    const refusing: PluginVerifier = {
+      kind: "test-refuser",
+      verify: async () => ({ ok: false, reason: "bad signature" }),
+    };
+    resetPluginVerifier();
+    // Bypass the capability gate via the null-only contract: refuser has a non-"null" kind,
+    // so we register through the internal path by temporarily swapping in via kind spoofing
+    // is not allowed — instead we stub the capability via the exported setter. For the
+    // purposes of this test we directly call the registered path after flipping capability.
+    const caps = await import("../../../core/capabilities.js");
+    const spy = vi.spyOn(caps.capabilities, "has").mockReturnValue(true);
+    try {
+      registerPluginVerifier(refusing);
+
+      await expect(loadPluginFromFile(file)).rejects.toMatchObject({
+        code: "PLUGIN_REJECTED",
+      });
+
+      expect(emitAudit).toHaveBeenCalledWith({
+        kind: "plugin.rejected",
+        path: file,
+        verifierKind: "test-refuser",
+        reason: "bad signature",
+      });
+      // The plugin module must NEVER have been imported — no factory registered
+      const factory = vi.fn().mockResolvedValue({});
+      registerPlugin("sentinel", factory);
+      // initPlugins should only run the sentinel, not the rejected module
+      await initPlugins(mockInput);
+      expect(factory).toHaveBeenCalledOnce();
+    } finally {
+      spy.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("throws on invalid export (not a function)", async () => {
