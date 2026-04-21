@@ -45,6 +45,12 @@ interface TabState {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Track which tool_call IDs have already logged a fallback warning so we only
+ * emit one console.warn per malformed question, not one per Lit re-render.
+ */
+const _loggedFallback = new Set<string>();
+
 /** Coerce the tool_call args into a stable QuestionItem[] list. */
 function normalizeItems(args: QuestionArgs | undefined): QuestionItem[] {
   if (args?.questions && args.questions.length > 0) {
@@ -315,6 +321,7 @@ export class PilotPartQuestion extends LitElement {
   @state() private _tabStates: TabState[] = [];
   @state() private _submitting = false;
   @state() private _answered = false;
+  @state() private _fallbackText = "";
 
   private _initialized = false;
 
@@ -338,6 +345,7 @@ export class PilotPartQuestion extends LitElement {
       this._tabStates = [];
       this._submitting = false;
       this._answered = false;
+      this._fallbackText = "";
       this._initialized = false;
     }
   }
@@ -420,7 +428,106 @@ export class PilotPartQuestion extends LitElement {
     }
   }
 
+  /**
+   * Submit a plain-text answer via the fallback path. The backend's
+   * parseAnswerPayload treats a non-JSON string as a legacy free-text answer,
+   * so the agent still receives a usable response.
+   */
+  private async _submitFallback(): Promise<void> {
+    if (this._submitting || this._answered) return;
+    const text = this._fallbackText.trim();
+    if (text.length === 0) return;
+    const meta = this._meta();
+    const questionId = meta.toolCallId;
+    if (!questionId || !this.slug) return;
+
+    this._submitting = true;
+    try {
+      await answerQuestion(this.slug, questionId, text);
+      this._answered = true;
+      this.dispatchEvent(
+        new CustomEvent("question-answered", {
+          bubbles: true,
+          composed: true,
+          detail: { questionId },
+        }),
+      );
+    } catch {
+      // Allow retry on error
+    } finally {
+      this._submitting = false;
+    }
+  }
+
   // --- Render helpers -------------------------------------------------------
+
+  /**
+   * Fallback card shown when the question tool_call metadata doesn't contain a
+   * parseable `questions[]` / `question` shape (e.g. the LLM emitted malformed
+   * args, or the provider stream dropped the `input` field). Without this,
+   * `_hasPendingQuestion` locks the main chat input and the user has no way to
+   * respond — a soft deadlock. The fallback lets them type a free-text answer
+   * so the prompt loop can resume.
+   */
+  private _renderFallback(): unknown {
+    const meta = this._meta();
+    const isCompleted = this.call.state === "completed";
+    const answeredText = this.call.content ?? "";
+    const isAnswered = isCompleted || this._answered;
+
+    // Log once per unique toolCallId so we can diagnose root causes in the wild
+    // without spamming the console on every re-render.
+    if (meta.toolCallId && !_loggedFallback.has(meta.toolCallId)) {
+      _loggedFallback.add(meta.toolCallId);
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[part-question] question tool_call has no parseable items — falling back to free-text input",
+        { toolCallId: meta.toolCallId, metadata: this.call.metadata },
+      );
+    }
+
+    return html`
+      <div class="question-card">
+        <div class="question-header">? ${msg("Question", { id: "part-question-title" })}</div>
+        <div class="question-text">
+          ${msg(
+            "The agent asked a question but its options couldn't be displayed. Type your answer below to continue.",
+            { id: "part-question-fallback-hint" },
+          )}
+        </div>
+        ${!isAnswered
+          ? html`
+              <div class="free-input">
+                <textarea
+                  rows="2"
+                  placeholder=${msg("Type your answer…", {
+                    id: "part-question-placeholder-free",
+                  })}
+                  .value=${this._fallbackText}
+                  ?disabled=${this._submitting}
+                  @input=${(e: InputEvent) => {
+                    this._fallbackText = (e.target as HTMLTextAreaElement).value;
+                  }}
+                ></textarea>
+              </div>
+              <div class="footer">
+                <button
+                  class="submit-btn"
+                  ?disabled=${this._submitting || this._fallbackText.trim().length === 0}
+                  @click=${() => void this._submitFallback()}
+                >
+                  ${msg("Send", { id: "part-question-send-one" })}
+                </button>
+              </div>
+            `
+          : html`
+              <div class="answered-badge">
+                ✓ ${answeredText || msg("Submitted", { id: "part-question-submitted" })}
+              </div>
+            `}
+      </div>
+    `;
+  }
 
   private _renderTabs(items: QuestionItem[]): unknown {
     if (items.length <= 1) return nothing;
@@ -494,7 +601,7 @@ export class PilotPartQuestion extends LitElement {
   override render() {
     if (!this.call) return nothing;
     const items = this._items();
-    if (items.length === 0) return nothing;
+    if (items.length === 0) return this._renderFallback();
     this._ensureInit(items);
 
     const isCompleted = this.call.state === "completed" || this.result?.state === "completed";
