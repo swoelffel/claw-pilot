@@ -18,6 +18,8 @@ import { initDatabase } from "../db/schema.js";
 import { ensureMasterEncryptionKey } from "../lib/crypto.js";
 import { bootstrapSecretProvider } from "../core/secrets/bootstrap.js";
 import { bootstrapAuditBus, shutdownAuditBus } from "../core/audit/index.js";
+import { LocalConnection } from "../server/local.js";
+import { bootstrapServerRegistry } from "../server/registry.js";
 import {
   ClawRuntime,
   loadRuntimeConfig,
@@ -282,6 +284,12 @@ async function startForeground(
 
   // Open DB early so we can read config from it
   const db = initDatabase(getDbPath());
+
+  // Register the ServerRegistry (H3) — the daemon has its own lifecycle and
+  // bypasses withContext(), so the registration done there doesn't apply here.
+  // Without this, plugin tool hooks throw "ServerRegistry not registered".
+  const conn = new LocalConnection();
+  bootstrapServerRegistry(db, conn);
 
   // Register the default audit sinks (file + db). Runtime-only events
   // (tool calls) land in rt_audit_events and in the daily JSONL file.
