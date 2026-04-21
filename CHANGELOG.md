@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.80.12] — 2026-04-21
+
+### Changed
+- **cp-system team consolidated from 6 to 3 agents** (#147) — `admin-exec` + `config-exec` merged into the new `ops` agent (generator, full CRUD + lifecycle); `db-analyst` absorbed into `analyst` which now owns `cp_query_db`; `architect` dissolved into system-pilot as a conversational team-design workflow. SOUL.md footprint dropped 69 % (652 → ~200 lines). The 4 removed agents are preserved on existing instances with sessions + history intact — only YAML spawn links are replaced so system-pilot routes exclusively to `ops` / `analyst`.
+- **Per-agent `cp_*` tool scoping** (#147) — `systemToolsPlugin` now filters tools by `agentId`. `system-pilot` receives read-only tools (8), `ops` gets the full CRUD surface minus `cp_query_db` (21), `analyst` gets read + SQL (9). Legacy / unknown agents still see all 22 tools for backwards compatibility. Saves ~5400 tokens/turn in the pilot's permanent session prompt and enforces delegation at the tool level rather than relying on prompt-level discipline.
+- **Shared instance workspace seeded from templates** (#145, #147) — `templates/system/workspace/shared/` is now copied to `<stateDir>/workspaces/shared/` at provisioning and re-synced on template hash change. All agents can read cross-cutting references via `ws_list_files("@shared/")` / `ws_search_files(..., dir: "@shared/...")`. Template-owned filenames are tracked in `config.cp_system_shared_template_files` so files removed from the template are cleaned up; user-created shared files (via `ws_write_shared_file`) are never touched.
+- **System-pilot SOUL & AGENTS docs clarified** (#142) — new `docs/reference/data-sources.md` enumerates canonical DB sources per concept, warns explicitly against reading `runtime.json` (deprecated snapshot) or `HEARTBEAT.md` as a config source. SOUL.md gets a `Where state lives` section so the pilot does not grep filesystem artifacts when asked where state lives.
+
+### Fixed
+- **Sync now persists `model` in agent `config_json`** (#147) — `_syncAgents` omitted `model`, so `parseAgentConfig` threw on re-read and fell back to a minimal config, silently dropping `toolProfile`, `archetype`, `promptMode`, and `persistence` (observed as `toolProfile: "executor"` on ops/analyst after Phase B deploy). Model is now resolved with precedence: explicit `config.model` → existing DB row's model → instance default (from `default_named_key_id`) → safe fallback.
+- **`cp_query_db` word-boundary keyword filter** (#147) — the destructive-keyword guard used `String.includes` which matched substrings, blocking legitimate SELECTs on columns like `created_at`, `updated_at`, `deleted_at` ("Query contains forbidden keyword CREATE"). Switched to `\bKEYWORD\b` regex so only standalone keywords trigger the guard. Regression caught by analyst during MAC validation.
+
+---
+
 ## [0.80.11] — 2026-04-21
 
 ### Added
