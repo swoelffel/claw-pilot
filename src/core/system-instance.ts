@@ -422,29 +422,62 @@ export class SystemInstanceService {
     let configsUpdated = 0;
     let agentsCreated = 0;
 
+    // Resolve the instance's default model once — used as fallback when an
+    // agent's YAML block doesn't specify one. `parseAgentConfig` requires
+    // `model` to be a non-empty string; omitting it would cause the stored
+    // config_json to fail re-parse and fall back to a minimal-defaulted
+    // config (toolProfile "executor", no archetype, etc.).
+    let instanceDefaultModel: string | undefined;
+    try {
+      const row = db
+        .prepare("SELECT default_named_key_id FROM instances WHERE id = ?")
+        .get(instance.id) as { default_named_key_id: number | null } | undefined;
+      if (row?.default_named_key_id != null) {
+        const keyRepo = new NamedKeyRepository(db);
+        const key = keyRepo.getById(row.default_named_key_id);
+        instanceDefaultModel = key?.defaultModel ?? undefined;
+      }
+    } catch (err) {
+      logger.debug("[system-instance] Cannot read instance default model", {
+        error: String(err),
+      });
+    }
+
     for (const agent of agents) {
       // Resolve workspace path + upsert agent row (creates if missing).
       const workspacePath = path.join(instance.state_dir, "workspaces", agent.id);
       const preExisting = registry.getAgentByAgentId(instance.id, agent.id);
-
-      const configJson = agent.config
-        ? JSON.stringify({
-            id: agent.id,
-            name: agent.name,
-            isDefault: agent.is_default,
-            ...agent.config,
-          })
-        : null;
 
       const extractedModel =
         agent.config && typeof (agent.config as { model?: unknown }).model === "string"
           ? (agent.config as { model: string }).model
           : undefined;
 
+      // Pick a model for the stored config_json. Precedence:
+      // 1. Explicit `config.model` in the YAML (rare — we usually rely on defaults).
+      // 2. The pre-existing agent's model (re-sync case: don't drop what's there).
+      // 3. The instance default model derived from its named API key.
+      // 4. A safe fallback so parseAgentConfig doesn't fail.
+      const effectiveModel =
+        extractedModel ??
+        preExisting?.model ??
+        instanceDefaultModel ??
+        "anthropic/claude-sonnet-4-5";
+
+      const configJson = agent.config
+        ? JSON.stringify({
+            id: agent.id,
+            name: agent.name,
+            model: effectiveModel,
+            isDefault: agent.is_default,
+            ...agent.config,
+          })
+        : null;
+
       registry.upsertAgent(instance.id, {
         agentId: agent.id,
         name: agent.name,
-        ...(extractedModel !== undefined ? { model: extractedModel } : {}),
+        model: effectiveModel,
         workspacePath,
         isDefault: agent.is_default,
         configJson,
