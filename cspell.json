@@ -318,6 +318,7 @@
     "tids",
     "tkey",
     "tlnp",
+    "TOCTOU",
     "todoread",
     "todowrite",
     "tsconfig",
