@@ -13,21 +13,21 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 # pnpm — pinned to match packageManager field in package.json for reproducible builds
 RUN npm install -g pnpm@10.33.0
 
-# User openclaw (uid 1000)
+# User clawpilot (uid 1000)
 # Pre-create XDG_RUNTIME_DIR so the user can write to it without root
-RUN useradd -m -u 1000 -s /bin/bash openclaw \
-    && mkdir -p /home/openclaw/.claw-pilot /run/user/1000 \
-    && chown openclaw:openclaw /home/openclaw/.claw-pilot /run/user/1000
+RUN useradd -m -u 1000 -s /bin/bash clawpilot \
+    && mkdir -p /home/clawpilot/.claw-pilot /run/user/1000 \
+    && chown clawpilot:clawpilot /home/clawpilot/.claw-pilot /run/user/1000
 
-USER openclaw
+USER clawpilot
 WORKDIR /app
 
 # Install deps in a separate layer for Docker cache
 # git init satisfies lefthook's git repo check during pnpm prepare hook
-COPY --chown=openclaw:openclaw package.json pnpm-lock.yaml ./
+COPY --chown=clawpilot:clawpilot package.json pnpm-lock.yaml ./
 RUN git init && pnpm install --frozen-lockfile
 
-COPY --chown=openclaw:openclaw . .
+COPY --chown=clawpilot:clawpilot . .
 RUN chmod +x /app/docker/entrypoint.sh && pnpm build:cli
 
 EXPOSE 19000
