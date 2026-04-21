@@ -20,19 +20,14 @@ describe("cp-system.team.yaml", () => {
     expect(result.success).toBe(true);
   });
 
-  it("contains expected agents", () => {
+  it("contains the 3 consolidated agents", () => {
     const yaml = readFileSync(YAML_PATH, "utf-8");
     const result = parseAndValidateTeam(yaml);
     expect(result.success).toBe(true);
     if (!result.success) return;
 
     const ids = result.data.agents.map((a) => a.id);
-    expect(ids).toContain("system-pilot");
-    expect(ids).toContain("admin-exec");
-    expect(ids).toContain("config-exec");
-    expect(ids).toContain("analyst");
-    expect(ids).toContain("architect");
-    expect(ids).toContain("db-analyst");
+    expect(ids).toEqual(["system-pilot", "ops", "analyst"]);
   });
 
   it("has system-pilot as default agent with workspace files", () => {
@@ -47,15 +42,16 @@ describe("cp-system.team.yaml", () => {
     expect(pilot!.files).toBeDefined();
     expect(pilot!.files!["SOUL.md"]).toBeDefined();
     expect(pilot!.files!["AGENTS.md"]).toBeDefined();
+    expect(pilot!.files!["BOOTSTRAP.md"]).toBeDefined();
   });
 
-  it("subagents have SOUL.md workspace files", () => {
+  it("subagents (ops, analyst) have SOUL.md workspace files", () => {
     const yaml = readFileSync(YAML_PATH, "utf-8");
     const result = parseAndValidateTeam(yaml);
     expect(result.success).toBe(true);
     if (!result.success) return;
 
-    for (const id of ["admin-exec", "config-exec", "analyst", "architect", "db-analyst"]) {
+    for (const id of ["ops", "analyst"]) {
       const agent = result.data.agents.find((a) => a.id === id);
       expect(agent).toBeDefined();
       expect(agent!.files?.["SOUL.md"]).toBeDefined();
@@ -78,7 +74,7 @@ describe("cp-system.team.yaml", () => {
     }
   });
 
-  it("has spawn links from system-pilot to all subagents", () => {
+  it("has spawn links from system-pilot to the 2 subagents", () => {
     const yaml = readFileSync(YAML_PATH, "utf-8");
     const result = parseAndValidateTeam(yaml);
     expect(result.success).toBe(true);
@@ -88,10 +84,6 @@ describe("cp-system.team.yaml", () => {
       .filter((l) => l.source === "system-pilot" && l.type === "spawn")
       .map((l) => l.target);
 
-    expect(spawnTargets).toContain("admin-exec");
-    expect(spawnTargets).toContain("config-exec");
-    expect(spawnTargets).toContain("analyst");
-    expect(spawnTargets).toContain("architect");
-    expect(spawnTargets).toContain("db-analyst");
+    expect(spawnTargets.sort()).toEqual(["analyst", "ops"]);
   });
 });
