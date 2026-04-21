@@ -6,10 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
-## [Unreleased]
+## [0.80.8] — 2026-04-21
 
 ### Added
-- **ServerRegistry abstraction** — introduces `ServerRegistry` as the single entry point for "which server serves which resource". Community ships `SingleServerRegistry` (always local); Enterprise will plug a `FederatedServerRegistry` via the `multi-server` capability. See [docs/architecture/server-registry.md](docs/architecture/server-registry.md) and the H3 plan in `docs/superpowers/plans/`.
+- **`ServerRegistry` abstraction** (`src/server/registry.ts`) — single entry point for "which server serves which resource". Community ships `SingleServerRegistry` (always local); Enterprise will plug a `FederatedServerRegistry` via the `multi-server` capability. Bootstrapped from `withContext()` and the dashboard server entry, consumed by CLI commands (`init`, `update`, `dashboard`) and runtime tools. This is hook **H3** of the Enterprise Edition preparation (Phase 0). See `ai-docs/plan-enterprise-edition.md` and `docs/architecture/server-registry.md`.
 
 ---
 
