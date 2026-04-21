@@ -17,6 +17,7 @@ export interface ServerNode {
 export interface ResourceRef {
   kind: "instance" | "agent" | "session";
   id: string;
+  /** Enterprise-only slot — carries the organization id through the routing pipeline. Community ignores this field. */
   orgId?: string;
 }
 
@@ -45,10 +46,16 @@ export interface ServerRegistry {
   route(resource: ResourceRef): ServerNode;
 }
 
-const SINGLE_BRAND: unique symbol = Symbol("single-server-registry");
+export const SINGLE_SERVER_BRAND: unique symbol = Symbol("single-server-registry");
 
 export class SingleServerRegistry implements ServerRegistry {
-  readonly [SINGLE_BRAND] = true;
+  /**
+   * Brand symbol used by `isSingleRegistry` to bypass the capability gate in
+   * `registerServerRegistry`. Presence of this symbol on an instance signals
+   * that the registry is a single-server (Community) implementation and does
+   * not require the `multi-server` capability.
+   */
+  readonly [SINGLE_SERVER_BRAND] = true;
   private readonly node: ServerNode;
 
   constructor(db: Database.Database, connection: ServerConnection) {
@@ -60,7 +67,7 @@ export class SingleServerRegistry implements ServerRegistry {
       );
     }
     this.node = {
-      id: String(row.id),
+      id: String(row.id), // ServerNode.id is typed as string (UUID-ready for Enterprise); SQLite returns a number, hence the cast.
       kind: "local",
       hostname: row.hostname,
       connection,
@@ -83,7 +90,7 @@ export class SingleServerRegistry implements ServerRegistry {
 }
 
 function isSingleRegistry(impl: ServerRegistry): boolean {
-  return (impl as unknown as Record<symbol, unknown>)[SINGLE_BRAND] === true;
+  return (impl as unknown as Record<symbol, unknown>)[SINGLE_SERVER_BRAND] === true;
 }
 
 let current: ServerRegistry | null = null;
@@ -93,6 +100,12 @@ let locked = false;
  * Register the ServerRegistry implementation. Must be called exactly once
  * during bootstrap. A second call throws a `ClawPilotError` with code
  * `SERVER_REGISTRY_LOCKED`.
+ *
+ * Accepts `SingleServerRegistry` instances without any capability check.
+ * Any other `ServerRegistry` implementation is only accepted when
+ * `capabilities.has('multi-server')` returns true. Enterprise implementations
+ * that wrap or extend `SingleServerRegistry` inherit the brand automatically;
+ * standalone Enterprise implementations must rely on the capability gate.
  */
 export function registerServerRegistry(impl: ServerRegistry): void {
   if (locked) {

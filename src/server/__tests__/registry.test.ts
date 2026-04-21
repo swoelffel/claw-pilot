@@ -14,13 +14,6 @@ import { initDatabase } from "../../db/schema.js";
 import { Registry } from "../../core/registry.js";
 import { LocalConnection } from "../local.js";
 
-const fakeNode: ServerNode = {
-  id: "1",
-  kind: "local",
-  hostname: "test-host",
-  connection: {} as unknown as ServerConnection,
-};
-
 function makeBootstrappedDb() {
   const db = initDatabase(":memory:");
   new Registry(db).upsertLocalServer("testhost", "/tmp/home");
@@ -103,6 +96,13 @@ describe("SingleServerRegistry", () => {
 
 describe("capability gate on registerServerRegistry", () => {
   afterEach(() => resetServerRegistry());
+
+  const fakeNode: ServerNode = {
+    id: "1",
+    kind: "local",
+    hostname: "test-host",
+    connection: {} as unknown as ServerConnection,
+  };
 
   it("allows SingleServerRegistry without multi-server capability", () => {
     const db = makeBootstrappedDb();
