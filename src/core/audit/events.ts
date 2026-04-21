@@ -59,6 +59,33 @@ export type AuditEvent =
       by: string;
     }
   | {
+      kind: "tool.denied";
+      agentId: string;
+      tool: string;
+      /** Reason returned by the denying plugin (or thrown error message). */
+      reason: string;
+      /** SHA-256 of the canonical JSON of the tool arguments. */
+      argsHash: string;
+      userId?: string;
+    }
+  | {
+      kind: "tool.approval_required";
+      agentId: string;
+      tool: string;
+      /** Backend identifier of the approval request (e.g. `"slack"`). */
+      approvalKind: string;
+      argsHash: string;
+      userId?: string;
+    }
+  | {
+      kind: "tool.args_modified";
+      agentId: string;
+      tool: string;
+      /** SHA-256 of the canonical JSON of the mutated arguments. */
+      argsHash: string;
+      userId?: string;
+    }
+  | {
       kind: "plugin.rejected";
       /** Canonical absolute path of the rejected plugin file. */
       path: string;

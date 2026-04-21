@@ -42,9 +42,16 @@ vi.mock("../part.js", () => ({
 }));
 
 vi.mock("../../plugin/hooks.js", () => ({
-  triggerToolBeforeCall: vi.fn().mockResolvedValue(undefined),
   triggerToolAfterCall: vi.fn().mockResolvedValue(undefined),
   getRegisteredHooks: vi.fn().mockReturnValue([]),
+}));
+
+vi.mock("../../plugin/dispatcher.js", () => ({
+  dispatchToolBeforeCall: vi
+    .fn()
+    .mockImplementation((ctx: { args: unknown }) =>
+      Promise.resolve({ decision: { action: "allow" }, effectiveArgs: ctx.args }),
+    ),
 }));
 
 vi.mock("../../memory/search-tool.js", () => ({
@@ -147,7 +154,8 @@ vi.mock("../../tool/registry.js", () => ({
 // Import the module under test AFTER all mocks are set up
 import { buildToolSet } from "../tool-set-builder.js";
 import { updatePartState } from "../part.js";
-import { triggerToolBeforeCall, triggerToolAfterCall } from "../../plugin/hooks.js";
+import { triggerToolAfterCall } from "../../plugin/hooks.js";
+import { dispatchToolBeforeCall } from "../../plugin/dispatcher.js";
 import { invalidateWorkspaceCache } from "../workspace-cache.js";
 import { markDirty } from "../system-prompt-dirty.js";
 import { DoomLoopDetected, MessageUpdated } from "../../bus/events.js";
@@ -340,7 +348,7 @@ describe("buildToolSet", () => {
     expect(set).not.toHaveProperty("create_artifact");
   });
 
-  // 10. Tool execution calls triggerToolBeforeCall and triggerToolAfterCall
+  // 10. Tool execution dispatches tool.beforeCall decision + triggers tool.afterCall
   it("calls plugin hooks before and after tool execution", async () => {
     const set = await callBuild([makeTool("read")]);
     const readTool = set["read"] as {
@@ -348,7 +356,7 @@ describe("buildToolSet", () => {
     };
     await readTool.execute({}, { toolCallId: "tc-1" });
 
-    expect(triggerToolBeforeCall).toHaveBeenCalledOnce();
+    expect(dispatchToolBeforeCall).toHaveBeenCalledOnce();
     expect(triggerToolAfterCall).toHaveBeenCalledOnce();
   });
 
