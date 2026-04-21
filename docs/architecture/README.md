@@ -64,6 +64,7 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
 | **[Audit Event Bus](audit-event-bus.md)** | Structured `emitAudit()` taxonomy, file + DB default sinks, `audit-siem` capability gate for SIEM sinks, canonical `argsHash` | Instrumenting a new security event or plugging a SIEM sink |
 | **[Plugin Signature](plugin-signature.md)** | `PluginVerifier` extension point, `NullPluginVerifier` default, `plugin-signature` capability gate, pre-import hash-and-verify contract | Adding a signature backend (CA, cosign) or touching `loadPluginFromFile()` |
 | **[Plugin API](plugin-api.md)** | Hook catalogue, `ToolCallDecision` contract (allow / deny / modify-args / require-approval), `dispatchToolBeforeCall`, audit events `tool.denied` / `tool.approval_required` / `tool.args_modified` | Writing a plugin, enforcing policy/approval/DLP on tool calls |
+| **[Discipline Gates](discipline-gates.md)** | Automated R1/R2/R3/R5 enforcement — ESLint plugin + R2 schema script + R3 commit-trailer script + sync-main-to-develop workflow | Touching Community ↔ Enterprise firewall rules, adding new tables or frozen-path changes |
 | **[SSE Architecture](../sse-architecture.md)** | Real-time streaming (3 SSE + 1 WS), reconnection, auth | Live features |
 
 ### Related docs

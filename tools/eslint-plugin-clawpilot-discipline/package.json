@@ -1,0 +1,8 @@
+{
+  "name": "eslint-plugin-clawpilot-discipline",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "description": "Custom ESLint rules enforcing ClawPilot discipline R1 (no-enterprise-flag) and R5 (no-direct-secret-access)."
+}

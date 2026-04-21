@@ -115,3 +115,24 @@ jobs:
 
       - name: Build (CLI + UI)
         run: pnpm build
+
+  # ── Job 6: Discipline gates (R1/R2/R3/R5 — Community↔Enterprise firewall) ─
+  discipline-gates:
+    name: Discipline Gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0 # R2/R3 need git history vs base branch
+      - uses: pnpm/action-setup@078e9d416474b29c0c387560859308974f7e9c53 # v6.0.1
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+
+      - name: Discipline gates (R1 + R2 + R3 + R5)
+        run: pnpm lint:discipline:ci
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
