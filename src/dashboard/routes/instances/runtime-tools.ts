@@ -169,7 +169,7 @@ export function registerRuntimeToolRoutes(app: Hono, deps: RouteDeps): void {
 
       const ticks = rows.map((row) => {
         // Priority: finish_reason (always set) → part metadata → text fallback
-        let status: "ok" | "alert" = "ok";
+        let status: "ok" | "alert";
         if (row.finishReason?.startsWith("heartbeat:")) {
           const hbStatus = row.finishReason.slice("heartbeat:".length);
           status = hbStatus === "ok" ? "ok" : "alert";

@@ -30,12 +30,17 @@ export const WriteTool = Tool.define("write", {
     // Ensure parent directory exists
     await fs.mkdir(path.dirname(filePath), { recursive: true });
 
-    const existed = await fs
-      .access(filePath)
-      .then(() => true)
-      .catch(() => false);
-
-    await fs.writeFile(filePath, params.content, "utf-8");
+    // Try exclusive create first; on EEXIST, fall back to overwrite.
+    // This turns the "existed?" check into a single atomic operation —
+    // no TOCTOU window between the check and the write.
+    let existed = false;
+    try {
+      await fs.writeFile(filePath, params.content, { encoding: "utf-8", flag: "wx" });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      existed = true;
+      await fs.writeFile(filePath, params.content, "utf-8");
+    }
 
     const title = path.basename(filePath);
     const output = existed ? "Wrote file successfully." : "Created file successfully.";

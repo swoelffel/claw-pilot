@@ -366,12 +366,30 @@ export function registerAgentSkillsRoutes(app: Hono, _deps: RouteDeps): void {
       await fs.mkdir(targetDir, { recursive: true });
 
       let filesWritten = 0;
+      const resolvedTargetDir = path.resolve(targetDir);
       for (const file of files) {
         try {
+          // Defense in depth: reject any relativePath that escapes targetDir
+          // (absolute, traversal, null byte). GitHub Contents API is the source
+          // of truth here, but we don't want to trust it unconditionally.
+          if (
+            typeof file.relativePath !== "string" ||
+            file.relativePath.length === 0 ||
+            file.relativePath.includes("\0") ||
+            path.isAbsolute(file.relativePath)
+          ) {
+            continue;
+          }
+          const destPath = path.resolve(resolvedTargetDir, file.relativePath);
+          if (
+            destPath !== resolvedTargetDir &&
+            !destPath.startsWith(resolvedTargetDir + path.sep)
+          ) {
+            continue;
+          }
           const res = await fetchWithTimeout(file.downloadUrl, GITHUB_FETCH_TIMEOUT_MS);
           if (!res.ok) continue;
           const content = await res.text();
-          const destPath = path.join(targetDir, file.relativePath);
           await fs.mkdir(path.dirname(destPath), { recursive: true });
           await fs.writeFile(destPath, content, "utf-8");
           filesWritten++;

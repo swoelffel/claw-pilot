@@ -95,20 +95,25 @@ describe("GET /api/instances/:slug/workspace/download", () => {
     );
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/plain");
-    expect(res.headers.get("content-disposition")).toBe('attachment; filename="hello.txt"');
+    expect(res.headers.get("content-disposition")).toBe(
+      "attachment; filename=\"hello.txt\"; filename*=UTF-8''hello.txt",
+    );
     expect(res.headers.get("content-length")).toBe("11");
     const body = await res.text();
     expect(body).toBe("hello world");
   });
 
-  it("escapes double quotes in content-disposition filename", async () => {
+  it("URL-encodes special characters in content-disposition filename", async () => {
     const file = path.join(stateDir, 'a"b.txt');
     await fs.writeFile(file, "x");
     const res = await request(
       `/api/instances/test/workspace/download?path=${encodeURIComponent(file)}`,
     );
     expect(res.status).toBe(200);
-    expect(res.headers.get("content-disposition")).toBe('attachment; filename="a\\"b.txt"');
+    // RFC 5987/6266: percent-encode to prevent header injection and handle unicode
+    expect(res.headers.get("content-disposition")).toBe(
+      "attachment; filename=\"a%22b.txt\"; filename*=UTF-8''a%22b.txt",
+    );
   });
 
   it("resolves symlinks before traversal check (blocks symlink escape)", async () => {
