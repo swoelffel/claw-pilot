@@ -2,6 +2,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { initDatabase } from "../../../../db/schema.js";
 import { createSystemTools } from "../tools.js";
+import {
+  bootstrapTestRegistry,
+  resetServerRegistry,
+} from "../../../../server/__tests__/_helpers/with-registry.js";
 import type Database from "better-sqlite3";
 
 describe("system-tools plugin", () => {
@@ -9,11 +13,12 @@ describe("system-tools plugin", () => {
 
   beforeAll(() => {
     db = initDatabase(":memory:");
-    // Seed a local server (required by some tools)
-    db.prepare("INSERT INTO servers (hostname, openclaw_home) VALUES (?, ?)").run(
-      "localhost",
-      "/tmp/test",
-    );
+    bootstrapTestRegistry(db, "localhost", "/tmp/test");
+  });
+
+  afterAll(() => {
+    resetServerRegistry();
+    db.close();
   });
 
   afterAll(() => {

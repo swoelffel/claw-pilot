@@ -8,7 +8,8 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import { Tool } from "../../tool/tool.js";
 import { Registry } from "../../../core/registry.js";
-import { LocalConnection } from "../../../server/local.js";
+import { serverRegistry } from "../../../server/registry.js";
+import type { ServerConnection } from "../../../server/connection.js";
 import { Lifecycle } from "../../../core/lifecycle.js";
 import { Provisioner } from "../../../core/provisioner.js";
 import { Destroyer } from "../../../core/destroyer.js";
@@ -71,7 +72,7 @@ function maskSensitiveColumns(rows: unknown[]): unknown[] {
 interface ToolDeps {
   db: Database.Database;
   registry: Registry;
-  conn: LocalConnection;
+  conn: ServerConnection;
   namedKeys: NamedKeyRepository;
   getXdgDir: () => Promise<string>;
 }
@@ -936,7 +937,7 @@ function createSystemStatusTools(deps: ToolDeps): Tool.Info[] {
 /** Create all system tools that operate directly on the registry DB. */
 export function createSystemTools(db: Database.Database, _instanceSlug: InstanceSlug): Tool.Info[] {
   const registry = new Registry(db);
-  const conn = new LocalConnection();
+  const conn = serverRegistry.getLocal().connection;
   const namedKeys = new NamedKeyRepository(db);
 
   // Lifecycle/health deps -- resolve xdgRuntimeDir lazily
