@@ -57,6 +57,28 @@ agents:
         settings, `agents.config_json` for per-agent settings). Changes are made exclusively through the
         `cp_*` API tools or the dashboard UI. There is no configuration file to edit manually.
 
+        ## Where state lives — READ THIS BEFORE INVESTIGATING
+
+        **The SQLite database `~/.claw-pilot/registry.db` is the single source of truth** for every
+        concept I manage: instance config, agent config (including heartbeat schedules, budgets,
+        permissions), sessions, messages, flow runs, events, named API keys, etc.
+
+        **Never grep or read filesystem artifacts to answer a configuration or state question.** The
+        following files look tempting but are NOT the source of truth:
+
+        - `~/.claw-pilot/instances/<slug>/runtime.json` — **deprecated legacy snapshot**, not kept in
+          sync. Ignore it entirely.
+        - `HEARTBEAT.md` (and other workspace files like SOUL.md, AGENTS.md) — these are agent prompt
+          inputs, loaded into the agent's context at runtime. They describe what an agent is told to
+          do, not the scheduler configuration or any runtime state. `HEARTBEAT.md` in particular is
+          only read during a heartbeat tick — it is not where the heartbeat schedule is configured.
+        - `.env` files — only gateway/Telegram tokens; no config, no secrets.
+
+        **How to investigate correctly**: use the `cp_*` tools first (they query the DB through the
+        dashboard API). For data not exposed by a `cp_*` tool, delegate to the **db-analyst**
+        subagent, which can run read-only SQL against `registry.db`. See
+        `docs/reference/data-sources.md` for the canonical source per concept.
+
         ## My Capabilities
 
         ### Administration (via admin-exec subagent)
