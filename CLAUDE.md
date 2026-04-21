@@ -29,6 +29,14 @@ All documentation and code comments must be written in **English**.
 Commit messages follow conventional commits in English.
 Exception: DB migration context and UI localization strings may reference French for historical reasons.
 
+## Contribution workflow
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contributor guide. The three non-negotiable rules:
+
+1. **Branch off `develop`, PR against `develop`** — never `main`. `main` is reserved for release PRs.
+2. **Never bump `package.json` version** in a feature PR — reserved for the release PR (`develop → main`).
+3. **Never skip lefthook hooks** (`--no-verify`) — CI enforces the same checks and will reject the PR.
+
 ## Key commands
 
 ```sh
