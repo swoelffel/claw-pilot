@@ -1,7 +1,5 @@
-import * as path from "node:path";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { readEnvVar, writeEnvVar } from "./dotenv.js";
-import { getDataDir } from "./platform.js";
+import { getSecretProvider } from "../core/secrets/index.js";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16;
@@ -31,26 +29,38 @@ export function generateDashboardToken(): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Ensure MASTER_ENCRYPTION_KEY is available in process.env.
- * Resolution: process.env → ~/.claw-pilot/.env → auto-generate.
- * Returns true if the key was freshly generated.
+ * Ensure MASTER_ENCRYPTION_KEY is available in process.env, delegating
+ * all persistence to the registered `SecretProvider` (R5 — no direct
+ * `process.env` / `.env` access for secrets). Returns true if the key
+ * was freshly generated.
+ *
+ * Extension point: Enterprise providers (Vault, AWS SM) hydrate the key
+ * from their backend via the same contract — `has()` / `get()` / `set()`.
  */
 export async function ensureMasterEncryptionKey(): Promise<boolean> {
   if (isCryptoAvailable()) return false;
 
-  const envPath = path.join(getDataDir(), ".env");
   const envVar = "MASTER_ENCRYPTION_KEY";
+  const provider = getSecretProvider();
 
-  // Check global .env file
-  const existing = readEnvVar(envPath, envVar);
-  if (existing && existing.length >= 64) {
-    process.env[envVar] = existing;
-    return false;
+  if (await provider.has(envVar)) {
+    const existing = await provider.get(envVar);
+    if (existing.length >= 64) {
+      process.env[envVar] = existing;
+      return false;
+    }
   }
 
-  // Generate and persist
+  // Generate and persist via the provider. `EnvSecretProvider.set()`
+  // writes to `<stateDir>/.env` and mirrors into process.env; other
+  // providers (Enterprise) are free to skip the mirror.
   const key = generateSecureHex(32);
-  await writeEnvVar(envPath, envVar, key);
+  if (!provider.set) {
+    throw new Error(
+      `SecretProvider "${provider.kind}" cannot persist MASTER_ENCRYPTION_KEY (set() not implemented)`,
+    );
+  }
+  await provider.set(envVar, key);
   process.env[envVar] = key;
   return true;
 }
@@ -60,8 +70,13 @@ export async function ensureMasterEncryptionKey(): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 /**
- * Check whether the MASTER_ENCRYPTION_KEY env var is set.
+ * Check whether the MASTER_ENCRYPTION_KEY is hydrated in process.env.
  * Named API key feature requires this to be available.
+ *
+ * R5 snapshot exemption — `ensureMasterEncryptionKey()` primes process.env
+ * via `secretProvider.set()`; subsequent reads stay synchronous to keep
+ * `encrypt()` / `decrypt()` off the async cascade on the hot path. The
+ * H9 `no-direct-secret-access` lint rule allowlists this file.
  */
 export function isCryptoAvailable(): boolean {
   return (

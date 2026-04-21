@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [Unreleased]
+
+### Added
+- **SecretProvider abstraction (H4)** — new `src/core/secrets/` module introduces a pluggable `SecretProvider` interface with a Community `EnvSecretProvider` default. Every secret read now goes through `secretProvider.get(...)`: master encryption key, Telegram bot token, web-chat token, internal runtime token, and provider API keys for model discovery. Gated by the `vault-secrets` capability so Enterprise can drop in a Vault / AWS SM / Azure Key Vault implementation without touching frozen paths (R3). Landing step toward enforcement of discipline rule R5 — the H9 lint rule `no-direct-secret-access` will mechanically forbid re-introducing a direct `process.env` secret read. See `docs/architecture/secret-provider.md`.
+
+---
+
 ## [0.80.9] — 2026-04-21
 
 ### Fixed

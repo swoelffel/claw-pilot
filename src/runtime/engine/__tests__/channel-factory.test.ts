@@ -7,6 +7,11 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createChannels } from "../channel-factory.js";
+import { registerSecretProvider, resetSecretProvider } from "../../../core/secrets/index.js";
+import { EnvSecretProvider } from "../../../core/secrets/providers/env.js";
+import * as os from "node:os";
+import * as path from "node:path";
+import * as fs from "node:fs";
 
 // Mock channel constructors — must use class syntax for `new` to work
 vi.mock("../../channel/web-chat.js", () => {
@@ -62,27 +67,39 @@ function makeConfig(
   };
 }
 
+let tmpStateDir: string;
+
 beforeEach(() => {
   vi.clearAllMocks();
   // Clean env vars
   delete process.env["CLAW_RUNTIME_WEB_TOKEN_TEST_INST"];
   delete process.env["CLAW_RUNTIME_WEB_TOKEN"];
+  // Register an isolated EnvSecretProvider for each test
+  resetSecretProvider();
+  tmpStateDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-secrets-test-"));
+  registerSecretProvider(new EnvSecretProvider(tmpStateDir));
 });
 
 afterEach(() => {
   delete process.env["CLAW_RUNTIME_WEB_TOKEN_TEST_INST"];
   delete process.env["CLAW_RUNTIME_WEB_TOKEN"];
+  resetSecretProvider();
+  try {
+    fs.rmSync(tmpStateDir, { recursive: true, force: true });
+  } catch {
+    // ignore
+  }
 });
 
 describe("createChannels", () => {
-  it("returns empty array when no channels are enabled", () => {
-    const channels = createChannels(makeConfig(), "test-inst" as any, fakeDb);
+  it("returns empty array when no channels are enabled", async () => {
+    const channels = await createChannels(makeConfig(), "test-inst" as any, fakeDb);
     expect(channels).toEqual([]);
   });
 
-  it("creates WebChatChannel when webChat is enabled", () => {
+  it("creates WebChatChannel when webChat is enabled", async () => {
     const config = makeConfig({ webChat: { enabled: true, maxSessions: 10 } });
-    const channels = createChannels(config, "test-inst" as any, fakeDb);
+    const channels = await createChannels(config, "test-inst" as any, fakeDb);
     expect(channels).toHaveLength(1);
     expect(MockWebChatChannel).toHaveBeenCalledWith({
       port: 19142,
@@ -91,7 +108,7 @@ describe("createChannels", () => {
     });
   });
 
-  it("creates TelegramChannel when telegram is enabled", () => {
+  it("creates TelegramChannel when telegram is enabled", async () => {
     const config = makeConfig({
       telegram: {
         enabled: true,
@@ -102,7 +119,7 @@ describe("createChannels", () => {
         groupPolicy: "deny",
       },
     });
-    const channels = createChannels(config, "test-inst" as any, fakeDb);
+    const channels = await createChannels(config, "test-inst" as any, fakeDb);
     expect(channels).toHaveLength(1);
     expect(MockTelegramChannel).toHaveBeenCalledWith({
       botTokenEnvVar: "MY_BOT_TOKEN",
@@ -115,7 +132,7 @@ describe("createChannels", () => {
     });
   });
 
-  it("creates both channels when both are enabled", () => {
+  it("creates both channels when both are enabled", async () => {
     const config = makeConfig({
       webChat: { enabled: true, maxSessions: 5 },
       telegram: {
@@ -127,41 +144,41 @@ describe("createChannels", () => {
         groupPolicy: "deny",
       },
     });
-    const channels = createChannels(config, "test-inst" as any, fakeDb);
+    const channels = await createChannels(config, "test-inst" as any, fakeDb);
     expect(channels).toHaveLength(2);
   });
 
-  it("uses slug-specific env var for web-chat token", () => {
+  it("uses slug-specific env var for web-chat token", async () => {
     process.env["CLAW_RUNTIME_WEB_TOKEN_TEST_INST"] = "my-secret-token";
     const config = makeConfig({ webChat: { enabled: true, maxSessions: 5 } });
-    createChannels(config, "test-inst" as any, fakeDb);
+    await createChannels(config, "test-inst" as any, fakeDb);
     expect(MockWebChatChannel).toHaveBeenCalledWith(
       expect.objectContaining({ token: "my-secret-token" }),
     );
   });
 
-  it("falls back to generic CLAW_RUNTIME_WEB_TOKEN env var", () => {
+  it("falls back to generic CLAW_RUNTIME_WEB_TOKEN env var", async () => {
     process.env["CLAW_RUNTIME_WEB_TOKEN"] = "generic-token";
     const config = makeConfig({ webChat: { enabled: true, maxSessions: 5 } });
-    createChannels(config, "test-inst" as any, fakeDb);
+    await createChannels(config, "test-inst" as any, fakeDb);
     expect(MockWebChatChannel).toHaveBeenCalledWith(
       expect.objectContaining({ token: "generic-token" }),
     );
   });
 
-  it("falls back to dev token when no env var is set", () => {
+  it("falls back to dev token when no env var is set", async () => {
     const config = makeConfig({ webChat: { enabled: true, maxSessions: 5 } });
-    createChannels(config, "test-inst" as any, fakeDb);
+    await createChannels(config, "test-inst" as any, fakeDb);
     expect(MockWebChatChannel).toHaveBeenCalledWith(
       expect.objectContaining({ token: "dev-token-test-inst" }),
     );
   });
 
-  it("slug-specific env var takes priority over generic", () => {
+  it("slug-specific env var takes priority over generic", async () => {
     process.env["CLAW_RUNTIME_WEB_TOKEN_TEST_INST"] = "specific";
     process.env["CLAW_RUNTIME_WEB_TOKEN"] = "generic";
     const config = makeConfig({ webChat: { enabled: true, maxSessions: 5 } });
-    createChannels(config, "test-inst" as any, fakeDb);
+    await createChannels(config, "test-inst" as any, fakeDb);
     expect(MockWebChatChannel).toHaveBeenCalledWith(expect.objectContaining({ token: "specific" }));
   });
 });

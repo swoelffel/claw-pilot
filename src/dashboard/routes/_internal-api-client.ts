@@ -20,7 +20,7 @@ export async function callRuntimeApi<T>(
   options?: { timeoutMs?: number },
 ): Promise<T> {
   const port = resolveActualInternalApiPort(slug);
-  const token = resolveInternalApiToken(slug);
+  const token = await resolveInternalApiToken(slug);
   const url = `http://127.0.0.1:${port}${path}`;
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
@@ -69,7 +69,7 @@ export async function publishRuntimeEvent(
   payload: Record<string, unknown>,
 ): Promise<void> {
   const port = resolveActualInternalApiPort(slug);
-  const token = resolveInternalApiToken(slug);
+  const token = await resolveInternalApiToken(slug);
   const url = `http://127.0.0.1:${port}/internal/events/publish`;
 
   try {
