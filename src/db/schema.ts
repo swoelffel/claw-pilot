@@ -1521,6 +1521,41 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v39: rt_audit_events — structured security audit bus (H6).
+    //
+    // Separate from the legacy `events` table (which tracks per-instance
+    // lifecycle messages with a free-form `detail` string) and from `rt_events`
+    // (runtime bus messages for the Activity Console). This table is the
+    // canonical store for security-relevant events: auth, permission denials,
+    // secret access, named-key mutations, tool calls.
+    //
+    // `org_id` carries the Enterprise multi-tenancy slot from day one (R2);
+    // Community leaves it NULL. `payload` holds the full envelope JSON as
+    // source of truth — the first-class columns exist for index efficiency.
+    version: 39,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS rt_audit_events (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind       TEXT NOT NULL,
+          timestamp  TEXT NOT NULL,
+          server_id  TEXT NOT NULL,
+          org_id     TEXT NULL,
+          user_id    TEXT NULL,
+          payload    TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_audit_events_kind_ts
+          ON rt_audit_events(kind, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_rt_audit_events_org_ts
+          ON rt_audit_events(org_id, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_rt_audit_events_user_ts
+          ON rt_audit_events(user_id, timestamp);
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 // src/core/secrets/index.ts
 import { ClawPilotError } from "../../lib/errors.js";
 import { capabilities } from "../capabilities.js";
+import { emitAudit } from "../audit/emitter.js";
 
 /**
  * Pluggable contract for reading and (optionally) writing infrastructure
@@ -14,6 +15,24 @@ import { capabilities } from "../capabilities.js";
  *   - Per-instance: composite `<KIND>_TOKEN:<slug>`
  *     (e.g. `TELEGRAM_BOT_TOKEN:my-instance`)
  */
+/** Per-call options for `SecretProvider.get()`. */
+export interface SecretGetOptions {
+  /**
+   * When true, emits a `secret.access` audit event after a successful read.
+   * Default false — boot-time reads would otherwise spam the audit log.
+   * Enterprise wrappers (Vault / AWS SM) typically force this to true.
+   *
+   * Instrumentation checklist: see
+   * `docs/architecture/audit-event-bus.md#secret.access-opt-in`.
+   */
+  audit?: boolean;
+  /**
+   * Actor id recorded in the audit envelope (`userId` or `system:<context>`).
+   * Ignored when `audit` is false. Defaults to `"system"`.
+   */
+  by?: string;
+}
+
 export interface SecretProvider {
   /** Short identifier of the backing implementation. */
   readonly kind: string;
@@ -24,8 +43,12 @@ export interface SecretProvider {
   /**
    * Returns the secret value. Throws `SECRET_NOT_FOUND` if the secret is
    * absent — callers must use `has()` first when absence is expected.
+   *
+   * `opts.audit = true` emits a `secret.access` audit event (H6) after a
+   * successful read. The emit is the *proxy*'s responsibility — concrete
+   * implementations need not thread the option through.
    */
-  get(name: string): Promise<string>;
+  get(name: string, opts?: SecretGetOptions): Promise<string>;
 
   /**
    * Persist a secret. Used for auto-generated secrets (dashboard token,
@@ -129,7 +152,13 @@ export const secretProvider: SecretProvider = {
     return getSecretProvider().kind;
   },
   has: (name) => getSecretProvider().has(name),
-  get: (name) => getSecretProvider().get(name),
+  get: async (name, opts) => {
+    const value = await getSecretProvider().get(name);
+    if (opts?.audit) {
+      emitAudit({ kind: "secret.access", name, by: opts.by ?? "system" });
+    }
+    return value;
+  },
   set: (name, value) => {
     const p = getSecretProvider();
     if (!p.set) {

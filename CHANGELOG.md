@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Audit Event Bus (H6)** — new `src/core/audit/` module introduces a typed `emitAudit()` API and a seven-variant taxonomy (`auth.login`, `auth.logout`, `auth.failed`, `permission.denied`, `secret.access`, `agent.tool_call`, `named_key.mutation`). Two default Community sinks ship at bootstrap: `FileAuditSink` writes a daily-rotated JSONL to `<stateDir>/audit/` (intended for `tail -f` and ops inspection) and `DbAuditSink` persists to the new `rt_audit_events` table (migration v39) with `org_id` slotted from day one. Additional sinks require the `audit-siem` capability, so Enterprise can register Splunk / Datadog / Elastic sinks without patching a frozen path. `emitAudit()` is sync-non-blocking (100-event threshold or 1s timer); `shutdownAuditBus()` is wired into every SIGTERM / SIGINT handler so the tail of events isn't lost. Frozen paths instrumented in this release: `src/dashboard/middleware/permission.ts`, `src/dashboard/routes/auth.ts`, `src/dashboard/routes/named-keys.ts`, `src/runtime/session/prompt-loop.ts`. `secret.access` stays opt-in via `SecretProvider.get(name, { audit: true, by })` — Enterprise wrappers force it on; Community emits 0 secret-access events at boot. Tool-call envelopes carry `argsHash = sha256(canonicalize(args))` with sorted-key JSON, so SIEMs can dedup identical calls regardless of model-side property order. See `docs/architecture/audit-event-bus.md`.
+
+---
+
 ## [0.80.10] — 2026-04-21
 
 ### Added

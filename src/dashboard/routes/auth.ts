@@ -4,6 +4,7 @@ import type { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { z } from "zod";
 import { authenticate } from "../../core/auth/index.js";
+import { emitAudit } from "../../core/audit/index.js";
 import { constants } from "../../lib/constants.js";
 import { apiError } from "../route-deps.js";
 import type { RouteDeps } from "../route-deps.js";
@@ -44,21 +45,28 @@ export function registerAuthRoutes(app: Hono, deps: RouteDeps, token: string): v
     // encapsulates the user lookup and credential verification; routing
     // stays agnostic so Enterprise SSO can plug in additional kinds without
     // touching this handler.
+    const ip =
+      c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
+      c.req.header("x-real-ip") ??
+      "unknown";
+    const ua = c.req.header("user-agent") ?? null;
+
     const result = await authenticate("password", { username, password });
 
     if (!result.ok) {
       registry.logEvent(null, "auth_login_failed", `username=${username}`);
+      emitAudit({
+        kind: "auth.failed",
+        attemptedUsername: username,
+        reason: "invalid_credentials",
+        ...(ip !== "unknown" ? { ip } : {}),
+      });
       return apiError(c, 401, "INVALID_CREDENTIALS", "Invalid credentials");
     }
 
     const user = result.user;
 
     // Create session
-    const ip =
-      c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-      c.req.header("x-real-ip") ??
-      "unknown";
-    const ua = c.req.header("user-agent") ?? null;
     const sessionId = sessionStore.create(user.id, ip, ua ?? undefined);
 
     // Set HttpOnly cookie — Secure only when behind HTTPS proxy
@@ -72,6 +80,14 @@ export function registerAuthRoutes(app: Hono, deps: RouteDeps, token: string): v
     });
 
     registry.logEvent(null, "auth_login_success", `username=${username}`);
+    emitAudit({
+      kind: "auth.login",
+      userId: String(user.id),
+      provider: "password",
+      success: true,
+      ...(ip !== "unknown" ? { ip } : {}),
+      ...(ua ? { userAgent: ua } : {}),
+    });
 
     return c.json({ ok: true, token });
   });
@@ -84,6 +100,12 @@ export function registerAuthRoutes(app: Hono, deps: RouteDeps, token: string): v
   app.post("/api/auth/logout", (c) => {
     const sid = getCookie(c, constants.SESSION_COOKIE_NAME);
     if (sid) {
+      // Resolve userId BEFORE invalidating the session so the audit envelope
+      // carries the identity that just logged out.
+      const session = sessionStore.validate(sid);
+      if (session) {
+        emitAudit({ kind: "auth.logout", userId: String(session.userId) });
+      }
       sessionStore.delete(sid);
     }
     deleteCookie(c, constants.SESSION_COOKIE_NAME, { path: "/" });

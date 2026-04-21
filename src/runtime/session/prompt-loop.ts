@@ -48,6 +48,7 @@ import { getAgent } from "../agent/registry.js";
 import type { PluginInput } from "../plugin/types.js";
 import { logger } from "../../lib/logger.js";
 import { getRuntimeVersion } from "../_runtime-version.js";
+import { emitAudit, hashArgs } from "../../core/audit/index.js";
 import {
   createStreamingState,
   finalizeReasoning,
@@ -624,10 +625,17 @@ async function executeStream(opts: ExecuteStreamInput): Promise<ExecuteStreamRes
       if (chunk.type === "text-delta") handleTextDelta(chunkCtx, chunk.text);
       if (chunk.type === "reasoning-delta") handleReasoningDelta(chunkCtx, chunk.text, chunk.id);
       if (chunk.type === "tool-call") {
+        const toolInput = "input" in chunk ? chunk.input : undefined;
         handleToolCallChunk(chunkCtx, {
           toolCallId: chunk.toolCallId,
           toolName: chunk.toolName,
-          input: "input" in chunk ? chunk.input : undefined,
+          input: toolInput,
+        });
+        emitAudit({
+          kind: "agent.tool_call",
+          agentId: agentConfig.id,
+          tool: chunk.toolName,
+          argsHash: hashArgs(toolInput ?? {}),
         });
       }
       if (chunk.type === "tool-result") {
