@@ -25,7 +25,18 @@
 
 ## Checklist
 
-- [ ] I ran `pnpm typecheck && pnpm lint && pnpm test:run` locally and all checks passed
-- [ ] I updated documentation if needed
-- [ ] I added tests that cover the changes (if applicable)
-- [ ] I linked relevant issues using keywords (e.g., `Fixes #123`)
+**Workflow** (see [CONTRIBUTING.md](../CONTRIBUTING.md) — getting these wrong will block the merge):
+
+- [ ] Base branch is `develop` (not `main`)
+- [ ] `package.json` version is **not** bumped (reserved for release PRs)
+- [ ] Branch follows `feature/*`, `fix/*`, or `docs/*` naming
+- [ ] Commits follow conventional commits (lowercase subject, enforced by commitlint)
+
+**Quality**:
+
+- [ ] `pnpm typecheck:all && pnpm lint:all && pnpm test:run` passes locally
+- [ ] `pnpm format:check` passes (run `pnpm format` if not)
+- [ ] I did **not** skip lefthook hooks with `--no-verify`
+- [ ] Tests added/updated for new behaviour
+- [ ] Documentation updated if needed
+- [ ] Relevant issues linked (e.g., `Fixes #123`)
