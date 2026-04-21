@@ -35,9 +35,20 @@ export default {
 
     return {
       Identifier(node) {
-        if (FORBIDDEN_IDENTIFIERS.has(node.name)) {
-          context.report({ node, messageId: "forbidden" });
+        if (!FORBIDDEN_IDENTIFIERS.has(node.name)) return;
+        // Skip when this identifier is the `property` of a MemberExpression
+        // (it will be handled by the MemberExpression visitor — avoids
+        // double-reporting on e.g. `user.isPaid`).
+        const parent = node.parent;
+        if (
+          parent &&
+          parent.type === "MemberExpression" &&
+          parent.property === node &&
+          !parent.computed
+        ) {
+          return;
         }
+        context.report({ node, messageId: "forbidden" });
       },
       MemberExpression(node) {
         // process.env.ENTERPRISE* / process.env["ENTERPRISE_..."]
