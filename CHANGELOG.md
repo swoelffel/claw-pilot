@@ -6,6 +6,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.81.1] — 2026-04-21
+
+> **📣 Marketing & hygiene release** — no runtime changes.
+> GitHub repo vitrine and documentation were aligned with the current product scope after external audit feedback. No schema change, no API change.
+
+### Changed
+- **README product-grade rewrite** (#152) — repositions the project around user outcomes instead of a feature wall. New hero one-liner, badges (version / CI / license / node / website), "What you can build in an afternoon" section with three concrete scenarios (ops team with budget cap, daily maintenance flow, chat assistant with permanent sessions), compressed feature tables (Runtime engine, Dashboard & tooling), ASCII architecture diagram. Full CLI reference and detailed data model moved to linked docs. README shrinks 357 → ~200 lines. Stale version mentions bumped from v0.69.0 / schema v34 to v0.80.14 / v38. Dead doc links removed.
+- **Docker dev env — container user `openclaw` → `clawpilot`** (#153) — `docker/Dockerfile.server`, `docker/supervisord.conf` and `docker-compose.server.yml` now use `clawpilot` as the UID 1000 user, matching production naming (CHRONOS). ⚠️ Existing dev Docker volumes mounted at `/home/openclaw/.claw-pilot` won't be picked up by the new user — run `docker compose down -v` before rebuild. **Prod native installs are unaffected.**
+- **GitHub repo metadata** — description replaced ("OpenClaw instance manager" → "Multi-agent orchestration runtime with task board, flow engine, budget control, MCP integration and real-time dashboard"), homepage pointed at `https://clawpilot.eu`, 15 topics added for discoverability.
+- **Bug report template** (#153) — example replaced "OpenClaw instance" with "claw-runtime instance"; example version bumped v0.3.3 → v0.81.1.
+- **Workspace `IDENTITY.md` template** (#153) — avatar path example `avatars/openclaw.png` → `avatars/claw.png`.
+- **Obsolete code comments scrubbed** (#153) — header comment in `src/commands/token.ts`, JSDoc in `src/lib/model-helpers.ts`, `@deprecated` notice in `src/lib/env-reader.ts` (`readGatewayToken` still in use by `src/dashboard/token-cache.ts`; env variable `OPENCLAW_GW_AUTH_TOKEN` kept for backward compatibility).
+
+### Unchanged (intentionally)
+- `uninstall.sh` — the `~/.openclaw-*/` state-dir scan is load-bearing for users migrating from legacy installs.
+- `cspell.json` — "openclaw" is used by migration tests v11/v13/v24.
+- DB schema (`servers.openclaw_home/bin/version`, `instance_type DEFAULT 'openclaw'`), `OPENCLAW_HOME` env var, migration tests — internal only, no vitrine impact, migration risky.
+- `ai-docs/references/{paperclip,multica,OpenSpace}/` — external repos cloned for inspiration.
+
+---
+
 ## [0.81.0] — 2026-04-21
 
 > **🎖️ Milestone : Phase 0 Enterprise Edition preparation — complete.**
