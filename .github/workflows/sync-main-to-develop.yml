@@ -1,0 +1,71 @@
+name: sync-main-to-develop
+
+# After a release PR (develop → main) lands, merge main back into develop so
+# the merge commit created by GitHub is reflected on develop. Without this the
+# next release PR fails `git merge --ff-only develop` on main.
+#
+# Only fires on release-style PRs (head = develop). Hotfixes merged to main
+# from a different branch stay out of scope (rare; handled manually).
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  sync-back:
+    if: github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'develop'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: develop
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Attempt merge main into develop
+        id: merge
+        run: |
+          git fetch origin main
+          if git merge origin/main --no-edit -m "chore: sync main back to develop (post-release ${{ github.event.pull_request.title }})"; then
+            echo "merged=true" >> $GITHUB_OUTPUT
+          else
+            echo "merged=false" >> $GITHUB_OUTPUT
+            git merge --abort || true
+          fi
+
+      - name: Push sync commit (auto-merge case)
+        if: steps.merge.outputs.merged == 'true'
+        id: push
+        continue-on-error: true
+        run: git push origin develop
+
+      - name: Fallback — open PR if push was rejected (branch protection, etc.)
+        if: steps.merge.outputs.merged == 'true' && steps.push.outcome == 'failure'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="chore/sync-main-to-develop-${{ github.event.pull_request.number }}"
+          git checkout -b "$BRANCH"
+          git push origin "$BRANCH"
+          gh pr create --base develop --head "$BRANCH" \
+            --title "chore: sync main back to develop (post-release)" \
+            --body "Auto-generated sync PR — direct push to \`develop\` was rejected (likely branch protection). Please merge." \
+            --label sync-back
+
+      - name: Open draft PR (conflict case)
+        if: steps.merge.outputs.merged == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create --base develop --head main \
+            --title "chore: sync main back to develop (CONFLICT — manual resolution needed)" \
+            --body "The automatic sync-back failed due to conflicts. Please resolve manually by checking out \`develop\`, running \`git merge origin/main\`, and pushing the result." \
+            --label sync-conflict --draft

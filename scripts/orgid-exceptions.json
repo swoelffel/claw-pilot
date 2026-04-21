@@ -1,0 +1,13 @@
+{
+  "_comment": "R2 allowlist — reserved for GLOBAL tables (config, schema metadata, lookup, infrastructure). Any new table representing a USER RESOURCE (agent, workspace, session, audit event, etc.) MUST include `org_id TEXT NULL` at creation time and MUST NOT be listed here. See docs/architecture/discipline-gates.md.",
+  "exceptions": [
+    { "table": "schema_version", "reason": "Schema metadata" },
+    { "table": "migrations", "reason": "Schema metadata" },
+    { "table": "settings", "reason": "Global config" },
+    { "table": "config", "reason": "Global key/value config" },
+    { "table": "capabilities", "reason": "Lookup table, read-only" },
+    { "table": "ports", "reason": "Infrastructure-level port registry" },
+    { "table": "servers", "reason": "Infrastructure-level server record" },
+    { "table": "named_api_keys", "reason": "Legacy (pre-H2), credentials model predates multi-tenancy slot" }
+  ]
+}

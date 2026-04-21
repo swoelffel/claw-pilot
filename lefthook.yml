@@ -12,11 +12,16 @@ pre-commit:
     complexity:
       glob: "src/**/*.ts"
       run: pnpm lint:complexity
+    discipline-r1-r5:
+      glob: "src/**/*.ts"
+      run: pnpm lint:discipline:fast
 
 pre-push:
   commands:
     test:
       run: pnpm test:run
+    discipline-full:
+      run: pnpm lint:discipline:full
     spellcheck:
       run: pnpm spellcheck
     circular:
