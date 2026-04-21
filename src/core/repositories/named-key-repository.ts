@@ -69,13 +69,21 @@ function maskApiKey(plaintext: string): string {
 }
 
 function rowToRecord(row: RawNamedApiKeyRow): NamedApiKeyRecord {
+  let apiKeyMasked: string;
+  try {
+    apiKeyMasked = maskApiKey(decrypt(row.encrypted_api_key));
+  } catch {
+    // Corrupt ciphertext (e.g. empty segment from a failed write) — surface the
+    // entry as "[corrupt]" so the user can identify and delete it from the UI.
+    apiKeyMasked = "[corrupt]";
+  }
   return {
     id: row.id,
     name: row.name,
     providerId: row.provider_id,
     defaultModel: row.default_model,
     baseUrl: row.base_url,
-    apiKeyMasked: maskApiKey(decrypt(row.encrypted_api_key)),
+    apiKeyMasked,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
