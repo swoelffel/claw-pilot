@@ -8,7 +8,7 @@ body:
       label: What happened?
       description: Describe what you were trying to do and what actually happened
       placeholder: |
-        Example: I tried to create a new OpenClaw instance using the wizard, but it failed during the nginx configuration step.
+        Example: I tried to create a new claw-runtime instance using the wizard, but it failed during the nginx configuration step.
     validations:
       required: true
 
@@ -44,7 +44,7 @@ body:
         OS: Ubuntu 22.04
         Node: v22.12.0
         pnpm: 9.15.0
-        claw-pilot: v0.3.3
+        claw-pilot: v0.81.0
     validations:
       required: true
 

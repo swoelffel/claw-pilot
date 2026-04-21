@@ -74,7 +74,7 @@ export async function readEnvValue(
 /**
  * Read the gateway auth token for an instance.
  *
- * @deprecated Gateway tokens are an OpenClaw concept. Use readEnvValue() for specific keys.
+ * @deprecated Legacy gateway token reader. Prefer readEnvValue() for specific keys.
  * Kept for backward compatibility during migration.
  */
 export async function readGatewayToken(

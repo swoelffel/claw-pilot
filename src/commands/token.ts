@@ -1,8 +1,6 @@
 // src/commands/token.ts
 //
-// Show the dashboard token or a runtime access URL for an instance.
-// With the removal of OpenClaw, there is no more gateway token / Control UI.
-// This command now shows the dashboard URL for the instance detail page.
+// Show the dashboard access URL (or raw token) for an instance.
 import { Command } from "commander";
 import { execFile as nodeExecFile } from "node:child_process";
 import { promisify } from "node:util";

@@ -1,7 +1,7 @@
 // src/lib/model-helpers.ts
 
 /**
- * Normalise a raw model value from OpenClaw config.
+ * Normalise a raw model value from instance config.
  * Accepts string, object (serialized to JSON), or null/undefined.
  */
 export function normaliseModel(raw: unknown): string | null {
