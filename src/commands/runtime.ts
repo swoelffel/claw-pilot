@@ -18,6 +18,7 @@ import { initDatabase } from "../db/schema.js";
 import { ensureMasterEncryptionKey } from "../lib/crypto.js";
 import { bootstrapSecretProvider } from "../core/secrets/bootstrap.js";
 import { bootstrapAuditBus, shutdownAuditBus } from "../core/audit/index.js";
+import { NullPluginVerifier, registerPluginVerifier } from "../runtime/plugin/verifier.js";
 import { LocalConnection } from "../server/local.js";
 import { bootstrapServerRegistry } from "../server/registry.js";
 import {
@@ -294,6 +295,7 @@ async function startForeground(
   // Register the default audit sinks (file + db). Runtime-only events
   // (tool calls) land in rt_audit_events and in the daily JSONL file.
   bootstrapAuditBus(db);
+  registerPluginVerifier(new NullPluginVerifier());
 
   // Load config: DB first, then file fallback, then create default
   const config = loadOrCreateConfig(db, slug, stateDir, ensureConfig);

@@ -57,6 +57,15 @@ export type AuditEvent =
       action: "create" | "update" | "delete";
       keyId: string;
       by: string;
+    }
+  | {
+      kind: "plugin.rejected";
+      /** Canonical absolute path of the rejected plugin file. */
+      path: string;
+      /** `kind` of the verifier that issued the rejection (e.g. `"ca"`, `"cosign"`). */
+      verifierKind: string;
+      /** Human-readable rejection reason returned by `verify()`. */
+      reason: string;
     };
 
 /** Fully-hydrated event as written to sinks. */

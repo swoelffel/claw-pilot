@@ -45,6 +45,11 @@ vi.mock("../../core/audit/index.js", () => ({
   shutdownAuditBus: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../../runtime/plugin/verifier.js", () => ({
+  NullPluginVerifier: vi.fn(),
+  registerPluginVerifier: vi.fn(),
+}));
+
 // --- Imports (after mocks) ------------------------------------------------
 
 import { withContext } from "../_context.js";

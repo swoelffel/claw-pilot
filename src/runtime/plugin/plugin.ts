@@ -11,6 +11,9 @@
 import type { Plugin, PluginDescriptor, PluginInput } from "./types.js";
 import { registerHooks, clearHooks } from "./hooks.js";
 import { logger } from "../../lib/logger.js";
+import { ClawPilotError } from "../../lib/errors.js";
+import { getPluginVerifier } from "./verifier.js";
+import { emitAudit } from "../../core/audit/emitter.js";
 
 // ---------------------------------------------------------------------------
 // Plugin registry
@@ -51,21 +54,53 @@ export async function initPlugins(input: PluginInput): Promise<void> {
 /**
  * Load a plugin from a file path and register it.
  * Supports absolute paths and file:// URLs.
+ *
+ * Before evaluation, the file bytes are hashed (SHA-256) and passed to the
+ * registered `PluginVerifier`. A failing result emits `plugin.rejected` to
+ * the audit bus and throws `PLUGIN_REJECTED` — the module is never imported.
+ *
  * @public
  */
 export async function loadPluginFromFile(filePath: string): Promise<void> {
-  const { pathToFileURL } = await import("node:url");
+  const { pathToFileURL, fileURLToPath } = await import("node:url");
   const { existsSync } = await import("node:fs");
+  const { readFile } = await import("node:fs/promises");
+  const { createHash } = await import("node:crypto");
 
   let url: string;
+  let diskPath: string;
   if (filePath.startsWith("file://")) {
     url = filePath;
+    diskPath = fileURLToPath(filePath);
   } else if (existsSync(filePath)) {
     url = pathToFileURL(filePath).href;
+    diskPath = filePath;
   } else {
     throw new Error(`Plugin file not found: ${filePath}`);
   }
 
+  // 1. Read + hash the plugin bytes before any evaluation.
+  const bytes = await readFile(diskPath);
+  const hash = createHash("sha256").update(bytes).digest("hex");
+
+  // 2. Verify signature. A failing result aborts the load — the module is
+  //    never passed to `import()`.
+  const verifier = getPluginVerifier();
+  const result = await verifier.verify({ path: diskPath, bytes, hash });
+  if (!result.ok) {
+    emitAudit({
+      kind: "plugin.rejected",
+      path: diskPath,
+      verifierKind: verifier.kind,
+      reason: result.reason,
+    });
+    throw new ClawPilotError(
+      `Plugin rejected by verifier "${verifier.kind}": ${result.reason}`,
+      "PLUGIN_REJECTED",
+    );
+  }
+
+  // 3. Only now load the module.
   let mod: Record<string, unknown>;
   try {
     mod = (await import(url)) as Record<string, unknown>;

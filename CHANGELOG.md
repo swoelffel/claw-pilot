@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Plugin Signature verifier (H7)** — new `src/runtime/plugin/verifier.ts` introduces a pluggable `PluginVerifier` invoked **before** the dynamic `import()` in `loadPluginFromFile()`. The loader now reads the plugin bytes, computes a SHA-256 hash, and calls `verifier.verify({ path, bytes, hash })`. A failing result emits `plugin.rejected` to the audit bus (new `AuditEvent` variant with `{ path, verifierKind, reason }`) and throws `ClawPilotError("PLUGIN_REJECTED")` — the plugin module is never evaluated. Community ships `NullPluginVerifier` (accepts everything, behaviour unchanged); Enterprise registers a capability-gated `CAVerifier` / `CosignVerifier` at bootstrap under the `plugin-signature` capability. `registerPluginVerifier(v)` always accepts `v.kind === "null"` and refuses any other kind without the capability (`PLUGIN_SIGNATURE_CAPABILITY_REQUIRED`). Wired at all three entry points (`_context.ts`, `dashboard.ts`, `runtime.ts`) immediately after `bootstrapAuditBus()`. Convention for detached signatures: `<plugin>.sig` alongside the plugin file. See `docs/architecture/plugin-signature.md`.
+
+---
+
 ## [0.80.12] — 2026-04-21
 
 ### Changed
