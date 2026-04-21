@@ -7,13 +7,14 @@ import {
   type ServerRegistry,
   type ServerNode,
 } from "../registry.js";
+import { ClawPilotError } from "../../lib/errors.js";
+import type { ServerConnection } from "../connection.js";
 
 const fakeNode: ServerNode = {
   id: "1",
   kind: "local",
   hostname: "test-host",
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  connection: {} as any,
+  connection: {} as unknown as ServerConnection,
 };
 
 const fakeImpl: ServerRegistry = {
@@ -27,18 +28,35 @@ describe("serverRegistry singleton", () => {
   afterEach(() => resetServerRegistry());
 
   it("throws before bootstrap", () => {
-    expect(() => getServerRegistry()).toThrow(/not.*registered/i);
+    let caught: unknown;
+    try {
+      getServerRegistry();
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ClawPilotError);
+    expect((caught as ClawPilotError).code).toBe("SERVER_REGISTRY_NOT_REGISTERED");
   });
 
   it("locks after first registration", () => {
     registerServerRegistry(fakeImpl);
     expect(getServerRegistry().getLocal().hostname).toBe("test-host");
-    expect(() => registerServerRegistry(fakeImpl)).toThrow(/locked/i);
+    let caught: unknown;
+    try {
+      registerServerRegistry(fakeImpl);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ClawPilotError);
+    expect((caught as ClawPilotError).code).toBe("SERVER_REGISTRY_LOCKED");
   });
 
   it("proxy delegates to registered impl", () => {
     registerServerRegistry(fakeImpl);
     expect(serverRegistry.getLocal()).toBe(fakeNode);
     expect(serverRegistry.route({ kind: "instance", id: "foo" })).toBe(fakeNode);
+    expect(serverRegistry.list()).toEqual([fakeNode]);
+    expect(serverRegistry.get("1")).toBe(fakeNode);
+    expect(serverRegistry.get("nope")).toBeNull();
   });
 });

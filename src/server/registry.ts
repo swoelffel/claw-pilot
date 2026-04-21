@@ -18,9 +18,27 @@ export interface ResourceRef {
 }
 
 export interface ServerRegistry {
+  /**
+   * Returns all known `ServerNode`s. Community returns `[getLocal()]`.
+   */
   list(): readonly ServerNode[];
+
+  /**
+   * Returns the `ServerNode` for a given id, or `null` if unknown.
+   */
   get(id: string): ServerNode | null;
+
+  /**
+   * Returns the local `ServerNode` for this process. Every `ServerRegistry`
+   * implementation MUST have a local node.
+   */
   getLocal(): ServerNode;
+
+  /**
+   * Returns the `ServerNode` that owns/serves the given resource. Community
+   * returns the local node unconditionally; Enterprise uses a routing strategy
+   * (hash ring, explicit mapping, geographic).
+   */
   route(resource: ResourceRef): ServerNode;
 }
 
@@ -44,9 +62,11 @@ export function registerServerRegistry(impl: ServerRegistry): void {
 }
 
 /**
- * Test-only. Resets the registry to its initial unregistered state.
+ * Test-only: reset the singleton between tests. Silently no-ops in production
+ * (NODE_ENV !== 'test'). Prefer vi.resetModules() if stricter isolation is needed.
  */
 export function resetServerRegistry(): void {
+  if (process.env.NODE_ENV !== "test") return;
   current = null;
   locked = false;
 }
@@ -67,6 +87,11 @@ export function getServerRegistry(): ServerRegistry {
 }
 
 /**
+ * Unlike `capabilities`, `serverRegistry` has no default Community
+ * implementation. All methods throw `SERVER_REGISTRY_NOT_REGISTERED` until
+ * `registerServerRegistry()` is called during bootstrap (see
+ * `bootstrapServerRegistry` in T3).
+ *
  * Singleton proxy that delegates every method to the registered implementation.
  * Consumers can import once and keep a stable reference even though the
  * underlying registry is set at bootstrap.
