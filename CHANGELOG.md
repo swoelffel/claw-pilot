@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Plugin API hardening — `tool.beforeCall` decision (H8)** — the `tool.beforeCall` hook now supports a discriminated return value `ToolCallDecision` (`allow` / `deny` / `modify-args` / `require-approval`). New `src/runtime/plugin/dispatcher.ts` observes each plugin's return sequentially: the first `deny` or `require-approval` short-circuits; `modify-args` chains the mutated args to downstream plugins and to `def.execute()`. A plugin that returns `void` is treated as `allow`; a plugin that throws is treated as `{ action: "deny", reason: err.message }` — existing first-party plugins (`system-tools`, `workspace-knowledge`) remain unaffected. Three new `AuditEvent` variants (`tool.denied`, `tool.approval_required`, `tool.args_modified`) are emitted on every non-allow decision, carrying `{ agentId, tool, argsHash, … }` and written to `rt_audit_events` via the H6 taxonomy. Community ships no plugin that returns a non-allow decision; Enterprise registers a policy plugin (OPA/Cedar, DLP scanners, approval brokers) via `registerPlugin(…)` without touching the core loader. Denied and approval-required calls return a formatted string to the LLM so the session keeps flowing. See `docs/architecture/plugin-api.md`.
+
+### Changed
+- **`tool.beforeCall` signature widened (non-breaking)** — `PluginHooks["tool.beforeCall"]` now returns `void | Promise<void> | ToolCallDecision | Promise<ToolCallDecision>`. The dispatcher in `tool-set-builder.ts` no longer uses `triggerToolBeforeCall` from `hooks.ts` (fire-and-forget) but the new decision-aware `dispatchToolBeforeCall`. The generic `hooks.ts` engine remains untouched — other hooks (`tool.afterCall`, `message.*`, `session.*`) keep their fire-and-forget semantics.
+
+---
+
 ## [0.80.13] — 2026-04-21
 
 ### Added

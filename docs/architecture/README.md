@@ -63,6 +63,7 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
 | **[Permission Middleware](permission-middleware.md)** | Pluggable `PermissionChecker` extension point, `permission()` Hono factory, ACTIONS catalogue, auth context wiring | Dashboard route access control, H1 Enterprise hook |
 | **[Audit Event Bus](audit-event-bus.md)** | Structured `emitAudit()` taxonomy, file + DB default sinks, `audit-siem` capability gate for SIEM sinks, canonical `argsHash` | Instrumenting a new security event or plugging a SIEM sink |
 | **[Plugin Signature](plugin-signature.md)** | `PluginVerifier` extension point, `NullPluginVerifier` default, `plugin-signature` capability gate, pre-import hash-and-verify contract | Adding a signature backend (CA, cosign) or touching `loadPluginFromFile()` |
+| **[Plugin API](plugin-api.md)** | Hook catalogue, `ToolCallDecision` contract (allow / deny / modify-args / require-approval), `dispatchToolBeforeCall`, audit events `tool.denied` / `tool.approval_required` / `tool.args_modified` | Writing a plugin, enforcing policy/approval/DLP on tool calls |
 | **[SSE Architecture](../sse-architecture.md)** | Real-time streaming (3 SSE + 1 WS), reconnection, auth | Live features |
 
 ### Related docs

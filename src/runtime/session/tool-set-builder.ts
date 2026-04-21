@@ -30,11 +30,9 @@ import { normalizeForProvider } from "../tool/normalize.js";
 import { createPart, listParts, updatePartState } from "./part.js";
 import { getBus } from "../bus/index.js";
 import { DoomLoopDetected, MessageUpdated } from "../bus/events.js";
-import {
-  triggerToolBeforeCall,
-  triggerToolAfterCall,
-  getRegisteredHooks,
-} from "../plugin/hooks.js";
+import { triggerToolAfterCall, getRegisteredHooks } from "../plugin/hooks.js";
+import { dispatchToolBeforeCall } from "../plugin/dispatcher.js";
+import type { ApprovalRequest } from "../plugin/types.js";
 import { createMemorySearchTool } from "../memory/search-tool.js";
 import { rebuildMemoryIndex } from "../memory/index.js";
 import { createTaskTool } from "../tool/task.js";
@@ -337,28 +335,42 @@ async function wireBuiltInTools(
       execute: async (args: unknown, options: { toolCallId: string }) => {
         checkDoomLoop(recentCalls, toolInfo.id, args, sessionId, bus);
 
-        await triggerToolBeforeCall({
-          instanceSlug,
-          sessionId,
-          messageId,
-          toolName: toolInfo.id,
-          args,
-        }).catch((err) => {
-          logger.warn(`Plugin hook tool.beforeCall threw: ${err}`);
-        });
+        const { decision, effectiveArgs } = await dispatchToolBeforeCall(
+          {
+            instanceSlug,
+            sessionId,
+            messageId,
+            toolName: toolInfo.id,
+            args,
+          },
+          { agentId: ctx.agentId },
+        );
+        if (decision.action === "deny") {
+          return formatDeniedToolResult(toolInfo.id, decision.reason);
+        }
+        if (decision.action === "require-approval") {
+          return formatApprovalRequiredToolResult(toolInfo.id, decision.approvalRequest);
+        }
+        const execArgs = effectiveArgs;
 
-        const part = getOrCreateToolCallPart(db, messageId, options.toolCallId, toolInfo.id, args);
+        const part = getOrCreateToolCallPart(
+          db,
+          messageId,
+          options.toolCallId,
+          toolInfo.id,
+          execArgs,
+        );
         const callStart = Date.now();
         try {
           const callCtx = { ...ctx, toolCallId: options.toolCallId };
-          const result = await def.execute(args as never, callCtx);
+          const result = await def.execute(execArgs as never, callCtx);
           const durationMs = Date.now() - callStart;
           updatePartState(db, part.id, "completed", result.output);
           db.prepare("UPDATE rt_parts SET metadata = ?, updated_at = ? WHERE id = ?").run(
             JSON.stringify({
               toolCallId: options.toolCallId,
               toolName: toolInfo.id,
-              args,
+              args: execArgs,
               durationMs,
             }),
             new Date().toISOString(),
@@ -370,13 +382,13 @@ async function wireBuiltInTools(
             sessionId,
             messageId,
             toolName: toolInfo.id,
-            args,
+            args: execArgs,
             output: result.output,
             durationMs,
           }).catch((err) => {
             logger.warn(`Plugin hook tool.afterCall threw: ${err}`);
           });
-          handleWriteInvalidation(toolInfo.id, args, sessionId, memoryDb, workDir, ctx.agentId);
+          handleWriteInvalidation(toolInfo.id, execArgs, sessionId, memoryDb, workDir, ctx.agentId);
           return result.output;
         } catch (err) {
           updatePartState(db, part.id, "error", err instanceof Error ? err.message : String(err));
@@ -386,7 +398,7 @@ async function wireBuiltInTools(
             sessionId,
             messageId,
             toolName: toolInfo.id,
-            args,
+            args: execArgs,
             output: err instanceof Error ? err.message : String(err),
             durationMs: Date.now() - callStart,
           }).catch((hookErr) => {
@@ -397,6 +409,25 @@ async function wireBuiltInTools(
       },
     });
   }
+}
+
+/**
+ * Format the string returned to the LLM when a plugin denies a tool call.
+ * Returned as the tool "output" so the model observes the refusal and adapts
+ * rather than crashing the session.
+ */
+function formatDeniedToolResult(toolName: string, reason: string): string {
+  return `Tool call "${toolName}" denied by policy: ${reason}`;
+}
+
+/**
+ * Format the string returned when a plugin requests out-of-band approval.
+ * Community does not resolve approvals — the LLM sees the request as a refusal
+ * with the approval backend identifier so Enterprise flows remain observable
+ * even when the resolver is absent.
+ */
+function formatApprovalRequiredToolResult(toolName: string, request: ApprovalRequest): string {
+  return `Tool call "${toolName}" requires approval (kind="${request.kind}"). Community build does not resolve approvals.`;
 }
 
 /** Check for doom-loop (3 identical consecutive calls). */

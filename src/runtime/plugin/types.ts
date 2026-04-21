@@ -80,6 +80,36 @@ export interface SessionContext {
 }
 
 // ---------------------------------------------------------------------------
+// Tool-call decision (H8 — plugin API hardening)
+// ---------------------------------------------------------------------------
+
+/**
+ * Request emitted by a plugin when a tool call needs out-of-band approval.
+ * Community does not resolve approvals (treated as deny at the caller);
+ * Enterprise consumers provide a resolver (Slack/email/webhook).
+ */
+export interface ApprovalRequest {
+  /** Backend identifier — "slack" | "email" | "webhook" | custom. */
+  kind: string;
+  /** Backend-specific payload (channel, recipient, policy id, …). */
+  context: Record<string, unknown>;
+  /** Max wait for a human response; `undefined` means Enterprise-default. */
+  timeoutMs?: number;
+}
+
+/**
+ * Discriminated decision returned by `tool.beforeCall` plugins.
+ *
+ * Backward-compatibility: a plugin that returns `void` is treated as `"allow"`
+ * and a plugin that throws is treated as `{ action: "deny", reason: err.message }`.
+ */
+export type ToolCallDecision =
+  | { action: "allow" }
+  | { action: "deny"; reason: string }
+  | { action: "modify-args"; newArgs: unknown }
+  | { action: "require-approval"; approvalRequest: ApprovalRequest };
+
+// ---------------------------------------------------------------------------
 // Plugin hooks
 // ---------------------------------------------------------------------------
 
@@ -88,8 +118,18 @@ export interface PluginHooks {
   "agent.beforeStart"?: (ctx: AgentStartContext) => Promise<void> | void;
   /** Called after the agent finishes processing (success or error) */
   "agent.end"?: (ctx: AgentEndContext) => Promise<void> | void;
-  /** Called before a tool is invoked */
-  "tool.beforeCall"?: (ctx: ToolCallContext) => Promise<void> | void;
+  /**
+   * Called before a tool is invoked.
+   *
+   * Backward-compatible widening (H8):
+   * - returning `void` / `undefined` → implicit `{ action: "allow" }`
+   * - throwing → implicit `{ action: "deny", reason: err.message }`
+   * - returning a `ToolCallDecision` lets the plugin deny, mutate args, or
+   *   request out-of-band approval. See {@link ToolCallDecision}.
+   */
+  "tool.beforeCall"?: (
+    ctx: ToolCallContext,
+  ) => Promise<void> | void | ToolCallDecision | Promise<ToolCallDecision>;
   /** Called after a tool returns a result */
   "tool.afterCall"?: (ctx: ToolResultContext) => Promise<void> | void;
   /** Called when a user message is received */
