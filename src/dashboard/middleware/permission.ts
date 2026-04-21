@@ -12,6 +12,7 @@
 
 import type { Context, MiddlewareHandler } from "hono";
 import { ClawPilotError } from "../../lib/errors.js";
+import { emitAudit } from "../../core/audit/index.js";
 
 export interface AuthenticatedUser {
   id: string;
@@ -141,6 +142,14 @@ export function permission(spec: PermissionSpec): MiddlewareHandler {
     if (decision.allow) {
       return next();
     }
+
+    emitAudit({
+      kind: "permission.denied",
+      userId: user.id,
+      action: spec.action,
+      resource: id !== undefined ? `${spec.resource.kind}:${id}` : spec.resource.kind,
+      reason: decision.reason,
+    });
 
     return c.json(
       {

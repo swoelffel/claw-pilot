@@ -14,6 +14,16 @@ import { NamedKeyRepository } from "../../core/repositories/named-key-repository
 import { notifySystemStateChanged } from "./_system-state-notify.js";
 import { permission } from "../middleware/permission.js";
 import { ACTIONS } from "../middleware/permission-actions.js";
+import { emitAudit } from "../../core/audit/index.js";
+import type { AuthenticatedUser } from "../middleware/permission.js";
+
+/** Resolve the acting user for audit envelopes. Falls back to "system" for
+ *  calls that somehow bypass the auth middleware (defensive only). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function actorId(c: Context<any>): string {
+  const user = c.get("user") as AuthenticatedUser | undefined;
+  return user?.id ?? "system";
+}
 
 // ---------------------------------------------------------------------------
 // Validation schemas
@@ -102,6 +112,12 @@ async function handleCreate(c: Context<any>, deps: RouteDeps, repo: NamedKeyRepo
     });
     void deps.modelDiscovery.invalidateProvider(data.providerId);
     notifySystemStateChanged("named-key", "create");
+    emitAudit({
+      kind: "named_key.mutation",
+      action: "create",
+      keyId: String(key.id),
+      by: actorId(c),
+    });
     return c.json({ ok: true, key });
   } catch (err) {
     if (isUniqueConstraintError(err)) {
@@ -162,6 +178,12 @@ async function handleUpdate(c: Context<any>, deps: RouteDeps, repo: NamedKeyRepo
       void deps.modelDiscovery.invalidateProvider(existing.providerId);
     }
     notifySystemStateChanged("named-key", "update");
+    emitAudit({
+      kind: "named_key.mutation",
+      action: "update",
+      keyId: String(id),
+      by: actorId(c),
+    });
     return c.json({ ok: true, key });
   } catch (err) {
     if (isUniqueConstraintError(err)) {
@@ -184,6 +206,12 @@ function handleDelete(c: Context<any>, deps: RouteDeps, repo: NamedKeyRepository
     repo.delete(id);
     void deps.modelDiscovery.invalidateProvider(existing.providerId);
     notifySystemStateChanged("named-key", "delete");
+    emitAudit({
+      kind: "named_key.mutation",
+      action: "delete",
+      keyId: String(id),
+      by: actorId(c),
+    });
     return c.json({ ok: true });
   } catch (err) {
     if (isForeignKeyError(err)) {

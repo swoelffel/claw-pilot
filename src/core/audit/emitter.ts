@@ -72,8 +72,12 @@ export function isAuditBusRegistered(): boolean {
 function resolveServerId(): string {
   try {
     return serverRegistry.getLocal().id;
-  } catch {
-    // serverRegistry not bootstrapped yet (early logging, tests without ctx)
+  } catch (err) {
+    // serverRegistry not bootstrapped yet (early logging, tests without ctx).
+    // Debug-log so the fallback is observable without polluting normal runs.
+    logger.debug("[audit] serverRegistry not bootstrapped — using 'unknown'", {
+      error: String(err),
+    });
     return "unknown";
   }
 }
