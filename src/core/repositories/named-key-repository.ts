@@ -4,6 +4,7 @@
 
 import type Database from "better-sqlite3";
 import { encrypt, decrypt } from "../../lib/crypto.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -72,9 +73,14 @@ function rowToRecord(row: RawNamedApiKeyRow): NamedApiKeyRecord {
   let apiKeyMasked: string;
   try {
     apiKeyMasked = maskApiKey(decrypt(row.encrypted_api_key));
-  } catch {
+  } catch (err) {
     // Corrupt ciphertext (e.g. empty segment from a failed write) — surface the
     // entry as "[corrupt]" so the user can identify and delete it from the UI.
+    logger.warn("[named-key-repo] corrupt ciphertext, surfacing as [corrupt]", {
+      id: row.id,
+      name: row.name,
+      error: String(err),
+    });
     apiKeyMasked = "[corrupt]";
   }
   return {
