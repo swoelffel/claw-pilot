@@ -5,7 +5,7 @@
 // (single / multi / free) and optional "Other…" free-text fallback. A single
 // "Send" button submits all answers atomically — no auto-submit on option
 // click (guards against mis-clicks).
-import { LitElement, html, nothing, css } from "lit";
+import { LitElement, html, nothing, css, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { PilotPart } from "../../../types.js";
@@ -328,6 +328,18 @@ export class PilotPartQuestion extends LitElement {
 
   private _items(): QuestionItem[] {
     return normalizeItems(this._meta().args);
+  }
+
+  override willUpdate(changed: PropertyValues): void {
+    if (changed.has("call") && changed.get("call") !== undefined) {
+      // Reset all interaction state when the underlying tool_call changes
+      // (e.g. Lit reuses this DOM element for a new question).
+      this._activeTab = 0;
+      this._tabStates = [];
+      this._submitting = false;
+      this._answered = false;
+      this._initialized = false;
+    }
   }
 
   private _ensureInit(items: QuestionItem[]): void {
