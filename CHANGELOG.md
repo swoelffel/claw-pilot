@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.80.7] — 2026-04-21
+
+### Security
+- **CodeQL triage — 0 open alerts** : complete sweep of pre-existing CodeQL findings. 5 true positives fixed in code, 21 false positives dismissed with justification, 2 covered by existing sanitization wrappers.
+  - **Fixes** : `src/dashboard/routes/instances/workspace-download.ts` (file-system race + filename sanitization), `src/runtime/tool/built-in/write.ts` (file-system race), `src/runtime/tool/built-in/_skill-remote.ts` (path traversal defense on HTTP→file), `src/dashboard/routes/instances/agents/skills.ts` (path validation on skill download), `src/commands/auth.ts` (credential log masking).
+  - **Infra** : `src/dashboard/routes/instances/runtime-tools.ts` (useless assignment), `ui/src/components/flow-sessions.ts` (trivial conditional).
+  - **Policy** : new `docs/architecture/codeql-policy.md` documents triage process, justification template, and dismiss/fix criteria. `docs/architecture/codeql-triage-notes.md` records per-alert rationale for future audit.
+
+### Tooling
+- `cspell` whitelist extended (`TOCTOU` term from security discussion).
+
+---
+
 ## [0.80.6] — 2026-04-20
 
 ### Added
