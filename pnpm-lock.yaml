@@ -24,6 +24,9 @@ importers:
       '@ai-sdk/openai':
         specifier: ^3.0.53
         version: 3.0.53(zod@4.3.6)
+      '@hono/node-server':
+        specifier: ^1.19.14
+        version: 1.19.14(hono@4.12.14)
       '@inquirer/prompts':
         specifier: ^8.4.2
         version: 8.4.2(@types/node@25.6.0)
@@ -82,9 +85,6 @@ importers:
       '@cspell/dict-fr-fr':
         specifier: ^2.3.2
         version: 2.3.2
-      '@hono/node-server':
-        specifier: ^1.19.14
-        version: 1.19.14(hono@4.12.14)
       '@lit/localize':
         specifier: ^0.12.2
         version: 0.12.2
