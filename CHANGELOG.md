@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.81.2] — 2026-05-01
+
+### Fixed
+- **`@hono/node-server` runtime dependency placement** (#156) — moved from `devDependencies` to `dependencies`. The package is imported at runtime by `src/dashboard/server.ts`, so production-only installs (`pnpm install --prod`, tarball deploys) crashed with `Cannot find package '@hono/node-server'` when starting the dashboard. Discovered during the first Enterprise on-prem deploy of v0.81.1-ent.1 on MAC (2026-04-23).
+
+---
+
 ## [0.81.1] — 2026-04-21
 
 > **📣 Marketing & hygiene release** — no runtime changes.
