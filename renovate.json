@@ -9,7 +9,7 @@
   ],
   "timezone": "Europe/Paris",
   "labels": ["dependencies"],
-  "baseBranches": ["develop"],
+  "baseBranchPatterns": ["develop"],
   "rangeStrategy": "bump",
   "semanticCommitType": "chore",
   "semanticCommitScope": "deps",
@@ -22,18 +22,26 @@
   "packageRules": [
     {
       "description": "Group AI SDK packages",
-      "matchPackagePatterns": ["^@ai-sdk/", "^ai$", "^@openrouter/ai-sdk-provider$"],
-      "groupName": "ai-sdk"
+      "groupName": "ai-sdk",
+      "matchPackageNames": [
+        "/^@ai-sdk//",
+        "/^ai$/",
+        "/^@openrouter/ai-sdk-provider$/"
+      ]
     },
     {
       "description": "Group TypeScript tooling",
-      "matchPackagePatterns": ["^@typescript-eslint/", "^typescript$", "^tsdown$"],
-      "groupName": "typescript-tooling"
+      "groupName": "typescript-tooling",
+      "matchPackageNames": [
+        "/^@typescript-eslint//",
+        "/^typescript$/",
+        "/^tsdown$/"
+      ]
     },
     {
       "description": "Group Vitest packages",
-      "matchPackagePatterns": ["^vitest$", "^@vitest/"],
-      "groupName": "vitest"
+      "groupName": "vitest",
+      "matchPackageNames": ["/^vitest$/", "/^@vitest//"]
     },
     {
       "description": "Group linters and formatters",
