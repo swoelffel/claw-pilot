@@ -33,7 +33,7 @@
     "knip": "knip",
     "check:circular": "madge --circular --extensions ts src/",
     "spellcheck": "cspell --config cspell.json \"src/**/*.ts\" \"ui/src/**/*.ts\"",
-    "prepare": "lefthook install"
+    "prepare": "[ -e .git ] && command -v lefthook >/dev/null && lefthook install || true"
   },
   "engines": {
     "node": ">=22.12.0"
