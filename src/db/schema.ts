@@ -1556,6 +1556,76 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v40: rt_flow_triggers + rt_flow_trigger_runs — TRIGGER-001 foundation.
+    //
+    // Schedules flow executions via cron expressions or HMAC-signed inbound
+    // webhooks. `rt_flow_trigger_runs` doubles as the concurrency lock: before
+    // firing, the scheduler/webhook handler checks for an active row in
+    // ('pending','running'). Webhook deduplication uses `idempotency_key`
+    // (24h unique window) or `payload_hash` (5-min sliding window).
+    //
+    // `org_id TEXT NULL` slot reserved for R2 multi-tenancy. The webhook
+    // secret lives via SecretProvider (R5) — only the reference key is stored.
+    version: 40,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS rt_flow_triggers (
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          org_id              TEXT NULL,
+          instance_slug       TEXT NOT NULL,
+          flow_id             INTEGER NOT NULL REFERENCES rt_flow_definitions(id) ON DELETE CASCADE,
+          owner_user_id       INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
+          kind                TEXT NOT NULL CHECK(kind IN ('cron','webhook')),
+          name                TEXT NOT NULL,
+          enabled             INTEGER NOT NULL DEFAULT 1,
+          allow_concurrent    INTEGER NOT NULL DEFAULT 0,
+          cron_expr           TEXT NULL,
+          cron_tz             TEXT NULL,
+          webhook_slug        TEXT NULL UNIQUE,
+          webhook_secret_ref  TEXT NULL,
+          ip_allowlist        TEXT NULL,
+          input_mapping       TEXT NULL,
+          default_input       TEXT NULL,
+          created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+          last_fired_at       TEXT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_flow_triggers_flow
+          ON rt_flow_triggers(flow_id);
+        CREATE INDEX IF NOT EXISTS idx_rt_flow_triggers_kind_enabled
+          ON rt_flow_triggers(kind, enabled);
+        CREATE INDEX IF NOT EXISTS idx_rt_flow_triggers_instance
+          ON rt_flow_triggers(instance_slug);
+
+        CREATE TABLE IF NOT EXISTS rt_flow_trigger_runs (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          org_id          TEXT NULL,
+          trigger_id      INTEGER NOT NULL REFERENCES rt_flow_triggers(id) ON DELETE CASCADE,
+          flow_run_id     INTEGER NULL REFERENCES rt_flow_runs(id) ON DELETE SET NULL,
+          status          TEXT NOT NULL CHECK(status IN
+                            ('pending','running','succeeded','failed','deduped','skipped_concurrent')),
+          fired_at        TEXT NOT NULL DEFAULT (datetime('now')),
+          finished_at     TEXT NULL,
+          payload         TEXT NULL,
+          idempotency_key TEXT NULL,
+          payload_hash    TEXT NULL,
+          source_ip       TEXT NULL,
+          error           TEXT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_flow_trigger_runs_trigger
+          ON rt_flow_trigger_runs(trigger_id, fired_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_rt_flow_trigger_runs_idem
+          ON rt_flow_trigger_runs(trigger_id, idempotency_key)
+          WHERE idempotency_key IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_rt_flow_trigger_runs_active
+          ON rt_flow_trigger_runs(trigger_id, status)
+          WHERE status IN ('pending','running');
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
