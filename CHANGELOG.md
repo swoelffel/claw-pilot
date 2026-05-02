@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **`prepare` script production-install-safe** — guard `lefthook install` to no-op when not in a git repo or when `lefthook` is absent. Avoids `exit code 1` noise on tarball-based prod deploys (no `.git`, devDeps absent). Discovered during EE on-prem redeploy on MAC (2026-05-01).
+
+---
+
 ## [0.81.2] — 2026-05-01
 
 ### Fixed
