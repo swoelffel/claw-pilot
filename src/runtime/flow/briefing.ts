@@ -12,6 +12,7 @@ import {
 } from "../session/index.js";
 import type { FlowStepDef, SitrepResult } from "./types.js";
 import { formatSitrepsForBriefing } from "./sitrep.js";
+import { interpolateTemplate } from "./context-providers.js";
 import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -31,6 +32,12 @@ export function buildBriefing(
     flowName: string;
     step: FlowStepDef;
     depSitreps: Array<{ stepId: string; sitrep: SitrepResult }>;
+    /**
+     * Templating context merged from registered flow context providers
+     * (see `context-providers.ts`). Empty `{}` is the no-op default —
+     * `step.prompt` and `extraContext` are passed through unchanged.
+     */
+    flowContext?: Record<string, unknown>;
   },
 ): string {
   // Default 0: flow step context comes from dep SITREPs and the step prompt,
@@ -43,7 +50,11 @@ export function buildBriefing(
   // in the flow definition JSON (e.g., a continuity-tracking agent with
   // institutional memory across runs).
   const includeLastN = opts.step.briefing?.includeLastN ?? 0;
-  const extraContext = opts.step.briefing?.extraContext;
+  const flowContext = opts.flowContext ?? {};
+  const rawExtra = opts.step.briefing?.extraContext;
+  const extraContext =
+    rawExtra !== undefined ? interpolateTemplate(rawExtra, flowContext) : undefined;
+  const promptText = interpolateTemplate(opts.step.prompt, flowContext);
 
   // 1. Extract standing context from permanent session
   let standingContext = "";
@@ -64,7 +75,7 @@ export function buildBriefing(
   }
 
   sections.push("### Mission objective");
-  sections.push(opts.step.prompt);
+  sections.push(promptText);
   sections.push("");
 
   // 3. Include SITREPs from dependency steps

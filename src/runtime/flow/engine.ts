@@ -20,6 +20,7 @@ import {
 } from "../../core/repositories/flow-repository.js";
 import type { FlowStepDef, FlowEngineContext, SitrepResult } from "./types.js";
 import { buildBriefing } from "./briefing.js";
+import { collectFlowContext } from "./context-providers.js";
 import { extractSitrep, injectSitrep } from "./sitrep.js";
 import { executeStep } from "./step-executor.js";
 import { logger } from "../../lib/logger.js";
@@ -183,13 +184,22 @@ async function runStep(
   // 1. Collect SITREPs from dependency steps
   const depSitreps = _collectDepSitreps(ctx.db, runId, stepDef.dependsOn);
 
-  // 2. Build briefing
+  // 2. Build briefing — collect templating context from registered providers
+  //    (extension point: flow-context-providers).
+  const flowContext = collectFlowContext({
+    instanceSlug: ctx.instanceSlug,
+    agentId: stepDef.agentId,
+    flowName,
+    step: stepDef,
+    runId,
+  });
   const briefingText = buildBriefing(ctx.db, {
     instanceSlug: ctx.instanceSlug,
     agentId: stepDef.agentId,
     flowName,
     step: stepDef,
     depSitreps,
+    flowContext,
   });
 
   // 3. Execute prompt loop — inject `complete_step` tool scoped to THIS step
