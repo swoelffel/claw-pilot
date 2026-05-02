@@ -200,6 +200,18 @@ export const ACTIONS = {
   EVENT_LIST: "event.list",
   EVENT_STREAM: "event.stream",
 
+  // flow triggers (TRIGGER-001)
+  // Extension-Point: trigger-permissions
+  TRIGGER_LIST: "trigger.list",
+  TRIGGER_READ: "trigger.read",
+  TRIGGER_CREATE: "trigger.create",
+  TRIGGER_UPDATE: "trigger.update",
+  TRIGGER_DELETE: "trigger.delete",
+  TRIGGER_FIRE: "trigger.fire",
+  TRIGGER_ROTATE_SECRET: "trigger.rotate-secret",
+  TRIGGER_REVEAL_SECRET: "trigger.reveal-secret",
+  TRIGGER_RUNS_LIST: "trigger.runs-list",
+
   // runtime
   RUNTIME_STATUS: "runtime.status",
   RUNTIME_SESSIONS_LIST: "runtime.sessions-list",

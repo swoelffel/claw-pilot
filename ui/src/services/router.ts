@@ -27,7 +27,8 @@ export type Route =
   | { view: "flow-run"; slug: string; runId: number }
   | { view: "instance-dashboard"; slug: string }
   | { view: "flow-sessions"; slug: string; flowId: number }
-  | { view: "profile" };
+  | { view: "profile" }
+  | { view: "triggers" };
 
 /** Convert a Route to a hash string (without the leading #). */
 export function routeToHash(route: Route): string {
@@ -72,6 +73,8 @@ export function routeToHash(route: Route): string {
       return `/agent-templates/${route.templateId}`;
     case "profile":
       return "/profile";
+    case "triggers":
+      return "/triggers";
   }
 }
 
@@ -161,6 +164,9 @@ export function hashToRoute(hash: string): Route {
 
   // /profile
   if (path === "profile") return { view: "profile" };
+
+  // /triggers (TRIGGER-001)
+  if (path === "triggers") return { view: "triggers" };
 
   return { view: "home" };
 }
