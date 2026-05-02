@@ -8,7 +8,7 @@
   ],
   "timezone": "Europe/Paris",
   "labels": ["dependencies"],
-  "baseBranches": ["develop"],
+  "baseBranchPatterns": ["develop"],
   "rangeStrategy": "bump",
   "semanticCommitType": "chore",
   "semanticCommitScope": "deps",
