@@ -93,6 +93,26 @@ export type AuditEvent =
       verifierKind: string;
       /** Human-readable rejection reason returned by `verify()`. */
       reason: string;
+    }
+  | {
+      // TRIGGER-001 — see `src/runtime/triggers/`.
+      kind: "trigger.fired";
+      triggerId: number;
+      flowId: number;
+      instanceSlug: string;
+      source: "cron" | "webhook";
+    }
+  | {
+      kind: "trigger.failed";
+      triggerId: number;
+      flowId: number;
+      reason: string;
+      source: "cron" | "webhook";
+    }
+  | {
+      kind: "trigger.deduped";
+      triggerId: number;
+      method: "idempotency_key" | "payload_hash";
     };
 
 /** Fully-hydrated event as written to sinks. */

@@ -44,6 +44,10 @@ import { registerSearchRoutes } from "./routes/search.js";
 import { registerFlowRoutes } from "./routes/instances/flows.js";
 import { registerSystemInstanceRoutes } from "./routes/system-instance.js";
 import { registerNotificationRoutes } from "./routes/notifications.js";
+import { registerWebhookRoutes } from "./routes/webhooks.js";
+import { TriggerScheduler } from "../runtime/triggers/scheduler.js";
+import { registerTriggerContextProvider } from "../runtime/triggers/context-provider.js";
+import { callRuntimeApi } from "./routes/_internal-api-client.js";
 import { pruneNotifications } from "../core/repositories/notification-repository.js";
 import { SystemInstanceService } from "../core/system-instance.js";
 import { rebuildSearchIndex } from "../core/repositories/search-repository.js";
@@ -291,6 +295,12 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   // Auth routes — registered BEFORE the auth middleware so /api/auth/login is public
   registerAuthRoutes(app, deps, token);
 
+  // TRIGGER-001 — webhook endpoints are HMAC-authenticated, so they MUST be
+  // registered before the dashboard auth middleware. Path is `/webhooks/...`,
+  // outside the `/api/*` prefix the auth middleware guards.
+  // Extension-Point: trigger-runtime-bootstrap
+  registerWebhookRoutes(app, deps);
+
   // Auth middleware for API routes — see registerAuthMiddleware above
   registerAuthMiddleware(app, token, sessionStore, db);
 
@@ -312,6 +322,25 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   // Auto-prune old notifications (30 days) at startup and every 24h
   pruneNotifications(deps.db);
   setInterval(() => pruneNotifications(deps.db), 24 * 60 * 60 * 1000);
+
+  // TRIGGER-001 — wire the flow-context provider for `{{trigger.*}}`
+  // templating, then start the cron scheduler. The runtime starter is the
+  // existing `/internal/flows/:id/run` daemon endpoint already used by the
+  // manual trigger route.
+  // Extension-Point: trigger-runtime-bootstrap
+  registerTriggerContextProvider(deps.db);
+  const triggerScheduler = new TriggerScheduler({
+    db: deps.db,
+    runtimeStarter: async (instanceSlug, flowId, triggerType, triggerDetail) => {
+      const result = await callRuntimeApi<{ runId: number }>(
+        instanceSlug,
+        `/internal/flows/${flowId}/run`,
+        { triggerType, triggerDetail },
+      );
+      return result.runId;
+    },
+  });
+  triggerScheduler.start();
 
   // Rebuild search index on startup
   rebuildSearchIndex(deps.db);
@@ -395,6 +424,7 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
     clearInterval(cleanupInterval);
     monitor.stop();
     modelDiscovery.stop();
+    triggerScheduler.stop();
   };
 
   return { app, deps, monitor, cleanup };
