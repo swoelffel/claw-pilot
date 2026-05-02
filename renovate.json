@@ -3,7 +3,6 @@
   "extends": [
     "config:recommended",
     ":semanticCommits",
-    ":dependencyDashboard",
     "group:allNonMajor",
     "schedule:weekly"
   ],
@@ -19,20 +18,25 @@
     "enabled": true,
     "schedule": ["before 6am on monday"]
   },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"],
+    "schedule": ["at any time"]
+  },
   "packageRules": [
     {
       "description": "Group AI SDK packages",
-      "matchPackagePatterns": ["^@ai-sdk/", "^ai$", "^@openrouter/ai-sdk-provider$"],
+      "matchPackageNames": ["/^@ai-sdk\\//", "/^ai$/", "/^@openrouter\\/ai-sdk-provider$/"],
       "groupName": "ai-sdk"
     },
     {
       "description": "Group TypeScript tooling",
-      "matchPackagePatterns": ["^@typescript-eslint/", "^typescript$", "^tsdown$"],
+      "matchPackageNames": ["/^@typescript-eslint\\//", "/^typescript$/", "/^tsdown$/"],
       "groupName": "typescript-tooling"
     },
     {
       "description": "Group Vitest packages",
-      "matchPackagePatterns": ["^vitest$", "^@vitest/"],
+      "matchPackageNames": ["/^vitest$/", "/^@vitest\\//"],
       "groupName": "vitest"
     },
     {
@@ -49,23 +53,37 @@
       "groupName": "lint-format"
     },
     {
-      "description": "Major bumps get their own PR — never grouped",
+      "description": "Auto-merge devDependencies on patch + CI green",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["patch", "pin", "digest"],
+      "automerge": true,
+      "platformAutomerge": true
+    },
+    {
+      "description": "Auto-merge @types/* (any non-major update)",
+      "matchPackageNames": ["/^@types\\//"],
+      "matchUpdateTypes": ["patch", "minor", "pin", "digest"],
+      "automerge": true,
+      "platformAutomerge": true
+    },
+    {
+      "description": "Major bumps — never grouped, never auto-merged",
       "matchUpdateTypes": ["major"],
       "addLabels": ["breaking-change"],
       "automerge": false
     },
     {
-      "description": "Security updates bypass the weekly schedule",
-      "matchDatasources": ["npm"],
-      "vulnerabilityAlerts": {
-        "enabled": true,
-        "labels": ["security"],
-        "schedule": ["at any time"]
-      }
+      "description": "Pin Node major to 22 (LTS) — skip v24 until conscious decision",
+      "matchPackageNames": ["node"],
+      "matchManagers": ["nvm", "npm", "github-actions", "dockerfile"],
+      "allowedVersions": "<23.0.0"
+    },
+    {
+      "description": "pnpm — patches OK, minors require manual review",
+      "matchPackageNames": ["pnpm"],
+      "matchUpdateTypes": ["minor", "major"],
+      "automerge": false,
+      "addLabels": ["needs-attention"]
     }
-  ],
-  "vulnerabilityAlerts": {
-    "enabled": true,
-    "labels": ["security"]
-  }
+  ]
 }
