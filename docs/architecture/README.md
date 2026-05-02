@@ -66,6 +66,7 @@ All instances use the **claw-runtime** engine — a native Node.js engine manage
 | **[Plugin API](plugin-api.md)** | Hook catalogue, `ToolCallDecision` contract (allow / deny / modify-args / require-approval), `dispatchToolBeforeCall`, audit events `tool.denied` / `tool.approval_required` / `tool.args_modified` | Writing a plugin, enforcing policy/approval/DLP on tool calls |
 | **[Discipline Gates](discipline-gates.md)** | Automated R1/R2/R3/R5 enforcement — ESLint plugin + R2 schema script + R3 commit-trailer script + sync-main-to-develop workflow | Touching Community ↔ Enterprise firewall rules, adding new tables or frozen-path changes |
 | **[SSE Architecture](../sse-architecture.md)** | Real-time streaming (3 SSE + 1 WS), reconnection, auth | Live features |
+| **[Flow Triggers](flow-triggers.md)** | Cron + webhook trigger system, scheduler, `/api/triggers/*` and `/webhooks/triggers/*` route families, secret rotation/reveal | Working on automation triggers (TRIGGER-001) |
 
 ### Related docs
 

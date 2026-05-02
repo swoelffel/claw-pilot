@@ -11,6 +11,7 @@ import type { SelfUpdater } from "../core/self-updater.js";
 import type { TokenCache } from "./token-cache.js";
 import type { SessionStore } from "./session-store.js";
 import type { ModelDiscoveryService } from "../core/model-discovery/service.js";
+import type { TriggerScheduler } from "../runtime/triggers/scheduler.js";
 
 export interface RouteDeps {
   registry: Registry;
@@ -29,6 +30,13 @@ export interface RouteDeps {
   db: Database.Database;
   /** Dynamic model discovery service — polls provider APIs for available models. */
   modelDiscovery: ModelDiscoveryService;
+  /**
+   * Cron trigger scheduler — exposed so trigger CRUD routes can call
+   * `reload(triggerId)` after mutations. Optional because some legacy test
+   * harnesses build a deps stub without booting the full server.
+   * Extension-Point: trigger-dashboard-routes
+   */
+  triggerScheduler?: TriggerScheduler;
 }
 
 // Structured error helper — all API error responses go through this function.

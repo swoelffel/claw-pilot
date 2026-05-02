@@ -45,6 +45,7 @@ import { registerFlowRoutes } from "./routes/instances/flows.js";
 import { registerSystemInstanceRoutes } from "./routes/system-instance.js";
 import { registerNotificationRoutes } from "./routes/notifications.js";
 import { registerWebhookRoutes } from "./routes/webhooks.js";
+import { registerTriggerRoutes } from "./routes/triggers.js";
 import { TriggerScheduler } from "../runtime/triggers/scheduler.js";
 import { registerTriggerContextProvider } from "../runtime/triggers/context-provider.js";
 import { callRuntimeApi } from "./routes/_internal-api-client.js";
@@ -316,6 +317,12 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   registerSystemInstanceRoutes(app, deps);
   registerNotificationRoutes(app, deps);
 
+  // TRIGGER-001 — register CRUD routes for the trigger dashboard.
+  // The scheduler instance (constructed below) is bolted onto `deps` after
+  // creation so route handlers can call `deps.triggerScheduler.reload(id)`.
+  // Extension-Point: trigger-dashboard-routes
+  registerTriggerRoutes(app, deps);
+
   // Wire notification broadcaster: engines emit notifications → Monitor pushes to WS clients
   Monitor.setNotificationBroadcaster((row) => monitor.broadcastNotification(row));
 
@@ -341,6 +348,9 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
     },
   });
   triggerScheduler.start();
+  // Expose the scheduler to route handlers (TRIGGER-001 PR 3/3).
+  // Extension-Point: trigger-dashboard-routes
+  deps.triggerScheduler = triggerScheduler;
 
   // Rebuild search index on startup
   rebuildSearchIndex(deps.db);

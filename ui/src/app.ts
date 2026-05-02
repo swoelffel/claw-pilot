@@ -22,6 +22,7 @@ import "./components/agents-builder.js";
 import "./components/blueprints-view.js";
 import "./components/blueprint-builder.js";
 import "./components/agent-templates-view.js";
+import "./components/triggers/cp-triggers-view.js";
 import "./components/agent-template-detail.js";
 import "./components/instance-settings.js";
 import "./components/runtime-pilot.js";
@@ -776,6 +777,8 @@ export class CpApp extends LitElement {
       this._route = { view: "blueprints" };
     } else if (detail.view === "blueprint-builder" && detail.blueprintId !== undefined) {
       this._route = { view: "blueprint-builder", blueprintId: detail.blueprintId };
+    } else if (detail.view === "triggers") {
+      this._route = { view: "triggers" };
     } else if (detail.view === "agent-templates") {
       this._route = { view: "agent-templates" };
     } else if (detail.view === "agent-template-detail" && detail.templateId) {
@@ -884,6 +887,9 @@ export class CpApp extends LitElement {
           }}
         ></cp-agent-templates-view>
       `;
+    }
+    if (this._route.view === "triggers") {
+      return html`<cp-triggers-view @navigate=${this._navigate}></cp-triggers-view>`;
     }
     if (this._route.view === "agent-template-detail") {
       return html`
@@ -1112,6 +1118,14 @@ export class CpApp extends LitElement {
                 null && this._agentTemplateCount > 0
                 ? html`<span class="nav-badge">${this._agentTemplateCount}</span>`
                 : ""}
+            </button>
+            <button
+              class="nav-tab ${this._route.view === "triggers" ? "active" : ""}"
+              @click=${() => {
+                this._route = { view: "triggers" };
+              }}
+            >
+              ${msg("Triggers", { id: "nav-triggers" })}
             </button>
           </nav>
         </div>
