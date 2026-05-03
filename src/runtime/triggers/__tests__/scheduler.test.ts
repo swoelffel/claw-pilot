@@ -125,6 +125,56 @@ describe("TriggerScheduler.fire", () => {
     expect(auditEvents.some((e) => e.kind === "trigger.fired")).toBe(true);
   });
 
+  it("aborts fire with clear error when instance is not running", async () => {
+    const flowId = makeFlow();
+    const trig = createFlowTrigger(db, {
+      instanceSlug: "stopped-instance",
+      flowId,
+      kind: "cron",
+      name: "daily",
+      cronExpr: "0 9 * * *",
+    });
+
+    const starter = vi.fn(async () => 1);
+    const scheduler = new TriggerScheduler({
+      db,
+      runtimeStarter: starter,
+      getInstanceState: () => "stopped",
+    });
+
+    await scheduler.fire(trig.id);
+
+    expect(starter).not.toHaveBeenCalled();
+    const runs = listTriggerRuns(db, trig.id);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.status).toBe("failed");
+    expect(runs[0]!.error).toContain("not running");
+    expect(runs[0]!.error).toContain("stopped-instance");
+  });
+
+  it("fires when getInstanceState reports running", async () => {
+    const flowId = makeFlow();
+    const trig = createFlowTrigger(db, {
+      instanceSlug: "demo",
+      flowId,
+      kind: "cron",
+      name: "daily",
+      cronExpr: "0 9 * * *",
+    });
+    const flowRunId = makeFlowRun(flowId);
+    const starter = vi.fn(async () => flowRunId);
+    const scheduler = new TriggerScheduler({
+      db,
+      runtimeStarter: starter,
+      getInstanceState: () => "running",
+    });
+
+    await scheduler.fire(trig.id);
+
+    expect(starter).toHaveBeenCalledOnce();
+    expect(listTriggerRuns(db, trig.id)[0]!.status).toBe("succeeded");
+  });
+
   it("skips when concurrent run is active and lock holds", async () => {
     const flowId = makeFlow();
     const trig = createFlowTrigger(db, {

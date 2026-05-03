@@ -339,6 +339,7 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   registerTriggerContextProvider(deps.db);
   const triggerScheduler = new TriggerScheduler({
     db: deps.db,
+    getInstanceState: (instanceSlug) => deps.registry.getInstance(instanceSlug)?.state,
     runtimeStarter: async (instanceSlug, flowId, triggerType, triggerDetail) => {
       const result = await callRuntimeApi<{ runId: number }>(
         instanceSlug,
