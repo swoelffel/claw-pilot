@@ -143,6 +143,183 @@ export function defaultIntervalState(): CronIntervalState {
 }
 
 // ---------------------------------------------------------------------------
+// parseCron — round-trip from a stored cron expression to interval state.
+// ---------------------------------------------------------------------------
+
+/** Result of parsing a cron expression back into an interval state. */
+export interface ParsedCron {
+  /** Recovered interval state, or null when the expression cannot be reduced. */
+  state: CronIntervalState | null;
+  /** Picker mode to fall back on. */
+  fallbackMode: "interval" | "expression";
+}
+
+/** Internal: parse a positive integer from a string, return null on failure. */
+function _parseInt(s: string): number | null {
+  if (!/^\d+$/.test(s)) return null;
+  const n = Number.parseInt(s, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Internal: parse a `*\/N` or `*` field into a step (0 means "every"). */
+function _parseStep(field: string): number | null {
+  if (field === "*") return 1;
+  const m = /^\*\/(\d+)$/.exec(field);
+  if (!m) return null;
+  const n = _parseInt(m[1]!);
+  return n !== null && n >= 1 ? n : null;
+}
+
+/** Internal: parse a CSV of integers (each in `min..max`), return sorted unique list or null. */
+function _parseCsvInts(field: string, min: number, max: number): number[] | null {
+  if (field.includes("-") || field.includes("/")) return null;
+  const parts = field.split(",");
+  const out: number[] = [];
+  for (const p of parts) {
+    const n = _parseInt(p);
+    if (n === null || n < min || n > max) return null;
+    if (!out.includes(n)) out.push(n);
+  }
+  if (out.length === 0) return null;
+  out.sort((a, b) => a - b);
+  return out;
+}
+
+const FALLBACK = (): ParsedCron => ({ state: null, fallbackMode: "expression" });
+
+/**
+ * Parse a 5-field cron expression back into a structured interval state.
+ *
+ * Mirrors `compileCron` exactly. Anything that doesn't match one of the
+ * canonical patterns falls back to `{ state: null, fallbackMode: "expression" }`.
+ */
+export function parseCron(expr: string): ParsedCron {
+  const trimmed = (expr ?? "").trim();
+  if (!trimmed) return FALLBACK();
+  const fields = trimmed.split(/\s+/);
+  if (fields.length !== 5) return FALLBACK();
+  const [m, h, dom, mon, dow] = fields as [string, string, string, string, string];
+
+  // Reject named months / weekdays, ranges, ? characters, and complex compounds.
+  if (/[a-zA-Z?]/.test(trimmed)) return FALLBACK();
+
+  const defaults = defaultIntervalState();
+
+  // ---- Minute(s): "*\/N * * * *" --------------------------------------------
+  // Only matches when minute is itself a step (e.g. "*/5") and everything
+  // else is "*". A literal-minute "0 * * * *" falls through to Hour(s).
+  if (mon === "*" && dom === "*" && dow === "*" && h === "*" && m.startsWith("*/")) {
+    const step = _parseStep(m);
+    if (step !== null) {
+      return {
+        state: { ...defaults, unit: "minute", every: step },
+        fallbackMode: "interval",
+      };
+    }
+    return FALLBACK();
+  }
+
+  // From here, minute must be a literal int (0..59).
+  const minute = _parseInt(m);
+  if (minute === null || minute < 0 || minute > 59) return FALLBACK();
+
+  // ---- Hour(s): "MM * * * *" or "MM *\/N * * *" -----------------------------
+  // Only matches when hour is "*" or "*/N". A literal-hour "MM HH * * *"
+  // falls through to Day(s).
+  if (dom === "*" && mon === "*" && dow === "*" && (h === "*" || h.startsWith("*/"))) {
+    const step = _parseStep(h);
+    if (step !== null) {
+      const every = h === "*" ? 1 : step;
+      return {
+        state: { ...defaults, unit: "hour", every, minute },
+        fallbackMode: "interval",
+      };
+    }
+    return FALLBACK();
+  }
+
+  // From here, hour must be a literal int (0..23).
+  const hour = _parseInt(h);
+  if (hour === null || hour < 0 || hour > 23) return FALLBACK();
+
+  // ---- Week: "MM HH * * <DOW-csv>" -----------------------------------------
+  if (dom === "*" && mon === "*" && dow !== "*") {
+    const days = _parseCsvInts(dow, 0, 7);
+    if (days === null) return FALLBACK();
+    // Normalize 0 (Sunday) → 7 to match compileCron's 1..7 range.
+    const normalized: DayOfWeek[] = [];
+    for (const d of days) {
+      const v = d === 0 ? 7 : d;
+      if (v < 1 || v > 7) return FALLBACK();
+      if (!normalized.includes(v as DayOfWeek)) normalized.push(v as DayOfWeek);
+    }
+    normalized.sort((a, b) => a - b);
+    return {
+      state: { ...defaults, unit: "week", every: 1, days: normalized, hour, minute },
+      fallbackMode: "interval",
+    };
+  }
+
+  // ---- Day(s) every 1: "MM HH * * *" ---------------------------------------
+  if (dom === "*" && mon === "*" && dow === "*") {
+    return {
+      state: { ...defaults, unit: "day", every: 1, hour, minute },
+      fallbackMode: "interval",
+    };
+  }
+
+  // ---- Day(s) every N: "MM HH *\/N * *" or Month/1 "MM HH <DOM-csv> * *" ---
+  if (dom !== "*" && mon === "*" && dow === "*") {
+    // First try Day(s) — dom is "*/N" (or "*", though compileCron emits "*"
+    // only when N=1 via the explicit branch).
+    const step = _parseStep(dom);
+    if (step !== null) {
+      const every = dom === "*" ? 1 : step;
+      return {
+        state: { ...defaults, unit: "day", every, hour, minute },
+        fallbackMode: "interval",
+      };
+    }
+    // Otherwise it's Month with mon="*" and N=1: "MM HH <DOM-csv> * *".
+    const doms = _parseCsvInts(dom, 1, 31);
+    if (doms === null) return FALLBACK();
+    return {
+      state: {
+        ...defaults,
+        unit: "month",
+        every: 1,
+        daysOfMonth: doms,
+        hour,
+        minute,
+      },
+      fallbackMode: "interval",
+    };
+  }
+
+  // ---- Month(s): "MM HH <DOM-csv> *\/N *" ----------------------------------
+  if (dow === "*" && dom !== "*" && mon !== "*") {
+    const step = _parseStep(mon);
+    if (step === null) return FALLBACK();
+    const every = mon === "*" ? 1 : step;
+    const doms = _parseCsvInts(dom, 1, 31);
+    if (doms === null) return FALLBACK();
+    return {
+      state: {
+        ...defaults,
+        unit: "month",
+        every,
+        daysOfMonth: doms,
+        hour,
+        minute,
+      },
+      fallbackMode: "interval",
+    };
+  }
+
+  return FALLBACK();
+}
+
+// ---------------------------------------------------------------------------
 // Lit element
 // ---------------------------------------------------------------------------
 
@@ -272,16 +449,48 @@ export class CpCronPicker extends LitElement {
 
   @property({ type: String }) value = "0 9 * * *";
   @property({ type: String }) timezone = "Europe/Paris";
+  /**
+   * Optional pre-existing cron expression for edit mode. When set on first
+   * render, the picker calls `parseCron` to hydrate either the visual interval
+   * state or the raw expression draft. After hydration, the picker emits a
+   * `change` event with the canonical compiled value so the host sees a
+   * populated value immediately.
+   */
+  @property({ type: String }) initialValue: string | undefined = undefined;
 
   @state() private _mode: "interval" | "expression" = "interval";
   @state() private _interval: CronIntervalState = defaultIntervalState();
   @state() private _exprDraft = "";
   @state() private _exprError = "";
+  private _hydrated = false;
 
   override connectedCallback(): void {
     super.connectedCallback();
-    this._exprDraft = this.value;
+    this._hydrateFromInitialValue();
+    this._exprDraft = this._exprDraft || this.value;
     this._emitChange();
+  }
+
+  /**
+   * Apply `initialValue` (when provided) on first connection. Called once;
+   * subsequent reconnections are no-ops to avoid clobbering user edits.
+   */
+  private _hydrateFromInitialValue(): void {
+    if (this._hydrated) return;
+    this._hydrated = true;
+    const seed = this.initialValue;
+    if (typeof seed !== "string" || seed.trim() === "") return;
+    const parsed = parseCron(seed);
+    if (parsed.state !== null) {
+      this._mode = "interval";
+      this._interval = parsed.state;
+      this.value = compileCron(parsed.state).cron;
+    } else {
+      this._mode = "expression";
+      this._exprDraft = seed;
+      this.value = seed;
+      this._validateExpr();
+    }
   }
 
   // -------------------------------------------------------------------------
