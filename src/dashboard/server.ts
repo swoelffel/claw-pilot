@@ -25,6 +25,7 @@ import { SessionStore } from "./session-store.js";
 import { constants } from "../lib/constants.js";
 import { apiError } from "./route-deps.js";
 import type { RouteDeps } from "./route-deps.js";
+import { getRegisteredServerExtensions } from "./server-extensions.js";
 import { ClawPilotError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
 import { registerInstanceRoutes } from "./routes/instances.js";
@@ -351,6 +352,15 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   // Expose the scheduler to route handlers (TRIGGER-001 PR 3/3).
   // Extension-Point: trigger-dashboard-routes
   deps.triggerScheduler = triggerScheduler;
+
+  // Run any registered server extensions. Enterprise editions push
+  // additional route modules, auth providers, and background workers onto
+  // the registry from their bootstrap path. Community ships no extensions
+  // so the loop is a no-op here.
+  // Extension-Point: server-extensions
+  for (const extension of getRegisteredServerExtensions()) {
+    await extension(deps, app);
+  }
 
   // Rebuild search index on startup
   rebuildSearchIndex(deps.db);

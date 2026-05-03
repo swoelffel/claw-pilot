@@ -9,6 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [Unreleased]
 
 ### Added
+- **`registerServerExtension(...)` hook + `Extension-Point: server-extensions` in `buildDashboardApp`** — generic extension point for downstream editions to wire additional dashboard features (route modules, background workers, deferred provider registrations) without modifying `src/dashboard/server.ts`. Extensions run AFTER all Community route modules are registered and BEFORE the HTTP listener accepts traffic. Sequential, in registration order, idempotent re-registration is a silent no-op. Community ships zero extensions so the loop is a no-op for CE installs. Unblocks ENT-SSO-001 L2.3 (OIDC routes + provider registration) and any future Enterprise feature that needs cross-cutting integration. See `docs/architecture/server-extensions.md`.
 - **`GET /api/auth/providers` endpoint + `<cp-auth-providers-list>` Lit component** — extension point for SSO login buttons on the login page. The endpoint returns one descriptor per registered `AuthProvider` that implements the new optional `describeLogin()` method. Community always returns `[]` (only `PasswordProvider` is registered, and it has no `describeLogin()`), so the login page renders unchanged. Enterprise editions register one descriptor per enabled SSO provider, which appear as buttons above the password form. Unblocks ENT-SSO-001 (OIDC) and downstream SSO providers.
 
 ### Fixed
