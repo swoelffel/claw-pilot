@@ -66,7 +66,11 @@ describe("crypto", () => {
     it("throws on tampered ciphertext", () => {
       const ciphertext = encrypt("test");
       const parts = ciphertext.split(":");
-      parts[2] = "00" + parts[2]!.slice(2); // tamper — parts[2] always exists (iv:auth:ciphertext format)
+      // Flip the first byte (XOR 0xff) so the tamper is never a no-op,
+      // even if the original first byte happened to be 0x00.
+      const firstByte = parseInt(parts[2]!.slice(0, 2), 16);
+      const flipped = (firstByte ^ 0xff).toString(16).padStart(2, "0");
+      parts[2] = flipped + parts[2]!.slice(2);
       expect(() => decrypt(parts.join(":"))).toThrow();
     });
 
