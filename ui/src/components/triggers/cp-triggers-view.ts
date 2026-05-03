@@ -25,18 +25,28 @@ export class CpTriggersView extends LitElement {
     css`
       :host {
         display: block;
-        padding: 16px;
+        padding: var(--space-6);
         font-family: var(--font-ui);
       }
       header.section-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 16px;
+        gap: var(--space-4);
+        margin-bottom: var(--space-4);
       }
-      h1 {
+      h1.title {
         margin: 0;
-        font-size: 22px;
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--text-primary);
+        flex: 1;
+      }
+      .count {
+        margin-left: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-muted);
       }
     `,
   ];
@@ -86,9 +96,12 @@ export class CpTriggersView extends LitElement {
   override render() {
     return html`
       <header class="section-header">
-        <h1>${msg("Triggers", { id: "trigger-page-title" })}</h1>
-        <button class="btn primary" type="button" @click=${() => (this._showWizard = true)}>
-          ${msg("New trigger", { id: "trigger-page-new" })}
+        <h1 class="title">
+          ${msg("Triggers", { id: "trigger-page-title" })}
+          <span class="count">${this._triggers.length}</span>
+        </h1>
+        <button class="btn btn-primary" type="button" @click=${() => (this._showWizard = true)}>
+          ${msg("+ New trigger", { id: "trigger-page-new" })}
         </button>
       </header>
       ${this._error ? html`<div class="error-banner">${this._error}</div>` : ""}
