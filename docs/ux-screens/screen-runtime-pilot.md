@@ -1,9 +1,9 @@
 # Screen 2c — Runtime Pilot (`cp-runtime-pilot`)
 
-> **Source**: `ui/src/components/runtime-pilot.ts`
+> **Source**: `ui/src/components/runtime-pilot.ts` (root) + `ui/src/components/pilot/` (sub-folder)
 > **Route**: `#/instances/:slug/pilot`
 
-> Replaces `cp-runtime-chat` since v0.37.0. 22 components total.
+> Replaces `cp-runtime-chat` since v0.37.0. The originally-monolithic pilot has been split (since v0.78+) into a thin root container that owns nav-bar + session detection + SSE wiring, plus a `pilot/` sub-folder of focused sub-components. See "Sub-architecture" below.
 
 Advanced chat view with LLM context panel on side. Full-height flex column layout (no scroll on `<main>`).
 
@@ -17,7 +17,10 @@ Advanced chat view with LLM context panel on side. Full-height flex column layou
 │  ┌─ pilot-header ─────────────────────────────────────────────┐   │
 │  │  ● pilot  ·  sonnet-4-5  ·  ● idle  12 msgs  45.2k  $0.12  [⊞]│   │
 │  └────────────────────────────────────────────────────────────┘   │
-│  ┌─ Messages ──────────────────────────┐  ┌─ pilot-context-panel ─┐│
+│  ┌─ pilot-filter-bar ─────────────────────────────────────────┐   │
+│  │  [tools] [reasoning] [subtasks]  · per-type visibility      │   │
+│  └────────────────────────────────────────────────────────────┘   │
+│  ┌─ Messages (pilot-messages) ─────────┐  ┌─ pilot-context-panel ─┐│
 │  │                             │  │  ◈  ⚙  ⬡  ☰  ⚡          ││
 │  │  ┌─ user message ────────┐ │  │                          ││
 │  │  │  My message           │ │  │  ┌─ active section ────┐ ││
@@ -111,32 +114,59 @@ Retractable right panel. Toggled by the `⊞` button in the pilot header. Five i
 
 Default active section: `gauge`.
 
-### Components (22)
+## Sub-architecture
 
-| Component | File | Role |
+The Runtime Pilot is composed of three layers:
+
+1. **Root** — `runtime-pilot.ts` owns the nav-bar, permanent-session detection, SSE wiring, and the overall flex layout.
+2. **Top-level sub-components** in `ui/src/components/pilot/` — header / filter bar / messages list / message bubble / input / context panel.
+3. **Leaf renderers**:
+   - `ui/src/components/pilot/parts/` — one file per part type (text, tool, reasoning, subtask, image, artifact, question, suggestion, compaction, file).
+   - `ui/src/components/pilot/context/` — one file per context-panel tab (gauge, system, tools, agents, events, prompt).
+
+`pilot/timeline-utils.ts` is a pure-function helper module (no element) used by `pilot-messages` to build/condense the rendered timeline.
+
+### Top-level pilot files
+
+| File | Role |
+|---|---|
+| `runtime-pilot.ts` | Root container — nav bar, session management, SSE, layout |
+| `pilot/pilot-header.ts` | Session header — agent name + model, status pill, stats, panel toggle |
+| `pilot/pilot-filter-bar.ts` | Above-messages filter chips (e.g. hide tool calls, hide reasoning) |
+| `pilot/pilot-messages.ts` | Scrollable message list — virtualization + auto-scroll |
+| `pilot/pilot-message.ts` | Single message bubble — dispatches per-part rendering |
+| `pilot/pilot-input.ts` | Textarea + 📎 attach + Send/Stop toggle |
+| `pilot/pilot-context-panel.ts` | Right panel — icon tab bar + section switcher |
+| `pilot/timeline-utils.ts` | Pure helpers used by `pilot-messages` |
+
+### Part renderers (`pilot/parts/`)
+
+| File | Part type | Notes |
 |---|---|---|
-| `cp-runtime-pilot` | `runtime-pilot.ts` | Main container — nav bar, session management, SSE, layout |
-| `cp-pilot-header` | `pilot/pilot-header.ts` | Session header — active agent name + model, status pill, stats, panel toggle |
-| `cp-pilot-messages` | `pilot/pilot-messages.ts` | Scrollable message list |
-| `cp-pilot-message` | `pilot/pilot-message.ts` | Message rendering (dispatches to part renderers) |
-| `cp-pilot-input` | `pilot/pilot-input.ts` | Textarea + attach + Send/Stop toggle |
-| `cp-pilot-context-panel` | `pilot/pilot-context-panel.ts` | Right side panel — icon tab bar + section switcher |
-| `cp-pilot-context-gauge` | `pilot/context/context-gauge.ts` | Token usage donut gauge + embedded system prompt viewer |
-| `cp-pilot-context-prompt` | `pilot/context/context-prompt.ts` | System prompt viewer — parses prompt into collapsible sections (embedded in gauge tab) |
-| `cp-pilot-context-tools` | `pilot/context/context-tools.ts` | Available tools list (built-in + MCP) |
-| `cp-pilot-context-agents` | `pilot/context/context-agents.ts` | Agent teammates + spawn links |
-| `cp-pilot-context-system` | `pilot/context/context-system.ts` | System prompt source files (SOUL.md, IDENTITY.md, etc.) |
-| `cp-pilot-context-events` | `pilot/context/context-events.ts` | Real-time bus event log |
-| `cp-pilot-part-text` | `pilot/parts/part-text.ts` | Markdown text rendering (marked + DOMPurify) |
-| `cp-pilot-part-tool` | `pilot/parts/part-tool.ts` | Tool-call + tool-result rendering (collapsible) |
-| `cp-pilot-part-reasoning` | `pilot/parts/part-reasoning.ts` | Anthropic extended thinking rendering |
-| `cp-pilot-part-subtask` | `pilot/parts/part-subtask.ts` | Subagent rendering (spawn info + result) |
-| `cp-pilot-part-artifact` | `pilot/parts/part-artifact.ts` | Artifact card — rich content with copy button ([doc](../ux-components/comp-pilot-part-artifact.md)) |
-| `cp-pilot-part-suggestion` | `pilot/parts/part-suggestion.ts` | Follow-up suggestion chips ([doc](../ux-components/comp-pilot-part-suggestion.md)) |
-| `cp-pilot-part-image` | `pilot/parts/part-image.ts` | Image thumbnail + zoom overlay ([doc](../ux-components/comp-pilot-part-image.md)) |
-| `cp-pilot-part-question` | `pilot/parts/part-question.ts` | Interactive question with options ([doc](../ux-components/comp-pilot-part-question.md)) |
-| `cp-pilot-part-compaction` | `pilot/parts/part-compaction.ts` | Compaction summary |
-| `cp-session-tree` | `session-tree.ts` | Session hierarchy (parent/child) |
+| `part-text.ts` | `text` | Markdown via `marked` + DOMPurify |
+| `part-tool.ts` | `tool_call` | Generic tool call/result, collapsible |
+| `part-reasoning.ts` | `reasoning` | Anthropic extended thinking ([doc](../ux-components/comp-pilot-part-reasoning.md)) |
+| `part-subtask.ts` | `subtask` | Subagent spawn + result |
+| `part-image.ts` | `image` | Thumbnail + zoom overlay ([doc](../ux-components/comp-pilot-part-image.md)) |
+| `part-artifact.ts` | `artifact` (routed from `tool_call`) | Rich card with copy button ([doc](../ux-components/comp-pilot-part-artifact.md)) |
+| `part-question.ts` | `question` (routed from `tool_call`) | Interactive question ([doc](../ux-components/comp-pilot-part-question.md)) |
+| `part-suggestion.ts` | `suggestion` | Follow-up chips ([doc](../ux-components/comp-pilot-part-suggestion.md)) |
+| `part-compaction.ts` | `compaction` | Compaction marker |
+| `part-file.ts` | file attachment | Inline file pill (download / preview) |
+| `part-delegation-expand.ts` | delegation drill-down | Inline expand of nested sub-sessions ([doc](../ux-components/comp-pilot-part-delegation-expand.md)) |
+
+### Context tabs (`pilot/context/`)
+
+| File | Tab id | Content |
+|---|---|---|
+| `context-gauge.ts` | `gauge` | Token usage donut + system prompt viewer |
+| `context-prompt.ts` | (embedded) | System prompt parser — collapsible sections |
+| `context-tools.ts` | `tools` | Built-in + MCP tools list |
+| `context-agents.ts` | `agents` | Teammates + spawn graph |
+| `context-system.ts` | `system` | System prompt source files (SOUL.md, IDENTITY.md, etc.) |
+| `context-events.ts` | `events` | Real-time bus event log |
+
+The session tree (`cp-session-tree`, top-level) is reused by `pilot/parts/part-subtask` to show nested delegation.
 
 ## Extended SSE Stream (17+ event types)
 

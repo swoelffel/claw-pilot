@@ -66,7 +66,9 @@ Auto-refresh every 15s while connected.
 
 ## Navigation
 
-Clicking a flow run status navigates to `#/instances/:slug/flows/runs/:runId` for detailed execution view.
+- Click on a run status → `#/instances/:slug/flows/runs/:runId` (single-run detail).
+- Click on a flow row's "Sessions" affordance → `#/instances/:slug/flows/:flowId/sessions` — run-centric master/detail (`cp-flow-sessions`, see [comp-flow-sessions.md](../ux-components/comp-flow-sessions.md)).
+- Triggers attached to a flow are managed via the per-instance Triggers screen ([screen-triggers.md](screen-triggers.md)).
 
 ## States
 

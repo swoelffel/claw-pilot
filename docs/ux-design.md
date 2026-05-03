@@ -4,9 +4,9 @@ Visual and behavioral reference for all screens and components of the applicatio
 Serves as the foundation for interface evolution discussions.
 
 > **Source components**: `ui/src/components/`
+> **Routing**: `ui/src/services/router.ts`
 > **Shared styles**: `ui/src/styles/tokens.ts` + `ui/src/styles/shared.ts`
 > **Stack**: Lit web components, dark theme, CSS custom properties
-> **Reference screenshots**: `screen1.png` (Agent Builder), `screen2.png` (Instances View)
 
 > Individual screen docs live in [`ux-screens/`](ux-screens/) and component docs in [`ux-components/`](ux-components/).
 
@@ -49,114 +49,138 @@ Serves as the foundation for interface evolution discussions.
 
 ## Hash-based routing
 
-Since v0.7.1, navigation uses hash URLs (`#/...`). Browser back/forward and page refresh work correctly.
+Navigation uses hash URLs (`#/...`). Browser back/forward and page refresh work correctly. Routes are produced and parsed by `ui/src/services/router.ts` (`Route` discriminated union, `hashToRoute`, `routeToHash`).
 
-| Hash URL | Rendered view | Component |
+| Hash URL | Route view | Component |
 |---|---|---|
-| `#/home` | Home screen (default) | `cp-home-screen` |
-| `#/` or `#/instances` | Instances view | `cp-cluster-view` |
-| `#/instances/:slug/dashboard` | Instance dashboard (synthetic overview) | `cp-instance-dashboard` |
-| `#/instances/:slug/builder` | Agent builder | `cp-agents-builder` |
-| `#/instances/:slug/settings` | Instance settings | `cp-instance-settings` |
-| `#/instances/:slug/pilot` | Interactive chat + LLM context panel | `cp-runtime-pilot` |
-| `#/instances/:slug/costs` | Cost analytics dashboard | `cp-costs-dashboard` |
-| `#/instances/:slug/activity` | Event browser + filters | `cp-activity-console` |
-| `#/instances/:slug/memory` | Memory file browser + search | `cp-memory-browser` |
-| `#/instances/:slug/heartbeat` | Heartbeat heatmap visualization | `cp-heartbeat-heatmap` |
-| `#/instances/:slug/session-logs` | Session log viewer | `cp-session-logs` |
-| `#/instances/:slug/tasks` | Task board (Kanban) | `cp-task-board` |
-| `#/instances/:slug/flows` | Workflow editor + run history | `cp-flow-list` |
-| `#/instances/:slug/flows/runs/:runId` | Flow execution detail | `cp-flow-run-detail` |
-| `#/blueprints` | Blueprints view | `cp-blueprints-view` |
-| `#/blueprints/:id/builder` | Blueprint builder | `cp-blueprint-builder` |
-| `#/agent-templates` | Agent templates (reusable agent blueprints) | `cp-agent-templates-view` |
-| `#/agent-templates/:id` | Agent template detail + file editing | `cp-agent-template-detail` |
-| `#/profile` | User profile settings | `cp-profile-settings` |
+| `#/` (default) | `home` | `cp-home-screen` |
+| `#/home` | `home` | `cp-home-screen` |
+| `#/instances` | `cluster` | `cp-cluster-view` |
+| `#/instances/:slug/dashboard` | `instance-dashboard` | `cp-instance-dashboard` |
+| `#/instances/:slug/builder` | `agents-builder` | `cp-agents-builder` |
+| `#/instances/:slug/settings` | `instance-settings` | `cp-instance-settings` |
+| `#/instances/:slug/pilot` | `pilot` | `cp-runtime-pilot` |
+| `#/instances/:slug/costs` | `costs` | `cp-costs-dashboard` |
+| `#/instances/:slug/activity` | `activity` | `cp-activity-console` |
+| `#/instances/:slug/memory` | `memory` | `cp-memory-browser` |
+| `#/instances/:slug/heartbeat` | `heartbeat` | `cp-heartbeat-heatmap` |
+| `#/instances/:slug/session-logs` | `session-logs` | `cp-session-logs` |
+| `#/instances/:slug/tasks` | `tasks` | `cp-task-board` |
+| `#/instances/:slug/triggers` | `triggers` | `cp-triggers-view` |
+| `#/instances/:slug/flows` | `flows` | `cp-flow-list` |
+| `#/instances/:slug/flows/:flowId/sessions` | `flow-sessions` | `cp-flow-sessions` |
+| `#/instances/:slug/flows/runs/:runId` | `flow-run` | `cp-flow-run-detail` |
+| `#/blueprints` | `blueprints` | `cp-blueprints-view` |
+| `#/blueprints/:id/builder` | `blueprint-builder` | `cp-blueprint-builder` |
+| `#/agent-templates` | `agent-templates` | `cp-agent-templates-view` |
+| `#/agent-templates/:id` | `agent-template-detail` | `cp-agent-template-detail` |
+| `#/profile` | `profile` | `cp-profile-settings` |
 
-Navigation between views emits `navigate { view, slug?, blueprintId?, templateId? }` events captured by `app.ts`, which updates the hash URL and renders the corresponding component.
+Unknown hashes resolve to `home`. Navigation events emitted by children (`navigate { view, slug?, blueprintId?, templateId?, runId?, flowId?, section? }`) are captured by `app.ts`, which updates `_route`, and `_syncHashFromRoute` then writes the hash.
 
 ---
 
 ## Global navigation (`app.ts`)
 
-Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`).
+Sticky header (`height: 56px`, `background: --bg-surface`).
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│  ClawPilot   Instances [2]   Blueprints [3]   Templates [5]   👤  ● Live [3]  [Sign out]│
-└──────────────────────────────────────────────────────────────────────────┘
-```
-
-| Element | Description |
-|---|---|
-| **Logo** | "Claw**Pilot**" (accent span on "Pilot") — click → Instances view |
-| **Instances** | Active tab if cluster view, agents-builder, or instance-settings. Numeric badge if `instanceCount > 0`. |
-| **Blueprints** | Active tab if blueprints or blueprint-builder view. Numeric badge if `blueprintCount !== null && blueprintCount > 0`. |
-| **Templates** | Active tab if agent-templates or agent-template-detail view. Numeric badge if `agentTemplateCount !== null && agentTemplateCount > 0`. Links to `#/agent-templates`. |
-| **Profile** | 👤 emoji button, transparent border default, accent border on hover, accent fill when `#/profile` is active. Click → `#/profile`. |
-| **Live Stream** | `cp-live-stream-widget` — button with status dot + "Live"/"Offline" label + unread badge. Click opens dropdown panel with real-time SSE events (see [comp-live-stream-widget.md](ux-components/comp-live-stream-widget.md)). |
-| **Sign out** | Gray outline button, red hover (`--state-error`). Calls `POST /api/auth/logout` then resets local state. |
-
-**Footer** (`height: 48px`, `background: --bg-surface`):
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  ClawPilot  [v0.41.24]  ·  GitHub  ·  Issues    🌐 EN ▾  ·  © 2026 SWO — MIT License │
-└─────────────────────────────────────────────────────────────────┘
++---------------------------------------------------------------------------------------+
+|  ClawPilot   Home   Instances [2]   Blueprints [3]   Templates [5]                     |
+|                                       [Search Ctrl+K] [Bell ●]  [User v]  [Live]  [Sign out] |
++---------------------------------------------------------------------------------------+
 ```
 
 | Element | Description |
 |---|---|
-| **ClawPilot** | Brand with accent span, `font-weight: 600` |
-| **[vX.Y.Z]** | Accent monospace version badge (`--accent-subtle`, `--accent-border`) |
-| **GitHub** | Link `https://github.com/swoelffel/claw-pilot`, `target="_blank"` |
-| **Issues** | Link `https://github.com/swoelffel/claw-pilot/issues`, `target="_blank"` |
-| **Language selector** | Button `🌐 XX ▾` — opens dropdown above with 6 available languages. Outside click closes dropdown. |
-| **© year SWO** | Muted text with "MIT License" |
+| **Logo** | "Claw**Pilot**" (accent span on "Pilot") — click → `home` route. |
+| **Home tab** | Active when route is `home`. |
+| **Instances tab** | Active for any route in the instance subtree (`cluster`, `agents-builder`, `instance-settings`, `instance-dashboard`, `pilot`, `costs`, `activity`, `memory`, `heartbeat`, `session-logs`, `tasks`, `flows`, `flow-run`). Numeric badge if `_instances.length > 0`. Note: `triggers` and `flow-sessions` do not currently mark this tab active — see "Notes" below. |
+| **Blueprints tab** | Active for `blueprints` / `blueprint-builder`. Badge if `_blueprintCount > 0`. |
+| **Templates tab** | Active for `agent-templates` / `agent-template-detail`. Badge if `_agentTemplateCount > 0`. |
+| **Search button** | Opens `cp-command-palette` (also bound to ⌘/Ctrl+K). |
+| **Notification bell** | `cp-notification-inbox` — bell icon with unread count, dropdown panel. |
+| **Profile button** | SVG user icon + `_username`, transparent border default, accent border on hover, accent fill when route is `profile`. Click → `#/profile`. |
+| **Live Stream Widget** | `cp-live-stream-widget` — status dot + "Live"/"Offline" + unread badge. Dropdown shows real-time SSE events. Hidden under 640px. |
+| **Sign out** | Gray outline button, red hover. Calls `POST /api/auth/logout`, clears local token. |
+
+Below the header, `cp-self-update-banner` renders inline when an update is available or in progress.
+
+**Footer** (`min-height: 48px`, `background: --bg-surface`):
+
+```
++---------------------------------------------------------------------+
+|  ClawPilot  [vX.Y.Z]  ·  GitHub  ·  Issues       [Globe EN v]  ·  © year SWO — MIT License |
++---------------------------------------------------------------------+
+```
+
+| Element | Description |
+|---|---|
+| **ClawPilot** | Brand with accent span. |
+| **Version badge** | `v${__APP_VERSION__}` — Vite `define` injects from `package.json`. Reads dynamically per build. |
+| **GitHub / Issues** | External links to `swoelffel/claw-pilot`. |
+| **Language selector** | Globe + locale label + chevron. Dropdown opens upward, shows all locales from `localization`. Outside-click closes. |
+| **Copyright line** | `© ${currentYear} SWO — MIT License`. |
+
+Persistent overlays rendered at the root regardless of route:
+
+- `cp-permission-request-overlay` — when current route has a `slug`.
+- `cp-bus-alerts` — instance-scoped runtime alerts.
+- `cp-command-palette` — when `_commandPaletteOpen`.
+- `cp-create-agent-dialog` — when a "Use template" flow is in progress.
 
 ---
 
 ## Screens
 
-| # | Screen | Tag | Route | Components used | Doc |
-|---|--------|-----|-------|-----------------|-----|
-| 0 | Login | `cp-login-view` | — (pre-auth) | — | [screen-login.md](ux-screens/screen-login.md) |
-| — | Home Screen | `cp-home-screen` | `#/home` | cp-home-wizard, cp-home-chat | [screen-home.md](ux-screens/screen-home.md) |
-| 1 | Instances | `cp-cluster-view` | `#/instances` | instance-card, create-dialog, delete-instance-dialog, discover-dialog | [screen-instances.md](ux-screens/screen-instances.md) |
-| 2a | Instance Dashboard | `cp-instance-dashboard` | `#/instances/:slug/dashboard` | — (self-contained) | [screen-instance-dashboard.md](ux-screens/screen-instance-dashboard.md) |
-| 2b | Instance Settings | `cp-instance-settings` | `#/instances/:slug/settings` | channels, mcp, permissions, config, skills (inline) | [screen-instance-settings.md](ux-screens/screen-instance-settings.md) |
-| 2c | Runtime Pilot | `cp-runtime-pilot` | `#/instances/:slug/pilot` | 22+ sub-components (inline) | [screen-runtime-pilot.md](ux-screens/screen-runtime-pilot.md) |
-| 2d | Cost Dashboard | `cp-costs-dashboard` | `#/instances/:slug/costs` | cp-budget-settings, cp-budget-alert-banner | [screen-costs-dashboard.md](ux-screens/screen-costs-dashboard.md) |
-| 2e | Activity Console | `cp-activity-console` | `#/instances/:slug/activity` | — (self-contained) | [screen-activity-console.md](ux-screens/screen-activity-console.md) |
-| — | Memory Browser | `cp-memory-browser` | `#/instances/:slug/memory` | — | [screen-memory-browser.md](ux-screens/screen-memory-browser.md) |
-| — | Heartbeat Heatmap | `cp-heartbeat-heatmap` | `#/instances/:slug/heartbeat` | — | [screen-heartbeat-heatmap.md](ux-screens/screen-heartbeat-heatmap.md) |
-| — | Session Logs | `cp-session-logs` | `#/instances/:slug/session-logs` | session-tree | [screen-session-logs.md](ux-screens/screen-session-logs.md) |
-| 3 | Agent Builder | `cp-agents-builder` | `#/instances/:slug/builder` | agent-card-mini, agent-detail-panel, agent-links-svg | [screen-agent-builder.md](ux-screens/screen-agent-builder.md) |
-| 4 | Blueprints | `cp-blueprints-view` | `#/blueprints` | blueprint-card | [screen-blueprints.md](ux-screens/screen-blueprints.md) |
-| 5 | Blueprint Builder | `cp-blueprint-builder` | `#/blueprints/:id/builder` | agent-card-mini, agent-detail-panel, agent-links-svg | [screen-blueprint-builder.md](ux-screens/screen-blueprint-builder.md) |
-| — | Agent Templates | `cp-agent-templates-view` | `#/agent-templates` | — | [screen-agent-templates.md](ux-screens/screen-agent-templates.md) |
-| — | Agent Template Detail | `cp-agent-template-detail` | `#/agent-templates/:id` | agent-file-editor | [screen-agent-template-detail.md](ux-screens/screen-agent-template-detail.md) |
-| — | Task Board | `cp-task-board` | `#/instances/:slug/tasks` | task-card, task-detail, epic-tree | [screen-task-board.md](ux-screens/screen-task-board.md) |
-| — | Flow List | `cp-flow-list` | `#/instances/:slug/flows` | flow-editor | [screen-flow-list.md](ux-screens/screen-flow-list.md) |
-| — | Flow Run Detail | `cp-flow-run-detail` | `#/instances/:slug/flows/runs/:runId` | — | [screen-flow-run-detail.md](ux-screens/screen-flow-run-detail.md) |
-| — | Profile Settings | `cp-profile-settings` | `#/profile` | — (standalone) | [screen-profile-settings.md](ux-screens/screen-profile-settings.md) |
+| # | Screen | Tag | Route | Doc |
+|---|--------|-----|-------|-----|
+| 0 | Login | `cp-login-view` | — (pre-auth) | [screen-login.md](ux-screens/screen-login.md) |
+| — | Home | `cp-home-screen` | `#/home`, `#/` | [screen-home.md](ux-screens/screen-home.md) |
+| 1 | Instances | `cp-cluster-view` | `#/instances` | [screen-instances.md](ux-screens/screen-instances.md) |
+| 2a | Instance Dashboard | `cp-instance-dashboard` | `#/instances/:slug/dashboard` | — (see [comp-instance-dashboard.md](ux-components/comp-instance-dashboard.md)) |
+| 2b | Instance Settings | `cp-instance-settings` | `#/instances/:slug/settings` | [screen-instance-settings.md](ux-screens/screen-instance-settings.md) |
+| 2c | Runtime Pilot | `cp-runtime-pilot` | `#/instances/:slug/pilot` | [screen-runtime-pilot.md](ux-screens/screen-runtime-pilot.md) |
+| 2d | Cost Dashboard | `cp-costs-dashboard` | `#/instances/:slug/costs` | [screen-costs-dashboard.md](ux-screens/screen-costs-dashboard.md) |
+| 2e | Activity Console | `cp-activity-console` | `#/instances/:slug/activity` | [screen-activity-console.md](ux-screens/screen-activity-console.md) |
+| 2f | Triggers | `cp-triggers-view` | `#/instances/:slug/triggers` | [screen-triggers.md](ux-screens/screen-triggers.md) |
+| — | Memory Browser | `cp-memory-browser` | `#/instances/:slug/memory` | [screen-memory-browser.md](ux-screens/screen-memory-browser.md) |
+| — | Heartbeat Heatmap | `cp-heartbeat-heatmap` | `#/instances/:slug/heartbeat` | [screen-heartbeat-heatmap.md](ux-screens/screen-heartbeat-heatmap.md) |
+| — | Session Logs | `cp-session-logs` | `#/instances/:slug/session-logs` | [screen-session-logs.md](ux-screens/screen-session-logs.md) |
+| 3 | Agent Builder | `cp-agents-builder` | `#/instances/:slug/builder` | [screen-agent-builder.md](ux-screens/screen-agent-builder.md) |
+| 4 | Blueprints | `cp-blueprints-view` | `#/blueprints` | [screen-blueprints.md](ux-screens/screen-blueprints.md) |
+| 5 | Blueprint Builder | `cp-blueprint-builder` | `#/blueprints/:id/builder` | [screen-blueprint-builder.md](ux-screens/screen-blueprint-builder.md) |
+| — | Agent Templates | `cp-agent-templates-view` | `#/agent-templates` | [screen-agent-templates.md](ux-screens/screen-agent-templates.md) |
+| — | Agent Template Detail | `cp-agent-template-detail` | `#/agent-templates/:id` | [screen-agent-template-detail.md](ux-screens/screen-agent-template-detail.md) |
+| — | Task Board | `cp-task-board` | `#/instances/:slug/tasks` | [screen-task-board.md](ux-screens/screen-task-board.md) |
+| — | Flow List | `cp-flow-list` | `#/instances/:slug/flows` | [screen-flow-list.md](ux-screens/screen-flow-list.md) |
+| — | Flow Sessions | `cp-flow-sessions` | `#/instances/:slug/flows/:flowId/sessions` | — (see [comp-flow-sessions.md](ux-components/comp-flow-sessions.md)) |
+| — | Flow Run Detail | `cp-flow-run-detail` | `#/instances/:slug/flows/runs/:runId` | [screen-flow-run-detail.md](ux-screens/screen-flow-run-detail.md) |
+| — | Profile Settings | `cp-profile-settings` | `#/profile` | [screen-profile-settings.md](ux-screens/screen-profile-settings.md) |
 
 ---
 
 ## Shared components
+
+Top-level Lit elements under `ui/src/components/` that are not pages/dialogs.
 
 | Component | Tag | Doc |
 |-----------|-----|-----|
 | Update Banner Base | `cp-update-banner-base` | [comp-update-banner-base.md](ux-components/comp-update-banner-base.md) |
 | Self Update Banner | `cp-self-update-banner` | [comp-self-update-banner.md](ux-components/comp-self-update-banner.md) |
 | Instance Card | `cp-instance-card` | [comp-instance-card.md](ux-components/comp-instance-card.md) |
+| Instance Dashboard | `cp-instance-dashboard` | [comp-instance-dashboard.md](ux-components/comp-instance-dashboard.md) |
+| Dashboard Pilot | `cp-dashboard-pilot` | [comp-dashboard-pilot.md](ux-components/comp-dashboard-pilot.md) |
 | Blueprint Card | `cp-blueprint-card` | [comp-blueprint-card.md](ux-components/comp-blueprint-card.md) |
 | Agent Card Mini | `cp-agent-card-mini` | [comp-agent-card-mini.md](ux-components/comp-agent-card-mini.md) |
 | Agent Detail Panel | `cp-agent-detail-panel` | [comp-agent-detail-panel.md](ux-components/comp-agent-detail-panel.md) |
 | Agent Links SVG | `cp-agent-links-svg` | [comp-agent-links-svg.md](ux-components/comp-agent-links-svg.md) |
 | Agent File Editor | `cp-agent-file-editor` | [comp-agent-file-editor.md](ux-components/comp-agent-file-editor.md) |
+| Agent File Tree | `cp-agent-file-tree` | [comp-agent-file-tree.md](ux-components/comp-agent-file-tree.md) |
+| Instance Shared Files | `cp-instance-shared-files` | [comp-instance-shared-files.md](ux-components/comp-instance-shared-files.md) |
 | Session Tree | `cp-session-tree` | [comp-session-tree.md](ux-components/comp-session-tree.md) |
 | Live Stream Widget | `cp-live-stream-widget` | [comp-live-stream-widget.md](ux-components/comp-live-stream-widget.md) |
+| Notification Inbox | `cp-notification-inbox` | [comp-notification-inbox.md](ux-components/comp-notification-inbox.md) |
 | Permission Overlay | `cp-permission-request-overlay` | [comp-permission-overlay.md](ux-components/comp-permission-overlay.md) |
 | Bus Alerts | `cp-bus-alerts` | [comp-bus-alerts.md](ux-components/comp-bus-alerts.md) |
 | Canvas Legend | `cp-canvas-legend` | [comp-canvas-legend.md](ux-components/comp-canvas-legend.md) |
@@ -166,13 +190,29 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 | Home Chat | `cp-home-chat` | [comp-home-chat.md](ux-components/comp-home-chat.md) |
 | Home Wizard | `cp-home-wizard` | [comp-home-wizard.md](ux-components/comp-home-wizard.md) |
 | Command Palette | `cp-command-palette` | [comp-command-palette.md](ux-components/comp-command-palette.md) |
+| Start CTA | `cp-start-cta` | [start-cta.md](ux-components/start-cta.md) |
 | Task Card | `cp-task-card` | [comp-task-card.md](ux-components/comp-task-card.md) |
 | Task Detail | `cp-task-detail` | [comp-task-detail.md](ux-components/comp-task-detail.md) |
 | Epic Tree | `cp-epic-tree` | [comp-epic-tree.md](ux-components/comp-epic-tree.md) |
 | Flow Editor | `cp-flow-editor` | [comp-flow-editor.md](ux-components/comp-flow-editor.md) |
+| Flow Sessions | `cp-flow-sessions` | [comp-flow-sessions.md](ux-components/comp-flow-sessions.md) |
+| Triggers View | `cp-triggers-view` | [comp-triggers-view.md](ux-components/comp-triggers-view.md) |
+| Trigger List | `cp-trigger-list` | [comp-trigger-list.md](ux-components/comp-trigger-list.md) |
+| Trigger Wizard | `cp-trigger-wizard` | [comp-trigger-wizard.md](ux-components/comp-trigger-wizard.md) |
+| Trigger Detail | `cp-trigger-detail` | [comp-trigger-detail.md](ux-components/comp-trigger-detail.md) |
+| Input Mapping Editor | `cp-input-mapping-editor` | [comp-input-mapping-editor.md](ux-components/comp-input-mapping-editor.md) |
+| Pilot Header | `cp-pilot-header` | (see [screen-runtime-pilot.md](ux-screens/screen-runtime-pilot.md)) |
+| Pilot Filter Bar | `cp-pilot-filter-bar` | (see [screen-runtime-pilot.md](ux-screens/screen-runtime-pilot.md)) |
+| Pilot Input | `cp-pilot-input` | (see [screen-runtime-pilot.md](ux-screens/screen-runtime-pilot.md)) |
+| Pilot Messages | `cp-pilot-messages` | (see [screen-runtime-pilot.md](ux-screens/screen-runtime-pilot.md)) |
+| Pilot Message | `cp-pilot-message` | (see [screen-runtime-pilot.md](ux-screens/screen-runtime-pilot.md)) |
+| Pilot Context Panel | `cp-pilot-context-panel` | (see [screen-runtime-pilot.md](ux-screens/screen-runtime-pilot.md)) |
 | Pilot Part: Reasoning | `cp-pilot-part-reasoning` | [comp-pilot-part-reasoning.md](ux-components/comp-pilot-part-reasoning.md) |
 | Pilot Part: Delegation Expand | `cp-pilot-part-delegation-expand` | [comp-pilot-part-delegation-expand.md](ux-components/comp-pilot-part-delegation-expand.md) |
-| Agent File Tree | `cp-agent-file-tree` | [comp-agent-file-tree.md](ux-components/comp-agent-file-tree.md) |
+| Pilot Part: Artifact | `cp-pilot-part-artifact` | [comp-pilot-part-artifact.md](ux-components/comp-pilot-part-artifact.md) |
+| Pilot Part: Suggestion | `cp-pilot-part-suggestion` | [comp-pilot-part-suggestion.md](ux-components/comp-pilot-part-suggestion.md) |
+| Pilot Part: Image | `cp-pilot-part-image` | [comp-pilot-part-image.md](ux-components/comp-pilot-part-image.md) |
+| Pilot Part: Question | `cp-pilot-part-question` | [comp-pilot-part-question.md](ux-components/comp-pilot-part-question.md) |
 
 ---
 
@@ -181,15 +221,14 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 | Dialog | Tag | Triggered from | Doc |
 |--------|-----|----------------|-----|
 | New Instance | `cp-create-dialog` | Instances view | [dialog-create-instance.md](ux-components/dialog-create-instance.md) |
-| New Agent | `cp-create-agent-dialog` | Agent Builder | [dialog-create-agent.md](ux-components/dialog-create-agent.md) |
+| New Agent | `cp-create-agent-dialog` | Agent Builder + Template "Use" | [dialog-create-agent.md](ux-components/dialog-create-agent.md) |
 | Delete Agent | `cp-delete-agent-dialog` | Agent Builder | [dialog-delete-agent.md](ux-components/dialog-delete-agent.md) |
 | Delete Instance | `cp-delete-instance-dialog` | Instances view | [dialog-delete-instance.md](ux-components/dialog-delete-instance.md) |
-| Team Import | `cp-import-team-dialog` | Agent/Blueprint Builder | [dialog-import-team.md](ux-components/dialog-import-team.md) |
+| Team Import | `cp-import-team-dialog` | Agent / Blueprint Builder | [dialog-import-team.md](ux-components/dialog-import-team.md) |
 | Instance Discovery | `cp-discover-dialog` | Instances view (empty) | [dialog-discover.md](ux-components/dialog-discover.md) |
 | New Blueprint | `cp-create-blueprint-dialog` | Blueprints view | [dialog-create-blueprint.md](ux-components/dialog-create-blueprint.md) |
 | New Agent Template | `cp-create-agent-template-dialog` | Agent Templates view | [dialog-create-agent-template.md](ux-components/dialog-create-agent-template.md) |
-| New Workspace File | `cp-new-file-dialog` | Agent Detail Panel (Files tab) | — |
-| Delete Workspace File | `cp-delete-file-dialog` | Agent Detail Panel (Files tab) | — |
+| Workspace File Dialogs | `cp-new-file-dialog`, `cp-delete-file-dialog` (in `workspace-file-dialogs.ts`) | Agent Detail Panel (Files tab), Instance Shared Files | — |
 | Accessibility | — | All dialogs | [dialog-accessibility.md](ux-components/dialog-accessibility.md) |
 
 ---
@@ -225,3 +264,5 @@ Fixed navigation bar at top of page (`height: 56px`, `background: --bg-surface`)
 *Updated: 2026-04-14 - v0.72.6: SSE bridge (daemon/dashboard real-time sync), setup wizard replaced with form, system-tools plugin (DB-direct, 22 cp_* tools), zero complexity baseline. New routes: #/home, #/.../memory, #/.../heartbeat, #/.../session-logs, #/.../flows, #/.../flows/runs/:runId. New components: cp-home-chat, cp-home-wizard, cp-command-palette, cp-epic-tree, cp-flow-editor, cp-flow-list, cp-flow-run-detail, cp-pilot-part-reasoning, cp-pilot-part-delegation-expand. Total: 86 components, 18 routes.*
 
 *Updated: 2026-04-16 - v0.73.5: Workspace file manager (Files tab in agent detail panel) — cp-agent-file-tree (collapsible tree, per-dir create, per-file delete), cp-new-file-dialog, cp-delete-file-dialog. Backend: wildcard file routes (GET/PUT/DELETE /agents/:id/files/*), path validation, agent_files_fts FTS5 index. Flow improvements: outcome-driven control flow (continueOnFailure flag), structured complete_step tool, configurable maxSteps per step (default 50) with dynamic extension. workspace-knowledge plugin (ws_list_files, ws_search_files). Tool call repair + Anthropic prompt caching. Total: 89 components, 18 routes.*
+
+*Updated: 2026-05-03 - v0.81.2: doc refresh against current code. Drift audit since v0.73.5: added Triggers screen (`cp-triggers-view` + `cp-trigger-list` / `cp-trigger-wizard` / `cp-trigger-detail` / `cp-input-mapping-editor`, route `#/instances/:slug/triggers`, instance-card menu entry), added Flow Sessions route (`#/instances/:slug/flows/:flowId/sessions`), added per-instance Dashboard widget tiles (`cp-instance-dashboard` with embedded `cp-dashboard-pilot`, "Triggers →" link), added Notification Inbox (`cp-notification-inbox` bell in header), added Instance Shared Files panel (`cp-instance-shared-files`, sidebar entry "Shared files") + Skills panel (`cp-instance-skills`). Runtime Pilot refactored from monolith to `pilot/` subfolder (`pilot-header`, `pilot-filter-bar`, `pilot-input`, `pilot-messages`, `pilot-message`, `pilot-context-panel`, `timeline-utils`) with `pilot/parts/` (11 part renderers including `part-text`, `part-tool`, `part-file`, `part-subtask`, `part-compaction`) and `pilot/context/` (6 context tabs). Workspace file dialogs consolidated into `workspace-file-dialogs.ts`. Routes/screens/components/dialogs tables refreshed to current state.*
