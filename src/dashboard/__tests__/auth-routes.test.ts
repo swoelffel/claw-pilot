@@ -302,3 +302,45 @@ describe("GET /api/auth/me", () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe("GET /api/auth/providers", () => {
+  it("returns an empty list in Community (only PasswordProvider registered)", async () => {
+    const { app } = await createTestApp();
+    const res = await app.request("/api/auth/providers");
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body).toEqual({ providers: [] });
+  });
+
+  it("returns descriptors for providers exposing describeLogin()", async () => {
+    const { app } = await createTestApp();
+    registerAuthProvider({
+      kind: "oidc",
+      authenticate: async () => ({ ok: false, code: "X", message: "" }),
+      describeLogin: () => ({
+        id: "entra-prod",
+        kind: "oidc",
+        display_name: "Sign in with Microsoft",
+        login_url: "/api/auth/oidc/entra-prod/start",
+      }),
+    });
+
+    const res = await app.request("/api/auth/providers");
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.providers).toHaveLength(1);
+    expect(body.providers[0]).toEqual({
+      id: "entra-prod",
+      kind: "oidc",
+      display_name: "Sign in with Microsoft",
+      login_url: "/api/auth/oidc/entra-prod/start",
+    });
+  });
+
+  it("does not require authentication", async () => {
+    const { app } = await createTestApp();
+    // No Cookie, no Authorization header — must still respond 200.
+    const res = await app.request("/api/auth/providers");
+    expect(res.status).toBe(200);
+  });
+});

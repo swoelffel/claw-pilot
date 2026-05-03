@@ -13,6 +13,8 @@
     "orgid",
     "retarget",
     "azuread",
+    "loginable",
+    "okta",
     "SCIM",
     "maxsteps",
     "REINDEX",
