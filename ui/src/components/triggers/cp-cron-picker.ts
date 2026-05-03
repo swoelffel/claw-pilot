@@ -189,10 +189,10 @@ export class CpCronPicker extends LitElement {
       input,
       select {
         padding: 4px 6px;
-        background: var(--surface-alt);
+        background: var(--bg-base);
         color: var(--text-primary);
-        border: 1px solid var(--border);
-        border-radius: 4px;
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-sm);
         font-family: var(--font-ui);
         font-size: 13px;
       }
@@ -211,9 +211,9 @@ export class CpCronPicker extends LitElement {
       }
       .chip {
         padding: 4px 10px;
-        border: 1px solid var(--border);
+        border: 1px solid var(--bg-border);
         border-radius: 14px;
-        background: var(--surface-alt);
+        background: var(--bg-hover);
         color: var(--text-primary);
         cursor: pointer;
         font-size: 12px;
@@ -221,7 +221,7 @@ export class CpCronPicker extends LitElement {
       }
       .chip.active {
         background: var(--accent);
-        color: var(--accent-contrast, #fff);
+        color: #fff;
         border-color: var(--accent);
       }
       .dom-grid {
@@ -233,32 +233,33 @@ export class CpCronPicker extends LitElement {
       .dom-cell {
         text-align: center;
         padding: 4px 0;
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        background: var(--surface-alt);
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-sm);
+        background: var(--bg-hover);
         cursor: pointer;
         font-size: 12px;
         user-select: none;
       }
       .dom-cell.active {
         background: var(--accent);
-        color: var(--accent-contrast, #fff);
+        color: #fff;
         border-color: var(--accent);
       }
       .dom-cell .flag {
-        color: var(--state-warn, #f59e0b);
+        color: var(--state-warning);
       }
       .preview-runs {
         margin-top: 10px;
         padding: 8px;
-        background: var(--surface-alt);
-        border-radius: 4px;
-        font-family: var(--font-mono, monospace);
+        background: var(--bg-base);
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-md);
+        font-family: var(--font-mono);
         font-size: 12px;
         color: var(--text-secondary);
       }
       .invalid {
-        color: var(--state-error, #ef4444);
+        color: var(--state-error);
         font-size: 12px;
         margin-top: 4px;
       }

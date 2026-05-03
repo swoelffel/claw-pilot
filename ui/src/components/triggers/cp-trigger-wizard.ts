@@ -40,50 +40,81 @@ export class CpTriggerWizard extends LitElement {
         display: block;
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.4);
-        z-index: 100;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 500;
         font-family: var(--font-ui);
       }
       .panel {
-        background: var(--surface);
+        background: var(--bg-surface);
         color: var(--text-primary);
         max-width: 600px;
+        width: 90vw;
         margin: 5vh auto;
-        padding: 24px;
-        border-radius: 8px;
-        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--bg-border);
         max-height: 90vh;
-        overflow: auto;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .panel-header {
+        padding: 20px 24px;
+        border-bottom: 1px solid var(--bg-border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
       }
       h2 {
-        margin: 0 0 16px;
+        margin: 0;
         font-size: 18px;
+        font-weight: 700;
+        color: var(--text-primary);
+      }
+      .panel-body {
+        padding: 24px;
+        overflow: auto;
+        flex: 1;
+      }
+      .panel-footer {
+        padding: 16px 24px;
+        border-top: 1px solid var(--bg-border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+      }
+      .footer-cluster {
+        display: flex;
+        gap: 10px;
       }
       label {
         display: block;
         margin-top: 12px;
-        font-size: 13px;
+        font-size: 12px;
+        font-weight: 600;
         color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 6px;
       }
       input,
       select,
       textarea {
         width: 100%;
-        padding: 6px 8px;
-        margin-top: 4px;
-        background: var(--surface-alt);
+        padding: 8px 12px;
+        background: var(--bg-base);
         color: var(--text-primary);
-        border: 1px solid var(--border);
-        border-radius: 4px;
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-md);
         font-family: var(--font-ui);
         font-size: 13px;
         box-sizing: border-box;
       }
-      .actions {
-        display: flex;
-        justify-content: space-between;
-        margin-top: 20px;
-        gap: 8px;
+      input:focus,
+      select:focus,
+      textarea:focus {
+        border-color: var(--accent);
+        outline: none;
       }
       .step-indicator {
         display: flex;
@@ -94,7 +125,7 @@ export class CpTriggerWizard extends LitElement {
         width: 24px;
         height: 4px;
         border-radius: 2px;
-        background: var(--border);
+        background: var(--bg-border);
       }
       .dot.active {
         background: var(--accent);
@@ -107,14 +138,19 @@ export class CpTriggerWizard extends LitElement {
       }
       .kind-card {
         position: relative;
-        border: 2px solid var(--border);
-        border-radius: 6px;
+        border: 2px solid var(--bg-border);
+        border-radius: var(--radius-md);
         padding: 12px;
         cursor: pointer;
         text-align: center;
+        background: var(--bg-base);
+      }
+      .kind-card:hover {
+        border-color: var(--accent-border);
       }
       .kind-card.selected {
         border-color: var(--accent);
+        background: var(--accent-subtle);
       }
       .kind-card.disabled {
         opacity: 0.5;
@@ -123,6 +159,7 @@ export class CpTriggerWizard extends LitElement {
       }
       .kind-card .label {
         font-weight: 600;
+        color: var(--text-primary);
       }
       .kind-card .desc {
         font-size: 12px;
@@ -135,25 +172,24 @@ export class CpTriggerWizard extends LitElement {
         margin-top: 6px;
         background: var(--state-info);
         color: #fff;
-        border-radius: 10px;
+        border-radius: var(--radius-sm);
         font-size: 11px;
         font-weight: 600;
       }
       .owner-readonly {
-        margin-top: 4px;
         font-size: 13px;
         color: var(--text-primary);
-        padding: 6px 8px;
-        background: var(--surface-alt);
-        border: 1px solid var(--border);
-        border-radius: 4px;
+        padding: 8px 12px;
+        background: var(--bg-base);
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-md);
       }
       .empty-flows {
         margin-top: 8px;
-        padding: 8px;
-        background: var(--surface-alt);
-        border: 1px dashed var(--border);
-        border-radius: 4px;
+        padding: 12px;
+        background: var(--bg-base);
+        border: 1px dashed var(--bg-border);
+        border-radius: var(--radius-md);
         font-size: 13px;
         color: var(--text-secondary);
       }
@@ -163,9 +199,10 @@ export class CpTriggerWizard extends LitElement {
       }
       .preview-block {
         margin-top: 12px;
-        padding: 8px 10px;
-        background: var(--surface-alt);
-        border-radius: 4px;
+        padding: 10px 12px;
+        background: var(--bg-base);
+        border: 1px solid var(--bg-border);
+        border-radius: var(--radius-md);
         font-size: 12px;
         color: var(--text-secondary);
       }
@@ -174,18 +211,28 @@ export class CpTriggerWizard extends LitElement {
         font-weight: 500;
       }
       .preview-block .cron {
-        font-family: var(--font-mono, monospace);
+        font-family: var(--font-mono);
         margin-top: 4px;
+      }
+      .checkbox-row {
+        margin-top: 12px;
       }
       .checkbox-row label {
         display: inline-flex;
         align-items: center;
         gap: 6px;
         margin-right: 16px;
+        margin-bottom: 0;
+        text-transform: none;
+        letter-spacing: normal;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-primary);
       }
       .checkbox-row input[type="checkbox"] {
         width: auto;
         margin: 0;
+        padding: 0;
       }
     `,
   ];
@@ -417,7 +464,7 @@ export class CpTriggerWizard extends LitElement {
               @change=${(e: CustomEvent<InputMappingEntry[]>) => (this._mapping = e.detail)}
             ></cp-input-mapping-editor>
           `}
-      <div class="checkbox-row" style="margin-top: 12px;">
+      <div class="checkbox-row">
         <label>
           <input
             type="checkbox"
@@ -448,29 +495,41 @@ export class CpTriggerWizard extends LitElement {
   override render() {
     return html`
       <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
-        <h2>${msg("New trigger", { id: "trigger-wiz-title" })}</h2>
-        <div class="step-indicator">
-          <div class="dot ${this._step >= 1 ? "active" : ""}"></div>
-          <div class="dot ${this._step >= 2 ? "active" : ""}"></div>
-          <div class="dot ${this._step >= 3 ? "active" : ""}"></div>
+        <div class="panel-header">
+          <h2>${msg("New trigger", { id: "trigger-wiz-title" })}</h2>
+          <button
+            class="btn btn-ghost"
+            type="button"
+            @click=${this._close}
+            aria-label=${msg("Close", { id: "trigger-wiz-close" })}
+          >
+            ${msg("Close", { id: "trigger-wiz-close" })}
+          </button>
         </div>
-        ${this._error ? html`<div class="error-banner">${this._error}</div>` : ""}
-        ${this._step === 1 ? this._renderStep1() : ""}
-        ${this._step === 2 ? this._renderStep2() : ""}
-        ${this._step === 3 ? this._renderStep3() : ""}
-        <div class="actions">
-          <button class="btn" type="button" @click=${this._close}>
+        <div class="panel-body">
+          <div class="step-indicator">
+            <div class="dot ${this._step >= 1 ? "active" : ""}"></div>
+            <div class="dot ${this._step >= 2 ? "active" : ""}"></div>
+            <div class="dot ${this._step >= 3 ? "active" : ""}"></div>
+          </div>
+          ${this._error ? html`<div class="error-banner">${this._error}</div>` : ""}
+          ${this._step === 1 ? this._renderStep1() : ""}
+          ${this._step === 2 ? this._renderStep2() : ""}
+          ${this._step === 3 ? this._renderStep3() : ""}
+        </div>
+        <div class="panel-footer">
+          <button class="btn btn-ghost" type="button" @click=${this._close}>
             ${msg("Cancel", { id: "trigger-wiz-cancel" })}
           </button>
-          <div>
+          <div class="footer-cluster">
             ${this._step > 1
-              ? html`<button class="btn" type="button" @click=${this._back}>
+              ? html`<button class="btn btn-ghost" type="button" @click=${this._back}>
                   ${msg("Back", { id: "trigger-wiz-back" })}
                 </button>`
               : ""}
             ${this._step < 3
               ? html`<button
-                  class="btn primary"
+                  class="btn btn-primary"
                   type="button"
                   ?disabled=${!this._canAdvance()}
                   @click=${this._next}
@@ -478,7 +537,7 @@ export class CpTriggerWizard extends LitElement {
                   ${msg("Next", { id: "trigger-wiz-next" })}
                 </button>`
               : html`<button
-                  class="btn primary"
+                  class="btn btn-primary"
                   type="button"
                   ?disabled=${this._saving || !this._name || !this._flowId}
                   @click=${this._submit}

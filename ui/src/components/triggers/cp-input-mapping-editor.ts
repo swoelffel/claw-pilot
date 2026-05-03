@@ -31,11 +31,15 @@ export class CpInputMappingEditor extends LitElement {
       input {
         font-family: var(--font-mono);
         font-size: 13px;
-        padding: 6px 8px;
-        border: 1px solid var(--border);
-        background: var(--surface);
+        padding: 8px 12px;
+        border: 1px solid var(--bg-border);
+        background: var(--bg-base);
         color: var(--text-primary);
-        border-radius: 4px;
+        border-radius: var(--radius-md);
+      }
+      input:focus {
+        border-color: var(--accent);
+        outline: none;
       }
       .empty {
         color: var(--text-secondary);
@@ -49,11 +53,17 @@ export class CpInputMappingEditor extends LitElement {
       }
       .remove {
         background: transparent;
-        border: 1px solid var(--border);
+        border: 1px solid rgba(239, 68, 68, 0.25);
         color: var(--state-error);
         cursor: pointer;
-        border-radius: 4px;
-        padding: 4px 8px;
+        border-radius: var(--radius-sm);
+        padding: 4px 10px;
+        font-size: 12px;
+        font-weight: 500;
+        font-family: var(--font-ui);
+      }
+      .remove:hover {
+        background: rgba(239, 68, 68, 0.1);
       }
       .add {
         margin-top: 4px;
@@ -128,7 +138,7 @@ export class CpInputMappingEditor extends LitElement {
           </div>
         `,
       )}
-      <button class="btn add" type="button" @click=${this._add}>
+      <button class="btn btn-ghost add" type="button" @click=${this._add}>
         ${msg("Add mapping", { id: "trigger-mapping-add" })}
       </button>
       <div class="hint">

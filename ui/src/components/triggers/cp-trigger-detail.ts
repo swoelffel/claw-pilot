@@ -35,31 +35,42 @@ export class CpTriggerDetail extends LitElement {
         right: 0;
         width: min(560px, 100vw);
         height: 100vh;
-        background: var(--surface);
+        background: var(--bg-surface);
         color: var(--text-primary);
-        border-left: 1px solid var(--border);
+        border-left: 1px solid var(--bg-border);
         z-index: 90;
         font-family: var(--font-ui);
         overflow: auto;
       }
       header {
         padding: 16px;
-        border-bottom: 1px solid var(--border);
+        border-bottom: 1px solid var(--bg-border);
         display: flex;
         justify-content: space-between;
         align-items: center;
       }
+      header h2 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text-primary);
+      }
       .tabs {
         display: flex;
-        gap: 4px;
-        padding: 0 16px;
-        border-bottom: 1px solid var(--border);
+        border-bottom: 1px solid var(--bg-border);
       }
       .tab {
-        padding: 8px 12px;
+        padding: 8px 14px;
         cursor: pointer;
         border-bottom: 2px solid transparent;
-        font-size: 13px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+      }
+      .tab:hover {
+        color: var(--text-secondary);
       }
       .tab.active {
         border-bottom-color: var(--accent);
@@ -77,37 +88,55 @@ export class CpTriggerDetail extends LitElement {
       td {
         text-align: left;
         padding: 6px;
-        border-bottom: 1px solid var(--border);
+        border-bottom: 1px solid var(--bg-border);
       }
       .badge {
-        display: inline-block;
-        padding: 2px 8px;
-        border-radius: 10px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 10px;
+        border-radius: var(--radius-sm);
         font-size: 11px;
-        background: var(--surface-alt);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        background: rgba(100, 116, 139, 0.08);
         color: var(--text-secondary);
+        border: 1px solid rgba(100, 116, 139, 0.25);
       }
-      .badge.succeeded {
-        color: var(--state-success);
-      }
-      .badge.failed {
-        color: var(--state-error);
-      }
+      .badge.succeeded,
+      .badge.completed,
       .badge.running {
-        color: var(--accent);
+        background: rgba(16, 185, 129, 0.08);
+        color: var(--state-running);
+        border-color: rgba(16, 185, 129, 0.25);
+      }
+      .badge.failed,
+      .badge.error {
+        background: rgba(239, 68, 68, 0.08);
+        color: var(--state-error);
+        border-color: rgba(239, 68, 68, 0.25);
+      }
+      .badge.pending,
+      .badge.starting {
+        background: rgba(245, 158, 11, 0.08);
+        color: var(--state-warning);
+        border-color: rgba(245, 158, 11, 0.25);
       }
       pre {
-        background: var(--surface-alt);
+        background: var(--bg-base);
+        border: 1px solid var(--bg-border);
         padding: 10px;
-        border-radius: 4px;
+        border-radius: var(--radius-md);
         overflow: auto;
         font-size: 12px;
+        font-family: var(--font-mono);
       }
       .row {
         display: flex;
         justify-content: space-between;
         padding: 6px 0;
-        border-bottom: 1px solid var(--border);
+        border-bottom: 1px solid var(--bg-border);
       }
       .label {
         color: var(--text-secondary);
@@ -116,6 +145,26 @@ export class CpTriggerDetail extends LitElement {
       .value {
         font-family: var(--font-mono);
         font-size: 12px;
+        color: var(--text-primary);
+      }
+      .test-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+      }
+      .test-message {
+        margin-top: 12px;
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
+      h3 {
+        font-size: 13px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-secondary);
+        margin: 16px 0 8px;
       }
     `,
   ];
@@ -246,7 +295,7 @@ export class CpTriggerDetail extends LitElement {
       return html`<p>${msg("No runs yet", { id: "trigger-detail-no-runs" })}</p>`;
     }
     return html`
-      <button class="btn" type="button" @click=${this._refreshRuns}>
+      <button class="btn btn-ghost" type="button" @click=${this._refreshRuns}>
         ${msg("Refresh", { id: "trigger-detail-refresh" })}
       </button>
       <table>
@@ -283,19 +332,38 @@ export class CpTriggerDetail extends LitElement {
         ? `curl -X POST -H 'X-ClawPilot-Signature: sha256=<hex>' -H 'Content-Type: application/json' --data-raw '{}' ${baseUrl}/webhooks/triggers/${d.instanceSlug}/${d.webhookSlug ?? ""}`
         : "";
     return html`
-      <button class="btn primary" type="button" ?disabled=${this._busy} @click=${this._onFire}>
-        ${msg("Fire now", { id: "trigger-detail-fire" })}
-      </button>
-      ${this._rotateMessage ? html`<p>${this._rotateMessage}</p>` : ""}
+      <div class="test-actions">
+        <button
+          class="btn btn-primary"
+          type="button"
+          ?disabled=${this._busy}
+          @click=${this._onFire}
+        >
+          ${msg("Fire now", { id: "trigger-detail-fire" })}
+        </button>
+      </div>
+      ${this._rotateMessage ? html`<p class="test-message">${this._rotateMessage}</p>` : ""}
       ${d.kind === "webhook"
         ? html`
             <h3>${msg("Webhook secret", { id: "trigger-detail-webhook-secret" })}</h3>
-            <button class="btn" type="button" ?disabled=${this._busy} @click=${this._onReveal}>
-              ${msg("Reveal once", { id: "trigger-detail-reveal" })}
-            </button>
-            <button class="btn" type="button" ?disabled=${this._busy} @click=${this._onRotate}>
-              ${msg("Rotate", { id: "trigger-detail-rotate" })}
-            </button>
+            <div class="test-actions">
+              <button
+                class="btn btn-ghost"
+                type="button"
+                ?disabled=${this._busy}
+                @click=${this._onReveal}
+              >
+                ${msg("Reveal once", { id: "trigger-detail-reveal" })}
+              </button>
+              <button
+                class="btn btn-danger"
+                type="button"
+                ?disabled=${this._busy}
+                @click=${this._onRotate}
+              >
+                ${msg("Rotate", { id: "trigger-detail-rotate" })}
+              </button>
+            </div>
             ${this._revealedSecret
               ? html`<pre>${this._revealedSecret}</pre>`
               : html`<pre>${"*".repeat(32)}</pre>`}
@@ -310,7 +378,7 @@ export class CpTriggerDetail extends LitElement {
     return html`
       <header>
         <h2>${this._detail?.name ?? msg("Trigger", { id: "trigger-detail-title" })}</h2>
-        <button class="btn" type="button" @click=${this._close}>
+        <button class="btn btn-ghost" type="button" @click=${this._close}>
           ${msg("Close", { id: "trigger-detail-close" })}
         </button>
       </header>
