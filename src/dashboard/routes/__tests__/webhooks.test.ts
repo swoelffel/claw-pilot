@@ -137,9 +137,10 @@ async function post(
   slug: string,
   body: string,
   headers: Record<string, string>,
+  instanceSlug = "demo",
 ): Promise<Response> {
   return app.fetch(
-    new Request(`http://localhost/webhooks/triggers/${slug}`, {
+    new Request(`http://localhost/webhooks/triggers/${instanceSlug}/${slug}`, {
       method: "POST",
       headers: { "content-type": "application/json", ...headers },
       body,
@@ -147,9 +148,16 @@ async function post(
   );
 }
 
-describe("POST /webhooks/triggers/:slug", () => {
+describe("POST /webhooks/triggers/:instanceSlug/:slug", () => {
   it("returns 404 when slug does not exist", async () => {
     const res = await post("nope", "{}", { "x-clawpilot-signature": sign("{}") });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when slug exists in a different instance", async () => {
+    makeWebhookTrigger("crossover");
+    const body = "{}";
+    const res = await post("crossover", body, { "x-clawpilot-signature": sign(body) }, "other");
     expect(res.status).toBe(404);
   });
 

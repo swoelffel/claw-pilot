@@ -120,6 +120,7 @@ export class CpTriggerDetail extends LitElement {
     `,
   ];
 
+  @property({ type: String }) instanceSlug = "";
   @property({ type: Number }) triggerId = 0;
 
   @state() private _detail: FlowTriggerDetail | null = null;
@@ -137,7 +138,7 @@ export class CpTriggerDetail extends LitElement {
 
   private async _load(): Promise<void> {
     try {
-      this._detail = await getTrigger(this.triggerId);
+      this._detail = await getTrigger(this.instanceSlug, this.triggerId);
       this._runs = this._detail.runs;
     } catch (err) {
       this._error = userMessage(err);
@@ -151,7 +152,7 @@ export class CpTriggerDetail extends LitElement {
   private async _onFire(): Promise<void> {
     this._busy = true;
     try {
-      await fireTrigger(this.triggerId);
+      await fireTrigger(this.instanceSlug, this.triggerId);
       this._rotateMessage = msg("Fire requested", { id: "trigger-detail-fire-ok" });
     } catch (err) {
       this._error = userMessage(err);
@@ -163,7 +164,7 @@ export class CpTriggerDetail extends LitElement {
   private async _onRotate(): Promise<void> {
     this._busy = true;
     try {
-      const result = await rotateTriggerSecret(this.triggerId);
+      const result = await rotateTriggerSecret(this.instanceSlug, this.triggerId);
       this._revealedSecret = result.secret;
       this._rotateMessage = msg("Secret rotated. Copy it now — it will not be shown again.", {
         id: "trigger-detail-rotate-ok",
@@ -178,7 +179,7 @@ export class CpTriggerDetail extends LitElement {
   private async _onReveal(): Promise<void> {
     this._busy = true;
     try {
-      const result = await revealTriggerSecret(this.triggerId);
+      const result = await revealTriggerSecret(this.instanceSlug, this.triggerId);
       this._revealedSecret = result.secret;
     } catch (err) {
       this._error = userMessage(err);
@@ -189,7 +190,7 @@ export class CpTriggerDetail extends LitElement {
 
   private async _refreshRuns(): Promise<void> {
     try {
-      const r = await listTriggerRuns(this.triggerId, { limit: 50 });
+      const r = await listTriggerRuns(this.instanceSlug, this.triggerId, { limit: 50 });
       this._runs = r.runs;
     } catch (err) {
       this._error = userMessage(err);
@@ -279,7 +280,7 @@ export class CpTriggerDetail extends LitElement {
     const baseUrl = `${window.location.protocol}//${window.location.host}`;
     const curl =
       d.kind === "webhook"
-        ? `curl -X POST -H 'X-ClawPilot-Signature: sha256=<hex>' -H 'Content-Type: application/json' --data-raw '{}' ${baseUrl}/webhooks/triggers/${d.webhookSlug ?? ""}`
+        ? `curl -X POST -H 'X-ClawPilot-Signature: sha256=<hex>' -H 'Content-Type: application/json' --data-raw '{}' ${baseUrl}/webhooks/triggers/${d.instanceSlug}/${d.webhookSlug ?? ""}`
         : "";
     return html`
       <button class="btn primary" type="button" ?disabled=${this._busy} @click=${this._onFire}>

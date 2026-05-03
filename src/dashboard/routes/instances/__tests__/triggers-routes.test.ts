@@ -11,31 +11,32 @@ import { Hono } from "hono";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
-import { initDatabase } from "../../../db/schema.js";
-import { Registry } from "../../../core/registry.js";
-import { MockConnection } from "../../../core/__tests__/mock-connection.js";
-import { TokenCache } from "../../token-cache.js";
-import { SessionStore } from "../../session-store.js";
-import { apiError } from "../../route-deps.js";
-import type { RouteDeps } from "../../route-deps.js";
-import { TEST_ADMIN } from "../../__tests__/_helpers/inject-admin-user.js";
+import { initDatabase } from "../../../../db/schema.js";
+import { Registry } from "../../../../core/registry.js";
+import { MockConnection } from "../../../../core/__tests__/mock-connection.js";
+import { TokenCache } from "../../../token-cache.js";
+import { SessionStore } from "../../../session-store.js";
+import { apiError } from "../../../route-deps.js";
+import type { RouteDeps } from "../../../route-deps.js";
+import { TEST_ADMIN } from "../../../__tests__/_helpers/inject-admin-user.js";
 import {
   ENV_PROVIDER_BRAND,
   registerSecretProvider,
   resetSecretProvider,
   type SecretProvider,
-} from "../../../core/secrets/index.js";
+} from "../../../../core/secrets/index.js";
 import {
   DEFAULT_SINK_BRAND,
   flushAudit,
   registerAuditSink,
   resetAuditBus,
   type AuditSink,
-} from "../../../core/audit/emitter.js";
-import type { AuditEventEnvelope } from "../../../core/audit/events.js";
-import { createFlowDefinition } from "../../../core/repositories/flow-repository.js";
-import { createFlowTrigger } from "../../../core/repositories/flow-trigger-repository.js";
-import type { TriggerScheduler } from "../../../runtime/triggers/scheduler.js";
+} from "../../../../core/audit/emitter.js";
+import type { AuditEventEnvelope } from "../../../../core/audit/events.js";
+import { createFlowDefinition } from "../../../../core/repositories/flow-repository.js";
+import { createFlowTrigger } from "../../../../core/repositories/flow-trigger-repository.js";
+import type { TriggerScheduler } from "../../../../runtime/triggers/scheduler.js";
+import { instanceMiddleware } from "../../_instance-middleware.js";
 import { registerTriggerRoutes } from "../triggers.js";
 
 // ---------------------------------------------------------------------------
@@ -159,10 +160,25 @@ beforeEach(() => {
   reloadCalls = stub.reloadCalls;
   fireCalls = stub.fireCalls;
 
-  // Seed an instance and a flow definition the triggers will reference.
-  // The Instance row is not strictly required (triggers reference it by slug,
-  // not via FK) — but we register it so listing-by-instanceSlug looks real.
-  void registry; // keep registry creation side-effect (validates DB schema)
+  // Seed instances + flows. The instance row is required: instanceMiddleware
+  // returns 404 if the slug is not registered.
+  const server = registry.upsertLocalServer("testhost", "/opt/claw");
+  registry.createInstance({
+    serverId: server.id,
+    slug: "demo",
+    port: 18789,
+    configPath: "/tmp/cfg",
+    stateDir: "/tmp/state",
+    systemdUnit: "claw-demo",
+  });
+  registry.createInstance({
+    serverId: server.id,
+    slug: "other",
+    port: 18790,
+    configPath: "/tmp/cfg2",
+    stateDir: "/tmp/state2",
+    systemdUnit: "claw-other",
+  });
   const flow = createFlowDefinition(db, {
     instanceSlug: "demo",
     name: "demo-flow",
@@ -180,6 +196,7 @@ beforeEach(() => {
     c.set("user", { ...TEST_ADMIN });
     await next();
   });
+  app.use("/api/instances/:slug/*", instanceMiddleware(registry));
 
   const deps: RouteDeps = {
     registry,
@@ -225,19 +242,19 @@ afterEach(() => {
 
 describe("Auth", () => {
   it("returns 401 without token", async () => {
-    const res = await app.request(new Request("http://localhost/api/triggers"));
+    const res = await app.request(new Request("http://localhost/api/instances/demo/triggers"));
     expect(res.status).toBe(401);
   });
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/triggers
+// GET /api/instances/:slug/triggers
 // ---------------------------------------------------------------------------
 
-describe("GET /api/triggers", () => {
+describe("GET /api/instances/:slug/triggers", () => {
   it("returns empty list initially", async () => {
     const res = await app.request(
-      new Request("http://localhost/api/triggers", { headers: authHeaders() }),
+      new Request("http://localhost/api/instances/demo/triggers", { headers: authHeaders() }),
     );
     expect(res.status).toBe(200);
     expect(await jsonOf(res)).toEqual([]);
@@ -262,30 +279,36 @@ describe("GET /api/triggers", () => {
     });
 
     const all = await app.request(
-      new Request("http://localhost/api/triggers?instanceSlug=demo", { headers: authHeaders() }),
+      new Request("http://localhost/api/instances/demo/triggers?instanceSlug=demo", {
+        headers: authHeaders(),
+      }),
     );
     expect((await jsonOf(all)).length).toBe(2);
 
     const cron = await app.request(
-      new Request("http://localhost/api/triggers?kind=cron", { headers: authHeaders() }),
+      new Request("http://localhost/api/instances/demo/triggers?kind=cron", {
+        headers: authHeaders(),
+      }),
     );
     expect((await jsonOf(cron)).map((r: Json) => r.name)).toEqual(["t1"]);
 
     const enabled = await app.request(
-      new Request("http://localhost/api/triggers?enabled=true", { headers: authHeaders() }),
+      new Request("http://localhost/api/instances/demo/triggers?enabled=true", {
+        headers: authHeaders(),
+      }),
     );
     expect((await jsonOf(enabled)).map((r: Json) => r.name)).toEqual(["t1"]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/triggers
+// POST /api/instances/:slug/triggers
 // ---------------------------------------------------------------------------
 
-describe("POST /api/triggers", () => {
+describe("POST /api/instances/:slug/triggers", () => {
   it("creates a cron trigger and reloads the scheduler", async () => {
     const res = await app.request(
-      new Request("http://localhost/api/triggers", {
+      new Request("http://localhost/api/instances/demo/triggers", {
         method: "POST",
         headers: jsonHeaders(),
         body: JSON.stringify({
@@ -308,7 +331,7 @@ describe("POST /api/triggers", () => {
 
   it("creates a webhook trigger and persists the secret", async () => {
     const res = await app.request(
-      new Request("http://localhost/api/triggers", {
+      new Request("http://localhost/api/instances/demo/triggers", {
         method: "POST",
         headers: jsonHeaders(),
         body: JSON.stringify({
@@ -331,7 +354,7 @@ describe("POST /api/triggers", () => {
 
   it("rejects invalid cron expression", async () => {
     const res = await app.request(
-      new Request("http://localhost/api/triggers", {
+      new Request("http://localhost/api/instances/demo/triggers", {
         method: "POST",
         headers: jsonHeaders(),
         body: JSON.stringify({
@@ -350,7 +373,7 @@ describe("POST /api/triggers", () => {
 
   it("rejects invalid webhook slug", async () => {
     const res = await app.request(
-      new Request("http://localhost/api/triggers", {
+      new Request("http://localhost/api/instances/demo/triggers", {
         method: "POST",
         headers: jsonHeaders(),
         body: JSON.stringify({
@@ -370,13 +393,29 @@ describe("POST /api/triggers", () => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/triggers/:id  — detail with last 10 runs
+// GET /api/instances/:slug/triggers/:id  — detail with last 10 runs
 // ---------------------------------------------------------------------------
 
-describe("GET /api/triggers/:id", () => {
+describe("GET /api/instances/:slug/triggers/:id", () => {
+  it("returns 404 when accessed from a different instance scope", async () => {
+    const t = createFlowTrigger(db, {
+      instanceSlug: "demo",
+      flowId,
+      kind: "cron",
+      name: "t",
+      cronExpr: "0 9 * * *",
+    });
+    const res = await app.request(
+      new Request(`http://localhost/api/instances/other/triggers/${t.id}`, {
+        headers: authHeaders(),
+      }),
+    );
+    expect(res.status).toBe(404);
+  });
+
   it("returns 404 on missing id", async () => {
     const res = await app.request(
-      new Request("http://localhost/api/triggers/9999", { headers: authHeaders() }),
+      new Request("http://localhost/api/instances/demo/triggers/9999", { headers: authHeaders() }),
     );
     expect(res.status).toBe(404);
   });
@@ -396,7 +435,9 @@ describe("GET /api/triggers/:id", () => {
       ).run(t.id, i);
     }
     const res = await app.request(
-      new Request(`http://localhost/api/triggers/${t.id}`, { headers: authHeaders() }),
+      new Request(`http://localhost/api/instances/demo/triggers/${t.id}`, {
+        headers: authHeaders(),
+      }),
     );
     expect(res.status).toBe(200);
     const body = await jsonOf(res);
@@ -406,10 +447,10 @@ describe("GET /api/triggers/:id", () => {
 });
 
 // ---------------------------------------------------------------------------
-// PUT /api/triggers/:id
+// PUT /api/instances/:slug/triggers/:id
 // ---------------------------------------------------------------------------
 
-describe("PUT /api/triggers/:id", () => {
+describe("PUT /api/instances/:slug/triggers/:id", () => {
   it("updates fields and reloads the scheduler when cron changes", async () => {
     const t = createFlowTrigger(db, {
       instanceSlug: "demo",
@@ -420,7 +461,7 @@ describe("PUT /api/triggers/:id", () => {
     });
     reloadCalls.length = 0;
     const res = await app.request(
-      new Request(`http://localhost/api/triggers/${t.id}`, {
+      new Request(`http://localhost/api/instances/demo/triggers/${t.id}`, {
         method: "PUT",
         headers: jsonHeaders(),
         body: JSON.stringify({ name: "renamed", cronExpr: "*/5 * * * *", enabled: false }),
@@ -443,7 +484,7 @@ describe("PUT /api/triggers/:id", () => {
       cronExpr: "0 9 * * *",
     });
     const res = await app.request(
-      new Request(`http://localhost/api/triggers/${t.id}`, {
+      new Request(`http://localhost/api/instances/demo/triggers/${t.id}`, {
         method: "PUT",
         headers: jsonHeaders(),
         body: JSON.stringify({ cronExpr: "garbage" }),
@@ -454,10 +495,10 @@ describe("PUT /api/triggers/:id", () => {
 });
 
 // ---------------------------------------------------------------------------
-// DELETE /api/triggers/:id
+// DELETE /api/instances/:slug/triggers/:id
 // ---------------------------------------------------------------------------
 
-describe("DELETE /api/triggers/:id", () => {
+describe("DELETE /api/instances/:slug/triggers/:id", () => {
   it("returns 204 and clears the secret for webhook triggers", async () => {
     secretStore.set("TRIGGER_WEBHOOK_SECRET:wh-del", "secret-value");
     const t = createFlowTrigger(db, {
@@ -469,7 +510,7 @@ describe("DELETE /api/triggers/:id", () => {
       webhookSecretRef: "TRIGGER_WEBHOOK_SECRET:wh-del",
     });
     const res = await app.request(
-      new Request(`http://localhost/api/triggers/${t.id}`, {
+      new Request(`http://localhost/api/instances/demo/triggers/${t.id}`, {
         method: "DELETE",
         headers: authHeaders(),
       }),
@@ -481,7 +522,7 @@ describe("DELETE /api/triggers/:id", () => {
 
   it("returns 404 on missing id", async () => {
     const res = await app.request(
-      new Request("http://localhost/api/triggers/9999", {
+      new Request("http://localhost/api/instances/demo/triggers/9999", {
         method: "DELETE",
         headers: authHeaders(),
       }),
@@ -491,10 +532,10 @@ describe("DELETE /api/triggers/:id", () => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/triggers/:id/rotate-secret
+// POST /api/instances/:slug/triggers/:id/rotate-secret
 // ---------------------------------------------------------------------------
 
-describe("POST /api/triggers/:id/rotate-secret", () => {
+describe("POST /api/instances/:slug/triggers/:id/rotate-secret", () => {
   it("returns a fresh secret each call", async () => {
     const t = createFlowTrigger(db, {
       instanceSlug: "demo",
@@ -505,7 +546,7 @@ describe("POST /api/triggers/:id/rotate-secret", () => {
       webhookSecretRef: "TRIGGER_WEBHOOK_SECRET:wh-rot",
     });
     const r1 = await app.request(
-      new Request(`http://localhost/api/triggers/${t.id}/rotate-secret`, {
+      new Request(`http://localhost/api/instances/demo/triggers/${t.id}/rotate-secret`, {
         method: "POST",
         headers: authHeaders(),
       }),
@@ -515,7 +556,7 @@ describe("POST /api/triggers/:id/rotate-secret", () => {
     expect(b1.secret).toMatch(/^[0-9a-f]{64}$/);
 
     const r2 = await app.request(
-      new Request(`http://localhost/api/triggers/${t.id}/rotate-secret`, {
+      new Request(`http://localhost/api/instances/demo/triggers/${t.id}/rotate-secret`, {
         method: "POST",
         headers: authHeaders(),
       }),
@@ -535,7 +576,7 @@ describe("POST /api/triggers/:id/rotate-secret", () => {
       cronExpr: "0 9 * * *",
     });
     const res = await app.request(
-      new Request(`http://localhost/api/triggers/${t.id}/rotate-secret`, {
+      new Request(`http://localhost/api/instances/demo/triggers/${t.id}/rotate-secret`, {
         method: "POST",
         headers: authHeaders(),
       }),
@@ -545,10 +586,10 @@ describe("POST /api/triggers/:id/rotate-secret", () => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/triggers/:id/secret-reveal
+// GET /api/instances/:slug/triggers/:id/secret-reveal
 // ---------------------------------------------------------------------------
 
-describe("GET /api/triggers/:id/secret-reveal", () => {
+describe("GET /api/instances/:slug/triggers/:id/secret-reveal", () => {
   it("returns the plaintext secret and emits a secret.access audit event", async () => {
     secretStore.set("TRIGGER_WEBHOOK_SECRET:wh-rev", "actual-secret-value");
     const t = createFlowTrigger(db, {
@@ -560,7 +601,7 @@ describe("GET /api/triggers/:id/secret-reveal", () => {
       webhookSecretRef: "TRIGGER_WEBHOOK_SECRET:wh-rev",
     });
     const res = await app.request(
-      new Request(`http://localhost/api/triggers/${t.id}/secret-reveal`, {
+      new Request(`http://localhost/api/instances/demo/triggers/${t.id}/secret-reveal`, {
         headers: authHeaders(),
       }),
     );
@@ -582,7 +623,7 @@ describe("GET /api/triggers/:id/secret-reveal", () => {
       webhookSlug: "wh-rev2",
       webhookSecretRef: "TRIGGER_WEBHOOK_SECRET:wh-rev2",
     });
-    const url = `http://localhost/api/triggers/${t.id}/secret-reveal`;
+    const url = `http://localhost/api/instances/demo/triggers/${t.id}/secret-reveal`;
     for (let i = 0; i < 3; i++) {
       const ok = await app.request(new Request(url, { headers: authHeaders() }));
       expect(ok.status).toBe(200);
@@ -593,10 +634,10 @@ describe("GET /api/triggers/:id/secret-reveal", () => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/triggers/:id/fire
+// POST /api/instances/:slug/triggers/:id/fire
 // ---------------------------------------------------------------------------
 
-describe("POST /api/triggers/:id/fire", () => {
+describe("POST /api/instances/:slug/triggers/:id/fire", () => {
   it("returns 202 and asks the scheduler to fire", async () => {
     const t = createFlowTrigger(db, {
       instanceSlug: "demo",
@@ -606,7 +647,7 @@ describe("POST /api/triggers/:id/fire", () => {
       cronExpr: "0 9 * * *",
     });
     const res = await app.request(
-      new Request(`http://localhost/api/triggers/${t.id}/fire`, {
+      new Request(`http://localhost/api/instances/demo/triggers/${t.id}/fire`, {
         method: "POST",
         headers: authHeaders(),
       }),
@@ -619,10 +660,10 @@ describe("POST /api/triggers/:id/fire", () => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/triggers/:id/runs
+// GET /api/instances/:slug/triggers/:id/runs
 // ---------------------------------------------------------------------------
 
-describe("GET /api/triggers/:id/runs", () => {
+describe("GET /api/instances/:slug/triggers/:id/runs", () => {
   it("returns paginated runs", async () => {
     const t = createFlowTrigger(db, {
       instanceSlug: "demo",
@@ -637,7 +678,7 @@ describe("GET /api/triggers/:id/runs", () => {
       ).run(t.id, i);
     }
     const res = await app.request(
-      new Request(`http://localhost/api/triggers/${t.id}/runs?limit=2&offset=0`, {
+      new Request(`http://localhost/api/instances/demo/triggers/${t.id}/runs?limit=2&offset=0`, {
         headers: authHeaders(),
       }),
     );

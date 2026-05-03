@@ -1,33 +1,36 @@
-// src/dashboard/routes/triggers.ts
+// src/dashboard/routes/instances/triggers.ts
 //
-// CRUD routes for flow triggers (TRIGGER-001 — PR 3/3).
+// CRUD routes for flow triggers (TRIGGER-001 + TRIGGER-001b instance-scope).
 //
-// All routes mount under `/api/triggers/...` and are guarded by the existing
-// dashboard auth middleware. The public webhook endpoint
-// (`/webhooks/triggers/:slug`) lives in `webhooks.ts` and is intentionally
-// outside the `/api/*` namespace.
+// All routes mount under `/api/instances/:slug/triggers/...` and are guarded
+// by the existing dashboard auth middleware + `instanceMiddleware`. The
+// public webhook endpoint (`/webhooks/triggers/:instanceSlug/:slug`) lives in
+// `../webhooks.ts` and is intentionally outside the `/api/*` namespace.
 //
 // Routes:
-//   GET    /api/triggers                           — list (filters)
-//   POST   /api/triggers                           — create
-//   GET    /api/triggers/:id                       — detail + last 10 runs
-//   PUT    /api/triggers/:id                       — patch metadata
-//   DELETE /api/triggers/:id                       — delete (+ secret cleanup)
-//   POST   /api/triggers/:id/rotate-secret         — generate fresh HMAC secret
-//   GET    /api/triggers/:id/secret-reveal         — read once (rate-limited)
-//   POST   /api/triggers/:id/fire                  — manual fire-now
-//   GET    /api/triggers/:id/runs                  — paginated run history
+//   GET    /api/instances/:slug/triggers                       — list (filters)
+//   POST   /api/instances/:slug/triggers                       — create
+//   GET    /api/instances/:slug/triggers/:id                   — detail + last 10 runs
+//   PUT    /api/instances/:slug/triggers/:id                   — patch metadata
+//   DELETE /api/instances/:slug/triggers/:id                   — delete (+ secret cleanup)
+//   POST   /api/instances/:slug/triggers/:id/rotate-secret     — fresh HMAC secret
+//   GET    /api/instances/:slug/triggers/:id/secret-reveal     — read once (rate-limited)
+//   POST   /api/instances/:slug/triggers/:id/fire              — manual fire-now
+//   GET    /api/instances/:slug/triggers/:id/runs              — paginated run history
+//
+// Cross-instance access is rejected with 404 — a trigger that belongs to
+// another instance must not leak its existence.
 
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { Cron } from "croner";
 import type { Context, Hono } from "hono";
-import type { RouteDeps } from "../route-deps.js";
-import { apiError } from "../route-deps.js";
-import { logger } from "../../lib/logger.js";
-import { permission } from "../middleware/permission.js";
-import { ACTIONS } from "../middleware/permission-actions.js";
-import { getSecretProvider, secretProvider } from "../../core/secrets/index.js";
+import type { RouteDeps } from "../../route-deps.js";
+import { apiError } from "../../route-deps.js";
+import { logger } from "../../../lib/logger.js";
+import { permission } from "../../middleware/permission.js";
+import { ACTIONS } from "../../middleware/permission-actions.js";
+import { getSecretProvider, secretProvider } from "../../../core/secrets/index.js";
 import {
   createFlowTrigger,
   deleteFlowTrigger,
@@ -37,7 +40,8 @@ import {
   updateFlowTrigger,
   type FlowTriggerKind,
   type FlowTriggerRow,
-} from "../../core/repositories/flow-trigger-repository.js";
+} from "../../../core/repositories/flow-trigger-repository.js";
+import { getInstanceContext } from "../_instance-middleware.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -64,8 +68,9 @@ const InputMappingArray = z.array(InputMappingEntry).max(64);
 
 const KindSchema = z.enum(["cron", "webhook"]);
 
+// `instanceSlug` is supplied by the path; if a body still includes it (legacy
+// clients), it is silently ignored — the path value always wins.
 const CreateBaseSchema = z.object({
-  instanceSlug: z.string().min(1).max(128),
   flowId: z.number().int().positive(),
   ownerUserId: z.number().int().positive().optional(),
   name: z.string().min(1).max(120),
@@ -129,6 +134,20 @@ function parseIdParam(c: HonoContext): number | null {
   const n = Number(raw);
   if (!Number.isInteger(n) || n <= 0) return null;
   return n;
+}
+
+/**
+ * Fetch a trigger and ensure it belongs to the current instance scope.
+ * Returns the row, or null if missing / cross-instance.
+ */
+function getScopedTrigger(
+  db: RouteDeps["db"],
+  id: number,
+  instanceSlug: string,
+): FlowTriggerRow | null {
+  const row = getFlowTrigger(db, id);
+  if (!row || row.instance_slug !== instanceSlug) return null;
+  return row;
 }
 
 function serializeRow(row: FlowTriggerRow): Record<string, unknown> {
@@ -200,13 +219,12 @@ function checkReveal(buckets: Map<string, RateBucket>, key: string): boolean {
 // ---------------------------------------------------------------------------
 
 function handleList(c: HonoContext, deps: RouteDeps): Response {
-  const instanceSlug = c.req.query("instanceSlug");
+  const { slug: instanceSlug } = getInstanceContext(c);
   const flowIdQ = c.req.query("flowId");
   const kindQ = c.req.query("kind");
   const enabledQ = c.req.query("enabled");
 
-  const opts: Parameters<typeof listFlowTriggers>[1] = {};
-  if (instanceSlug) opts.instanceSlug = instanceSlug;
+  const opts: Parameters<typeof listFlowTriggers>[1] = { instanceSlug };
   if (flowIdQ) {
     const n = Number(flowIdQ);
     if (Number.isInteger(n)) opts.flowId = n;
@@ -234,11 +252,12 @@ function validateCreatePayload(data: CreateData): string | null {
 
 /** Build the createFlowTrigger input from validated body data. */
 function buildCreateInput(
+  instanceSlug: string,
   data: CreateData,
   webhookSecretRef: string | null,
 ): Parameters<typeof createFlowTrigger>[1] {
   return {
-    instanceSlug: data.instanceSlug,
+    instanceSlug,
     flowId: data.flowId,
     ...(data.ownerUserId !== undefined ? { ownerUserId: data.ownerUserId } : {}),
     kind: data.kind,
@@ -264,6 +283,7 @@ async function persistWebhookSecret(data: CreateData): Promise<string | null> {
 }
 
 async function handleCreate(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { slug: instanceSlug } = getInstanceContext(c);
   const body = await c.req.json().catch(() => null);
   const parsed = CreateBaseSchema.safeParse(body);
   if (!parsed.success) return apiError(c, 400, "INVALID_BODY", parsed.error.message);
@@ -295,7 +315,7 @@ async function handleCreate(c: HonoContext, deps: RouteDeps): Promise<Response> 
 
   let row: FlowTriggerRow;
   try {
-    row = createFlowTrigger(deps.db, buildCreateInput(data, webhookSecretRef));
+    row = createFlowTrigger(deps.db, buildCreateInput(instanceSlug, data, webhookSecretRef));
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     logger.warn("trigger_create_failed", { event: "trigger_create_failed", error: reason });
@@ -308,9 +328,10 @@ async function handleCreate(c: HonoContext, deps: RouteDeps): Promise<Response> 
 }
 
 function handleDetail(c: HonoContext, deps: RouteDeps): Response {
+  const { slug: instanceSlug } = getInstanceContext(c);
   const id = parseIdParam(c);
   if (id === null) return apiError(c, 400, "INVALID_ID", "Invalid trigger id");
-  const row = getFlowTrigger(deps.db, id);
+  const row = getScopedTrigger(deps.db, id, instanceSlug);
   if (!row) return apiError(c, 404, "NOT_FOUND", `Trigger not found: ${id}`);
   const runs = listTriggerRuns(deps.db, id, { limit: 10 });
   return c.json({ ...serializeRow(row), runs });
@@ -351,9 +372,10 @@ function patchNeedsReload(d: UpdateData): boolean {
 }
 
 async function handleUpdate(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { slug: instanceSlug } = getInstanceContext(c);
   const id = parseIdParam(c);
   if (id === null) return apiError(c, 400, "INVALID_ID", "Invalid trigger id");
-  if (!getFlowTrigger(deps.db, id)) {
+  if (!getScopedTrigger(deps.db, id, instanceSlug)) {
     return apiError(c, 404, "NOT_FOUND", `Trigger not found: ${id}`);
   }
 
@@ -376,9 +398,10 @@ async function handleUpdate(c: HonoContext, deps: RouteDeps): Promise<Response> 
 }
 
 async function handleDelete(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { slug: instanceSlug } = getInstanceContext(c);
   const id = parseIdParam(c);
   if (id === null) return apiError(c, 400, "INVALID_ID", "Invalid trigger id");
-  const existing = getFlowTrigger(deps.db, id);
+  const existing = getScopedTrigger(deps.db, id, instanceSlug);
   if (!existing) return apiError(c, 404, "NOT_FOUND", `Trigger not found: ${id}`);
 
   // Best-effort secret cleanup. Most providers don't expose delete; we
@@ -403,9 +426,10 @@ async function handleDelete(c: HonoContext, deps: RouteDeps): Promise<Response> 
 }
 
 async function handleRotateSecret(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { slug: instanceSlug } = getInstanceContext(c);
   const id = parseIdParam(c);
   if (id === null) return apiError(c, 400, "INVALID_ID", "Invalid trigger id");
-  const row = getFlowTrigger(deps.db, id);
+  const row = getScopedTrigger(deps.db, id, instanceSlug);
   if (!row) return apiError(c, 404, "NOT_FOUND", `Trigger not found: ${id}`);
   if (row.kind !== "webhook" || !row.webhook_slug) {
     return apiError(c, 400, "NOT_WEBHOOK", "Only webhook triggers have secrets");
@@ -431,9 +455,10 @@ async function handleRotateSecret(c: HonoContext, deps: RouteDeps): Promise<Resp
 
 function makeRevealHandler(buckets: Map<string, RateBucket>) {
   return async function handleRevealSecret(c: HonoContext, deps: RouteDeps): Promise<Response> {
+    const { slug: instanceSlug } = getInstanceContext(c);
     const id = parseIdParam(c);
     if (id === null) return apiError(c, 400, "INVALID_ID", "Invalid trigger id");
-    const row = getFlowTrigger(deps.db, id);
+    const row = getScopedTrigger(deps.db, id, instanceSlug);
     if (!row) return apiError(c, 404, "NOT_FOUND", `Trigger not found: ${id}`);
     if (row.kind !== "webhook" || !row.webhook_secret_ref) {
       return apiError(c, 400, "NOT_WEBHOOK", "Only webhook triggers have secrets");
@@ -463,9 +488,10 @@ function makeRevealHandler(buckets: Map<string, RateBucket>) {
 }
 
 async function handleFire(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { slug: instanceSlug } = getInstanceContext(c);
   const id = parseIdParam(c);
   if (id === null) return apiError(c, 400, "INVALID_ID", "Invalid trigger id");
-  const row = getFlowTrigger(deps.db, id);
+  const row = getScopedTrigger(deps.db, id, instanceSlug);
   if (!row) return apiError(c, 404, "NOT_FOUND", `Trigger not found: ${id}`);
   if (!deps.triggerScheduler) {
     return apiError(c, 503, "SCHEDULER_UNAVAILABLE", "Scheduler not wired");
@@ -483,9 +509,10 @@ async function handleFire(c: HonoContext, deps: RouteDeps): Promise<Response> {
 }
 
 function handleListRuns(c: HonoContext, deps: RouteDeps): Response {
+  const { slug: instanceSlug } = getInstanceContext(c);
   const id = parseIdParam(c);
   if (id === null) return apiError(c, 400, "INVALID_ID", "Invalid trigger id");
-  if (!getFlowTrigger(deps.db, id)) {
+  if (!getScopedTrigger(deps.db, id, instanceSlug)) {
     return apiError(c, 404, "NOT_FOUND", `Trigger not found: ${id}`);
   }
   const limitQ = c.req.query("limit");
@@ -503,52 +530,53 @@ function handleListRuns(c: HonoContext, deps: RouteDeps): Response {
 export function registerTriggerRoutes(app: Hono, deps: RouteDeps): void {
   const triggerKind = { kind: "trigger" } as const;
   const triggerId = { kind: "trigger", id: (c: Context) => c.req.param("id") } as const;
+  const attr = (c: HonoContext) => ({ slug: c.req.param("slug") });
   const revealBuckets = new Map<string, RateBucket>();
   const reveal = makeRevealHandler(revealBuckets);
 
   app.get(
-    "/api/triggers",
-    permission({ action: ACTIONS.TRIGGER_LIST, resource: triggerKind }),
+    "/api/instances/:slug/triggers",
+    permission({ action: ACTIONS.TRIGGER_LIST, resource: triggerKind, attributes: attr }),
     (c) => handleList(c, deps),
   );
   app.post(
-    "/api/triggers",
-    permission({ action: ACTIONS.TRIGGER_CREATE, resource: triggerKind }),
+    "/api/instances/:slug/triggers",
+    permission({ action: ACTIONS.TRIGGER_CREATE, resource: triggerKind, attributes: attr }),
     async (c) => handleCreate(c, deps),
   );
   app.get(
-    "/api/triggers/:id",
-    permission({ action: ACTIONS.TRIGGER_READ, resource: triggerId }),
+    "/api/instances/:slug/triggers/:id",
+    permission({ action: ACTIONS.TRIGGER_READ, resource: triggerId, attributes: attr }),
     (c) => handleDetail(c, deps),
   );
   app.put(
-    "/api/triggers/:id",
-    permission({ action: ACTIONS.TRIGGER_UPDATE, resource: triggerId }),
+    "/api/instances/:slug/triggers/:id",
+    permission({ action: ACTIONS.TRIGGER_UPDATE, resource: triggerId, attributes: attr }),
     async (c) => handleUpdate(c, deps),
   );
   app.delete(
-    "/api/triggers/:id",
-    permission({ action: ACTIONS.TRIGGER_DELETE, resource: triggerId }),
+    "/api/instances/:slug/triggers/:id",
+    permission({ action: ACTIONS.TRIGGER_DELETE, resource: triggerId, attributes: attr }),
     async (c) => handleDelete(c, deps),
   );
   app.post(
-    "/api/triggers/:id/rotate-secret",
-    permission({ action: ACTIONS.TRIGGER_ROTATE_SECRET, resource: triggerId }),
+    "/api/instances/:slug/triggers/:id/rotate-secret",
+    permission({ action: ACTIONS.TRIGGER_ROTATE_SECRET, resource: triggerId, attributes: attr }),
     async (c) => handleRotateSecret(c, deps),
   );
   app.get(
-    "/api/triggers/:id/secret-reveal",
-    permission({ action: ACTIONS.TRIGGER_REVEAL_SECRET, resource: triggerId }),
+    "/api/instances/:slug/triggers/:id/secret-reveal",
+    permission({ action: ACTIONS.TRIGGER_REVEAL_SECRET, resource: triggerId, attributes: attr }),
     async (c) => reveal(c, deps),
   );
   app.post(
-    "/api/triggers/:id/fire",
-    permission({ action: ACTIONS.TRIGGER_FIRE, resource: triggerId }),
+    "/api/instances/:slug/triggers/:id/fire",
+    permission({ action: ACTIONS.TRIGGER_FIRE, resource: triggerId, attributes: attr }),
     async (c) => handleFire(c, deps),
   );
   app.get(
-    "/api/triggers/:id/runs",
-    permission({ action: ACTIONS.TRIGGER_RUNS_LIST, resource: triggerId }),
+    "/api/instances/:slug/triggers/:id/runs",
+    permission({ action: ACTIONS.TRIGGER_RUNS_LIST, resource: triggerId, attributes: attr }),
     (c) => handleListRuns(c, deps),
   );
 }

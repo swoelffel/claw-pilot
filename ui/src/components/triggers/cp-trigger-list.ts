@@ -71,6 +71,7 @@ export class CpTriggerList extends LitElement {
     `,
   ];
 
+  @property({ type: String }) instanceSlug = "";
   @property({ type: Array }) triggers: FlowTrigger[] = [];
 
   private _emit(name: string, detail: unknown): void {
@@ -78,17 +79,19 @@ export class CpTriggerList extends LitElement {
   }
 
   private async _onToggle(t: FlowTrigger): Promise<void> {
-    const updated = await updateTrigger(t.id, { enabled: !t.enabled });
+    const updated = await updateTrigger(this.instanceSlug || t.instanceSlug, t.id, {
+      enabled: !t.enabled,
+    });
     this._emit("trigger-updated", updated);
   }
 
   private async _onFire(t: FlowTrigger): Promise<void> {
-    await fireTrigger(t.id);
+    await fireTrigger(this.instanceSlug || t.instanceSlug, t.id);
     this._emit("trigger-fired", { id: t.id });
   }
 
   private async _onDelete(t: FlowTrigger): Promise<void> {
-    await deleteTrigger(t.id);
+    await deleteTrigger(this.instanceSlug || t.instanceSlug, t.id);
     this._emit("trigger-deleted", { id: t.id });
   }
 
