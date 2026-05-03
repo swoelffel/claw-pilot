@@ -315,6 +315,72 @@ describe("cleanup", () => {
   });
 });
 
+describe("server extensions", () => {
+  it("invokes registered extensions during boot, after Community routes are mounted", async () => {
+    const { clearServerExtensions, registerServerExtension } =
+      await import("../server-extensions.js");
+    clearServerExtensions();
+
+    const observed: { hasDb: boolean; hasApp: boolean; hasTriggerScheduler: boolean }[] = [];
+    registerServerExtension((deps, app) => {
+      observed.push({
+        hasDb: deps.db !== undefined,
+        hasApp: typeof app.request === "function",
+        hasTriggerScheduler: deps.triggerScheduler !== undefined,
+      });
+    });
+
+    const { cleanup } = await buildDashboardApp(options);
+    try {
+      expect(observed).toHaveLength(1);
+      expect(observed[0]).toEqual({ hasDb: true, hasApp: true, hasTriggerScheduler: true });
+    } finally {
+      cleanup();
+      clearServerExtensions();
+    }
+  });
+
+  it("propagates errors raised by an extension (boot fails fast)", async () => {
+    const { clearServerExtensions, registerServerExtension } =
+      await import("../server-extensions.js");
+    clearServerExtensions();
+
+    registerServerExtension(() => {
+      throw new Error("scripted extension failure");
+    });
+
+    await expect(buildDashboardApp(options)).rejects.toThrow(/scripted extension failure/);
+    clearServerExtensions();
+  });
+
+  it("invokes extensions sequentially in registration order", async () => {
+    const { clearServerExtensions, registerServerExtension } =
+      await import("../server-extensions.js");
+    clearServerExtensions();
+
+    const order: string[] = [];
+    registerServerExtension(async () => {
+      await Promise.resolve();
+      order.push("a");
+    });
+    registerServerExtension(() => {
+      order.push("b");
+    });
+    registerServerExtension(async () => {
+      await Promise.resolve();
+      order.push("c");
+    });
+
+    const { cleanup } = await buildDashboardApp(options);
+    try {
+      expect(order).toEqual(["a", "b", "c"]);
+    } finally {
+      cleanup();
+      clearServerExtensions();
+    }
+  });
+});
+
 describe("static assets", () => {
   it("path traversal blocked", async () => {
     const { app, cleanup } = await buildDashboardApp(options);
