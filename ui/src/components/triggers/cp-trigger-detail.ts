@@ -43,6 +43,10 @@ export class CpTriggerDetail extends LitElement {
         z-index: 90;
         font-family: var(--font-ui);
         overflow: auto;
+        transition: width 160ms ease-out;
+      }
+      :host([data-fullscreen]) {
+        width: 100vw;
       }
       header {
         padding: 16px;
@@ -57,18 +61,27 @@ export class CpTriggerDetail extends LitElement {
         font-weight: 700;
         color: var(--text-primary);
       }
-      .close-btn {
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .icon-btn {
         background: none;
         border: none;
         color: var(--state-stopped);
         cursor: pointer;
-        font-size: 20px;
+        font-size: 18px;
         line-height: 1;
-        padding: 4px;
+        padding: 4px 8px;
         border-radius: var(--radius-sm);
       }
-      .close-btn:hover {
+      .icon-btn:hover {
         color: var(--text-primary);
+        background: var(--bg-hover);
+      }
+      .close-btn {
+        font-size: 20px;
       }
       .tabs {
         display: flex;
@@ -194,6 +207,7 @@ export class CpTriggerDetail extends LitElement {
   @state() private _revealedSecret = "";
   @state() private _rotateMessage = "";
   @state() private _busy = false;
+  @state() private _fullscreen = false;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -345,18 +359,42 @@ export class CpTriggerDetail extends LitElement {
     `;
   }
 
+  private _toggleFullscreen(): void {
+    this._fullscreen = !this._fullscreen;
+    if (this._fullscreen) {
+      this.setAttribute("data-fullscreen", "");
+    } else {
+      this.removeAttribute("data-fullscreen");
+    }
+  }
+
   override render() {
     return html`
       <header>
         <h2>${this._detail?.name ?? msg("Trigger", { id: "trigger-detail-title" })}</h2>
-        <button
-          class="close-btn"
-          type="button"
-          aria-label=${msg("Close", { id: "trigger-detail-close" })}
-          @click=${this._close}
-        >
-          ✕
-        </button>
+        <div class="header-actions">
+          <button
+            class="icon-btn"
+            type="button"
+            aria-label=${this._fullscreen
+              ? msg("Collapse", { id: "trigger-detail-collapse" })
+              : msg("Expand", { id: "trigger-detail-expand" })}
+            title=${this._fullscreen
+              ? msg("Collapse", { id: "trigger-detail-collapse" })
+              : msg("Expand", { id: "trigger-detail-expand" })}
+            @click=${this._toggleFullscreen}
+          >
+            ${this._fullscreen ? ">" : "<"}
+          </button>
+          <button
+            class="icon-btn close-btn"
+            type="button"
+            aria-label=${msg("Close", { id: "trigger-detail-close" })}
+            @click=${this._close}
+          >
+            ✕
+          </button>
+        </div>
       </header>
       ${this._error ? html`<div class="error-banner">${this._error}</div>` : ""}
       <div class="tabs">
