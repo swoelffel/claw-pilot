@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { z } from "zod";
-import { authenticate } from "../../core/auth/index.js";
+import { authenticate, listLoginableProviders } from "../../core/auth/index.js";
 import { emitAudit } from "../../core/audit/index.js";
 import { constants } from "../../lib/constants.js";
 import { apiError } from "../route-deps.js";
@@ -29,6 +29,16 @@ export function registerAuthRoutes(app: Hono, deps: RouteDeps, token: string): v
   const loginRateLimiter = createRateLimiter({
     maxRequests: constants.AUTH_RATE_LIMIT_MAX,
     windowMs: constants.AUTH_RATE_LIMIT_WINDOW_MS,
+  });
+
+  // GET /api/auth/providers — list SSO login buttons available on this server
+  // no permission() — public endpoint, rendered before the user has a session
+  // so they can pick which IDP to authenticate with. Community always returns
+  // an empty list (only `PasswordProvider` is registered, and it has no
+  // `describeLogin()`). Enterprise editions populate this from each enabled
+  // SSO provider row.
+  app.get("/api/auth/providers", (c) => {
+    return c.json({ providers: listLoginableProviders() });
   });
 
   // POST /api/auth/login — authenticate and create a session

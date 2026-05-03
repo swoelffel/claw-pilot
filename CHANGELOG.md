@@ -8,6 +8,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+- **`GET /api/auth/providers` endpoint + `<cp-auth-providers-list>` Lit component** — extension point for SSO login buttons on the login page. The endpoint returns one descriptor per registered `AuthProvider` that implements the new optional `describeLogin()` method. Community always returns `[]` (only `PasswordProvider` is registered, and it has no `describeLogin()`), so the login page renders unchanged. Enterprise editions register one descriptor per enabled SSO provider, which appear as buttons above the password form. Unblocks ENT-SSO-001 (OIDC) and downstream SSO providers.
+
 ### Fixed
 - **`prepare` script production-install-safe** — guard `lefthook install` to no-op when not in a git repo or when `lefthook` is absent. Avoids `exit code 1` noise on tarball-based prod deploys (no `.git`, devDeps absent). Discovered during EE on-prem redeploy on MAC (2026-05-01).
 

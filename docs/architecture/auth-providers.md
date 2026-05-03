@@ -51,13 +51,25 @@ export type AuthResult =
   | { ok: true; user: AuthenticatedUser }
   | { ok: false; code: string; message: string };
 
+export interface LoginDescriptor {
+  id: string;            // stable per provider instance — "entra-prod", "okta-prod"
+  kind: string;          // matches AuthProvider.kind — "oidc", "saml", …
+  display_name: string;  // label rendered on the login button
+  login_url: string;     // URL the user is redirected to on click
+}
+
 export interface AuthProvider {
   readonly kind: string;  // "password" | "oidc" | "saml" | "azuread" | …
   authenticate(credentials: unknown): Promise<AuthResult>;
+  describeLogin?(): LoginDescriptor;
   onUserProvisioned?(user: AuthenticatedUser): Promise<void>;
   onUserDeprovisioned?(externalId: string): Promise<void>;
 }
 ```
+
+`describeLogin()` is implemented by providers that expose a clickable login
+button (SSO). `PasswordProvider` does not implement it — the password form is
+rendered inline by `<cp-login-view>`.
 
 ### Registry functions
 
@@ -72,7 +84,25 @@ export interface AuthProvider {
 - `hasAuthProvider(kind: string): boolean`
 - `unregisterAuthProvider(kind: string): boolean`
 - `listAuthProviderKinds(): string[]`
+- `listLoginableProviders(): LoginDescriptor[]` — returns one entry per
+  registered provider that implements `describeLogin()`. Backs the
+  `GET /api/auth/providers` endpoint consumed by `<cp-auth-providers-list>`.
+  Always `[]` in Community.
 - `clearAuthProviders(): void` — test-only helper.
+
+### HTTP endpoint
+
+`GET /api/auth/providers` — public, unauthenticated. Returns
+`{ providers: LoginDescriptor[] }`. Rendered before login so the user can
+pick which IDP to authenticate with. Community returns `{ providers: [] }`.
+
+### UI component
+
+`<cp-auth-providers-list>` (`ui/src/components/auth-providers-list.ts`) —
+fetches the endpoint on `connectedCallback`, renders one button per
+descriptor, and falls back to `nothing` when the list is empty (so Community
+renders no separator and no buttons). Hosted by `<cp-login-view>` above the
+password form.
 
 ### Password utilities
 
