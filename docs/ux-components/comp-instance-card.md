@@ -86,32 +86,48 @@ Flex column, `gap: 4px`.
 Opened on `···` button click. Closed on outside click (listener `document click`). Position `absolute`, `top: calc(100% + 4px)`, `right: 0`, `z-index: 100`, `min-width: 164px`, `box-shadow: 0 4px 20px rgba(0,0,0,0.45)`.
 
 ```
-┌─────────────────────┐
-│  ■  Stop            │  ← red if running / ▶ Start green if stopped
-│  ─────────────────  │
-│  ⚡ Pilot            │  ← visible if state === "running"
-│  ⬡  Agents          │  ← visible if running OR agentCount > 0
-│  ⚙  Settings        │  ← always
-│  ↺  Restart         │  ← visible if state === "running"
-│  ─────────────────  │
-│  ✕  Delete          │  ← danger, separated
-└─────────────────────┘
++---------------------+
+|  Stop               |  <- red if running / Start green if stopped
+|  ---                |
+|  Pilot              |  <- visible if state === "running"
+|  Agents             |  <- visible if running OR agentCount > 0
+|  Tasks              |  <- always
+|  Flows              |  <- always
+|  Triggers           |  <- always (added PR #175)
+|  Settings           |  <- always
+|  Costs              |  <- always
+|  Activity           |  <- always
+|  Memory             |  <- always
+|  Heartbeat          |  <- always
+|  Session Logs       |  <- always
+|  Restart            |  <- visible if state === "running"
+|  ---                |
+|  Delete             |  <- danger, separated
++---------------------+
 ```
 
-| Item | Condition | Style | Behavior |
+| Item | i18n id | Condition | Behavior |
 |---|---|---|---|
-| **■ Stop / ▶ Start** | Always | Red `.stop` if running, green `.start` if stopped | Call `stopInstance` / `startInstance` API. Disabled during `_loading`. |
-| **⚡ Pilot** | `state === "running"` | Normal | Emit `navigate { view: "pilot", slug }` |
-| **⬡ Agents** | `state === "running"` OR `agentCount > 0` | Normal | Emit `navigate { view: "agents-builder", slug }` |
-| **⚙ Settings** | Always | Normal | Emit `navigate { view: "instance-settings", slug }` |
-| **↺ Restart** | `state === "running"` | Normal | Call `restartInstance(slug)` API |
-| **✕ Delete** | Always | Red `.danger` | Emit `request-delete { slug }` (confirmation handled by parent) |
+| **Stop / Start** | — | Always | Call `stopInstance` / `startInstance` API. Disabled during `_loading`. |
+| **Pilot** | `btn-pilot` | `state === "running"` | Emit `navigate { view: "pilot", slug }` |
+| **Agents** | — | `state === "running"` OR `agentCount > 0` | Emit `navigate { view: "agents-builder", slug }` |
+| **Tasks** | `btn-tasks` | Always | `navigate { view: "tasks", slug }` |
+| **Flows** | `btn-flows` | Always | `navigate { view: "flows", slug }` |
+| **Triggers** | `btn-triggers` | Always | `navigate { view: "triggers", slug }` |
+| **Settings** | `btn-settings` | Always | `navigate { view: "instance-settings", slug }` |
+| **Costs** | `btn-costs` | Always | `navigate { view: "costs", slug }` |
+| **Activity** | `btn-activity` | Always | `navigate { view: "activity", slug }` |
+| **Memory** | `btn-memory` | Always | `navigate { view: "memory", slug }` |
+| **Heartbeat** | `btn-heartbeat` | Always | `navigate { view: "heartbeat", slug }` |
+| **Session Logs** | `btn-session-logs` | Always | `navigate { view: "session-logs", slug }` |
+| **Restart** | — | `state === "running"` | Call `restartInstance(slug)` API |
+| **Delete** | — | Always | Emit `request-delete { slug }` (confirmation handled by parent) |
 
 All items: `stopPropagation()` + `_menuOpen = false` before action.
 
 ## Behaviors
 
-- **Card click** (zones 2, 3, 4 — hors `···` et boutons start/stop): `navigate { view: "dashboard", slug }`. `cursor: pointer`. Hover : fond `--bg-hover` (transition 150ms).
+- **Card body click** (zones 2, 3, 4 — excluding `···` and start/stop buttons): emits `navigate { view: "instance-dashboard", slug }` → routes to `#/instances/:slug/dashboard` (`cp-instance-dashboard`). `cursor: pointer`. Hover background: `--bg-hover` (150ms transition).
 - **`···` click**: `stopPropagation()` + toggle `_menuOpen`
 - **Outside click**: close popover via `document click` listener (added in `connectedCallback`, removed in `disconnectedCallback`)
 - **PERM pill click**: `stopPropagation()` + `navigate { view: "pilot" }`

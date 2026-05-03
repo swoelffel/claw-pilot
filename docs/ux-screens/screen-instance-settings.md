@@ -42,12 +42,13 @@ Always visible. Background `--bg-surface`, bottom border.
 
 ## Sidebar
 
-Navigation through 7 panels: **General**, **Agents**, **Runtime**, **Channels**, **MCP**, **Permissions**, **Config**. Active item: `--accent-subtle` background, `--accent` color, `font-weight: 600`. Click → `_activeSection = section` (immediate content swap).
+Navigation through 8 panels rendered by `cp-instance-settings._renderSidebar()`: **General**, **Agents**, **Skills**, **Channels**, **MCP**, **Permissions**, **Config**, **Shared files**. The `runtime` section id still exists in the `SidebarSection` type for legacy reasons but is not rendered as a sidebar entry today (Runtime info is folded into General). Active item: `--accent-subtle` background, `--accent` color, `font-weight: 600`. Click → `_activeSection = section` (immediate content swap).
 
 **Numeric badges** on sidebar items:
 
 | Item | Badge | Condition |
 |---|---|---|
+| **Skills** | Accent numeric | Number of available skills (`_skillsCount > 0`) |
 | **MCP** | Accent numeric | Number of connected MCP servers (`_mcpConnectedCount > 0`) |
 | **Permissions** | Accent numeric | Number of pending permission requests (`_pendingPermissionsCount > 0`) |
 
@@ -316,7 +317,20 @@ Advanced runtime configuration panel. Sub-navigation via tabs. Save/Cancel speci
 | **Max spawn depth** | Slider 0–10. Maximum subagent nesting depth. |
 | **Max active children per session** | Slider 1–20. Maximum subagents active simultaneously per session. |
 
+### Skills Section (`cp-instance-skills`)
+
+> **Source**: `ui/src/components/instance-skills.ts`
+
+Lists skills available to the instance, by source: `workspace` (per-instance files), `global` (server-installed), and `remote` (registry). Each skill row shows name + description; deletable rows expose a remove button. Sidebar badge reflects `_skillsCount` (set via component event).
+
+### Shared Files Section (`cp-instance-shared-files`)
+
+> **Source**: `ui/src/components/instance-shared-files.ts`
+> **Component doc**: [comp-instance-shared-files.md](../ux-components/comp-instance-shared-files.md)
+
+Two-pane file manager for `<stateDir>/workspaces/shared/` — readable from every agent of the instance via `ws_list_files` / `ws_search_files` (entries prefixed `@shared/`). Reuses `cp-agent-file-tree` and `cp-agent-file-editor`; create/delete dialogs come from `cp-workspace-file-dialogs`.
+
 ## Related
 
-- Components: [Agent Detail Panel](../ux-components/comp-agent-detail-panel.md)
-- Screens: [Runtime Pilot](screen-runtime-pilot.md)
+- Components: [Agent Detail Panel](../ux-components/comp-agent-detail-panel.md), [Instance Shared Files](../ux-components/comp-instance-shared-files.md)
+- Screens: [Runtime Pilot](screen-runtime-pilot.md), [Triggers](screen-triggers.md)
