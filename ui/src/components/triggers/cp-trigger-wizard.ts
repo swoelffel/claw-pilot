@@ -20,8 +20,11 @@ import { buttonStyles, errorBannerStyles } from "../../styles/shared.js";
 import {
   createTrigger,
   listFlows,
+  updateTrigger,
   type CreateTriggerInput,
+  type FlowTrigger,
   type InputMappingEntry,
+  type UpdateTriggerInput,
 } from "../../api.js";
 import type { FlowDefinitionWithLastRun } from "../../types.js";
 import { userMessage } from "../../lib/error-messages.js";
@@ -240,6 +243,12 @@ export class CpTriggerWizard extends LitElement {
   @property({ type: String }) instanceSlug = "";
   /** Username to display in the read-only owner row. Optional. */
   @property({ type: String }) currentUsername = "";
+  /**
+   * When set, the wizard runs in edit mode: kind locked, fields pre-filled
+   * from this trigger, Save submits a PATCH instead of a POST. The component
+   * detects edit mode purely by the presence of this property.
+   */
+  @property({ attribute: false }) existingTrigger: FlowTrigger | undefined = undefined;
 
   @state() private _step = 1;
   @state() private _kind: "cron" | "webhook" | "" = "";
@@ -258,9 +267,34 @@ export class CpTriggerWizard extends LitElement {
   @state() private _flows: FlowDefinitionWithLastRun[] = [];
   @state() private _flowsLoading = false;
 
+  /** True when editing an existing trigger (vs creating a new one). */
+  private get _isEditMode(): boolean {
+    return this.existingTrigger !== undefined;
+  }
+
   override connectedCallback(): void {
     super.connectedCallback();
+    if (this.existingTrigger) {
+      this._hydrateFromExisting(this.existingTrigger);
+    }
     void this._loadFlows();
+  }
+
+  /**
+   * Pre-fill all wizard fields from an existing trigger, lock the kind, and
+   * jump straight to Step 2 (Step 1 is hidden in edit mode).
+   */
+  private _hydrateFromExisting(t: FlowTrigger): void {
+    this._kind = t.kind;
+    this._flowId = String(t.flowId);
+    this._name = t.name;
+    this._enabled = t.enabled;
+    this._allowConcurrent = t.allowConcurrent;
+    this._cronExpr = t.cronExpr ?? "0 9 * * *";
+    this._cronTz = t.cronTz ?? "Europe/Paris";
+    this._webhookSlug = t.webhookSlug ?? "";
+    this._mapping = t.inputMapping ?? [];
+    this._step = 2;
   }
 
   private async _loadFlows(): Promise<void> {
@@ -292,6 +326,28 @@ export class CpTriggerWizard extends LitElement {
     this._saving = true;
     this._error = "";
     try {
+      if (this._isEditMode && this.existingTrigger) {
+        // Edit mode — PATCH only the user-editable fields. Kind, flow, owner
+        // are locked once a trigger exists.
+        const patch: UpdateTriggerInput = {
+          name: this._name,
+          enabled: this._enabled,
+          allowConcurrent: this._allowConcurrent,
+        };
+        if (this._kind === "cron") {
+          patch.cronExpr = this._cronExpr;
+          if (this._cronTz) patch.cronTz = this._cronTz;
+        } else {
+          patch.webhookSlug = this._webhookSlug;
+        }
+        if (this._mapping.length > 0) patch.inputMapping = this._mapping;
+        const updated = await updateTrigger(this.instanceSlug, this.existingTrigger.id, patch);
+        this.dispatchEvent(
+          new CustomEvent("updated", { detail: updated, bubbles: true, composed: true }),
+        );
+        return;
+      }
+
       const input: CreateTriggerInput = {
         flowId: Number(this._flowId),
         kind: this._kind,
@@ -382,6 +438,7 @@ export class CpTriggerWizard extends LitElement {
     return html`
       <select
         .value=${this._flowId}
+        ?disabled=${this._isEditMode}
         @change=${(e: Event) => (this._flowId = (e.target as HTMLSelectElement).value)}
       >
         <option value="" disabled ?selected=${!this._flowId}>
@@ -424,6 +481,7 @@ export class CpTriggerWizard extends LitElement {
             <cp-cron-picker
               .value=${this._cronExpr}
               .timezone=${this._cronTz}
+              .initialValue=${this._isEditMode ? this._cronExpr : undefined}
               @change=${(e: CustomEvent<{ cron: string; humanReadable: string }>) =>
                 this._onCronChange(e)}
             ></cp-cron-picker>
@@ -492,11 +550,23 @@ export class CpTriggerWizard extends LitElement {
     return false;
   }
 
+  /** Lower bound on `_back()` — Step 1 is hidden in edit mode. */
+  private _minStep(): number {
+    return this._isEditMode ? 2 : 1;
+  }
+
   override render() {
+    const editMode = this._isEditMode;
+    const headerLabel = editMode
+      ? msg("Edit trigger", { id: "wizard-header-edit" })
+      : msg("New trigger", { id: "wizard-header-create" });
+    const submitLabel = editMode
+      ? msg("Save", { id: "btn-wizard-save" })
+      : msg("Create", { id: "btn-wizard-create" });
     return html`
       <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
         <div class="panel-header">
-          <h2>${msg("New trigger", { id: "trigger-wiz-title" })}</h2>
+          <h2>${headerLabel}</h2>
           <button
             class="btn btn-ghost"
             type="button"
@@ -508,12 +578,19 @@ export class CpTriggerWizard extends LitElement {
         </div>
         <div class="panel-body">
           <div class="step-indicator">
-            <div class="dot ${this._step >= 1 ? "active" : ""}"></div>
-            <div class="dot ${this._step >= 2 ? "active" : ""}"></div>
-            <div class="dot ${this._step >= 3 ? "active" : ""}"></div>
+            ${editMode
+              ? html`
+                  <div class="dot ${this._step >= 2 ? "active" : ""}"></div>
+                  <div class="dot ${this._step >= 3 ? "active" : ""}"></div>
+                `
+              : html`
+                  <div class="dot ${this._step >= 1 ? "active" : ""}"></div>
+                  <div class="dot ${this._step >= 2 ? "active" : ""}"></div>
+                  <div class="dot ${this._step >= 3 ? "active" : ""}"></div>
+                `}
           </div>
           ${this._error ? html`<div class="error-banner">${this._error}</div>` : ""}
-          ${this._step === 1 ? this._renderStep1() : ""}
+          ${this._step === 1 && !editMode ? this._renderStep1() : ""}
           ${this._step === 2 ? this._renderStep2() : ""}
           ${this._step === 3 ? this._renderStep3() : ""}
         </div>
@@ -522,7 +599,7 @@ export class CpTriggerWizard extends LitElement {
             ${msg("Cancel", { id: "trigger-wiz-cancel" })}
           </button>
           <div class="footer-cluster">
-            ${this._step > 1
+            ${this._step > this._minStep()
               ? html`<button class="btn btn-ghost" type="button" @click=${this._back}>
                   ${msg("Back", { id: "trigger-wiz-back" })}
                 </button>`
@@ -542,7 +619,7 @@ export class CpTriggerWizard extends LitElement {
                   ?disabled=${this._saving || !this._name || !this._flowId}
                   @click=${this._submit}
                 >
-                  ${msg("Create", { id: "trigger-wiz-create" })}
+                  ${submitLabel}
                 </button>`}
           </div>
         </div>

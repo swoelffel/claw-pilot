@@ -1,6 +1,8 @@
 // ui/src/components/triggers/cp-trigger-detail.ts
 //
-// Trigger detail drawer with three tabs: Settings, Runs, Test.
+// Trigger history drawer with two tabs: Runs (default) and Test. The previous
+// Settings tab has been promoted to the trigger wizard's edit mode — clicking
+// Edit on a trigger row reopens the wizard pre-filled instead.
 
 import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
@@ -18,7 +20,7 @@ import {
 } from "../../api.js";
 import { userMessage } from "../../lib/error-messages.js";
 
-type Tab = "settings" | "runs" | "test";
+type Tab = "runs" | "test";
 
 @localized()
 @customElement("cp-trigger-detail")
@@ -53,6 +55,19 @@ export class CpTriggerDetail extends LitElement {
         margin: 0;
         font-size: 16px;
         font-weight: 700;
+        color: var(--text-primary);
+      }
+      .close-btn {
+        background: none;
+        border: none;
+        color: var(--state-stopped);
+        cursor: pointer;
+        font-size: 20px;
+        line-height: 1;
+        padding: 4px;
+        border-radius: var(--radius-sm);
+      }
+      .close-btn:hover {
         color: var(--text-primary);
       }
       .tabs {
@@ -173,7 +188,7 @@ export class CpTriggerDetail extends LitElement {
   @property({ type: Number }) triggerId = 0;
 
   @state() private _detail: FlowTriggerDetail | null = null;
-  @state() private _tab: Tab = "settings";
+  @state() private _tab: Tab = "runs";
   @state() private _error = "";
   @state() private _runs: FlowTriggerRun[] = [];
   @state() private _revealedSecret = "";
@@ -244,50 +259,6 @@ export class CpTriggerDetail extends LitElement {
     } catch (err) {
       this._error = userMessage(err);
     }
-  }
-
-  private _renderSettings() {
-    if (!this._detail) return html`<p>${msg("Loading...", { id: "trigger-detail-loading" })}</p>`;
-    const d = this._detail;
-    return html`
-      <div class="row">
-        <span class="label">${msg("Name", { id: "trigger-detail-name" })}</span>
-        <span class="value">${d.name}</span>
-      </div>
-      <div class="row">
-        <span class="label">${msg("Kind", { id: "trigger-detail-kind" })}</span>
-        <span class="value">${d.kind}</span>
-      </div>
-      <div class="row">
-        <span class="label">${msg("Instance", { id: "trigger-detail-instance" })}</span>
-        <span class="value">${d.instanceSlug}</span>
-      </div>
-      <div class="row">
-        <span class="label">${msg("Flow", { id: "trigger-detail-flow" })}</span>
-        <span class="value">#${d.flowId}</span>
-      </div>
-      <div class="row">
-        <span class="label">${msg("Enabled", { id: "trigger-detail-enabled" })}</span>
-        <span class="value">${d.enabled ? "yes" : "no"}</span>
-      </div>
-      ${d.kind === "cron"
-        ? html`
-            <div class="row">
-              <span class="label">${msg("Cron", { id: "trigger-detail-cron" })}</span>
-              <span class="value">${d.cronExpr ?? ""} ${d.cronTz ?? ""}</span>
-            </div>
-          `
-        : html`
-            <div class="row">
-              <span class="label">${msg("Webhook slug", { id: "trigger-detail-slug" })}</span>
-              <span class="value">${d.webhookSlug ?? ""}</span>
-            </div>
-          `}
-      <div class="row">
-        <span class="label">${msg("Last fired", { id: "trigger-detail-last-fired" })}</span>
-        <span class="value">${d.lastFiredAt ?? "—"}</span>
-      </div>
-    `;
   }
 
   private _renderRuns() {
@@ -378,18 +349,17 @@ export class CpTriggerDetail extends LitElement {
     return html`
       <header>
         <h2>${this._detail?.name ?? msg("Trigger", { id: "trigger-detail-title" })}</h2>
-        <button class="btn btn-ghost" type="button" @click=${this._close}>
-          ${msg("Close", { id: "trigger-detail-close" })}
+        <button
+          class="close-btn"
+          type="button"
+          aria-label=${msg("Close", { id: "trigger-detail-close" })}
+          @click=${this._close}
+        >
+          ✕
         </button>
       </header>
       ${this._error ? html`<div class="error-banner">${this._error}</div>` : ""}
       <div class="tabs">
-        <div
-          class="tab ${this._tab === "settings" ? "active" : ""}"
-          @click=${() => (this._tab = "settings")}
-        >
-          ${msg("Settings", { id: "trigger-detail-tab-settings" })}
-        </div>
         <div
           class="tab ${this._tab === "runs" ? "active" : ""}"
           @click=${() => (this._tab = "runs")}
@@ -404,7 +374,6 @@ export class CpTriggerDetail extends LitElement {
         </div>
       </div>
       <div class="body">
-        ${this._tab === "settings" ? this._renderSettings() : ""}
         ${this._tab === "runs" ? this._renderRuns() : ""}
         ${this._tab === "test" ? this._renderTest() : ""}
       </div>

@@ -8,7 +8,7 @@ import { customElement, property } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../../styles/tokens.js";
 import { buttonStyles } from "../../styles/shared.js";
-import { deleteTrigger, fireTrigger, updateTrigger, type FlowTrigger } from "../../api.js";
+import { deleteTrigger, updateTrigger, type FlowTrigger } from "../../api.js";
 
 @localized()
 @customElement("cp-trigger-list")
@@ -139,13 +139,6 @@ export class CpTriggerList extends LitElement {
           border-color 0.15s,
           color 0.15s;
       }
-      .btn-fire {
-        color: var(--state-running);
-        border-color: rgba(16, 185, 129, 0.25);
-      }
-      .btn-fire:hover:not(:disabled) {
-        background: rgba(16, 185, 129, 0.1);
-      }
       .btn-detail {
         color: var(--accent);
         border-color: var(--accent-border);
@@ -197,11 +190,6 @@ export class CpTriggerList extends LitElement {
     this._emit("trigger-updated", updated);
   }
 
-  private async _onFire(t: FlowTrigger): Promise<void> {
-    await fireTrigger(this.instanceSlug || t.instanceSlug, t.id);
-    this._emit("trigger-fired", { id: t.id });
-  }
-
   private async _onDelete(t: FlowTrigger): Promise<void> {
     if (!window.confirm(`Delete trigger '${t.name}'? This cannot be undone.`)) return;
     await deleteTrigger(this.instanceSlug || t.instanceSlug, t.id);
@@ -229,7 +217,10 @@ export class CpTriggerList extends LitElement {
             <div class="trigger-row">
               <span class="kind">${t.kind}</span>
               <div class="trigger-info">
-                <div class="trigger-name" @click=${() => this._emit("trigger-open", { id: t.id })}>
+                <div
+                  class="trigger-name"
+                  @click=${() => this._emit("trigger-history", { id: t.id })}
+                >
                   ${t.name}
                 </div>
                 <div class="trigger-meta">
@@ -254,18 +245,18 @@ export class CpTriggerList extends LitElement {
               </div>
               <div class="actions">
                 <button
-                  class="btn-action btn-fire"
+                  class="btn-action btn-detail"
                   type="button"
-                  @click=${() => void this._onFire(t)}
+                  @click=${() => this._emit("trigger-edit", { trigger: t })}
                 >
-                  ${msg("Fire", { id: "trigger-list-fire" })}
+                  ${msg("Edit", { id: "btn-row-edit" })}
                 </button>
                 <button
                   class="btn-action btn-detail"
                   type="button"
-                  @click=${() => this._emit("trigger-open", { id: t.id })}
+                  @click=${() => this._emit("trigger-history", { id: t.id })}
                 >
-                  ${msg("Detail", { id: "trigger-list-detail" })}
+                  ${msg("History", { id: "btn-row-history" })}
                 </button>
                 <button
                   class="btn-action btn-delete"

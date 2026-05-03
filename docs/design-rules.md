@@ -284,7 +284,7 @@ Reference: `ui/src/components/triggers/cp-trigger-detail.ts` lines 31–67
 | Left border | `1px solid var(--bg-border)` |
 | Z-index | `90` (below modals) |
 | Header | `padding: 16px; border-bottom: 1px solid var(--bg-border); display: flex; justify-content: space-between; align-items: center;` — title left, close button right |
-| Close button | Top-right; ghost button labelled `Close` (i18n) — never an `×` glyph alone |
+| Close button | Top-right; `<button class="close-btn" aria-label="Close">✕</button>`. Glyph `✕` (U+2715), 20px font-size, `--state-stopped` color, hover `--text-primary`. Reference: `ui/src/components/create-agent-dialog.ts:609–616`. |
 | Scroll | `overflow: auto` on host |
 
 ### 10.10 Status badge

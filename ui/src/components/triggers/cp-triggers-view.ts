@@ -55,8 +55,10 @@ export class CpTriggersView extends LitElement {
 
   @state() private _triggers: FlowTrigger[] = [];
   @state() private _error = "";
-  @state() private _showWizard = false;
-  @state() private _detailId: number | null = null;
+  @state() private _wizardOpen = false;
+  @state() private _wizardEditTarget: FlowTrigger | null = null;
+  @state() private _drawerOpen = false;
+  @state() private _drawerTargetId: number | null = null;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -76,10 +78,21 @@ export class CpTriggersView extends LitElement {
     }
   }
 
+  private _closeWizard(): void {
+    this._wizardOpen = false;
+    this._wizardEditTarget = null;
+  }
+
   private _onWizCreated(e: Event): void {
     const t = (e as CustomEvent<FlowTrigger>).detail;
     this._triggers = [...this._triggers, t];
-    this._showWizard = false;
+    this._closeWizard();
+  }
+
+  private _onWizUpdated(e: Event): void {
+    const t = (e as CustomEvent<FlowTrigger>).detail;
+    this._triggers = this._triggers.map((x) => (x.id === t.id ? t : x));
+    this._closeWizard();
   }
 
   private _onUpdated(e: Event): void {
@@ -87,10 +100,25 @@ export class CpTriggersView extends LitElement {
     this._triggers = this._triggers.map((x) => (x.id === t.id ? t : x));
   }
 
+  private _onEdit(e: CustomEvent<{ trigger: FlowTrigger }>): void {
+    this._wizardEditTarget = e.detail.trigger;
+    this._wizardOpen = true;
+  }
+
+  private _onHistory(e: CustomEvent<{ id: number }>): void {
+    this._drawerTargetId = e.detail.id;
+    this._drawerOpen = true;
+  }
+
+  private _closeDrawer(): void {
+    this._drawerOpen = false;
+    this._drawerTargetId = null;
+  }
+
   private _onDeleted(e: Event): void {
     const { id } = (e as CustomEvent<{ id: number }>).detail;
     this._triggers = this._triggers.filter((x) => x.id !== id);
-    if (this._detailId === id) this._detailId = null;
+    if (this._drawerTargetId === id) this._closeDrawer();
   }
 
   override render() {
@@ -100,7 +128,14 @@ export class CpTriggersView extends LitElement {
           ${msg("Triggers", { id: "trigger-page-title" })}
           <span class="count">${this._triggers.length}</span>
         </h1>
-        <button class="btn btn-primary" type="button" @click=${() => (this._showWizard = true)}>
+        <button
+          class="btn btn-primary"
+          type="button"
+          @click=${() => {
+            this._wizardEditTarget = null;
+            this._wizardOpen = true;
+          }}
+        >
           ${msg("+ New trigger", { id: "trigger-page-new" })}
         </button>
       </header>
@@ -108,23 +143,25 @@ export class CpTriggersView extends LitElement {
       <cp-trigger-list
         .instanceSlug=${this.instanceSlug}
         .triggers=${this._triggers}
-        @trigger-open=${(e: CustomEvent<{ id: number }>) => (this._detailId = e.detail.id)}
+        @trigger-edit=${this._onEdit}
+        @trigger-history=${this._onHistory}
         @trigger-updated=${this._onUpdated}
         @trigger-deleted=${this._onDeleted}
-        @trigger-fired=${() => void this._load()}
       ></cp-trigger-list>
-      ${this._showWizard
+      ${this._wizardOpen
         ? html`<cp-trigger-wizard
             .instanceSlug=${this.instanceSlug}
+            .existingTrigger=${this._wizardEditTarget ?? undefined}
             @created=${this._onWizCreated}
-            @cancelled=${() => (this._showWizard = false)}
+            @updated=${this._onWizUpdated}
+            @cancelled=${this._closeWizard}
           ></cp-trigger-wizard>`
         : ""}
-      ${this._detailId !== null
+      ${this._drawerOpen && this._drawerTargetId !== null
         ? html`<cp-trigger-detail
             .instanceSlug=${this.instanceSlug}
-            .triggerId=${this._detailId}
-            @close=${() => (this._detailId = null)}
+            .triggerId=${this._drawerTargetId}
+            @close=${this._closeDrawer}
           ></cp-trigger-detail>`
         : ""}
     `;
