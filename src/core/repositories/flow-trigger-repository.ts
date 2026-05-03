@@ -156,14 +156,21 @@ export function getFlowTrigger(db: Database.Database, id: number): FlowTriggerRo
   return row ?? null;
 }
 
-/** Fetch a webhook trigger by its slug. */
+/**
+ * Fetch a webhook trigger by its (instance, slug) pair.
+ *
+ * Uniqueness on `webhook_slug` is scoped to `instance_slug` (v41), so the
+ * lookup must include both segments. A bare slug match would silently leak
+ * a different instance's trigger.
+ */
 export function getFlowTriggerByWebhookSlug(
   db: Database.Database,
+  instanceSlug: string,
   slug: string,
 ): FlowTriggerRow | null {
-  const row = db.prepare("SELECT * FROM rt_flow_triggers WHERE webhook_slug = ?").get(slug) as
-    | FlowTriggerRow
-    | undefined;
+  const row = db
+    .prepare("SELECT * FROM rt_flow_triggers WHERE instance_slug = ? AND webhook_slug = ?")
+    .get(instanceSlug, slug) as FlowTriggerRow | undefined;
   return row ?? null;
 }
 

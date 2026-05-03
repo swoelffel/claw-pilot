@@ -1,10 +1,12 @@
 // src/dashboard/routes/webhooks.ts
 //
-// Inbound webhook endpoint for TRIGGER-001 — POST /webhooks/triggers/:slug.
+// Inbound webhook endpoint for TRIGGER-001 —
+//   POST /webhooks/triggers/:instanceSlug/:slug.
 //
 // Mounted OUTSIDE `/api/*` so the dashboard auth middleware does not gate it
 // — webhook auth is HMAC-SHA256 (`X-ClawPilot-Signature: sha256=<hex>`) with
-// an optional IP allowlist.
+// an optional IP allowlist. The instance segment scopes the lookup so the
+// same `:slug` may exist in different instances without collision.
 //
 // Pipeline:
 //   1. Resolve trigger by webhook slug (404/503 on missing/disabled).
@@ -155,13 +157,14 @@ interface VerifiedRequest {
   idemKey: string | null;
 }
 
-/** Resolve the trigger row by slug; 404/503/500 on bad states. */
+/** Resolve the trigger row by (instance, slug); 404/503/500 on bad states. */
 function resolveTrigger(
   c: Context,
   db: Database.Database,
+  instanceSlug: string,
   slug: string,
 ): FlowTriggerRow | Response {
-  const trigger = getFlowTriggerByWebhookSlug(db, slug);
+  const trigger = getFlowTriggerByWebhookSlug(db, instanceSlug, slug);
   if (!trigger) return c.json({ error: "Webhook not found", code: "NOT_FOUND" }, 404);
   if (trigger.enabled !== 1) return c.json({ error: "Webhook disabled", code: "DISABLED" }, 503);
   if (trigger.kind !== "webhook" || !trigger.webhook_secret_ref) {
@@ -358,18 +361,24 @@ export function registerWebhookRoutes(
   const runtimeStarter = options.runtimeStarter ?? defaultRuntimeStarter;
   const buckets = new Map<string, number[]>();
 
-  app.post("/webhooks/triggers/:slug", async (c) => {
+  app.post("/webhooks/triggers/:instanceSlug/:slug", async (c) => {
+    const instanceSlugCheck = SlugSchema.safeParse(c.req.param("instanceSlug"));
+    if (!instanceSlugCheck.success) {
+      return c.json({ error: "Invalid instance slug", code: "INVALID_SLUG" }, 400);
+    }
     const slugCheck = SlugSchema.safeParse(c.req.param("slug"));
     if (!slugCheck.success) {
       return c.json({ error: "Invalid slug", code: "INVALID_SLUG" }, 400);
     }
+    const instanceSlug = instanceSlugCheck.data;
     const slug = slugCheck.data;
 
-    if (!checkRate(buckets, slug)) {
+    const rateKey = `${instanceSlug}:${slug}`;
+    if (!checkRate(buckets, rateKey)) {
       return c.json({ error: "Too many requests", code: "RATE_LIMITED" }, 429);
     }
 
-    const triggerOrRes = resolveTrigger(c, db, slug);
+    const triggerOrRes = resolveTrigger(c, db, instanceSlug, slug);
     if (triggerOrRes instanceof Response) return triggerOrRes;
 
     const bodyOrRes = await readBody(c, slug);

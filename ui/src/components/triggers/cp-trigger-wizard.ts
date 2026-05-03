@@ -155,7 +155,6 @@ export class CpTriggerWizard extends LitElement {
     this._error = "";
     try {
       const input: CreateTriggerInput = {
-        instanceSlug: this._instanceSlug,
         flowId: Number(this._flowId),
         kind: this._kind,
         name: this._name,
@@ -172,7 +171,7 @@ export class CpTriggerWizard extends LitElement {
       }
       if (this._mapping.length > 0) input.inputMapping = this._mapping;
 
-      const created = await createTrigger(input);
+      const created = await createTrigger(this._instanceSlug, input);
       this.dispatchEvent(
         new CustomEvent("created", { detail: created, bubbles: true, composed: true }),
       );

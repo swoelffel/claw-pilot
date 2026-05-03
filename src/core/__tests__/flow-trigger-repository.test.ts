@@ -77,9 +77,11 @@ describe("flow-trigger-repository — triggers CRUD", () => {
     });
     expect(trig.webhook_slug).toBe("gh-pr-opened");
 
-    const found = getFlowTriggerByWebhookSlug(db, "gh-pr-opened");
+    const found = getFlowTriggerByWebhookSlug(db, "inst-1", "gh-pr-opened");
     expect(found?.id).toBe(trig.id);
-    expect(getFlowTriggerByWebhookSlug(db, "missing")).toBeNull();
+    expect(getFlowTriggerByWebhookSlug(db, "inst-1", "missing")).toBeNull();
+    // Cross-instance lookup with the same slug must miss.
+    expect(getFlowTriggerByWebhookSlug(db, "other-instance", "gh-pr-opened")).toBeNull();
   });
 
   it("rejects a cron trigger without cronExpr", () => {
@@ -114,7 +116,7 @@ describe("flow-trigger-repository — triggers CRUD", () => {
     ).toThrow(/webhookSecretRef/);
   });
 
-  it("enforces unique webhook_slug at the DB level", () => {
+  it("enforces unique webhook_slug per instance at the DB level", () => {
     createFlowTrigger(db, {
       instanceSlug: "inst-1",
       flowId,
@@ -133,6 +135,34 @@ describe("flow-trigger-repository — triggers CRUD", () => {
         webhookSecretRef: "r2",
       }),
     ).toThrow();
+  });
+
+  it("allows the same webhook_slug across different instances", () => {
+    // Seed a second flow under a different instance so the FK is satisfied.
+    const otherFlow = createFlowDefinition(db, {
+      instanceSlug: "inst-2",
+      name: "other-flow",
+      stepsJson: STEPS,
+    });
+    const a = createFlowTrigger(db, {
+      instanceSlug: "inst-1",
+      flowId,
+      kind: "webhook",
+      name: "a",
+      webhookSlug: "shared",
+      webhookSecretRef: "r1",
+    });
+    const b = createFlowTrigger(db, {
+      instanceSlug: "inst-2",
+      flowId: otherFlow.id,
+      kind: "webhook",
+      name: "b",
+      webhookSlug: "shared",
+      webhookSecretRef: "r2",
+    });
+    expect(a.id).not.toBe(b.id);
+    expect(getFlowTriggerByWebhookSlug(db, "inst-1", "shared")?.id).toBe(a.id);
+    expect(getFlowTriggerByWebhookSlug(db, "inst-2", "shared")?.id).toBe(b.id);
   });
 
   it("filters list by instance, flow, kind, enabled", () => {

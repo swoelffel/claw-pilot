@@ -1,10 +1,10 @@
 // ui/src/components/triggers/cp-triggers-view.ts
 //
-// Top-level "Triggers" page. Hosts the list, the create wizard, and the
-// detail drawer.
+// Instance-scoped "Triggers" tab. Hosts the list, the create wizard, and the
+// detail drawer for a single instance's triggers.
 
 import { LitElement, html, css } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../../styles/tokens.js";
 import { buttonStyles, sectionLabelStyles, errorBannerStyles } from "../../styles/shared.js";
@@ -41,6 +41,8 @@ export class CpTriggersView extends LitElement {
     `,
   ];
 
+  @property({ type: String }) instanceSlug = "";
+
   @state() private _triggers: FlowTrigger[] = [];
   @state() private _error = "";
   @state() private _showWizard = false;
@@ -51,9 +53,14 @@ export class CpTriggersView extends LitElement {
     void this._load();
   }
 
+  override updated(changed: Map<string, unknown>): void {
+    if (changed.has("instanceSlug")) void this._load();
+  }
+
   private async _load(): Promise<void> {
+    if (!this.instanceSlug) return;
     try {
-      this._triggers = await listTriggers();
+      this._triggers = await listTriggers(this.instanceSlug);
     } catch (err) {
       this._error = userMessage(err);
     }
@@ -86,6 +93,7 @@ export class CpTriggersView extends LitElement {
       </header>
       ${this._error ? html`<div class="error-banner">${this._error}</div>` : ""}
       <cp-trigger-list
+        .instanceSlug=${this.instanceSlug}
         .triggers=${this._triggers}
         @trigger-open=${(e: CustomEvent<{ id: number }>) => (this._detailId = e.detail.id)}
         @trigger-updated=${this._onUpdated}
@@ -94,12 +102,14 @@ export class CpTriggersView extends LitElement {
       ></cp-trigger-list>
       ${this._showWizard
         ? html`<cp-trigger-wizard
+            .instanceSlug=${this.instanceSlug}
             @created=${this._onWizCreated}
             @cancelled=${() => (this._showWizard = false)}
           ></cp-trigger-wizard>`
         : ""}
       ${this._detailId !== null
         ? html`<cp-trigger-detail
+            .instanceSlug=${this.instanceSlug}
             .triggerId=${this._detailId}
             @close=${() => (this._detailId = null)}
           ></cp-trigger-detail>`

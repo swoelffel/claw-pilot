@@ -1421,7 +1421,6 @@ export interface FlowTriggerDetail extends FlowTrigger {
 }
 
 export interface CreateTriggerInput {
-  instanceSlug: string;
   flowId: number;
   ownerUserId?: number;
   kind: "cron" | "webhook";
@@ -1450,50 +1449,77 @@ export interface UpdateTriggerInput {
   ownerUserId?: number | null;
 }
 
-export async function listTriggers(filters?: {
-  instanceSlug?: string;
-  flowId?: number;
-  kind?: "cron" | "webhook";
-  enabled?: boolean;
-}): Promise<FlowTrigger[]> {
+export async function listTriggers(
+  instanceSlug: string,
+  filters?: {
+    flowId?: number;
+    kind?: "cron" | "webhook";
+    enabled?: boolean;
+  },
+): Promise<FlowTrigger[]> {
   const params = new URLSearchParams();
-  if (filters?.instanceSlug) params.set("instanceSlug", filters.instanceSlug);
   if (filters?.flowId !== undefined) params.set("flowId", String(filters.flowId));
   if (filters?.kind) params.set("kind", filters.kind);
   if (filters?.enabled !== undefined) params.set("enabled", String(filters.enabled));
   const qs = params.toString();
-  return apiFetch(`/triggers${qs ? "?" + qs : ""}`);
+  return apiFetch(`/instances/${instanceSlug}/triggers${qs ? "?" + qs : ""}`);
 }
 
-export async function getTrigger(id: number): Promise<FlowTriggerDetail> {
-  return apiFetch(`/triggers/${id}`);
+export async function getTrigger(instanceSlug: string, id: number): Promise<FlowTriggerDetail> {
+  return apiFetch(`/instances/${instanceSlug}/triggers/${id}`);
 }
 
-export async function createTrigger(input: CreateTriggerInput): Promise<FlowTrigger> {
-  return apiFetch("/triggers", { method: "POST", body: JSON.stringify(input) });
+export async function createTrigger(
+  instanceSlug: string,
+  input: CreateTriggerInput,
+): Promise<FlowTrigger> {
+  return apiFetch(`/instances/${instanceSlug}/triggers`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
-export async function updateTrigger(id: number, patch: UpdateTriggerInput): Promise<FlowTrigger> {
-  return apiFetch(`/triggers/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+export async function updateTrigger(
+  instanceSlug: string,
+  id: number,
+  patch: UpdateTriggerInput,
+): Promise<FlowTrigger> {
+  return apiFetch(`/instances/${instanceSlug}/triggers/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
 }
 
-export async function deleteTrigger(id: number): Promise<void> {
-  await fetch(`/api/triggers/${id}`, { method: "DELETE", headers: authHeaders() });
+export async function deleteTrigger(instanceSlug: string, id: number): Promise<void> {
+  await fetch(`/api/instances/${instanceSlug}/triggers/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
 }
 
-export async function rotateTriggerSecret(id: number): Promise<{ secret: string }> {
-  return apiFetch(`/triggers/${id}/rotate-secret`, { method: "POST" });
+export async function rotateTriggerSecret(
+  instanceSlug: string,
+  id: number,
+): Promise<{ secret: string }> {
+  return apiFetch(`/instances/${instanceSlug}/triggers/${id}/rotate-secret`, { method: "POST" });
 }
 
-export async function revealTriggerSecret(id: number): Promise<{ secret: string }> {
-  return apiFetch(`/triggers/${id}/secret-reveal`);
+export async function revealTriggerSecret(
+  instanceSlug: string,
+  id: number,
+): Promise<{ secret: string }> {
+  return apiFetch(`/instances/${instanceSlug}/triggers/${id}/secret-reveal`);
 }
 
-export async function fireTrigger(id: number): Promise<{ accepted: boolean }> {
-  return apiFetch(`/triggers/${id}/fire`, { method: "POST" });
+export async function fireTrigger(
+  instanceSlug: string,
+  id: number,
+): Promise<{ accepted: boolean }> {
+  return apiFetch(`/instances/${instanceSlug}/triggers/${id}/fire`, { method: "POST" });
 }
 
 export async function listTriggerRuns(
+  instanceSlug: string,
   id: number,
   opts?: { limit?: number; offset?: number },
 ): Promise<{ runs: FlowTriggerRun[]; limit: number; offset: number }> {
@@ -1501,5 +1527,5 @@ export async function listTriggerRuns(
   if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
   if (opts?.offset !== undefined) params.set("offset", String(opts.offset));
   const qs = params.toString();
-  return apiFetch(`/triggers/${id}/runs${qs ? "?" + qs : ""}`);
+  return apiFetch(`/instances/${instanceSlug}/triggers/${id}/runs${qs ? "?" + qs : ""}`);
 }

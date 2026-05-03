@@ -45,7 +45,7 @@ import { registerFlowRoutes } from "./routes/instances/flows.js";
 import { registerSystemInstanceRoutes } from "./routes/system-instance.js";
 import { registerNotificationRoutes } from "./routes/notifications.js";
 import { registerWebhookRoutes } from "./routes/webhooks.js";
-import { registerTriggerRoutes } from "./routes/triggers.js";
+import { registerTriggerRoutes } from "./routes/instances/triggers.js";
 import { TriggerScheduler } from "../runtime/triggers/scheduler.js";
 import { registerTriggerContextProvider } from "../runtime/triggers/context-provider.js";
 import { callRuntimeApi } from "./routes/_internal-api-client.js";
