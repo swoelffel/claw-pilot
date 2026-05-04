@@ -61,6 +61,14 @@ export type CronFactory = (
 export interface TriggerSchedulerOptions {
   db: Database.Database;
   runtimeStarter: RuntimeStarter;
+  /**
+   * Optional gate: returns the current state of an instance. When the state
+   * is anything other than `"running"`, the scheduler aborts the fire early
+   * with a clear "instance not running" failure rather than letting the
+   * runtime starter blow up with a cryptic `fetch failed`. When omitted,
+   * the gate is bypassed (back-compat for tests).
+   */
+  getInstanceState?: (instanceSlug: string) => string | undefined;
   /** Override cron factory (test-only). Defaults to `croner.Cron`. */
   cronFactory?: CronFactory;
 }
@@ -83,6 +91,7 @@ export class TriggerScheduler {
   private readonly db: Database.Database;
   private readonly runtimeStarter: RuntimeStarter;
   private readonly cronFactory: CronFactory;
+  private readonly getInstanceState: ((instanceSlug: string) => string | undefined) | undefined;
   private readonly jobs = new Map<number, ScheduledJob>();
   private started = false;
 
@@ -90,6 +99,7 @@ export class TriggerScheduler {
     this.db = options.db;
     this.runtimeStarter = options.runtimeStarter;
     this.cronFactory = options.cronFactory ?? defaultCronFactory;
+    this.getInstanceState = options.getInstanceState;
   }
 
   /** Load every enabled cron trigger and schedule it. Idempotent. */
@@ -165,6 +175,39 @@ export class TriggerScheduler {
     if (row.enabled !== 1) {
       logger.debug("trigger_fire_disabled", { event: "trigger_fire_disabled", triggerId });
       return;
+    }
+
+    // Pre-check instance state — fail fast with a clear error rather than
+    // letting the runtime starter throw a cryptic `fetch failed` when the
+    // daemon for the instance isn't running.
+    if (this.getInstanceState !== undefined) {
+      const state = this.getInstanceState(row.instance_slug);
+      if (state !== "running") {
+        const reason = `Instance "${row.instance_slug}" is not running (state: ${state ?? "unknown"})`;
+        const failed = createTriggerRun(this.db, {
+          triggerId,
+          status: "failed",
+          payload: JSON.stringify({ kind: "cron", firedAt: new Date().toISOString() }),
+        });
+        updateTriggerRun(this.db, failed.id, {
+          error: reason,
+          finishedAt: new Date().toISOString(),
+        });
+        emitAudit({
+          kind: "trigger.failed",
+          triggerId,
+          flowId: row.flow_id,
+          reason,
+          source: "cron",
+        });
+        logger.warn("trigger_fire_instance_not_running", {
+          event: "trigger_fire_instance_not_running",
+          triggerId,
+          instanceSlug: row.instance_slug,
+          state,
+        });
+        return;
+      }
     }
 
     // Concurrency lock — unless explicitly opted out.
