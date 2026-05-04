@@ -65,28 +65,24 @@ export class CpTriggerDetail extends LitElement {
       .header-actions {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: 2px;
       }
-      .icon-btn {
-        background: var(--bg-hover);
-        border: 1px solid var(--bg-border);
-        color: var(--text-primary);
+      .panel-btn {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        font-size: 14px;
         cursor: pointer;
-        font-size: 16px;
-        font-weight: 700;
-        line-height: 1;
-        padding: 6px 10px;
+        padding: 4px 7px;
         border-radius: var(--radius-sm);
-        min-width: 32px;
-        min-height: 28px;
+        line-height: 1;
+        transition:
+          color 0.15s,
+          background 0.15s;
       }
-      .icon-btn:hover {
-        background: var(--accent-subtle);
-        border-color: var(--accent-border);
-        color: var(--accent);
-      }
-      .close-btn {
-        font-size: 18px;
+      .panel-btn:hover {
+        color: var(--text-primary);
+        background: var(--bg-border);
       }
       .tabs {
         display: flex;
@@ -379,7 +375,7 @@ export class CpTriggerDetail extends LitElement {
         <h2>${this._detail?.name ?? msg("Trigger", { id: "trigger-detail-title" })}</h2>
         <div class="header-actions">
           <button
-            class="icon-btn"
+            class="panel-btn"
             type="button"
             aria-label=${this._fullscreen
               ? msg("Collapse", { id: "trigger-detail-collapse" })
@@ -389,15 +385,52 @@ export class CpTriggerDetail extends LitElement {
               : msg("Expand", { id: "trigger-detail-expand" })}
             @click=${this._toggleFullscreen}
           >
-            ${this._fullscreen ? ">" : "<"}
+            ${this._fullscreen
+              ? html`<svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>`
+              : html`<svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <polyline points="15 18 9 12 15 6" />
+                </svg>`}
           </button>
           <button
-            class="icon-btn close-btn"
+            class="panel-btn"
             type="button"
             aria-label=${msg("Close", { id: "trigger-detail-close" })}
+            title=${msg("Close", { id: "trigger-detail-close" })}
             @click=${this._close}
           >
-            ✕
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
         </div>
       </header>
