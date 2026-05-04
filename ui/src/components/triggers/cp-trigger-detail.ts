@@ -67,21 +67,25 @@ export class CpTriggerDetail extends LitElement {
         gap: 4px;
       }
       .icon-btn {
-        background: none;
-        border: none;
-        color: var(--state-stopped);
+        background: var(--bg-hover);
+        border: 1px solid var(--bg-border);
+        color: var(--text-primary);
         cursor: pointer;
-        font-size: 18px;
+        font-size: 16px;
+        font-weight: 700;
         line-height: 1;
-        padding: 4px 8px;
+        padding: 6px 10px;
         border-radius: var(--radius-sm);
+        min-width: 32px;
+        min-height: 28px;
       }
       .icon-btn:hover {
-        color: var(--text-primary);
-        background: var(--bg-hover);
+        background: var(--accent-subtle);
+        border-color: var(--accent-border);
+        color: var(--accent);
       }
       .close-btn {
-        font-size: 20px;
+        font-size: 18px;
       }
       .tabs {
         display: flex;
