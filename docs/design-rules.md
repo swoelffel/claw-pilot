@@ -282,7 +282,7 @@ Reference: `ui/src/components/triggers/cp-trigger-detail.ts` lines 31–67
 | Width | `min(560px, 100vw)` (full content) — `360px` for embedded inline detail (task-board) |
 | Background | `var(--bg-surface)` |
 | Left border | `1px solid var(--bg-border)` |
-| Z-index | `90` (below modals) |
+| Z-index | `110` — above the global app navbar (`100`), below modals (`≥500`). Drawers below `100` get clipped by the sticky app header (regression fixed in `cp-trigger-detail` on 2026-05-04). |
 | Header | `padding: 16px; border-bottom: 1px solid var(--bg-border); display: flex; justify-content: space-between; align-items: center;` — title left, close button right |
 | Close button | Top-right; `<button class="close-btn" aria-label="Close">✕</button>`. Glyph `✕` (U+2715), 20px font-size, `--state-stopped` color, hover `--text-primary`. Reference: `ui/src/components/create-agent-dialog.ts:609–616`. |
 | Scroll | `overflow: auto` on host |
