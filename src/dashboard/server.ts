@@ -26,6 +26,7 @@ import { constants } from "../lib/constants.js";
 import { apiError } from "./route-deps.js";
 import type { RouteDeps } from "./route-deps.js";
 import { getRegisteredServerExtensions } from "./server-extensions.js";
+import { isPublicAuthPath } from "./public-paths.js";
 import { ClawPilotError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
 import { registerInstanceRoutes } from "./routes/instances.js";
@@ -132,8 +133,10 @@ function registerAuthMiddleware(
   const PUBLIC_ROUTES = ["/api/auth/login"];
 
   app.use("/api/*", async (c, next) => {
-    // Skip auth for public routes
-    if (PUBLIC_ROUTES.some((r) => c.req.path === r)) {
+    // Skip auth for public routes — exact match for the built-in list,
+    // plus any prefix registered via `registerPublicAuthPath` (Extension-Point:
+    // public-auth-paths) for SSO backends like the Enterprise OIDC plugin.
+    if (PUBLIC_ROUTES.some((r) => c.req.path === r) || isPublicAuthPath(c.req.path)) {
       return next();
     }
 

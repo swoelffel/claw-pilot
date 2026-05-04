@@ -10,6 +10,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.82.1] — 2026-05-04
+
+### Added
+
+- **`registerPublicAuthPath(prefix)` extension point** (#192) — registry of path prefixes that bypass the dashboard auth middleware. Lets SSO backends declare their authorization-code flow endpoints (e.g. `/api/auth/oidc/*`) as public so unauthenticated browsers can complete the redirect dance. The middleware still applies to every other `/api/*` route. Idempotent re-registration; matches exact path or `prefix + "/"`. Required for the Enterprise OIDC plugin shipped in `v0.81.2-ent.4`, whose callback was getting a spurious 401 because `server-extensions` runs after the auth middleware is wired. See `docs/architecture/public-auth-paths.md`.
+
+---
+
 ## [0.82.0] — 2026-05-04
 
 ### Added — TRIGGER-001 (cron + webhook flow triggers)
