@@ -8,12 +8,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
-### Added
-- **`registerServerExtension(...)` hook + `Extension-Point: server-extensions` in `buildDashboardApp`** — generic extension point for downstream editions to wire additional dashboard features (route modules, background workers, deferred provider registrations) without modifying `src/dashboard/server.ts`. Extensions run AFTER all Community route modules are registered and BEFORE the HTTP listener accepts traffic. Sequential, in registration order, idempotent re-registration is a silent no-op. Community ships zero extensions so the loop is a no-op for CE installs. Unblocks ENT-SSO-001 L2.3 (OIDC routes + provider registration) and any future Enterprise feature that needs cross-cutting integration. See `docs/architecture/server-extensions.md`.
-- **`GET /api/auth/providers` endpoint + `<cp-auth-providers-list>` Lit component** — extension point for SSO login buttons on the login page. The endpoint returns one descriptor per registered `AuthProvider` that implements the new optional `describeLogin()` method. Community always returns `[]` (only `PasswordProvider` is registered, and it has no `describeLogin()`), so the login page renders unchanged. Enterprise editions register one descriptor per enabled SSO provider, which appear as buttons above the password form. Unblocks ENT-SSO-001 (OIDC) and downstream SSO providers.
+---
+
+## [0.82.0] — 2026-05-04
+
+### Added — TRIGGER-001 (cron + webhook flow triggers)
+
+- **Schema v40 + v41**: `rt_flow_triggers` and `rt_flow_trigger_runs` tables (#170, #174). `rt_flow_triggers` carries cron / webhook trigger definitions scoped per instance. `rt_flow_trigger_runs` doubles as the execution history and the concurrency lock. Migration v41 makes `webhook_slug` uniqueness composite per instance via SQLite table-rebuild — webhooks now live under `/webhooks/triggers/:instanceSlug/:slug`.
+- **`flow-context-providers` extension point** (#169) — registry of named providers whose outputs are merged into a templating context applied to step prompts and `extraContext` at briefing time. Templates use `{{ path.to.value }}` syntax. Unlocks `{{trigger.payload.*}}` / `{{trigger.mapped.*}}` for steps fired by a trigger.
+- **Runtime layer** (#171): croner-based `TriggerScheduler` (in-process, hot-reload, concurrency lock), HMAC-SHA256 webhook endpoint with IP allowlist + idempotency (24h key, 5-min payload-hash), per-slug rate limit (60 req/min), JSONPath input mapping (`jsonpath-plus`, no eval), audit kinds `trigger.fired` / `trigger.failed` / `trigger.deduped`.
+- **Dashboard CRUD + Lit UI** (#172, #174, #175) — REST under `/api/instances/:slug/triggers/*` (CRUD + fire-now + reveal-secret + rotate-secret + runs paginated history). Per-instance Triggers panel mounted at `#/instances/:slug/triggers`, reachable from the instance card menu (entry between Flows and Settings) and from the Flows widget header.
+- **Wizard v2 + visual cron picker** (#178) — 3-step wizard where Step 3 ships a new `cp-cron-picker` component with a Set-Interval / Cron-Expression mode switcher, per-unit conditional fields (Minute / Hour / Day / Week / Month with day-of-week chips and day-of-month grid), live preview (human-readable + compiled cron), and `croner` paused dry-run validation in expression mode. Pure `compileCron()` and `parseCron()` round-trip helpers exported for tests.
+- **Edit / History split + fullscreen** (#184, #185) — list row actions become Toggle | Edit | History | Delete. Edit reuses the wizard component in edit mode (kind locked, fields pre-filled, PUT submit). History opens a slimmed `cp-trigger-detail` drawer with Runs (default) and Test tabs only (Settings tab dropped). Drawer gains a fullscreen toggle and a canonical close glyph.
+- **Triggers screen + 5 component docs** (#177) — `docs/ux-screens/screen-triggers.md` plus `comp-trigger-{view,list,wizard,detail}.md` and `comp-input-mapping-editor.md`.
+
+### Added — Other
+
+- **`registerServerExtension(...)` hook + `Extension-Point: server-extensions` in `buildDashboardApp`** (#179) — generic extension point for downstream editions to wire additional dashboard features (route modules, background workers, deferred provider registrations) without modifying `src/dashboard/server.ts`. Extensions run AFTER all Community route modules are registered and BEFORE the HTTP listener accepts traffic. Sequential, in registration order, idempotent re-registration is a silent no-op. Community ships zero extensions so the loop is a no-op for CE installs. Unblocks ENT-SSO-001 L2.3 (OIDC routes + provider registration) and any future Enterprise feature that needs cross-cutting integration. See `docs/architecture/server-extensions.md`.
+- **`GET /api/auth/providers` endpoint + `<cp-auth-providers-list>` Lit component** (#176) — extension point for SSO login buttons on the login page. The endpoint returns one descriptor per registered `AuthProvider` that implements the new optional `describeLogin()` method. Community always returns `[]` (only `PasswordProvider` is registered, and it has no `describeLogin()`), so the login page renders unchanged. Enterprise editions register one descriptor per enabled SSO provider, which appear as buttons above the password form. Unblocks ENT-SSO-001 (OIDC) and downstream SSO providers.
+
+### Changed — UX consistency
+
+- **`docs/ux-design.md` refresh** (#177) — drift audit since v0.73.5: routes / screens / components / dialogs tables fully reset, header + footer descriptions updated, Runtime Pilot sub-architecture (`pilot/` + `pilot/parts/` + `pilot/context/`) documented, 11 new component docs added (Triggers + previously-undocumented top-level views).
+- **`docs/design-rules.md` extended** (#181) — added §10 UI primitives (13 entries with reference `file:line`), §11 UI patterns (6 layout patterns), §12 i18n ID convention, §13 audit matrix that flagged the trigger UI drift fixed across the rest of the release.
+- **Triggers UI aligned to design-rules** (#183, #190) — token migration (`--surface` → `--bg-surface`, etc., fixed UA-fallback rendering on the trigger panel), button class normalisation (`btn primary` → `btn btn-primary` + tinted `.btn-action` matrix), `cp-trigger-list` rebuilt on the `flow-list` row template, drawer header buttons aligned to `cp-agent-detail-panel` (canonical `.panel-btn` ghost style with SVG chevron + cross icons).
+- **Trigger detail drawer position** (#188, #189) — z-index above the navbar, top offset to navbar height (`top: 56px; height: calc(100vh - 56px)`), border-top for visual separation. `design-rules.md` §10.9 corrected to mandate the offset so the next drawer doesn't repeat the regression.
 
 ### Fixed
-- **`prepare` script production-install-safe** — guard `lefthook install` to no-op when not in a git repo or when `lefthook` is absent. Avoids `exit code 1` noise on tarball-based prod deploys (no `.git`, devDeps absent). Discovered during EE on-prem redeploy on MAC (2026-05-01).
+
+- **Cron triggers fail fast on stopped instances** (#186) — `TriggerScheduler` now pre-checks instance state via the registry and aborts the fire with a clear `Instance "<slug>" is not running (state: <s>)` error rather than letting the runtime starter throw a cryptic `fetch failed`.
+- **`prepare` script production-install-safe** (#164) — guard `lefthook install` to no-op when not in a git repo or when `lefthook` is absent. Avoids `exit code 1` noise on tarball-based prod deploys (no `.git`, devDeps absent). Discovered during EE on-prem redeploy on MAC (2026-05-01).
+
+### Infrastructure
+
+- **CI Node pinned to 22.21** (#173) — `node-version: "22"` floated to 22.22.x patches that lacked `better-sqlite3` prebuilt binaries, causing intermittent `node-gyp not found` failures. Pinned across `ci.yml`, `release.yml`, `deps-check.yml`.
 
 ---
 
