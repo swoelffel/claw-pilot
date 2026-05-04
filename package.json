@@ -27,6 +27,7 @@
     "lint:discipline:fast": "eslint --config eslint.discipline.config.js src/",
     "lint:discipline:full": "pnpm lint:discipline:fast && node --experimental-strip-types --no-warnings scripts/lint-orgid-slot.ts",
     "lint:discipline:ci": "pnpm lint:discipline:full && node --experimental-strip-types --no-warnings scripts/lint-core-modifications.ts",
+    "lint:discipline:r3-local": "node --experimental-strip-types --no-warnings scripts/lint-discipline-r3-local.ts",
     "format": "prettier --write \"src/**/*.ts\" \"ui/src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"ui/src/**/*.ts\"",
     "build:safe": "pnpm typecheck:all && pnpm build",

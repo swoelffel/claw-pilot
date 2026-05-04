@@ -618,10 +618,34 @@ export class CpApp extends LitElement {
   }
 
   private async _logout(): Promise<void> {
+    // Audit 2026-05 follow-up (finding F-2): when the user is signed in via
+    // an Enterprise OIDC provider, route the logout through `/api/auth/oidc/
+    // logout` so the IDP session also gets torn down (RP-Initiated Logout).
+    // CE-only deployments — and password-authenticated EE users — fall back
+    // gracefully because the probe endpoint returns 404.
+    let oidcRedirect: string | null = null;
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      const probe = await fetch("/api/auth/oidc/me");
+      if (probe.ok) {
+        const { provider_id } = (await probe.json()) as { provider_id: string };
+        const oidcResp = await fetch("/api/auth/oidc/logout", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ provider_id }),
+        });
+        if (oidcResp.ok) {
+          oidcRedirect = ((await oidcResp.json()) as { redirect: string | null }).redirect;
+        } else {
+          // OIDC logout endpoint exists but rejected the request — fall back
+          // so we still clear the local session.
+          await fetch("/api/auth/logout", { method: "POST" });
+        }
+      } else {
+        // 404 (CE-only or password-only user) or 401 (no session) → legacy path.
+        await fetch("/api/auth/logout", { method: "POST" });
+      }
     } catch {
-      // Ignore errors — proceed with local logout
+      // Network errors — best-effort local cleanup below.
     }
     this._authenticated = false;
     this._sessionExpired = false;
@@ -632,6 +656,10 @@ export class CpApp extends LitElement {
     this._wsMonitor = null;
     this._updatePoller?.stop();
     this._updatePoller = null;
+
+    if (oidcRedirect) {
+      window.location.href = oidcRedirect;
+    }
   }
 
   // ---------------------------------------------------------------------------
