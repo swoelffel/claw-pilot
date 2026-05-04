@@ -2,6 +2,7 @@ import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
+import "./auth-providers-list.js";
 
 declare const __APP_VERSION__: string;
 
@@ -204,6 +205,8 @@ export class CpLoginView extends LitElement {
               })}
             </p>`
           : ""}
+
+        <cp-auth-providers-list></cp-auth-providers-list>
 
         <div class="field">
           <label for="username">${msg("Username", { id: "login-label-username" })}</label>

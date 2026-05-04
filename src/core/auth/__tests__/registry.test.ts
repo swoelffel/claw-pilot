@@ -5,15 +5,24 @@ import {
   clearAuthProviders,
   hasAuthProvider,
   listAuthProviderKinds,
+  listLoginableProviders,
   registerAuthProvider,
   unregisterAuthProvider,
 } from "../index.js";
-import type { AuthProvider, AuthResult } from "../provider.js";
+import type { AuthProvider, AuthResult, LoginDescriptor } from "../provider.js";
 
 function fakeProvider(kind: string, result: AuthResult): AuthProvider {
   return {
     kind,
     authenticate: async () => result,
+  };
+}
+
+function fakeLoginableProvider(kind: string, descriptor: LoginDescriptor): AuthProvider {
+  return {
+    kind,
+    authenticate: async () => ({ ok: false, code: "X", message: "" }),
+    describeLogin: () => descriptor,
   };
 }
 
@@ -69,5 +78,61 @@ describe("auth registry", () => {
     registerAuthProvider(fakeProvider("a", { ok: false, code: "X", message: "" }));
     clearAuthProviders();
     expect(listAuthProviderKinds()).toEqual([]);
+  });
+
+  describe("listLoginableProviders", () => {
+    it("returns descriptors only for providers implementing describeLogin", () => {
+      registerAuthProvider(fakeProvider("password", { ok: false, code: "X", message: "" }));
+      registerAuthProvider(
+        fakeLoginableProvider("oidc", {
+          id: "entra-prod",
+          kind: "oidc",
+          display_name: "Sign in with Microsoft",
+          login_url: "/api/auth/oidc/entra-prod/start",
+        }),
+      );
+
+      const descriptors = listLoginableProviders();
+      expect(descriptors).toHaveLength(1);
+      expect(descriptors[0]).toEqual({
+        id: "entra-prod",
+        kind: "oidc",
+        display_name: "Sign in with Microsoft",
+        login_url: "/api/auth/oidc/entra-prod/start",
+      });
+    });
+
+    it("returns an empty list when no provider exposes a login button", () => {
+      registerAuthProvider(fakeProvider("password", { ok: false, code: "X", message: "" }));
+      expect(listLoginableProviders()).toEqual([]);
+    });
+
+    it("returns an empty list when no provider is registered at all", () => {
+      expect(listLoginableProviders()).toEqual([]);
+    });
+
+    it("returns one descriptor per provider when several are loginable", () => {
+      registerAuthProvider(
+        fakeLoginableProvider("oidc", {
+          id: "entra-prod",
+          kind: "oidc",
+          display_name: "Sign in with Microsoft",
+          login_url: "/api/auth/oidc/entra-prod/start",
+        }),
+      );
+      registerAuthProvider(
+        fakeLoginableProvider("saml", {
+          id: "okta-prod",
+          kind: "saml",
+          display_name: "Sign in with Okta",
+          login_url: "/api/auth/saml/okta-prod/start",
+        }),
+      );
+
+      const ids = listLoginableProviders()
+        .map((d) => d.id)
+        .sort();
+      expect(ids).toEqual(["entra-prod", "okta-prod"]);
+    });
   });
 });

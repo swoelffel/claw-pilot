@@ -27,7 +27,8 @@ export type Route =
   | { view: "flow-run"; slug: string; runId: number }
   | { view: "instance-dashboard"; slug: string }
   | { view: "flow-sessions"; slug: string; flowId: number }
-  | { view: "profile" };
+  | { view: "profile" }
+  | { view: "triggers"; slug: string };
 
 /** Convert a Route to a hash string (without the leading #). */
 export function routeToHash(route: Route): string {
@@ -72,6 +73,8 @@ export function routeToHash(route: Route): string {
       return `/agent-templates/${route.templateId}`;
     case "profile":
       return "/profile";
+    case "triggers":
+      return `/instances/${route.slug}/triggers`;
   }
 }
 
@@ -126,6 +129,10 @@ export function hashToRoute(hash: string): Route {
   // /instances/:slug/tasks
   const tasksMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/tasks$/);
   if (tasksMatch) return { view: "tasks", slug: tasksMatch[1]! };
+
+  // /instances/:slug/triggers (TRIGGER-001b)
+  const triggersMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/triggers$/);
+  if (triggersMatch) return { view: "triggers", slug: triggersMatch[1]! };
 
   // /instances/:slug/flows/:flowId/sessions
   const flowSessionsMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/flows\/(\d+)\/sessions$/);

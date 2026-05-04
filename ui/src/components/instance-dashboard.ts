@@ -1231,6 +1231,9 @@ export class InstanceDashboard extends LitElement {
           <span class="widget-link" @click=${() => this._navigate("flows")}
             >${msg("Flows", { id: "dashboard-flows-link" })} →</span
           >
+          <span class="widget-link" @click=${() => this._navigate("triggers")}
+            >${msg("Triggers", { id: "dashboard-triggers-link" })} →</span
+          >
         </div>
         ${sorted.length === 0
           ? html`<div class="widget-empty">

@@ -1,6 +1,6 @@
 {
   "name": "claw-pilot",
-  "version": "0.81.2",
+  "version": "0.82.0",
   "description": "Orchestrator for claw-runtime multi-agent instances",
   "type": "module",
   "license": "MIT",
@@ -33,7 +33,7 @@
     "knip": "knip",
     "check:circular": "madge --circular --extensions ts src/",
     "spellcheck": "cspell --config cspell.json \"src/**/*.ts\" \"ui/src/**/*.ts\"",
-    "prepare": "lefthook install"
+    "prepare": "[ -e .git ] && command -v lefthook >/dev/null && lefthook install || true"
   },
   "engines": {
     "node": ">=22.12.0"
@@ -71,9 +71,11 @@
     "chalk": "^5.6.2",
     "cli-table3": "^0.6.5",
     "commander": "^14.0.3",
+    "croner": "^10.0.1",
     "dompurify": "^3.4.0",
     "fflate": "^0.8.2",
     "hono": "^4.12.14",
+    "jsonpath-plus": "^10.4.0",
     "marked": "^18.0.2",
     "nanoid": "^5.1.9",
     "ws": "^8.20.0",

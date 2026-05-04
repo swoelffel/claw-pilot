@@ -1370,3 +1370,162 @@ export async function markNotificationRead(id: number): Promise<void> {
 export async function markAllNotificationsRead(): Promise<void> {
   await apiFetch("/notifications/mark-all-read", { method: "POST" });
 }
+
+// ---------------------------------------------------------------------------
+// Flow triggers (TRIGGER-001)
+// ---------------------------------------------------------------------------
+
+export interface InputMappingEntry {
+  from: string;
+  to: string;
+}
+
+export interface FlowTrigger {
+  id: number;
+  orgId: string | null;
+  instanceSlug: string;
+  flowId: number;
+  ownerUserId: number | null;
+  kind: "cron" | "webhook";
+  name: string;
+  enabled: boolean;
+  allowConcurrent: boolean;
+  cronExpr: string | null;
+  cronTz: string | null;
+  webhookSlug: string | null;
+  webhookSecretRef: string | null;
+  ipAllowlist: string[] | null;
+  inputMapping: InputMappingEntry[] | null;
+  defaultInput: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  lastFiredAt: string | null;
+}
+
+export interface FlowTriggerRun {
+  id: number;
+  trigger_id: number;
+  flow_run_id: number | null;
+  status: "pending" | "running" | "succeeded" | "failed" | "deduped" | "skipped_concurrent";
+  fired_at: string;
+  finished_at: string | null;
+  payload: string | null;
+  idempotency_key: string | null;
+  payload_hash: string | null;
+  source_ip: string | null;
+  error: string | null;
+}
+
+export interface FlowTriggerDetail extends FlowTrigger {
+  runs: FlowTriggerRun[];
+}
+
+export interface CreateTriggerInput {
+  flowId: number;
+  ownerUserId?: number;
+  kind: "cron" | "webhook";
+  name: string;
+  enabled?: boolean;
+  allowConcurrent?: boolean;
+  cronExpr?: string;
+  cronTz?: string;
+  webhookSlug?: string;
+  webhookSecret?: string;
+  ipAllowlist?: string[];
+  inputMapping?: InputMappingEntry[];
+  defaultInput?: Record<string, unknown>;
+}
+
+export interface UpdateTriggerInput {
+  name?: string;
+  enabled?: boolean;
+  allowConcurrent?: boolean;
+  cronExpr?: string;
+  cronTz?: string | null;
+  webhookSlug?: string;
+  ipAllowlist?: string[] | null;
+  inputMapping?: InputMappingEntry[] | null;
+  defaultInput?: Record<string, unknown> | null;
+  ownerUserId?: number | null;
+}
+
+export async function listTriggers(
+  instanceSlug: string,
+  filters?: {
+    flowId?: number;
+    kind?: "cron" | "webhook";
+    enabled?: boolean;
+  },
+): Promise<FlowTrigger[]> {
+  const params = new URLSearchParams();
+  if (filters?.flowId !== undefined) params.set("flowId", String(filters.flowId));
+  if (filters?.kind) params.set("kind", filters.kind);
+  if (filters?.enabled !== undefined) params.set("enabled", String(filters.enabled));
+  const qs = params.toString();
+  return apiFetch(`/instances/${instanceSlug}/triggers${qs ? "?" + qs : ""}`);
+}
+
+export async function getTrigger(instanceSlug: string, id: number): Promise<FlowTriggerDetail> {
+  return apiFetch(`/instances/${instanceSlug}/triggers/${id}`);
+}
+
+export async function createTrigger(
+  instanceSlug: string,
+  input: CreateTriggerInput,
+): Promise<FlowTrigger> {
+  return apiFetch(`/instances/${instanceSlug}/triggers`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateTrigger(
+  instanceSlug: string,
+  id: number,
+  patch: UpdateTriggerInput,
+): Promise<FlowTrigger> {
+  return apiFetch(`/instances/${instanceSlug}/triggers/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function deleteTrigger(instanceSlug: string, id: number): Promise<void> {
+  await fetch(`/api/instances/${instanceSlug}/triggers/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+}
+
+export async function rotateTriggerSecret(
+  instanceSlug: string,
+  id: number,
+): Promise<{ secret: string }> {
+  return apiFetch(`/instances/${instanceSlug}/triggers/${id}/rotate-secret`, { method: "POST" });
+}
+
+export async function revealTriggerSecret(
+  instanceSlug: string,
+  id: number,
+): Promise<{ secret: string }> {
+  return apiFetch(`/instances/${instanceSlug}/triggers/${id}/secret-reveal`);
+}
+
+export async function fireTrigger(
+  instanceSlug: string,
+  id: number,
+): Promise<{ accepted: boolean }> {
+  return apiFetch(`/instances/${instanceSlug}/triggers/${id}/fire`, { method: "POST" });
+}
+
+export async function listTriggerRuns(
+  instanceSlug: string,
+  id: number,
+  opts?: { limit?: number; offset?: number },
+): Promise<{ runs: FlowTriggerRun[]; limit: number; offset: number }> {
+  const params = new URLSearchParams();
+  if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts?.offset !== undefined) params.set("offset", String(opts.offset));
+  const qs = params.toString();
+  return apiFetch(`/instances/${instanceSlug}/triggers/${id}/runs${qs ? "?" + qs : ""}`);
+}

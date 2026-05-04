@@ -1,0 +1,142 @@
+# Flow Triggers (TRIGGER-001)
+
+Flow Triggers turn ClawPilot from a reactive orchestrator into a programmable
+automation platform. A trigger fires a flow run on a schedule (cron) or upon a
+signed external HTTP call (webhook).
+
+## Architecture
+
+```
+            +-----------------------+
+  cron tick |  TriggerScheduler     |       +----------------+
+  --------> |  (croner, in-process) |  ---> |  flow runtime  |
+            +-----------------------+       +----------------+
+                       ^                          ^
+                       | reload(id)               | runtime starter (HTTP)
+                       |                          |
++-----------------------------------+   +-----------------------------------+
+|  CRUD routes                      |   |  Webhook route                    |
+|  /api/instances/:slug/triggers/*  |   |  /webhooks/triggers/:slug/:hook   |
+|  (Hono, dashboard auth)           |   |  (HMAC + IP allowlist)            |
++-----------------------------------+   +-----------------------------------+
+                       ^                          ^
+                       |                          |
+            +-----------------------+   +-----------------------+
+            |  cp-triggers-view UI  |   |  External system       |
+            |  (Lit web components) |   |  (GitHub, Stripe, …)  |
+            +-----------------------+   +-----------------------+
+```
+
+## Scoping
+
+Triggers are **instance-scoped resources** — every CRUD route is mounted under
+`/api/instances/:slug/triggers/*` and the public webhook URL carries the
+owning instance as its first path segment
+(`POST /webhooks/triggers/:instanceSlug/:webhookSlug`). This brings triggers
+in line with every other workspace resource (agents, flows, tasks, …) and
+unlocks per-instance permissions, per-instance quotas, and clean multi-tenant
+URLs without leaking cross-tenant existence (a trigger fetched from a foreign
+instance scope returns 404, not 200 nor 403).
+
+Uniqueness on `webhook_slug` is consequently scoped to `instance_slug`: two
+different instances may register the same `webhook_slug` (`gh-pr-opened`,
+`stripe-payment-succeeded`, …) without collision. The DB-level guarantee is
+the partial UNIQUE INDEX
+`(instance_slug, webhook_slug) WHERE webhook_slug IS NOT NULL` shipped by
+migration v41.
+
+## Tables
+
+The base tables ship with the v40 migration; v41 rebuilds `rt_flow_triggers`
+to scope `webhook_slug` uniqueness to `(instance_slug, webhook_slug)`. Both
+tables carry an `org_id NULL` slot in line with R2.
+
+- `rt_flow_triggers` — one row per trigger (cron or webhook), holds the
+  schedule expression, webhook slug, optional input mapping and ip allowlist.
+- `rt_flow_trigger_runs` — execution history; doubles as the concurrency lock
+  via the `(trigger_id, status)` partial index over `('pending','running')`.
+
+See [`docs/registry-db.md`](../registry-db.md) for column-level details.
+
+## Routes
+
+### Public webhook
+| Method | Path                                            | Auth     |
+|--------|-------------------------------------------------|----------|
+| POST   | `/webhooks/triggers/:instanceSlug/:slug`        | HMAC-SHA256 + optional IP allowlist |
+
+### Dashboard CRUD (under `/api/instances/:slug/triggers/*`)
+| Method | Path                                                     | Permission action          |
+|--------|----------------------------------------------------------|----------------------------|
+| GET    | `/api/instances/:slug/triggers`                          | `trigger.list`             |
+| POST   | `/api/instances/:slug/triggers`                          | `trigger.create`           |
+| GET    | `/api/instances/:slug/triggers/:id`                      | `trigger.read`             |
+| PUT    | `/api/instances/:slug/triggers/:id`                      | `trigger.update`           |
+| DELETE | `/api/instances/:slug/triggers/:id`                      | `trigger.delete`           |
+| POST   | `/api/instances/:slug/triggers/:id/fire`                 | `trigger.fire`             |
+| POST   | `/api/instances/:slug/triggers/:id/rotate-secret`        | `trigger.rotate-secret`    |
+| GET    | `/api/instances/:slug/triggers/:id/secret-reveal`        | `trigger.reveal-secret`    |
+| GET    | `/api/instances/:slug/triggers/:id/runs`                 | `trigger.runs-list`        |
+
+The CRUD routes call `deps.triggerScheduler.reload(id)` after every mutation
+so the running scheduler picks up new/changed/disabled cron rows in place.
+The webhook endpoint never modifies the schedule — it just fires a flow.
+
+Cross-instance access on any of the `:id` routes returns 404 (existence is
+not exposed across scopes).
+
+## Secret handling (R5)
+
+Webhook HMAC secrets are stored exclusively through the `SecretProvider`
+contract under the key `TRIGGER_WEBHOOK_SECRET:<webhook_slug>`. Three flows
+touch the plaintext:
+
+1. **Create** — the user supplies the plaintext on
+   `POST /api/instances/:slug/triggers`; the route persists it via
+   `secretProvider.set()` and the row keeps only the `webhook_secret_ref` key,
+   never the plaintext.
+2. **Rotate** — `POST /api/instances/:slug/triggers/:id/rotate-secret`
+   generates 32 random bytes, persists, and returns the plaintext **once**.
+3. **Reveal** — `GET /api/instances/:slug/triggers/:id/secret-reveal`
+   re-reads the secret from the provider, emits a `secret.access` audit
+   event, and returns the plaintext. Rate-limited to 3 reveals per minute
+   per IP (in-memory).
+
+No code path stores the plaintext anywhere outside the provider.
+
+## Scheduler
+
+`TriggerScheduler` (`src/runtime/triggers/scheduler.ts`) is owned by the
+dashboard server. It loads every `kind='cron' AND enabled=1` row at boot,
+creates a `croner.Cron` per row, and on each tick:
+
+1. Re-reads the row defensively (handles stale references after `reload`).
+2. Honours the per-trigger concurrency lock unless `allow_concurrent`.
+3. Inserts a `rt_flow_trigger_runs` row in `pending`.
+4. Awaits `runtimeStarter()` and updates the run status to `succeeded` or
+   `failed` accordingly.
+
+Hot reload is invoked from the CRUD routes through the optional
+`triggerScheduler` field on `RouteDeps`.
+
+## Discipline gates
+
+| Rule | Status |
+|------|--------|
+| R1   | No enterprise flag — Community uses `NullPermissionChecker`; route handlers pass `action` strings only. |
+| R2   | New tables already present at schema v40 with `org_id NULL`; v41 preserves the slot. |
+| R3   | Frozen path touches: `src/dashboard/server.ts`, `src/dashboard/route-deps.ts`, `src/dashboard/middleware/permission-actions.ts`, `src/db/schema.ts`. Each carries an `Extension-Point:` trailer in the commit message. |
+| R5   | Plaintext only on the input boundary (`POST /api/instances/:slug/triggers` body), the rotate endpoint output, and the reveal endpoint output. Storage exclusively via `secretProvider.set/get`. |
+
+## UI
+
+The Lit page lives at `ui/src/components/triggers/cp-triggers-view.ts` and
+groups four supporting components:
+
+- `cp-trigger-list` — row cards with kind badge, enabled toggle, fire/edit/delete actions.
+- `cp-trigger-wizard` — 3-step modal (kind → flow + owner → params + mapping + name).
+- `cp-trigger-detail` — drawer with three tabs (Settings, Runs, Test).
+- `cp-input-mapping-editor` — array editor for `{ from: <JSONPath>, to: <flowVar> }` rows.
+
+Hash route is `#/instances/:slug/triggers`. The page is registered in
+`ui/src/services/router.ts` and reachable from the instance dashboard.

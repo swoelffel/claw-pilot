@@ -25,6 +25,7 @@ import { SessionStore } from "./session-store.js";
 import { constants } from "../lib/constants.js";
 import { apiError } from "./route-deps.js";
 import type { RouteDeps } from "./route-deps.js";
+import { getRegisteredServerExtensions } from "./server-extensions.js";
 import { ClawPilotError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
 import { registerInstanceRoutes } from "./routes/instances.js";
@@ -44,6 +45,11 @@ import { registerSearchRoutes } from "./routes/search.js";
 import { registerFlowRoutes } from "./routes/instances/flows.js";
 import { registerSystemInstanceRoutes } from "./routes/system-instance.js";
 import { registerNotificationRoutes } from "./routes/notifications.js";
+import { registerWebhookRoutes } from "./routes/webhooks.js";
+import { registerTriggerRoutes } from "./routes/instances/triggers.js";
+import { TriggerScheduler } from "../runtime/triggers/scheduler.js";
+import { registerTriggerContextProvider } from "../runtime/triggers/context-provider.js";
+import { callRuntimeApi } from "./routes/_internal-api-client.js";
 import { pruneNotifications } from "../core/repositories/notification-repository.js";
 import { SystemInstanceService } from "../core/system-instance.js";
 import { rebuildSearchIndex } from "../core/repositories/search-repository.js";
@@ -291,6 +297,12 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   // Auth routes — registered BEFORE the auth middleware so /api/auth/login is public
   registerAuthRoutes(app, deps, token);
 
+  // TRIGGER-001 — webhook endpoints are HMAC-authenticated, so they MUST be
+  // registered before the dashboard auth middleware. Path is `/webhooks/...`,
+  // outside the `/api/*` prefix the auth middleware guards.
+  // Extension-Point: trigger-runtime-bootstrap
+  registerWebhookRoutes(app, deps);
+
   // Auth middleware for API routes — see registerAuthMiddleware above
   registerAuthMiddleware(app, token, sessionStore, db);
 
@@ -306,12 +318,50 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   registerSystemInstanceRoutes(app, deps);
   registerNotificationRoutes(app, deps);
 
+  // TRIGGER-001 — register CRUD routes for the trigger dashboard.
+  // The scheduler instance (constructed below) is bolted onto `deps` after
+  // creation so route handlers can call `deps.triggerScheduler.reload(id)`.
+  // Extension-Point: trigger-dashboard-routes
+  registerTriggerRoutes(app, deps);
+
   // Wire notification broadcaster: engines emit notifications → Monitor pushes to WS clients
   Monitor.setNotificationBroadcaster((row) => monitor.broadcastNotification(row));
 
   // Auto-prune old notifications (30 days) at startup and every 24h
   pruneNotifications(deps.db);
   setInterval(() => pruneNotifications(deps.db), 24 * 60 * 60 * 1000);
+
+  // TRIGGER-001 — wire the flow-context provider for `{{trigger.*}}`
+  // templating, then start the cron scheduler. The runtime starter is the
+  // existing `/internal/flows/:id/run` daemon endpoint already used by the
+  // manual trigger route.
+  // Extension-Point: trigger-runtime-bootstrap
+  registerTriggerContextProvider(deps.db);
+  const triggerScheduler = new TriggerScheduler({
+    db: deps.db,
+    getInstanceState: (instanceSlug) => deps.registry.getInstance(instanceSlug)?.state,
+    runtimeStarter: async (instanceSlug, flowId, triggerType, triggerDetail) => {
+      const result = await callRuntimeApi<{ runId: number }>(
+        instanceSlug,
+        `/internal/flows/${flowId}/run`,
+        { triggerType, triggerDetail },
+      );
+      return result.runId;
+    },
+  });
+  triggerScheduler.start();
+  // Expose the scheduler to route handlers (TRIGGER-001 PR 3/3).
+  // Extension-Point: trigger-dashboard-routes
+  deps.triggerScheduler = triggerScheduler;
+
+  // Run any registered server extensions. Enterprise editions push
+  // additional route modules, auth providers, and background workers onto
+  // the registry from their bootstrap path. Community ships no extensions
+  // so the loop is a no-op here.
+  // Extension-Point: server-extensions
+  for (const extension of getRegisteredServerExtensions()) {
+    await extension(deps, app);
+  }
 
   // Rebuild search index on startup
   rebuildSearchIndex(deps.db);
@@ -395,6 +445,7 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
     clearInterval(cleanupInterval);
     monitor.stop();
     modelDiscovery.stop();
+    triggerScheduler.stop();
   };
 
   return { app, deps, monitor, cleanup };

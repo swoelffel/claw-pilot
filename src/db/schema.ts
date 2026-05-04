@@ -1556,6 +1556,141 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v40: rt_flow_triggers + rt_flow_trigger_runs — TRIGGER-001 foundation.
+    //
+    // Schedules flow executions via cron expressions or HMAC-signed inbound
+    // webhooks. `rt_flow_trigger_runs` doubles as the concurrency lock: before
+    // firing, the scheduler/webhook handler checks for an active row in
+    // ('pending','running'). Webhook deduplication uses `idempotency_key`
+    // (24h unique window) or `payload_hash` (5-min sliding window).
+    //
+    // `org_id TEXT NULL` slot reserved for R2 multi-tenancy. The webhook
+    // secret lives via SecretProvider (R5) — only the reference key is stored.
+    version: 40,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS rt_flow_triggers (
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          org_id              TEXT NULL,
+          instance_slug       TEXT NOT NULL,
+          flow_id             INTEGER NOT NULL REFERENCES rt_flow_definitions(id) ON DELETE CASCADE,
+          owner_user_id       INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
+          kind                TEXT NOT NULL CHECK(kind IN ('cron','webhook')),
+          name                TEXT NOT NULL,
+          enabled             INTEGER NOT NULL DEFAULT 1,
+          allow_concurrent    INTEGER NOT NULL DEFAULT 0,
+          cron_expr           TEXT NULL,
+          cron_tz             TEXT NULL,
+          webhook_slug        TEXT NULL UNIQUE,
+          webhook_secret_ref  TEXT NULL,
+          ip_allowlist        TEXT NULL,
+          input_mapping       TEXT NULL,
+          default_input       TEXT NULL,
+          created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+          last_fired_at       TEXT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_flow_triggers_flow
+          ON rt_flow_triggers(flow_id);
+        CREATE INDEX IF NOT EXISTS idx_rt_flow_triggers_kind_enabled
+          ON rt_flow_triggers(kind, enabled);
+        CREATE INDEX IF NOT EXISTS idx_rt_flow_triggers_instance
+          ON rt_flow_triggers(instance_slug);
+
+        CREATE TABLE IF NOT EXISTS rt_flow_trigger_runs (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          org_id          TEXT NULL,
+          trigger_id      INTEGER NOT NULL REFERENCES rt_flow_triggers(id) ON DELETE CASCADE,
+          flow_run_id     INTEGER NULL REFERENCES rt_flow_runs(id) ON DELETE SET NULL,
+          status          TEXT NOT NULL CHECK(status IN
+                            ('pending','running','succeeded','failed','deduped','skipped_concurrent')),
+          fired_at        TEXT NOT NULL DEFAULT (datetime('now')),
+          finished_at     TEXT NULL,
+          payload         TEXT NULL,
+          idempotency_key TEXT NULL,
+          payload_hash    TEXT NULL,
+          source_ip       TEXT NULL,
+          error           TEXT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_flow_trigger_runs_trigger
+          ON rt_flow_trigger_runs(trigger_id, fired_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_rt_flow_trigger_runs_idem
+          ON rt_flow_trigger_runs(trigger_id, idempotency_key)
+          WHERE idempotency_key IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_rt_flow_trigger_runs_active
+          ON rt_flow_trigger_runs(trigger_id, status)
+          WHERE status IN ('pending','running');
+      `);
+    },
+  },
+  {
+    // v41: scope `webhook_slug` uniqueness to (instance_slug, webhook_slug).
+    //
+    // The v40 schema declared `webhook_slug TEXT NULL UNIQUE` as a column-level
+    // constraint, which made slugs globally unique across all instances. To
+    // align triggers with the rest of the workspace resources (instance-scoped),
+    // the uniqueness must be scoped to the owning instance.
+    //
+    // SQLite cannot drop a column-level UNIQUE in place, so we rebuild the
+    // table: copy rows into a fresh table without the inline UNIQUE, swap, and
+    // recreate indexes — including the new composite UNIQUE INDEX on
+    // (instance_slug, webhook_slug). FK enforcement is disabled for the swap
+    // because `rt_flow_trigger_runs.trigger_id` references this table.
+    //
+    // Additive: every existing row survives the rebuild. The `org_id NULL`
+    // slot is preserved.
+    version: 41,
+    disableFk: true,
+    up(db) {
+      db.exec(`
+        CREATE TABLE rt_flow_triggers_v41 (
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          org_id              TEXT NULL,
+          instance_slug       TEXT NOT NULL,
+          flow_id             INTEGER NOT NULL REFERENCES rt_flow_definitions(id) ON DELETE CASCADE,
+          owner_user_id       INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
+          kind                TEXT NOT NULL CHECK(kind IN ('cron','webhook')),
+          name                TEXT NOT NULL,
+          enabled             INTEGER NOT NULL DEFAULT 1,
+          allow_concurrent    INTEGER NOT NULL DEFAULT 0,
+          cron_expr           TEXT NULL,
+          cron_tz             TEXT NULL,
+          webhook_slug        TEXT NULL,
+          webhook_secret_ref  TEXT NULL,
+          ip_allowlist        TEXT NULL,
+          input_mapping       TEXT NULL,
+          default_input       TEXT NULL,
+          created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+          last_fired_at       TEXT NULL
+        );
+
+        INSERT INTO rt_flow_triggers_v41
+          SELECT id, org_id, instance_slug, flow_id, owner_user_id, kind, name,
+                 enabled, allow_concurrent, cron_expr, cron_tz,
+                 webhook_slug, webhook_secret_ref, ip_allowlist,
+                 input_mapping, default_input,
+                 created_at, updated_at, last_fired_at
+          FROM rt_flow_triggers;
+
+        DROP TABLE rt_flow_triggers;
+        ALTER TABLE rt_flow_triggers_v41 RENAME TO rt_flow_triggers;
+
+        CREATE INDEX IF NOT EXISTS idx_rt_flow_triggers_flow
+          ON rt_flow_triggers(flow_id);
+        CREATE INDEX IF NOT EXISTS idx_rt_flow_triggers_kind_enabled
+          ON rt_flow_triggers(kind, enabled);
+        CREATE INDEX IF NOT EXISTS idx_rt_flow_triggers_instance
+          ON rt_flow_triggers(instance_slug);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_rt_flow_triggers_instance_webhook
+          ON rt_flow_triggers(instance_slug, webhook_slug)
+          WHERE webhook_slug IS NOT NULL;
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

@@ -13,9 +13,9 @@
 // `./providers/*` directly (except `new PasswordProvider(db)` at bootstrap).
 
 import { ClawPilotError } from "../../lib/errors.js";
-import type { AuthProvider, AuthResult } from "./provider.js";
+import type { AuthProvider, AuthResult, LoginDescriptor } from "./provider.js";
 
-export type { AuthProvider, AuthResult, AuthenticatedUser } from "./provider.js";
+export type { AuthProvider, AuthResult, AuthenticatedUser, LoginDescriptor } from "./provider.js";
 export { PasswordProvider } from "./providers/password.js";
 export type { PasswordCredentials } from "./providers/password.js";
 
@@ -80,6 +80,25 @@ export function unregisterAuthProvider(kind: string): boolean {
 /** Returns the list of registered provider kinds (order not guaranteed). */
 export function listAuthProviderKinds(): string[] {
   return Array.from(providers.keys());
+}
+
+/**
+ * Returns UI descriptors for every registered provider that exposes a login
+ * button (i.e. implements `describeLogin()`). Used by `GET /api/auth/providers`
+ * to render SSO buttons on the login page.
+ *
+ * In Community this is always `[]` because the only registered provider is
+ * `PasswordProvider`, which does not implement `describeLogin()` (the
+ * password form is rendered inline). Enterprise registers one descriptor per
+ * enabled SSO row.
+ */
+export function listLoginableProviders(): LoginDescriptor[] {
+  const out: LoginDescriptor[] = [];
+  for (const provider of providers.values()) {
+    const descriptor = provider.describeLogin?.();
+    if (descriptor) out.push(descriptor);
+  }
+  return out;
 }
 
 /**
