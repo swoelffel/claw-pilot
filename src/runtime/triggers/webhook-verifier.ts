@@ -4,6 +4,9 @@
 //
 // Three responsibilities:
 //   1. HMAC-SHA256 signature verification (header `sha256=<hex>`)
+//      — delegated to the canonical module in `src/core/security/hmac.ts`
+//        so future webhook-style surfaces (A2A, dashboard outbound, …)
+//        share the same wire format and constant-time compare path.
 //   2. IP allowlist matching (exact + IPv4/IPv6 CIDR)
 //   3. Stable SHA-256 hash of a request body for replay detection
 //
@@ -11,11 +14,11 @@
 // state and emit no audit events. Callers wrap them with logging and
 // audit emission as needed.
 
-import { createHmac, createHash, timingSafeEqual } from "node:crypto";
-import { logger } from "../../lib/logger.js";
+import { createHash } from "node:crypto";
+import { verifySignature } from "../../core/security/hmac.js";
 
 // ---------------------------------------------------------------------------
-// HMAC verification
+// HMAC verification — thin wrapper over the canonical module
 // ---------------------------------------------------------------------------
 
 /**
@@ -26,21 +29,7 @@ import { logger } from "../../lib/logger.js";
  * any other unexpected input — callers do not need to wrap this in try/catch.
  */
 export function verifyHmacSignature(secret: string, body: string, header: string): boolean {
-  if (!secret || !header) return false;
-  const prefix = "sha256=";
-  if (!header.startsWith(prefix)) return false;
-  const provided = header.slice(prefix.length).trim().toLowerCase();
-  if (!/^[0-9a-f]+$/.test(provided)) return false;
-
-  const expected = createHmac("sha256", secret).update(body, "utf8").digest("hex");
-  if (provided.length !== expected.length) return false;
-
-  try {
-    return timingSafeEqual(Buffer.from(provided, "hex"), Buffer.from(expected, "hex"));
-  } catch (err) {
-    logger.debug("hmac_compare_failed", { error: String(err) });
-    return false;
-  }
+  return verifySignature(secret, body, header);
 }
 
 // ---------------------------------------------------------------------------
