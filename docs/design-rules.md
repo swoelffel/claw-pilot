@@ -278,11 +278,11 @@ Reference: `ui/src/components/triggers/cp-trigger-detail.ts` lines 31–67
 
 | Property | Value |
 |---|---|
-| Position | `position: fixed; top: 0; right: 0; height: 100vh` |
+| Position | `position: fixed; top: 56px; right: 0; height: calc(100vh - 56px)` — sits **below** the global app navbar (height 56px) so the drawer header is never clipped behind it. Add `border-top: 1px solid var(--bg-border)` to visually separate from the navbar. |
 | Width | `min(560px, 100vw)` (full content) — `360px` for embedded inline detail (task-board) |
 | Background | `var(--bg-surface)` |
 | Left border | `1px solid var(--bg-border)` |
-| Z-index | `110` — above the global app navbar (`100`), below modals (`≥500`). Drawers below `100` get clipped by the sticky app header (regression fixed in `cp-trigger-detail` on 2026-05-04). |
+| Z-index | `90` — below the navbar (which is at `100`) since the drawer is offset below it via `top: 56px`. Modals stay above at `≥500`. |
 | Header | `padding: 16px; border-bottom: 1px solid var(--bg-border); display: flex; justify-content: space-between; align-items: center;` — title left, close button right |
 | Close button | Top-right; `<button class="close-btn" aria-label="Close">✕</button>`. Glyph `✕` (U+2715), 20px font-size, `--state-stopped` color, hover `--text-primary`. Reference: `ui/src/components/create-agent-dialog.ts:609–616`. |
 | Scroll | `overflow: auto` on host |

@@ -33,14 +33,15 @@ export class CpTriggerDetail extends LitElement {
       :host {
         display: block;
         position: fixed;
-        top: 0;
+        top: 56px;
         right: 0;
         width: min(560px, 100vw);
-        height: 100vh;
+        height: calc(100vh - 56px);
         background: var(--bg-surface);
         color: var(--text-primary);
         border-left: 1px solid var(--bg-border);
-        z-index: 110;
+        border-top: 1px solid var(--bg-border);
+        z-index: 90;
         font-family: var(--font-ui);
         overflow: auto;
         transition: width 160ms ease-out;
