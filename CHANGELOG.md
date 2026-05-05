@@ -10,6 +10,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.83.3] — 2026-05-05
+
+> Doc-only follow-up. No code changes.
+
+### Changed
+
+- **Refreshed top-level doc headers + sse category count** (#207) — `docs/README.md` v0.73.5 → v0.83.2 and schema v36 → v41 in the doc-map row; `docs/sse-architecture.md` header v0.72.6 → v0.83.2 and footer category count corrected 11 → 15 (the 43-event count was already accurate); `docs/i18n.md` footer reframed (architecture stable since v0.42.0, dated 2026-05-05); root `README.md` schema v38 → v41 with table/repo counts updated to (40 tables, 23 repositories) — drift caught during the EE/Licensing audit pass.
+
+---
+
 ## [0.83.2] — 2026-05-05
 
 > Doc-only follow-up to the 0.83.1 rationalization sprint. No code changes.
