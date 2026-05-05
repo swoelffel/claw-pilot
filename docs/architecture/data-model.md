@@ -46,6 +46,11 @@
 | `rt_flow_runs` | v33 | Workflow execution runs — status (5 states), trigger, timing, error |
 | `rt_flow_step_runs` | v33 | Per-step execution — agent, session, SITREP JSON (`outcome`, `summary`, `keyFindings`), tokens, cost, retry count |
 | `agent_files_fts` | v36 | FTS5 virtual table — full-text search over `agent_files` content (content-backed, BM25 with snippet) |
+| `notifications` | v37 | Persistent notification inbox — severity (info/warning/error/success), dedup_key, is_read, link_route, auto-prune 30 days |
+| `instance_shared_files` | v38 | Files shared across all agents of an instance — content + content_hash, FK CASCADE on instance delete |
+| `rt_audit_events` | v39 | H6 audit event bus persistence — kind, timestamp, server_id, org_id, user_id, JSON payload |
+| `rt_flow_triggers` | v40 → v41 | Cron + webhook triggers for flows — kind (cron/webhook), cron_expr, webhook_slug + secret_ref, ip_allowlist, input_mapping (v41 drops UNIQUE on webhook_slug to allow per-org reuse) |
+| `rt_flow_trigger_runs` | v40 | Trigger firing log — trigger_id, fired_at, run_id, source (scheduler/http), error |
 
 ## Added columns
 
@@ -64,9 +69,16 @@
 - `ports` table: port derivation now includes username salt for multi-user isolation (v35)
 - `agent_files_fts` FTS5 virtual table (v36) + INSERT/UPDATE/DELETE triggers to keep index in sync; initial population from existing rows
 
+**v37–v41**:
+- `notifications` table (v37) — persistent inbox with dedup + auto-prune
+- `instance_shared_files` table (v38) — instance-level shared workspace
+- `rt_audit_events` table (v39) — H6 audit bus DB sink (org_id slot per rule R2)
+- `rt_flow_triggers` + `rt_flow_trigger_runs` tables (v40) — TRIGGER-001 cron/webhook foundation
+- `rt_flow_triggers` rebuild (v41, `disableFk`) — drop UNIQUE constraint on `webhook_slug` to allow per-org reuse
+
 ## Migration rules
 
-**Current migration version: 36**
+**Current migration version: 41**
 
 **Default port range**: 18789–18838 (50 ports, 10 instances at 5-port intervals). Dashboard: 19000.
 
@@ -76,4 +88,4 @@ Full schema reference: [registry-db.md](../registry-db.md)
 
 ---
 
-*Updated: 2026-04-16 — v0.73.5, schema v36, 35 tables (+ FTS5 virtual table)*
+*Updated: 2026-05-05 — v0.81.2, schema v41, 40 tables (+ FTS5 virtual table)*
