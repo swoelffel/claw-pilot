@@ -1,7 +1,7 @@
 # claw-pilot — Registry Database (`registry.db`)
 
 SQLite database at `~/.claw-pilot/registry.db`. WAL mode, foreign keys enforced.  
-Current schema version: **34**. Source of truth: `src/db/schema.ts`.
+Current schema version: **41**. Source of truth: `src/db/schema.ts`.
 
 ---
 
@@ -21,7 +21,8 @@ servers ──< instances ──< agents ──< agent_files
                     ├──< rt_pairing_codes
                     ├──< rt_budgets ──< rt_budget_events
                     ├──< instance_named_keys ──> named_api_keys
-                    └──< (runtime_config_json, default_named_key_id)
+                    ├──< instance_shared_files ──< instance_shared_files_fts (FTS5)
+                    └──< (runtime_config_json, default_named_key_id, is_system)
 
 discovered_models  (provider_id + model_id composite PK)
 discovery_status   (provider_id PK)
@@ -31,6 +32,12 @@ rt_tasks ──< rt_task_comments
          └──< rt_tasks (self-referential via parent_id for epic hierarchy)
 
 rt_flow_definitions ──< rt_flow_runs ──< rt_flow_step_runs
+                   └──< rt_flow_triggers ──< rt_flow_trigger_runs
+
+agent_files ──< agent_files_fts (FTS5, content-backed)
+
+notifications      (cross-instance inbox, dedup_key, is_read)
+rt_audit_events    (H6 audit bus — kind, timestamp, server_id, org_id, user_id, payload)
 
 search_index       (FTS5 virtual table)
 search_index_map   (shadow mapping table)
@@ -99,6 +106,7 @@ schema_version  (single row)
 | `instance_type` | TEXT | NOT NULL DEFAULT 'openclaw' CHECK(IN openclaw,claw-runtime) | v8 |
 | `runtime_config_json` | TEXT | (full RuntimeConfig JSON blob — source of truth) | v21 |
 | `default_named_key_id` | INTEGER | REFERENCES named_api_keys(id) ON DELETE SET NULL | v25 |
+| `is_system` | INTEGER | NOT NULL DEFAULT 0 (system instance flag, e.g. HOMEBOT) | v34 |
 
 ### `agents`
 
@@ -658,6 +666,114 @@ Per-step execution details within a flow run.
 
 Unique constraint: (run_id, step_id).
 
+### `agent_files_fts` (v36)
+
+FTS5 virtual table mirroring `agent_files.content` for the workspace-knowledge plugin (`ws_search_files`). Content-backed (`content='agent_files'`, `content_rowid='id'`) so `snippet()` is available for match highlighting. Kept in sync via three triggers (`agent_files_ai`, `_au`, `_ad`).
+
+### `notifications` (v37)
+
+Persistent cross-instance notification inbox with dedup and auto-prune (30 days).
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `instance_slug` | TEXT | (NULL for global) |
+| `event_type` | TEXT | NOT NULL |
+| `severity` | TEXT | NOT NULL DEFAULT 'info' CHECK(IN info,warning,error,success) |
+| `title` | TEXT | NOT NULL |
+| `body` | TEXT | |
+| `link_route` | TEXT | (hash route for deep-link) |
+| `dedup_key` | TEXT | |
+| `is_read` | INTEGER | NOT NULL DEFAULT 0 |
+| `created_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+
+Indexes: `idx_notifications_read_created` (is_read, created_at DESC), `idx_notifications_dedup` (dedup_key, created_at).
+
+### `instance_shared_files` + `instance_shared_files_fts` (v38)
+
+Instance-level shared workspace — one `workspaces/shared` directory per instance. Readable by all agents via `ws_*` tools, editable only via dashboard UI. Symmetrical with `agent_files` + `agent_files_fts` (v36).
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `instance_id` | INTEGER | NOT NULL REFERENCES instances(id) ON DELETE CASCADE |
+| `filename` | TEXT | NOT NULL |
+| `content` | TEXT | |
+| `content_hash` | TEXT | |
+| `updated_at` | TEXT | |
+
+UNIQUE: `(instance_id, filename)`. Index: `idx_instance_shared_files_instance` (instance_id). FTS5 mirror table `instance_shared_files_fts` kept in sync via three triggers.
+
+### `rt_audit_events` (v39)
+
+H6 audit event bus persistence — canonical store for security-relevant events (auth, permission denials, secret access, named-key mutations, tool calls). Distinct from legacy `events` (per-instance lifecycle) and `rt_events` (Activity Console bus). `org_id` is the R2 multi-tenancy slot (NULL in Community); `payload` holds the full envelope JSON as source of truth.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `kind` | TEXT | NOT NULL |
+| `timestamp` | TEXT | NOT NULL |
+| `server_id` | TEXT | NOT NULL |
+| `org_id` | TEXT | NULL (R2 slot) |
+| `user_id` | TEXT | NULL |
+| `payload` | TEXT | NOT NULL (JSON envelope) |
+| `created_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+
+Indexes: `idx_rt_audit_events_kind_ts` (kind, timestamp), `idx_rt_audit_events_org_ts` (org_id, timestamp), `idx_rt_audit_events_user_ts` (user_id, timestamp).
+
+Accessed via `src/core/audit/sinks/db.ts` (no repository facade — audit emitter writes directly).
+
+### `rt_flow_triggers` (v40 + v41)
+
+TRIGGER-001 — schedules flow executions via cron expressions or HMAC-signed inbound webhooks. The webhook secret lives via `SecretProvider` (R5) — only the reference key is stored. `org_id TEXT NULL` reserved for R2 multi-tenancy.
+
+v41 rebuilt the table to scope `webhook_slug` uniqueness to `(instance_slug, webhook_slug)` instead of globally.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `org_id` | TEXT | NULL (R2 slot) |
+| `instance_slug` | TEXT | NOT NULL |
+| `flow_id` | INTEGER | NOT NULL REFERENCES rt_flow_definitions(id) ON DELETE CASCADE |
+| `owner_user_id` | INTEGER | NULL REFERENCES users(id) ON DELETE SET NULL |
+| `kind` | TEXT | NOT NULL CHECK(IN cron,webhook) |
+| `name` | TEXT | NOT NULL |
+| `enabled` | INTEGER | NOT NULL DEFAULT 1 |
+| `allow_concurrent` | INTEGER | NOT NULL DEFAULT 0 |
+| `cron_expr` | TEXT | |
+| `cron_tz` | TEXT | |
+| `webhook_slug` | TEXT | (unique per instance via composite index) |
+| `webhook_secret_ref` | TEXT | (SecretProvider key reference) |
+| `ip_allowlist` | TEXT | (JSON array) |
+| `input_mapping` | TEXT | (JSON) |
+| `default_input` | TEXT | (JSON) |
+| `created_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+| `updated_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+| `last_fired_at` | TEXT | |
+
+Indexes: `idx_rt_flow_triggers_flow` (flow_id), `idx_rt_flow_triggers_kind_enabled` (kind, enabled), `idx_rt_flow_triggers_instance` (instance_slug). UNIQUE INDEX `idx_rt_flow_triggers_instance_webhook` (instance_slug, webhook_slug) WHERE webhook_slug IS NOT NULL — v41.
+
+### `rt_flow_trigger_runs` (v40)
+
+Trigger firing log — also serves as the concurrency lock (active row in `('pending','running')` blocks new fires when `allow_concurrent=0`). Webhook deduplication uses `idempotency_key` (24h unique window) or `payload_hash` (5-min sliding window).
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `org_id` | TEXT | NULL (R2 slot) |
+| `trigger_id` | INTEGER | NOT NULL REFERENCES rt_flow_triggers(id) ON DELETE CASCADE |
+| `flow_run_id` | INTEGER | NULL REFERENCES rt_flow_runs(id) ON DELETE SET NULL |
+| `status` | TEXT | NOT NULL CHECK(IN pending,running,succeeded,failed,deduped,skipped_concurrent) |
+| `fired_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+| `finished_at` | TEXT | |
+| `payload` | TEXT | (JSON) |
+| `idempotency_key` | TEXT | |
+| `payload_hash` | TEXT | |
+| `source_ip` | TEXT | |
+| `error` | TEXT | |
+
+Indexes: `idx_rt_flow_trigger_runs_trigger` (trigger_id, fired_at DESC), partial UNIQUE `idx_rt_flow_trigger_runs_idem` (trigger_id, idempotency_key) WHERE idempotency_key IS NOT NULL, partial `idx_rt_flow_trigger_runs_active` (trigger_id, status) WHERE status IN ('pending','running').
+
 ---
 
 ## Migration history
@@ -698,12 +814,19 @@ Unique constraint: (run_id, step_id).
 | 32 | Added `search_index` (FTS5 virtual table) and `search_index_map` (shadow) for global command palette search (SEARCH-001). BM25 ranking, 5 entity types, prefix matching. |
 | 33 | Added `rt_flow_definitions`, `rt_flow_runs`, `rt_flow_step_runs` tables for declarative workflow orchestration (FLOW-001). DAG execution with fan-out/fan-in, per-step timeout & retry. |
 | 34 | Added `instances.is_system` column for system instance flag (HOMEBOT). |
+| 35 | Recalculated instance ports using user-salted hash (`os.userInfo().username` mixed in) so multiple OS users on the same machine get distinct ports. |
+| 36 | Added `agent_files_fts` (FTS5, content-backed) for the workspace-knowledge plugin (`ws_search_files`). Three sync triggers (insert/update/delete). |
+| 37 | Added `notifications` table — persistent cross-instance inbox with severity, dedup_key, is_read, auto-prune. Indexes on read+created and dedup. |
+| 38 | Added `instance_shared_files` + `instance_shared_files_fts` — instance-level shared workspace, symmetrical with v36. UI-only writes. |
+| 39 | Added `rt_audit_events` (H6 audit event bus persistence). `org_id NULL` slot from day one (R2). Three indexes (kind+ts, org+ts, user+ts). |
+| 40 | Added `rt_flow_triggers` + `rt_flow_trigger_runs` (TRIGGER-001) — cron + HMAC webhook scheduling for flows. `webhook_secret_ref` via SecretProvider (R5). Run table doubles as concurrency lock. |
+| 41 | Rebuilt `rt_flow_triggers` to scope `webhook_slug` uniqueness to (instance_slug, webhook_slug) — composite UNIQUE INDEX. `disableFk: true` for the swap because of `rt_flow_trigger_runs.trigger_id` FK. |
 
 ---
 
 ## Key access patterns
 
-All DB access goes through `src/core/registry.ts` facade (20 repositories) — never raw SQL in commands or routes.
+All DB access goes through `src/core/registry.ts` facade (23 repositories) — never raw SQL in commands or routes. Exception: `rt_audit_events` is written directly by `src/core/audit/sinks/db.ts` (no repository, audit emitter is a singleton).
 
 ### Instance operations
 
@@ -775,7 +898,10 @@ All DB access goes through `src/core/registry.ts` facade (20 repositories) — n
 | Global search | `SearchRepository` | `upsertSearchEntry()`, `removeSearchEntry()`, `searchEntities()`, `rebuildSearchIndex()` |
 | Flow CRUD | `FlowRepository` | `createFlow()`, `getFlow()`, `listFlows()`, `updateFlow()`, `deleteFlow()` |
 | Flow execution | `FlowRepository` | `createRun()`, `updateRun()`, `getRun()`, `listRuns()`, `createStepRun()`, `updateStepRun()` |
+| Flow triggers | `flow-trigger-repository.ts` | function exports — cron + webhook scheduling, concurrency lock, idempotency dedup |
+| Notifications | `notification-repository.ts` | `insertNotification()`, `listNotifications()`, `countUnread()`, `markRead()`, `markAllRead()`, `pruneNotifications()` |
+| Instance shared files | `instance-shared-file-repository.ts` | function exports — list / read / upsert / delete + FTS5 search via `instance_shared_files_fts` |
 
 ---
 
-*Updated: 2026-04-12 — v0.69.0: schema v34, 20 repositories, migration history v1–v34*
+*Updated: 2026-05-05 — v0.83.1: schema v41, 23 repositories, migration history v1–v41*
