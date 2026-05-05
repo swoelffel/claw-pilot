@@ -77,4 +77,4 @@ check** on branch protection for `main` and `develop`.
 
 - Current alerts: https://github.com/swoelffel/claw-pilot/security/code-scanning
 - CodeQL JS query help: https://codeql.github.com/codeql-query-help/javascript/
-- Triage session log: `docs/architecture/codeql-triage-notes.md`
+- Triage session log: [`docs/archive/codeql-triage-session-2026-04-21.md`](../archive/codeql-triage-session-2026-04-21.md)

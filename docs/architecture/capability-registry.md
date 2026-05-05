@@ -108,8 +108,8 @@ imported transitively**. The recommended pattern:
 import { setCapabilityRegistry, type Capability, type CapabilityRegistry, CapabilityNotAvailableError } from "./core/capabilities.js";
 import { parseLicence } from "./licence.js";
 
-// TODO(H4): once SecretProvider ships, replace with `await secretProvider.get("CP_LICENCE_JWT")`.
-const enabled: Set<Capability> = parseLicence(process.env.CP_LICENCE_JWT);
+// Read the licence JWT via the SecretProvider (H4) — never `process.env` directly (rule R5).
+const enabled: Set<Capability> = parseLicence(await secretProvider.get("CP_LICENCE_JWT"));
 
 const enterpriseRegistry: CapabilityRegistry = {
   has: (cap) => enabled.has(cap),

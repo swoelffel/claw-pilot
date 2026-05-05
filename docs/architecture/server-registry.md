@@ -144,6 +144,4 @@ gate will enforce `"multi-server"` is active before accepting it.
 ## See also
 
 - [Capability Registry](capability-registry.md) — H5, `capabilities.has(...)` contract
-- Plan: `docs/superpowers/plans/2026-04-21-h3-server-registry.md`
-- Spec: `docs/superpowers/specs/2026-04-21-h3-server-registry-design.md`
-- Enterprise roadmap: `ai-docs/plan-enterprise-edition.md`
+- Enterprise roadmap: `ai-docs/plan-enterprise-edition.md` (local)
