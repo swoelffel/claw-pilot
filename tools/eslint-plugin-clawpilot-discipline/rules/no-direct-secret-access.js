@@ -2,8 +2,11 @@
  * no-direct-secret-access — enforces discipline R5.
  *
  * Forbids reading secrets directly from `process.env.*_SECRET|*_KEY|*_TOKEN|*_PASSWORD`
- * or from filesystem paths matching `/secret/i`. All secret reads must go through
- * `secretProvider.get(name)` (see src/core/secrets, delivered by H4).
+ * or from filesystem paths that look like a secret store: paths whose name
+ * contains `secret`, paths under a `secrets/` directory, paths under `/etc/`
+ * whose tail contains `secret`, or files with cryptographic-material
+ * extensions (`.pem`, `.key`, `.p12`, `.pfx`). All secret reads must go
+ * through `secretProvider.get(name)` (see src/core/secrets, delivered by H4).
  *
  * Allowlist (hard-coded — R5 is a closed set):
  *   - src/core/secrets/providers/env.ts  — the legitimate env-backed provider
@@ -13,17 +16,29 @@
  */
 
 const SECRET_ENV_PATTERN = /(SECRET|KEY|TOKEN|PASSWORD|API_KEY)$/i;
-const SECRET_PATH_PATTERN = /secret/i;
+
+// Match anything that smells like a secret on disk:
+//   - the literal word "secret" (case-insensitive) anywhere in the path
+//   - a `secrets/` directory segment (single or plural)
+//   - a path under `/etc/` whose tail mentions "secret"
+//   - a file extension reserved for cryptographic material
+const SECRET_PATH_PATTERNS = [
+  /secret/i,
+  /(?:^|\/)secrets?\//i,
+  /^\/etc\/.*secret/i,
+  /\.(?:pem|key|p12|pfx)$/i,
+];
+
+function looksLikeSecretPath(value) {
+  return SECRET_PATH_PATTERNS.some((re) => re.test(value));
+}
 
 const MESSAGE_ENV =
   "Direct secret env read is forbidden (R5). Use `secretProvider.get(name)` from src/core/secrets instead.";
 const MESSAGE_FS =
   "Direct secret file read is forbidden (R5). Use `secretProvider.get(name)` from src/core/secrets instead.";
 
-const ALLOWLIST_SUFFIXES = [
-  "src/core/secrets/providers/env.ts",
-  "src/lib/crypto.ts",
-];
+const ALLOWLIST_SUFFIXES = ["src/core/secrets/providers/env.ts", "src/lib/crypto.ts"];
 
 function isAllowlisted(filename) {
   if (!filename) return false;
@@ -55,8 +70,7 @@ export default {
   meta: {
     type: "problem",
     docs: {
-      description:
-        "Forbid direct secret access (R5) — use SecretProvider instead.",
+      description: "Forbid direct secret access (R5) — use SecretProvider instead.",
     },
     schema: [],
     messages: { env: MESSAGE_ENV, fs: MESSAGE_FS },
@@ -97,7 +111,7 @@ export default {
       CallExpression(node) {
         if (!isFsReadCall(node)) return;
         const arg = firstStringArg(node);
-        if (arg && SECRET_PATH_PATTERN.test(arg)) {
+        if (arg && looksLikeSecretPath(arg)) {
           context.report({ node, messageId: "fs" });
         }
       },
