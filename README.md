@@ -106,7 +106,7 @@ Override the install path with `CLAW_PILOT_INSTALL_DIR`. For production setup (s
          └── MCP tools, memory, heartbeat, budget
 ```
 
-Single `~/.claw-pilot/registry.db` (schema v38) is the source of truth for instances, agents, blueprints, flows, tasks, budgets, and conversation history. See [`docs/main-doc.md`](docs/main-doc.md) for the full architecture and [`docs/registry-db.md`](docs/registry-db.md) for the data model (28 tables, 20 repositories).
+Single `~/.claw-pilot/registry.db` (schema v41) is the source of truth for instances, agents, blueprints, flows, tasks, budgets, and conversation history. See [`docs/main-doc.md`](docs/main-doc.md) for the full architecture and [`docs/registry-db.md`](docs/registry-db.md) for the data model (40 tables, 23 repositories).
 
 ---
 
