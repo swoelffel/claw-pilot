@@ -1,7 +1,7 @@
 # SSE Architecture — Real-time Streaming
 
 > **Source**: `src/runtime/engine/internal-api.ts`, `src/dashboard/routes/_sse-proxy.ts`, `ui/src/services/`
-> **Version**: 0.72.6
+> **Version**: 0.83.2
 
 claw-pilot uses **Server-Sent Events (SSE)** for real-time streaming and a separate **WebSocket** for health monitoring. This document covers all four real-time channels.
 
@@ -323,4 +323,4 @@ guards, API calls) and guidelines for adding new call sites.
 
 ---
 
-*Updated: 2026-04-16 — v0.73.5: 3 SSE streams, 1 WebSocket, 43 event types (11 categories), SSE proxy with transform layer*
+*Updated: 2026-05-05 — v0.83.2: 3 SSE streams, 1 WebSocket, 43 event types (15 categories), SSE proxy with transform layer*
