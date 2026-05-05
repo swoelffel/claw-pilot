@@ -10,6 +10,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.83.0] — 2026-05-05
+
+> Security sprint 2026-05 — Community deliverables. Tracks audit chantiers C2 (R5 widening), C4 (canonical HMAC module), and the cross-cutting documentation + tooling work. Part of the same audit as licensing v0.2.x and Enterprise sprint commits #40/#41/#42.
+
+### Added
+
+- **Canonical HMAC sign/verify module** (`src/core/security/hmac.ts`, #195) — single source of truth for webhook signatures. Exposes `signPayload(secret, body, algo='sha256')` returning `<algo>=<hex>` and `verifySignature(secret, body, header, opts?)` performing length-asymmetry-safe `timingSafeEqual` over hex digests. Anti-downgrade: `verifySignature` rejects any algo not on the caller's `allowedAlgos` list (default `['sha256']`); a forged `sha1=...` header against an SHA-256 secret fails closed without computing a comparison. The sole production caller, `src/runtime/triggers/webhook-verifier.ts`, becomes a thin wrapper. Unlocks reuse for TRIGGER-001 follow-ups and any future webhook ingest.
+- **`docs/security.md`** (#196) — public-facing security overview: threat model table (4 actors), R5 secret-handling contract via `SecretProvider`, HMAC module usage, OIDC PKCE / state / nonce / JWKS guarantees, licence contract pointer, vulnerability disclosure path. Replaces the previously-implicit reliance on the brief + audit reports.
+- **`docs/runbook-security-incident.md`** (#196) — single-dev incident runbook for 5 scenarios (leaked admin API key, stolen session, compromised licence JWT, leaked HMAC secret, public secret leak in git history). Each scenario lists detection signal, immediate containment, durable rotation, and post-incident verification.
+- **`scripts/lint-discipline-r3-local.ts`** (#196) — local wrapper around `lint-core-modifications.ts` that resolves the merge-base of HEAD against `origin/develop` (or `origin/main` if absent) and exports it as `LINT_BASE_REF`. Closes the CI/local gap surfaced when PR #195 hit a red R3 gate locally that was green in CI (`GITHUB_BASE_REF` is only set in CI). Wired as `pnpm lint:discipline:r3-local`.
+
+### Changed — Discipline (R5)
+
+- **Widened `no-direct-secret-access` ESLint rule** (#194, `tools/eslint-plugin-clawpilot-discipline`) to flag filesystem reads of mode-restricted material the prior pattern missed: `*.pem | *.key | *.p12 | *.pfx` filenames, `/etc/*secret*` system paths, and any `secrets/` segment in the path. Existing CE/EE codebases scan clean (validated 2026-05-04). Prevents regressions where a future contributor reads a private key directly from disk without going through `SecretProvider`. New unit tests cover each new pattern variant.
+
+### Security
+
+- **Audit chantier C2** — confirmed 0 violations of R5 across CE + EE `src/` (`grep -rE "process.env.[A-Z_]+_(SECRET|KEY|TOKEN|PASSWORD)" src/` empty). Chantier closed with rule-widening as the only deliverable.
+- **Audit chantier C4** — pre-extracted the canonical HMAC module ahead of TRIGGER-001 follow-ups so the next webhook caller doesn't duplicate the verification primitive. Includes a 1000-iteration fuzz test (gracefully returns `false` on arbitrary input, never throws).
+
+---
+
 ## [0.82.1] — 2026-05-04
 
 ### Added
