@@ -2,7 +2,7 @@
 
 > Part of [claw-pilot Functional Architecture](README.md)
 >
-> Design spec: `docs/superpowers/specs/2026-04-20-h1-permission-middleware-design.md`
+> **Status:** hook **H1** shipped in Community. Enterprise plugs `FineGrainedRBACChecker` via `registerPermissionChecker()`.
 
 ---
 
