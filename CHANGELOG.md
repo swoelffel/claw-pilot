@@ -10,6 +10,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.83.1] — 2026-05-05
+
+> Documentation rationalization sprint. No code changes — purely cleanup of leaked artefacts, drift fixes against shipped H1–H9 hooks and the v37→v41 migrations, and `CLAUDE.md` refresh against the actual current state.
+
+### Changed
+
+- **Removed leaked superpowers brainstorming artefacts** (#197) — `docs/superpowers/{specs,plans}/` (8 files, 4542 lines) corresponded to already-merged work (onboarding CTA, capability-registry H5, permission-middleware H1, server-registry H3). The architectural reference for these features lives in `docs/architecture/{capability-registry,permission-middleware,server-registry}.md`. Added `docs/superpowers/` to `.gitignore` so future local brainstorming sessions don't leak back into the repo.
+- **Polished `docs/architecture/` after H1–H9 phase 0 shipping** (#198) — fixed obsolete `TODO(H4)` in `capability-registry.md` (H4 SecretProvider is shipped, rule R5 enforces the pattern). Replaced stale `docs/superpowers/...` cross-references in `permission-middleware.md` and `server-registry.md` with status headers / pruned See-also sections. Caught up `data-model.md` on migrations v37–v41 (`notifications`, `instance_shared_files`, `rt_audit_events`, `rt_flow_triggers`, `rt_flow_trigger_runs`). Moved `codeql-triage-notes.md` (dated session artefact) to `docs/archive/codeql-triage-session-2026-04-21.md` and updated the `codeql-policy.md` link.
+- **Refreshed `CLAUDE.md` against current state** (#200) — version pin, schema version (37→41), data-model table additions (6 missing tables), test count (~2151→~2700) and coverage thresholds, dropped a dead reference to `docs/runbook-deploy.md` and replaced it with the three security/debugging docs that actually exist. The runbook had documented the requirement to bump CLAUDE.md on each release; v0.82.1 and v0.83.0 both forgot — this catches up.
+
+---
+
 ## [0.83.0] — 2026-05-05
 
 > Security sprint 2026-05 — Community deliverables. Tracks audit chantiers C2 (R5 widening), C4 (canonical HMAC module), and the cross-cutting documentation + tooling work. Part of the same audit as licensing v0.2.x and Enterprise sprint commits #40/#41/#42.
