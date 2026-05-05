@@ -10,6 +10,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.83.2] — 2026-05-05
+
+> Doc-only follow-up to the 0.83.1 rationalization sprint. No code changes.
+
+### Changed
+
+- **Refreshed `docs/registry-db.md` to schema v41** (#204) — the doc was frozen at v0.69.0 / schema v34. Added column-level definitions for tables introduced in v36–v41 (`agent_files_fts`, `notifications`, `instance_shared_files` + `_fts`, `rt_audit_events`, `rt_flow_triggers`, `rt_flow_trigger_runs`), updated the schema overview diagram, extended the migration history table with v35–v41 rows, and bumped the repositories count (20 → 23) with entries for `flow-trigger`, `notification`, and `instance-shared-file`. Source of truth (`src/db/schema.ts`) read end-to-end — no drift introduced.
+
+---
+
 ## [0.83.1] — 2026-05-05
 
 > Documentation rationalization sprint. No code changes — purely cleanup of leaked artefacts, drift fixes against shipped H1–H9 hooks and the v37→v41 migrations, and `CLAUDE.md` refresh against the actual current state.
