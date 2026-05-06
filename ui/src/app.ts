@@ -16,6 +16,11 @@ import { setToken, clearToken } from "./services/auth-state.js";
 import { WsMonitor } from "./services/ws-monitor.js";
 import { UpdatePoller } from "./services/update-poller.js";
 import { hashToRoute, routeToHash, type Route } from "./services/router.js";
+import {
+  listExtensionNavItems,
+  matchExtensionHash,
+  buildExtensionHash,
+} from "./services/extension-views.js";
 import "./components/home-screen.js";
 import "./components/cluster-view.js";
 import "./components/agents-builder.js";
@@ -861,7 +866,14 @@ export class CpApp extends LitElement {
   // ---------------------------------------------------------------------------
 
   private _renderMain() {
+    // Extension-Point: dashboard-extension-views — first chance to render
+    // a non-Community view (e.g. Enterprise admin consoles). Built-in
+    // routes always win when their view variant is set; extensions only
+    // engage when the hash matches `/ext/<id>` AND no built-in view
+    // claimed it (router.ts returns "home" for unknown hashes).
     if (this._route.view === "home") {
+      const ext = matchExtensionHash(location.hash);
+      if (ext) return ext.view.render(ext.match);
       return html`<cp-home-screen @navigate=${this._navigate}></cp-home-screen>`;
     }
     if (this._route.view === "cluster") {
@@ -1097,7 +1109,9 @@ export class CpApp extends LitElement {
           <div class="logo" @click=${this._goHome}>Claw<span>Pilot</span></div>
           <nav class="nav-tabs">
             <button
-              class="nav-tab ${this._route.view === "home" ? "active" : ""}"
+              class="nav-tab ${this._route.view === "home" && !matchExtensionHash(location.hash)
+                ? "active"
+                : ""}"
               @click=${() => {
                 this._route = { view: "home" };
               }}
@@ -1156,6 +1170,20 @@ export class CpApp extends LitElement {
                 ? html`<span class="nav-badge">${this._agentTemplateCount}</span>`
                 : ""}
             </button>
+            ${listExtensionNavItems().map((item) => {
+              const targetHash = buildExtensionHash(item.id);
+              const active = location.hash.replace(/^#?\/?/, "") === targetHash.replace(/^\//, "");
+              return html`
+                <button
+                  class="nav-tab nav-tab-extension ${active ? "active" : ""}"
+                  @click=${() => {
+                    window.location.hash = `#${targetHash}`;
+                  }}
+                >
+                  ${item.nav.label}
+                </button>
+              `;
+            })}
           </nav>
         </div>
         <div class="header-right">
