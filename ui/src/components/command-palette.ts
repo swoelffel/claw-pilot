@@ -8,6 +8,7 @@ import { localized, msg } from "@lit/localize";
 import { tokenStyles } from "../styles/tokens.js";
 import { DialogMixin } from "../lib/dialog-mixin.js";
 import { searchEntities } from "../api.js";
+import { navigateToPath } from "../services/navigation.js";
 import type { SearchResult } from "../types.js";
 
 const GROUP_ORDER: string[] = ["instance", "agent", "task", "blueprint", "agent_blueprint"];
@@ -252,7 +253,7 @@ export class CpCommandPalette extends DialogMixin(LitElement) {
   }
 
   private _navigate(result: SearchResult): void {
-    location.hash = `#${result.route}`;
+    navigateToPath(result.route);
     this.dispatchEvent(new CustomEvent("close-dialog", { bubbles: true, composed: true }));
   }
 

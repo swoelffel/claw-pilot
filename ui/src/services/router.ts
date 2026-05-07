@@ -1,8 +1,13 @@
 /**
  * ui/src/services/router.ts
  *
- * Hash-based routing for the claw-pilot dashboard.
- * Extracted from app.ts to keep the root component focused on rendering.
+ * Pure path ↔ route converters for the dashboard.
+ *
+ * Both functions are stateless and side-effect-free — they exist only to
+ * translate between a discriminated `Route` union and a string pathname.
+ * Stateful concerns (history.pushState, popstate listeners, current route
+ * snapshot) live in `./navigation.ts`. Consumers should import from
+ * `navigation.ts` for all navigation primitives.
  */
 
 import type { SidebarSection } from "../types.js";
@@ -28,13 +33,19 @@ export type Route =
   | { view: "instance-dashboard"; slug: string }
   | { view: "flow-sessions"; slug: string; flowId: number }
   | { view: "profile" }
-  | { view: "triggers"; slug: string };
+  | { view: "triggers"; slug: string }
+  /**
+   * Extension view registered through `extension-views.ts`. The `subPath`
+   * is the segment after `/ext/<id>/`, with the leading slash stripped
+   * (empty string for the bare prefix `/ext/<id>`).
+   */
+  | { view: "extension"; id: string; subPath: string };
 
-/** Convert a Route to a hash string (without the leading #). */
-export function routeToHash(route: Route): string {
+/** Convert a Route to a pathname (always starts with a leading slash). */
+export function routeToPath(route: Route): string {
   switch (route.view) {
     case "home":
-      return "/home";
+      return "/";
     case "cluster":
       return "/instances";
     case "agents-builder":
@@ -75,17 +86,31 @@ export function routeToHash(route: Route): string {
       return "/profile";
     case "triggers":
       return `/instances/${route.slug}/triggers`;
+    case "extension":
+      return route.subPath === "" ? `/ext/${route.id}` : `/ext/${route.id}/${route.subPath}`;
   }
 }
 
-/** Parse a hash string into a Route (returns cluster view for unknown hashes). */
-export function hashToRoute(hash: string): Route {
-  // Strip leading # and /
-  const path = hash.replace(/^#?\/?/, "");
-  if (!path || path === "/") return { view: "home" };
+/**
+ * Parse a pathname into a Route. Unknown paths fall back to `{ view: "home" }`.
+ *
+ * Accepts both absolute (`/blueprints`) and bare (`blueprints`) forms — any
+ * leading slashes are stripped before matching.
+ */
+export function pathToRoute(pathname: string): Route {
+  const path = pathname.replace(/^\/+/, "");
+  if (!path) return { view: "home" };
 
-  // /home
+  // Legacy "/home" path (pre-2026-05 hash router used /home for the home
+  // screen; keep accepting it so old bookmarks keep working after the
+  // hash → path migration handled in navigation.ts).
   if (path === "home") return { view: "home" };
+
+  // Extension prefix `/ext/<id>(/<subPath>)?` — the actual extension lookup
+  // and sub-path validation happen at render time in app.ts via
+  // matchExtensionPath() so the parser stays pure.
+  const extMatch = path.match(/^ext\/([a-z][a-z0-9-]*)(?:\/(.*))?$/);
+  if (extMatch) return { view: "extension", id: extMatch[1]!, subPath: extMatch[2] ?? "" };
 
   // /instances (cluster view)
   if (path === "instances") return { view: "cluster" };
