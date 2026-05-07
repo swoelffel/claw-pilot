@@ -15,7 +15,9 @@ import { tokenStyles } from "./styles/tokens.js";
 import { setToken, clearToken } from "./services/auth-state.js";
 import { WsMonitor } from "./services/ws-monitor.js";
 import { UpdatePoller } from "./services/update-poller.js";
-import { hashToRoute, routeToHash, type Route } from "./services/router.js";
+import type { Route } from "./services/router.js";
+import { getCurrentRoute, navigateTo, onRouteChange } from "./services/navigation.js";
+import { listExtensionNavItems, matchExtensionRoute } from "./services/extension-views.js";
 import "./components/home-screen.js";
 import "./components/cluster-view.js";
 import "./components/agents-builder.js";
@@ -476,7 +478,9 @@ export class CpApp extends LitElement {
   @state() private _authChecking = true;
   @state() private _sessionExpired = false;
   @state() private _username: string | null = null;
-  @state() private _route: Route = { view: "home" };
+  // Initialized from the URL via the navigation service so the very first
+  // render reflects the actual location (no race with Lit lifecycle).
+  @state() private _route: Route = getCurrentRoute();
   @state() private _instances: InstanceInfo[] = [];
   @state() private _blueprintCount: number | null = null;
   @state() private _agentTemplateCount: number | null = null;
@@ -505,30 +509,9 @@ export class CpApp extends LitElement {
     }
   };
 
-  /** Guard to prevent hash→route→hash feedback loops. */
-  private _updatingHash = false;
-
   private _wsMonitor: WsMonitor | null = null;
   private _updatePoller: UpdatePoller | null = null;
-
-  // ---------------------------------------------------------------------------
-  // Hash-based routing
-  // ---------------------------------------------------------------------------
-
-  private _onHashChange = (): void => {
-    if (this._updatingHash) return;
-    this._route = hashToRoute(location.hash);
-  };
-
-  private _syncHashFromRoute(): void {
-    const target = routeToHash(this._route);
-    const current = location.hash.replace(/^#?\/?/, "");
-    const targetNorm = target.replace(/^\//, "");
-    if (current === targetNorm) return;
-    this._updatingHash = true;
-    location.hash = `#${target}`;
-    this._updatingHash = false;
-  }
+  private _unsubscribeRouteChange: (() => void) | null = null;
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -547,24 +530,24 @@ export class CpApp extends LitElement {
     window.addEventListener("keydown", this._onGlobalKeydown);
     window.addEventListener("lit-localize-status", this._onLocaleStatus);
     window.addEventListener("cp:session-expired", this._onSessionExpired);
+    // Subscribe to the navigation service so popstate (back/forward) and
+    // every navigateTo() call refresh `_route` and trigger a re-render.
+    this._unsubscribeRouteChange = onRouteChange((route) => {
+      this._route = route;
+    });
     void this._boot();
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
-    window.removeEventListener("hashchange", this._onHashChange);
+    this._unsubscribeRouteChange?.();
+    this._unsubscribeRouteChange = null;
     window.removeEventListener("keydown", this._onGlobalKeydown);
     window.removeEventListener("cp:session-expired", this._onSessionExpired);
     window.removeEventListener("lit-localize-status", this._onLocaleStatus);
     document.removeEventListener("click", this._onDocClick);
     this._wsMonitor?.disconnect();
     this._updatePoller?.stop();
-  }
-
-  override updated(changed: Map<string, unknown>): void {
-    if (changed.has("_route")) {
-      this._syncHashFromRoute();
-    }
   }
 
   // ---------------------------------------------------------------------------
@@ -651,7 +634,6 @@ export class CpApp extends LitElement {
     this._sessionExpired = false;
     this._username = null;
     clearToken();
-    window.removeEventListener("hashchange", this._onHashChange);
     this._wsMonitor?.disconnect();
     this._wsMonitor = null;
     this._updatePoller?.stop();
@@ -667,9 +649,10 @@ export class CpApp extends LitElement {
   // ---------------------------------------------------------------------------
 
   private _initApp(): void {
-    // Restore route from URL hash on first load
-    this._route = hashToRoute(location.hash);
-    window.addEventListener("hashchange", this._onHashChange);
+    // The navigation service was already initialized at construction time
+    // (via getCurrentRoute() in the field initialiser) and the route
+    // subscription was attached in connectedCallback(); nothing to do here
+    // for routing — just kick off the WebSocket monitor and pollers.
 
     // Start WebSocket monitor
     this._wsMonitor = new WsMonitor(
@@ -772,52 +755,52 @@ export class CpApp extends LitElement {
       }>
     ).detail;
     if (detail.view === "instance-settings" && detail.slug) {
-      this._route = {
+      navigateTo({
         view: "instance-settings",
         slug: detail.slug,
         ...(detail.section !== undefined && { initialSection: detail.section }),
-      };
+      });
     } else if (detail.view === "pilot" && detail.slug) {
-      this._route = { view: "pilot", slug: detail.slug };
+      navigateTo({ view: "pilot", slug: detail.slug });
     } else if (detail.view === "costs" && detail.slug) {
-      this._route = { view: "costs", slug: detail.slug };
+      navigateTo({ view: "costs", slug: detail.slug });
     } else if (detail.view === "activity" && detail.slug) {
-      this._route = { view: "activity", slug: detail.slug };
+      navigateTo({ view: "activity", slug: detail.slug });
     } else if (detail.view === "memory" && detail.slug) {
-      this._route = { view: "memory", slug: detail.slug };
+      navigateTo({ view: "memory", slug: detail.slug });
     } else if (detail.view === "heartbeat" && detail.slug) {
-      this._route = { view: "heartbeat", slug: detail.slug };
+      navigateTo({ view: "heartbeat", slug: detail.slug });
     } else if (detail.view === "session-logs" && detail.slug) {
-      this._route = { view: "session-logs", slug: detail.slug };
+      navigateTo({ view: "session-logs", slug: detail.slug });
     } else if (detail.view === "tasks" && detail.slug) {
-      this._route = { view: "tasks", slug: detail.slug };
+      navigateTo({ view: "tasks", slug: detail.slug });
     } else if (detail.view === "flows" && detail.slug) {
-      this._route = { view: "flows", slug: detail.slug };
+      navigateTo({ view: "flows", slug: detail.slug });
     } else if (detail.view === "flow-run" && detail.slug && detail.runId !== undefined) {
-      this._route = { view: "flow-run", slug: detail.slug, runId: detail.runId };
+      navigateTo({ view: "flow-run", slug: detail.slug, runId: detail.runId });
     } else if (detail.view === "instance-dashboard" && detail.slug) {
-      this._route = { view: "instance-dashboard", slug: detail.slug };
+      navigateTo({ view: "instance-dashboard", slug: detail.slug });
     } else if (detail.view === "flow-sessions" && detail.slug && detail.flowId !== undefined) {
-      this._route = { view: "flow-sessions", slug: detail.slug, flowId: detail.flowId };
+      navigateTo({ view: "flow-sessions", slug: detail.slug, flowId: detail.flowId });
     } else if (detail.view === "agents-builder" && detail.slug) {
-      this._route = { view: "agents-builder", slug: detail.slug };
+      navigateTo({ view: "agents-builder", slug: detail.slug });
     } else if (detail.view === "blueprints") {
-      this._route = { view: "blueprints" };
+      navigateTo({ view: "blueprints" });
     } else if (detail.view === "blueprint-builder" && detail.blueprintId !== undefined) {
-      this._route = { view: "blueprint-builder", blueprintId: detail.blueprintId };
+      navigateTo({ view: "blueprint-builder", blueprintId: detail.blueprintId });
     } else if (detail.view === "triggers" && detail.slug) {
-      this._route = { view: "triggers", slug: detail.slug };
+      navigateTo({ view: "triggers", slug: detail.slug });
     } else if (detail.view === "agent-templates") {
-      this._route = { view: "agent-templates" };
+      navigateTo({ view: "agent-templates" });
     } else if (detail.view === "agent-template-detail" && detail.templateId) {
-      this._route = { view: "agent-template-detail", templateId: detail.templateId };
+      navigateTo({ view: "agent-template-detail", templateId: detail.templateId });
     } else {
-      this._route = { view: "cluster" };
+      navigateTo({ view: "cluster" });
     }
   }
 
   private _goHome(): void {
-    this._route = { view: "home" };
+    navigateTo({ view: "home" });
   }
 
   private async _switchLocale(locale: SupportedLocale): Promise<void> {
@@ -829,7 +812,7 @@ export class CpApp extends LitElement {
   private _onInstanceDeleted(e: Event): void {
     const { slug } = (e as CustomEvent<{ slug: string }>).detail;
     this._instances = this._instances.filter((i) => i.slug !== slug);
-    this._route = { view: "cluster" };
+    navigateTo({ view: "cluster" });
   }
 
   private _onSelfUpdateStart(): void {
@@ -852,7 +835,7 @@ export class CpApp extends LitElement {
     this._useTemplateName = "";
     // Navigate to the instance's agents builder view
     if (builderData?.instance?.slug) {
-      this._route = { view: "agents-builder", slug: builderData.instance.slug };
+      navigateTo({ view: "agents-builder", slug: builderData.instance.slug });
     }
   }
 
@@ -861,6 +844,17 @@ export class CpApp extends LitElement {
   // ---------------------------------------------------------------------------
 
   private _renderMain() {
+    // Extension-Point: dashboard-extension-views — render a non-Community
+    // view (e.g. Enterprise admin consoles) when the URL matches
+    // `/ext/<id>(/<sub>)?`. Falls through to the built-in dispatcher
+    // below if the id isn't registered or the sub-path is rejected.
+    if (this._route.view === "extension") {
+      const ext = matchExtensionRoute(this._route.id, this._route.subPath);
+      if (ext) return ext.view.render(ext.match);
+      // Unknown extension id (e.g. EE plugin not loaded yet) — render home
+      // as a safe fallback so the user lands on a usable screen.
+      return html`<cp-home-screen @navigate=${this._navigate}></cp-home-screen>`;
+    }
     if (this._route.view === "home") {
       return html`<cp-home-screen @navigate=${this._navigate}></cp-home-screen>`;
     }
@@ -963,9 +957,7 @@ export class CpApp extends LitElement {
         <cp-runtime-pilot
           .slug=${pilotSlug}
           style="height:100%;"
-          @back=${() => {
-            this._route = { view: "cluster" };
-          }}
+          @back=${() => navigateTo({ view: "cluster" })}
         ></cp-runtime-pilot>
       `;
     }
@@ -1098,9 +1090,7 @@ export class CpApp extends LitElement {
           <nav class="nav-tabs">
             <button
               class="nav-tab ${this._route.view === "home" ? "active" : ""}"
-              @click=${() => {
-                this._route = { view: "home" };
-              }}
+              @click=${() => navigateTo({ view: "home" })}
             >
               ${msg("Home", { id: "nav-home" })}
             </button>
@@ -1120,9 +1110,7 @@ export class CpApp extends LitElement {
               this._route.view === "flow-run"
                 ? "active"
                 : ""}"
-              @click=${() => {
-                this._route = { view: "cluster" };
-              }}
+              @click=${() => navigateTo({ view: "cluster" })}
             >
               ${msg("Instances", { id: "nav-instances" })}${instanceCount > 0
                 ? html`<span class="nav-badge">${instanceCount}</span>`
@@ -1133,9 +1121,7 @@ export class CpApp extends LitElement {
               this._route.view === "blueprint-builder"
                 ? "active"
                 : ""}"
-              @click=${() => {
-                this._route = { view: "blueprints" };
-              }}
+              @click=${() => navigateTo({ view: "blueprints" })}
             >
               ${msg("Blueprints", { id: "nav-blueprints" })}${this._blueprintCount !== null &&
               this._blueprintCount > 0
@@ -1147,15 +1133,24 @@ export class CpApp extends LitElement {
               this._route.view === "agent-template-detail"
                 ? "active"
                 : ""}"
-              @click=${() => {
-                this._route = { view: "agent-templates" };
-              }}
+              @click=${() => navigateTo({ view: "agent-templates" })}
             >
               ${msg("Templates", { id: "nav-agent-templates" })}${this._agentTemplateCount !==
                 null && this._agentTemplateCount > 0
                 ? html`<span class="nav-badge">${this._agentTemplateCount}</span>`
                 : ""}
             </button>
+            ${listExtensionNavItems().map((item) => {
+              const active = this._route.view === "extension" && this._route.id === item.id;
+              return html`
+                <button
+                  class="nav-tab nav-tab-extension ${active ? "active" : ""}"
+                  @click=${() => navigateTo({ view: "extension", id: item.id, subPath: "" })}
+                >
+                  ${item.nav.label}
+                </button>
+              `;
+            })}
           </nav>
         </div>
         <div class="header-right">
@@ -1185,10 +1180,7 @@ export class CpApp extends LitElement {
           <button
             class="btn-profile ${this._route.view === "profile" ? "active" : ""}"
             title=${msg("Profile", { id: "nav-profile" })}
-            @click=${() => {
-              this._route = { view: "profile" };
-              window.location.hash = "#/profile";
-            }}
+            @click=${() => navigateTo({ view: "profile" })}
           >
             <svg
               width="14"
