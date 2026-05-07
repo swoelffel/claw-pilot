@@ -14,6 +14,7 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
 } from "../api.js";
+import { navigateToPath } from "../services/navigation.js";
 import type { NotificationItem } from "../types.js";
 
 // ---------------------------------------------------------------------------
@@ -361,7 +362,7 @@ export class NotificationInbox extends LitElement {
     }
     // Navigate if link available
     if (notif.link_route) {
-      window.location.hash = `#${notif.link_route}`;
+      navigateToPath(notif.link_route);
       this._open = false;
     }
   }

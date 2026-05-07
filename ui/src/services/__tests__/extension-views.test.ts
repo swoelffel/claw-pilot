@@ -9,11 +9,11 @@
 import { html } from "lit";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  buildExtensionHash,
+  buildExtensionPath,
   getExtensionView,
   listExtensionNavItems,
   listExtensionViews,
-  matchExtensionHash,
+  matchExtensionRoute,
   registerExtensionView,
   resetExtensionViews,
   type ExtensionView,
@@ -22,7 +22,7 @@ import {
 function fixture(over: Partial<ExtensionView> = {}): ExtensionView {
   return {
     id: "demo",
-    toHash: () => "",
+    toPath: () => "",
     render: () => html`<div></div>`,
     ...over,
   };
@@ -84,18 +84,17 @@ describe("listExtensionNavItems", () => {
   });
 });
 
-describe("matchExtensionHash", () => {
-  it("returns null when no extension claims the hash", () => {
-    expect(matchExtensionHash("#/some/random/path")).toBeNull();
+describe("matchExtensionRoute", () => {
+  it("returns null when the id is not registered", () => {
+    expect(matchExtensionRoute("ghost", "")).toBeNull();
     registerExtensionView(fixture({ id: "demo" }));
-    expect(matchExtensionHash("#/")).toBeNull();
-    expect(matchExtensionHash("#/ext/other")).toBeNull();
+    expect(matchExtensionRoute("other", "")).toBeNull();
   });
 
-  it("matches the bare extension hash with default sub-path matcher", () => {
+  it("matches the bare extension path with default sub-path matcher", () => {
     const v = fixture({ id: "demo" });
     registerExtensionView(v);
-    const m = matchExtensionHash("#/ext/demo");
+    const m = matchExtensionRoute("demo", "");
     expect(m).not.toBeNull();
     expect(m?.view).toBe(v);
     expect(m?.match.params).toEqual({});
@@ -103,7 +102,7 @@ describe("matchExtensionHash", () => {
 
   it("rejects sub-paths when no matchSubPath is provided", () => {
     registerExtensionView(fixture({ id: "demo" }));
-    expect(matchExtensionHash("#/ext/demo/some-thing")).toBeNull();
+    expect(matchExtensionRoute("demo", "some-thing")).toBeNull();
   });
 
   it("delegates to matchSubPath when provided", () => {
@@ -119,31 +118,31 @@ describe("matchExtensionHash", () => {
         },
       }),
     );
-    expect(matchExtensionHash("#/ext/users")?.match.params).toEqual({});
-    expect(matchExtensionHash("#/ext/users/42")?.match.params).toEqual({ id: "42" });
-    expect(matchExtensionHash("#/ext/users/not-a-number")).toBeNull();
+    expect(matchExtensionRoute("users", "")?.match.params).toEqual({});
+    expect(matchExtensionRoute("users", "42")?.match.params).toEqual({ id: "42" });
+    expect(matchExtensionRoute("users", "not-a-number")).toBeNull();
     expect(calls).toEqual(["", "42", "not-a-number"]);
   });
 });
 
-describe("buildExtensionHash", () => {
-  it("returns /ext/<id> when toHash returns empty", () => {
-    registerExtensionView(fixture({ id: "demo", toHash: () => "" }));
-    expect(buildExtensionHash("demo")).toBe("/ext/demo");
+describe("buildExtensionPath", () => {
+  it("returns /ext/<id> when toPath returns empty", () => {
+    registerExtensionView(fixture({ id: "demo", toPath: () => "" }));
+    expect(buildExtensionPath("demo")).toBe("/ext/demo");
   });
 
-  it("appends the sub-path returned by toHash", () => {
+  it("appends the sub-path returned by toPath", () => {
     registerExtensionView(
       fixture({
         id: "users",
-        toHash: (params) => (params?.id ? `/${params.id}` : ""),
+        toPath: (params) => (params?.id ? `/${params.id}` : ""),
       }),
     );
-    expect(buildExtensionHash("users")).toBe("/ext/users");
-    expect(buildExtensionHash("users", { id: "42" })).toBe("/ext/users/42");
+    expect(buildExtensionPath("users")).toBe("/ext/users");
+    expect(buildExtensionPath("users", { id: "42" })).toBe("/ext/users/42");
   });
 
   it("throws when the extension is not registered", () => {
-    expect(() => buildExtensionHash("ghost")).toThrow(/not registered/);
+    expect(() => buildExtensionPath("ghost")).toThrow(/not registered/);
   });
 });

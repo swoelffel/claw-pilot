@@ -1,197 +1,220 @@
 /**
  * ui/src/services/__tests__/router.test.ts
  *
- * Unit tests for the hash-based router.
- * Pure functions — no mocks needed.
+ * Unit tests for the path ↔ route converters. Pure functions, no mocks.
  */
 
 import { describe, it, expect } from "vitest";
-import { routeToHash, hashToRoute } from "../router.js";
+import { routeToPath, pathToRoute } from "../router.js";
 import type { Route } from "../router.js";
 
 // ---------------------------------------------------------------------------
-// routeToHash
+// routeToPath
 // ---------------------------------------------------------------------------
 
-describe("routeToHash", () => {
-  it("cluster → /", () => {
-    expect(routeToHash({ view: "cluster" })).toBe("/");
+describe("routeToPath", () => {
+  it("home → /", () => {
+    expect(routeToPath({ view: "home" })).toBe("/");
+  });
+
+  it("cluster → /instances", () => {
+    expect(routeToPath({ view: "cluster" })).toBe("/instances");
   });
 
   it("agents-builder → /instances/:slug/builder", () => {
-    expect(routeToHash({ view: "agents-builder", slug: "my-team" })).toBe(
+    expect(routeToPath({ view: "agents-builder", slug: "my-team" })).toBe(
       "/instances/my-team/builder",
     );
   });
 
   it("instance-settings → /instances/:slug/settings", () => {
-    expect(routeToHash({ view: "instance-settings", slug: "prod" })).toBe(
+    expect(routeToPath({ view: "instance-settings", slug: "prod" })).toBe(
       "/instances/prod/settings",
     );
   });
 
   it("pilot → /instances/:slug/pilot", () => {
-    expect(routeToHash({ view: "pilot", slug: "dev" })).toBe("/instances/dev/pilot");
+    expect(routeToPath({ view: "pilot", slug: "dev" })).toBe("/instances/dev/pilot");
   });
 
   it("costs → /instances/:slug/costs", () => {
-    expect(routeToHash({ view: "costs", slug: "dev" })).toBe("/instances/dev/costs");
+    expect(routeToPath({ view: "costs", slug: "dev" })).toBe("/instances/dev/costs");
   });
 
   it("activity → /instances/:slug/activity", () => {
-    expect(routeToHash({ view: "activity", slug: "dev" })).toBe("/instances/dev/activity");
+    expect(routeToPath({ view: "activity", slug: "dev" })).toBe("/instances/dev/activity");
   });
 
   it("memory → /instances/:slug/memory", () => {
-    expect(routeToHash({ view: "memory", slug: "dev" })).toBe("/instances/dev/memory");
+    expect(routeToPath({ view: "memory", slug: "dev" })).toBe("/instances/dev/memory");
   });
 
   it("heartbeat → /instances/:slug/heartbeat", () => {
-    expect(routeToHash({ view: "heartbeat", slug: "dev" })).toBe("/instances/dev/heartbeat");
+    expect(routeToPath({ view: "heartbeat", slug: "dev" })).toBe("/instances/dev/heartbeat");
   });
 
   it("session-logs → /instances/:slug/session-logs", () => {
-    expect(routeToHash({ view: "session-logs", slug: "dev" })).toBe("/instances/dev/session-logs");
+    expect(routeToPath({ view: "session-logs", slug: "dev" })).toBe("/instances/dev/session-logs");
   });
 
   it("blueprints → /blueprints", () => {
-    expect(routeToHash({ view: "blueprints" })).toBe("/blueprints");
+    expect(routeToPath({ view: "blueprints" })).toBe("/blueprints");
   });
 
   it("blueprint-builder → /blueprints/:id/builder", () => {
-    expect(routeToHash({ view: "blueprint-builder", blueprintId: 42 })).toBe(
+    expect(routeToPath({ view: "blueprint-builder", blueprintId: 42 })).toBe(
       "/blueprints/42/builder",
     );
   });
 
   it("agent-templates → /agent-templates", () => {
-    expect(routeToHash({ view: "agent-templates" })).toBe("/agent-templates");
+    expect(routeToPath({ view: "agent-templates" })).toBe("/agent-templates");
   });
 
   it("agent-template-detail → /agent-templates/:id", () => {
-    expect(routeToHash({ view: "agent-template-detail", templateId: "tpl-abc" })).toBe(
+    expect(routeToPath({ view: "agent-template-detail", templateId: "tpl-abc" })).toBe(
       "/agent-templates/tpl-abc",
     );
   });
 
   it("profile → /profile", () => {
-    expect(routeToHash({ view: "profile" })).toBe("/profile");
+    expect(routeToPath({ view: "profile" })).toBe("/profile");
   });
 
   it("flow-sessions → /instances/:slug/flows/:flowId/sessions", () => {
-    expect(routeToHash({ view: "flow-sessions", slug: "dev", flowId: 5 })).toBe(
+    expect(routeToPath({ view: "flow-sessions", slug: "dev", flowId: 5 })).toBe(
       "/instances/dev/flows/5/sessions",
+    );
+  });
+
+  it("triggers → /instances/:slug/triggers", () => {
+    expect(routeToPath({ view: "triggers", slug: "dev" })).toBe("/instances/dev/triggers");
+  });
+
+  it("extension with empty subPath → /ext/:id", () => {
+    expect(routeToPath({ view: "extension", id: "admin", subPath: "" })).toBe("/ext/admin");
+  });
+
+  it("extension with subPath → /ext/:id/:subPath", () => {
+    expect(routeToPath({ view: "extension", id: "admin", subPath: "users/42" })).toBe(
+      "/ext/admin/users/42",
     );
   });
 });
 
 // ---------------------------------------------------------------------------
-// hashToRoute
+// pathToRoute
 // ---------------------------------------------------------------------------
 
-describe("hashToRoute", () => {
-  it("empty string → cluster", () => {
-    expect(hashToRoute("")).toEqual({ view: "cluster" });
+describe("pathToRoute", () => {
+  it("empty string → home", () => {
+    expect(pathToRoute("")).toEqual({ view: "home" });
   });
 
-  it("/ → cluster", () => {
-    expect(hashToRoute("/")).toEqual({ view: "cluster" });
+  it("/ → home", () => {
+    expect(pathToRoute("/")).toEqual({ view: "home" });
   });
 
-  it("#/ → cluster", () => {
-    expect(hashToRoute("#/")).toEqual({ view: "cluster" });
+  it("/home (legacy) → home", () => {
+    expect(pathToRoute("/home")).toEqual({ view: "home" });
   });
 
-  it("instances/:slug/builder → agents-builder", () => {
-    expect(hashToRoute("instances/my-team/builder")).toEqual({
+  it("/instances → cluster", () => {
+    expect(pathToRoute("/instances")).toEqual({ view: "cluster" });
+  });
+
+  it("/instances/my-team/builder → agents-builder", () => {
+    expect(pathToRoute("/instances/my-team/builder")).toEqual({
       view: "agents-builder",
       slug: "my-team",
     });
   });
 
-  it("#/instances/:slug/settings → instance-settings", () => {
-    expect(hashToRoute("#/instances/prod/settings")).toEqual({
+  it("/instances/prod/settings → instance-settings", () => {
+    expect(pathToRoute("/instances/prod/settings")).toEqual({
       view: "instance-settings",
       slug: "prod",
     });
   });
 
-  it("instances/:slug/pilot → pilot", () => {
-    expect(hashToRoute("instances/dev/pilot")).toEqual({ view: "pilot", slug: "dev" });
+  it("/instances/dev/pilot → pilot", () => {
+    expect(pathToRoute("/instances/dev/pilot")).toEqual({ view: "pilot", slug: "dev" });
   });
 
-  it("instances/:slug/costs → costs", () => {
-    expect(hashToRoute("instances/dev/costs")).toEqual({ view: "costs", slug: "dev" });
+  it("/instances/dev/triggers → triggers", () => {
+    expect(pathToRoute("/instances/dev/triggers")).toEqual({ view: "triggers", slug: "dev" });
   });
 
-  it("instances/:slug/activity → activity", () => {
-    expect(hashToRoute("instances/dev/activity")).toEqual({ view: "activity", slug: "dev" });
+  it("/blueprints → blueprints", () => {
+    expect(pathToRoute("/blueprints")).toEqual({ view: "blueprints" });
   });
 
-  it("instances/:slug/memory → memory", () => {
-    expect(hashToRoute("instances/dev/memory")).toEqual({ view: "memory", slug: "dev" });
-  });
-
-  it("instances/:slug/heartbeat → heartbeat", () => {
-    expect(hashToRoute("instances/dev/heartbeat")).toEqual({ view: "heartbeat", slug: "dev" });
-  });
-
-  it("instances/:slug/session-logs → session-logs", () => {
-    expect(hashToRoute("instances/dev/session-logs")).toEqual({
-      view: "session-logs",
-      slug: "dev",
-    });
-  });
-
-  it("blueprints → blueprints", () => {
-    expect(hashToRoute("blueprints")).toEqual({ view: "blueprints" });
-  });
-
-  it("blueprints/:id/builder → blueprint-builder", () => {
-    expect(hashToRoute("blueprints/42/builder")).toEqual({
+  it("/blueprints/42/builder → blueprint-builder", () => {
+    expect(pathToRoute("/blueprints/42/builder")).toEqual({
       view: "blueprint-builder",
       blueprintId: 42,
     });
   });
 
-  it("agent-templates → agent-templates", () => {
-    expect(hashToRoute("agent-templates")).toEqual({ view: "agent-templates" });
+  it("/agent-templates → agent-templates", () => {
+    expect(pathToRoute("/agent-templates")).toEqual({ view: "agent-templates" });
   });
 
-  it("agent-templates/:id → agent-template-detail", () => {
-    expect(hashToRoute("agent-templates/tpl-abc")).toEqual({
+  it("/agent-templates/tpl-abc → agent-template-detail", () => {
+    expect(pathToRoute("/agent-templates/tpl-abc")).toEqual({
       view: "agent-template-detail",
       templateId: "tpl-abc",
     });
   });
 
-  it("profile → profile", () => {
-    expect(hashToRoute("profile")).toEqual({ view: "profile" });
+  it("/profile → profile", () => {
+    expect(pathToRoute("/profile")).toEqual({ view: "profile" });
   });
 
-  it("instances/:slug/flows/:flowId/sessions → flow-sessions", () => {
-    expect(hashToRoute("instances/dev/flows/5/sessions")).toEqual({
+  it("/instances/dev/flows/5/sessions → flow-sessions", () => {
+    expect(pathToRoute("/instances/dev/flows/5/sessions")).toEqual({
       view: "flow-sessions",
       slug: "dev",
       flowId: 5,
     });
   });
 
-  it("unknown path → cluster (fallback)", () => {
-    expect(hashToRoute("some/unknown/path")).toEqual({ view: "cluster" });
+  it("/instances/dev/flows/runs/42 → flow-run", () => {
+    expect(pathToRoute("/instances/dev/flows/runs/42")).toEqual({
+      view: "flow-run",
+      slug: "dev",
+      runId: 42,
+    });
+  });
+
+  it("/ext/admin → extension with empty subPath", () => {
+    expect(pathToRoute("/ext/admin")).toEqual({ view: "extension", id: "admin", subPath: "" });
+  });
+
+  it("/ext/admin/users/123 → extension with subPath", () => {
+    expect(pathToRoute("/ext/admin/users/123")).toEqual({
+      view: "extension",
+      id: "admin",
+      subPath: "users/123",
+    });
+  });
+
+  it("unknown path → home (fallback)", () => {
+    expect(pathToRoute("/some/unknown/path")).toEqual({ view: "home" });
   });
 
   it("slug with numbers and hyphens is accepted", () => {
-    expect(hashToRoute("instances/team-01/pilot")).toEqual({ view: "pilot", slug: "team-01" });
+    expect(pathToRoute("/instances/team-01/pilot")).toEqual({ view: "pilot", slug: "team-01" });
   });
 });
 
 // ---------------------------------------------------------------------------
-// Round-trip: routeToHash → hashToRoute
+// Round-trip: routeToPath → pathToRoute
 // ---------------------------------------------------------------------------
 
-describe("round-trip routeToHash ↔ hashToRoute", () => {
+describe("round-trip routeToPath ↔ pathToRoute", () => {
   const routes: Route[] = [
+    { view: "home" },
     { view: "cluster" },
     { view: "agents-builder", slug: "my-team" },
     { view: "instance-settings", slug: "prod" },
@@ -207,13 +230,16 @@ describe("round-trip routeToHash ↔ hashToRoute", () => {
     { view: "agent-template-detail", templateId: "abc-123" },
     { view: "flow-sessions", slug: "dev", flowId: 5 },
     { view: "profile" },
+    { view: "triggers", slug: "dev" },
+    { view: "extension", id: "admin", subPath: "" },
+    { view: "extension", id: "admin", subPath: "users/42" },
   ];
 
   for (const route of routes) {
-    it(`round-trip: ${route.view}`, () => {
-      const hash = routeToHash(route);
-      const parsed = hashToRoute(hash);
-      // initialSection is optional on instance-settings, hashToRoute won't include it
+    it(`round-trip: ${route.view}${"id" in route ? `/${route.id}${route.subPath ? `/${route.subPath}` : ""}` : ""}`, () => {
+      const path = routeToPath(route);
+      const parsed = pathToRoute(path);
+      // initialSection is optional on instance-settings, pathToRoute won't include it
       expect(parsed).toEqual(route);
     });
   }

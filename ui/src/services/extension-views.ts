@@ -5,7 +5,7 @@
  *
  * Lets non-Community editions (Enterprise, third-party plugins) register
  * additional top-level views that the dashboard renders alongside the
- * built-in ones. Each extension owns the hash prefix `/ext/<id>` and is
+ * built-in ones. Each extension owns the path prefix `/ext/<id>` and is
  * responsible for matching, rendering, and (optionally) showing a nav
  * button in the header.
  *
@@ -41,8 +41,11 @@ export interface ExtensionView {
    * Default: only the empty sub-path matches (i.e. `/ext/<id>` itself).
    */
   matchSubPath?: (subPath: string) => ExtensionViewMatch | null;
-  /** Build the hash (without leading `#/`) for navigating to this view. */
-  toHash: (params?: Readonly<Record<string, string>>) => string;
+  /**
+   * Build the sub-path (without leading slash) for navigating to this view.
+   * Returns "" for the bare `/ext/<id>`. Called by `buildExtensionPath`.
+   */
+  toPath: (params?: Readonly<Record<string, string>>) => string;
   /** Render the view body. */
   render: (match: ExtensionViewMatch) => TemplateResult;
   /** Header nav button. Omit to register a hidden view. */
@@ -50,7 +53,6 @@ export interface ExtensionView {
 }
 
 const ID_RE = /^[a-z][a-z0-9-]*$/;
-const HASH_RE = /^ext\/([a-z][a-z0-9-]*)(?:\/(.*))?$/;
 
 const registry = new Map<string, ExtensionView>();
 
@@ -102,34 +104,37 @@ export function listExtensionNavItems(): ReadonlyArray<{
 }
 
 /**
- * Match a hash like `/ext/<id>` or `/ext/<id>/<sub>`. Returns the matching
- * extension and parsed params, or `null` if no extension claims it.
+ * Resolve an extension `Route` into the registered view + parsed match,
+ * or `null` if no extension claims that id (or the sub-path is invalid).
+ *
+ * Called from `app.ts._renderMain` to render the right extension body.
  */
-export function matchExtensionHash(
-  hash: string,
+export function matchExtensionRoute(
+  id: string,
+  subPath: string,
 ): { view: ExtensionView; match: ExtensionViewMatch } | null {
-  const path = hash.replace(/^#?\/?/, "");
-  const m = path.match(HASH_RE);
-  if (!m) return null;
-  const view = registry.get(m[1]!);
+  const view = registry.get(id);
   if (!view) return null;
-  const sub = m[2] ?? "";
   if (view.matchSubPath) {
-    const subMatch = view.matchSubPath(sub);
+    const subMatch = view.matchSubPath(subPath);
     if (subMatch === null) return null;
     return { view, match: subMatch };
   }
   // Default: only the empty sub-path matches.
-  if (sub !== "") return null;
+  if (subPath !== "") return null;
   return { view, match: { params: {} } };
 }
 
-/** Compose the canonical hash for a registered extension. */
-export function buildExtensionHash(id: string, params?: Readonly<Record<string, string>>): string {
+/**
+ * Compose the canonical pathname for a registered extension. Used by
+ * extension consumers that need to deep-link from elsewhere; in-page
+ * navigation should go through `navigation.navigateTo()` instead.
+ */
+export function buildExtensionPath(id: string, params?: Readonly<Record<string, string>>): string {
   const view = registry.get(id);
   if (!view) {
     throw new Error(`Extension view '${id}' is not registered`);
   }
-  const sub = view.toHash(params);
+  const sub = view.toPath(params);
   return sub === "" ? `/ext/${id}` : `/ext/${id}/${sub.replace(/^\/+/, "")}`;
 }
