@@ -11,6 +11,7 @@ import { buttonStyles, spinnerStyles, errorBannerStyles } from "../styles/shared
 import { profileSettingsStyles } from "../styles/profile-settings.styles.js";
 import { fetchProfile, patchProfile } from "../api.js";
 import type { ProfileSection, UserProfile } from "../types.js";
+import { listProfileTabs } from "../services/profile-tabs.js";
 import "./named-keys-panel.js";
 
 @localized()
@@ -29,7 +30,10 @@ export class ProfileSettings extends LitElement {
   @state() private _loading = true;
   @state() private _saving = false;
   @state() private _error = "";
-  @state() private _activeSection: ProfileSection = "general";
+  // String-typed so the registry-driven extension tabs (Extension-Point:
+  // profile-tabs) can address themselves by id alongside the built-in
+  // ProfileSection values. Built-in tabs always remain valid.
+  @state() private _activeSection: ProfileSection | string = "general";
   @state() private _toast: { message: string; type: "success" | "warning" | "error" } | null = null;
   @state() private _dirty: Record<string, unknown> = {};
 
@@ -153,6 +157,7 @@ export class ProfileSettings extends LitElement {
               "instructions",
               msg("Instructions", { id: "profile-instructions" }),
             )}
+            ${listProfileTabs().map((tab) => this._renderSidebarItem(tab.id, tab.label))}
           </div>
         </nav>
 
@@ -165,7 +170,7 @@ export class ProfileSettings extends LitElement {
     `;
   }
 
-  private _renderSidebarItem(section: ProfileSection, label: string, count?: number) {
+  private _renderSidebarItem(section: ProfileSection | string, label: string, count?: number) {
     return html`
       <button
         class="sidebar-item ${this._activeSection === section ? "active" : ""}"
@@ -190,6 +195,11 @@ export class ProfileSettings extends LitElement {
       case "instructions":
         return this._renderInstructionsSection();
     }
+    // Extension-Point: profile-tabs — the active section may be an
+    // extension tab id (registered via `registerProfileTab`).
+    const ext = listProfileTabs().find((t) => t.id === this._activeSection);
+    if (ext) return ext.render();
+    return nothing;
   }
 
   // -----------------------------------------------------------------------
