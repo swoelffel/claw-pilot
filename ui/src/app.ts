@@ -522,10 +522,24 @@ export class CpApp extends LitElement {
 
   private _onHashChange = (): void => {
     if (this._updatingHash) return;
+    // When an extension claims the hash, the built-in router has nothing
+    // to map it onto — `hashToRoute` returns the home fallback. We still
+    // want a re-render so `_renderMain` picks up `matchExtensionHash`,
+    // hence the explicit requestUpdate even when the route reference
+    // doesn't change. See `_syncHashFromRoute` below for the symmetric
+    // safeguard against the bounce-back to `#/home`.
+    if (matchExtensionHash(location.hash)) {
+      this._route = { view: "home" };
+      this.requestUpdate();
+      return;
+    }
     this._route = hashToRoute(location.hash);
   };
 
   private _syncHashFromRoute(): void {
+    // Extension hashes are authoritative — never overwrite them with the
+    // synthetic `home` route that `_onHashChange` parked on `_route`.
+    if (matchExtensionHash(location.hash)) return;
     const target = routeToHash(this._route);
     const current = location.hash.replace(/^#?\/?/, "");
     const targetNorm = target.replace(/^\//, "");
