@@ -7,6 +7,8 @@
   "words": [
     "ABCDEFGHJKLMNPQRSTUVWXYZ",
     "abac",
+    "nocase",
+    "picomatch",
     "gitflow",
     "splunk",
     "unredacted",

@@ -143,6 +143,10 @@ export const ACTIONS = {
   AGENT_FILE_READ: "agent.file-read",
   AGENT_FILE_UPDATE: "agent.file-update",
   AGENT_FILE_DELETE: "agent.file-delete",
+  // WS-WRITE-001 — Extension-Point: ws-write-own
+  AGENT_PERMISSIONS_READ: "agent.permissions-read",
+  AGENT_PERMISSIONS_UPDATE: "agent.permissions-update",
+  AGENT_RECENT_WRITES_READ: "agent.recent-writes-read",
 
   // skills
   SKILL_LIST: "skill.list",

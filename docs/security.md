@@ -165,6 +165,59 @@ exercises the full set of probes; the most recent report is committed to
 
 ---
 
+## Workspace write scopes (WS-WRITE-001)
+
+Agents can mutate files in their own workspace via `ws_write_file` and
+`ws_delete_file`. These tools are gated by a per-agent linear scope persisted
+in `agents.fs_write_scope` (schema v42):
+
+| Scope        | Tools exposed                                                                |
+|--------------|-------------------------------------------------------------------------------|
+| `none`       | read-only (`ws_list_files`, `ws_search_files`)                                |
+| `own`        | + `ws_write_file`, `ws_delete_file`                                           |
+| `own_shared` | + `ws_write_shared_file`, `ws_delete_shared_file` (instance shared workspace) |
+| `system`     | reserved for FS-WRITE-001 (`fs_write_file`, `fs_delete_file`)                 |
+
+Every existing agent migrates to `none` on upgrade — the operator must
+explicitly opt in via the agent's `Permissions` tab (PR2).
+
+The write path enforces, in order:
+
+1. `validateWorkspaceRelativePath` — refuses absolute paths, `..` traversal,
+   reserved segments, non-allowed extensions (`src/lib/workspace-path.ts`).
+2. **Core protected paths** — `SOUL.md`, `IDENTITY.md`, `AGENTS.md` are
+   hardcoded in `src/runtime/plugin/workspace-knowledge/_protected-paths.ts`
+   and **cannot** be overridden via API or UI, even with scope `system`.
+3. **Custom protected globs** — `agents.protected_paths_json`, layered on top
+   of the core list (extends, never replaces). Globs evaluated via
+   `picomatch` (`{ dot: true, nocase: false }`).
+4. **Allowed-paths whitelist** — when set on `agents.allowed_paths_json`, a
+   write must match at least one glob.
+5. **Per-file size cap** — 1 MB (`MAX_BYTES`).
+6. **Atomic SQL CAS quota** — `agents.write_quota_mb` × `agents.quota_reset_period`
+   (`daily` / `weekly` / `never`). The CAS is a single `UPDATE … WHERE
+   bytes_written_period + ? <= cap` so concurrent writes cannot overshoot.
+7. **Disk + DB upsert** — workspace file written then mirrored into
+   `agent_files`.
+
+Every attempt — success or refusal — emits an `agent.workspace_write` audit
+event (`src/core/audit/events.ts`) with `outcome` ∈ {`ok`, `blocked`} and a
+machine-readable `reason` on refusals (`protected_path`, `outside_allowed`,
+`too_large`, `quota`, `scope_disabled`, `invalid_path`). No file content nor
+secret is persisted in the audit row — only the workspace-relative path.
+
+Permission management exposes three endpoints :
+
+- `GET    /api/instances/:slug/agents/:id/permissions`
+- `PATCH  /api/instances/:slug/agents/:id/permissions`
+- `GET    /api/instances/:slug/agents/:id/recent-writes?limit=10`
+
+The PATCH validates every glob server-side via `picomatch.makeRe` and
+refuses to mutate the core protected list (it is hardcoded and never read
+from the database).
+
+---
+
 ## Reporting a vulnerability
 
 ClawPilot is built and operated by Stephane (Castelis). Single-dev coverage
@@ -185,3 +238,6 @@ production deployments will be acknowledged within 24 hours.
 - **2026-05-04** — initial version after the May 2026 security sprint
   (audit C1, R5 ESLint extension, HMAC canonical module, licence server
   hardening, OIDC logout follow-up).
+- **2026-05-08** — added "Workspace write scopes" section after WS-WRITE-001
+  PR1 (linear scope ladder, hardcoded core protected paths, atomic CAS
+  quota, audit event taxonomy).
