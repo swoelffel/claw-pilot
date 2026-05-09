@@ -62,6 +62,36 @@ describe("SelfUpdateChecker._isNewer()", () => {
   it("pre-release suffix stripped — newer base version → true", () => {
     expect(checker._isNewer("0.12.0-beta.1", "0.11.0")).toBe(true);
   });
+
+  // Flavor gating — when `current` has a pre-release flavor (EE fork, RC, …),
+  // candidates from a different channel must NOT be flagged as upgrades.
+
+  it("EE current vs CE stable candidate → false (cross-channel)", () => {
+    // The original bug: 0.83.3-ent.7 should NOT see 0.83.4 as an upgrade.
+    expect(checker._isNewer("0.83.4", "0.83.3-ent.7")).toBe(false);
+  });
+
+  it("EE current vs same-base CE stable candidate → false", () => {
+    expect(checker._isNewer("0.83.3", "0.83.3-ent.7")).toBe(false);
+  });
+
+  it("EE current vs newer EE candidate (same flavor) → true", () => {
+    expect(checker._isNewer("0.83.4-ent.0", "0.83.3-ent.7")).toBe(true);
+  });
+
+  it("RC current vs different-flavor candidate → false", () => {
+    expect(checker._isNewer("0.83.4-beta.0", "0.83.3-rc.1")).toBe(false);
+  });
+
+  it("RC current vs newer RC (same flavor) → true", () => {
+    expect(checker._isNewer("0.83.4-rc.0", "0.83.3-rc.1")).toBe(true);
+  });
+
+  it("stable current vs flavored candidate — flavor gate does not fire", () => {
+    // No flavor on current ⇒ classic base comparison (existing behavior).
+    expect(checker._isNewer("0.12.0-beta.1", "0.11.0")).toBe(true);
+    expect(checker._isNewer("0.11.0-beta.1", "0.11.0")).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
