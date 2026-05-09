@@ -84,18 +84,42 @@ export class SelfUpdateChecker {
     return { version, tag };
   }
 
-  // Comparaison semver MAJOR.MINOR.PATCH
+  // Semver MAJOR.MINOR.PATCH comparison with pre-release flavor gating.
+  //
+  // The "flavor" is the leading alphanumeric token of the pre-release suffix
+  // (e.g. "ent" in "0.83.3-ent.7", "beta" in "0.11.0-beta.1"). When `current`
+  // carries a flavor — typically because the running build comes from a side
+  // channel like the Enterprise Edition fork — we only consider candidates
+  // sharing the same flavor as upgrades. Without this gate, an EE build
+  // (`0.83.3-ent.7`) would treat the next CE stable tag (`v0.83.4`) as a
+  // valid upgrade and prompt the operator with a confusing cross-channel
+  // banner. The CE update channel has no awareness of EE releases.
   _isNewer(candidate: string, current: string): boolean {
-    const parse = (v: string): [number, number, number] => {
-      // Strip prefixe "v" et suffixe pre-release
-      const clean = v.startsWith("v") ? v.slice(1) : v;
-      const base = clean.split("-")[0] ?? clean;
+    const stripV = (v: string): string => (v.startsWith("v") ? v.slice(1) : v);
+
+    const flavor = (v: string): string | null => {
+      const dash = v.indexOf("-");
+      if (dash === -1) return null;
+      const suffix = v.slice(dash + 1);
+      return suffix.split(".")[0] ?? null;
+    };
+
+    const parseBase = (v: string): [number, number, number] => {
+      const base = v.split("-")[0] ?? v;
       const parts = base.split(".").map((n) => parseInt(n, 10));
       return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0];
     };
 
-    const [cMaj, cMin, cPat] = parse(current);
-    const [lMaj, lMin, lPat] = parse(candidate);
+    const cleanCurrent = stripV(current);
+    const cleanCandidate = stripV(candidate);
+
+    const currentFlavor = flavor(cleanCurrent);
+    if (currentFlavor !== null && flavor(cleanCandidate) !== currentFlavor) {
+      return false;
+    }
+
+    const [cMaj, cMin, cPat] = parseBase(cleanCurrent);
+    const [lMaj, lMin, lPat] = parseBase(cleanCandidate);
 
     if (lMaj !== cMaj) return lMaj > cMaj;
     if (lMin !== cMin) return lMin > cMin;
