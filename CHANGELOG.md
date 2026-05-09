@@ -10,6 +10,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.83.4] — 2026-05-07
+
+> Path-based dashboard navigation. Replaces the legacy hash router with a centralized `navigation` service backed by the History API (`/blueprints` instead of `/#/blueprints`). Three regressions get fixed by the same change.
+
+### Fixed
+
+- **F5 on a non-root URL no longer bounces back to home** (#213). The previous design read the hash on the second tick of the Lit lifecycle, after the default `_route = home` had already round-tripped through the URL.
+- **Nav-tab clicks now leave extension views cleanly**. The "Settings" / `/ext/admin` button (Enterprise) used to keep its active state and freeze the URL; this was a knock-on effect of the hash short-circuit added in #211 to plug the original bounce.
+- **Home from inside an extension renders `<cp-home-screen>` again**, not the previously-active extension view.
+
+### Changed
+
+- New `ui/src/services/navigation.ts` service. Public API: `getCurrentRoute`, `navigateTo`, `navigateToPath`, `onRouteChange`. The URL (`window.location.pathname`) is the single source of truth — no Lit `_route` ⇆ `location.hash` two-way sync any more.
+- `Route` union gains an `extension` variant. `router.ts` exposes pure `pathToRoute` / `routeToPath` converters (renamed from `hashToRoute` / `routeToHash`).
+- `extension-views.ts` renames the `ExtensionView.toHash` field to `toPath` and the matcher helpers (`matchExtensionHash` → `matchExtensionRoute(id, subPath)`, `buildExtensionHash` → `buildExtensionPath`). Breaking change for the EE consumer; coordinated in `claw-pilot-enterprise` v0.83.3-ent.5.
+- Notification inbox and command palette navigate via `navigateToPath` instead of writing `location.hash` directly.
+
+### Compatibility
+
+- Legacy hash bookmarks (`/#/blueprints`, `/#/instances/foo/settings`, `/#/ext/admin`) are detected once at boot and rewritten in place via `history.replaceState`. Existing bookmarks keep working.
+- The Hono SPA fallback at `src/dashboard/server.ts` already serves `index.html` for any unknown path, so refreshing on a deep URL (e.g. `/instances/prod/pilot`) works out of the box without server changes.
+
+### Documentation
+
+- New `docs/architecture/navigation.md` covers the service contract and the discipline rule (never write `window.location` or `history` outside the service).
+
+---
+
 ## [0.83.3] — 2026-05-05
 
 > Doc-only follow-up. No code changes.
