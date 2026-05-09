@@ -10,6 +10,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.83.5] — 2026-05-09
+
+> Patch release. Fixes a cross-channel false positive in the auto-update banner — Enterprise builds (`0.83.x-ent.N`) were seeing CE stable tags as available upgrades.
+
+### Fixed
+
+- **Self-update banner respects pre-release flavor** (#216) — `_isNewer` now extracts the leading pre-release identifier (`ent`, `rc`, `beta`…) from the running version. When the current build carries a flavor, only same-flavor candidates qualify as upgrades; cross-channel matches are rejected. CE-on-stable behavior is unchanged. The `0.83.3-ent.7` running on MAC `clawpilot-ee` no longer suggests "downgrade" to CE `0.83.4`.
+
+---
+
 ## [0.83.4] — 2026-05-07
 
 > Path-based dashboard navigation. Replaces the legacy hash router with a centralized `navigation` service backed by the History API (`/blueprints` instead of `/#/blueprints`). Three regressions get fixed by the same change.
