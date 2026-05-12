@@ -146,6 +146,18 @@ export class Registry {
     return this.agents.updateAgentSync(agentDbId, fields);
   }
 
+  // --- Agent write permissions (WS-WRITE-001) ---
+  // Extension-Point: ws-write-own
+  getWritePermissions(agentDbId: number) {
+    return this.agents.getWritePermissions(agentDbId);
+  }
+  setWritePermissions(
+    agentDbId: number,
+    fields: Parameters<AgentRepository["setWritePermissions"]>[1],
+  ) {
+    return this.agents.setWritePermissions(agentDbId, fields);
+  }
+
   // --- Agent Files ---
   listAgentFiles(agentDbId: number) {
     return this.agents.listAgentFiles(agentDbId);

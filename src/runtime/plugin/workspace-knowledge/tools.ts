@@ -21,6 +21,8 @@ import { constants } from "../../../lib/constants.js";
 import { logger } from "../../../lib/logger.js";
 import { validateWorkspaceRelativePath } from "../../../lib/workspace-path.js";
 import type { InstanceSlug } from "../../types.js";
+import { resolveAgentScope, type WriteScope } from "./_scope.js";
+import { createWriteOwnTool, createDeleteOwnTool } from "./_write-tools.js";
 
 // ---------------------------------------------------------------------------
 // Exclusion rules — keep the two lists in sync with constants.ts and
@@ -578,15 +580,43 @@ function createDeleteSharedTool(
 // Public factory
 // ---------------------------------------------------------------------------
 
+/**
+ * WS-WRITE-001: linear-scope tool exposure.
+ *
+ * The factory always exposes the read-only tools (`ws_list_files`,
+ * `ws_search_files`). Write tools are added per the agent's `fs_write_scope`:
+ *
+ * - `none`         → 0 write tools
+ * - `own`          → + `ws_write_file`, `ws_delete_file`
+ * - `own_shared`   → + `ws_write_shared_file`, `ws_delete_shared_file`
+ * - `system`       → reserved for FS-WRITE-001 (`fs_write_file`, `fs_delete_file`),
+ *                    not implemented in this PR
+ *
+ * When `agentId` is undefined (e.g. plugin init outside a prompt loop), no
+ * write tools are exposed. The agent receives them only after the runtime
+ * resolves a concrete agent context.
+ */
 export function createWorkspaceKnowledgeTools(
   db: Database.Database,
   instanceSlug: InstanceSlug,
-  workDir?: string,
+  workDir: string | undefined,
+  agentId: string | undefined,
 ): Tool.Info[] {
-  return [
-    createListTool(db, instanceSlug),
-    createSearchTool(db, instanceSlug),
-    createWriteSharedTool(db, instanceSlug, workDir),
-    createDeleteSharedTool(db, instanceSlug, workDir),
-  ];
+  const tools: Tool.Info[] = [createListTool(db, instanceSlug), createSearchTool(db, instanceSlug)];
+
+  if (!agentId) return tools;
+  const perms = resolveAgentScope(db, instanceSlug, agentId);
+  const scope: WriteScope = perms?.scope ?? "none";
+
+  if (scope === "own" || scope === "own_shared" || scope === "system") {
+    tools.push(createWriteOwnTool(db, instanceSlug));
+    tools.push(createDeleteOwnTool(db, instanceSlug));
+  }
+  if (scope === "own_shared" || scope === "system") {
+    tools.push(createWriteSharedTool(db, instanceSlug, workDir));
+    tools.push(createDeleteSharedTool(db, instanceSlug, workDir));
+  }
+  // `system` reserved for FS-WRITE-001 — `fs_*` tools are added there.
+
+  return tools;
 }

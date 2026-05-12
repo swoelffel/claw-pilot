@@ -1691,6 +1691,50 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v42: Workspace-write-own (WS-WRITE-001).
+    //
+    // Adds the agent-level write scope + permission columns required to gate
+    // `ws_write_file` / `ws_delete_file` (and the existing shared variants).
+    // Also adds the `org_id` slot (R2) on `agents` since previous migrations
+    // never added one.
+    //
+    // All additive: every existing row keeps its NULL/0 defaults. The default
+    // scope `'none'` means no behavioral change — agents lose nothing until
+    // an admin opts in via the Permissions tab.
+    version: 42,
+    up(db) {
+      const cols = db.prepare("PRAGMA table_info(agents)").all() as Array<{ name: string }>;
+      const hasCol = (name: string): boolean => cols.some((c) => c.name === name);
+
+      if (!hasCol("org_id")) {
+        db.exec(`ALTER TABLE agents ADD COLUMN org_id TEXT NULL`);
+      }
+      if (!hasCol("fs_write_scope")) {
+        db.exec(`ALTER TABLE agents ADD COLUMN fs_write_scope TEXT NOT NULL DEFAULT 'none'
+                   CHECK (fs_write_scope IN ('none','own','own_shared','system'))`);
+      }
+      if (!hasCol("protected_paths_json")) {
+        db.exec(`ALTER TABLE agents ADD COLUMN protected_paths_json TEXT`);
+      }
+      if (!hasCol("allowed_paths_json")) {
+        db.exec(`ALTER TABLE agents ADD COLUMN allowed_paths_json TEXT`);
+      }
+      if (!hasCol("write_quota_mb")) {
+        db.exec(`ALTER TABLE agents ADD COLUMN write_quota_mb INTEGER`);
+      }
+      if (!hasCol("quota_reset_period")) {
+        db.exec(`ALTER TABLE agents ADD COLUMN quota_reset_period TEXT
+                   CHECK (quota_reset_period IN ('daily','weekly','never'))`);
+      }
+      if (!hasCol("bytes_written_period")) {
+        db.exec(`ALTER TABLE agents ADD COLUMN bytes_written_period INTEGER NOT NULL DEFAULT 0`);
+      }
+      if (!hasCol("quota_period_started_at")) {
+        db.exec(`ALTER TABLE agents ADD COLUMN quota_period_started_at TEXT`);
+      }
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
