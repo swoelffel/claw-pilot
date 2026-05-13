@@ -65,7 +65,9 @@ export const constants = {
   SSH_PATH_PREFIX: "export PATH=~/.npm-global/bin:/usr/local/bin:/usr/bin:/bin",
 
   // Self-update (claw-pilot)
-  GITHUB_REPO: "swoelffel/claw-pilot",
+  // Extension point: enterprise/forks override the source repo via CLAWPILOT_GITHUB_REPO
+  // (set by the EE bootstrap before constants is imported). Format: "owner/name".
+  GITHUB_REPO: process.env.CLAWPILOT_GITHUB_REPO ?? "swoelffel/claw-pilot",
   GITHUB_API_BASE: "https://api.github.com",
   SELF_UPDATE_CHECK_TIMEOUT: 5_000, // fetch GitHub API (ms)
   SELF_UPDATE_TIMEOUT: 600_000, // git + build timeout (ms) — 10 min
