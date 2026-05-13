@@ -693,6 +693,7 @@ export class ClawRuntime {
           flowId,
           body.triggerType ?? "manual",
           body.triggerDetail,
+          body.vars,
         );
       },
 

@@ -130,4 +130,18 @@ describe("interpolateTemplate", () => {
     expect(interpolateTemplate("v={{x}}", { x: null })).toBe("v={{x}}");
     expect(interpolateTemplate("v={{x}}", { x: undefined })).toBe("v={{x}}");
   });
+
+  it("supports kebab-case segments (step ids with dashes)", () => {
+    expect(
+      interpolateTemplate("Result: {{step-investigate.summary}}", {
+        "step-investigate": { summary: "found root cause" },
+      }),
+    ).toBe("Result: found root cause");
+  });
+
+  it("supports kebab-case top-level keys", () => {
+    expect(interpolateTemplate("Ticket {{ticket-id}}", { "ticket-id": "T-42" })).toBe(
+      "Ticket T-42",
+    );
+  });
 });

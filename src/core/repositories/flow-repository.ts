@@ -32,6 +32,7 @@ export interface FlowRunRow {
   status: FlowRunStatus;
   trigger_type: string;
   trigger_detail: string | null;
+  input_vars_json: string | null;
   started_at: string | null;
   finished_at: string | null;
   created_at: string;
@@ -78,6 +79,8 @@ export interface CreateFlowRunInput {
   instanceSlug: string;
   triggerType: string;
   triggerDetail?: string;
+  /** JSON-serialized input variables (`{{varName}}` templating source). */
+  inputVarsJson?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -175,10 +178,16 @@ export function deleteFlowDefinition(db: Database.Database, id: number): boolean
 export function createFlowRun(db: Database.Database, input: CreateFlowRunInput): FlowRunRow {
   const result = db
     .prepare(
-      `INSERT INTO rt_flow_runs (flow_id, instance_slug, trigger_type, trigger_detail)
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO rt_flow_runs (flow_id, instance_slug, trigger_type, trigger_detail, input_vars_json)
+       VALUES (?, ?, ?, ?, ?)`,
     )
-    .run(input.flowId, input.instanceSlug, input.triggerType, input.triggerDetail ?? null);
+    .run(
+      input.flowId,
+      input.instanceSlug,
+      input.triggerType,
+      input.triggerDetail ?? null,
+      input.inputVarsJson ?? null,
+    );
   return getFlowRun(db, Number(result.lastInsertRowid))!;
 }
 

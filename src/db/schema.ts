@@ -1330,6 +1330,7 @@ const MIGRATIONS: Migration[] = [
                           CHECK(status IN ('pending','running','completed','failed','cancelled')),
           trigger_type    TEXT NOT NULL DEFAULT 'manual',
           trigger_detail  TEXT,
+          input_vars_json TEXT,
           started_at      TEXT,
           finished_at     TEXT,
           created_at      TEXT NOT NULL DEFAULT (datetime('now')),
@@ -1732,6 +1733,23 @@ const MIGRATIONS: Migration[] = [
       }
       if (!hasCol("quota_period_started_at")) {
         db.exec(`ALTER TABLE agents ADD COLUMN quota_period_started_at TEXT`);
+      }
+    },
+  },
+  {
+    // v43: Flow templating — input vars on rt_flow_runs (FLOW-TEMPLATING).
+    //
+    // Adds the `input_vars_json` column to persist run-scoped variables passed
+    // to `POST /flows/:id/run`. Resolved at briefing time alongside dep step
+    // SITREPs so `step.prompt` and `briefing.extraContext` can interpolate
+    // `{{varName}}` and `{{stepId.field}}` placeholders.
+    //
+    // Additive: existing rows keep NULL, runs without vars behave identically.
+    version: 43,
+    up(db) {
+      const cols = db.prepare("PRAGMA table_info(rt_flow_runs)").all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === "input_vars_json")) {
+        db.exec(`ALTER TABLE rt_flow_runs ADD COLUMN input_vars_json TEXT`);
       }
     },
   },
