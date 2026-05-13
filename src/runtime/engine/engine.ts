@@ -689,6 +689,10 @@ export class ClawRuntime {
             registry: this._registry,
             config: this.config,
             workDir: this.workDir,
+            // Snapshot the registry reference at flow-run start. A later
+            // runtime reload that swaps `this._mcpRegistry` will not affect
+            // the steps already in flight (R1 in the brief).
+            ...(this._mcpRegistry !== undefined ? { mcpRegistry: this._mcpRegistry } : {}),
           },
           flowId,
           body.triggerType ?? "manual",
