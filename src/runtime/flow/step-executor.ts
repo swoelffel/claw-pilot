@@ -51,7 +51,7 @@ export async function executeStep(
   ctx: FlowEngineContext,
   input: StepExecutionInput,
 ): Promise<StepExecutionResult> {
-  const { db, instanceSlug, config } = ctx;
+  const { db, instanceSlug, config, mcpRegistry } = ctx;
   const { agentId, briefingText, flowName, stepId } = input;
 
   // 1. Create ephemeral mission session
@@ -112,6 +112,7 @@ export async function executeStep(
       agentId,
       sessionId: session.id,
       ...(ctx.workDir !== undefined ? { workDir: ctx.workDir } : {}),
+      ...(mcpRegistry !== undefined ? { mcpRegistry } : {}),
       abort: abortController.signal,
       extraTools: [completeStepTool, extensionTool],
       maxSteps: softCap,
