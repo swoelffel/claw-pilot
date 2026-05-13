@@ -89,7 +89,10 @@ export function collectFlowContext(args: FlowContextProviderArgs): Record<string
 // Templating
 // ---------------------------------------------------------------------------
 
-const TEMPLATE_TAG = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\}\}/g;
+// Allow kebab-case segments (e.g. `{{step-investigate.summary}}`) — step ids
+// in flow definitions accept dashes, and run-time vars from `POST /flows/:id/run`
+// may carry dashed keys.
+const TEMPLATE_TAG = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_.-]*)\s*\}\}/g;
 
 /**
  * Substitute `{{ path.to.value }}` tags in `template` with values resolved

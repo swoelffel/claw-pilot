@@ -68,6 +68,12 @@ const CreateFlowSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
+const RunFlowSchema = z
+  .object({
+    vars: z.record(z.string(), z.unknown()).optional(),
+  })
+  .default({});
+
 const UpdateFlowSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().max(1000).nullable().optional(),
@@ -259,9 +265,26 @@ async function handleTriggerFlowRun(c: HonoContext, db: DB, slug: string): Promi
     return apiError(c, 409, "ALREADY_RUNNING", "A run is already in progress for this flow");
   }
 
+  // Body is optional — clients triggering a flow without vars send no body.
+  let rawBody: unknown = {};
+  try {
+    const text = await c.req.text();
+    if (text && text.trim().length > 0) {
+      rawBody = JSON.parse(text);
+    }
+  } catch (parseErr) {
+    return apiError(c, 400, "INVALID_BODY", `Invalid JSON: ${String(parseErr)}`);
+  }
+  const parsed = RunFlowSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return apiError(c, 400, "INVALID_BODY", parsed.error.message);
+  }
+  const { vars } = parsed.data;
+
   try {
     const result = await callRuntimeApi<{ runId: number }>(slug, `/internal/flows/${id}/run`, {
       triggerType: "manual",
+      ...(vars !== undefined ? { vars } : {}),
     });
     return c.json({ runId: result.runId }, 202);
   } catch (startErr: unknown) {
