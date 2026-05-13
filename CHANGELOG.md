@@ -25,6 +25,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+
 ## [0.83.5] — 2026-05-09
 
 > Patch release. Fixes a cross-channel false positive in the auto-update banner — Enterprise builds (`0.83.x-ent.N`) were seeing CE stable tags as available upgrades.
