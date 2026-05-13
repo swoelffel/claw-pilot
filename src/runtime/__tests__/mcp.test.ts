@@ -232,6 +232,120 @@ describe("McpClient", () => {
     expect(client.status.status).toBe("disabled");
   });
 
+  it("tool definition exposes the MCP server's raw JSON Schema as inputJsonSchema", async () => {
+    const client = new McpClient("schema-server");
+    await client.connect({
+      type: "local",
+      id: "schema-server",
+      command: "npx",
+      args: [],
+      timeout: 5000,
+      enabled: true,
+    });
+
+    const tools = await client.listTools();
+    const readTool = tools.find((t) => t.id === "schema_server_read_file");
+    expect(readTool).toBeDefined();
+
+    const def = await readTool!.init();
+    // The raw MCP inputSchema must be forwarded verbatim so the model sees the
+    // declared types (objects, arrays, nested) instead of an unconstrained record.
+    expect(def.inputJsonSchema).toEqual({
+      type: "object",
+      properties: { path: { type: "string" } },
+    });
+  });
+
+  it("forwards args natively (no JSON.stringify) to callTool — string/number/bool/array-scalar/array-object/nested", async () => {
+    // Arrange — mock listTools to return a tool with a rich schema and capture callTool args
+    const captured: Array<{ name: string; arguments: unknown }> = [];
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+    const ClientMock = Client as unknown as ReturnType<typeof vi.fn>;
+    ClientMock.mockImplementationOnce(function () {
+      return {
+        connect: vi.fn().mockResolvedValue(undefined),
+        listTools: vi.fn().mockResolvedValue({
+          tools: [
+            {
+              name: "do_actions",
+              description: "Apply a batch of actions",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  label: { type: "string" },
+                  count: { type: "number" },
+                  dryRun: { type: "boolean" },
+                  tags: { type: "array", items: { type: "string" } },
+                  actions: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: { id: { type: "string" }, payload: { type: "object" } },
+                    },
+                  },
+                  nested: { type: "object", properties: { deep: { type: "object" } } },
+                },
+              },
+            },
+          ],
+        }),
+        callTool: vi.fn().mockImplementation(async (req: { name: string; arguments: unknown }) => {
+          captured.push(req);
+          return { content: [{ type: "text", text: "ok" }] };
+        }),
+        close: vi.fn().mockResolvedValue(undefined),
+        setNotificationHandler: vi.fn(),
+      };
+    });
+
+    const client = new McpClient("rich");
+    await client.connect({
+      type: "local",
+      id: "rich",
+      command: "npx",
+      args: [],
+      timeout: 5000,
+      enabled: true,
+    });
+    const tools = await client.listTools();
+    const tool = tools.find((t) => t.id === "rich_do_actions")!;
+    const def = await tool.init();
+
+    const args = {
+      label: "hello",
+      count: 42,
+      dryRun: true,
+      tags: ["a", "b"],
+      actions: [
+        { id: "x", payload: { ok: 1 } },
+        { id: "y", payload: { ok: 2 } },
+      ],
+      nested: { deep: { k: "v" } },
+    };
+
+    await def.execute(args, {
+      sessionId: "sess-1" as never,
+      messageId: "msg-1" as never,
+      agentId: "agent-1",
+      abort: new AbortController().signal,
+      metadata: () => {},
+    });
+
+    expect(captured).toHaveLength(1);
+    // Critical: arguments must NOT be a JSON string and each field keeps its native type
+    const sent = captured[0]!.arguments as Record<string, unknown>;
+    expect(typeof sent).toBe("object");
+    expect(typeof sent.label).toBe("string");
+    expect(typeof sent.count).toBe("number");
+    expect(typeof sent.dryRun).toBe("boolean");
+    expect(Array.isArray(sent.tags)).toBe(true);
+    expect(Array.isArray(sent.actions)).toBe(true);
+    expect(typeof (sent.actions as unknown[])[0]).toBe("object");
+    expect(typeof sent.nested).toBe("object");
+    // And the values round-trip identically
+    expect(sent).toEqual(args);
+  });
+
   it("tool execute() calls client.callTool and returns output", async () => {
     const client = new McpClient("exec-server");
     await client.connect({

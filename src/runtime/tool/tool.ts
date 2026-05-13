@@ -62,6 +62,14 @@ export namespace Tool {
   export interface Definition<P extends z.ZodType = z.ZodType> {
     description: string;
     parameters: P;
+    /**
+     * Optional raw JSON Schema describing the tool inputs.
+     * When present, the prompt-loop forwards this verbatim to the model instead
+     * of deriving a schema from `parameters`. MCP tools use this to preserve the
+     * server-declared schema (arrays, nested objects, enums...) — otherwise the
+     * model sees an unconstrained record and may emit complex args as strings.
+     */
+    inputJsonSchema?: Record<string, unknown>;
     /** If true, this tool is only available to owner channels (web, telegram) — not internal sub-agents */
     ownerOnly?: boolean;
     execute(args: z.infer<P>, ctx: Context): Promise<Result>;
