@@ -4,7 +4,12 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { initDatabase } from "../../../db/schema.js";
-import { _collectDepSitreps, propagateSkipDownstream } from "../engine.js";
+import {
+  _buildStepTemplateContext,
+  _collectDepSitreps,
+  propagateSkipDownstream,
+} from "../engine.js";
+import type { SitrepResult } from "../types.js";
 import type { FlowStepDef } from "../types.js";
 import {
   createFlowDefinition,
@@ -237,5 +242,112 @@ describe("propagateSkipDownstream", () => {
     propagateSkipDownstream(db, runId, stepDefs, "a");
 
     expect(getStepRun(db, runId, "b")?.status).toBe("running");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// _buildStepTemplateContext — vars + steps templating context
+// ---------------------------------------------------------------------------
+
+describe("_buildStepTemplateContext", () => {
+  const makeSitrep = (summary: string): SitrepResult => ({
+    outcome: "success",
+    summary,
+    keyFindings: [],
+  });
+
+  it("exposes input vars at top-level and under `vars`", () => {
+    const flow = createFlowDefinition(db, {
+      instanceSlug: "inst-1",
+      name: "f",
+      stepsJson: JSON.stringify([{ id: "root", agentId: "a1", prompt: "go" }]),
+    });
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "inst-1",
+      triggerType: "manual",
+      inputVarsJson: JSON.stringify({ ticket_id: "T-42", "ticket-id": "T-42" }),
+    });
+
+    const ctx = _buildStepTemplateContext(db, run.id, [], {});
+    expect(ctx.ticket_id).toBe("T-42");
+    expect((ctx.vars as Record<string, unknown>).ticket_id).toBe("T-42");
+    expect(ctx["ticket-id"]).toBe("T-42");
+  });
+
+  it("returns empty vars when input_vars_json is null", () => {
+    const flow = createFlowDefinition(db, {
+      instanceSlug: "inst-1",
+      name: "f",
+      stepsJson: JSON.stringify([{ id: "root", agentId: "a1", prompt: "go" }]),
+    });
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "inst-1",
+      triggerType: "manual",
+    });
+
+    const ctx = _buildStepTemplateContext(db, run.id, [], {});
+    expect(ctx.vars).toEqual({});
+  });
+
+  it("exposes dep sitreps at top-level by stepId and under `steps`", () => {
+    const flow = createFlowDefinition(db, {
+      instanceSlug: "inst-1",
+      name: "f",
+      stepsJson: JSON.stringify([{ id: "root", agentId: "a1", prompt: "go" }]),
+    });
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "inst-1",
+      triggerType: "manual",
+    });
+
+    const deps = [
+      { stepId: "step-investigate", sitrep: makeSitrep("found root cause") },
+      { stepId: "step-fix", sitrep: makeSitrep("patch applied") },
+    ];
+    const ctx = _buildStepTemplateContext(db, run.id, deps, {});
+
+    expect((ctx["step-investigate"] as SitrepResult).summary).toBe("found root cause");
+    expect((ctx["step-fix"] as SitrepResult).summary).toBe("patch applied");
+    const steps = ctx.steps as Record<string, SitrepResult>;
+    expect(steps["step-investigate"]?.summary).toBe("found root cause");
+  });
+
+  it("preserves provider context (e.g. trigger.*) alongside vars/steps", () => {
+    const flow = createFlowDefinition(db, {
+      instanceSlug: "inst-1",
+      name: "f",
+      stepsJson: JSON.stringify([{ id: "root", agentId: "a1", prompt: "go" }]),
+    });
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "inst-1",
+      triggerType: "manual",
+      inputVarsJson: JSON.stringify({ ticket_id: "T-1" }),
+    });
+
+    const providerContext = { trigger: { event: "cron" } };
+    const ctx = _buildStepTemplateContext(db, run.id, [], providerContext);
+    expect(ctx.trigger).toEqual({ event: "cron" });
+    expect(ctx.ticket_id).toBe("T-1");
+  });
+
+  it("survives malformed input_vars_json (logs warn, returns {})", () => {
+    const flow = createFlowDefinition(db, {
+      instanceSlug: "inst-1",
+      name: "f",
+      stepsJson: JSON.stringify([{ id: "root", agentId: "a1", prompt: "go" }]),
+    });
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "inst-1",
+      triggerType: "manual",
+      inputVarsJson: "{not json",
+    });
+
+    const ctx = _buildStepTemplateContext(db, run.id, [], {});
+    expect(ctx.vars).toEqual({});
   });
 });

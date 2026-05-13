@@ -10,6 +10,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.84.0] — 2026-05-13
+
+### Added
+
+- **Flow engine: MCP servers now exposed to flow step agents** (#218) — agents invoked during a flow run now receive their configured MCP tools, exactly as in interactive chat. `FlowEngineContext` carries a `mcpRegistry` reference captured at run start and threaded through `executeStep` → `ChannelRouter.route`. Fixes a silent total blocking of MCP tool use in all flow executions (builtin flows `mia-tma-pipeline` / `mia-tma-poller` included).
+- **Flow engine: variable templating + body input on `POST /flows/:id/run`** (#221) — the trigger route now accepts `{ vars?: Record<string, unknown> }`. Template placeholders `{{var_name}}` and `{{step-id.field}}` in step briefings are resolved at execution time against the input vars and the sitrep outputs of completed upstream steps. Builtin flows no longer require direct DB patching to pass external context (e.g. `{{ticket_id}}`). Adds `input_vars_json` column to `rt_flow_runs` (schema v42).
+- **Agent workspace write access (WS-WRITE-001)** (#215) — primary agents can now read and write their own workspace. New `ws_write_file`, `ws_append_file`, `ws_delete_file`, and `ws_move_file` tools gated behind the `workspace.files.write` permission. Scope enforcement (`_scope.ts`) restricts writes to the agent's own workspace directory with protected-path checks for sensitive files (SOUL.md, IDENTITY.md, memory files). New `instance_shared_files` bucket accessible to all agents of the same instance via `ws_list_shared_files` / `ws_read_shared_file`.
+
+### Changed
+
+- **MCP tool schema forwarded verbatim to the model** (#219) — the bridge between `@ai-sdk/anthropic` and MCP client no longer re-serialises complex parameter types. Array and object arguments (e.g. `actions: Array<{…}>`) are now forwarded as native JSON values instead of being double-stringified. Fixes `expected array, received string` errors on any MCP tool with non-scalar input schema.
+- **Self-updater: `CLAWPILOT_GITHUB_REPO` env override** (#220) — the GitHub repository used by the self-update checker and banner can now be overridden at runtime via the `CLAWPILOT_GITHUB_REPO` environment variable (format: `owner/repo`). Allows operators and downstream forks to point the updater at their own release channel without patching the binary.
+
+---
+
+
 ## [0.83.5] — 2026-05-09
 
 > Patch release. Fixes a cross-channel false positive in the auto-update banner — Enterprise builds (`0.83.x-ent.N`) were seeing CE stable tags as available upgrades.

@@ -5,6 +5,7 @@
 import type Database from "better-sqlite3";
 import type { Registry } from "../../core/registry.js";
 import type { RuntimeConfig } from "../config/index.js";
+import type { McpRegistry } from "../mcp/registry.js";
 import type { InstanceSlug } from "../types.js";
 
 // ---------------------------------------------------------------------------
@@ -82,4 +83,12 @@ export interface FlowEngineContext {
   config: RuntimeConfig;
   workDir: string | undefined;
   abort?: AbortController;
+  /**
+   * MCP registry snapshot for the duration of this flow run. Captured at
+   * `startFlowRun()` time so a runtime-level reload mid-run cannot swap
+   * tool sources under a running step. When the daemon has no MCP servers
+   * configured this is `undefined`; `ChannelRouter.route` then injects no
+   * MCP tools (same behaviour as a chat with no MCP).
+   */
+  mcpRegistry?: McpRegistry;
 }

@@ -66,6 +66,11 @@ export interface WakeRequest {
 export interface FlowRunRequest {
   triggerType?: string;
   triggerDetail?: string;
+  /**
+   * Run-scoped input variables forwarded from `POST /flows/:id/run`. Resolved
+   * at briefing time into `{{varName}}` placeholders. Validated upstream.
+   */
+  vars?: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------

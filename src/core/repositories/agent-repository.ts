@@ -152,6 +152,89 @@ export class AgentRepository {
       .run(fields.configHash, fields.syncedAt, agentDbId);
   }
 
+  // --- Workspace-write permissions (WS-WRITE-001) ---
+
+  getWritePermissions(agentDbId: number):
+    | {
+        fsWriteScope: string;
+        protectedPathsJson: string | null;
+        allowedPathsJson: string | null;
+        writeQuotaMb: number | null;
+        quotaResetPeriod: string | null;
+        bytesWrittenPeriod: number;
+        quotaPeriodStartedAt: string | null;
+      }
+    | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT fs_write_scope, protected_paths_json, allowed_paths_json,
+                write_quota_mb, quota_reset_period, bytes_written_period,
+                quota_period_started_at
+           FROM agents
+          WHERE id = ?`,
+      )
+      .get(agentDbId) as
+      | {
+          fs_write_scope: string;
+          protected_paths_json: string | null;
+          allowed_paths_json: string | null;
+          write_quota_mb: number | null;
+          quota_reset_period: string | null;
+          bytes_written_period: number;
+          quota_period_started_at: string | null;
+        }
+      | undefined;
+    if (!row) return undefined;
+    return {
+      fsWriteScope: row.fs_write_scope,
+      protectedPathsJson: row.protected_paths_json,
+      allowedPathsJson: row.allowed_paths_json,
+      writeQuotaMb: row.write_quota_mb,
+      quotaResetPeriod: row.quota_reset_period,
+      bytesWrittenPeriod: row.bytes_written_period,
+      quotaPeriodStartedAt: row.quota_period_started_at,
+    };
+  }
+
+  setWritePermissions(
+    agentDbId: number,
+    fields: {
+      fsWriteScope?: "none" | "own" | "own_shared" | "system";
+      protectedPathsJson?: string | null;
+      allowedPathsJson?: string | null;
+      writeQuotaMb?: number | null;
+      quotaResetPeriod?: "daily" | "weekly" | "never" | null;
+    },
+  ): void {
+    const sets: string[] = [];
+    const values: unknown[] = [];
+
+    if (fields.fsWriteScope !== undefined) {
+      sets.push("fs_write_scope = ?");
+      values.push(fields.fsWriteScope);
+    }
+    if ("protectedPathsJson" in fields) {
+      sets.push("protected_paths_json = ?");
+      values.push(fields.protectedPathsJson ?? null);
+    }
+    if ("allowedPathsJson" in fields) {
+      sets.push("allowed_paths_json = ?");
+      values.push(fields.allowedPathsJson ?? null);
+    }
+    if ("writeQuotaMb" in fields) {
+      sets.push("write_quota_mb = ?");
+      values.push(fields.writeQuotaMb ?? null);
+    }
+    if ("quotaResetPeriod" in fields) {
+      sets.push("quota_reset_period = ?");
+      values.push(fields.quotaResetPeriod ?? null);
+    }
+
+    if (sets.length === 0) return;
+    values.push(agentDbId);
+    this.db.prepare(`UPDATE agents SET ${sets.join(", ")} WHERE id = ?`).run(...values);
+  }
+
   // --- Agent Files ---
 
   listAgentFiles(agentDbId: number): AgentFileRecord[] {

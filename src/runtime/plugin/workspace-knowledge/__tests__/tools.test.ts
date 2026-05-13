@@ -105,20 +105,43 @@ describe("workspace-knowledge plugin", () => {
     db.close();
   });
 
-  it("creates the four ws_* tools", () => {
-    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
-    expect(tools).toHaveLength(4);
+  it("default scope=none exposes only the read-only tools", () => {
+    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, undefined, AGENT_ID);
     const ids = tools.map((t) => t.id).sort();
-    expect(ids).toEqual([
-      "ws_delete_shared_file",
-      "ws_list_files",
-      "ws_search_files",
-      "ws_write_shared_file",
-    ]);
+    expect(ids).toEqual(["ws_list_files", "ws_search_files"]);
+  });
+
+  it("scope=own adds ws_write_file and ws_delete_file", () => {
+    db.prepare("UPDATE agents SET fs_write_scope = 'own' WHERE id = ?").run(agentDbId);
+    try {
+      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, undefined, AGENT_ID);
+      const ids = tools.map((t) => t.id).sort();
+      expect(ids).toEqual(["ws_delete_file", "ws_list_files", "ws_search_files", "ws_write_file"]);
+    } finally {
+      db.prepare("UPDATE agents SET fs_write_scope = 'none' WHERE id = ?").run(agentDbId);
+    }
+  });
+
+  it("scope=own_shared adds the shared write/delete pair too", () => {
+    db.prepare("UPDATE agents SET fs_write_scope = 'own_shared' WHERE id = ?").run(agentDbId);
+    try {
+      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, undefined, AGENT_ID);
+      const ids = tools.map((t) => t.id).sort();
+      expect(ids).toEqual([
+        "ws_delete_file",
+        "ws_delete_shared_file",
+        "ws_list_files",
+        "ws_search_files",
+        "ws_write_file",
+        "ws_write_shared_file",
+      ]);
+    } finally {
+      db.prepare("UPDATE agents SET fs_write_scope = 'none' WHERE id = ?").run(agentDbId);
+    }
   });
 
   it("ws_list_files excludes identity files and memory/* and includes user files", async () => {
-    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, undefined, AGENT_ID);
     const result = await execTool(tools, "ws_list_files", {});
     expect(result.output).not.toContain("SOUL.md");
     expect(result.output).not.toContain("AGENTS.md");
@@ -129,20 +152,20 @@ describe("workspace-knowledge plugin", () => {
   });
 
   it("ws_list_files extracts H1 title", async () => {
-    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, undefined, AGENT_ID);
     const result = await execTool(tools, "ws_list_files", {});
     expect(result.output).toContain('"Brainstorming ClawPort"');
     expect(result.output).toContain('"Plan: refactor tools"');
   });
 
   it("ws_list_files extracts frontmatter description as title", async () => {
-    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, undefined, AGENT_ID);
     const result = await execTool(tools, "ws_list_files", {});
     expect(result.output).toContain('"Draft partnership email"');
   });
 
   it("ws_list_files scopes to subdirectory via dir arg", async () => {
-    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, undefined, AGENT_ID);
     const result = await execTool(tools, "ws_list_files", { dir: "projects" });
     expect(result.output).toContain("projects/refactor.md");
     expect(result.output).not.toContain("notes.md");
@@ -150,7 +173,7 @@ describe("workspace-knowledge plugin", () => {
   });
 
   it("ws_list_files returns message when agent not found in registry", async () => {
-    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, undefined, AGENT_ID);
     const tool = tools.find((t) => t.id === "ws_list_files")!;
     const def = await tool.init();
     const result = await def.execute({}, { agentId: "nonexistent-agent" } as Tool.Context);
@@ -158,7 +181,7 @@ describe("workspace-knowledge plugin", () => {
   });
 
   it("ws_search_files finds matches across user files only", async () => {
-    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, undefined, AGENT_ID);
     const result = await execTool(tools, "ws_search_files", { query: "llama" });
     // Should match notes.md and drafts/email.md (both mention llama),
     // but NOT memory/facts.md (excluded).
@@ -170,13 +193,13 @@ describe("workspace-knowledge plugin", () => {
   });
 
   it("ws_search_files returns no-matches message on miss", async () => {
-    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, undefined, AGENT_ID);
     const result = await execTool(tools, "ws_search_files", { query: "zzzNotPresent" });
     expect(result.output).toContain("No matches");
   });
 
   it("ws_search_files returns readable error on invalid FTS5 syntax", async () => {
-    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+    const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, undefined, AGENT_ID);
     // Unbalanced quote triggers SQLite FTS5 syntax error
     const result = await execTool(tools, "ws_search_files", { query: '"unbalanced' });
     expect(result.output.toLowerCase()).toContain("search failed");
@@ -213,7 +236,7 @@ describe("workspace-knowledge plugin", () => {
     });
 
     it("ws_list_files includes shared files under @shared/ prefix", async () => {
-      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, undefined, AGENT_ID);
       const result = await execTool(tools, "ws_list_files", {});
       expect(result.output).toContain("@shared/README.md");
       expect(result.output).toContain("@shared/docs/onboarding.md");
@@ -222,14 +245,14 @@ describe("workspace-knowledge plugin", () => {
     });
 
     it("ws_list_files scopes to shared with @shared/ prefix in dir", async () => {
-      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, undefined, AGENT_ID);
       const result = await execTool(tools, "ws_list_files", { dir: "@shared" });
       expect(result.output).toContain("@shared/README.md");
       expect(result.output).not.toContain("notes.md");
     });
 
     it("ws_search_files finds matches in the shared workspace", async () => {
-      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG);
+      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, undefined, AGENT_ID);
       const result = await execTool(tools, "ws_search_files", { query: "llama" });
       // Matches from both scopes should appear, shared ones prefixed with @shared/
       expect(result.output).toContain("@shared/README.md");
@@ -245,14 +268,16 @@ describe("workspace-knowledge plugin", () => {
 
     beforeAll(() => {
       tmpWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), "cp-shared-test-"));
+      db.prepare("UPDATE agents SET fs_write_scope = 'own_shared' WHERE id = ?").run(agentDbId);
     });
 
     afterAll(() => {
       fs.rmSync(tmpWorkDir, { recursive: true, force: true });
+      db.prepare("UPDATE agents SET fs_write_scope = 'none' WHERE id = ?").run(agentDbId);
     });
 
     it("ws_write_shared_file writes to disk AND DB, then listing shows it", async () => {
-      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, tmpWorkDir);
+      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, tmpWorkDir, AGENT_ID);
       const write = await execTool(tools, "ws_write_shared_file", {
         path: "notes/handoff.md",
         content: "# Handoff\nSharing results with teammates.",
@@ -270,7 +295,7 @@ describe("workspace-knowledge plugin", () => {
     });
 
     it("ws_write_shared_file rejects an invalid path", async () => {
-      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, tmpWorkDir);
+      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, tmpWorkDir, AGENT_ID);
       const r = await execTool(tools, "ws_write_shared_file", {
         path: "../escape.md",
         content: "x",
@@ -279,7 +304,7 @@ describe("workspace-knowledge plugin", () => {
     });
 
     it("ws_delete_shared_file removes from disk AND DB", async () => {
-      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, tmpWorkDir);
+      const tools = createWorkspaceKnowledgeTools(db, INSTANCE_SLUG, tmpWorkDir, AGENT_ID);
       await execTool(tools, "ws_write_shared_file", {
         path: "to-delete.md",
         content: "bye",

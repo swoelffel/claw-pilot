@@ -1330,6 +1330,7 @@ const MIGRATIONS: Migration[] = [
                           CHECK(status IN ('pending','running','completed','failed','cancelled')),
           trigger_type    TEXT NOT NULL DEFAULT 'manual',
           trigger_detail  TEXT,
+          input_vars_json TEXT,
           started_at      TEXT,
           finished_at     TEXT,
           created_at      TEXT NOT NULL DEFAULT (datetime('now')),
@@ -1689,6 +1690,67 @@ const MIGRATIONS: Migration[] = [
           ON rt_flow_triggers(instance_slug, webhook_slug)
           WHERE webhook_slug IS NOT NULL;
       `);
+    },
+  },
+  {
+    // v42: Workspace-write-own (WS-WRITE-001).
+    //
+    // Adds the agent-level write scope + permission columns required to gate
+    // `ws_write_file` / `ws_delete_file` (and the existing shared variants).
+    // Also adds the `org_id` slot (R2) on `agents` since previous migrations
+    // never added one.
+    //
+    // All additive: every existing row keeps its NULL/0 defaults. The default
+    // scope `'none'` means no behavioral change — agents lose nothing until
+    // an admin opts in via the Permissions tab.
+    version: 42,
+    up(db) {
+      const cols = db.prepare("PRAGMA table_info(agents)").all() as Array<{ name: string }>;
+      const hasCol = (name: string): boolean => cols.some((c) => c.name === name);
+
+      if (!hasCol("org_id")) {
+        db.exec(`ALTER TABLE agents ADD COLUMN org_id TEXT NULL`);
+      }
+      if (!hasCol("fs_write_scope")) {
+        db.exec(`ALTER TABLE agents ADD COLUMN fs_write_scope TEXT NOT NULL DEFAULT 'none'
+                   CHECK (fs_write_scope IN ('none','own','own_shared','system'))`);
+      }
+      if (!hasCol("protected_paths_json")) {
+        db.exec(`ALTER TABLE agents ADD COLUMN protected_paths_json TEXT`);
+      }
+      if (!hasCol("allowed_paths_json")) {
+        db.exec(`ALTER TABLE agents ADD COLUMN allowed_paths_json TEXT`);
+      }
+      if (!hasCol("write_quota_mb")) {
+        db.exec(`ALTER TABLE agents ADD COLUMN write_quota_mb INTEGER`);
+      }
+      if (!hasCol("quota_reset_period")) {
+        db.exec(`ALTER TABLE agents ADD COLUMN quota_reset_period TEXT
+                   CHECK (quota_reset_period IN ('daily','weekly','never'))`);
+      }
+      if (!hasCol("bytes_written_period")) {
+        db.exec(`ALTER TABLE agents ADD COLUMN bytes_written_period INTEGER NOT NULL DEFAULT 0`);
+      }
+      if (!hasCol("quota_period_started_at")) {
+        db.exec(`ALTER TABLE agents ADD COLUMN quota_period_started_at TEXT`);
+      }
+    },
+  },
+  {
+    // v43: Flow templating — input vars on rt_flow_runs (FLOW-TEMPLATING).
+    //
+    // Adds the `input_vars_json` column to persist run-scoped variables passed
+    // to `POST /flows/:id/run`. Resolved at briefing time alongside dep step
+    // SITREPs so `step.prompt` and `briefing.extraContext` can interpolate
+    // `{{varName}}` and `{{stepId.field}}` placeholders.
+    //
+    // Additive: existing rows keep NULL, runs without vars behave identically.
+    version: 43,
+    up(db) {
+      const cols = db.prepare("PRAGMA table_info(rt_flow_runs)").all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === "input_vars_json")) {
+        db.exec(`ALTER TABLE rt_flow_runs ADD COLUMN input_vars_json TEXT`);
+      }
     },
   },
 ];

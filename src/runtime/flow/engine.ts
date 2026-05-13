@@ -16,6 +16,7 @@ import {
   hasFailedSteps,
   hasUnsuccessfulSteps,
   getFlowDefinition,
+  getFlowRun,
   getStepRun,
 } from "../../core/repositories/flow-repository.js";
 import type { FlowStepDef, FlowEngineContext, SitrepResult } from "./types.js";
@@ -32,21 +33,31 @@ import { logger } from "../../lib/logger.js";
 /**
  * Start a flow run and execute its DAG asynchronously.
  * Returns the run ID immediately (fire-and-forget pattern).
+ *
+ * `vars` is the run-scoped input bag forwarded by `POST /flows/:id/run`
+ * (validated upstream). It is persisted as JSON on `rt_flow_runs` and
+ * loaded at briefing time to resolve `{{varName}}` placeholders in step
+ * prompts and `briefing.extraContext`.
  */
 export function startFlowRun(
   ctx: FlowEngineContext,
   flowId: number,
   triggerType: string,
   triggerDetail?: string,
+  vars?: Record<string, unknown>,
 ): number {
   const flow = getFlowDefinition(ctx.db, flowId);
   if (!flow) throw new Error(`Flow definition #${flowId} not found`);
+
+  const inputVarsJson =
+    vars !== undefined && Object.keys(vars).length > 0 ? JSON.stringify(vars) : undefined;
 
   const run = createFlowRun(ctx.db, {
     flowId,
     instanceSlug: ctx.instanceSlug,
     triggerType,
     ...(triggerDetail !== undefined ? { triggerDetail } : {}),
+    ...(inputVarsJson !== undefined ? { inputVarsJson } : {}),
   });
 
   // Fire-and-forget the DAG execution
@@ -185,14 +196,16 @@ async function runStep(
   const depSitreps = _collectDepSitreps(ctx.db, runId, stepDef.dependsOn);
 
   // 2. Build briefing — collect templating context from registered providers
-  //    (extension point: flow-context-providers).
-  const flowContext = collectFlowContext({
+  //    (extension point: flow-context-providers), then merge run-scoped vars
+  //    and dep step outputs so `{{varName}}` and `{{stepId.field}}` resolve.
+  const providerContext = collectFlowContext({
     instanceSlug: ctx.instanceSlug,
     agentId: stepDef.agentId,
     flowName,
     step: stepDef,
     runId,
   });
+  const flowContext = _buildStepTemplateContext(ctx.db, runId, depSitreps, providerContext);
   const briefingText = buildBriefing(ctx.db, {
     instanceSlug: ctx.instanceSlug,
     agentId: stepDef.agentId,
@@ -286,6 +299,65 @@ export function _collectDepSitreps(
     }
   }
   return result;
+}
+
+/**
+ * Build the templating context for a step briefing.
+ *
+ * Layout:
+ * - `vars.<key>` and top-level `<key>` for every entry of the run's input vars
+ * - `steps.<stepId>` and top-level `<stepId>` for every completed dep SITREP
+ *   (fields: outcome, summary, keyFindings)
+ * - Provider-supplied namespaces (e.g. `trigger.*`) are preserved unchanged
+ *
+ * Top-level spread enables the brief's documented `{{ticket_id}}` and
+ * `{{step-investigate.summary}}` syntax. Namespaced forms (`{{vars.x}}`,
+ * `{{steps.id.summary}}`) work too — useful when a var/step id collides with
+ * a reserved key (`vars`, `steps`, or a provider namespace), in which case
+ * the namespaced form always wins by being explicit.
+ *
+ * Exported for unit testing — the `_` prefix marks it as internal.
+ */
+export function _buildStepTemplateContext(
+  db: Database.Database,
+  runId: number,
+  depSitreps: Array<{ stepId: string; sitrep: SitrepResult }>,
+  providerContext: Record<string, unknown>,
+): Record<string, unknown> {
+  const vars = _loadRunVars(db, runId);
+  const stepsCtx: Record<string, unknown> = {};
+  for (const dep of depSitreps) {
+    stepsCtx[dep.stepId] = dep.sitrep;
+  }
+  // Provider context first so user-controlled vars/step-ids can override
+  // (top-level only — `vars` and `steps` namespaces below are authoritative).
+  return {
+    ...providerContext,
+    ...vars,
+    ...stepsCtx,
+    vars,
+    steps: stepsCtx,
+  };
+}
+
+/** Parse `rt_flow_runs.input_vars_json` to an object — empty on miss or bad JSON. */
+function _loadRunVars(db: Database.Database, runId: number): Record<string, unknown> {
+  const run = getFlowRun(db, runId);
+  if (!run?.input_vars_json) return {};
+  try {
+    const parsed = JSON.parse(run.input_vars_json) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return {};
+  } catch (err) {
+    logger.warn("flow_input_vars_parse_failed", {
+      event: "flow_input_vars_parse_failed",
+      runId,
+      error: String(err),
+    });
+    return {};
+  }
 }
 
 /** Mark all pending steps as skipped (used on cancellation). */

@@ -18,7 +18,8 @@ import type { RuntimeAgentConfig, RuntimeConfig } from "../../config/index.js";
 
 vi.mock("ai", () => ({
   tool: vi.fn((opts: Record<string, unknown>) => opts),
-  zodSchema: vi.fn((s: unknown) => s),
+  zodSchema: vi.fn((s: unknown) => ({ kind: "zod", schema: s })),
+  jsonSchema: vi.fn((s: unknown) => ({ kind: "json", schema: s })),
 }));
 
 const mockPublish = vi.fn();
@@ -281,6 +282,44 @@ describe("buildToolSet", () => {
   it("returns only 'invalid' tool for an empty tools array", async () => {
     const set = await callBuild([]);
     expect(Object.keys(set)).toEqual(["invalid"]);
+  });
+
+  // 1b. MCP-style raw JSON Schema is forwarded verbatim (not re-derived from Zod)
+  it("forwards Tool.Definition.inputJsonSchema verbatim via jsonSchema() — MCP tools keep array/object types", async () => {
+    const rawSchema = {
+      type: "object",
+      properties: {
+        actions: {
+          type: "array",
+          items: { type: "object", properties: { id: { type: "string" } } },
+        },
+      },
+    };
+    const mcpTool: Tool.Info = {
+      id: "mcp_do_actions",
+      init: () => ({
+        description: "MCP tool",
+        parameters: z.record(z.string(), z.unknown()),
+        inputJsonSchema: rawSchema,
+        execute: vi.fn().mockResolvedValue({ title: "x", output: "ok", truncated: false }),
+      }),
+    };
+    const builtin: Tool.Info = makeTool("read");
+
+    const set = await callBuild([mcpTool, builtin]);
+    const mcpWired = set["mcp_do_actions"] as unknown as {
+      inputSchema: { kind: string; schema: unknown };
+    };
+    const builtinWired = set["read"] as unknown as {
+      inputSchema: { kind: string; schema: unknown };
+    };
+
+    // MCP tool → routed through jsonSchema() with the raw schema
+    expect(mcpWired.inputSchema.kind).toBe("json");
+    expect(mcpWired.inputSchema.schema).toBe(rawSchema);
+
+    // Built-in tool (no inputJsonSchema) → still routed through zodSchema()
+    expect(builtinWired.inputSchema.kind).toBe("zod");
   });
 
   // 2. Includes all non-ownerOnly tools

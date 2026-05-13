@@ -113,6 +113,26 @@ export type AuditEvent =
       kind: "trigger.deduped";
       triggerId: number;
       method: "idempotency_key" | "payload_hash";
+    }
+  | {
+      // WS-WRITE-001 — every workspace-write attempt (success or refusal).
+      // No file content nor secret is captured; only the relative path.
+      kind: "agent.workspace_write";
+      agentId: string;
+      instanceSlug: string;
+      /** Workspace-relative path that was attempted. */
+      path: string;
+      /** Bytes actually written; `0` when `outcome === "blocked"`. */
+      bytesWritten: number;
+      outcome: "ok" | "blocked";
+      reason?:
+        | "protected_path"
+        | "outside_allowed"
+        | "too_large"
+        | "quota"
+        | "scope_disabled"
+        | "invalid_path";
+      userId?: string;
     };
 
 /** Fully-hydrated event as written to sinks. */
