@@ -35,7 +35,8 @@ function isValidGlobList(globs: string[]): boolean {
   for (const g of globs) {
     try {
       picomatch.makeRe(g);
-    } catch {
+    } catch (err) {
+      logger.debug("invalid glob pattern", { glob: g, error: String(err) });
       return false;
     }
   }
@@ -215,7 +216,8 @@ export function registerAgentPermissionsRoutes(app: Hono, deps: RouteDeps): void
         let parsed: Record<string, unknown> = {};
         try {
           parsed = JSON.parse(r.payload) as Record<string, unknown>;
-        } catch {
+        } catch (err) {
+          logger.debug("failed to parse permission payload", { error: String(err) });
           parsed = {};
         }
         return {
