@@ -15,7 +15,7 @@
  * task.ts defines its own local PromptLoopInput/Result interfaces.
  */
 
-import { tool as aiTool, zodSchema } from "ai";
+import { tool as aiTool, jsonSchema, zodSchema } from "ai";
 import type { ToolSet } from "ai";
 import { z } from "zod";
 import type Database from "better-sqlite3";
@@ -329,9 +329,16 @@ async function wireBuiltInTools(
     if (def.ownerOnly && !ctx.senderIsOwner) continue;
 
     const normalizedParams = normalizeForProvider(def.parameters, resolvedModel.providerId);
+    // Prefer a raw JSON Schema (e.g. provided by MCP tools) over the Zod schema
+    // so the model receives the server-declared types verbatim. Without this,
+    // MCP tools using arrays/nested objects are exposed as unconstrained records
+    // and the model may emit complex args as JSON-encoded strings.
+    const inputSchema = def.inputJsonSchema
+      ? jsonSchema(def.inputJsonSchema as Parameters<typeof jsonSchema>[0])
+      : zodSchema(normalizedParams);
     set[toolInfo.id] = aiTool({
       description: def.description,
-      inputSchema: zodSchema(normalizedParams),
+      inputSchema,
       execute: async (args: unknown, options: { toolCallId: string }) => {
         checkDoomLoop(recentCalls, toolInfo.id, args, sessionId, bus);
 

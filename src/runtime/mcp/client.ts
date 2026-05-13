@@ -296,10 +296,14 @@ export class McpClient {
 
     // Use a passthrough record schema — MCP params are validated by the server
     const parameters = z.record(z.string(), z.unknown());
+    // Forward the MCP server's JSON Schema verbatim so the model sees real
+    // types (arrays, nested objects) instead of an unconstrained record.
+    const inputJsonSchema = def.inputSchema as unknown as Record<string, unknown>;
 
     return Tool.define(toolId, {
       description,
       parameters,
+      inputJsonSchema,
       async execute(params, _ctx): Promise<Tool.Result> {
         // Lazy reconnection: if the client disconnected since tool list was fetched,
         // attempt to reconnect before calling the tool.
