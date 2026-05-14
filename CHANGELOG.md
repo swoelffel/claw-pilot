@@ -10,6 +10,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.84.1] — 2026-05-14
+
+### Fixed
+
+- **UI: question form no longer resets on message poll** (#224) — `willUpdate` in `part-question.ts` now guards state reset on `toolCallId` identity rather than object reference; polling re-renders no longer wipe in-progress answers.
+- **UI: zombie TCP connections eliminated** (#224) — `AbortController` per poll cycle in `dashboard-pilot.ts`; stale `fetchSessionMessages` fetches are cancelled before the next interval fires.
+- **UI: sidebar session timestamps corrected** (#224) — `listEnrichedSessions` normalises `created_at`/`updated_at` to ISO-8601 strings regardless of SQLite storage format (legacy rows storing Unix ms integers now display correctly).
+- **CLI: multiline paste no longer sends N messages** (#225) — bracketed paste mode (`\x1b[?2004h`) enabled in `runtime chat` REPL; pasted content is accumulated as a single `handleChatLine` call instead of one call per newline.
+- **CLI: Named API Key injected for `runtime chat`** (#225) — the instance's `default_named_key_id` is decrypted and injected into `process.env[apiKeyEnvVar]` at startup, eliminating the `ANTHROPIC_API_KEY missing` error when no env var is manually exported.
+- **Runtime: question tool deduplication** (#226) — a second `resolveQuestionFn` call for the same `questionId` within a session is now silently dropped, preventing duplicate `runPromptLoop` resumes from double-fired UI answer events.
+- **API: `PATCH /config` accepts all valid agent fields** (#226) — `RuntimeConfigPatchSchema` now includes `agentToAgent`, `isDefault`, `persistence`, `systemPrompt`, `systemPromptFile`, `permissions`, `inheritWorkspace`, `skillUrls`, and `promptMode: "subagent"`, which were previously silently rejected by `.strict()`.
+- **Flow: `complete_step` tolerates LLM formatting mistakes** (#227) — `z.preprocess(normaliseSitrepArgs)` strips markdown code fences and XML wrappers, normalises outcome casing before Zod validation; prevents cascade step failures from minor hallucinations.
+- **Flow: `keyFindings` character limit raised 500 → 2000** (#227) — the previous cap caused legitimate steps with long URLs or file paths to fail silently.
+- **Flow: `outcome: "stopped"` for gate steps** (#227) — a step returning `stopped` skips downstream dependencies (like `failure`) but the flow run resolves as `completed` instead of `failed`, enabling intentional early-exit gates.
+
+---
+
 ## [0.84.0] — 2026-05-13
 
 ### Added
