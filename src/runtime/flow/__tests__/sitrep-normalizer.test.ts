@@ -30,7 +30,7 @@ describe("normaliseSitrepArgs", () => {
     expect(result["outcome"]).toBe("success");
   });
 
-  it("returns input unchanged when it cannot be normalised (Zod will reject)", () => {
+  it("returns input unchanged when it cannot be normalized (Zod will reject)", () => {
     // Garbage input — let Zod handle the rejection
     const raw = "this is not json at all";
     expect(normaliseSitrepArgs(raw)).toBe(raw);
