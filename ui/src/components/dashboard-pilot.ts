@@ -28,6 +28,19 @@ const SSE_RECONNECT_INITIAL_MS = 1_000;
 const SSE_RECONNECT_MULTIPLIER = 2;
 const SSE_RECONNECT_MAX_MS = 30_000;
 
+/**
+ * Create a new AbortController for a polling cycle, aborting the previous
+ * one if it exists. Returns [newController, abortPrevious] tuple.
+ * Exported for unit testing.
+ */
+export function createPollController(
+  previous: AbortController | null,
+): [AbortController, () => void] {
+  if (previous && !previous.signal.aborted) previous.abort();
+  const ctrl = new AbortController();
+  return [ctrl, () => previous?.abort()];
+}
+
 @localized()
 @customElement("cp-dashboard-pilot")
 export class DashboardPilot extends LitElement {
@@ -218,6 +231,7 @@ export class DashboardPilot extends LitElement {
   private _reconnectDelay = SSE_RECONNECT_INITIAL_MS;
   private _sseConnected = false;
   private _pollInterval: ReturnType<typeof setInterval> | null = null;
+  private _pollAbort: AbortController | null = null;
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -307,24 +321,36 @@ export class DashboardPilot extends LitElement {
     ) {
       return;
     }
+    const [ctrl] = createPollController(this._pollAbort);
+    this._pollAbort = ctrl;
     try {
-      const { messages } = await fetchSessionMessages(this.slug, this._activeSessionId, {
-        limit: 20,
-      });
-      this._mergeMessages(messages);
-    } catch {
-      // Polling will retry
+      const { messages } = await fetchSessionMessages(
+        this.slug,
+        this._activeSessionId,
+        { limit: 20 },
+        ctrl.signal,
+      );
+      if (!ctrl.signal.aborted) this._mergeMessages(messages);
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return; // expected
+      // Polling will retry on next interval
     }
   }
 
   private async _reloadLastMessages(): Promise<void> {
     if (!this._activeSessionId) return;
+    const [ctrl] = createPollController(this._pollAbort);
+    this._pollAbort = ctrl;
     try {
-      const { messages } = await fetchSessionMessages(this.slug, this._activeSessionId, {
-        limit: 5,
-      });
-      this._mergeMessages(messages);
-    } catch {
+      const { messages } = await fetchSessionMessages(
+        this.slug,
+        this._activeSessionId,
+        { limit: 5 },
+        ctrl.signal,
+      );
+      if (!ctrl.signal.aborted) this._mergeMessages(messages);
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return;
       // Non-fatal
     }
   }
@@ -427,6 +453,10 @@ export class DashboardPilot extends LitElement {
   private _teardown(): void {
     this._closeStream();
     this._stopPolling();
+    if (this._pollAbort && !this._pollAbort.signal.aborted) {
+      this._pollAbort.abort();
+      this._pollAbort = null;
+    }
   }
 
   // ── Bus event handler ─────────────────────────────────────────────────────
