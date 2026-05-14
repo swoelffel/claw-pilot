@@ -27,17 +27,76 @@ interface PendingQuestion {
   reject: (err: Error) => void;
 }
 
+/**
+ * Per-session question registry with idempotent resolution.
+ * Tracks both pending and already-resolved question IDs so that a second
+ * resolve() call for the same questionId is silently dropped.
+ */
+export interface QuestionRegistry {
+  /** Register a pending question. Calls onResolved when answered. Returns a promise that settles then. */
+  register(questionId: string, onResolved: (answer: string) => void): Promise<void>;
+  /**
+   * Resolve a pending question.
+   * Returns true if the question was pending and successfully resolved.
+   * Returns false (no-op) if already resolved or unknown — deduplication guard.
+   */
+  resolve(questionId: string, answer: string): boolean;
+}
+
+/**
+ * Create a new question registry scoped to a session.
+ * The registry tracks resolved IDs to provide idempotent resolution.
+ */
+export function createQuestionRegistry(): QuestionRegistry {
+  const pending = new Map<string, (answer: string) => void>();
+  const resolved = new Set<string>();
+
+  return {
+    register(questionId, onResolved) {
+      return new Promise<void>((res) => {
+        pending.set(questionId, (answer) => {
+          onResolved(answer);
+          res();
+        });
+      });
+    },
+    resolve(questionId, answer) {
+      if (resolved.has(questionId)) return false; // already answered — dedup guard
+      const handler = pending.get(questionId);
+      if (!handler) return false; // unknown id
+      pending.delete(questionId);
+      resolved.add(questionId);
+      handler(answer);
+      return true;
+    },
+  };
+}
+
 const _pending = new Map<string, PendingQuestion>();
+/** Set of already-resolved question IDs — prevents double-processing on race conditions. */
+const _resolved = new Set<string>();
+
+/**
+ * Clear the module-level resolved ID set.
+ * Intended for test isolation only — never call in production code.
+ * @internal
+ */
+export function clearResolvedIds(): void {
+  _resolved.clear();
+}
 
 /**
  * Resolve a pending question from the channel layer.
  * Called by the dashboard/channel when the user submits an answer.
+ * Returns false (no-op) if the question was already resolved or is unknown.
  * @public
  */
 export function resolveQuestion(questionId: string, answer: string): boolean {
+  if (_resolved.has(questionId)) return false; // dedup guard — already answered
   const pending = _pending.get(questionId);
   if (!pending) return false;
   _pending.delete(questionId);
+  _resolved.add(questionId);
   pending.resolve(answer);
   return true;
 }
@@ -50,6 +109,7 @@ export function rejectQuestion(questionId: string, reason: string): boolean {
   const pending = _pending.get(questionId);
   if (!pending) return false;
   _pending.delete(questionId);
+  _resolved.add(questionId);
   pending.reject(new Error(reason));
   return true;
 }
