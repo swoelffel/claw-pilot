@@ -43,6 +43,8 @@ import { resolveAgentWorkspacePath } from "../core/agent-workspace.js";
 import { getDataDir } from "../lib/platform.js";
 import { Registry } from "../core/registry.js";
 import { CommunityProfileResolver } from "../runtime/profile/community-resolver.js";
+import { injectNamedKeyForCli } from "./_named-key-inject.js";
+import { NamedKeyRepository } from "../core/repositories/named-key-repository.js";
 import type { RuntimeConfig } from "../runtime/index.js";
 
 /**
@@ -817,6 +819,26 @@ function runtimeChatCommand(): Command {
 
         // Load config: DB first, then file fallback
         const config = loadOrCreateConfig(db, slug, stateDir, opts.ensureConfig === true);
+
+        // Inject Named API Key into process.env if the instance uses one and the
+        // env var is not already set. This allows `runtime chat` to work without
+        // manually exporting ANTHROPIC_API_KEY when the key is stored in the DB.
+        {
+          const instanceRow = db
+            .prepare("SELECT id, default_named_key_id FROM instances WHERE slug = ?")
+            .get(slug) as { id: number; default_named_key_id: number | null } | undefined;
+
+          if (instanceRow?.default_named_key_id != null) {
+            const namedKeyRepo = new NamedKeyRepository(db);
+            const defaultKey = namedKeyRepo.getDefaultKeyForInstance(instanceRow.id);
+            if (defaultKey) {
+              injectNamedKeyForCli({
+                providerId: defaultKey.providerId,
+                apiKey: defaultKey.apiKey,
+              });
+            }
+          }
+        }
 
         // Init agent registry
         const { initAgentRegistry } = await import("../runtime/agent/registry.js");
