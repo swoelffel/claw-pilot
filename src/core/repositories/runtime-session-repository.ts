@@ -87,6 +87,22 @@ export interface ListEnrichedSessionsResult {
 }
 
 /**
+ * Normalise a SQLite timestamp to ISO-8601 string.
+ * SQLite may return TEXT (ISO), integer (Unix ms), or numeric string on legacy rows.
+ */
+function normaliseTimestamp(raw: string | number | null | undefined): string {
+  if (raw == null) return new Date(0).toISOString();
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!isNaN(n) && String(raw).trim() === String(n)) {
+    // Numeric: treat as Unix ms if > 1e12, else Unix seconds
+    return new Date(n > 1e12 ? n : n * 1000).toISOString();
+  }
+  // Already a string — validate it's parseable
+  const d = new Date(raw as string);
+  return isNaN(d.getTime()) ? new Date(0).toISOString() : d.toISOString();
+}
+
+/**
  * List sessions for an instance with aggregated stats (cost, message count, tokens).
  *
  * Falls back to listSessions() if the enriched query fails (e.g. on older DB schemas
@@ -177,8 +193,12 @@ export function listEnrichedSessions(
       title: s.title,
       state: s.state as "active" | "archived",
       permissions: s.permissions,
-      createdAt: typeof s.createdAt === "string" ? s.createdAt : s.createdAt.toISOString(),
-      updatedAt: typeof s.updatedAt === "string" ? s.updatedAt : s.updatedAt.toISOString(),
+      createdAt: normaliseTimestamp(
+        typeof s.createdAt === "string" ? s.createdAt : s.createdAt?.toISOString(),
+      ),
+      updatedAt: normaliseTimestamp(
+        typeof s.updatedAt === "string" ? s.updatedAt : s.updatedAt?.toISOString(),
+      ),
       sessionKey: s.sessionKey,
       spawnDepth: s.spawnDepth ?? 0,
       label: s.label,
@@ -204,8 +224,8 @@ export function listEnrichedSessions(
     title: row.title ?? undefined,
     state: row.state as "active" | "archived",
     permissions: row.permissions ?? undefined,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    createdAt: normaliseTimestamp(row.created_at),
+    updatedAt: normaliseTimestamp(row.updated_at),
     sessionKey: row.session_key ?? undefined,
     spawnDepth: row.spawn_depth ?? 0,
     label: row.label ?? undefined,
