@@ -17,6 +17,9 @@ import {
   createStepRun,
   getStepRun,
   updateStepRun,
+  hasUnsuccessfulSteps,
+  updateFlowRunStatus,
+  getFlowRun,
 } from "../../../core/repositories/flow-repository.js";
 
 let db: ReturnType<typeof initDatabase>;
@@ -349,5 +352,89 @@ describe("_buildStepTemplateContext", () => {
 
     const ctx = _buildStepTemplateContext(db, run.id, [], {});
     expect(ctx.vars).toEqual({});
+  });
+});
+
+// ---------------------------------------------------------------------------
+// stopped outcome — gate step halts flow without marking run as failed
+// ---------------------------------------------------------------------------
+
+describe("stopped outcome — hasUnsuccessfulSteps exclusion", () => {
+  // Regression for #19: a gate step returning outcome=stopped should not
+  // count as unsuccessful, so the flow run is marked "completed" not "failed".
+
+  const setup2Step = (): { runId: number; gateId: number; downstreamId: number } => {
+    const flow = createFlowDefinition(db, {
+      instanceSlug: "inst-1",
+      name: "Gate flow",
+      stepsJson: JSON.stringify([
+        { id: "gate", agentId: "a1", prompt: "gate" },
+        { id: "downstream", agentId: "a2", prompt: "downstream", dependsOn: ["gate"] },
+      ]),
+    });
+    const run = createFlowRun(db, {
+      flowId: flow.id,
+      instanceSlug: "inst-1",
+      triggerType: "manual",
+    });
+    const gate = createStepRun(db, { runId: run.id, stepId: "gate", agentId: "a1" });
+    const downstream = createStepRun(db, {
+      runId: run.id,
+      stepId: "downstream",
+      agentId: "a2",
+    });
+    return { runId: run.id, gateId: gate.id, downstreamId: downstream.id };
+  };
+
+  it("does not count a completed step with outcome=stopped as unsuccessful", () => {
+    const { runId, gateId } = setup2Step();
+
+    updateStepRun(db, gateId, {
+      status: "completed",
+      sitrepJson: JSON.stringify({ outcome: "stopped", summary: "Gate halted.", keyFindings: [] }),
+    });
+
+    expect(hasUnsuccessfulSteps(db, runId)).toBe(false);
+  });
+
+  it("counts a completed step with outcome=partial as unsuccessful", () => {
+    const { runId, gateId } = setup2Step();
+
+    updateStepRun(db, gateId, {
+      status: "completed",
+      sitrepJson: JSON.stringify({ outcome: "partial", summary: "Partial.", keyFindings: [] }),
+    });
+
+    expect(hasUnsuccessfulSteps(db, runId)).toBe(true);
+  });
+
+  it("flow run resolves to completed when gate=stopped and downstream=skipped", () => {
+    const { runId, gateId } = setup2Step();
+    const defs: FlowStepDef[] = [
+      { id: "gate", agentId: "a1", prompt: "gate" },
+      { id: "downstream", agentId: "a2", prompt: "downstream", dependsOn: ["gate"] },
+    ];
+
+    // Simulate engine: gate completes with stopped, propagate skip
+    updateStepRun(db, gateId, {
+      status: "completed",
+      sitrepJson: JSON.stringify({ outcome: "stopped", summary: "Gate halted.", keyFindings: [] }),
+    });
+    propagateSkipDownstream(db, runId, defs, "gate");
+
+    // Simulate engine final status decision
+    const runHasFailed = false; // no thrown exceptions
+    const runHasUnsuccessful = hasUnsuccessfulSteps(db, runId);
+    const finalStatus = runHasFailed || runHasUnsuccessful ? "failed" : "completed";
+    updateFlowRunStatus(db, runId, finalStatus as "completed" | "failed");
+
+    const gateStep = getStepRun(db, runId, "gate");
+    const downstreamStep = getStepRun(db, runId, "downstream");
+    const flowRun = getFlowRun(db, runId);
+
+    expect(gateStep?.status).toBe("completed");
+    expect(JSON.parse(gateStep!.sitrep_json!).outcome).toBe("stopped");
+    expect(downstreamStep?.status).toBe("skipped");
+    expect(flowRun?.status).toBe("completed");
   });
 });
