@@ -17,6 +17,7 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import { Tool } from "../tool/tool.js";
 import { updateStepRun } from "../../core/repositories/flow-repository.js";
+import { normaliseSitrepArgs } from "./_sitrep-normalizer.js";
 
 /**
  * Default maxSteps for flow step sessions. Higher than the interactive default
@@ -25,30 +26,35 @@ import { updateStepRun } from "../../core/repositories/flow-repository.js";
  */
 export const FLOW_DEFAULT_MAX_STEPS = 50;
 
-const CompleteStepSchema = z.object({
-  outcome: z
-    .enum(["success", "failure", "partial"])
-    .describe(
-      "success: mission fully accomplished. failure: unable to proceed — explain in summary. " +
-        "partial: some work done but the mission is incomplete (timeout, partial data, etc.).",
-    ),
-  summary: z
-    .string()
-    .min(1)
-    .max(2000)
-    .describe(
-      "One to three sentences describing what was achieved (for success), attempted " +
-        "(for partial), or why the mission failed (for failure). Be specific — downstream " +
-        "steps read this to decide their own actions.",
-    ),
-  keyFindings: z
-    .array(z.string().max(500))
-    .default([])
-    .describe(
-      "Bullet-point list of notable observations, outputs, URLs, file paths, or decisions. " +
-        "Kept separate from summary so downstream consumers can parse them.",
-    ),
-});
+export const CompleteStepSchema = z.preprocess(
+  normaliseSitrepArgs,
+  z.object({
+    outcome: z
+      .enum(["success", "failure", "partial", "stopped"])
+      .describe(
+        "success: mission fully accomplished. failure: unable to proceed — explain in summary. " +
+          "partial: some work done but the mission is incomplete (timeout, partial data, etc.). " +
+          "stopped: gate decision — this step intentionally halts downstream steps (run counts as completed, not failed).",
+      ),
+    summary: z
+      .string()
+      .min(1)
+      .max(2000)
+      .describe(
+        "One to three sentences describing what was achieved (for success), attempted " +
+          "(for partial), or why the mission failed (for failure). Be specific — downstream " +
+          "steps read this to decide their own actions.",
+      ),
+    keyFindings: z
+      .array(z.string().max(2000))
+      .default([])
+      .describe(
+        "Bullet-point list of notable observations, outputs, URLs, file paths, or decisions. " +
+          "Kept separate from summary so downstream consumers can parse them. " +
+          "Each item is capped at 2000 characters.",
+      ),
+  }),
+);
 
 /**
  * Create a `complete_step` tool bound to a specific flow step run.
@@ -72,20 +78,21 @@ export function createCompleteStepTool(
       "regardless of what other work you performed.",
     parameters: CompleteStepSchema,
     execute: async (args) => {
-      // Tool.define validates via Zod but passes the raw args to execute() —
-      // Zod defaults are therefore not automatically applied. Normalize here
-      // so the engine always sees a concrete array.
-      const keyFindings = args.keyFindings ?? [];
+      // Tool.define validates via Zod.parse() but forwards the original (pre-parse)
+      // args to execute(). Re-parse here so z.preprocess normalisation and
+      // z.default() values are applied before we write to the DB.
+      const parsed = CompleteStepSchema.parse(args);
+      const keyFindings = parsed.keyFindings ?? [];
       updateStepRun(db, stepRunId, {
         sitrepJson: JSON.stringify({
-          outcome: args.outcome,
-          summary: args.summary,
+          outcome: parsed.outcome,
+          summary: parsed.summary,
           keyFindings,
         }),
       });
       return {
-        title: `SITREP recorded — ${args.outcome}`,
-        output: `Step SITREP saved (outcome=${args.outcome}). The engine will now mark this step as completed and notify downstream steps.`,
+        title: `SITREP recorded — ${parsed.outcome}`,
+        output: `Step SITREP saved (outcome=${parsed.outcome}). The engine will now mark this step as completed and notify downstream steps.`,
         truncated: false,
       };
     },

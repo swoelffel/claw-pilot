@@ -10,7 +10,7 @@ import {
   createStepRun,
   getStepRun,
 } from "../../../core/repositories/flow-repository.js";
-import { createCompleteStepTool } from "../complete-step-tool.js";
+import { createCompleteStepTool, CompleteStepSchema } from "../complete-step-tool.js";
 import type { Tool } from "../../tool/tool.js";
 
 let db: ReturnType<typeof initDatabase>;
@@ -164,5 +164,16 @@ describe("createCompleteStepTool", () => {
   it("tool id is exactly `complete_step` (must match hasToolCall() in prompt-loop)", () => {
     const tool = createCompleteStepTool(db, 1);
     expect(tool.id).toBe("complete_step");
+  });
+
+  it("accepts a keyFindings item longer than 500 characters", () => {
+    const longFinding = "x".repeat(1500);
+
+    const result = CompleteStepSchema.safeParse({
+      outcome: "success",
+      summary: "Step completed.",
+      keyFindings: [longFinding],
+    });
+    expect(result.success).toBe(true);
   });
 });
