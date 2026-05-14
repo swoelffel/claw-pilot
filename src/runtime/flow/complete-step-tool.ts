@@ -25,7 +25,7 @@ import { updateStepRun } from "../../core/repositories/flow-repository.js";
  */
 export const FLOW_DEFAULT_MAX_STEPS = 50;
 
-const CompleteStepSchema = z.object({
+export const CompleteStepSchema = z.object({
   outcome: z
     .enum(["success", "failure", "partial"])
     .describe(
@@ -42,11 +42,12 @@ const CompleteStepSchema = z.object({
         "steps read this to decide their own actions.",
     ),
   keyFindings: z
-    .array(z.string().max(500))
+    .array(z.string().max(2000))
     .default([])
     .describe(
       "Bullet-point list of notable observations, outputs, URLs, file paths, or decisions. " +
-        "Kept separate from summary so downstream consumers can parse them.",
+        "Kept separate from summary so downstream consumers can parse them. " +
+        "Each item is capped at 2000 characters.",
     ),
 });
 
