@@ -14,7 +14,7 @@ import { MODEL_CATALOG, findModel, getProviderModels } from "../models.js";
 
 describe("MODEL_CATALOG", () => {
   it("has 12 entries", () => {
-    expect(MODEL_CATALOG).toHaveLength(12);
+    expect(MODEL_CATALOG).toHaveLength(14);
   });
 
   it("every entry has required fields", () => {
@@ -60,8 +60,8 @@ describe("MODEL_CATALOG", () => {
 describe("Anthropic models", () => {
   const anthropicModels = MODEL_CATALOG.filter((m) => m.providerId === "anthropic");
 
-  it("has 5 models", () => {
-    expect(anthropicModels).toHaveLength(5);
+  it("has 7 models", () => {
+    expect(anthropicModels).toHaveLength(7);
   });
 
   it("all use anthropic-messages API", () => {
@@ -162,7 +162,7 @@ describe("findModel", () => {
 describe("getProviderModels", () => {
   it("returns all Anthropic models", () => {
     const models = getProviderModels("anthropic");
-    expect(models).toHaveLength(5);
+    expect(models).toHaveLength(7);
     for (const m of models) {
       expect(m.providerId).toBe("anthropic");
     }
