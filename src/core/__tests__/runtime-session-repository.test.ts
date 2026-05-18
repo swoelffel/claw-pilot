@@ -234,3 +234,40 @@ describe("deleteSessionsByAgent", () => {
     expect(deleteSessionsByAgent(db, SLUG, "nonexistent")).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Timestamp normalisation — regression test for #14
+// ---------------------------------------------------------------------------
+
+describe("listEnrichedSessions — timestamp normalisation", () => {
+  it("returns createdAt as an ISO-8601 string for ISO-stored rows", () => {
+    const id = createSessionWithMessage({});
+    const { sessions } = listEnrichedSessions(db, SLUG);
+    expect(sessions).toHaveLength(1);
+    const s = sessions[0]!;
+    void id;
+    // Must be parseable by new Date() and not NaN
+    expect(new Date(s.createdAt).getTime()).not.toBeNaN();
+    // Must look like an ISO string (contains 'T')
+    expect(s.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("returns updatedAt as an ISO-8601 string for ISO-stored rows", () => {
+    createSessionWithMessage({});
+    const { sessions } = listEnrichedSessions(db, SLUG);
+    const s = sessions[0]!;
+    expect(new Date(s.updatedAt ?? "").getTime()).not.toBeNaN();
+    expect(s.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("normalises createdAt when stored as Unix ms integer string", () => {
+    const id = createSessionWithMessage({});
+    // Simulate a legacy row with Unix ms timestamp
+    const unixMs = new Date("2025-01-15T10:00:00.000Z").getTime();
+    db.prepare("UPDATE rt_sessions SET created_at = ? WHERE id = ?").run(String(unixMs), id);
+    const { sessions } = listEnrichedSessions(db, SLUG);
+    const s = sessions[0]!;
+    expect(new Date(s.createdAt).getTime()).not.toBeNaN();
+    expect(s.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+});

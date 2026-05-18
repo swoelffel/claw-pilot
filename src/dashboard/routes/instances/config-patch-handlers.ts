@@ -149,8 +149,8 @@ export function applyAgentDefaultChanges(
 type AgentConfig = RuntimeConfig["agents"][number];
 type AgentPatch = NonNullable<RuntimeConfigPatch["agents"]>[number];
 
-/** Apply scalar fields from an agent patch onto the agent config (mutates in place). */
-function applyAgentScalarFields(agent: AgentConfig, patch: AgentPatch): void {
+/** Apply core scalar fields (model, tools, steps, mode) from an agent patch (mutates in place). */
+function applyAgentCoreFields(agent: AgentConfig, patch: AgentPatch): void {
   if (patch.name !== undefined) agent.name = patch.name;
   if (patch.model !== undefined && patch.model !== null) agent.model = patch.model;
   if (patch.toolProfile !== undefined) agent.toolProfile = patch.toolProfile;
@@ -161,6 +161,10 @@ function applyAgentScalarFields(agent: AgentConfig, patch: AgentPatch): void {
   if (patch.allowSubAgents !== undefined) agent.allowSubAgents = patch.allowSubAgents;
   if (patch.timeoutMs !== undefined) agent.timeoutMs = patch.timeoutMs;
   if (patch.chunkTimeoutMs !== undefined) agent.chunkTimeoutMs = patch.chunkTimeoutMs;
+}
+
+/** Apply content + skill fields from an agent patch (mutates in place). */
+function applyAgentContentFields(agent: AgentConfig, patch: AgentPatch): void {
   if (patch.instructionUrls !== undefined) agent.instructionUrls = patch.instructionUrls;
   if (patch.bootstrapFiles !== undefined) agent.bootstrapFiles = patch.bootstrapFiles;
   if (patch.archetype !== undefined) agent.archetype = patch.archetype;
@@ -168,6 +172,25 @@ function applyAgentScalarFields(agent: AgentConfig, patch: AgentPatch): void {
   if (patch.autoSelectSkillsTopN !== undefined)
     agent.autoSelectSkillsTopN = patch.autoSelectSkillsTopN;
   if (patch.skills !== undefined) agent.skills = patch.skills ?? undefined;
+  if (patch.skillUrls !== undefined) agent.skillUrls = patch.skillUrls;
+}
+
+/** Apply identity + security fields from an agent patch (mutates in place). */
+function applyAgentIdentityFields(agent: AgentConfig, patch: AgentPatch): void {
+  if (patch.agentToAgent !== undefined) agent.agentToAgent = patch.agentToAgent;
+  if (patch.isDefault !== undefined) agent.isDefault = patch.isDefault;
+  if (patch.persistence !== undefined) agent.persistence = patch.persistence;
+  if (patch.systemPrompt !== undefined) agent.systemPrompt = patch.systemPrompt;
+  if (patch.systemPromptFile !== undefined) agent.systemPromptFile = patch.systemPromptFile;
+  if (patch.permissions !== undefined) agent.permissions = patch.permissions;
+  if (patch.inheritWorkspace !== undefined) agent.inheritWorkspace = patch.inheritWorkspace;
+}
+
+/** Apply scalar fields from an agent patch onto the agent config (mutates in place). */
+function applyAgentScalarFields(agent: AgentConfig, patch: AgentPatch): void {
+  applyAgentCoreFields(agent, patch);
+  applyAgentContentFields(agent, patch);
+  applyAgentIdentityFields(agent, patch);
 }
 
 /** Apply complex nested fields (thinking, heartbeat) from an agent patch. */

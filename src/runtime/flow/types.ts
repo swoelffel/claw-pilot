@@ -67,7 +67,13 @@ export interface FlowStepDef {
 // ---------------------------------------------------------------------------
 
 export interface SitrepResult {
-  outcome: "success" | "failure" | "partial";
+  /**
+   * success   — all objectives met
+   * failure   — unable to proceed
+   * partial   — incomplete but not an error
+   * stopped   — gate decision: downstream steps are skipped, run counts as completed
+   */
+  outcome: "success" | "failure" | "partial" | "stopped";
   summary: string;
   keyFindings: string[];
 }

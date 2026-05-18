@@ -159,52 +159,76 @@ export const RuntimeConfigPatchSchema = z.object({
   // agents: per-agent config patches applied to runtime.json
   agents: z
     .array(
-      z.object({
-        id: z.string().min(1),
-        name: z.string().optional(),
-        model: z.string().nullable().optional(),
-        toolProfile: z.enum(["sentinel", "pilot", "manager", "executor", "custom"]).optional(),
-        customTools: z.array(z.string()).optional(),
-        maxSteps: z.number().int().min(1).max(500).optional(),
-        temperature: z.number().min(0).max(2).nullable().optional(),
-        promptMode: z.enum(["full", "minimal"]).optional(),
-        thinking: z
-          .object({
-            enabled: z.boolean(),
-            budgetTokens: z.number().int().min(1000).optional(),
-          })
-          .nullable()
-          .optional(),
-        allowSubAgents: z.boolean().optional(),
-        timeoutMs: z.number().int().min(0).optional(),
-        chunkTimeoutMs: z.number().int().min(0).optional(),
-        instructionUrls: z.array(z.string().url()).optional(),
-        bootstrapFiles: z.array(z.string()).optional(),
-        archetype: z
-          .enum(["planner", "generator", "evaluator", "orchestrator", "analyst", "communicator"])
-          .nullable()
-          .optional(),
-        autoSelectSkills: z.boolean().optional(),
-        autoSelectSkillsTopN: z.number().int().min(1).max(20).optional(),
-        skills: z.array(z.string()).nullable().optional(),
-        heartbeat: z
-          .object({
-            every: z.string().optional(),
-            model: z.string().optional(),
-            ackMaxChars: z.number().int().min(0).optional(),
-            prompt: z.string().optional(),
-            activeHours: z
-              .object({
-                start: z.string(),
-                end: z.string(),
-                tz: z.string().optional(),
-              })
-              .optional(),
-          })
-          .nullable()
-          .optional(),
-        namedKeyId: z.number().int().positive().nullable().optional(),
-      }),
+      z
+        .object({
+          id: z.string().min(1),
+          name: z.string().optional(),
+          model: z.string().nullable().optional(),
+          toolProfile: z.enum(["sentinel", "pilot", "manager", "executor", "custom"]).optional(),
+          customTools: z.array(z.string()).optional(),
+          maxSteps: z.number().int().min(1).max(500).optional(),
+          temperature: z.number().min(0).max(2).nullable().optional(),
+          promptMode: z.enum(["full", "minimal", "subagent"]).optional(),
+          thinking: z
+            .object({
+              enabled: z.boolean(),
+              budgetTokens: z.number().int().min(1000).optional(),
+            })
+            .nullable()
+            .optional(),
+          allowSubAgents: z.boolean().optional(),
+          timeoutMs: z.number().int().min(0).optional(),
+          chunkTimeoutMs: z.number().int().min(0).optional(),
+          instructionUrls: z.array(z.string().url()).optional(),
+          bootstrapFiles: z.array(z.string()).optional(),
+          archetype: z
+            .enum(["planner", "generator", "evaluator", "orchestrator", "analyst", "communicator"])
+            .nullable()
+            .optional(),
+          autoSelectSkills: z.boolean().optional(),
+          autoSelectSkillsTopN: z.number().int().min(1).max(20).optional(),
+          skills: z.array(z.string()).nullable().optional(),
+          heartbeat: z
+            .object({
+              every: z.string().optional(),
+              model: z.string().optional(),
+              ackMaxChars: z.number().int().min(0).optional(),
+              prompt: z.string().optional(),
+              activeHours: z
+                .object({
+                  start: z.string(),
+                  end: z.string(),
+                  tz: z.string().optional(),
+                })
+                .optional(),
+            })
+            .nullable()
+            .optional(),
+          namedKeyId: z.number().int().positive().nullable().optional(),
+          agentToAgent: z
+            .object({
+              enabled: z.boolean(),
+              allowList: z.array(z.string().min(1)).min(1).optional(),
+            })
+            .optional(),
+          isDefault: z.boolean().optional(),
+          persistence: z.enum(["permanent", "ephemeral"]).optional(),
+          systemPrompt: z.string().max(10_000).optional(),
+          systemPromptFile: z.string().max(255).optional(),
+          permissions: z
+            .array(
+              z.object({
+                permission: z.string().min(1),
+                pattern: z.string().min(1),
+                action: z.enum(["allow", "deny", "ask"]),
+              }),
+            )
+            .max(50)
+            .optional(),
+          inheritWorkspace: z.boolean().optional(),
+          skillUrls: z.array(z.string().url()).max(20).optional(),
+        })
+        .strict(),
     )
     .optional(),
 });

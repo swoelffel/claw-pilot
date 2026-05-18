@@ -425,12 +425,15 @@ export function allStepsTerminal(db: Database.Database, runId: number): boolean 
 
 /**
  * Compute the worst sitrep outcome for a run.
- * Returns "failure" | "partial" | "success" | null (no sitreps).
+ * Returns "failure" | "partial" | "stopped" | "success" | null (no sitreps).
+ *
+ * "stopped" is an intentional gate decision — it ranks above "success" but
+ * below "partial" and "failure" when determining the overall run status.
  */
 export function getRunWorstOutcome(
   db: Database.Database,
   runId: number,
-): "failure" | "partial" | "success" | null {
+): "failure" | "partial" | "stopped" | "success" | null {
   const rows = db
     .prepare("SELECT status, sitrep_json FROM rt_flow_step_runs WHERE run_id = ?")
     .all(runId) as Array<{ status: string; sitrep_json: string | null }>;
@@ -439,6 +442,7 @@ export function getRunWorstOutcome(
 
   let hasFailure = false;
   let hasPartial = false;
+  let hasStopped = false;
   let hasSuccess = false;
 
   for (const row of rows) {
@@ -448,6 +452,7 @@ export function getRunWorstOutcome(
         const sitrep = JSON.parse(row.sitrep_json) as { outcome?: string };
         if (sitrep.outcome === "failure") hasFailure = true;
         else if (sitrep.outcome === "partial") hasPartial = true;
+        else if (sitrep.outcome === "stopped") hasStopped = true;
         else if (sitrep.outcome === "success") hasSuccess = true;
       } catch (err) {
         logger.debug("flow_worst_outcome_sitrep_parse_failed", {
@@ -460,6 +465,7 @@ export function getRunWorstOutcome(
 
   if (hasFailure) return "failure";
   if (hasPartial) return "partial";
+  if (hasStopped) return "stopped";
   if (hasSuccess) return "success";
   return null;
 }
@@ -586,7 +592,9 @@ export function hasUnsuccessfulSteps(db: Database.Database, runId: number): bool
       });
       return true;
     }
-    if (outcome !== "success") return true;
+    // "stopped" is an intentional gate decision — it does not count as unsuccessful.
+    // The run marks as completed when only stopped/success outcomes are present.
+    if (outcome !== "success" && outcome !== "stopped") return true;
   }
   return false;
 }

@@ -665,6 +665,7 @@ export async function fetchSessionMessages(
   slug: string,
   sessionId: string,
   opts: { limit?: number; before?: string } = {},
+  signal?: AbortSignal,
 ): Promise<{ messages: PilotMessage[]; hasMore: boolean }> {
   const params = new URLSearchParams();
   if (opts.limit) params.set("limit", String(opts.limit));
@@ -672,6 +673,7 @@ export async function fetchSessionMessages(
   const qs = params.toString();
   return apiFetch<{ messages: PilotMessage[]; hasMore: boolean }>(
     `/instances/${slug}/runtime/sessions/${sessionId}/messages${qs ? `?${qs}` : ""}`,
+    signal !== undefined ? { signal } : undefined,
   );
 }
 

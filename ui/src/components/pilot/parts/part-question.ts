@@ -86,6 +86,26 @@ function isTabComplete(item: QuestionItem, state: TabState): boolean {
   return state.selected.size >= 1 || (item.allowOther && state.otherText.trim().length > 0);
 }
 
+/**
+ * Determine whether the question UI state should be reset.
+ * Returns true only when the underlying question (identified by toolCallId)
+ * changes — NOT on every re-render caused by parent message polling.
+ * Exported for unit testing.
+ */
+export function shouldResetQuestionState(
+  oldPart: PilotPart | undefined,
+  newPart: PilotPart,
+): boolean {
+  if (!oldPart) return true;
+  try {
+    const oldMeta = oldPart.metadata ? (JSON.parse(oldPart.metadata) as QuestionMeta) : {};
+    const newMeta = newPart.metadata ? (JSON.parse(newPart.metadata) as QuestionMeta) : {};
+    return oldMeta.toolCallId !== newMeta.toolCallId;
+  } catch {
+    return true;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -339,14 +359,15 @@ export class PilotPartQuestion extends LitElement {
 
   override willUpdate(changed: PropertyValues): void {
     if (changed.has("call") && changed.get("call") !== undefined) {
-      // Reset all interaction state when the underlying tool_call changes
-      // (e.g. Lit reuses this DOM element for a new question).
-      this._activeTab = 0;
-      this._tabStates = [];
-      this._submitting = false;
-      this._answered = false;
-      this._fallbackText = "";
-      this._initialized = false;
+      const oldCall = changed.get("call") as PilotPart | undefined;
+      if (shouldResetQuestionState(oldCall, this.call)) {
+        this._activeTab = 0;
+        this._tabStates = [];
+        this._submitting = false;
+        this._answered = false;
+        this._fallbackText = "";
+        this._initialized = false;
+      }
     }
   }
 

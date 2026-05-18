@@ -345,6 +345,8 @@ describe("QuestionTool", () => {
     resolveQuestion = mod.resolveQuestion;
     rejectQuestion = mod.rejectQuestion;
     QuestionTool = mod.QuestionTool;
+    // Reset the resolved-IDs set so dedup state doesn't bleed across tests.
+    mod.clearResolvedIds();
   });
 
   // -----------------------------------------------------------------------
