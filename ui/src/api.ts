@@ -28,6 +28,8 @@ import type {
   DailyCost,
   AgentCost,
   SkillsListResponse,
+  StructuredSkillSummary,
+  StructuredSkillsListResponse,
   ModelCost,
   FlowDefinition,
   FlowDefinitionWithLastRun,
@@ -1181,6 +1183,26 @@ export async function installSkillFromGitHub(
 /** Delete a workspace skill by name. */
 export async function deleteSkill(slug: string, name: string): Promise<void> {
   await apiFetch(`/instances/${slug}/skills/${encodeURIComponent(name)}`, { method: "DELETE" });
+}
+
+// ---------------------------------------------------------------------------
+// Structured Skills (SKILLS-002) — DB-backed REST API
+// ---------------------------------------------------------------------------
+
+/** List structured (DB-backed) skills for an instance. */
+export async function listStructuredSkills(slug: string): Promise<StructuredSkillSummary[]> {
+  const res = await apiFetch<StructuredSkillsListResponse>(`/instances/${slug}/skills`);
+  return res.skills;
+}
+
+/** Delete a structured skill by id. */
+export async function deleteStructuredSkill(slug: string, id: string): Promise<void> {
+  await apiFetch(`/instances/${slug}/skills/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** Export a structured skill as a ZIP file. Returns the blob URL for download. */
+export function buildStructuredSkillExportUrl(slug: string, id: string): string {
+  return `/api/instances/${slug}/skills/${encodeURIComponent(id)}/export`;
 }
 
 // ---------------------------------------------------------------------------

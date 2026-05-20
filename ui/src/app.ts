@@ -25,6 +25,7 @@ import "./components/blueprints-view.js";
 import "./components/blueprint-builder.js";
 import "./components/agent-templates-view.js";
 import "./components/triggers/cp-triggers-view.js";
+import "./components/skills/cp-skills-tab.js";
 import "./components/agent-template-detail.js";
 import "./components/instance-settings.js";
 import "./components/runtime-pilot.js";
@@ -751,6 +752,7 @@ export class CpApp extends LitElement {
         templateId?: string;
         runId?: number;
         flowId?: number;
+        skillId?: string;
         section?: import("./types.js").SidebarSection;
       }>
     ).detail;
@@ -790,6 +792,10 @@ export class CpApp extends LitElement {
       navigateTo({ view: "blueprint-builder", blueprintId: detail.blueprintId });
     } else if (detail.view === "triggers" && detail.slug) {
       navigateTo({ view: "triggers", slug: detail.slug });
+    } else if (detail.view === "skills" && detail.slug) {
+      navigateTo({ view: "skills", slug: detail.slug });
+    } else if (detail.view === "skill-detail" && detail.slug && detail.skillId) {
+      navigateTo({ view: "skill-detail", slug: detail.slug, skillId: detail.skillId });
     } else if (detail.view === "agent-templates") {
       navigateTo({ view: "agent-templates" });
     } else if (detail.view === "agent-template-detail" && detail.templateId) {
@@ -920,6 +926,27 @@ export class CpApp extends LitElement {
           .instanceSlug=${this._route.slug}
           @navigate=${this._navigate}
         ></cp-triggers-view>
+      `;
+    }
+    if (this._route.view === "skills") {
+      return html`
+        <cp-budget-alert-banner
+          .slug=${this._route.slug}
+          @navigate=${this._navigate}
+        ></cp-budget-alert-banner>
+        <cp-skills-tab .slug=${this._route.slug} @navigate=${this._navigate}></cp-skills-tab>
+      `;
+    }
+    if (this._route.view === "skill-detail") {
+      // TODO(Task 10): replace this placeholder with `<cp-skill-detail>` once it ships.
+      return html`
+        <cp-budget-alert-banner
+          .slug=${this._route.slug}
+          @navigate=${this._navigate}
+        ></cp-budget-alert-banner>
+        <div style="padding:24px;color:var(--text-muted)">
+          Skill detail view — coming in Task 10 (id: ${this._route.skillId})
+        </div>
       `;
     }
     if (this._route.view === "agent-template-detail") {
@@ -1107,7 +1134,9 @@ export class CpApp extends LitElement {
               this._route.view === "session-logs" ||
               this._route.view === "tasks" ||
               this._route.view === "flows" ||
-              this._route.view === "flow-run"
+              this._route.view === "flow-run" ||
+              this._route.view === "skills" ||
+              this._route.view === "skill-detail"
                 ? "active"
                 : ""}"
               @click=${() => navigateTo({ view: "cluster" })}
