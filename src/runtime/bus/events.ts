@@ -398,6 +398,45 @@ export const SystemStateChanged = defineEvent<
 >("system.state.changed");
 
 // ---------------------------------------------------------------------------
+// Skill events (SKILLS-002)
+// ---------------------------------------------------------------------------
+
+export const SkillCreated = defineEvent<
+  "skill.created",
+  { instanceSlug: InstanceSlug; skillId: string; name: string }
+>("skill.created");
+
+export const SkillUpdated = defineEvent<
+  "skill.updated",
+  { instanceSlug: InstanceSlug; skillId: string }
+>("skill.updated");
+
+export const SkillDeleted = defineEvent<
+  "skill.deleted",
+  { instanceSlug: InstanceSlug; skillId: string }
+>("skill.deleted");
+
+export const SkillFileUpserted = defineEvent<
+  "skill.file.upserted",
+  { instanceSlug: InstanceSlug; skillId: string; path: string }
+>("skill.file.upserted");
+
+export const SkillFileDeleted = defineEvent<
+  "skill.file.deleted",
+  { instanceSlug: InstanceSlug; skillId: string; path: string }
+>("skill.file.deleted");
+
+export const AgentSkillAssigned = defineEvent<
+  "agent_skill.assigned",
+  { instanceSlug: InstanceSlug; skillId: string; agentId: string }
+>("agent_skill.assigned");
+
+export const AgentSkillUnassigned = defineEvent<
+  "agent_skill.unassigned",
+  { instanceSlug: InstanceSlug; skillId: string; agentId: string }
+>("agent_skill.unassigned");
+
+// ---------------------------------------------------------------------------
 // Channel events
 // ---------------------------------------------------------------------------
 
@@ -458,7 +497,14 @@ export type AnyEventDef =
   | typeof FlowStepCompleted
   | typeof FlowRunCompleted
   | typeof WorkspaceFileChanged
-  | typeof SystemStateChanged;
+  | typeof SystemStateChanged
+  | typeof SkillCreated
+  | typeof SkillUpdated
+  | typeof SkillDeleted
+  | typeof SkillFileUpserted
+  | typeof SkillFileDeleted
+  | typeof AgentSkillAssigned
+  | typeof AgentSkillUnassigned;
 
 export type AnyEvent = {
   [K in AnyEventDef["type"]]: {

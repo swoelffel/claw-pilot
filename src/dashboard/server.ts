@@ -48,6 +48,7 @@ import { registerSystemInstanceRoutes } from "./routes/system-instance.js";
 import { registerNotificationRoutes } from "./routes/notifications.js";
 import { registerWebhookRoutes } from "./routes/webhooks.js";
 import { registerTriggerRoutes } from "./routes/instances/triggers.js";
+import { registerInstanceSkillsRoutes } from "./routes/instances/skills.js";
 import { TriggerScheduler } from "../runtime/triggers/scheduler.js";
 import { registerTriggerContextProvider } from "../runtime/triggers/context-provider.js";
 import { callRuntimeApi } from "./routes/_internal-api-client.js";
@@ -326,6 +327,10 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   // creation so route handlers can call `deps.triggerScheduler.reload(id)`.
   // Extension-Point: trigger-dashboard-routes
   registerTriggerRoutes(app, deps);
+
+  // SKILLS-002 — instance-scoped structured skills (CRUD + ingest + assign + export)
+  // Extension-Point: dashboard-skills-routes
+  registerInstanceSkillsRoutes(app, deps);
 
   // Wire notification broadcaster: engines emit notifications → Monitor pushes to WS clients
   Monitor.setNotificationBroadcaster((row) => monitor.broadcastNotification(row));
