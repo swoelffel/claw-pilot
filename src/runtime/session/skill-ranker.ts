@@ -7,6 +7,7 @@
  */
 
 import type { SkillEntry } from "../tool/built-in/skill.js";
+import type { SkillLoaderEntry } from "./skill-loader.js";
 
 // ---------------------------------------------------------------------------
 // Tokenizer
@@ -97,4 +98,46 @@ export function rankSkills(
   // Sort by score descending, take top N
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, topN).map((s) => s.skill);
+}
+
+// ---------------------------------------------------------------------------
+// SKILLS-002 — DB / filesystem source merge
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert a DB-backed skill entry to the legacy `SkillEntry` shape consumed
+ * by `rankSkills`. The synthetic `dir`/`path` fields are derived from the
+ * skill id so downstream code that reads them (resource listing, content
+ * fetch) still has stable keys, but they do not point to real files.
+ */
+function dbEntryToSkillEntry(e: SkillLoaderEntry): SkillEntry {
+  return {
+    name: e.name,
+    dir: `db:${e.id}`,
+    path: `db:${e.id}/SKILL.md`,
+    ...(e.description !== null ? { description: e.description } : {}),
+    content: e.content,
+  };
+}
+
+/**
+ * Merge filesystem-discovered and DB-backed skill entries into a single
+ * `SkillEntry[]` ready for `rankSkills`. Entries are de-duplicated by
+ * `name`; the DB source always wins on collision so admin edits via the
+ * dashboard supersede whatever currently sits on disk.
+ *
+ * Extension-Point: skill-ranker-db-merge
+ */
+export function mergeSkillSources(sources: {
+  fromFilesystem: readonly SkillEntry[];
+  fromDb: readonly SkillLoaderEntry[];
+}): SkillEntry[] {
+  const byName = new Map<string, SkillEntry>();
+  for (const e of sources.fromFilesystem) {
+    byName.set(e.name, e);
+  }
+  for (const e of sources.fromDb) {
+    byName.set(e.name, dbEntryToSkillEntry(e));
+  }
+  return [...byName.values()];
 }
