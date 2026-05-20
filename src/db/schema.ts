@@ -1753,6 +1753,55 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // v44: Structured Skills (SKILLS-002).
+    //
+    // Adds three new tables to persist Anthropic-style skills (SKILL.md +
+    // referenced files) per instance, plus the agent ↔ skill many-to-many
+    // binding. `skills.org_id TEXT NULL` slot satisfies CE/EE discipline R2
+    // (Enterprise will populate it; CE leaves it NULL).
+    //
+    // Additive: brand new tables, no impact on existing rows. Wiring of
+    // legacy-skill migration (workspace `.skills/*.md` → `skills` rows) lands
+    // in a follow-up task.
+    version: 44,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS skills (
+          id            TEXT PRIMARY KEY,
+          instance_slug TEXT NOT NULL,
+          name          TEXT NOT NULL,
+          description   TEXT,
+          version       TEXT,
+          source        TEXT,
+          source_url    TEXT,
+          config_json   TEXT,
+          org_id        TEXT,
+          created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS skill_files (
+          id        INTEGER PRIMARY KEY AUTOINCREMENT,
+          skill_id  TEXT NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+          path      TEXT NOT NULL,
+          content   TEXT NOT NULL,
+          hash      TEXT,
+          UNIQUE(skill_id, path)
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_skills (
+          agent_id  TEXT NOT NULL,
+          skill_id  TEXT NOT NULL,
+          PRIMARY KEY (agent_id, skill_id),
+          FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_skills_instance ON skills(instance_slug);
+        CREATE INDEX IF NOT EXISTS idx_skill_files_skill ON skill_files(skill_id);
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
