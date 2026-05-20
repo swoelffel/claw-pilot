@@ -20,7 +20,7 @@ import { buttonStyles, spinnerStyles, errorBannerStyles } from "../../styles/sha
 import { listStructuredSkills } from "../../api.js";
 import type { StructuredSkillSummary } from "../../types.js";
 
-// TODO(Task 9): import "./cp-skill-wizard.js";
+import "./cp-skill-wizard.js";
 // TODO(Task 10): import "./cp-skill-detail.js";
 
 @localized()
@@ -193,10 +193,16 @@ export class SkillsTab extends LitElement {
   // ── Actions ─────────────────────────────────────────────────────────────
 
   private _openWizard(): void {
-    // TODO(Task 9): swap for the real `cp-skill-wizard` component once it lands.
     this._wizardOpen = true;
-    // eslint-disable-next-line no-console
-    console.warn("[cp-skills-tab] wizard coming in Task 9");
+  }
+
+  private _onWizardClose(): void {
+    this._wizardOpen = false;
+  }
+
+  private _onSkillCreated(): void {
+    this._wizardOpen = false;
+    void this._load();
   }
 
   private _openSkill(id: string): void {
@@ -225,6 +231,13 @@ export class SkillsTab extends LitElement {
         </button>
       </div>
 
+      ${this._wizardOpen
+        ? html`<cp-skill-wizard
+            .slug=${this.slug}
+            @skill-created=${this._onSkillCreated}
+            @close=${this._onWizardClose}
+          ></cp-skill-wizard>`
+        : nothing}
       ${this._loading
         ? html`<div class="spinner"></div>`
         : this._error

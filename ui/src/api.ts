@@ -1195,6 +1195,52 @@ export async function listStructuredSkills(slug: string): Promise<StructuredSkil
   return res.skills;
 }
 
+/** Create a blank structured skill (just name + description). */
+export async function createBlankSkill(
+  slug: string,
+  body: { name: string; description?: string },
+): Promise<{ id: string }> {
+  return apiFetch<{ id: string }>(`/instances/${slug}/skills`, {
+    method: "POST",
+    body: JSON.stringify({ mode: "blank", ...body }),
+  });
+}
+
+/** Upload a ZIP archive to ingest a structured skill. */
+export async function uploadStructuredSkillZip(slug: string, file: File): Promise<{ id: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`/api/instances/${slug}/skills`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${getToken()}` },
+    body: form,
+  });
+  if (!res.ok) {
+    let code = "UPLOAD_ERROR";
+    let message = res.statusText;
+    try {
+      const body = (await res.json()) as { code?: string; error?: string };
+      code = body.code ?? code;
+      message = body.error ?? message;
+    } catch {
+      // Body is not JSON — keep defaults
+    }
+    throw new ApiError(res.status, code, message);
+  }
+  return res.json() as Promise<{ id: string }>;
+}
+
+/** Install a structured skill from a GitHub directory URL. */
+export async function installStructuredSkillFromGithub(
+  slug: string,
+  body: { url: string; ref?: string },
+): Promise<{ id: string }> {
+  return apiFetch<{ id: string }>(`/instances/${slug}/skills`, {
+    method: "POST",
+    body: JSON.stringify({ mode: "github", ...body }),
+  });
+}
+
 /** Delete a structured skill by id. */
 export async function deleteStructuredSkill(slug: string, id: string): Promise<void> {
   await apiFetch(`/instances/${slug}/skills/${encodeURIComponent(id)}`, { method: "DELETE" });
