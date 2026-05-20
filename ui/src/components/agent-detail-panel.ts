@@ -8,7 +8,7 @@ import {
   type AgentLink,
   type PanelContext,
   type AgentMetaPatch,
-  type SkillInfo,
+  type StructuredSkillSummary,
   type NamedApiKey,
   AGENT_ARCHETYPES,
   isArchetypeLink,
@@ -28,7 +28,7 @@ import {
   fetchToolProfiles,
   fetchProviders,
   updateBlueprintAgentMeta,
-  fetchInstanceSkills,
+  listStructuredSkills,
 } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
@@ -91,7 +91,7 @@ export class AgentDetailPanel extends LitElement {
   // null = All skills, [] = None, [...] = custom list
   @state() private _editSkills: string[] | null = null;
   // Available skills for the picker (lazy-loaded from API)
-  @state() private _availableSkills: SkillInfo[] = [];
+  @state() private _availableSkills: StructuredSkillSummary[] = [];
   @state() private _loadingSkills = false;
   @state() private _skillsDirty = false;
   @state() private _skillsSaving = false;
@@ -1347,11 +1347,11 @@ export class AgentDetailPanel extends LitElement {
     if (this._loadingSkills || this.context?.kind !== "instance") return;
     this._loadingSkills = true;
     try {
-      const [res, instanceConfig] = await Promise.all([
-        fetchInstanceSkills(this.context.slug),
+      const [skills, instanceConfig] = await Promise.all([
+        listStructuredSkills(this.context.slug),
         fetchInstanceConfig(this.context.slug),
       ]);
-      this._availableSkills = res.skills;
+      this._availableSkills = skills;
       const agentEntry = instanceConfig.agents.find((a) => a.id === this.agent.agent_id) as
         | Record<string, unknown>
         | undefined;

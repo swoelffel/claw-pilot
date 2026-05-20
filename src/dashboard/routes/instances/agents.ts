@@ -9,13 +9,12 @@ import { registerAgentDeleteRoutes } from "./agents/delete.js";
 import { registerAgentUpdateRoutes } from "./agents/update.js";
 import { registerAgentFileRoutes } from "./agents/files.js";
 import { registerAgentSpawnLinkRoutes } from "./agents/spawn-links.js";
-import { registerAgentSkillsRoutes } from "./agents/skills.js";
 import { registerAgentKickoffRoutes } from "./agents/kickoff.js";
 import { registerAgentPermissionsRoutes } from "./agents/permissions.js";
 
 export function registerAgentRoutes(app: Hono, deps: RouteDeps): void {
   // Registration order matters for Hono — specific paths before parameterized ones
-  registerAgentSkillsRoutes(app, deps); // skills: GET, POST upload/install, DELETE
+  // Legacy filesystem-based skills routes removed in SKILLS-002 — superseded by registerInstanceSkillsRoutes in server.ts.
   registerAgentSyncRoutes(app, deps); // POST .../agents/sync
   registerAgentListRoutes(app, deps); // GET  .../agents, GET .../agents/builder
   registerAgentUpdateRoutes(app, deps); // PATCH .../agents/:id/position, .../agents/:id/meta
