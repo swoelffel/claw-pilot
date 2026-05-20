@@ -25,8 +25,6 @@ export const SkillFrontmatterSchema = z
   })
   .passthrough();
 
-export type SkillFrontmatter = z.infer<typeof SkillFrontmatterSchema>;
-
 export interface ParsedManifest {
   meta: {
     name: string;
