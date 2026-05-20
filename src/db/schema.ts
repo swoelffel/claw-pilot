@@ -2,6 +2,7 @@
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import * as path from "node:path";
+import { migrateLegacySkills } from "../core/skills/_skill-migration.js";
 import { logger } from "../lib/logger.js";
 import { deriveWebChatPort } from "../lib/platform.js";
 
@@ -1800,6 +1801,22 @@ const MIGRATIONS: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_skills_instance ON skills(instance_slug);
         CREATE INDEX IF NOT EXISTS idx_skill_files_skill ON skill_files(skill_id);
       `);
+    },
+  },
+  {
+    // v45: One-shot legacy-skills migration (SKILLS-002).
+    //
+    // Lifts skills stored under the legacy `agent_files` path layout
+    // (`.opencode/skill/<name>/...`) into the structured tables added in v44.
+    // Idempotent + non-destructive: re-running is a no-op and `agent_files`
+    // rows are left untouched for rollback safety. Implementation lives in
+    // `core/skills/_skill-migration.ts`; required as a synchronous helper
+    // here so the migration runs inside the v45 transaction.
+    //
+    // Extension-Point: schema-skills-migration
+    version: 45,
+    up(db) {
+      migrateLegacySkills(db);
     },
   },
 ];
