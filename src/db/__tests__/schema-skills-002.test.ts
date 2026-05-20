@@ -52,14 +52,14 @@ describe("SKILLS-002 migration (skills, skill_files, agent_skills)", () => {
     )
       .map((c) => c.name)
       .sort();
-    expect(filesCols).toEqual(["id", "skill_id", "path", "content", "hash"].sort());
+    expect(filesCols).toEqual(["id", "skill_id", "path", "content", "hash", "org_id"].sort());
 
     const agentSkillsCols = (
       db.prepare("PRAGMA table_info(agent_skills)").all() as Array<{ name: string }>
     )
       .map((c) => c.name)
       .sort();
-    expect(agentSkillsCols).toEqual(["agent_id", "skill_id"].sort());
+    expect(agentSkillsCols).toEqual(["agent_id", "skill_id", "org_id"].sort());
 
     const indexes = (
       db.prepare("SELECT name FROM sqlite_master WHERE type='index'").all() as Array<{

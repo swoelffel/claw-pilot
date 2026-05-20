@@ -1777,7 +1777,7 @@ const MIGRATIONS: Migration[] = [
           source        TEXT,
           source_url    TEXT,
           config_json   TEXT,
-          org_id        TEXT,
+          org_id        TEXT NULL,
           created_at    TEXT NOT NULL DEFAULT (datetime('now')),
           updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -1788,12 +1788,14 @@ const MIGRATIONS: Migration[] = [
           path      TEXT NOT NULL,
           content   TEXT NOT NULL,
           hash      TEXT,
+          org_id    TEXT NULL,
           UNIQUE(skill_id, path)
         );
 
         CREATE TABLE IF NOT EXISTS agent_skills (
           agent_id  TEXT NOT NULL,
           skill_id  TEXT NOT NULL,
+          org_id    TEXT NULL,
           PRIMARY KEY (agent_id, skill_id),
           FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
         );
