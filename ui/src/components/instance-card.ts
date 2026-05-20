@@ -589,6 +589,18 @@ export class InstanceCard extends LitElement {
           @click=${(e: Event) => {
             e.stopPropagation();
             this._menuOpen = false;
+            this._navigate("skills");
+          }}
+        >
+          <span class="menu-icon">📦</span>
+          ${msg("Skills", { id: "btn-skills" })}
+        </button>
+
+        <button
+          class="menu-item"
+          @click=${(e: Event) => {
+            e.stopPropagation();
+            this._menuOpen = false;
             this._navigate("instance-settings");
           }}
         >

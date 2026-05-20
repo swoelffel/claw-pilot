@@ -91,6 +91,16 @@ describe("routeToPath", () => {
     expect(routeToPath({ view: "triggers", slug: "dev" })).toBe("/instances/dev/triggers");
   });
 
+  it("skills → /instances/:slug/skills", () => {
+    expect(routeToPath({ view: "skills", slug: "dev" })).toBe("/instances/dev/skills");
+  });
+
+  it("skill-detail → /instances/:slug/skills/:id", () => {
+    expect(routeToPath({ view: "skill-detail", slug: "dev", skillId: "abc-123" })).toBe(
+      "/instances/dev/skills/abc-123",
+    );
+  });
+
   it("extension with empty subPath → /ext/:id", () => {
     expect(routeToPath({ view: "extension", id: "admin", subPath: "" })).toBe("/ext/admin");
   });
@@ -143,6 +153,18 @@ describe("pathToRoute", () => {
 
   it("/instances/dev/triggers → triggers", () => {
     expect(pathToRoute("/instances/dev/triggers")).toEqual({ view: "triggers", slug: "dev" });
+  });
+
+  it("/instances/dev/skills → skills", () => {
+    expect(pathToRoute("/instances/dev/skills")).toEqual({ view: "skills", slug: "dev" });
+  });
+
+  it("/instances/dev/skills/abc-123 → skill-detail", () => {
+    expect(pathToRoute("/instances/dev/skills/abc-123")).toEqual({
+      view: "skill-detail",
+      slug: "dev",
+      skillId: "abc-123",
+    });
   });
 
   it("/blueprints → blueprints", () => {
@@ -231,6 +253,8 @@ describe("round-trip routeToPath ↔ pathToRoute", () => {
     { view: "flow-sessions", slug: "dev", flowId: 5 },
     { view: "profile" },
     { view: "triggers", slug: "dev" },
+    { view: "skills", slug: "dev" },
+    { view: "skill-detail", slug: "dev", skillId: "abc-123" },
     { view: "extension", id: "admin", subPath: "" },
     { view: "extension", id: "admin", subPath: "users/42" },
   ];
