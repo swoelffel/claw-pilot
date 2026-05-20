@@ -1252,6 +1252,126 @@ export function buildStructuredSkillExportUrl(slug: string, id: string): string 
 }
 
 // ---------------------------------------------------------------------------
+// Structured skills — detail / files / agents
+// ---------------------------------------------------------------------------
+
+export interface StructuredSkillRecord {
+  id: string;
+  instanceSlug: string;
+  name: string;
+  description: string | null;
+  version: string | null;
+  source: string | null;
+  sourceUrl: string | null;
+  configJson: string | null;
+  orgId: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface StructuredSkillFile {
+  path: string;
+  content: string;
+  hash: string;
+}
+
+export interface StructuredSkillDetail {
+  skill: StructuredSkillRecord;
+  files: StructuredSkillFile[];
+  agents: string[];
+}
+
+export async function getStructuredSkill(slug: string, id: string): Promise<StructuredSkillDetail> {
+  return apiFetch<StructuredSkillDetail>(`/instances/${slug}/skills/${encodeURIComponent(id)}`);
+}
+
+export async function updateStructuredSkillMeta(
+  slug: string,
+  id: string,
+  body: { name?: string; description?: string | null; version?: string | null },
+): Promise<{ skill: StructuredSkillRecord }> {
+  return apiFetch<{ skill: StructuredSkillRecord }>(
+    `/instances/${slug}/skills/${encodeURIComponent(id)}`,
+    { method: "PUT", body: JSON.stringify(body) },
+  );
+}
+
+export async function getStructuredSkillFile(
+  slug: string,
+  id: string,
+  path: string,
+): Promise<StructuredSkillFile> {
+  return apiFetch<StructuredSkillFile>(
+    `/instances/${slug}/skills/${encodeURIComponent(id)}/files/${encodeWorkspacePath(path)}`,
+  );
+}
+
+export async function upsertStructuredSkillFile(
+  slug: string,
+  id: string,
+  path: string,
+  content: string,
+): Promise<StructuredSkillFile> {
+  return apiFetch<StructuredSkillFile>(
+    `/instances/${slug}/skills/${encodeURIComponent(id)}/files/${encodeWorkspacePath(path)}`,
+    { method: "PUT", body: JSON.stringify({ content }) },
+  );
+}
+
+export async function deleteStructuredSkillFile(
+  slug: string,
+  id: string,
+  path: string,
+): Promise<void> {
+  await apiFetch(
+    `/instances/${slug}/skills/${encodeURIComponent(id)}/files/${encodeWorkspacePath(path)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function assignStructuredSkillToAgent(
+  slug: string,
+  id: string,
+  agentId: string,
+): Promise<void> {
+  await apiFetch(
+    `/instances/${slug}/skills/${encodeURIComponent(id)}/agents/${encodeURIComponent(agentId)}`,
+    { method: "POST" },
+  );
+}
+
+export async function unassignStructuredSkillFromAgent(
+  slug: string,
+  id: string,
+  agentId: string,
+): Promise<void> {
+  await apiFetch(
+    `/instances/${slug}/skills/${encodeURIComponent(id)}/agents/${encodeURIComponent(agentId)}`,
+    { method: "DELETE" },
+  );
+}
+
+/** Download the export ZIP via an authenticated fetch + blob URL trigger. */
+export async function downloadStructuredSkillExport(slug: string, id: string): Promise<void> {
+  const res = await fetch(buildStructuredSkillExportUrl(slug, id), {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, "EXPORT_FAILED", `Export failed: ${res.statusText}`);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = /filename="?([^"]+)"?/.exec(disposition);
+  const filename = match?.[1] ?? `skill-${id}.zip`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------------------
 // Named API Keys
 // ---------------------------------------------------------------------------
 

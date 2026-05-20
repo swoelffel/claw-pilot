@@ -26,6 +26,7 @@ import "./components/blueprint-builder.js";
 import "./components/agent-templates-view.js";
 import "./components/triggers/cp-triggers-view.js";
 import "./components/skills/cp-skills-tab.js";
+import "./components/skills/cp-skill-detail.js";
 import "./components/agent-template-detail.js";
 import "./components/instance-settings.js";
 import "./components/runtime-pilot.js";
@@ -938,15 +939,16 @@ export class CpApp extends LitElement {
       `;
     }
     if (this._route.view === "skill-detail") {
-      // TODO(Task 10): replace this placeholder with `<cp-skill-detail>` once it ships.
       return html`
         <cp-budget-alert-banner
           .slug=${this._route.slug}
           @navigate=${this._navigate}
         ></cp-budget-alert-banner>
-        <div style="padding:24px;color:var(--text-muted)">
-          Skill detail view — coming in Task 10 (id: ${this._route.skillId})
-        </div>
+        <cp-skill-detail
+          .slug=${this._route.slug}
+          .skillId=${this._route.skillId}
+          @navigate=${this._navigate}
+        ></cp-skill-detail>
       `;
     }
     if (this._route.view === "agent-template-detail") {
