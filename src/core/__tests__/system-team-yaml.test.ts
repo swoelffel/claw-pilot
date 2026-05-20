@@ -2,10 +2,11 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseAndValidateTeam } from "../team-import.js";
 
 const YAML_PATH = path.join(
-  path.dirname(new URL(import.meta.url).pathname),
+  path.dirname(fileURLToPath(import.meta.url)),
   "../../../templates/system/cp-system.team.yaml",
 );
 

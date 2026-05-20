@@ -32,7 +32,8 @@ describe("LocalConnection", () => {
   });
 
   describe("execFile()", () => {
-    it("runs file with args", async () => {
+    // echo is a shell builtin on Windows, not a standalone executable
+    it.skipIf(process.platform === "win32")("runs file with args", async () => {
       const result = await conn.execFile("echo", ["foo", "bar"]);
       expect(result.exitCode).toBe(0);
       expect(result.stdout.trim()).toBe("foo bar");

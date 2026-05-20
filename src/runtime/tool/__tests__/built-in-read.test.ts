@@ -238,7 +238,7 @@ describe("ReadTool", () => {
       );
     });
 
-    it("resolves symlink directory entries", async () => {
+    it.skipIf(process.platform === "win32")("resolves symlink directory entries", async () => {
       const targetDir = path.join(tempDir, "target-dir");
       await mkdir(targetDir);
       await symlink(targetDir, path.join(tempDir, "link-to-dir"));

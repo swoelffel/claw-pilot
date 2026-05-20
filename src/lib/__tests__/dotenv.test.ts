@@ -58,7 +58,7 @@ describe("dotenv helpers", () => {
       expect(readEnvVar(envPath, "API_KEY")).toBe("secret123");
     });
 
-    it("writes with mode 0o600", async () => {
+    it.skipIf(process.platform === "win32")("writes with mode 0o600", async () => {
       await writeEnvVar(envPath, "API_KEY", "secret123");
       const stat = await fs.stat(envPath);
       expect(stat.mode & 0o777).toBe(0o600);

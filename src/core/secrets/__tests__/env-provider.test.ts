@@ -61,9 +61,11 @@ describe("EnvSecretProvider", () => {
     const contents = fs.readFileSync(envPath, "utf-8");
     expect(contents).toContain(`${TEST_KEY}=persisted`);
 
-    const stat = fs.statSync(envPath);
-    // Only check the low 9 permission bits (mask out file-type bits)
-    expect(stat.mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      const stat = fs.statSync(envPath);
+      // Only check the low 9 permission bits (mask out file-type bits)
+      expect(stat.mode & 0o777).toBe(0o600);
+    }
   });
 
   it("rotate() throws NOT_SUPPORTED_IN_COMMUNITY", async () => {

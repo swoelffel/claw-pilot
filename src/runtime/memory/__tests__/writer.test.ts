@@ -1,5 +1,6 @@
 // src/runtime/memory/__tests__/writer.test.ts
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import * as path from "node:path";
 
 vi.mock("node:fs");
 vi.mock("ai");
@@ -38,7 +39,9 @@ describe("appendToMemoryFile", () => {
 
   it("creates memory dir if needed", () => {
     appendToMemoryFile("/workspace", "facts.md", ["A new fact"]);
-    expect(fs.mkdirSync).toHaveBeenCalledWith("/workspace/memory", { recursive: true });
+    expect(fs.mkdirSync).toHaveBeenCalledWith(path.join("/workspace", "memory"), {
+      recursive: true,
+    });
   });
 
   it("appends entries with [1.0] prefix and date header", () => {
@@ -65,7 +68,7 @@ describe("appendToMemoryFile", () => {
     // readFileSync throws (file absent), but appendFileSync should still be called
     appendToMemoryFile("/workspace", "facts.md", ["New entry"]);
     expect(fs.appendFileSync).toHaveBeenCalledWith(
-      "/workspace/memory/facts.md",
+      path.join("/workspace", "memory", "facts.md"),
       expect.stringContaining("- [1.0] New entry"),
       "utf-8",
     );
