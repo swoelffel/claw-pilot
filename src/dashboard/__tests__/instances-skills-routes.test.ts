@@ -344,6 +344,68 @@ describe("DELETE /api/instances/:slug/skills/:id", () => {
   });
 });
 
+describe("PUT /api/instances/:slug/skills/:id/files/SKILL.md", () => {
+  it("rejects invalid manifest content with 400", async () => {
+    const create = await ctx.app.request("/api/instances/demo/skills", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ mode: "blank", name: "guard-invalid", description: "d" }),
+    });
+    const { id } = (await readJson(create)) as { id: string };
+
+    const res = await ctx.app.request(`/api/instances/demo/skills/${id}/files/SKILL.md`, {
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ content: "no frontmatter here" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts a valid manifest and updates the stored content", async () => {
+    const create = await ctx.app.request("/api/instances/demo/skills", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ mode: "blank", name: "guard-valid", description: "d" }),
+    });
+    const { id } = (await readJson(create)) as { id: string };
+
+    const newContent = "---\nname: renamed\n---\nbody2";
+    const res = await ctx.app.request(`/api/instances/demo/skills/${id}/files/SKILL.md`, {
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ content: newContent }),
+    });
+    expect(res.status).toBe(200);
+
+    const row = ctx.db
+      .prepare("SELECT content FROM skill_files WHERE skill_id = ? AND path = ?")
+      .get(id, "SKILL.md") as { content: string } | undefined;
+    expect(row?.content).toBe(newContent);
+  });
+});
+
+describe("DELETE /api/instances/:slug/skills/:id/files/SKILL.md", () => {
+  it("refuses with 400 and keeps the SKILL.md row", async () => {
+    const create = await ctx.app.request("/api/instances/demo/skills", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ mode: "blank", name: "guard-delete", description: "d" }),
+    });
+    const { id } = (await readJson(create)) as { id: string };
+
+    const res = await ctx.app.request(`/api/instances/demo/skills/${id}/files/SKILL.md`, {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(400);
+
+    const row = ctx.db
+      .prepare("SELECT path FROM skill_files WHERE skill_id = ? AND path = ?")
+      .get(id, "SKILL.md") as { path: string } | undefined;
+    expect(row?.path).toBe("SKILL.md");
+  });
+});
+
 describe("GET /api/instances/:slug/skills/:id/export", () => {
   it("returns a ZIP file", async () => {
     const create = await ctx.app.request("/api/instances/demo/skills", {
