@@ -208,6 +208,77 @@ function filterByPermissions(skills: SkillEntry[], agentConfig?: RuntimeAgentCon
 }
 
 // ---------------------------------------------------------------------------
+// Resolution helpers (DB-first then filesystem)
+// ---------------------------------------------------------------------------
+
+function formatSkillOutput(
+  skillName: string,
+  content: string,
+  files: Array<{ path: string }>,
+): string {
+  let output = `<skill_content name="${skillName}">\n${content}\n</skill_content>`;
+  if (files.length > 0) {
+    const fileList = files.map((f) => `  <file path="${f.path}" />`).join("\n");
+    output += `\n\n<skill_files>\n${fileList}\n</skill_files>`;
+  }
+  return output;
+}
+
+/**
+ * SKILLS-003 — DB-backed resolution. Returns null if no match.
+ */
+function resolveDbSkill(
+  skillName: string,
+  ctx: { skillLoader?: import("../../session/skill-loader.js").SkillLoader; agentId?: string },
+): Tool.Result | null {
+  if (!ctx.skillLoader || !ctx.agentId) return null;
+  const dbSkills = ctx.skillLoader.getEntriesForAgent(ctx.agentId);
+  const match = dbSkills.find((s) => s.name === skillName);
+  if (!match) return null;
+
+  const skillFile = match.files.find((f) => f.path === "SKILL.md");
+  const content = skillFile ? skillFile.content : match.content;
+  const otherFiles = match.files.filter((f) => f.path !== "SKILL.md");
+
+  return {
+    title: `Skill: ${skillName}`,
+    output: formatSkillOutput(skillName, content, otherFiles),
+    truncated: false,
+  };
+}
+
+/**
+ * Filesystem hierarchy resolution. Returns null if no match.
+ */
+async function resolveFsSkill(
+  skillName: string,
+  instanceRoot: string,
+): Promise<Tool.Result | null> {
+  const dirs = buildSkillDirs(instanceRoot);
+  for (const dir of dirs) {
+    const skillFile = path.join(dir, skillName, "SKILL.md");
+    let content: string;
+    try {
+      content = await fs.readFile(skillFile, "utf-8");
+    } catch (err) {
+      logger.debug("[tool:skill] skill file not found in directory", { error: String(err) });
+      continue;
+    }
+    const resources = await listSkillResources(path.join(dir, skillName));
+    return {
+      title: `Skill: ${skillName}`,
+      output: formatSkillOutput(
+        skillName,
+        content,
+        resources.map((p) => ({ path: p })),
+      ),
+      truncated: false,
+    };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Tool definition
 // ---------------------------------------------------------------------------
 
@@ -235,53 +306,34 @@ export const SkillTool = Tool.define("skill", {
       );
     }
 
-    // Guard: check skill whitelist before searching directories
-    if (ctx.agentConfig?.skills != null) {
-      const allowed = new Set(ctx.agentConfig.skills);
-      if (!allowed.has(skillName)) {
-        return {
-          title: "skill",
-          output: `Skill "${skillName}" is not available for this agent.`,
-          truncated: false,
-        };
-      }
-    }
+    // 1. DB-backed resolution (SKILLS-003)
+    const dbResult = resolveDbSkill(skillName, ctx);
+    if (dbResult) return dbResult;
 
-    // Search across the 4-level hierarchy
-    const instanceRoot = ctx.workDir ?? process.cwd();
-    const dirs = buildSkillDirs(instanceRoot);
-
-    for (const dir of dirs) {
-      const skillFile = path.join(dir, skillName, "SKILL.md");
-      let content: string;
-      try {
-        content = await fs.readFile(skillFile, "utf-8");
-      } catch (err) {
-        logger.debug("[tool:skill] skill file not found in directory", { error: String(err) });
-        continue;
-      }
-
-      const skillDir = path.join(dir, skillName);
-      const resources = await listSkillResources(skillDir);
-
-      let output = `<skill_content name="${skillName}">\n${content}\n</skill_content>`;
-      if (resources.length > 0) {
-        const fileList = resources.map((f) => `  <file path="${f}" />`).join("\n");
-        output += `\n\n<skill_files>\n${fileList}\n</skill_files>`;
-      }
-
+    // 2. Whitelist guard (filesystem only)
+    if (ctx.agentConfig?.skills != null && !new Set(ctx.agentConfig.skills).has(skillName)) {
       return {
-        title: `Skill: ${skillName}`,
-        output,
+        title: "skill",
+        output: `Skill "${skillName}" is not available for this agent.`,
         truncated: false,
       };
     }
 
-    // Skill not found
+    // 3. Filesystem hierarchy (legacy)
+    const instanceRoot = ctx.workDir ?? process.cwd();
+    const fsResult = await resolveFsSkill(skillName, instanceRoot);
+    if (fsResult) return fsResult;
+
+    // 4. Not found
     const available = await listAvailableSkills(instanceRoot);
+    const dbNames =
+      ctx.skillLoader && ctx.agentId
+        ? ctx.skillLoader.getEntriesForAgent(ctx.agentId).map((s) => s.name)
+        : [];
+    const allNames = [...new Set([...available.map((s) => s.name), ...dbNames])];
     const hint =
-      available.length > 0
-        ? `\n\nAvailable skills: ${available.map((s) => s.name).join(", ")}`
+      allNames.length > 0
+        ? `\n\nAvailable skills: ${allNames.join(", ")}`
         : "\n\nNo skills found in skill directories.";
 
     throw new Error(`Skill not found: ${skillName}${hint}`);
