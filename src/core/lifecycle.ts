@@ -56,8 +56,14 @@ export class Lifecycle {
     const instance = this.registry.getInstance(slug);
     if (!instance) throw new InstanceNotFoundError(slug);
 
-    await this.stopRuntime(slug, instance.state_dir);
+    const stopResult = await this.stopRuntime(slug, instance.state_dir);
     await this.startRuntime(slug, instance.state_dir);
+    if (stopResult.escalatedToSigkill && stopResult.priorPid !== null) {
+      const newPid = getRuntimePid(getRuntimeStateDir(slug));
+      logger.info(
+        `[lifecycle] runtime "${slug}" health: prior PID ${stopResult.priorPid} did not exit on SIGTERM, killed after timeout (SIGKILL), started fresh as PID ${newPid ?? "unknown"}`,
+      );
+    }
     this.registry.updateInstanceState(slug, "running");
     this.registry.logEvent(slug, "restarted");
   }
@@ -158,15 +164,21 @@ export class Lifecycle {
 
   /**
    * Stop a running claw-runtime daemon for the given slug.
-   * Sends SIGTERM and polls until the process exits (up to 8 s).
+   * Sends SIGTERM and polls until the process exits (up to 8 s). If the process
+   * still hasn't exited, escalates to SIGKILL — a stuck runtime must never block
+   * the self-updater from rolling out new code (see incident 2026-05-21 where a
+   * runtime survived for 8 days on pre-#229 code because SIGTERM was ignored).
    */
-  private async stopRuntime(slug: string, _stateDir: string): Promise<void> {
+  private async stopRuntime(
+    slug: string,
+    _stateDir: string,
+  ): Promise<{ priorPid: number | null; escalatedToSigkill: boolean }> {
     // Always derive stateDir from slug — DB value may be stale after migration.
     const stateDir = getRuntimeStateDir(slug);
     const pid = getRuntimePid(stateDir);
     if (!pid) {
       logger.dim(`[lifecycle] claw-runtime for "${slug}" is not running — nothing to stop`);
-      return;
+      return { priorPid: null, escalatedToSigkill: false };
     }
 
     logger.dim(`[lifecycle] Stopping claw-runtime for "${slug}" (PID ${pid})...`);
@@ -179,21 +191,51 @@ export class Lifecycle {
       });
     }
 
-    const deadline = Date.now() + 8_000;
-    while (Date.now() < deadline) {
+    const cleanupPidFile = (): void => {
+      try {
+        fs.unlinkSync(getRuntimePidPath(stateDir));
+      } catch (err) {
+        logger.debug("[lifecycle] PID file already removed", { error: String(err) });
+      }
+    };
+
+    const sigtermDeadline = Date.now() + 8_000;
+    while (Date.now() < sigtermDeadline) {
       await new Promise((r) => setTimeout(r, 200));
       if (!isRuntimeRunning(stateDir)) {
-        // Clean up stale PID file if still present
-        try {
-          fs.unlinkSync(getRuntimePidPath(stateDir));
-        } catch (err) {
-          logger.debug("[lifecycle] PID file already removed", { error: String(err) });
-        }
+        cleanupPidFile();
         logger.dim(`[lifecycle] claw-runtime stopped (slug: ${slug})`);
-        return;
+        return { priorPid: pid, escalatedToSigkill: false };
       }
     }
 
-    throw new Error(`claw-runtime for "${slug}" (PID ${pid}) did not stop within 8 s`);
+    // SIGTERM grace period expired — escalate to SIGKILL so the self-updater
+    // can never leave a zombie runtime running stale bundled code.
+    logger.warn(
+      `[lifecycle] claw-runtime for "${slug}" (PID ${pid}) did not stop within 8 s on SIGTERM, escalating to SIGKILL`,
+    );
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch (err) {
+      logger.debug("[lifecycle] SIGKILL failed, process may have already exited", {
+        error: String(err),
+      });
+    }
+
+    const sigkillDeadline = Date.now() + 3_000;
+    while (Date.now() < sigkillDeadline) {
+      await new Promise((r) => setTimeout(r, 100));
+      if (!isRuntimeRunning(stateDir)) {
+        cleanupPidFile();
+        logger.info(
+          `[lifecycle] claw-runtime for "${slug}" (PID ${pid}) force-killed after SIGTERM timeout`,
+        );
+        return { priorPid: pid, escalatedToSigkill: true };
+      }
+    }
+
+    // Even SIGKILL didn't reap it (kernel hang, uninterruptible sleep, …).
+    // This is unrecoverable — surface it instead of silently continuing.
+    throw new Error(`claw-runtime for "${slug}" (PID ${pid}) did not stop even after SIGKILL`);
   }
 }

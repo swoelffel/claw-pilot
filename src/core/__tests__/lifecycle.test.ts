@@ -141,6 +141,39 @@ describe("Lifecycle.stop()", () => {
     const events = registry.listEvents(slug, 10);
     expect(events.some((e) => e.event_type === "stopped")).toBe(true);
   });
+
+  it("escalates to SIGKILL when SIGTERM is ignored past the grace period", async () => {
+    vi.useFakeTimers();
+    try {
+      const { slug, stateDir } = seedInstance();
+      _mockPidMap.set(stateDir, 99999);
+      _mockRunningMap.set(stateDir, true);
+
+      const killSpy = vi.spyOn(process, "kill").mockImplementation(((
+        _pid: number,
+        sig?: string | number,
+      ) => {
+        // SIGTERM ignored; SIGKILL forces the process to be reaped.
+        if (sig === "SIGKILL") {
+          _mockRunningMap.set(stateDir, false);
+        }
+        return true;
+      }) as typeof process.kill);
+
+      const lifecycle = new Lifecycle(conn, registry, XDG);
+      const promise = lifecycle.stop(slug);
+      // Drain the 8 s SIGTERM grace, then the 3 s SIGKILL grace.
+      await vi.advanceTimersByTimeAsync(8_500);
+      await vi.advanceTimersByTimeAsync(500);
+      await promise;
+
+      expect(killSpy).toHaveBeenCalledWith(99999, "SIGTERM");
+      expect(killSpy).toHaveBeenCalledWith(99999, "SIGKILL");
+      expect(registry.getInstance(slug)?.state).toBe("stopped");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -8,6 +8,8 @@
     "ABCDEFGHJKLMNPQRSTUVWXYZ",
     "abac",
     "nocase",
+    "sigkill",
+    "sigterm",
     "picomatch",
     "gitflow",
     "splunk",
