@@ -289,6 +289,40 @@ describe("POST /api/instances/:slug/skills/:id/agents/:agentId", () => {
   });
 });
 
+describe("GET /api/instances/:slug/skills/:id/agents", () => {
+  it("returns the assigned agentIds", async () => {
+    const create = await ctx.app.request("/api/instances/demo/skills", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ mode: "blank", name: "listable", description: "d" }),
+    });
+    const { id } = (await readJson(create)) as { id: string };
+
+    await ctx.app.request(`/api/instances/demo/skills/${id}/agents/agent-a`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    await ctx.app.request(`/api/instances/demo/skills/${id}/agents/agent-b`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
+
+    const res = await ctx.app.request(`/api/instances/demo/skills/${id}/agents`, {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = (await readJson(res)) as { agentIds: string[] };
+    expect([...body.agentIds].sort()).toEqual(["agent-a", "agent-b"]);
+  });
+
+  it("returns 404 when the skill is not found (or not scoped to slug)", async () => {
+    const res = await ctx.app.request(`/api/instances/demo/skills/missing-id/agents`, {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("DELETE /api/instances/:slug/skills/:id/agents/:agentId", () => {
   it("unassigns and returns 204", async () => {
     const create = await ctx.app.request("/api/instances/demo/skills", {

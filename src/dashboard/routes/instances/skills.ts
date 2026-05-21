@@ -15,6 +15,7 @@
 //   GET    /api/instances/:slug/skills/:id/files/*                  — read single file
 //   PUT    /api/instances/:slug/skills/:id/files/*                  — upsert single file
 //   DELETE /api/instances/:slug/skills/:id/files/*                  — delete single file
+//   GET    /api/instances/:slug/skills/:id/agents                  — list assigned agentIds
 //   POST   /api/instances/:slug/skills/:id/agents/:agentId          — assign
 //   DELETE /api/instances/:slug/skills/:id/agents/:agentId          — unassign
 //   GET    /api/instances/:slug/skills/:id/export                   — ZIP download
@@ -438,6 +439,16 @@ function handleFileDelete(c: HonoContext, deps: RouteDeps): Response {
 // Handlers — agent bindings
 // ---------------------------------------------------------------------------
 
+function handleListAgents(c: HonoContext, deps: RouteDeps): Response {
+  const { slug } = getInstanceContext(c);
+  const id = c.req.param("id");
+  if (!loadScopedSkill(deps.db, id, slug)) {
+    return apiError(c, 404, "NOT_FOUND", `Skill not found: ${id}`);
+  }
+  const agentIds = listAgentsForSkill(deps.db, id);
+  return c.json({ agentIds });
+}
+
 function handleAssign(c: HonoContext, deps: RouteDeps): Response {
   const { slug } = getInstanceContext(c);
   const id = c.req.param("id");
@@ -540,6 +551,11 @@ export function registerInstanceSkillsRoutes(app: Hono, deps: RouteDeps): void {
     (c) => handleFileDelete(c, deps),
   );
 
+  app.get(
+    "/api/instances/:slug/skills/:id/agents",
+    permission({ action: ACTIONS.INSTANCE_SKILLS_MANAGE, resource: skillId, attributes: attr }),
+    (c) => handleListAgents(c, deps),
+  );
   app.post(
     "/api/instances/:slug/skills/:id/agents/:agentId",
     permission({ action: ACTIONS.INSTANCE_SKILLS_MANAGE, resource: skillId, attributes: attr }),
