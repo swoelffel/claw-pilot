@@ -7,6 +7,7 @@ export default defineConfig({
   outDir: "dist",
   clean: true,
   dts: false,
+  outExtensions: () => ({ js: ".js" }),
   banner: { js: "#!/usr/bin/env node" },
   external: ["better-sqlite3", "@hono/node-server"],
   // Disable tree-shaking: rolldown aggressively eliminates property assignments

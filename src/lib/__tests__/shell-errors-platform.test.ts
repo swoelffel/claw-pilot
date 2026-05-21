@@ -130,7 +130,7 @@ describe("platform", () => {
 
   it("getInstancesDir returns path containing /instances", () => {
     const dir = getInstancesDir();
-    expect(dir).toContain("/instances");
+    expect(dir).toContain(path.join(path.sep, "instances"));
     expect(dir.startsWith(getDataDir())).toBe(true);
   });
 
@@ -147,7 +147,7 @@ describe("platform", () => {
   });
 
   it("getRuntimePidPath returns <stateDir>/runtime.pid", () => {
-    expect(getRuntimePidPath("/tmp/foo")).toBe("/tmp/foo/runtime.pid");
+    expect(getRuntimePidPath("/tmp/foo")).toBe(path.join("/tmp/foo", "runtime.pid"));
   });
 
   it("getRuntimePid returns null for missing PID file", () => {

@@ -1,5 +1,6 @@
 // src/core/__tests__/self-updater.test.ts
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import * as path from "node:path";
 import { SelfUpdater } from "../self-updater.js";
 import type { Lifecycle } from "../lifecycle.js";
 import type { Registry } from "../registry.js";
@@ -182,7 +183,7 @@ describe("SelfUpdater — packageManager bootstrap via corepack", () => {
     // Seed package.json at the resolved install dir
     const installDir = updater._resolveInstallDir();
     conn.files.set(
-      `${installDir}/package.json`,
+      path.join(installDir, "package.json"),
       JSON.stringify({ packageManager: "pnpm@10.17.0" }),
     );
 
@@ -207,7 +208,7 @@ describe("SelfUpdater — packageManager bootstrap via corepack", () => {
 
     // Seed package.json with NO packageManager field
     const installDir = updater._resolveInstallDir();
-    conn.files.set(`${installDir}/package.json`, JSON.stringify({ name: "claw-pilot" }));
+    conn.files.set(path.join(installDir, "package.json"), JSON.stringify({ name: "claw-pilot" }));
 
     updater.run(undefined, undefined, "v1.0.0");
     await flush();
@@ -223,7 +224,10 @@ describe("SelfUpdater — packageManager bootstrap via corepack", () => {
     updater = new SelfUpdater(conn);
 
     const installDir = updater._resolveInstallDir();
-    conn.files.set(`${installDir}/package.json`, JSON.stringify({ packageManager: "yarn@4.5.0" }));
+    conn.files.set(
+      path.join(installDir, "package.json"),
+      JSON.stringify({ packageManager: "yarn@4.5.0" }),
+    );
 
     updater.run(undefined, undefined, "v1.0.0");
     await flush();
@@ -239,7 +243,10 @@ describe("SelfUpdater — packageManager bootstrap via corepack", () => {
     updater = new SelfUpdater(conn);
 
     const installDir = updater._resolveInstallDir();
-    conn.files.set(`${installDir}/package.json`, JSON.stringify({ packageManager: "pnpm@11.0.0" }));
+    conn.files.set(
+      path.join(installDir, "package.json"),
+      JSON.stringify({ packageManager: "pnpm@11.0.0" }),
+    );
     conn.mockExec("corepack prepare", {
       stdout: "",
       stderr: "corepack: not installed",

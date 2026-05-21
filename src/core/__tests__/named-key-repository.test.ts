@@ -35,6 +35,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.MASTER_ENCRYPTION_KEY;
+  db.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 

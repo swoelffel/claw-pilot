@@ -110,11 +110,12 @@ export class Lifecycle {
     // On Linux (including Docker), wrap with nohup so the child survives when the
     // docker exec session ends. Without nohup, Docker kills the child process
     // even with detached:true + setsid.
+    // On macOS and Windows, detached:true + unref() is sufficient for detachment.
     const nodeArgs = [process.argv[1]!, "runtime", "start", slug];
-    const isDarwinPlatform = process.platform === "darwin";
-    const [spawnCmd, spawnArgs] = isDarwinPlatform
-      ? [process.execPath, nodeArgs]
-      : ["nohup", [process.execPath, ...nodeArgs]];
+    const useNohup = process.platform !== "darwin" && process.platform !== "win32";
+    const [spawnCmd, spawnArgs] = useNohup
+      ? ["nohup", [process.execPath, ...nodeArgs]]
+      : [process.execPath, nodeArgs];
 
     const child = spawn(spawnCmd, spawnArgs, {
       detached: true,

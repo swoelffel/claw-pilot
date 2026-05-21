@@ -237,11 +237,11 @@ async function spawnDaemon(slug: string, stateDir: string, ensureConfig: boolean
   const logDir = `${stateDir}/logs`;
   fs.mkdirSync(logDir, { recursive: true });
   const logFile = `${logDir}/runtime.log`;
-  const isDarwinPlatform = process.platform === "darwin";
-  const [cmd, args] = isDarwinPlatform
-    ? [process.execPath, nodeArgs]
-    : ["nohup", [process.execPath, ...nodeArgs]];
-  const logFd = isDarwinPlatform ? "ignore" : fs.openSync(logFile, "a");
+  const useNohup = process.platform !== "darwin" && process.platform !== "win32";
+  const [cmd, args] = useNohup
+    ? ["nohup", [process.execPath, ...nodeArgs]]
+    : [process.execPath, nodeArgs];
+  const logFd = process.platform === "darwin" ? "ignore" : fs.openSync(logFile, "a");
 
   const child = spawn(cmd, args, {
     detached: true,

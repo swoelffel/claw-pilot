@@ -42,9 +42,10 @@ const ALLOWLIST_SUFFIXES = ["src/core/secrets/providers/env.ts", "src/lib/crypto
 
 function isAllowlisted(filename) {
   if (!filename) return false;
-  if (filename.includes("/__tests__/")) return true;
-  if (filename.includes("/src/e2e/")) return true;
-  return ALLOWLIST_SUFFIXES.some((s) => filename.endsWith(s));
+  const normalized = filename.replace(/\\/g, "/");
+  if (normalized.includes("/__tests__/")) return true;
+  if (normalized.includes("/src/e2e/")) return true;
+  return ALLOWLIST_SUFFIXES.some((s) => normalized.endsWith(s));
 }
 
 function isFsReadCall(node) {

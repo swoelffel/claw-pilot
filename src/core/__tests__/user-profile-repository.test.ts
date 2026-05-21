@@ -3,19 +3,21 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
+import type Database from "better-sqlite3";
 import { initDatabase } from "../../db/schema.js";
 import { UserProfileRepository } from "../repositories/user-profile-repository.js";
 import { hashPassword } from "../auth/index.js";
 
 let tmpDir: string;
 let dbPath: string;
+let db: Database.Database;
 let repo: UserProfileRepository;
 let adminUserId: number;
 
 beforeEach(async () => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-pilot-profile-test-"));
   dbPath = path.join(tmpDir, "test.db");
-  const db = initDatabase(dbPath);
+  db = initDatabase(dbPath);
 
   // Create an admin user for tests
   const hash = await hashPassword("test123");
@@ -30,6 +32,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  db.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
