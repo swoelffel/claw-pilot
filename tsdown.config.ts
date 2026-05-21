@@ -5,7 +5,9 @@ export default defineConfig({
   format: "esm",
   target: "node22",
   outDir: "dist",
-  clean: true,
+  // Only clean CLI output at dist/ root — leave dist/ui/ (produced by `vite build ui/`) untouched.
+  // `clean: true` would nuke the entire dist/, breaking `pnpm build:cli` after `pnpm build:ui`.
+  clean: ["dist/*.{js,mjs,cjs,map,d.ts,d.mts}"],
   dts: false,
   outExtensions: () => ({ js: ".js" }),
   banner: { js: "#!/usr/bin/env node" },
