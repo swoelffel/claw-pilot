@@ -5,7 +5,7 @@ import { generateDashboardService } from "../systemd-generator.js";
 describe("generateDashboardService", () => {
   const dashOpts = {
     nodeBin: "/usr/local/bin/node",
-    clawPilotBin: "/opt/claw-pilot/dist/index.mjs",
+    clawPilotBin: "/opt/claw-pilot/dist/index.js",
     port: 19000,
     home: "/home/openclaw",
     uid: 1000,

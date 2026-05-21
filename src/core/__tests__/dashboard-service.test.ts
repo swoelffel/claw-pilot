@@ -4,7 +4,7 @@ import { generateDashboardService } from "../systemd-generator.js";
 
 const opts = {
   nodeBin: "/usr/local/bin/node",
-  clawPilotBin: "/opt/claw-pilot/dist/index.mjs",
+  clawPilotBin: "/opt/claw-pilot/dist/index.js",
   port: 19000,
   home: "/home/openclaw",
   uid: 1000,
@@ -15,7 +15,7 @@ describe("generateDashboardService", () => {
   it("uses absolute node binary path in ExecStart", () => {
     const service = generateDashboardService(opts);
     expect(service).toContain(
-      "ExecStart=/usr/local/bin/node /opt/claw-pilot/dist/index.mjs dashboard --port 19000",
+      "ExecStart=/usr/local/bin/node /opt/claw-pilot/dist/index.js dashboard --port 19000",
     );
   });
 

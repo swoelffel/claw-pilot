@@ -29,17 +29,17 @@ export interface DashboardServiceStatus {
 }
 
 /**
- * Resolve the absolute path to the claw-pilot dist/index.mjs.
+ * Resolve the absolute path to the claw-pilot dist/index.js.
  * Uses import.meta.url to find the binary relative to this file — local filesystem only.
  */
 function resolveClawPilotBin(): string {
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
-  // In dev: src/core/ -> go up 2 levels to project root, then dist/index.mjs
-  // In prod (bundled): dist/ -> dist/index.mjs
+  // In dev: src/core/ -> go up 2 levels to project root, then dist/index.js
+  // In prod (bundled): dist/ -> dist/index.js
   const candidates = [
-    path.resolve(currentDir, "../../dist/index.mjs"), // dev
-    path.resolve(currentDir, "../index.mjs"), // prod (bundled in dist/)
-    path.resolve(currentDir, "index.mjs"), // prod (same dir)
+    path.resolve(currentDir, "../../dist/index.js"), // dev
+    path.resolve(currentDir, "../index.js"), // prod (bundled in dist/)
+    path.resolve(currentDir, "index.js"), // prod (same dir)
   ];
   for (const c of candidates) {
     try {
