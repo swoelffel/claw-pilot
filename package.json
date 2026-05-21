@@ -34,7 +34,7 @@
     "knip": "knip",
     "check:circular": "madge --circular --extensions ts src/",
     "spellcheck": "cspell --config cspell.json \"src/**/*.ts\" \"ui/src/**/*.ts\"",
-    "prepare": "[ -e .git ] && command -v lefthook >/dev/null && lefthook install || true"
+    "prepare": "node -e \"const fs=require('fs'),cp=require('child_process');if(fs.existsSync('.git')){try{cp.execSync('lefthook install',{stdio:'inherit'})}catch{}}\""
   },
   "engines": {
     "node": ">=22.12.0"

@@ -1,7 +1,6 @@
 // src/dashboard/routes/instances/memory.ts
 // Routes: GET memory agents, GET files, GET file content, GET search
 
-import * as path from "node:path";
 import type { Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
@@ -38,7 +37,7 @@ async function listMemoryFiles(conn: RouteDeps["conn"], wsDir: string): Promise<
   const files: MemoryFileInfo[] = [];
 
   // MEMORY.md
-  const memoryMdPath = path.join(wsDir, "MEMORY.md");
+  const memoryMdPath = `${wsDir}/MEMORY.md`;
   if (await conn.exists(memoryMdPath)) {
     try {
       const content = await conn.readFile(memoryMdPath);
@@ -50,14 +49,14 @@ async function listMemoryFiles(conn: RouteDeps["conn"], wsDir: string): Promise<
   }
 
   // memory/*.md
-  const memoryDir = path.join(wsDir, "memory");
+  const memoryDir = `${wsDir}/memory`;
   if (await conn.exists(memoryDir)) {
     try {
       const entries = await conn.readdir(memoryDir);
       const mdFiles = entries.filter((f) => f.endsWith(".md")).sort();
       for (const filename of mdFiles) {
         try {
-          const content = await conn.readFile(path.join(memoryDir, filename));
+          const content = await conn.readFile(`${memoryDir}/${filename}`);
           files.push({
             path: `memory/${filename}`,
             size: Buffer.byteLength(content, "utf-8"),
@@ -90,7 +89,7 @@ async function getLastModified(
   // Use stat to get the most recent mtime
   try {
     const platform = await conn.platform();
-    const filePaths = files.map((f) => `"${path.join(wsDir, f.path)}"`).join(" ");
+    const filePaths = files.map((f) => `"${wsDir}/${f.path}"`).join(" ");
     const statCmd =
       platform === "darwin"
         ? `stat -f "%m %N" ${filePaths} 2>/dev/null | sort -rn | head -1`
@@ -182,7 +181,7 @@ async function handleMemorySearch(
     for (const file of files) {
       if (results.length >= limit) break;
       try {
-        const content = await conn.readFile(path.join(wsDir, file.path));
+        const content = await conn.readFile(`${wsDir}/${file.path}`);
         searchFileContent(content, queryLower, agent.agent_id, file.path, results, limit);
       } catch (err) {
         logger.debug("[route:memory] search file read failed", { error: String(err) });
@@ -308,7 +307,7 @@ export function registerMemoryRoutes(app: Hono, deps: RouteDeps): void {
       }
 
       const wsDir = resolveAgentWorkspacePath(instance.state_dir, agentId, undefined);
-      const filePath = path.join(wsDir, filename);
+      const filePath = `${wsDir}/${filename}`;
 
       if (!(await conn.exists(filePath))) {
         return apiError(c, 404, "FILE_NOT_FOUND", "Memory file not found");

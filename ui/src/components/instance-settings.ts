@@ -25,8 +25,8 @@ import "./instance-mcp.js";
 import "./instance-permissions.js";
 import "./instance-config.js";
 import "./instance-channels.js";
-import "./instance-skills.js";
 import "./instance-shared-files.js";
+import "./skills/cp-skills-tab.js";
 
 @localized()
 @customElement("cp-instance-settings")
@@ -78,7 +78,7 @@ export class InstanceSettings extends LitElement {
 
   @state() private _mcpConnectedCount = 0;
 
-  // ── Skills badge state ───────────────────────────────────────────────────
+  // ── Skills badge state ────────────────────────────────────────────────────
 
   @state() private _skillsCount = 0;
 
@@ -287,16 +287,16 @@ export class InstanceSettings extends LitElement {
     const sections: Array<{ id: SidebarSection; label: string; badge?: number }> = [
       { id: "general", label: msg("General", { id: "settings-general" }) },
       { id: "agents", label: msg("Agents", { id: "settings-agents" }) },
-      {
-        id: "skills" as const,
-        label: msg("Skills", { id: "settings-skills" }),
-        ...(this._skillsCount > 0 ? { badge: this._skillsCount } : {}),
-      },
       { id: "channels" as const, label: msg("Channels", { id: "settings-channels" }) },
       {
         id: "mcp" as const,
         label: "MCP",
         ...(this._mcpConnectedCount > 0 ? { badge: this._mcpConnectedCount } : {}),
+      },
+      {
+        id: "skills" as const,
+        label: msg("Skills", { id: "settings-skills" }),
+        ...(this._skillsCount > 0 ? { badge: this._skillsCount } : {}),
       },
       {
         id: "permissions" as const,
@@ -707,19 +707,6 @@ export class InstanceSettings extends LitElement {
             : nothing}
           ${this._activeSection === "general" ? this._renderGeneralSection() : nothing}
           ${this._activeSection === "agents" ? this._renderAgentsSection() : nothing}
-          ${this._activeSection === "skills"
-            ? html`
-                <div class="section">
-                  <cp-instance-skills
-                    .slug=${this.slug}
-                    .active=${true}
-                    @skills-count-changed=${(e: CustomEvent<number>) => {
-                      this._skillsCount = e.detail;
-                    }}
-                  ></cp-instance-skills>
-                </div>
-              `
-            : nothing}
           ${this._activeSection === "channels"
             ? html`
                 <div class="section">
@@ -743,6 +730,18 @@ export class InstanceSettings extends LitElement {
                       this._mcpConnectedCount = e.detail;
                     }}
                   ></cp-instance-mcp>
+                </div>
+              `
+            : nothing}
+          ${this._activeSection === "skills"
+            ? html`
+                <div class="section">
+                  <cp-skills-tab
+                    .slug=${this.slug}
+                    @count-changed=${(e: CustomEvent<number>) => {
+                      this._skillsCount = e.detail;
+                    }}
+                  ></cp-skills-tab>
                 </div>
               `
             : nothing}

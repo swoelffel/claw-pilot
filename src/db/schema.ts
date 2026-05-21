@@ -2,6 +2,7 @@
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import * as path from "node:path";
+import { migrateLegacySkills } from "../core/skills/_skill-migration.js";
 import { logger } from "../lib/logger.js";
 import { deriveWebChatPort } from "../lib/platform.js";
 
@@ -1751,6 +1752,73 @@ const MIGRATIONS: Migration[] = [
       if (!cols.some((c) => c.name === "input_vars_json")) {
         db.exec(`ALTER TABLE rt_flow_runs ADD COLUMN input_vars_json TEXT`);
       }
+    },
+  },
+  {
+    // v44: Structured Skills (SKILLS-002).
+    //
+    // Adds three new tables to persist Anthropic-style skills (SKILL.md +
+    // referenced files) per instance, plus the agent ↔ skill many-to-many
+    // binding. `skills.org_id TEXT NULL` slot satisfies CE/EE discipline R2
+    // (Enterprise will populate it; CE leaves it NULL).
+    //
+    // Additive: brand new tables, no impact on existing rows. Wiring of
+    // legacy-skill migration (workspace `.skills/*.md` → `skills` rows) lands
+    // in a follow-up task.
+    version: 44,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS skills (
+          id            TEXT PRIMARY KEY,
+          instance_slug TEXT NOT NULL,
+          name          TEXT NOT NULL,
+          description   TEXT,
+          version       TEXT,
+          source        TEXT,
+          source_url    TEXT,
+          config_json   TEXT,
+          org_id        TEXT NULL,
+          created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS skill_files (
+          id        INTEGER PRIMARY KEY AUTOINCREMENT,
+          skill_id  TEXT NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+          path      TEXT NOT NULL,
+          content   TEXT NOT NULL,
+          hash      TEXT,
+          org_id    TEXT NULL,
+          UNIQUE(skill_id, path)
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_skills (
+          agent_id  TEXT NOT NULL,
+          skill_id  TEXT NOT NULL,
+          org_id    TEXT NULL,
+          PRIMARY KEY (agent_id, skill_id),
+          FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_skills_instance ON skills(instance_slug);
+        CREATE INDEX IF NOT EXISTS idx_skill_files_skill ON skill_files(skill_id);
+      `);
+    },
+  },
+  {
+    // v45: One-shot legacy-skills migration (SKILLS-002).
+    //
+    // Lifts skills stored under the legacy `agent_files` path layout
+    // (`.opencode/skill/<name>/...`) into the structured tables added in v44.
+    // Idempotent + non-destructive: re-running is a no-op and `agent_files`
+    // rows are left untouched for rollback safety. Implementation lives in
+    // `core/skills/_skill-migration.ts`; required as a synchronous helper
+    // here so the migration runs inside the v45 transaction.
+    //
+    // Extension-Point: schema-skills-migration
+    version: 45,
+    up(db) {
+      migrateLegacySkills(db);
     },
   },
 ];

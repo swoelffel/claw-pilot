@@ -13,6 +13,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import * as path from "node:path";
 import type { RuntimeAgentConfig } from "../../config/index.js";
 
 // ---------------------------------------------------------------------------
@@ -108,13 +109,13 @@ describe("resolveDiscoveryFiles — promptMode", () => {
    */
   it("[positive] promptMode=minimal excludes HEARTBEAT.md from the system prompt", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/agent1`;
+    const wsDir = path.join(workDir, "workspaces", "agent1");
 
     // Arrange: workspace directory exists; SOUL.md and HEARTBEAT.md are present
     mockExistsSync.mockImplementation((p) => p === wsDir);
     mockReadFileSync.mockImplementation((p) => {
-      if (p === `${wsDir}/SOUL.md`) return "# Soul\nThis is the soul file.\nLine 3.";
-      if (p === `${wsDir}/HEARTBEAT.md`) return "# Heartbeat\nThis is heartbeat.\nLine 3.";
+      if (p === path.join(wsDir, "SOUL.md")) return "# Soul\nThis is the soul file.\nLine 3.";
+      if (p === path.join(wsDir, "HEARTBEAT.md")) return "# Heartbeat\nThis is heartbeat.\nLine 3.";
       throw new Error("ENOENT");
     });
 
@@ -138,13 +139,14 @@ describe("resolveDiscoveryFiles — promptMode", () => {
    */
   it("[positive] promptMode=full excludes HEARTBEAT.md from the system prompt", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/agent1`;
+    const wsDir = path.join(workDir, "workspaces", "agent1");
 
     // Arrange
     mockExistsSync.mockImplementation((p) => p === wsDir);
     mockReadFileSync.mockImplementation((p) => {
-      if (p === `${wsDir}/SOUL.md`) return "# Soul\nSoul content here.\nLine 3.";
-      if (p === `${wsDir}/HEARTBEAT.md`) return "# Heartbeat\nHeartbeat content here.\nLine 3.";
+      if (p === path.join(wsDir, "SOUL.md")) return "# Soul\nSoul content here.\nLine 3.";
+      if (p === path.join(wsDir, "HEARTBEAT.md"))
+        return "# Heartbeat\nHeartbeat content here.\nLine 3.";
       throw new Error("ENOENT");
     });
 
@@ -167,12 +169,12 @@ describe("resolveDiscoveryFiles — promptMode", () => {
    */
   it("[positive] promptMode absent + toolProfile=sentinel → HEARTBEAT.md excluded", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/agent1`;
+    const wsDir = path.join(workDir, "workspaces", "agent1");
 
     mockExistsSync.mockImplementation((p) => p === wsDir);
     mockReadFileSync.mockImplementation((p) => {
-      if (p === `${wsDir}/SOUL.md`) return "# Soul\nSoul line.\nLine 3.";
-      if (p === `${wsDir}/HEARTBEAT.md`) return "# Heartbeat\nHeartbeat line.\nLine 3.";
+      if (p === path.join(wsDir, "SOUL.md")) return "# Soul\nSoul line.\nLine 3.";
+      if (p === path.join(wsDir, "HEARTBEAT.md")) return "# Heartbeat\nHeartbeat line.\nLine 3.";
       throw new Error("ENOENT");
     });
 
@@ -196,12 +198,12 @@ describe("resolveDiscoveryFiles — promptMode", () => {
    */
   it("[positive] promptMode absent + toolProfile=executor → HEARTBEAT.md excluded (no longer in full)", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/agent1`;
+    const wsDir = path.join(workDir, "workspaces", "agent1");
 
     mockExistsSync.mockImplementation((p) => p === wsDir);
     mockReadFileSync.mockImplementation((p) => {
-      if (p === `${wsDir}/SOUL.md`) return "# Soul\nSoul content.\nLine 3.";
-      if (p === `${wsDir}/HEARTBEAT.md`) return "# Heartbeat\nHeartbeat content.\nLine 3.";
+      if (p === path.join(wsDir, "SOUL.md")) return "# Soul\nSoul content.\nLine 3.";
+      if (p === path.join(wsDir, "HEARTBEAT.md")) return "# Heartbeat\nHeartbeat content.\nLine 3.";
       throw new Error("ENOENT");
     });
 
@@ -476,7 +478,7 @@ describe("buildSystemPrompt — general structure", () => {
     // the workspace resolves and mockReadFileSync throws ENOENT for every
     // file — only the dynamic <user_profile> block should reach the prompt.
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/agent1`;
+    const wsDir = path.join(workDir, "workspaces", "agent1");
     mockExistsSync.mockImplementation((p) => p === wsDir);
 
     const ctx = makeCtx({
@@ -507,12 +509,12 @@ describe("buildSystemPrompt — general structure", () => {
    */
   it("[negative] inline systemPrompt takes priority — workspace files not read", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/agent1`;
+    const wsDir = path.join(workDir, "workspaces", "agent1");
 
     // Arrange: workspace exists with content
     mockExistsSync.mockImplementation((p) => p === wsDir);
     mockReadFileSync.mockImplementation((p) => {
-      if (p === `${wsDir}/SOUL.md`) return "# Soul\nWorkspace soul.\nLine 3.";
+      if (p === path.join(wsDir, "SOUL.md")) return "# Soul\nWorkspace soul.\nLine 3.";
       throw new Error("ENOENT");
     });
 
@@ -543,9 +545,9 @@ describe("BOOTSTRAP.md one-shot", () => {
    */
   it("[positive] première session : BOOTSTRAP.md injecté + writeFileSync appelé avec bootstrapDone: true", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/agent1`;
-    const stateDir = `${wsDir}/.claw-pilot`;
-    const statePath = `${stateDir}/workspace-state.json`;
+    const wsDir = path.join(workDir, "workspaces", "agent1");
+    const stateDir = path.join(wsDir, ".claw-pilot");
+    const statePath = path.join(stateDir, "workspace-state.json");
 
     // Arrange: workspace exists, BOOTSTRAP.md present with real content (>1 line)
     // workspace-state.json absent → readFileSync throws → empty state
@@ -555,7 +557,7 @@ describe("BOOTSTRAP.md one-shot", () => {
       return false;
     });
     mockReadFileSync.mockImplementation((p) => {
-      if (p === `${wsDir}/BOOTSTRAP.md`)
+      if (p === path.join(wsDir, "BOOTSTRAP.md"))
         return "# Bootstrap\nThis is the bootstrap content.\nLine 3.";
       // workspace-state.json absent → throw
       throw new Error("ENOENT");
@@ -590,9 +592,9 @@ describe("BOOTSTRAP.md one-shot", () => {
    */
   it("[positive] deuxième session (bootstrapDone=true dans state) : BOOTSTRAP.md non injecté", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/agent1`;
-    const stateDir = `${wsDir}/.claw-pilot`;
-    const statePath = `${stateDir}/workspace-state.json`;
+    const wsDir = path.join(workDir, "workspaces", "agent1");
+    const stateDir = path.join(wsDir, ".claw-pilot");
+    const statePath = path.join(stateDir, "workspace-state.json");
 
     // Arrange: workspace exists, BOOTSTRAP.md present, state has bootstrapDone: true
     mockExistsSync.mockImplementation((p) => {
@@ -601,7 +603,7 @@ describe("BOOTSTRAP.md one-shot", () => {
       return false;
     });
     mockReadFileSync.mockImplementation((p) => {
-      if (p === `${wsDir}/BOOTSTRAP.md`)
+      if (p === path.join(wsDir, "BOOTSTRAP.md"))
         return "# Bootstrap\nThis is the bootstrap content.\nLine 3.";
       if (p === statePath) return JSON.stringify({ bootstrapDone: true });
       throw new Error("ENOENT");
@@ -630,8 +632,8 @@ describe("BOOTSTRAP.md one-shot", () => {
    */
   it("[negative] workspace-state.json absent → BOOTSTRAP.md injecté (readFileSync throw → état vide)", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/agent1`;
-    const stateDir = `${wsDir}/.claw-pilot`;
+    const wsDir = path.join(workDir, "workspaces", "agent1");
+    const stateDir = path.join(wsDir, ".claw-pilot");
 
     // Arrange: workspace exists, BOOTSTRAP.md present, state file absent
     mockExistsSync.mockImplementation((p) => {
@@ -640,7 +642,7 @@ describe("BOOTSTRAP.md one-shot", () => {
       return false;
     });
     mockReadFileSync.mockImplementation((p) => {
-      if (p === `${wsDir}/BOOTSTRAP.md`)
+      if (p === path.join(wsDir, "BOOTSTRAP.md"))
         return "# Bootstrap\nBootstrap content for first session.\nLine 3.";
       // All other reads (including state file) throw
       throw new Error("ENOENT");
@@ -666,9 +668,9 @@ describe("BOOTSTRAP.md one-shot", () => {
    */
   it("[negative] workspace-state.json corrompu (JSON invalide) → BOOTSTRAP.md injecté", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/agent1`;
-    const stateDir = `${wsDir}/.claw-pilot`;
-    const statePath = `${stateDir}/workspace-state.json`;
+    const wsDir = path.join(workDir, "workspaces", "agent1");
+    const stateDir = path.join(wsDir, ".claw-pilot");
+    const statePath = path.join(stateDir, "workspace-state.json");
 
     // Arrange: workspace exists, BOOTSTRAP.md present, state file contains invalid JSON
     mockExistsSync.mockImplementation((p) => {
@@ -677,7 +679,7 @@ describe("BOOTSTRAP.md one-shot", () => {
       return false;
     });
     mockReadFileSync.mockImplementation((p) => {
-      if (p === `${wsDir}/BOOTSTRAP.md`)
+      if (p === path.join(wsDir, "BOOTSTRAP.md"))
         return "# Bootstrap\nBootstrap content corrupted state.\nLine 3.";
       if (p === statePath) return "{ invalid json !!!";
       throw new Error("ENOENT");
@@ -703,8 +705,8 @@ describe("BOOTSTRAP.md one-shot", () => {
    */
   it("[negative] BOOTSTRAP.md stub (1 ligne) → non injecté, writeFileSync non appelé", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/agent1`;
-    const stateDir = `${wsDir}/.claw-pilot`;
+    const wsDir = path.join(workDir, "workspaces", "agent1");
+    const stateDir = path.join(wsDir, ".claw-pilot");
 
     // Arrange: workspace exists, BOOTSTRAP.md is a stub (single line)
     mockExistsSync.mockImplementation((p) => {
@@ -713,7 +715,7 @@ describe("BOOTSTRAP.md one-shot", () => {
       return false;
     });
     mockReadFileSync.mockImplementation((p) => {
-      if (p === `${wsDir}/BOOTSTRAP.md`) return "# Bootstrap";
+      if (p === path.join(wsDir, "BOOTSTRAP.md")) return "# Bootstrap";
       // State file absent
       throw new Error("ENOENT");
     });
@@ -747,13 +749,13 @@ describe("bootstrapFiles", () => {
    */
   it("[positive] fichier exact chargé après DISCOVERY_FILES", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/agent1`;
+    const wsDir = path.join(workDir, "workspaces", "agent1");
 
     // Arrange: workspace exists, SOUL.md present, project-context.md present
     mockExistsSync.mockImplementation((p) => p === wsDir);
     mockReadFileSync.mockImplementation((p) => {
-      if (p === `${wsDir}/SOUL.md`) return "# Soul\nSoul content.\nLine 3.";
-      if (p === `${wsDir}/project-context.md`)
+      if (p === path.join(wsDir, "SOUL.md")) return "# Soul\nSoul content.\nLine 3.";
+      if (p === path.join(wsDir, "project-context.md"))
         return "# Project Context\nProject context content.\nLine 3.";
       throw new Error("ENOENT");
     });
@@ -787,8 +789,8 @@ describe("bootstrapFiles", () => {
    */
   it("[positive] glob docs/*.md → plusieurs fichiers chargés en ordre alphabétique", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/agent1`;
-    const docsDir = `${wsDir}/docs`;
+    const wsDir = path.join(workDir, "workspaces", "agent1");
+    const docsDir = path.join(wsDir, "docs");
 
     // Arrange: workspace exists, docs/ directory with multiple .md files
     // readdirSync must return the files for the glob expansion
@@ -805,10 +807,10 @@ describe("bootstrapFiles", () => {
       return false;
     });
     mockReadFileSync.mockImplementation((p) => {
-      if (p === `${wsDir}/SOUL.md`) return "# Soul\nSoul content.\nLine 3.";
-      if (p === `${docsDir}/alpha.md`) return "# Alpha\nAlpha doc content.\nLine 3.";
-      if (p === `${docsDir}/beta.md`) return "# Beta\nBeta doc content.\nLine 3.";
-      if (p === `${docsDir}/zebra.md`) return "# Zebra\nZebra doc content.\nLine 3.";
+      if (p === path.join(wsDir, "SOUL.md")) return "# Soul\nSoul content.\nLine 3.";
+      if (p === path.join(docsDir, "alpha.md")) return "# Alpha\nAlpha doc content.\nLine 3.";
+      if (p === path.join(docsDir, "beta.md")) return "# Beta\nBeta doc content.\nLine 3.";
+      if (p === path.join(docsDir, "zebra.md")) return "# Zebra\nZebra doc content.\nLine 3.";
       throw new Error("ENOENT");
     });
 
@@ -844,12 +846,12 @@ describe("bootstrapFiles", () => {
    */
   it("[negative] fichier absent → ignoré silencieusement, prompt construit normalement", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/agent1`;
+    const wsDir = path.join(workDir, "workspaces", "agent1");
 
     // Arrange: workspace exists, SOUL.md present, missing-file.md absent
     mockExistsSync.mockImplementation((p) => p === wsDir);
     mockReadFileSync.mockImplementation((p) => {
-      if (p === `${wsDir}/SOUL.md`) return "# Soul\nSoul content.\nLine 3.";
+      if (p === path.join(wsDir, "SOUL.md")) return "# Soul\nSoul content.\nLine 3.";
       // missing-file.md throws ENOENT
       throw new Error("ENOENT");
     });
@@ -880,13 +882,13 @@ describe("bootstrapFiles", () => {
    */
   it("[negative] path traversal ../../etc/passwd → non injecté", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/agent1`;
+    const wsDir = path.join(workDir, "workspaces", "agent1");
 
     // Arrange: workspace exists, SOUL.md present
     // The traversal path resolves to /etc/passwd (outside wsDir)
     mockExistsSync.mockImplementation((p) => p === wsDir);
     mockReadFileSync.mockImplementation((p) => {
-      if (p === `${wsDir}/SOUL.md`) return "# Soul\nSoul content.\nLine 3.";
+      if (p === path.join(wsDir, "SOUL.md")) return "# Soul\nSoul content.\nLine 3.";
       if (p === "/etc/passwd") return "root:x:0:0:root:/root:/bin/bash\nline2\nline3";
       throw new Error("ENOENT");
     });
@@ -916,12 +918,12 @@ describe("bootstrapFiles", () => {
    */
   it("[positive] bootstrapFiles absent → comportement identique à V1 (pas de régression)", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/agent1`;
+    const wsDir = path.join(workDir, "workspaces", "agent1");
 
     // Arrange: workspace exists, SOUL.md present, no bootstrapFiles configured
     mockExistsSync.mockImplementation((p) => p === wsDir);
     mockReadFileSync.mockImplementation((p) => {
-      if (p === `${wsDir}/SOUL.md`) return "# Soul\nSoul content V1.\nLine 3.";
+      if (p === path.join(wsDir, "SOUL.md")) return "# Soul\nSoul content V1.\nLine 3.";
       throw new Error("ENOENT");
     });
 
@@ -970,7 +972,7 @@ describe("buildSystemPrompt — agent_identity block", () => {
    */
   it("[positive] agent kind='primary' → <agent_identity> block present at start of prompt", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/main`;
+    const wsDir = path.join(workDir, "workspaces", "main");
 
     // Arrange: registry has built-in agents (build is kind="primary")
     // workspace directory exists so the identity block is triggered
@@ -1005,7 +1007,7 @@ describe("buildSystemPrompt — agent_identity block", () => {
    */
   it("[negative] agent kind='subagent' → <agent_identity> block absent", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/explore`;
+    const wsDir = path.join(workDir, "workspaces", "explore");
 
     // Arrange: explore agent is kind="subagent"
     mockExistsSync.mockImplementation((p) => p === wsDir);
@@ -1032,7 +1034,7 @@ describe("buildSystemPrompt — agent_identity block", () => {
    */
   it("[positive] <agent_identity> block contains Name:, ID:, Born:, Instance:, Channel:, Runtime:", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/main`;
+    const wsDir = path.join(workDir, "workspaces", "main");
 
     // Arrange
     mockExistsSync.mockImplementation((p) => p === wsDir);
@@ -1066,9 +1068,9 @@ describe("buildSystemPrompt — agent_identity block", () => {
    */
   it("[positive] agentCreatedAt absent in workspace-state → Born: inconnue", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/main`;
-    const stateDir = `${wsDir}/.claw-pilot`;
-    const statePath = `${stateDir}/workspace-state.json`;
+    const wsDir = path.join(workDir, "workspaces", "main");
+    const stateDir = path.join(wsDir, ".claw-pilot");
+    const statePath = path.join(stateDir, "workspace-state.json");
 
     // Arrange: workspace exists, state file has no agentCreatedAt
     mockExistsSync.mockImplementation((p) => p === wsDir || p === stateDir);
@@ -1097,9 +1099,9 @@ describe("buildSystemPrompt — agent_identity block", () => {
    */
   it("[positive] agentCreatedAt present in workspace-state → Born: shows formatted date", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/main`;
-    const stateDir = `${wsDir}/.claw-pilot`;
-    const statePath = `${stateDir}/workspace-state.json`;
+    const wsDir = path.join(workDir, "workspaces", "main");
+    const stateDir = path.join(wsDir, ".claw-pilot");
+    const statePath = path.join(stateDir, "workspace-state.json");
 
     // Arrange: workspace exists, state file has agentCreatedAt
     const createdAt = "2025-01-15T10:00:00.000Z";
@@ -1174,9 +1176,9 @@ describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
    */
   it("[positive] first session: writeFileSync called for memory/bootstrap-history.md", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/main`;
-    const stateDir = `${wsDir}/.claw-pilot`;
-    const historyPath = `${wsDir}/memory/bootstrap-history.md`;
+    const wsDir = path.join(workDir, "workspaces", "main");
+    const stateDir = path.join(wsDir, ".claw-pilot");
+    const historyPath = path.join(wsDir, "memory", "bootstrap-history.md");
 
     // Arrange: workspace exists, BOOTSTRAP.md present with real content (>1 line)
     // workspace-state.json absent → bootstrapDone is false → BOOTSTRAP.md injected
@@ -1186,7 +1188,7 @@ describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
       return false;
     });
     mockReadFileSync.mockImplementation((p) => {
-      if (p === `${wsDir}/BOOTSTRAP.md`)
+      if (p === path.join(wsDir, "BOOTSTRAP.md"))
         return "# Bootstrap\nThis is the bootstrap content to archive.\nLine 3.";
       throw new Error("ENOENT");
     });
@@ -1215,9 +1217,9 @@ describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
    */
   it("[positive] bootstrap-history.md entry contains a timestamp header", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/main`;
-    const stateDir = `${wsDir}/.claw-pilot`;
-    const historyPath = `${wsDir}/memory/bootstrap-history.md`;
+    const wsDir = path.join(workDir, "workspaces", "main");
+    const stateDir = path.join(wsDir, ".claw-pilot");
+    const historyPath = path.join(wsDir, "memory", "bootstrap-history.md");
 
     // Arrange
     mockExistsSync.mockImplementation((p) => {
@@ -1226,7 +1228,8 @@ describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
       return false;
     });
     mockReadFileSync.mockImplementation((p) => {
-      if (p === `${wsDir}/BOOTSTRAP.md`) return "# Bootstrap\nContent to archive.\nLine 3.";
+      if (p === path.join(wsDir, "BOOTSTRAP.md"))
+        return "# Bootstrap\nContent to archive.\nLine 3.";
       throw new Error("ENOENT");
     });
 
@@ -1253,10 +1256,10 @@ describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
    */
   it("[negative] bootstrapDone=true → writeFileSync not called for bootstrap-history.md", async () => {
     const workDir = "/workspace";
-    const wsDir = `${workDir}/workspaces/main`;
-    const stateDir = `${wsDir}/.claw-pilot`;
-    const statePath = `${stateDir}/workspace-state.json`;
-    const historyPath = `${wsDir}/memory/bootstrap-history.md`;
+    const wsDir = path.join(workDir, "workspaces", "main");
+    const stateDir = path.join(wsDir, ".claw-pilot");
+    const statePath = path.join(stateDir, "workspace-state.json");
+    const historyPath = path.join(wsDir, "memory", "bootstrap-history.md");
 
     // Arrange: bootstrapDone is already true
     mockExistsSync.mockImplementation((p) => {
@@ -1265,7 +1268,7 @@ describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
       return false;
     });
     mockReadFileSync.mockImplementation((p) => {
-      if (p === `${wsDir}/BOOTSTRAP.md`)
+      if (p === path.join(wsDir, "BOOTSTRAP.md"))
         return "# Bootstrap\nContent that should not be archived again.\nLine 3.";
       if (p === statePath) return JSON.stringify({ bootstrapDone: true });
       throw new Error("ENOENT");

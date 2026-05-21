@@ -751,6 +751,7 @@ export class CpApp extends LitElement {
         templateId?: string;
         runId?: number;
         flowId?: number;
+        skillId?: string;
         section?: import("./types.js").SidebarSection;
       }>
     ).detail;

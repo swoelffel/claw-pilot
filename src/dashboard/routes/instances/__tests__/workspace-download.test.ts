@@ -103,32 +103,38 @@ describe("GET /api/instances/:slug/workspace/download", () => {
     expect(body).toBe("hello world");
   });
 
-  it("URL-encodes special characters in content-disposition filename", async () => {
-    const file = path.join(stateDir, 'a"b.txt');
-    await fs.writeFile(file, "x");
-    const res = await request(
-      `/api/instances/test/workspace/download?path=${encodeURIComponent(file)}`,
-    );
-    expect(res.status).toBe(200);
-    // RFC 5987/6266: percent-encode to prevent header injection and handle unicode
-    expect(res.headers.get("content-disposition")).toBe(
-      "attachment; filename=\"a%22b.txt\"; filename*=UTF-8''a%22b.txt",
-    );
-  });
-
-  it("resolves symlinks before traversal check (blocks symlink escape)", async () => {
-    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "cp-escape-"));
-    const secret = path.join(outside, "secret.txt");
-    await fs.writeFile(secret, "classified");
-    const link = path.join(stateDir, "escape.txt");
-    await fs.symlink(secret, link);
-    try {
+  it.skipIf(process.platform === "win32")(
+    "URL-encodes special characters in content-disposition filename",
+    async () => {
+      const file = path.join(stateDir, 'a"b.txt');
+      await fs.writeFile(file, "x");
       const res = await request(
-        `/api/instances/test/workspace/download?path=${encodeURIComponent(link)}`,
+        `/api/instances/test/workspace/download?path=${encodeURIComponent(file)}`,
       );
-      expect(res.status).toBe(403);
-    } finally {
-      await fs.rm(outside, { recursive: true, force: true });
-    }
-  });
+      expect(res.status).toBe(200);
+      // RFC 5987/6266: percent-encode to prevent header injection and handle unicode
+      expect(res.headers.get("content-disposition")).toBe(
+        "attachment; filename=\"a%22b.txt\"; filename*=UTF-8''a%22b.txt",
+      );
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "resolves symlinks before traversal check (blocks symlink escape)",
+    async () => {
+      const outside = await fs.mkdtemp(path.join(os.tmpdir(), "cp-escape-"));
+      const secret = path.join(outside, "secret.txt");
+      await fs.writeFile(secret, "classified");
+      const link = path.join(stateDir, "escape.txt");
+      await fs.symlink(secret, link);
+      try {
+        const res = await request(
+          `/api/instances/test/workspace/download?path=${encodeURIComponent(link)}`,
+        );
+        expect(res.status).toBe(403);
+      } finally {
+        await fs.rm(outside, { recursive: true, force: true });
+      }
+    },
+  );
 });

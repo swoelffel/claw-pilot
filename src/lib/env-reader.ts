@@ -54,7 +54,7 @@ export async function readEnvValue(
   stateDir: string,
   key: string,
 ): Promise<string | null> {
-  const envPath = path.join(stateDir, ".env");
+  const envPath = `${stateDir}/.env`;
   try {
     const raw = await conn.readFile(envPath);
     for (const line of raw.split("\n")) {

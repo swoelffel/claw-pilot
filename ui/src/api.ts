@@ -28,6 +28,8 @@ import type {
   DailyCost,
   AgentCost,
   SkillsListResponse,
+  StructuredSkillSummary,
+  StructuredSkillsListResponse,
   ModelCost,
   FlowDefinition,
   FlowDefinitionWithLastRun,
@@ -1181,6 +1183,192 @@ export async function installSkillFromGitHub(
 /** Delete a workspace skill by name. */
 export async function deleteSkill(slug: string, name: string): Promise<void> {
   await apiFetch(`/instances/${slug}/skills/${encodeURIComponent(name)}`, { method: "DELETE" });
+}
+
+// ---------------------------------------------------------------------------
+// Structured Skills (SKILLS-002) — DB-backed REST API
+// ---------------------------------------------------------------------------
+
+/** List structured (DB-backed) skills for an instance. */
+export async function listStructuredSkills(slug: string): Promise<StructuredSkillSummary[]> {
+  const res = await apiFetch<StructuredSkillsListResponse>(`/instances/${slug}/skills`);
+  return res.skills;
+}
+
+/** Create a blank structured skill (just name + description). */
+export async function createBlankSkill(
+  slug: string,
+  body: { name: string; description?: string },
+): Promise<{ id: string }> {
+  return apiFetch<{ id: string }>(`/instances/${slug}/skills`, {
+    method: "POST",
+    body: JSON.stringify({ mode: "blank", ...body }),
+  });
+}
+
+/** Upload a ZIP archive to ingest a structured skill. */
+export async function uploadStructuredSkillZip(slug: string, file: File): Promise<{ id: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`/api/instances/${slug}/skills`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${getToken()}` },
+    body: form,
+  });
+  if (!res.ok) {
+    let code = "UPLOAD_ERROR";
+    let message = res.statusText;
+    try {
+      const body = (await res.json()) as { code?: string; error?: string };
+      code = body.code ?? code;
+      message = body.error ?? message;
+    } catch {
+      // Body is not JSON — keep defaults
+    }
+    throw new ApiError(res.status, code, message);
+  }
+  return res.json() as Promise<{ id: string }>;
+}
+
+/** Install a structured skill from a GitHub directory URL. */
+export async function installStructuredSkillFromGithub(
+  slug: string,
+  body: { url: string; ref?: string },
+): Promise<{ id: string }> {
+  return apiFetch<{ id: string }>(`/instances/${slug}/skills`, {
+    method: "POST",
+    body: JSON.stringify({ mode: "github", ...body }),
+  });
+}
+
+/** Delete a structured skill by id. */
+export async function deleteStructuredSkill(slug: string, id: string): Promise<void> {
+  await apiFetch(`/instances/${slug}/skills/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** Export a structured skill as a ZIP file. Returns the blob URL for download. */
+export function buildStructuredSkillExportUrl(slug: string, id: string): string {
+  return `/api/instances/${slug}/skills/${encodeURIComponent(id)}/export`;
+}
+
+// ---------------------------------------------------------------------------
+// Structured skills — detail / files / agents
+// ---------------------------------------------------------------------------
+
+export interface StructuredSkillRecord {
+  id: string;
+  instanceSlug: string;
+  name: string;
+  description: string | null;
+  version: string | null;
+  source: string | null;
+  sourceUrl: string | null;
+  configJson: string | null;
+  orgId: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface StructuredSkillFile {
+  path: string;
+  content: string;
+  hash: string;
+}
+
+export interface StructuredSkillDetail {
+  skill: StructuredSkillRecord;
+  files: StructuredSkillFile[];
+  agents: string[];
+}
+
+export async function getStructuredSkill(slug: string, id: string): Promise<StructuredSkillDetail> {
+  return apiFetch<StructuredSkillDetail>(`/instances/${slug}/skills/${encodeURIComponent(id)}`);
+}
+
+export async function updateStructuredSkillMeta(
+  slug: string,
+  id: string,
+  body: { name?: string; description?: string | null; version?: string | null },
+): Promise<{ skill: StructuredSkillRecord }> {
+  return apiFetch<{ skill: StructuredSkillRecord }>(
+    `/instances/${slug}/skills/${encodeURIComponent(id)}`,
+    { method: "PUT", body: JSON.stringify(body) },
+  );
+}
+
+export async function getStructuredSkillFile(
+  slug: string,
+  id: string,
+  path: string,
+): Promise<StructuredSkillFile> {
+  return apiFetch<StructuredSkillFile>(
+    `/instances/${slug}/skills/${encodeURIComponent(id)}/files/${encodeWorkspacePath(path)}`,
+  );
+}
+
+export async function upsertStructuredSkillFile(
+  slug: string,
+  id: string,
+  path: string,
+  content: string,
+): Promise<StructuredSkillFile> {
+  return apiFetch<StructuredSkillFile>(
+    `/instances/${slug}/skills/${encodeURIComponent(id)}/files/${encodeWorkspacePath(path)}`,
+    { method: "PUT", body: JSON.stringify({ content }) },
+  );
+}
+
+export async function deleteStructuredSkillFile(
+  slug: string,
+  id: string,
+  path: string,
+): Promise<void> {
+  await apiFetch(
+    `/instances/${slug}/skills/${encodeURIComponent(id)}/files/${encodeWorkspacePath(path)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function assignStructuredSkillToAgent(
+  slug: string,
+  id: string,
+  agentId: string,
+): Promise<void> {
+  await apiFetch(
+    `/instances/${slug}/skills/${encodeURIComponent(id)}/agents/${encodeURIComponent(agentId)}`,
+    { method: "POST" },
+  );
+}
+
+export async function unassignStructuredSkillFromAgent(
+  slug: string,
+  id: string,
+  agentId: string,
+): Promise<void> {
+  await apiFetch(
+    `/instances/${slug}/skills/${encodeURIComponent(id)}/agents/${encodeURIComponent(agentId)}`,
+    { method: "DELETE" },
+  );
+}
+
+/** Download the export ZIP via an authenticated fetch + blob URL trigger. */
+export async function downloadStructuredSkillExport(slug: string, id: string): Promise<void> {
+  const res = await fetch(buildStructuredSkillExportUrl(slug, id), {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, "EXPORT_FAILED", `Export failed: ${res.statusText}`);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = /filename="?([^"]+)"?/.exec(disposition);
+  const filename = match?.[1] ?? `skill-${id}.zip`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ---------------------------------------------------------------------------

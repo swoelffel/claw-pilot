@@ -154,6 +154,10 @@ export const ACTIONS = {
   SKILL_INSTALL: "skill.install",
   SKILL_DELETE: "skill.delete",
 
+  // instance-scoped structured skills (SKILLS-002)
+  // Extension-Point: dashboard-skills-routes
+  INSTANCE_SKILLS_MANAGE: "instance.skills.manage",
+
   // flows
   FLOW_LIST: "flow.list",
   FLOW_READ: "flow.read",

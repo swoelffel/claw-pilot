@@ -145,9 +145,9 @@ describe("Destroyer.destroy()", () => {
     // Simulate `ps -A -o pid=,args=` returning one orphan matching our slug
     conn.mockExec("ps", {
       stdout: [
-        `12345 /usr/bin/node /opt/claw-pilot/dist/index.mjs runtime start ${slug}`,
-        `67890 /usr/bin/node /opt/claw-pilot/dist/index.mjs runtime start other-slug`,
-        `99999 /usr/bin/node /opt/claw-pilot/dist/index.mjs runtime start ${slug}-suffix`,
+        `12345 /usr/bin/node /opt/claw-pilot/dist/index.js runtime start ${slug}`,
+        `67890 /usr/bin/node /opt/claw-pilot/dist/index.js runtime start other-slug`,
+        `99999 /usr/bin/node /opt/claw-pilot/dist/index.js runtime start ${slug}-suffix`,
       ].join("\n"),
       stderr: "",
       exitCode: 0,

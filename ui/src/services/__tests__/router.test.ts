@@ -145,6 +145,22 @@ describe("pathToRoute", () => {
     expect(pathToRoute("/instances/dev/triggers")).toEqual({ view: "triggers", slug: "dev" });
   });
 
+  it("/instances/dev/skills (legacy) → instance-settings#skills", () => {
+    expect(pathToRoute("/instances/dev/skills")).toEqual({
+      view: "instance-settings",
+      slug: "dev",
+      initialSection: "skills",
+    });
+  });
+
+  it("/instances/dev/skills/abc-123 (legacy) → instance-settings#skills", () => {
+    expect(pathToRoute("/instances/dev/skills/abc-123")).toEqual({
+      view: "instance-settings",
+      slug: "dev",
+      initialSection: "skills",
+    });
+  });
+
   it("/blueprints → blueprints", () => {
     expect(pathToRoute("/blueprints")).toEqual({ view: "blueprints" });
   });

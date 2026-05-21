@@ -56,7 +56,7 @@ function seedInstance(): { instanceId: number; serverId: number } {
   registry.createAgent(instance.id, {
     agentId: "main",
     name: "Main",
-    workspacePath: `${STATE_DIR}/workspaces/main`,
+    workspacePath: path.join(STATE_DIR, "workspaces", "main"),
     isDefault: true,
   });
 
@@ -66,11 +66,17 @@ function seedInstance(): { instanceId: number; serverId: number } {
   registry.saveRuntimeConfig("test-inst", runtimeConfig);
 
   // Seed the main workspace directory (created by Provisioner step 5)
-  conn.dirs.add(`${STATE_DIR}/workspaces`);
-  conn.dirs.add(`${STATE_DIR}/workspaces/main`);
+  conn.dirs.add(path.join(STATE_DIR, "workspaces"));
+  conn.dirs.add(path.join(STATE_DIR, "workspaces", "main"));
   // Seed generic template files (written by Provisioner step 5)
-  conn.files.set(`${STATE_DIR}/workspaces/main/SOUL.md`, "# Generic SOUL template\n");
-  conn.files.set(`${STATE_DIR}/workspaces/main/AGENTS.md`, "# Generic AGENTS template\n");
+  conn.files.set(
+    path.join(STATE_DIR, "workspaces", "main", "SOUL.md"),
+    "# Generic SOUL template\n",
+  );
+  conn.files.set(
+    path.join(STATE_DIR, "workspaces", "main", "AGENTS.md"),
+    "# Generic AGENTS template\n",
+  );
 
   return { instanceId: instance.id, serverId: server.id };
 }
@@ -155,8 +161,8 @@ describe("BlueprintDeployer.deploy()", () => {
     await deployer.deploy(bpId, instance);
 
     // Files should be written in the existing main workspace (overwriting templates)
-    const soulPath = `${STATE_DIR}/workspaces/main/SOUL.md`;
-    const agentsPath = `${STATE_DIR}/workspaces/main/AGENTS.md`;
+    const soulPath = path.join(STATE_DIR, "workspaces", "main", "SOUL.md");
+    const agentsPath = path.join(STATE_DIR, "workspaces", "main", "AGENTS.md");
 
     expect(conn.files.get(soulPath)).toBe("# Custom SOUL from blueprint\n");
     expect(conn.files.get(agentsPath)).toBe("# Custom AGENTS from blueprint\n");
@@ -233,12 +239,12 @@ describe("BlueprintDeployer.deploy()", () => {
     await deployer.deploy(bpId, instance);
 
     // Directory should be created under workspaces/
-    const expectedDir = `${STATE_DIR}/workspaces/researcher`;
+    const expectedDir = path.join(STATE_DIR, "workspaces", "researcher");
     expect(conn.dirs.has(expectedDir)).toBe(true);
 
     // Files should be written there
-    expect(conn.files.get(`${expectedDir}/SOUL.md`)).toBe("# Researcher SOUL\n");
-    expect(conn.files.get(`${expectedDir}/AGENTS.md`)).toBe("# Researcher AGENTS\n");
+    expect(conn.files.get(path.join(expectedDir, "SOUL.md"))).toBe("# Researcher SOUL\n");
+    expect(conn.files.get(path.join(expectedDir, "AGENTS.md"))).toBe("# Researcher AGENTS\n");
   });
 
   it("secondary agent — added to agents[] with correct id and name", async () => {
@@ -357,13 +363,19 @@ describe("BlueprintDeployer.deploy()", () => {
     await deployer.deploy(bpId, instance);
 
     // Main: files overwritten in existing workspace
-    expect(conn.files.get(`${STATE_DIR}/workspaces/main/SOUL.md`)).toBe("# Blueprint Main SOUL\n");
+    expect(conn.files.get(path.join(STATE_DIR, "workspaces", "main", "SOUL.md"))).toBe(
+      "# Blueprint Main SOUL\n",
+    );
 
     // Secondaries: own workspaces created
-    expect(conn.dirs.has(`${STATE_DIR}/workspaces/coder`)).toBe(true);
-    expect(conn.dirs.has(`${STATE_DIR}/workspaces/reviewer`)).toBe(true);
-    expect(conn.files.get(`${STATE_DIR}/workspaces/coder/SOUL.md`)).toBe("# Coder SOUL\n");
-    expect(conn.files.get(`${STATE_DIR}/workspaces/reviewer/SOUL.md`)).toBe("# Reviewer SOUL\n");
+    expect(conn.dirs.has(path.join(STATE_DIR, "workspaces", "coder"))).toBe(true);
+    expect(conn.dirs.has(path.join(STATE_DIR, "workspaces", "reviewer"))).toBe(true);
+    expect(conn.files.get(path.join(STATE_DIR, "workspaces", "coder", "SOUL.md"))).toBe(
+      "# Coder SOUL\n",
+    );
+    expect(conn.files.get(path.join(STATE_DIR, "workspaces", "reviewer", "SOUL.md"))).toBe(
+      "# Reviewer SOUL\n",
+    );
 
     // All agents in DB with correct config_json
     const loaded = registry.getRuntimeConfig("test-inst")!;
@@ -500,10 +512,10 @@ describe("BlueprintDeployer.deploy()", () => {
     const coderAgent = agents.find((a) => a.agent_id === "coder");
 
     expect(mainAgent).toBeDefined();
-    expect(mainAgent!.workspace_path).toBe(`${STATE_DIR}/workspaces/main`);
+    expect(mainAgent!.workspace_path).toBe(path.join(STATE_DIR, "workspaces", "main"));
 
     expect(coderAgent).toBeDefined();
-    expect(coderAgent!.workspace_path).toBe(`${STATE_DIR}/workspaces/coder`);
+    expect(coderAgent!.workspace_path).toBe(path.join(STATE_DIR, "workspaces", "coder"));
   });
 
   it("agent files are copied to instance DB cache", async () => {
@@ -594,10 +606,10 @@ describe("BlueprintDeployer.deploy()", () => {
     const deployer = new BlueprintDeployer(conn, registry);
     await deployer.deploy(bpId, instance);
 
-    const wsDir = `${STATE_DIR}/workspaces/helper`;
-    expect(conn.files.has(`${wsDir}/SOUL.md`)).toBe(true);
-    expect(conn.files.has(`${wsDir}/AGENTS.md`)).toBe(true);
-    expect(conn.files.get(`${wsDir}/SOUL.md`)).toBe("# Helper\n");
+    const wsDir = path.join(STATE_DIR, "workspaces", "helper");
+    expect(conn.files.has(path.join(wsDir, "SOUL.md"))).toBe(true);
+    expect(conn.files.has(path.join(wsDir, "AGENTS.md"))).toBe(true);
+    expect(conn.files.get(path.join(wsDir, "SOUL.md"))).toBe("# Helper\n");
   });
 
   it("agent canvas positions are copied from blueprint to instance", async () => {

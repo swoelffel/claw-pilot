@@ -31,7 +31,7 @@ vi.mock("node:fs", async (importOriginal) => {
   return {
     ...original,
     statSync: vi.fn((p: string) => {
-      if (typeof p === "string" && p.endsWith("index.mjs")) return {};
+      if (typeof p === "string" && p.endsWith("index.js")) return {};
       throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
     }),
   };

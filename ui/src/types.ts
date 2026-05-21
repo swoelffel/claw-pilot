@@ -25,6 +25,31 @@ export interface SkillsListResponse {
   skills: SkillInfo[];
 }
 
+// ---------------------------------------------------------------------------
+// Structured Skills (SKILLS-002) — DB-backed per-instance skills
+// ---------------------------------------------------------------------------
+
+/**
+ * Summary row for `GET /api/instances/:slug/skills`.
+ * Mirrors `SkillSummary` in `src/core/repositories/skill-repository.ts`.
+ */
+export interface StructuredSkillSummary {
+  id: string;
+  instanceSlug: string;
+  name: string;
+  description: string | null;
+  version: string | null;
+  source: "blank" | "zip" | "github" | string | null;
+  sourceUrl: string | null;
+  fileCount: number;
+  agentCount: number;
+  updatedAt: string;
+}
+
+export interface StructuredSkillsListResponse {
+  skills: StructuredSkillSummary[];
+}
+
 export interface InstanceInfo {
   id: number;
   slug: string;

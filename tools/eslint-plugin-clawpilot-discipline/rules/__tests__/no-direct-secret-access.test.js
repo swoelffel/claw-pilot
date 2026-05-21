@@ -38,6 +38,16 @@ describe("no-direct-secret-access", () => {
           code: 'fs.readFileSync("./fixtures/jwt-public.pem");',
           filename: "/proj/src/core/__tests__/jwt-fixture.test.ts",
         },
+        {
+          // allowlist: Windows path separators — __tests__
+          code: "const k = process.env.TELEGRAM_BOT_TOKEN;",
+          filename: "C:\\proj\\src\\core\\__tests__\\foo.test.ts",
+        },
+        {
+          // allowlist: Windows path separators — crypto.ts suffix
+          code: "const k = process.env.MASTER_ENCRYPTION_KEY;",
+          filename: "C:\\proj\\src\\lib\\crypto.ts",
+        },
       ],
       invalid: [
         {

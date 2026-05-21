@@ -493,6 +493,23 @@ async function buildToolSetForLoop(
   );
 }
 
+/**
+ * Return true for claude-4-generation models that require the new adaptive thinking API
+ * (`thinking.type = "adaptive"` + `effort`) instead of the legacy API
+ * (`thinking.type = "enabled"` + `budgetTokens`).
+ * claude-3.x models use the legacy format; claude-opus/sonnet/haiku-4-x use adaptive.
+ */
+export function isAdaptiveThinkingModel(modelId: string): boolean {
+  return /^claude-(opus|sonnet|haiku)-4-/.test(modelId);
+}
+
+/** Map a budgetTokens value to the Anthropic effort level used in the adaptive thinking API. */
+function budgetTokensToEffort(tokens: number): "high" | "medium" | "low" {
+  if (tokens >= 10_000) return "high";
+  if (tokens >= 4_000) return "medium";
+  return "low";
+}
+
 /** Build Anthropic provider options (thinking config + system caching). */
 function buildProviderOptions(
   systemProviderOptions: Record<string, unknown> | undefined,
@@ -503,10 +520,22 @@ function buildProviderOptions(
     ...(systemProviderOptions?.["anthropic"] as Record<string, import("ai").JSONValue> | undefined),
   };
   if (agentConfig.thinking?.enabled && resolvedModel.providerId === "anthropic") {
-    anthropicProviderOpts["thinking"] = {
-      type: "enabled",
-      budgetTokens: agentConfig.thinking.budgetTokens ?? 10_000,
-    } as unknown as import("ai").JSONValue;
+    const budgetTokens = agentConfig.thinking.budgetTokens ?? 10_000;
+    if (isAdaptiveThinkingModel(resolvedModel.modelId)) {
+      // claude-4-generation models use the adaptive thinking API.
+      // The @ai-sdk/anthropic SDK reads `effort` at the top level of providerOptions and
+      // constructs `output_config: { effort }` itself — do NOT nest it under `output_config`.
+      anthropicProviderOpts["thinking"] = { type: "adaptive" } as unknown as import("ai").JSONValue;
+      anthropicProviderOpts["effort"] = budgetTokensToEffort(
+        budgetTokens,
+      ) as unknown as import("ai").JSONValue;
+    } else {
+      // claude-3-generation models use the legacy extended thinking API
+      anthropicProviderOpts["thinking"] = {
+        type: "enabled",
+        budgetTokens,
+      } as unknown as import("ai").JSONValue;
+    }
   }
   return Object.keys(anthropicProviderOpts).length > 0
     ? { anthropic: anthropicProviderOpts }

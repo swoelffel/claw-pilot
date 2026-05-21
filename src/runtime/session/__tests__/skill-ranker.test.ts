@@ -5,8 +5,9 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { rankSkills } from "../skill-ranker.js";
+import { rankSkills, mergeSkillSources } from "../skill-ranker.js";
 import type { SkillEntry } from "../../tool/built-in/skill.js";
+import type { SkillLoaderEntry } from "../skill-loader.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -105,5 +106,35 @@ describe("rankSkills", () => {
     const result = rankSkills("analyze image", skills, 5);
     expect(result.length).toBeGreaterThan(0);
     expect(result[0]!.name).toBe("image-analysis");
+  });
+});
+
+describe("mergeSkillSources", () => {
+  function dbEntry(name: string, description: string | null, content: string): SkillLoaderEntry {
+    return {
+      id: `db-${name}`,
+      name,
+      description,
+      content,
+      files: [{ path: "SKILL.md", content }],
+    };
+  }
+
+  it("merges disjoint sources keeping both", () => {
+    const merged = mergeSkillSources({
+      fromFilesystem: [skill("fs-only", "filesystem skill")],
+      fromDb: [dbEntry("db-only", "db skill", "body")],
+    });
+    expect(merged.map((s) => s.name).sort()).toEqual(["db-only", "fs-only"]);
+  });
+
+  it("DB source wins on name collision", () => {
+    const merged = mergeSkillSources({
+      fromFilesystem: [skill("collide", "filesystem version")],
+      fromDb: [dbEntry("collide", "db version", "db body")],
+    });
+    expect(merged.length).toBe(1);
+    expect(merged[0]!.description).toBe("db version");
+    expect(merged[0]!.dir).toBe("db:db-collide");
   });
 });

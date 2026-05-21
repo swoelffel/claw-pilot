@@ -8,7 +8,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from "node:fs";
 import { readWorkspaceFileCached } from "./workspace-cache.js";
 import { fileURLToPath } from "node:url";
-import { resolve, join, dirname } from "node:path";
+import { resolve, join, dirname, sep } from "node:path";
 import type Database from "better-sqlite3";
 import type { RuntimeAgentConfig, RuntimeConfig } from "../config/index.js";
 import type { UserProfile } from "../profile/types.js";
@@ -755,7 +755,7 @@ function readBootstrapFiles(wsDir: string, patterns: readonly string[]): string[
     const matchedFiles = expandSimpleGlob(wsDir, pattern);
     for (const relPath of matchedFiles) {
       const absPath = join(wsDir, relPath);
-      if (!absPath.startsWith(wsDir + "/") && absPath !== wsDir) continue;
+      if (!absPath.startsWith(wsDir + sep) && absPath !== wsDir) continue;
       const rawContent = readWorkspaceFileCached(absPath);
       if (rawContent !== undefined) {
         const raw = rawContent.trim();

@@ -1,7 +1,7 @@
 # claw-pilot — Registry Database (`registry.db`)
 
 SQLite database at `~/.claw-pilot/registry.db`. WAL mode, foreign keys enforced.  
-Current schema version: **41**. Source of truth: `src/db/schema.ts`.
+Current schema version: **45**. Source of truth: `src/db/schema.ts`.
 
 ---
 
@@ -33,6 +33,9 @@ rt_tasks ──< rt_task_comments
 
 rt_flow_definitions ──< rt_flow_runs ──< rt_flow_step_runs
                    └──< rt_flow_triggers ──< rt_flow_trigger_runs
+
+skills ──< skill_files
+      └──< agent_skills (agent_id, skill_id)
 
 agent_files ──< agent_files_fts (FTS5, content-backed)
 
@@ -774,6 +777,51 @@ Trigger firing log — also serves as the concurrency lock (active row in `('pen
 
 Indexes: `idx_rt_flow_trigger_runs_trigger` (trigger_id, fired_at DESC), partial UNIQUE `idx_rt_flow_trigger_runs_idem` (trigger_id, idempotency_key) WHERE idempotency_key IS NOT NULL, partial `idx_rt_flow_trigger_runs_active` (trigger_id, status) WHERE status IN ('pending','running').
 
+### `skills` (v44)
+
+SKILLS-002 — one row per structured skill scoped to an instance. Populated by the wizard (blank / ZIP / GitHub) and by the v45 legacy migration that lifts `agent_files` rows from `.opencode/skill/%`. `org_id TEXT NULL` is the R2 multi-tenancy slot (Enterprise will populate it; CE leaves it NULL).
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | TEXT | PRIMARY KEY |
+| `instance_slug` | TEXT | NOT NULL |
+| `name` | TEXT | NOT NULL (unique per instance via app-level guard) |
+| `description` | TEXT | |
+| `version` | TEXT | (free-form semver from manifest) |
+| `source` | TEXT | (`blank` / `zip` / `github` / `legacy`) |
+| `source_url` | TEXT | (GitHub URL when applicable) |
+| `config_json` | TEXT | (manifest extras — keys other than name/description/version/tags) |
+| `org_id` | TEXT | NULL (R2 slot) |
+| `created_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+| `updated_at` | TEXT | NOT NULL DEFAULT datetime('now') |
+
+Index: `idx_skills_instance` (instance_slug).
+
+### `skill_files` (v44)
+
+Files attached to a skill — `SKILL.md` plus any referenced documents shipped in the same bundle. Stored verbatim with a content hash for cheap round-trip detection.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `skill_id` | TEXT | NOT NULL REFERENCES skills(id) ON DELETE CASCADE |
+| `path` | TEXT | NOT NULL (relative path within the skill bundle) |
+| `content` | TEXT | NOT NULL |
+| `hash` | TEXT | (content hash for idempotent re-import) |
+
+UNIQUE: `(skill_id, path)`. Index: `idx_skill_files_skill` (skill_id).
+
+### `agent_skills` (v44)
+
+Many-to-many binding between agents and skills. The runtime joins this table to decide which skills `SkillLoader` should consider for a given agent's prompt.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `agent_id` | TEXT | NOT NULL |
+| `skill_id` | TEXT | NOT NULL REFERENCES skills(id) ON DELETE CASCADE |
+
+PRIMARY KEY: `(agent_id, skill_id)`.
+
 ---
 
 ## Migration history
@@ -821,6 +869,8 @@ Indexes: `idx_rt_flow_trigger_runs_trigger` (trigger_id, fired_at DESC), partial
 | 39 | Added `rt_audit_events` (H6 audit event bus persistence). `org_id NULL` slot from day one (R2). Three indexes (kind+ts, org+ts, user+ts). |
 | 40 | Added `rt_flow_triggers` + `rt_flow_trigger_runs` (TRIGGER-001) — cron + HMAC webhook scheduling for flows. `webhook_secret_ref` via SecretProvider (R5). Run table doubles as concurrency lock. |
 | 41 | Rebuilt `rt_flow_triggers` to scope `webhook_slug` uniqueness to (instance_slug, webhook_slug) — composite UNIQUE INDEX. `disableFk: true` for the swap because of `rt_flow_trigger_runs.trigger_id` FK. |
+| 44 | SKILLS-002 — added `skills`, `skill_files`, `agent_skills` tables for structured per-instance skills (SKILL.md manifest + referenced files). `skills.org_id NULL` slot from day one (R2). Indexes `idx_skills_instance` and `idx_skill_files_skill`. |
+| 45 | SKILLS-002 — one-shot, idempotent, non-destructive migration of legacy `.opencode/skill/%` rows from `agent_files` into the v44 tables. Extension-Point: `schema-skills-migration`. |
 
 ---
 

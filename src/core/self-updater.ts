@@ -258,11 +258,11 @@ export class SelfUpdater {
     }
   }
 
-  // Remonte depuis dist/index.mjs → racine du projet (ou /opt/claw-pilot en fallback)
+  // Remonte depuis dist/index.js → racine du projet (ou /opt/claw-pilot en fallback)
   _resolveInstallDir(): string {
     try {
       const thisFile = fileURLToPath(import.meta.url);
-      // dist/server-*.mjs ou dist/index.mjs → parent = dist/ → parent = racine
+      // dist/server-*.js ou dist/index.js → parent = dist/ → parent = racine
       const distDir = path.dirname(thisFile);
       const candidate = path.resolve(distDir, "..");
       return candidate;

@@ -159,6 +159,12 @@ export function pathToRoute(pathname: string): Route {
   const triggersMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/triggers$/);
   if (triggersMatch) return { view: "triggers", slug: triggersMatch[1]! };
 
+  // /instances/:slug/skills[/:id] — legacy paths from SKILLS-002 pre-relocate.
+  // Redirect to instance settings (Skills section is now a sidebar entry).
+  const skillsLegacyMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/skills(?:\/[^/]+)?$/);
+  if (skillsLegacyMatch)
+    return { view: "instance-settings", slug: skillsLegacyMatch[1]!, initialSection: "skills" };
+
   // /instances/:slug/flows/:flowId/sessions
   const flowSessionsMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/flows\/(\d+)\/sessions$/);
   if (flowSessionsMatch)

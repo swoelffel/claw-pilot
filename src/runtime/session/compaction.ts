@@ -210,7 +210,8 @@ export async function compact(input: CompactionInput): Promise<CompactionResult>
           knowledge.knowledge.length;
         if (totalExtracted > 0) {
           const memoryDb = openMemoryIndex(workDir);
-          void rebuildMemoryIndex(memoryDb, workDir, agentConfig.id);
+          rebuildMemoryIndex(memoryDb, workDir, agentConfig.id);
+          memoryDb.close();
         }
 
         // Decay — appliquer sur les fichiers memoire (sauf timeline.md)
@@ -232,7 +233,8 @@ export async function compact(input: CompactionInput): Promise<CompactionResult>
           if (consolidated > 0) {
             // Re-indexer apres consolidation
             const memoryDb = openMemoryIndex(workDir);
-            void rebuildMemoryIndex(memoryDb, workDir, agentConfig.id);
+            rebuildMemoryIndex(memoryDb, workDir, agentConfig.id);
+            memoryDb.close();
           }
         });
       }
