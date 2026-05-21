@@ -34,8 +34,6 @@ export type Route =
   | { view: "flow-sessions"; slug: string; flowId: number }
   | { view: "profile" }
   | { view: "triggers"; slug: string }
-  | { view: "skills"; slug: string }
-  | { view: "skill-detail"; slug: string; skillId: string }
   /**
    * Extension view registered through `extension-views.ts`. The `subPath`
    * is the segment after `/ext/<id>/`, with the leading slash stripped
@@ -88,10 +86,6 @@ export function routeToPath(route: Route): string {
       return "/profile";
     case "triggers":
       return `/instances/${route.slug}/triggers`;
-    case "skills":
-      return `/instances/${route.slug}/skills`;
-    case "skill-detail":
-      return `/instances/${route.slug}/skills/${route.skillId}`;
     case "extension":
       return route.subPath === "" ? `/ext/${route.id}` : `/ext/${route.id}/${route.subPath}`;
   }
@@ -165,14 +159,11 @@ export function pathToRoute(pathname: string): Route {
   const triggersMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/triggers$/);
   if (triggersMatch) return { view: "triggers", slug: triggersMatch[1]! };
 
-  // /instances/:slug/skills/:id (SKILLS-002) — detail view (component shipped in Task 10)
-  const skillDetailMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/skills\/([^/]+)$/);
-  if (skillDetailMatch)
-    return { view: "skill-detail", slug: skillDetailMatch[1]!, skillId: skillDetailMatch[2]! };
-
-  // /instances/:slug/skills (SKILLS-002) — cards grid
-  const skillsMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/skills$/);
-  if (skillsMatch) return { view: "skills", slug: skillsMatch[1]! };
+  // /instances/:slug/skills[/:id] — legacy paths from SKILLS-002 pre-relocate.
+  // Redirect to instance settings (Skills section is now a sidebar entry).
+  const skillsLegacyMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/skills(?:\/[^/]+)?$/);
+  if (skillsLegacyMatch)
+    return { view: "instance-settings", slug: skillsLegacyMatch[1]!, initialSection: "skills" };
 
   // /instances/:slug/flows/:flowId/sessions
   const flowSessionsMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/flows\/(\d+)\/sessions$/);

@@ -26,6 +26,7 @@ import "./instance-permissions.js";
 import "./instance-config.js";
 import "./instance-channels.js";
 import "./instance-shared-files.js";
+import "./skills/cp-skills-tab.js";
 
 @localized()
 @customElement("cp-instance-settings")
@@ -76,6 +77,10 @@ export class InstanceSettings extends LitElement {
   // ── MCP badge state ───────────────────────────────────────────────────────
 
   @state() private _mcpConnectedCount = 0;
+
+  // ── Skills badge state ────────────────────────────────────────────────────
+
+  @state() private _skillsCount = 0;
 
   // ── Permissions badge state ───────────────────────────────────────────────
 
@@ -287,6 +292,11 @@ export class InstanceSettings extends LitElement {
         id: "mcp" as const,
         label: "MCP",
         ...(this._mcpConnectedCount > 0 ? { badge: this._mcpConnectedCount } : {}),
+      },
+      {
+        id: "skills" as const,
+        label: msg("Skills", { id: "settings-skills" }),
+        ...(this._skillsCount > 0 ? { badge: this._skillsCount } : {}),
       },
       {
         id: "permissions" as const,
@@ -720,6 +730,18 @@ export class InstanceSettings extends LitElement {
                       this._mcpConnectedCount = e.detail;
                     }}
                   ></cp-instance-mcp>
+                </div>
+              `
+            : nothing}
+          ${this._activeSection === "skills"
+            ? html`
+                <div class="section">
+                  <cp-skills-tab
+                    .slug=${this.slug}
+                    @count-changed=${(e: CustomEvent<number>) => {
+                      this._skillsCount = e.detail;
+                    }}
+                  ></cp-skills-tab>
                 </div>
               `
             : nothing}
