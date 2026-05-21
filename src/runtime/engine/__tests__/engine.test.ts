@@ -36,6 +36,14 @@ vi.mock("../../bus/events.js", () => ({
   WorkspaceFileChanged: Symbol("WorkspaceFileChanged"),
   SystemStateChanged: Symbol("SystemStateChanged"),
   PermissionReplied: Symbol("PermissionReplied"),
+  QuestionAsked: Symbol("QuestionAsked"),
+  SkillCreated: Symbol("SkillCreated"),
+  SkillUpdated: Symbol("SkillUpdated"),
+  SkillDeleted: Symbol("SkillDeleted"),
+  SkillFileUpserted: Symbol("SkillFileUpserted"),
+  SkillFileDeleted: Symbol("SkillFileDeleted"),
+  AgentSkillAssigned: Symbol("AgentSkillAssigned"),
+  AgentSkillUnassigned: Symbol("AgentSkillUnassigned"),
 }));
 vi.mock("../../agent/registry.js", () => ({
   initAgentRegistry: vi.fn(),

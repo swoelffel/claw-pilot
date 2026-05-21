@@ -209,6 +209,8 @@ export interface SystemPromptContext {
   userText?: string;
   /** When true, skip the skills block (used by dirty-flag cache to cache base prompt). */
   skipSkills?: boolean;
+  /** Optional DB-backed skill loader merged into the <available_skills> block. */
+  skillLoader?: import("./skill-loader.js").SkillLoader;
 }
 
 /**
@@ -292,7 +294,12 @@ export async function buildSystemPrompt(ctx: SystemPromptContext): Promise<strin
 
   // 4. Skills block
   if (!ctx.skipSkills && ctx.workDir) {
-    const skillsBlock = await buildSkillsBlock(ctx.workDir, ctx.agentConfig, ctx.userText);
+    const skillsBlock = await buildSkillsBlock(
+      ctx.workDir,
+      ctx.agentConfig,
+      ctx.userText,
+      ctx.skillLoader,
+    );
     if (skillsBlock) sections.push(skillsBlock);
   }
 
@@ -941,6 +948,8 @@ export async function buildSkillsBlock(
   workDir: string,
   agentConfig: RuntimeAgentConfig,
   userText?: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _skillLoader?: import("./skill-loader.js").SkillLoader,
 ): Promise<string | undefined> {
   let skills;
   try {
