@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>io.claw-pilot.dashboard</string>
+  <key>UserName</key><string>clawpilot-ce</string>
+  <key>GroupName</key><string>staff</string>
+  <key>WorkingDirectory</key><string>/opt/claw-pilot</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/node-v22/bin/node</string>
+    <string>/opt/claw-pilot/dist/index.js</string>
+    <string>dashboard</string>
+    <string>--port</string>
+    <string>19000</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/opt/node-v22/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key><string>/Users/clawpilot-ce</string>
+    <key>NODE_ENV</key><string>production</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/var/log/claw-pilot-ce.log</string>
+  <key>StandardErrorPath</key><string>/var/log/claw-pilot-ce.err.log</string>
+</dict>
+</plist>
