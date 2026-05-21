@@ -33,8 +33,10 @@ export function wireTaskNotifications(options: {
   instanceSlug: InstanceSlug;
   config: RuntimeConfig;
   workDir: string | undefined;
+  /** DB-backed skill loader — forwarded to runPromptLoop for system-prompt + tool. */
+  skillLoader?: import("../session/skill-loader.js").SkillLoader;
 }): () => void {
-  const { db, instanceSlug, config, workDir } = options;
+  const { db, instanceSlug, config, workDir, skillLoader } = options;
   const bus = getBus(instanceSlug);
 
   // Track session busy/idle state via bus events
@@ -100,6 +102,7 @@ export function wireTaskNotifications(options: {
         runtimeAgents: config.agents.map((a) => ({ id: a.id, name: a.name })),
         compactionConfig: config.compaction,
         runtimeConfig: config,
+        ...(skillLoader !== undefined ? { skillLoader } : {}),
       }).catch((err: unknown) => {
         logger.error("task_notification_prompt_loop_failed", {
           event: "task_notification_prompt_loop_failed",

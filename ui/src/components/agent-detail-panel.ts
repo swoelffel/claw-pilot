@@ -29,6 +29,9 @@ import {
   fetchProviders,
   updateBlueprintAgentMeta,
   listStructuredSkills,
+  listStructuredSkillAgents,
+  assignStructuredSkillToAgent,
+  unassignStructuredSkillFromAgent,
 } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
@@ -88,8 +91,10 @@ export class AgentDetailPanel extends LitElement {
   @state() private _editNotes = "";
   @state() private _editProvider = "";
   @state() private _editModel = "";
-  // null = All skills, [] = None, [...] = custom list
+  // List of skill names currently checked in the picker (derived from agent_skills).
   @state() private _editSkills: string[] | null = null;
+  // Snapshot of skill names assigned at load time (used to diff additions/removals on save).
+  @state() private _assignedSkillNames = new Set<string>();
   // Available skills for the picker (lazy-loaded from API)
   @state() private _availableSkills: StructuredSkillSummary[] = [];
   @state() private _loadingSkills = false;
@@ -820,11 +825,7 @@ export class AgentDetailPanel extends LitElement {
       `;
     }
 
-    // null (All) means all skills are enabled — show all checked
-    const isAll = this._editSkills === null;
-    const selectedSet = isAll
-      ? new Set(this._availableSkills.map((s) => s.name))
-      : new Set(this._editSkills);
+    const selectedSet = new Set(this._editSkills ?? []);
 
     return html`
       <div class="hb-tab">
@@ -867,14 +868,13 @@ export class AgentDetailPanel extends LitElement {
                   .checked=${checked}
                   ?disabled=${this._autoSelectSkills}
                   @change=${() => {
-                    const current = isAll
-                      ? this._availableSkills.map((s) => s.name)
-                      : [...(this._editSkills ?? [])];
-                    if (checked) {
-                      this._editSkills = current.filter((s) => s !== skill.name);
+                    const current = new Set(this._editSkills ?? []);
+                    if (current.has(skill.name)) {
+                      current.delete(skill.name);
                     } else {
-                      this._editSkills = [...current, skill.name];
+                      current.add(skill.name);
                     }
+                    this._editSkills = [...current];
                     this._skillsDirty = true;
                   }}
                 />
@@ -904,7 +904,7 @@ export class AgentDetailPanel extends LitElement {
                   class="btn-cancel-spawn"
                   ?disabled=${this._skillsSaving}
                   @click=${() => {
-                    this._editSkills = this.agent.skills;
+                    this._editSkills = [...this._assignedSkillNames];
                     this._autoSelectSkills = this._autoSelectSkillsOriginal;
                     this._skillsDirty = false;
                     this._skillsError = "";
@@ -924,38 +924,43 @@ export class AgentDetailPanel extends LitElement {
     this._skillsSaving = true;
     this._skillsError = "";
     try {
-      const promises: Promise<unknown>[] = [];
-
       if (this.context.kind === "instance") {
-        // Save skill whitelist + autoSelectSkills to runtime config (source of truth)
-        promises.push(
-          patchInstanceConfig(this.context.slug, {
-            agents: [
-              {
-                id: this.agent.agent_id,
-                skills: this._editSkills,
-                ...(this._autoSelectSkills !== this._autoSelectSkillsOriginal
-                  ? { autoSelectSkills: this._autoSelectSkills }
-                  : {}),
-              },
-            ],
-          }),
-        );
-        // Keep agents.skills in sync for UI display (backward compat, display cache)
-        promises.push(
-          updateAgentMeta(this.context.slug, this.agent.agent_id, {
-            skills: this._editSkills,
-          }),
-        );
+        const slug = this.context.slug;
+        const agentId = this.agent.agent_id;
+        const newAssigned = new Set(this._editSkills ?? []);
+        const previouslyAssigned = this._assignedSkillNames;
+
+        const additions = [...newAssigned].filter((n) => !previouslyAssigned.has(n));
+        const removals = [...previouslyAssigned].filter((n) => !newAssigned.has(n));
+
+        const nameToId = new Map(this._availableSkills.map((s) => [s.name, s.id]));
+
+        const ops: Promise<unknown>[] = [];
+        for (const name of additions) {
+          const id = nameToId.get(name);
+          if (id) ops.push(assignStructuredSkillToAgent(slug, id, agentId));
+        }
+        for (const name of removals) {
+          const id = nameToId.get(name);
+          if (id) ops.push(unassignStructuredSkillFromAgent(slug, id, agentId));
+        }
+
+        if (this._autoSelectSkills !== this._autoSelectSkillsOriginal) {
+          ops.push(
+            patchInstanceConfig(slug, {
+              agents: [{ id: agentId, autoSelectSkills: this._autoSelectSkills }],
+            }),
+          );
+        }
+
+        await Promise.all(ops);
+        this._assignedSkillNames = newAssigned;
       } else {
-        promises.push(
-          updateBlueprintAgentMeta(this.context.blueprintId, this.agent.agent_id, {
-            skills: this._editSkills,
-          }),
-        );
+        await updateBlueprintAgentMeta(this.context.blueprintId, this.agent.agent_id, {
+          skills: this._editSkills,
+        });
       }
 
-      await Promise.all(promises);
       this._autoSelectSkillsOriginal = this._autoSelectSkills;
       this._skillsDirty = false;
       this.dispatchEvent(new CustomEvent("agent-meta-updated", { bubbles: true, composed: true }));
@@ -1342,23 +1347,44 @@ export class AgentDetailPanel extends LitElement {
     }
   }
 
-  /** Load available skills from the instance API (for the checkbox picker). */
+  /**
+   * Load available skills and the agent's current bindings from the
+   * `agent_skills` table (the SKILLS-002 source of truth). The legacy
+   * whitelist field `agentConfig.skills` is intentionally ignored here.
+   */
   private async _loadAvailableSkills(): Promise<void> {
     if (this._loadingSkills || this.context?.kind !== "instance") return;
     this._loadingSkills = true;
+    this._skillsError = "";
     try {
+      const slug = this.context.slug;
+      const agentId = this.agent.agent_id;
       const [skills, instanceConfig] = await Promise.all([
-        listStructuredSkills(this.context.slug),
-        fetchInstanceConfig(this.context.slug),
+        listStructuredSkills(slug),
+        fetchInstanceConfig(slug),
       ]);
+
+      const assigned = new Set<string>();
+      await Promise.all(
+        skills.map(async (s) => {
+          const ids = await listStructuredSkillAgents(slug, s.id);
+          if (ids.includes(agentId)) assigned.add(s.name);
+        }),
+      );
+
       this._availableSkills = skills;
-      const agentEntry = instanceConfig.agents.find((a) => a.id === this.agent.agent_id) as
+      this._assignedSkillNames = assigned;
+      this._editSkills = [...assigned];
+
+      const agentEntry = instanceConfig.agents.find((a) => a.id === agentId) as
         | Record<string, unknown>
         | undefined;
       const autoSelect = (agentEntry?.autoSelectSkills as boolean | undefined) ?? false;
       this._autoSelectSkills = autoSelect;
       this._autoSelectSkillsOriginal = autoSelect;
-    } catch {
+      this._skillsDirty = false;
+    } catch (err) {
+      this._skillsError = err instanceof Error ? err.message : String(err);
       this._availableSkills = [];
     } finally {
       this._loadingSkills = false;

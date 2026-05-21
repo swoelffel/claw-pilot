@@ -97,4 +97,6 @@ export interface FlowEngineContext {
    * MCP tools (same behaviour as a chat with no MCP).
    */
   mcpRegistry?: McpRegistry;
+  /** DB-backed skill loader — forwarded to ChannelRouter.route for system-prompt + tool. */
+  skillLoader?: import("../session/skill-loader.js").SkillLoader;
 }

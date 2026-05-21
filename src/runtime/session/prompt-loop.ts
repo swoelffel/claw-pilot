@@ -83,6 +83,8 @@ export interface PromptLoopInput {
   memoryDb?: Database.Database;
   subagentsConfig?: SubagentsConfig;
   mcpRegistry?: McpRegistry;
+  /** DB-backed skill loader for `<available_skills>` injection + tool resolution. */
+  skillLoader?: import("./skill-loader.js").SkillLoader;
   internalResolvedModel?: ResolvedModel;
   runtimeConfig?: RuntimeConfig;
   /** Injected model resolver for inter-agent calls (named key support). */
@@ -396,6 +398,7 @@ async function buildAndCacheSystemPrompt(
     db,
     ...(runtimeConfig !== undefined ? { runtimeConfig } : {}),
     ...(userProfile !== undefined ? { userProfile } : {}),
+    ...(input.skillLoader !== undefined ? { skillLoader: input.skillLoader } : {}),
   });
 
   cacheSystemPrompt(sessionId, systemPrompt);
@@ -468,6 +471,7 @@ async function buildToolSetForLoop(
     onLongWait,
     ...(workDir !== undefined ? { workDir } : {}),
     agentConfig,
+    ...(input.skillLoader !== undefined ? { skillLoader: input.skillLoader } : {}),
     metadata: (_meta) => {},
   };
 

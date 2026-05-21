@@ -64,6 +64,8 @@ export interface RouterInput {
   abort?: AbortSignal;
   /** MCP registry — forwarded to runPromptLoop to inject MCP tools */
   mcpRegistry?: McpRegistry;
+  /** DB-backed skill loader — forwarded to runPromptLoop for system-prompt + tool. */
+  skillLoader?: import("../session/skill-loader.js").SkillLoader;
   /** Profile resolver — used to inject user profile into system prompt */
   profileResolver?: ProfileResolver;
   /** Force use of an existing session (e.g. flow mission sessions) */
@@ -198,6 +200,7 @@ export class ChannelRouter {
             // Forward flow-specific overrides (maxSteps soft cap + mutable extension state)
             ...(input.maxSteps !== undefined ? { maxSteps: input.maxSteps } : {}),
             ...(input.flowStepState !== undefined ? { flowStepState: input.flowStepState } : {}),
+            ...(input.skillLoader !== undefined ? { skillLoader: input.skillLoader } : {}),
           }),
       });
 
@@ -640,6 +643,7 @@ export function registerSubagentCompletedHandler(
   instanceSlug: InstanceSlug,
   config: RuntimeConfig,
   workDir?: string,
+  skillLoader?: import("../session/skill-loader.js").SkillLoader,
 ): () => void {
   const bus = getBus(instanceSlug);
 
@@ -696,6 +700,7 @@ export function registerSubagentCompletedHandler(
           subagentsConfig: config.subagents,
           runtimeConfig: config,
           ...(internalResolvedModel !== undefined ? { internalResolvedModel } : {}),
+          ...(skillLoader !== undefined ? { skillLoader } : {}),
         });
       })
       .catch((err: unknown) => {
