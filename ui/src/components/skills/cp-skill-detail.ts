@@ -513,8 +513,7 @@ export class CpSkillDetail extends LitElement {
       if (!ok) return;
     }
     this.dispatchEvent(
-      new CustomEvent("navigate", {
-        detail: { view: "skills", slug: this.slug },
+      new CustomEvent("skill-closed", {
         bubbles: true,
         composed: true,
       }),
@@ -540,8 +539,8 @@ export class CpSkillDetail extends LitElement {
     try {
       await deleteStructuredSkill(this.slug, this.skillId);
       this.dispatchEvent(
-        new CustomEvent("navigate", {
-          detail: { view: "skills", slug: this.slug },
+        new CustomEvent("skill-closed", {
+          detail: { deleted: true },
           bubbles: true,
           composed: true,
         }),

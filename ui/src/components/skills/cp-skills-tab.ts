@@ -3,14 +3,12 @@
 // SKILLS-002 — instance-scoped structured skills tab.
 // Cards grid view that lists every DB-backed skill for an instance.
 //
-// Sibling: `cp-instance-skills` is the legacy filesystem-based skills panel
-// rendered as a sidebar section in `cp-instance-settings`. This component is
-// the new top-level route at `/instances/:slug/skills` that drives the
-// structured (DB-backed) workflow shipped in SKILLS-002.
+// Embedded as the "Skills" section inside `cp-instance-settings` (sidebar),
+// next to MCP / Permissions. The detail panel is rendered intra-tab when a
+// card is clicked (no URL change — same pattern as MCP).
 //
-// The skill creation wizard (`cp-skill-wizard`) ships in Task 9 and the
-// detail panel (`cp-skill-detail`) ships in Task 10 — until then the
-// `+ Add Skill` button and card clicks navigate / log a TODO.
+// Emits `count-changed` (CustomEvent<number>) so the parent can show a
+// badge on the sidebar entry.
 
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
@@ -21,7 +19,7 @@ import { listStructuredSkills } from "../../api.js";
 import type { StructuredSkillSummary } from "../../types.js";
 
 import "./cp-skill-wizard.js";
-// TODO(Task 10): import "./cp-skill-detail.js";
+import "./cp-skill-detail.js";
 
 @localized()
 @customElement("cp-skills-tab")
@@ -161,6 +159,7 @@ export class SkillsTab extends LitElement {
   @state() private _loading = true;
   @state() private _error = "";
   @state() private _wizardOpen = false;
+  @state() private _selectedSkillId: string | null = null;
 
   // ── Lifecycle ───────────────────────────────────────────────────────────
 
@@ -183,6 +182,13 @@ export class SkillsTab extends LitElement {
     this._error = "";
     try {
       this._skills = await listStructuredSkills(this.slug);
+      this.dispatchEvent(
+        new CustomEvent("count-changed", {
+          detail: this._skills.length,
+          bubbles: true,
+          composed: true,
+        }),
+      );
     } catch (err) {
       this._error = err instanceof Error ? err.message : "Failed to load skills";
     } finally {
@@ -206,18 +212,29 @@ export class SkillsTab extends LitElement {
   }
 
   private _openSkill(id: string): void {
-    this.dispatchEvent(
-      new CustomEvent("navigate", {
-        detail: { view: "skill-detail", slug: this.slug, skillId: id },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    this._selectedSkillId = id;
+  }
+
+  private _onSkillClosed(): void {
+    this._selectedSkillId = null;
+    void this._load();
   }
 
   // ── Render ──────────────────────────────────────────────────────────────
 
   override render() {
+    // When a skill is selected, render the detail panel instead of the grid.
+    // The detail panel emits `skill-closed` to return to the list.
+    if (this._selectedSkillId) {
+      return html`
+        <cp-skill-detail
+          .slug=${this.slug}
+          .skillId=${this._selectedSkillId}
+          @skill-closed=${this._onSkillClosed}
+        ></cp-skill-detail>
+      `;
+    }
+
     return html`
       <div class="header">
         <h2>

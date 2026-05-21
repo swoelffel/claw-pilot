@@ -42,7 +42,7 @@ Always visible. Background `--bg-surface`, bottom border.
 
 ## Sidebar
 
-Navigation through 8 panels rendered by `cp-instance-settings._renderSidebar()`: **General**, **Agents**, **Skills**, **Channels**, **MCP**, **Permissions**, **Config**, **Shared files**. The `runtime` section id still exists in the `SidebarSection` type for legacy reasons but is not rendered as a sidebar entry today (Runtime info is folded into General). Active item: `--accent-subtle` background, `--accent` color, `font-weight: 600`. Click → `_activeSection = section` (immediate content swap).
+Navigation through 8 panels rendered by `cp-instance-settings._renderSidebar()`: **General**, **Agents**, **Channels**, **MCP**, **Skills**, **Permissions**, **Config**, **Shared files**. The `runtime` section id still exists in the `SidebarSection` type for legacy reasons but is not rendered as a sidebar entry today (Runtime info is folded into General). Active item: `--accent-subtle` background, `--accent` color, `font-weight: 600`. Click → `_activeSection = section` (immediate content swap).
 
 **Numeric badges** on sidebar items:
 
@@ -317,12 +317,12 @@ Advanced runtime configuration panel. Sub-navigation via tabs. Save/Cancel speci
 | **Max spawn depth** | Slider 0–10. Maximum subagent nesting depth. |
 | **Max active children per session** | Slider 1–20. Maximum subagents active simultaneously per session. |
 
-### Skills Section (`cp-instance-skills`)
+### Skills Section (`cp-skills-tab`)
 
-> **Source**: `ui/src/components/instance-skills.ts` + `ui/src/components/skills/`
+> **Source**: `ui/src/components/skills/cp-skills-tab.ts` + sibling components in `ui/src/components/skills/`
 > **Public doc**: [skills.md](../skills.md)
 
-Sits between **Agents** and **Channels** in the sidebar. Lists every structured skill scoped to the instance (SKILLS-002, schema v44). Each skill is a SKILL.md manifest + optional referenced files, persisted in the `skills` / `skill_files` / `agent_skills` tables. Sidebar badge reflects `_skillsCount`.
+Sits just after **MCP** in the sidebar. Lists every structured skill scoped to the instance (SKILLS-002, schema v44). Each skill is a SKILL.md manifest + optional referenced files, persisted in the `skills` / `skill_files` / `agent_skills` tables. Sidebar badge reflects `_skillsCount` (emitted via `count-changed` from `cp-skills-tab`). When a card is clicked, the detail panel replaces the grid intra-tab — no URL change (same pattern as MCP).
 
 **Cards grid view:**
 

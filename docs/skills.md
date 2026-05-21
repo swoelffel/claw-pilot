@@ -111,9 +111,9 @@ file, see Limits below).
 
 | Component | Purpose |
 |-----------|---------|
-| `cp-instance-skills` | Sidebar entry — cards grid, badge counter. |
+| `cp-skills-tab` | Skills section inside `cp-instance-settings` — cards grid + embedded detail panel + badge counter. |
 | `cp-skill-wizard` | 3-tab modal (Blank / ZIP / GitHub) to create a skill. |
-| `cp-skill-detail` | File tree + Markdown/YAML editor, agent toggles, Export ZIP, Delete. |
+| `cp-skill-detail` | File tree + Markdown/YAML editor, agent toggles, Export ZIP, Delete. Rendered intra-tab when a card is clicked. |
 
 ---
 
