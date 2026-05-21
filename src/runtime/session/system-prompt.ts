@@ -14,7 +14,7 @@ import type { RuntimeAgentConfig, RuntimeConfig } from "../config/index.js";
 import type { UserProfile } from "../profile/types.js";
 import type { InstanceSlug } from "../types.js";
 import { listAvailableSkills } from "../tool/built-in/skill.js";
-import { rankSkills } from "./skill-ranker.js";
+import { rankSkills, mergeSkillSources } from "./skill-ranker.js";
 import { readWorkspaceState, writeWorkspaceState } from "../../core/workspace-state.js";
 import { getAgent, resolveEffectivePersistence } from "../agent/registry.js";
 import {
@@ -948,17 +948,23 @@ export async function buildSkillsBlock(
   workDir: string,
   agentConfig: RuntimeAgentConfig,
   userText?: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _skillLoader?: import("./skill-loader.js").SkillLoader,
+  skillLoader?: import("./skill-loader.js").SkillLoader,
 ): Promise<string | undefined> {
-  let skills;
+  // 1. Filesystem skills (existing behavior, respects whitelist).
+  let fromFs: Awaited<ReturnType<typeof listAvailableSkills>> = [];
   try {
-    skills = await listAvailableSkills(workDir, agentConfig);
+    fromFs = await listAvailableSkills(workDir, agentConfig);
   } catch (err) {
     logger.debug("[system-prompt] listAvailableSkills failed", { error: String(err) });
     // Silently ignore errors — a missing skills directory must not block session startup
-    return undefined;
+    fromFs = [];
   }
+
+  // 2. DB-backed skills assigned to this agent via agent_skills.
+  const fromDb = skillLoader?.getEntriesForAgent(agentConfig.id) ?? [];
+
+  // 3. Merge — DB wins on name collision.
+  const skills = mergeSkillSources({ fromFilesystem: fromFs, fromDb });
 
   if (skills.length === 0) return undefined;
 
@@ -993,7 +999,7 @@ export async function buildSkillsBlock(
       skill.description !== undefined
         ? ` description="${skill.description.replace(/"/g, "&quot;")}"`
         : "";
-    lines.push(`  <skill name="${skill.name}"${descAttr} location="file://${skill.path}" />`);
+    lines.push(`  <skill name="${skill.name}"${descAttr} location="${skill.path}" />`);
   }
 
   lines.push("</available_skills>");
@@ -1025,7 +1031,7 @@ function buildSkillsXml(
       skill.description !== undefined
         ? ` description="${skill.description.replace(/"/g, "&quot;")}"`
         : "";
-    lines.push(`  <skill name="${skill.name}"${descAttr} location="file://${skill.path}" />`);
+    lines.push(`  <skill name="${skill.name}"${descAttr} location="${skill.path}" />`);
   }
 
   lines.push("</available_skills>");
