@@ -3,7 +3,7 @@
  *
  * Integration tests for `claw-pilot runtime chat <slug> --once <message>`.
  *
- * These tests spawn the compiled CLI (dist/index.mjs) and verify stdout/exit codes.
+ * These tests spawn the compiled CLI (dist/index.js) and verify stdout/exit codes.
  * They require ANTHROPIC_API_KEY in the environment and make real LLM calls.
  * Tests are skipped automatically when the key is absent (e.g. in CI without secrets).
  *
@@ -38,7 +38,7 @@ const HAS_API_KEY = Boolean(process.env["ANTHROPIC_API_KEY"]);
 // Helpers
 // ---------------------------------------------------------------------------
 
-const CLI = join(import.meta.dirname, "../../../dist/index.mjs");
+const CLI = join(import.meta.dirname, "../../../dist/index.js");
 
 interface RunResult {
   stdout: string;

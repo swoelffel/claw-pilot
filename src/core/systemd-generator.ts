@@ -2,7 +2,7 @@
 
 export interface DashboardServiceOptions {
   nodeBin: string; // absolute path to node binary, e.g. /usr/local/bin/node
-  clawPilotBin: string; // absolute path to dist/index.mjs, e.g. /opt/claw-pilot/dist/index.mjs
+  clawPilotBin: string; // absolute path to dist/index.js, e.g. /opt/claw-pilot/dist/index.js
   port: number; // dashboard port, default 19000
   home: string; // user home dir, e.g. /home/user
   uid: number; // user UID, e.g. 1000
