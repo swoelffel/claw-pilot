@@ -1329,6 +1329,14 @@ export async function deleteStructuredSkillFile(
   );
 }
 
+/** List agent IDs currently bound to a structured skill (from agent_skills). */
+export async function listStructuredSkillAgents(slug: string, id: string): Promise<string[]> {
+  const res = await apiFetch<{ agentIds: string[] }>(
+    `/instances/${slug}/skills/${encodeURIComponent(id)}/agents`,
+  );
+  return res.agentIds;
+}
+
 export async function assignStructuredSkillToAgent(
   slug: string,
   id: string,

@@ -35,6 +35,8 @@ export interface HeartbeatRunnerContext {
   instanceSlug: InstanceSlug;
   runtimeConfig: RuntimeConfig;
   workDir: string | undefined;
+  /** DB-backed skill loader — forwarded to runPromptLoop for system-prompt + tool. */
+  skillLoader?: import("../session/skill-loader.js").SkillLoader;
 }
 
 /**
@@ -77,7 +79,7 @@ async function runHeartbeatTick(
   agent: RuntimeAgentConfig,
   ctx: HeartbeatRunnerContext,
 ): Promise<void> {
-  const { db, instanceSlug, runtimeConfig, workDir } = ctx;
+  const { db, instanceSlug, runtimeConfig, workDir, skillLoader } = ctx;
   const bus = getBus(instanceSlug);
 
   // Check active hours restriction
@@ -170,6 +172,7 @@ async function runHeartbeatTick(
       agentConfig: agent,
       resolvedModel,
       workDir,
+      ...(skillLoader !== undefined ? { skillLoader } : {}),
     });
 
     const ackMaxChars = agent.heartbeat!.ackMaxChars ?? 500;

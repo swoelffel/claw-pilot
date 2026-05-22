@@ -46,6 +46,8 @@ export namespace Tool {
     workDir?: string;
     /** Agent config — used by skill tool for whitelist enforcement */
     agentConfig?: import("../config/index.js").RuntimeAgentConfig;
+    /** DB-backed skill loader — used by the `skill` tool to resolve DB skills. */
+    skillLoader?: import("../session/skill-loader.js").SkillLoader;
     /** Callback to update the title/metadata of the in-progress tool part */
     metadata(input: { title?: string }): void;
   }

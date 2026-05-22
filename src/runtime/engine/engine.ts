@@ -92,6 +92,7 @@ export class ClawRuntime {
   private _state: RuntimeInstanceState = "stopped";
   private _channels: Channel[] = [];
   private _mcpRegistry: McpRegistry | undefined;
+  private _skillLoader: import("../session/skill-loader.js").SkillLoader | undefined;
   private _pluginUnsubscribers: Array<() => void> = [];
   private _subagentUnsubscribe: (() => void) | undefined;
   private _stopHeartbeat: (() => void) | undefined;
@@ -142,6 +143,10 @@ export class ClawRuntime {
 
       // 1. Init agents, permanent sessions, and middlewares
       this._initAgentsAndSessions();
+
+      // 1b. Initialise the DB-backed skill loader (subscribes to bus events).
+      const { SkillLoader } = await import("../session/skill-loader.js");
+      this._skillLoader = new SkillLoader(this.db, this.instanceSlug);
 
       // 2. Init MCP and plugins
       await this._initMcpAndPlugins();
@@ -231,7 +236,11 @@ export class ClawRuntime {
     this._clearOptionalUnsub("_taskWiringUnsub");
     this._clearOptionalUnsub("_notificationEmitterUnsub");
 
-    // 3f. Clear middleware registry
+    // 3f. Detach SkillLoader bus subscriptions.
+    this._skillLoader?.dispose();
+    this._skillLoader = undefined;
+
+    // 3g. Clear middleware registry
     clearMiddlewares();
 
     this._setState("stopped");
@@ -264,6 +273,11 @@ export class ClawRuntime {
    */
   getMcpRegistry(): McpRegistry | undefined {
     return this._mcpRegistry;
+  }
+
+  /** Internal — used by ChannelRouter to inject DB skills into the prompt. */
+  get skillLoader(): import("../session/skill-loader.js").SkillLoader | undefined {
+    return this._skillLoader;
   }
 
   /**
@@ -412,6 +426,7 @@ export class ClawRuntime {
       this.instanceSlug,
       this.config,
       this.workDir,
+      this._skillLoader,
     );
 
     // 3c. Start heartbeat runner for agents with heartbeat config
@@ -420,6 +435,7 @@ export class ClawRuntime {
       instanceSlug: this.instanceSlug,
       runtimeConfig: this.config,
       workDir: this.workDir,
+      ...(this._skillLoader !== undefined ? { skillLoader: this._skillLoader } : {}),
     });
 
     // 3d. Wire event persistence to rt_events table
@@ -436,6 +452,7 @@ export class ClawRuntime {
       instanceSlug: this.instanceSlug,
       config: this.config,
       workDir: this.workDir,
+      ...(this._skillLoader !== undefined ? { skillLoader: this._skillLoader } : {}),
     });
   }
 
@@ -531,6 +548,7 @@ export class ClawRuntime {
           ...(this.workDir !== undefined ? { workDir: this.workDir } : {}),
           ...(this._mcpRegistry !== undefined ? { mcpRegistry: this._mcpRegistry } : {}),
           ...(this.profileResolver !== undefined ? { profileResolver: this.profileResolver } : {}),
+          ...(this._skillLoader !== undefined ? { skillLoader: this._skillLoader } : {}),
         });
 
         // Send response back through the originating channel
@@ -586,6 +604,7 @@ export class ClawRuntime {
           ...(this.workDir !== undefined ? { workDir: this.workDir } : {}),
           ...(this._mcpRegistry !== undefined ? { mcpRegistry: this._mcpRegistry } : {}),
           ...(this.profileResolver !== undefined ? { profileResolver: this.profileResolver } : {}),
+          ...(this._skillLoader !== undefined ? { skillLoader: this._skillLoader } : {}),
         });
 
         // Keep the route running in the background if a question wins the race.
@@ -670,6 +689,7 @@ export class ClawRuntime {
               subagentsConfig: this.config.subagents,
               resolveTargetModel: (targetCfg) =>
                 resolveModelForAgent(this.db, this.instanceSlug, targetCfg, this.config),
+              ...(this._skillLoader !== undefined ? { skillLoader: this._skillLoader } : {}),
             }),
         }).catch((err: unknown) => {
           this.log.error("internal_api_wake_failed", {
@@ -693,6 +713,7 @@ export class ClawRuntime {
             // runtime reload that swaps `this._mcpRegistry` will not affect
             // the steps already in flight (R1 in the brief).
             ...(this._mcpRegistry !== undefined ? { mcpRegistry: this._mcpRegistry } : {}),
+            ...(this._skillLoader !== undefined ? { skillLoader: this._skillLoader } : {}),
           },
           flowId,
           body.triggerType ?? "manual",

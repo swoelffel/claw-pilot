@@ -341,6 +341,8 @@ export interface SystemPromptCacheInput {
   db: Database.Database;
   runtimeConfig?: RuntimeConfig;
   userProfile?: import("../profile/types.js").UserProfile;
+  /** Optional DB-backed skill loader passed to buildSkillsBlock. */
+  skillLoader?: import("./skill-loader.js").SkillLoader;
 }
 
 /**
@@ -361,6 +363,7 @@ export async function buildSystemPromptWithCache(input: SystemPromptCacheInput):
     db,
     runtimeConfig,
     userProfile,
+    skillLoader,
   } = input;
 
   const cachedBase = getCachedBasePrompt(sessionId);
@@ -382,6 +385,7 @@ export async function buildSystemPromptWithCache(input: SystemPromptCacheInput):
       sessionId,
       ...(runtimeConfig !== undefined ? { runtimeConfig } : {}),
       ...(userProfile !== undefined ? { userProfile } : {}),
+      ...(skillLoader !== undefined ? { skillLoader } : {}),
       skipSkills: true,
     });
     cacheBasePrompt(sessionId, basePrompt);
@@ -389,7 +393,9 @@ export async function buildSystemPromptWithCache(input: SystemPromptCacheInput):
     logger.debug(`[prompt-loop] system_prompt_cache_miss sid=${sessionId}`);
   }
 
-  const skillsBlock = workDir ? await buildSkillsBlock(workDir, agentConfig, userText) : undefined;
+  const skillsBlock = workDir
+    ? await buildSkillsBlock(workDir, agentConfig, userText, skillLoader)
+    : undefined;
   return [basePrompt, skillsBlock, extraSystemPrompt?.trim()].filter(Boolean).join("\n\n");
 }
 

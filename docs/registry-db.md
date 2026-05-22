@@ -822,6 +822,8 @@ Many-to-many binding between agents and skills. The runtime joins this table to 
 
 PRIMARY KEY: `(agent_id, skill_id)`.
 
+Source of truth for DB-backed skill assignment per agent (used by the runtime `SkillLoader` via `agent_skill.assigned`/`agent_skill.unassigned` bus events). Mutated only via the dashboard's `POST/DELETE /api/instances/:slug/skills/:id/agents/:agentId` routes. The legacy `agents.skills` JSON column (and the `agentConfig.skills` whitelist in `runtime.json`) is retained as a filesystem-only filter for backward compatibility.
+
 ---
 
 ## Migration history

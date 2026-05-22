@@ -99,13 +99,42 @@ file, see Limits below).
 
 ### Runtime
 
-`SkillLoader` (`src/runtime/skills/loader.ts`) sits between the DB and the prompt loop:
+`SkillLoader` (`src/runtime/session/skill-loader.ts`) is instantiated once per
+`ClawRuntime` in `engine.ts:start()` and disposed in `stop()`. It subscribes
+to the instance bus and maintains an in-memory cache of `agent_skills`
+assignments, invalidating per-agent on assignment events
+(`agent_skill.assigned`/`agent_skill.unassigned`) or globally on skill
+content events (`skill.*`, `skill.file.*`).
 
-1. On session start, it loads the skills bound to the active agent via `agent_skills`.
-2. It feeds them to `src/runtime/skill-ranker.ts` (TF-IDF), which already powered legacy skills.
-3. The top-N snippets are concatenated into the system prompt by `prompt-loop.ts`.
-4. A bus listener on `skill:*` events invalidates the per-agent cache, so UI edits show up on the next
-   turn.
+The loader is plumbed through every runtime entry point that builds an LLM
+turn:
+
+- `ChannelRouter` (`src/runtime/channel/router.ts`)
+- `runPromptLoop` (`src/runtime/session/prompt-loop.ts`)
+- `buildSystemPromptWithCache` (`src/runtime/session/_prompt-loop-handlers.ts`)
+- `buildSkillsBlock` (`src/runtime/session/system-prompt.ts`)
+- `Tool.Context.skillLoader` (`src/runtime/tool/tool.ts`)
+
+At each turn, `buildSkillsBlock` calls `mergeSkillSources({ fromFilesystem,
+fromDb })` (`src/runtime/session/skill-ranker.ts`) to combine:
+
+- **Filesystem skills** discovered by `listAvailableSkills(workDir,
+  agentConfig)` — honours the legacy `agentConfig.skills` whitelist.
+- **DB skills** for the active agent via
+  `skillLoader.getEntriesForAgent(agentId)` — inclusion governed by the
+  `agent_skills` table.
+
+DB skills win on name collisions. The merged list is rendered into the
+`<available_skills>` XML block (name + description only). **Content is not
+auto-injected** — the agent calls `skill(name)` (tool) when it decides to
+use one. This keeps token cost predictable; agents see the catalog, load
+on demand.
+
+The `skill(name)` tool (`src/runtime/tool/built-in/skill.ts`) resolves DB
+skills first via `ctx.skillLoader`. If the name matches a skill assigned
+to the agent, the tool returns the `SKILL.md` content plus a
+`<skill_files>` block listing other files in the skill. Otherwise the tool
+falls back to the 4-level filesystem hierarchy.
 
 ### UI
 
