@@ -153,6 +153,17 @@ export function handleToolCallChunk(
   chunk: { toolCallId: string; toolName: string; input?: unknown },
 ): void {
   const { db, bus, sessionId, messageId, state } = ctx;
+  // AI SDK v6 may emit the same tool-call chunk twice — once from the
+  // original stream and again at the start of the continuation step.
+  // Skip if we already persisted a part for this toolCallId, but still
+  // reset text accumulation so post-tool text gets its own part.
+  if (findToolPartByCallId(db, messageId, chunk.toolCallId)) {
+    if (state.textPartId) {
+      state.textPartId = undefined;
+      state.accumulatedText = "";
+    }
+    return;
+  }
   finalizeReasoning(db, state);
   // Reset text accumulation so any text in the next SDK step creates a fresh
   // `text` part, correctly ordered AFTER this tool_call. Without this, text
