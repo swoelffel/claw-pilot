@@ -303,6 +303,10 @@ export interface Blueprint {
   agent_count?: number;
   created_at?: string;
   updated_at?: string;
+  /** True when this entry is a builtin file-based blueprint (id === -1) */
+  _builtin?: boolean;
+  /** Slug used to import a builtin blueprint (only set when _builtin is true) */
+  _slug?: string;
 }
 
 export interface BlueprintBuilderData {
