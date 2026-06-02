@@ -3,7 +3,7 @@ import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import type { Blueprint } from "../types.js";
-import { fetchBlueprints, deleteBlueprint } from "../api.js";
+import { fetchBlueprints, deleteBlueprint, importBuiltinBlueprint } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { sectionLabelStyles, errorBannerStyles, buttonStyles } from "../styles/shared.js";
@@ -89,6 +89,7 @@ export class BlueprintsView extends LitElement {
   @state() private _loading = true;
   @state() private _error = "";
   @state() private _showCreateDialog = false;
+  @state() private _importing = false;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -118,8 +119,33 @@ export class BlueprintsView extends LitElement {
     );
   }
 
-  private _onBlueprintClick(e: Event): void {
-    const { blueprintId } = (e as CustomEvent<{ blueprintId: number }>).detail;
+  private async _onBlueprintClick(e: Event): Promise<void> {
+    const { blueprintId, blueprintSlug } = (
+      e as CustomEvent<{ blueprintId: number; blueprintSlug?: string }>
+    ).detail;
+
+    if (blueprintId === -1 && blueprintSlug) {
+      this._importing = true;
+      this._error = "";
+      try {
+        const imported = await importBuiltinBlueprint(blueprintSlug);
+        // Replace the builtin entry with the now-persisted DB copy
+        this._blueprints = this._blueprints.map((b) => (b._slug === blueprintSlug ? imported : b));
+        this.dispatchEvent(
+          new CustomEvent("navigate", {
+            detail: { view: "blueprint-builder", blueprintId: imported.id },
+            bubbles: true,
+            composed: true,
+          }),
+        );
+      } catch (err) {
+        this._error = userMessage(err);
+      } finally {
+        this._importing = false;
+      }
+      return;
+    }
+
     this.dispatchEvent(
       new CustomEvent("navigate", {
         detail: { view: "blueprint-builder", blueprintId },

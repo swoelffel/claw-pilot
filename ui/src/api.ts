@@ -308,6 +308,10 @@ export async function deleteBlueprint(id: number): Promise<void> {
   await apiFetch(`/blueprints/${id}`, { method: "DELETE" });
 }
 
+export async function importBuiltinBlueprint(slug: string): Promise<Blueprint> {
+  return apiFetch<Blueprint>(`/blueprints/import-builtin/${slug}`, { method: "POST" });
+}
+
 export async function fetchBlueprintBuilder(id: number): Promise<BlueprintBuilderData> {
   return apiFetch<BlueprintBuilderData>(`/blueprints/${id}/builder`);
 }
