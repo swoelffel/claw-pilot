@@ -39,9 +39,10 @@ export interface BuiltinBlueprint {
 // Template directory resolution
 // ---------------------------------------------------------------------------
 
-function getBlueprintTemplateDir(): string {
-  return path.join(path.dirname(fileURLToPath(import.meta.url)), "../../templates/blueprints");
-}
+const DEFAULT_BLUEPRINT_DIR = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../templates/blueprints",
+);
 
 // ---------------------------------------------------------------------------
 // Description helpers
@@ -72,9 +73,11 @@ function descriptionForSlug(slug: string, team: TeamFile): string {
  * List all built-in blueprint YAML files from templates/blueprints/.
  * Each file is parsed and validated against TeamFileSchema.
  * Invalid files are silently skipped.
+ * @param dir Override the templates directory (used in tests).
  */
-export async function listBuiltinBlueprints(): Promise<BuiltinBlueprint[]> {
-  const dir = getBlueprintTemplateDir();
+export async function listBuiltinBlueprints(
+  dir = DEFAULT_BLUEPRINT_DIR,
+): Promise<BuiltinBlueprint[]> {
   let entries: string[];
   try {
     entries = await fs.readdir(dir);
@@ -111,9 +114,13 @@ export async function listBuiltinBlueprints(): Promise<BuiltinBlueprint[]> {
 /**
  * Load a single built-in blueprint by slug.
  * Returns undefined if not found or invalid.
+ * @param dir Override the templates directory (used in tests).
  */
-export async function loadBuiltinBlueprint(slug: string): Promise<BuiltinBlueprint | undefined> {
-  const all = await listBuiltinBlueprints();
+export async function loadBuiltinBlueprint(
+  slug: string,
+  dir?: string,
+): Promise<BuiltinBlueprint | undefined> {
+  const all = await listBuiltinBlueprints(dir);
   return all.find((b) => b.slug === slug);
 }
 

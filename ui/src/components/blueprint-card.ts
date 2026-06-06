@@ -183,7 +183,10 @@ export class BlueprintCard extends LitElement {
     if ((e.target as Element).closest(".btn-delete-x, .confirm-delete")) return;
     this.dispatchEvent(
       new CustomEvent("blueprint-click", {
-        detail: { blueprintId: this.blueprint.id },
+        detail: {
+          blueprintId: this.blueprint.id,
+          ...(this.blueprint._slug !== undefined && { blueprintSlug: this.blueprint._slug }),
+        },
         bubbles: true,
         composed: true,
       }),

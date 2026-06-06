@@ -1,10 +1,15 @@
 // src/core/__tests__/builtin-blueprints.test.ts
 import { describe, it, expect } from "vitest";
+import * as path from "node:path";
 import { listBuiltinBlueprints, loadBuiltinBlueprint } from "../builtin-blueprints.js";
+
+// In tests, import.meta.url resolves to src/core/, so the default "../templates/blueprints"
+// would land in src/templates/ which doesn't exist. Pass the real dir explicitly.
+const TEMPLATES_DIR = path.resolve("templates/blueprints");
 
 describe("listBuiltinBlueprints", () => {
   it("returns at least the 3 shipped blueprints", async () => {
-    const blueprints = await listBuiltinBlueprints();
+    const blueprints = await listBuiltinBlueprints(TEMPLATES_DIR);
     expect(blueprints.length).toBeGreaterThanOrEqual(3);
 
     const slugs = blueprints.map((b) => b.slug);
@@ -14,7 +19,7 @@ describe("listBuiltinBlueprints", () => {
   });
 
   it("each blueprint has valid structure", async () => {
-    const blueprints = await listBuiltinBlueprints();
+    const blueprints = await listBuiltinBlueprints(TEMPLATES_DIR);
     for (const bp of blueprints) {
       expect(bp.slug).toBeTruthy();
       expect(bp.name).toBeTruthy();
@@ -28,7 +33,7 @@ describe("listBuiltinBlueprints", () => {
   });
 
   it("dev-harness has 3 agents with correct archetypes", async () => {
-    const blueprints = await listBuiltinBlueprints();
+    const blueprints = await listBuiltinBlueprints(TEMPLATES_DIR);
     const devHarness = blueprints.find((b) => b.slug === "dev-harness")!;
     expect(devHarness.agentCount).toBe(3);
     expect(devHarness.agentNames).toEqual(["Planner", "Developer", "QA"]);
@@ -38,7 +43,7 @@ describe("listBuiltinBlueprints", () => {
   });
 
   it("dev-harness has 4 a2a links forming the feedback loop", async () => {
-    const blueprints = await listBuiltinBlueprints();
+    const blueprints = await listBuiltinBlueprints(TEMPLATES_DIR);
     const devHarness = blueprints.find((b) => b.slug === "dev-harness")!;
     expect(devHarness.teamFile.links).toHaveLength(4);
     expect(devHarness.teamFile.links.every((l) => l.type === "a2a")).toBe(true);
@@ -51,7 +56,7 @@ describe("listBuiltinBlueprints", () => {
   });
 
   it("each blueprint has exactly one default agent", async () => {
-    const blueprints = await listBuiltinBlueprints();
+    const blueprints = await listBuiltinBlueprints(TEMPLATES_DIR);
     for (const bp of blueprints) {
       const defaults = bp.teamFile.agents.filter((a) => a.is_default);
       expect(defaults).toHaveLength(1);
@@ -59,7 +64,7 @@ describe("listBuiltinBlueprints", () => {
   });
 
   it("all agents have SOUL.md workspace files", async () => {
-    const blueprints = await listBuiltinBlueprints();
+    const blueprints = await listBuiltinBlueprints(TEMPLATES_DIR);
     for (const bp of blueprints) {
       for (const agent of bp.teamFile.agents) {
         expect(agent.files).toBeDefined();
@@ -71,14 +76,14 @@ describe("listBuiltinBlueprints", () => {
 
 describe("loadBuiltinBlueprint", () => {
   it("loads a known blueprint by slug", async () => {
-    const bp = await loadBuiltinBlueprint("design-studio");
+    const bp = await loadBuiltinBlueprint("design-studio", TEMPLATES_DIR);
     expect(bp).toBeDefined();
     expect(bp!.name).toBe("Design Studio");
     expect(bp!.agentCount).toBe(2);
   });
 
   it("returns undefined for unknown slug", async () => {
-    const bp = await loadBuiltinBlueprint("nonexistent");
+    const bp = await loadBuiltinBlueprint("nonexistent", TEMPLATES_DIR);
     expect(bp).toBeUndefined();
   });
 });
