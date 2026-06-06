@@ -819,6 +819,7 @@ export class RuntimePilot extends LitElement {
       const result = await postRuntimeChat(this.slug, {
         message: text,
         ...(this._activeSessionId ? { sessionId: this._activeSessionId } : {}),
+        ...(this._context?.agent.id ? { agentId: this._context.agent.id } : {}),
         ...(files !== undefined && files.length > 0 ? { files } : {}),
       });
 
