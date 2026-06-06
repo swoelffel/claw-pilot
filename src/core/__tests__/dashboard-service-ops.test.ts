@@ -48,8 +48,10 @@ import {
   getDashboardServiceStatus,
 } from "../dashboard-service.js";
 import { getServiceManager } from "../../lib/platform.js";
+import { generateDashboardService } from "../systemd-generator.js";
 
 let conn: MockConnection;
+const originalArgv = [...process.argv];
 
 beforeEach(() => {
   conn = new MockConnection();
@@ -61,6 +63,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  process.argv = [...originalArgv];
   vi.restoreAllMocks();
 });
 
@@ -196,6 +199,24 @@ describe("installDashboardService", () => {
       expect(cmds).toContain("daemon-reload");
       expect(cmds).toContain("enable");
       expect(cmds).toContain("start");
+    });
+
+    it("uses the running JavaScript entrypoint when installing the service", async () => {
+      process.argv = [
+        "node",
+        "/opt/claw-pilot-enterprise/dist/enterprise/index.js",
+        "service",
+        "install",
+      ];
+      conn.mockExec("which", { stdout: "/usr/bin/node\n", stderr: "", exitCode: 0 });
+
+      await installDashboardService(conn, "/run/user/1000");
+
+      expect(generateDashboardService).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clawPilotBin: "/opt/claw-pilot-enterprise/dist/enterprise/index.js",
+        }),
+      );
     });
 
     it("throws when node binary cannot be found", async () => {

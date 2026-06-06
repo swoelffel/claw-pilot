@@ -29,11 +29,23 @@ export interface DashboardServiceStatus {
 }
 
 /**
- * Resolve the absolute path to the claw-pilot dist/index.js.
- * Uses import.meta.url to find the binary relative to this file — local filesystem only.
+ * Resolve the absolute path to the claw-pilot JavaScript entrypoint.
+ * Prefers the currently running script so forked distributions keep their own entrypoint.
  */
 function resolveClawPilotBin(): string {
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const argvEntrypoint = process.argv[1];
+  if (argvEntrypoint && [".js", ".mjs"].includes(path.extname(argvEntrypoint))) {
+    try {
+      statSync(argvEntrypoint);
+      return argvEntrypoint;
+    } catch (err) {
+      logger.debug("[dashboard-service] running entrypoint path not found", {
+        error: String(err),
+      });
+    }
+  }
+
   // In dev: src/core/ -> go up 2 levels to project root, then dist/index.js
   // In prod (bundled): dist/ -> dist/index.js
   const candidates = [
