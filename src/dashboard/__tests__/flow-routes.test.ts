@@ -126,7 +126,22 @@ describe("POST /api/instances/:slug/flows", () => {
     const body = await json(res);
     expect(body.flow.name).toBe("Test Flow");
     expect(body.flow.instance_slug).toBe("demo");
-    expect(body.flow.enabled).toBe(1);
+    expect(body.flow.enabled).toBe(true);
+  });
+
+  it("returns disabled flows with boolean enabled false", async () => {
+    const res = await app.request("/api/instances/demo/flows", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        name: "Disabled Flow",
+        steps: VALID_STEPS,
+        enabled: false,
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = await json(res);
+    expect(body.flow.enabled).toBe(false);
   });
 
   it("rejects empty steps", async () => {
@@ -205,6 +220,8 @@ describe("GET /api/instances/:slug/flows", () => {
     const body = await json(res);
     expect(body.flows).toHaveLength(2);
     expect(body.flows[0].lastRun).toBeNull();
+    expect(body.flows[0].enabled).toBe(true);
+    expect(typeof body.flows[0].enabled).toBe("boolean");
   });
 
   it("returns 404 for unknown instance", async () => {
@@ -230,6 +247,8 @@ describe("GET /api/instances/:slug/flows/:id", () => {
     expect(res.status).toBe(200);
     const body = await json(res);
     expect(body.flow.name).toBe("Detail");
+    expect(body.flow.enabled).toBe(true);
+    expect(typeof body.flow.enabled).toBe("boolean");
     expect(body.runs).toHaveLength(0);
   });
 });
@@ -285,6 +304,27 @@ describe("PATCH /api/instances/:slug/flows/:id", () => {
     const body = await json(res);
     expect(body.flow.name).toBe("Renamed");
     expect(body.flow.description).toBe("Updated");
+    expect(body.flow.enabled).toBe(true);
+    expect(typeof body.flow.enabled).toBe("boolean");
+  });
+
+  it("returns updated enabled state as a boolean", async () => {
+    const createRes = await app.request("/api/instances/demo/flows", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ name: "Toggle", steps: VALID_STEPS }),
+    });
+    const { flow } = await json(createRes);
+
+    const res = await app.request(`/api/instances/demo/flows/${flow.id}`, {
+      method: "PATCH",
+      headers: authHeaders(),
+      body: JSON.stringify({ enabled: false }),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.flow.enabled).toBe(false);
+    expect(typeof body.flow.enabled).toBe("boolean");
   });
 });
 
