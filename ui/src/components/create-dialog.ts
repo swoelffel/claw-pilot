@@ -15,6 +15,7 @@ import {
   fetchProviders,
   fetchBlueprints,
   fetchNamedKeys,
+  importBuiltinBlueprint,
 } from "../api.js";
 import { userMessage } from "../lib/error-messages.js";
 import { DialogMixin } from "../lib/dialog-mixin.js";
@@ -288,6 +289,8 @@ export class CreateDialog extends DialogMixin(LitElement) {
   @state() private _blueprints: Blueprint[] = [];
   @state() private _blueprintsLoading = false;
   @state() private _selectedBlueprintId: number | null = null;
+  /** Slug of the selected builtin blueprint (only set when _selectedBlueprintId === -1) */
+  @state() private _selectedBuiltinSlug: string | null = null;
 
   // --- Submit state ---
   @state() private _submitting = false;
@@ -427,17 +430,25 @@ export class CreateDialog extends DialogMixin(LitElement) {
     this._submitting = true;
     this._submitError = "";
 
-    const request: CreateInstanceRequest = {
-      slug: this._slug,
-      displayName: this._displayName || this._slug.charAt(0).toUpperCase() + this._slug.slice(1),
-      port: this._port,
-      defaultModel: this._model,
-      namedKeyId: this._namedKeyId!,
-      agents: this._buildAgents(),
-      ...(this._selectedBlueprintId != null && { blueprintId: this._selectedBlueprintId }),
-    };
-
     try {
+      let blueprintId = this._selectedBlueprintId;
+
+      // Auto-import builtin blueprint before provisioning
+      if (blueprintId === -1 && this._selectedBuiltinSlug) {
+        const imported = await importBuiltinBlueprint(this._selectedBuiltinSlug);
+        blueprintId = imported.id;
+      }
+
+      const request: CreateInstanceRequest = {
+        slug: this._slug,
+        displayName: this._displayName || this._slug.charAt(0).toUpperCase() + this._slug.slice(1),
+        port: this._port,
+        defaultModel: this._model,
+        namedKeyId: this._namedKeyId!,
+        agents: this._buildAgents(),
+        ...(blueprintId != null && { blueprintId }),
+      };
+
       await createInstance(request);
       this.dispatchEvent(new CustomEvent("instance-created", { bubbles: true, composed: true }));
       this._close();
@@ -634,13 +645,22 @@ export class CreateDialog extends DialogMixin(LitElement) {
               id="blueprint"
               @change=${(e: Event) => {
                 const val = (e.target as HTMLSelectElement).value;
-                this._selectedBlueprintId = val ? Number(val) : null;
+                if (!val) {
+                  this._selectedBlueprintId = null;
+                  this._selectedBuiltinSlug = null;
+                } else if (val.startsWith("builtin:")) {
+                  this._selectedBlueprintId = -1;
+                  this._selectedBuiltinSlug = val.slice("builtin:".length);
+                } else {
+                  this._selectedBlueprintId = Number(val);
+                  this._selectedBuiltinSlug = null;
+                }
               }}
             >
               <option value="">${msg("Default (Main only)", { id: "cd-blueprint-none" })}</option>
               ${this._blueprints.map(
                 (bp) => html`
-                  <option value="${bp.id}">
+                  <option value="${bp._builtin && bp._slug ? `builtin:${bp._slug}` : bp.id}">
                     ${bp.icon ? `${bp.icon} ` : ""}${bp.name}${bp.agent_count
                       ? ` (${bp.agent_count} agents)`
                       : ""}

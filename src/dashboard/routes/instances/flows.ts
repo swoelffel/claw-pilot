@@ -22,6 +22,7 @@ import {
   countFlowSessions,
   listFlowSessions,
   getRunWorstOutcome,
+  type FlowDefinitionRow,
 } from "../../../core/repositories/flow-repository.js";
 import {
   upsertSearchEntry,
@@ -153,6 +154,15 @@ function validateSteps(steps: Array<{ id: string; dependsOn: string[] }>): strin
 type HonoContext = any;
 type DB = RouteDeps["db"];
 
+function serializeFlowDefinition<T extends FlowDefinitionRow>(
+  row: T,
+): Omit<T, "enabled"> & { enabled: boolean } {
+  return {
+    ...row,
+    enabled: row.enabled === 1,
+  };
+}
+
 /** Handle POST /flows — create a new flow definition. */
 async function handleCreateFlow(
   c: HonoContext,
@@ -197,7 +207,7 @@ async function handleCreateFlow(
     routeHash: `/instances/${slug}/flows`,
   });
 
-  return c.json({ flow }, 201);
+  return c.json({ flow: serializeFlowDefinition(flow) }, 201);
 }
 
 /** Handle PATCH /flows/:id — update an existing flow definition. */
@@ -241,7 +251,7 @@ async function handleUpdateFlow(c: HonoContext, db: DB): Promise<Response> {
     });
   }
 
-  return c.json({ flow: updated });
+  return c.json({ flow: updated ? serializeFlowDefinition(updated) : updated });
 }
 
 /** Handle POST /flows/:id/run — trigger manual flow execution. */
@@ -404,11 +414,11 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
       // Enrich with last run info + session count
       const enriched = flows.map((f) => {
         const runs = listFlowRuns(db, slug, { flowId: f.id, limit: 1 });
-        return {
+        return serializeFlowDefinition({
           ...f,
           lastRun: runs[0] ?? null,
           sessionCount: countFlowSessions(db, f.id),
-        };
+        });
       });
 
       return c.json({ flows: enriched });
@@ -433,7 +443,7 @@ export function registerFlowRoutes(app: Hono, deps: RouteDeps): void {
       }
 
       const runs = listFlowRuns(db, slug, { flowId: id, limit: 10 });
-      return c.json({ flow, runs });
+      return c.json({ flow: serializeFlowDefinition(flow), runs });
     },
   );
 
