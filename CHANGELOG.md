@@ -10,6 +10,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.84.2] — 2026-06-10
+
+### Added
+
+- **Structured skills runtime loading** (#231, #239) — the runtime now wires `SkillLoader` into agent execution and supports DB-backed structured skills with progressive disclosure.
+
+### Fixed
+
+- **Flow API: `enabled` serialized as boolean** (#247) — flow definition responses now expose `enabled` as `true`/`false` instead of SQLite `1`/`0`, fixing strict UI validation on flow list and detail screens.
+- **Service install uses the running entrypoint** (#246) — generated service definitions now point at the active executable entrypoint instead of stale build paths.
+- **Blueprint import resolves builtin template paths** (#245) — builtin blueprints can be deployed from the UI through the lazy-import flow without path resolution failures.
+- **Runtime chat forwards `agentId`** (#243) — runtime chat payloads now include the target agent id, preventing messages from being routed without agent context.
+- **AI SDK v6 tool-call chunk deduplication** (#242) — duplicated streaming tool-call chunks are filtered before persistence/rendering.
+
+---
+
 ## [0.84.1] — 2026-05-14
 
 ### Fixed
