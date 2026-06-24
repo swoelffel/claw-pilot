@@ -10,6 +10,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.84.3] — 2026-06-24
+
+### Added
+
+- **Live task activity in the UI** (#249) — task cards now surface live runtime activity through a session activity store, with detail panels that expose current activity without waiting for final task completion.
+
+### Fixed
+
+- **CLI install entrypoint alignment** (#249) — installer/runtime paths now consistently target the built CLI entrypoint used by the service launcher.
+
+---
+
 ## [0.84.2] — 2026-06-10
 
 ### Added
