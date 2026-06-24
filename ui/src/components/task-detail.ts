@@ -21,6 +21,12 @@ import type {
   EpicInfo,
   TaskInfo,
 } from "../types.js";
+import {
+  acquireSessionActivityStore,
+  releaseSessionActivityStore,
+  type SessionActivityState,
+  type SessionActivityStore,
+} from "../services/session-activity-store.js";
 
 @localized()
 @customElement("cp-task-detail")
@@ -36,14 +42,73 @@ export class TaskDetailPanel extends LitElement {
   @state() private _epics: EpicInfo[] = [];
   @state() private _selectedParentId: string = "";
   @state() private _activities: TaskActivity[] = [];
+  @state() private _liveActivity: SessionActivityState | undefined = undefined;
+
+  private _activityStore: SessionActivityStore | null = null;
+  private _activityUnsub: (() => void) | null = null;
+  private _activitySubscribedSlug: string | null = null;
+  private _activitySubscribedSessionId: string | null = null;
+  private _activityTick: ReturnType<typeof setInterval> | null = null;
 
   override connectedCallback(): void {
     super.connectedCallback();
     void this._load();
   }
 
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this._teardownActivitySubscription();
+  }
+
   override updated(changed: Map<string, unknown>): void {
     if (changed.has("taskId") && this.taskId > 0) void this._load();
+  }
+
+  /**
+   * Open (or reopen) the activity subscription when the task is in_progress and
+   * has a linked session. Called after each successful `_load()`.
+   */
+  private _syncActivitySubscription(): void {
+    const task = this._task;
+    const sessionId = task && task.status === "in_progress" ? (task.sessionId ?? null) : null;
+    const slug = this.slug || null;
+
+    if (slug === this._activitySubscribedSlug && sessionId === this._activitySubscribedSessionId) {
+      return;
+    }
+
+    this._teardownActivitySubscription();
+    if (!slug || !sessionId) return;
+
+    this._activityStore = acquireSessionActivityStore(slug);
+    this._activitySubscribedSlug = slug;
+    this._activitySubscribedSessionId = sessionId;
+    this._liveActivity = this._activityStore.get(sessionId);
+    this._activityUnsub = this._activityStore.subscribe(sessionId, (state) => {
+      this._liveActivity = state;
+    });
+    // 1s tick so the "active Xs" counter advances between bus events.
+    this._activityTick = setInterval(() => {
+      if (this._liveActivity) this.requestUpdate();
+    }, 1_000);
+  }
+
+  private _teardownActivitySubscription(): void {
+    if (this._activityUnsub) {
+      this._activityUnsub();
+      this._activityUnsub = null;
+    }
+    if (this._activitySubscribedSlug) {
+      releaseSessionActivityStore(this._activitySubscribedSlug);
+    }
+    if (this._activityTick) {
+      clearInterval(this._activityTick);
+      this._activityTick = null;
+    }
+    this._activityStore = null;
+    this._activitySubscribedSlug = null;
+    this._activitySubscribedSessionId = null;
+    this._liveActivity = undefined;
   }
 
   private async _load(): Promise<void> {
@@ -62,8 +127,10 @@ export class TaskDetailPanel extends LitElement {
       this._activities = timeline.activities;
       this._selectedAgent = task.assigneeId ?? "";
       this._selectedParentId = task.parentId !== null ? String(task.parentId) : "";
+      this._syncActivitySubscription();
     } catch {
       this._task = null;
+      this._teardownActivitySubscription();
     } finally {
       this._loading = false;
     }
@@ -99,6 +166,26 @@ export class TaskDetailPanel extends LitElement {
     } catch {
       // silent
     }
+  }
+
+  private _renderLiveBanner(a: SessionActivityState) {
+    const seconds = Math.max(0, Math.floor((Date.now() - a.since) / 1000));
+    return html`
+      <div class="live-banner" role="status">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span class="live-text">
+          ${a.kind === "tool"
+            ? html`
+                ${msg("Agent is running", { id: "task-live-running" })}
+                <code>${a.toolName}</code>
+              `
+            : msg("Agent is thinking…", { id: "task-live-thinking" })}
+        </span>
+        <span class="live-elapsed">
+          ${msg("active", { id: "task-activity-active" })} ${seconds}s
+        </span>
+      </div>
+    `;
   }
 
   private _renderActivity(a: TaskActivity, t: TaskDetailType) {
@@ -180,6 +267,8 @@ export class TaskDetailPanel extends LitElement {
             </button>
           </div>
         </div>
+
+        ${this._liveActivity ? this._renderLiveBanner(this._liveActivity) : nothing}
 
         <div class="field">
           <label>${msg("Title", { id: "task-field-title" })}</label>
@@ -434,6 +523,55 @@ export class TaskDetailPanel extends LitElement {
         font-family: var(--font-mono);
         font-size: 14px;
         color: var(--text-muted);
+      }
+      .live-banner {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        margin-bottom: 12px;
+        border: 1px solid var(--accent-border);
+        border-radius: var(--radius-md);
+        background: var(--accent-subtle);
+        font-size: 12px;
+        color: var(--accent);
+      }
+      .live-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+        animation: cp-task-live-pulse 1.2s ease-in-out infinite;
+        flex-shrink: 0;
+      }
+      .live-text {
+        flex: 1;
+        font-family: var(--font-mono);
+        letter-spacing: 0.02em;
+      }
+      .live-text code {
+        font-family: var(--font-mono);
+        padding: 1px 4px;
+        border-radius: var(--radius-sm);
+        background: var(--bg-surface);
+        color: var(--text-primary);
+      }
+      .live-elapsed {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-muted);
+        flex-shrink: 0;
+      }
+      @keyframes cp-task-live-pulse {
+        0%,
+        100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 0.4;
+          transform: scale(0.85);
+        }
       }
       .btn-delete {
         background: none;
