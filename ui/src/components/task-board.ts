@@ -263,6 +263,7 @@ export class TaskBoard extends LitElement {
             (t) => html`
               <cp-task-card
                 .task=${t}
+                .slug=${this.slug}
                 @task-selected=${(e: CustomEvent<{ taskId: number }>) =>
                   (this._selectedTaskId = e.detail.taskId)}
               ></cp-task-card>

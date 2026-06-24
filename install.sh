@@ -386,13 +386,13 @@ if [ -d "$INSTALL_DIR/.git" ]; then
   run_quiet_step "Building CLI" sh -c "cd '$INSTALL_DIR' && pnpm run build:cli"
   run_quiet_step "Building UI" sh -c "cd '$INSTALL_DIR' && pnpm run build:ui"
 
-  log "claw-pilot $(node "$INSTALL_DIR/dist/index.mjs" --version 2>/dev/null) updated successfully!"
+  log "claw-pilot $(node "$INSTALL_DIR/dist/index.js" --version 2>/dev/null) updated successfully!"
 
   # Resolve the claw-pilot command — used for auth check and service install below.
   # Must be initialised here (before the Linux-only systemd block) so it is also
   # available on macOS where the systemd block is skipped entirely.
   CP_NODE="node"
-  CP_ENTRY="$INSTALL_DIR/dist/index.mjs"
+  CP_ENTRY="$INSTALL_DIR/dist/index.js"
   if command -v claw-pilot >/dev/null 2>&1; then
     CP_NODE="claw-pilot"
     CP_ENTRY=""
@@ -502,7 +502,7 @@ NODE_BIN=$(resolve_node_bin)
 log "Using node at: $NODE_BIN"
 
 WRAPPER_CONTENT="#!/bin/sh
-exec \"$NODE_BIN\" \"$INSTALL_DIR/dist/index.mjs\" \"\$@\""
+exec \"$NODE_BIN\" \"$INSTALL_DIR/dist/index.js\" \"\$@\""
 
 WRAPPER_TARGET="/usr/local/bin/claw-pilot"
 _write_wrapper() {
@@ -565,7 +565,7 @@ if command -v claw-pilot >/dev/null 2>&1; then
 else
   warn "claw-pilot not found in PATH yet."
   [ -n "$_wrapper_dir" ] && warn_path_missing "$_wrapper_dir" "claw-pilot binary dir ($_wrapper_dir)"
-  warn "Or run directly: node $INSTALL_DIR/dist/index.mjs"
+  warn "Or run directly: node $INSTALL_DIR/dist/index.js"
 fi
 
 # ── 12. Initialize ────────────────────────────────────────────────────────────
@@ -586,7 +586,7 @@ _resolve_claw_pilot_cmd() {
   fi
   # Attempt 3: fall back to absolute node + entry point (two separate vars — no word-splitting)
   CP_NODE="$NODE_BIN"
-  CP_ENTRY="$INSTALL_DIR/dist/index.mjs"
+  CP_ENTRY="$INSTALL_DIR/dist/index.js"
 }
 
 echo ""
