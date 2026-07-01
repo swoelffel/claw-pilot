@@ -187,6 +187,11 @@ export class InternalApiServer {
         });
         resolve();
       });
+      // Force-close all keep-alive and SSE connections so server.close() can drain.
+      // Without this, long-lived SSE streams (/internal/events/stream) prevent shutdown
+      // from completing, leaving the runtime alive but not accepting new connections.
+      // Node.js 18.2+ — project requires >= 22.12.0.
+      this._server.closeAllConnections();
     });
   }
 
