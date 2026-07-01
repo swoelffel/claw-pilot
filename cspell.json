@@ -382,7 +382,11 @@
     "xz",
     "zlib",
     "zod",
-    "zstd"
+    "zstd",
+    "jira",
+    "atlassian",
+    "myserver",
+    "newtoken"
   ],
   "ignorePaths": [
     "dist/",
