@@ -18,6 +18,7 @@ import { deriveWebChatPort } from "../../../lib/platform.js";
 import { ClawPilotError, InstanceNotFoundError } from "../../../lib/errors.js";
 import { logger } from "../../../lib/logger.js";
 import { notifySystemStateChanged } from "../_system-state-notify.js";
+import { applyInstanceListFilters } from "../../instance-list-filters.js";
 
 // ---------------------------------------------------------------------------
 // Extracted route handlers
@@ -198,7 +199,11 @@ async function handleListInstances(c: HonoContext, deps: RouteDeps): Promise<Res
       return { ...instance, ...s, gatewayToken };
     }),
   );
-  return c.json(enriched);
+  const filtered = await applyInstanceListFilters(enriched, {
+    db: deps.db,
+    user: c.get("user"),
+  });
+  return c.json(filtered);
 }
 
 /** Handle GET /api/instances/:slug — single instance detail. */
