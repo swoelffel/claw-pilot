@@ -21,6 +21,11 @@ import { registerInstanceRoutes } from "../routes/instances.js";
 import { registerBlueprintRoutes } from "../routes/blueprints.js";
 import { registerTeamRoutes } from "../routes/teams.js";
 import { registerSystemRoutes } from "../routes/system.js";
+import {
+  clearInstanceListFilters,
+  getInstanceListFilters,
+  registerInstanceListFilter,
+} from "../instance-list-filters.js";
 import type { HealthStatus } from "../../core/health.js";
 import type { SelfUpdateStatus } from "../../core/self-update-checker.js";
 import type { SelfUpdateJob } from "../../core/self-updater.js";
@@ -241,6 +246,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  clearInstanceListFilters();
   ctx.db.close();
   fs.rmSync(ctx.tmpDir, { recursive: true, force: true });
 });
@@ -318,6 +324,24 @@ describe("GET /api/instances", () => {
     expect(body).toHaveLength(1);
     expect(body[0].slug).toBe("demo1");
     expect(body[0].gatewayToken).toBe("gw-token-demo1");
+  });
+
+  it("applies registered instance list filters with request context", async () => {
+    seedInstance(ctx, "demo1", 18789);
+    seedInstance(ctx, "demo2", 18790);
+
+    registerInstanceListFilter((instances, filterContext) => {
+      expect(filterContext.db).toBe(ctx.db);
+      expect(filterContext.user?.id).toBe(TEST_ADMIN.id);
+      return instances.filter((instance) => instance.slug === "demo2");
+    });
+
+    expect(getInstanceListFilters()).toHaveLength(1);
+
+    const res = await ctx.app.request("/api/instances", { headers: authHeaders() });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.map((instance: { slug: string }) => instance.slug)).toEqual(["demo2"]);
   });
 });
 
