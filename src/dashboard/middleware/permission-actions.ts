@@ -102,6 +102,10 @@ export const ACTIONS = {
   // mcp
   INSTANCE_MCP_TOOLS_READ: "instance.mcp-tools-read",
   INSTANCE_MCP_STATUS: "instance.mcp-status",
+  INSTANCE_MCP_SERVERS_READ: "instance.mcp-servers-read",
+  INSTANCE_MCP_SERVER_CREATE: "instance.mcp-server-create",
+  INSTANCE_MCP_SERVER_UPDATE: "instance.mcp-server-update",
+  INSTANCE_MCP_SERVER_DELETE: "instance.mcp-server-delete",
 
   // telegram
   INSTANCE_TELEGRAM_PAIRING_READ: "instance.telegram-pairing-read",
