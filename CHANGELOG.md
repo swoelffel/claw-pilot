@@ -10,6 +10,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.84.4] — 2026-07-02
+
+### Added
+
+- **Dashboard MCP server management** (#251) — instance settings now expose MCP enablement plus configured server create, edit, and delete controls. The dashboard API can list, create, update, delete, and toggle MCP server configuration while masking sensitive environment and header values in responses.
+- **Instance list filter hook** (#253) — dashboard instance lifecycle routes now expose an extension point for filtering visible instances, allowing downstream editions to apply instance visibility rules without patching core list behavior.
+
+---
+
 ## [0.84.3] — 2026-06-24
 
 ### Added
