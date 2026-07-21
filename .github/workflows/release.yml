@@ -60,9 +60,21 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
         run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "claw-pilot ${{ github.ref_name }}" \
+          # Only claim "Latest" when this tag is the highest semver in the repo.
+          # A retroactive or backport tag must not demote the newest release,
+          # which is what the GitHub UI and the releases/latest API expose.
+          highest=$(git tag --list 'v*.*.*' --sort=-v:refname | head -1)
+          if [ "${TAG}" = "${highest}" ]; then
+            latest_flag="--latest=true"
+          else
+            latest_flag="--latest=false"
+            echo "::notice::${TAG} is not the highest tag (${highest}) — publishing without the Latest marker."
+          fi
+
+          gh release create "${TAG}" \
+            --title "claw-pilot ${TAG}" \
             --notes-file RELEASE_NOTES.md \
-            --latest \
+            "${latest_flag}" \
             sbom.cdx.json
