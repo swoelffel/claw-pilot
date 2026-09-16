@@ -371,6 +371,15 @@ function buildAgentConfig(
     ...(agentConfigFromRuntime?.promptMode !== undefined
       ? { promptMode: agentConfigFromRuntime.promptMode }
       : {}),
+    ...(agentConfigFromRuntime?.bootstrapFiles !== undefined
+      ? { bootstrapFiles: agentConfigFromRuntime.bootstrapFiles }
+      : {}),
+    ...(agentConfigFromRuntime?.instructionUrls !== undefined
+      ? { instructionUrls: agentConfigFromRuntime.instructionUrls }
+      : {}),
+    ...(agentConfigFromRuntime?.systemPromptFile !== undefined
+      ? { systemPromptFile: agentConfigFromRuntime.systemPromptFile }
+      : {}),
     ...(agentConfigFromRuntime?.archetype !== undefined
       ? { archetype: agentConfigFromRuntime.archetype }
       : {}),

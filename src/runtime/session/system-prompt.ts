@@ -534,6 +534,24 @@ function archiveBootstrapContent(wsDir: string, bootstrapContent: string): void 
   }
 }
 
+/** Consume bootstrap instructions only after the first model response succeeds. */
+export function completeBootstrap(
+  workDir: string | undefined,
+  agentConfig: RuntimeAgentConfig,
+  systemPrompt?: string,
+): boolean {
+  if (!workDir || agentConfig.promptMode === "subagent") return false;
+  const wsDir = join(workDir, "workspaces", agentConfig.id);
+  const state = readWorkspaceState(wsDir);
+  if (state.bootstrapDone) return false;
+  const content = readWorkspaceFileCached(join(wsDir, "BOOTSTRAP.md"))?.trim();
+  if (!content || isStubContent(content, agentConfig.id)) return false;
+  if (systemPrompt !== undefined && !systemPrompt.includes(content)) return false;
+  writeWorkspaceState(wsDir, { ...state, bootstrapDone: true });
+  archiveBootstrapContent(wsDir, content);
+  return true;
+}
+
 /**
  * Resolve the workspace directory for an agent.
  * Returns workspaces/<agentId> if it exists, undefined otherwise.
@@ -702,26 +720,13 @@ function readUserMdFile(
 }
 
 /** Read a single discovery file and handle BOOTSTRAP.md one-shot logic. */
-function readDiscoveryFile(
-  wsDir: string,
-  filename: string,
-  agentId: string,
-  wsState: { bootstrapDone?: boolean },
-  writeState: (wsDir: string, state: Record<string, unknown>) => void,
-): string | undefined {
+function readDiscoveryFile(wsDir: string, filename: string, agentId: string): string | undefined {
   const filePath = join(wsDir, filename);
   const rawContent = readWorkspaceFileCached(filePath);
   if (rawContent === undefined) return undefined;
 
   const raw = rawContent.trim();
   if (isStubContent(raw, agentId)) return undefined;
-
-  // Mark BOOTSTRAP.md as done after successful injection
-  if (filename === "BOOTSTRAP.md" && !wsState.bootstrapDone) {
-    writeState(wsDir, { ...wsState, bootstrapDone: true });
-    wsState.bootstrapDone = true;
-    archiveBootstrapContent(wsDir, raw);
-  }
 
   return raw;
 }
@@ -805,7 +810,7 @@ function discoverWorkspaceInstructions(
       continue;
     }
 
-    const content = readDiscoveryFile(wsDir, filename, agentId, wsState, writeWorkspaceState);
+    const content = readDiscoveryFile(wsDir, filename, agentId);
     if (content) parts.push(content);
   }
 
