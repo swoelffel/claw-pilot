@@ -95,15 +95,22 @@ export function createUserMessage(
  */
 export function createAssistantMessage(
   db: Database.Database,
-  input: { sessionId: SessionId; agentId?: AgentId; model?: string },
+  input: { sessionId: SessionId; agentId?: AgentId; model?: string; isCompaction?: boolean },
 ): MessageInfo {
   const id = nanoid();
   const now = new Date().toISOString();
 
   db.prepare(
-    `INSERT INTO rt_messages (id, session_id, role, agent_id, model, created_at)
-     VALUES (?, ?, 'assistant', ?, ?, ?)`,
-  ).run(id, input.sessionId, input.agentId ?? null, input.model ?? null, now);
+    `INSERT INTO rt_messages (id, session_id, role, agent_id, model, created_at, is_compaction)
+     VALUES (?, ?, 'assistant', ?, ?, ?, ?)`,
+  ).run(
+    id,
+    input.sessionId,
+    input.agentId ?? null,
+    input.model ?? null,
+    now,
+    input.isCompaction ? 1 : 0,
+  );
 
   const row = db.prepare("SELECT * FROM rt_messages WHERE id = ?").get(id) as MessageRow;
   return fromRow(row);
@@ -148,6 +155,28 @@ export function listMessages(db: Database.Database, sessionId: SessionId): Messa
   return rows.map(fromRow);
 }
 
+/** The summary may finish after new notifications arrive; its snapshot defines the cutoff. */
+function lastCompactionBoundary(
+  db: Database.Database,
+  sessionId: SessionId,
+): { id: string; created_at: string; row_id: number } | undefined {
+  return db
+    .prepare(
+      `SELECT m.id,
+      COALESCE(cutoff.created_at, m.created_at) AS created_at,
+      COALESCE(cutoff.rowid, m.rowid) AS row_id
+    FROM rt_messages m
+    LEFT JOIN rt_parts p ON p.message_id = m.id AND p.type = 'compaction'
+    LEFT JOIN rt_messages cutoff ON cutoff.id = CASE WHEN json_valid(p.metadata)
+      THEN json_extract(p.metadata, '$.cutoffMessageId') END
+      AND cutoff.session_id = m.session_id AND cutoff.rowid < m.rowid
+    WHERE m.session_id = ? AND m.is_compaction = 1
+    ORDER BY m.created_at DESC, m.rowid DESC, p.sort_order ASC
+    LIMIT 1`,
+    )
+    .get(sessionId) as { id: string; created_at: string; row_id: number } | undefined;
+}
+
 /**
  * Charge les messages d'une session en partant de la derniere compaction.
  * Si aucune compaction n'existe, retourne tous les messages (comportement actuel).
@@ -159,32 +188,22 @@ export function listMessagesFromCompaction(
   db: Database.Database,
   sessionId: SessionId,
 ): MessageInfo[] {
-  // Trouver l'id et le created_at de la derniere compaction
-  const lastCompaction = db
-    .prepare(
-      `SELECT id, created_at
-       FROM rt_messages
-       WHERE session_id = ? AND is_compaction = 1
-       ORDER BY created_at DESC
-       LIMIT 1`,
-    )
-    .get(sessionId) as { id: string; created_at: string } | undefined;
+  const lastCompaction = lastCompactionBoundary(db, sessionId);
 
   if (!lastCompaction) {
     // Pas de compaction — comportement actuel inchange
     return listMessages(db, sessionId);
   }
 
-  // Charger le message de compaction + tous les messages posterieurs
-  // Utiliser l'id pour eviter les collisions de timestamp (meme seconde)
+  // Insertion order preserves concurrent and backdated notifications outside the snapshot.
   const rows = db
     .prepare(
       `SELECT * FROM rt_messages
        WHERE session_id = ?
-         AND (id = ? OR created_at > ?)
-       ORDER BY created_at ASC, id ASC`,
+         AND (id = ? OR (is_compaction = 0 AND rowid > ?))
+       ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END, rowid ASC`,
     )
-    .all(sessionId, lastCompaction.id, lastCompaction.created_at) as MessageRow[];
+    .all(sessionId, lastCompaction.id, lastCompaction.row_id, lastCompaction.id) as MessageRow[];
 
   return rows.map(fromRow);
 }
@@ -197,15 +216,7 @@ export function countMessagesSinceLastCompaction(
   db: Database.Database,
   sessionId: SessionId,
 ): number {
-  const lastCompaction = db
-    .prepare(
-      `SELECT created_at
-       FROM rt_messages
-       WHERE session_id = ? AND is_compaction = 1
-       ORDER BY created_at DESC
-       LIMIT 1`,
-    )
-    .get(sessionId) as { created_at: string } | undefined;
+  const lastCompaction = lastCompactionBoundary(db, sessionId);
 
   if (!lastCompaction) {
     return (
@@ -220,9 +231,9 @@ export function countMessagesSinceLastCompaction(
       .prepare(
         `SELECT COUNT(*) as count
          FROM rt_messages
-         WHERE session_id = ? AND created_at > ? AND is_compaction = 0`,
+         WHERE session_id = ? AND is_compaction = 0 AND rowid > ?`,
       )
-      .get(sessionId, lastCompaction.created_at) as { count: number }
+      .get(sessionId, lastCompaction.row_id) as { count: number }
   ).count;
 }
 

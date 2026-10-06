@@ -142,7 +142,7 @@ function extractStandingContext(
     const lines: string[] = [];
     for (const msg of recent) {
       const msgParts = listParts(db, msg.id);
-      const textParts = msgParts.filter((p) => p.type === "text");
+      const textParts = msgParts.filter((p) => p.type === "text" || p.type === "compaction");
       if (textParts.length === 0) continue;
       const content = textParts.map((p) => p.content).join("\n");
       // Truncate each message to avoid bloating the briefing

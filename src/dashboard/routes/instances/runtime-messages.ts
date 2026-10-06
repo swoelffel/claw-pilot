@@ -168,7 +168,7 @@ async function handleSessionContext(
 
   const lastCompactionRow = db
     .prepare(
-      "SELECT created_at FROM rt_messages WHERE session_id = ? AND is_compaction = 1 ORDER BY created_at DESC LIMIT 1",
+      "SELECT created_at FROM rt_messages WHERE session_id = ? AND is_compaction = 1 ORDER BY created_at DESC, rowid DESC LIMIT 1",
     )
     .get(sessionId) as { created_at: string } | undefined;
 

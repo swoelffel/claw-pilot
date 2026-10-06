@@ -16,7 +16,13 @@ import { initDatabase } from "../../../db/schema.js";
 import type { RuntimeAgentConfig } from "../../config/index.js";
 import type { ResolvedModel } from "../../provider/provider.js";
 import { createSession } from "../session.js";
-import { createUserMessage, createAssistantMessage } from "../message.js";
+import {
+  createUserMessage,
+  createAssistantMessage,
+  getMessage,
+  listMessagesFromCompaction,
+  countMessagesSinceLastCompaction,
+} from "../message.js";
 import { createPart, listParts } from "../part.js";
 import { getBus, disposeBus } from "../../bus/index.js";
 
@@ -229,6 +235,98 @@ describe("shouldCompact()", () => {
 // ===========================================================================
 
 describe("compact()", () => {
+  it("replaces the active history with the summary and subsequent messages", async () => {
+    const sessionId = seedSessionWithMessages(db);
+    const result = await compact(makeCompactionInput(db, sessionId));
+    const summary = getMessage(db, result.compactionMessageId!)!;
+    const followUp = createUserMessage(db, {
+      sessionId,
+      text: "Continue the work",
+      createdAt: summary.createdAt.toISOString(),
+    });
+
+    expect(summary.isCompaction).toBe(true);
+    expect(listMessagesFromCompaction(db, sessionId).map((m) => m.id)).toEqual([
+      summary.id,
+      followUp.id,
+    ]);
+    expect(countMessagesSinceLastCompaction(db, sessionId)).toBe(1);
+  });
+
+  it("preserves the history when the LLM returns an empty summary", async () => {
+    const sessionId = seedSessionWithMessages(db);
+    const before = listMessagesFromCompaction(db, sessionId);
+    vi.mocked(generateText).mockResolvedValueOnce({
+      text: "   \n",
+      usage: { inputTokens: 100, outputTokens: 0 },
+      finishReason: "stop",
+    } as unknown as Awaited<ReturnType<typeof generateText>>);
+
+    await expect(compact(makeCompactionInput(db, sessionId))).rejects.toThrow("empty summary");
+    expect(listMessagesFromCompaction(db, sessionId)).toEqual(before);
+  });
+
+  it("rolls back the boundary when storing the summary fails", async () => {
+    const sessionId = seedSessionWithMessages(db);
+    const before = listMessagesFromCompaction(db, sessionId);
+    db.exec(`CREATE TRIGGER reject_summary BEFORE INSERT ON rt_parts
+      WHEN NEW.type = 'compaction' BEGIN SELECT RAISE(ABORT, 'summary write failed'); END`);
+
+    await expect(compact(makeCompactionInput(db, sessionId))).rejects.toThrow(
+      "summary write failed",
+    );
+    expect(listMessagesFromCompaction(db, sessionId)).toEqual(before);
+    expect(db.prepare("SELECT count(*) AS n FROM rt_messages").get()).toEqual({ n: 2 });
+  });
+
+  it("keeps notifications appended while the LLM is summarizing", async () => {
+    const sessionId = seedSessionWithMessages(db);
+    let notificationId = "";
+    vi.mocked(generateText).mockImplementationOnce(async () => {
+      notificationId = createUserMessage(db, {
+        sessionId,
+        text: "A task completed while you were summarizing",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }).id;
+      return {
+        text: "Summary of the original snapshot",
+        usage: { inputTokens: 100, outputTokens: 20 },
+        finishReason: "stop",
+      } as unknown as Awaited<ReturnType<typeof generateText>>;
+    });
+
+    const result = await compact(makeCompactionInput(db, sessionId));
+
+    expect(listMessagesFromCompaction(db, sessionId).map((m) => m.id)).toEqual([
+      result.compactionMessageId,
+      notificationId,
+    ]);
+    expect(countMessagesSinceLastCompaction(db, sessionId)).toBe(1);
+    const second = await compact(makeCompactionInput(db, sessionId));
+    expect(listMessagesFromCompaction(db, sessionId).map((m) => m.id)).toEqual([
+      second.compactionMessageId,
+    ]);
+    expect(countMessagesSinceLastCompaction(db, sessionId)).toBe(0);
+  });
+
+  it("summarizes only the active context on repeated compaction", async () => {
+    const sessionId = seedSessionWithMessages(db);
+    const first = await compact(makeCompactionInput(db, sessionId));
+    const summary = getMessage(db, first.compactionMessageId!)!;
+    createUserMessage(db, {
+      sessionId,
+      text: "Continue after the summary",
+      createdAt: new Date(summary.createdAt.getTime() + 1).toISOString(),
+    });
+
+    await compact(makeCompactionInput(db, sessionId));
+
+    const sentContext = vi.mocked(generateText).mock.calls.at(-1)![0].messages![0]!.content;
+    expect(sentContext).toContain("Continue after the summary");
+    expect(sentContext).toContain("Active Goals");
+    expect(sentContext).not.toContain("Hello, can you help me?");
+  });
+
   it("returns compacted:false when session has no messages", async () => {
     const session = createSession(db, {
       instanceSlug: SLUG,

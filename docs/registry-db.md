@@ -1,7 +1,7 @@
 # claw-pilot — Registry Database (`registry.db`)
 
 SQLite database at `~/.claw-pilot/registry.db`. WAL mode, foreign keys enforced.  
-Current schema version: **45**. Source of truth: `src/db/schema.ts`.
+Current schema version: **46**. Source of truth: `src/db/schema.ts`.
 
 ---
 
@@ -873,6 +873,7 @@ Source of truth for DB-backed skill assignment per agent (used by the runtime `S
 | 41 | Rebuilt `rt_flow_triggers` to scope `webhook_slug` uniqueness to (instance_slug, webhook_slug) — composite UNIQUE INDEX. `disableFk: true` for the swap because of `rt_flow_trigger_runs.trigger_id` FK. |
 | 44 | SKILLS-002 — added `skills`, `skill_files`, `agent_skills` tables for structured per-instance skills (SKILL.md manifest + referenced files). `skills.org_id NULL` slot from day one (R2). Indexes `idx_skills_instance` and `idx_skill_files_skill`. |
 | 45 | SKILLS-002 — one-shot, idempotent, non-destructive migration of legacy `.opencode/skill/%` rows from `agent_files` into the v44 tables. Extension-Point: `schema-skills-migration`. |
+| 46 | Repair missing `is_compaction` markers on assistant messages with nonempty compaction summaries and a recoverable snapshot count. Add `cutoffMessageId` to the summary metadata to retain notifications inserted during summarization, including backdated traces. Preserve all message and part content; leave unverifiable boundaries unmarked. Extension-Point: `session-compaction-boundary`. |
 
 ---
 
