@@ -8,6 +8,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Effective session compaction** — persist the compaction boundary together with its summary so subsequent turns load only the summary and messages outside its snapshot, including notifications received during summarization and backdated task traces. Repeated compaction summarizes only the active context. Reject empty summaries and recover verifiable legacy boundaries on database upgrade without deleting conversation history. Flow briefings include compaction summaries; tied summary timestamps resolve consistently.
+
 ---
 
 ## [0.84.4] — 2026-07-02

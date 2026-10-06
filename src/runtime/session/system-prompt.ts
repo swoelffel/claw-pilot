@@ -446,7 +446,7 @@ function getCompactionSummary(db: Database.Database, sessionId: string): string 
       `
     SELECT m.id FROM rt_messages m
     WHERE m.session_id = ? AND m.is_compaction = 1
-    ORDER BY m.created_at DESC
+    ORDER BY m.created_at DESC, m.rowid DESC
     LIMIT 1
   `,
     )
