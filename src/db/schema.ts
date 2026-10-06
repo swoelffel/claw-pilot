@@ -1821,6 +1821,55 @@ const MIGRATIONS: Migration[] = [
       migrateLegacySkills(db);
     },
   },
+  {
+    // Repair summaries written before the runtime persisted the compaction boundary.
+    // Keep every message and part so the stored conversation remains recoverable.
+    // Extension-Point: session-compaction-boundary
+    version: 46,
+    up(db) {
+      // Older metadata-only registries and reduced migration fixtures have no runtime tables.
+      const tables = db
+        .prepare(
+          `SELECT count(*) AS n FROM sqlite_master
+        WHERE type = 'table' AND name IN ('rt_messages', 'rt_parts')`,
+        )
+        .get() as { n: number };
+      if (tables.n !== 2) return;
+      const summaries = db
+        .prepare(
+          `SELECT m.id, m.session_id, m.rowid AS row_id,
+          p.id AS part_id, CASE WHEN json_valid(p.metadata)
+            THEN json_extract(p.metadata, '$.compactedMessageCount') END AS message_count
+        FROM rt_messages m JOIN rt_parts p ON p.message_id = m.id
+        WHERE m.is_compaction = 0 AND m.role = 'assistant' AND p.type = 'compaction'
+          AND length(trim(p.content, char(9) || char(10) || char(13) || ' ')) > 0
+        ORDER BY m.rowid`,
+        )
+        .all() as Array<{
+        id: string;
+        session_id: string;
+        row_id: number;
+        part_id: string;
+        message_count: unknown;
+      }>;
+      const findCutoff = db.prepare(`SELECT id FROM rt_messages
+        WHERE session_id = ? AND rowid < ? ORDER BY rowid ASC LIMIT 1 OFFSET ?`);
+      const setCutoff = db.prepare(`UPDATE rt_parts
+        SET metadata = json_set(metadata, '$.cutoffMessageId', ?) WHERE id = ?`);
+      const markSummary = db.prepare("UPDATE rt_messages SET is_compaction = 1 WHERE id = ?");
+      for (const summary of summaries) {
+        const count = summary.message_count;
+        if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 1) continue;
+        // Legacy compact() recorded the full snapshot's size, including earlier summaries.
+        const cutoff = findCutoff.get(summary.session_id, summary.row_id, count - 1) as
+          | { id: string }
+          | undefined;
+        if (!cutoff) continue; // An unverifiable boundary must not discard stored context.
+        setCutoff.run(cutoff.id, summary.part_id);
+        markSummary.run(summary.id);
+      }
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

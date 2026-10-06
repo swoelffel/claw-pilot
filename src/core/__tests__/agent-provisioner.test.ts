@@ -99,6 +99,32 @@ function countMessages(sessionId: string): number {
   return row.cnt;
 }
 
+describe("AgentProvisioner.createAgent context", () => {
+  it.each([
+    ["primary", "full", "permanent", true],
+    ["subagent", "subagent", "ephemeral", false],
+  ] as const)(
+    "provisions %s templates and runtime mode",
+    async (kind, promptMode, persistence, hasMemory) => {
+      seedInstance();
+      await new AgentProvisioner(conn, registry).createAgent(registry.getInstance("test-inst")!, {
+        agentSlug: "new-agent",
+        name: "New Agent",
+        role: "assistant",
+        provider: "anthropic",
+        model: "claude-sonnet-4-5",
+        kind,
+      });
+
+      const agent = registry.getAgentByAgentId(registry.getInstance("test-inst")!.id, "new-agent")!;
+      const config = JSON.parse(agent.config_json!) as { promptMode: string; persistence: string };
+      expect(config).toMatchObject({ promptMode, persistence });
+      expect(conn.files.get(`${STATE_DIR}/workspaces/new-agent/AGENTS.md`)).toContain("New Agent");
+      expect(conn.files.has(`${STATE_DIR}/workspaces/new-agent/memory/facts.md`)).toBe(hasMemory);
+    },
+  );
+});
+
 describe("AgentProvisioner.deleteAgent", () => {
   const slug = "test-inst";
 

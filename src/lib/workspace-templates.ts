@@ -2,6 +2,7 @@
 // Shared helper for loading and applying workspace file templates.
 
 import * as fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "./logger.js";
@@ -15,7 +16,12 @@ import { logger } from "./logger.js";
  * Works both in dev (src/) and prod (dist/) layouts.
  */
 export function getTemplateDir(): string {
-  return path.join(path.dirname(fileURLToPath(import.meta.url)), "../templates/workspace");
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.resolve(moduleDir, "../../templates/workspace"), // source: src/lib/
+    path.resolve(moduleDir, "../templates/workspace"), // bundle: dist/
+  ];
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0]!;
 }
 
 // ---------------------------------------------------------------------------
@@ -70,18 +76,20 @@ export function applyTemplateVars(content: string, vars: TemplateVars): string {
 
 /**
  * Load a single workspace template file from disk and apply substitutions.
- * Returns the processed content, or a minimal fallback if the template is missing.
+ * Returns the processed content. Missing required templates fail provisioning.
  */
 export async function loadWorkspaceTemplate(
   filename: string,
   vars: TemplateVars,
   templateDir?: string,
+  required = false,
 ): Promise<string> {
   const dir = templateDir ?? getTemplateDir();
   let content: string;
   try {
     content = await fs.readFile(path.join(dir, filename), "utf-8");
   } catch (err) {
+    if (required) throw err;
     logger.debug("[workspace-templates] template file missing", { error: String(err) });
     // intentionally ignored — template file missing, use minimal fallback content
     content = `# ${filename}\n`;

@@ -36,7 +36,7 @@ vi.mock("node:fs", () => ({
 }));
 
 // Import AFTER mocking so the module picks up the mocked fs
-import { buildSystemPrompt } from "../system-prompt.js";
+import { buildSystemPrompt, completeBootstrap } from "../system-prompt.js";
 import type { SystemPromptContext } from "../system-prompt.js";
 import { resetAgentRegistry, initAgentRegistry } from "../../agent/index.js";
 import { clearWorkspaceCache } from "../workspace-cache.js";
@@ -573,6 +573,10 @@ describe("BOOTSTRAP.md one-shot", () => {
 
     // Assert: BOOTSTRAP.md content injected
     expect(prompt).toContain("This is the bootstrap content.");
+    expect(mockWriteFileSync).not.toHaveBeenCalled();
+    // A failed first model call leaves bootstrap available on retry.
+    expect(await buildSystemPrompt(ctx)).toContain("This is the bootstrap content.");
+    completeBootstrap(workDir, ctx.agentConfig);
 
     // Assert: writeFileSync called at least once for workspace-state.json with bootstrapDone: true
     // (a second call may occur for bootstrap-history.md archiving)
@@ -1201,6 +1205,8 @@ describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
     // Act
     await buildSystemPrompt(ctx);
 
+    completeBootstrap(workDir, ctx.agentConfig);
+
     // Assert: writeFileSync called for bootstrap-history.md
     const historyCall = mockWriteFileSync.mock.calls.find(([p]) => p === historyPath);
     expect(historyCall).toBeDefined();
@@ -1240,6 +1246,8 @@ describe("archiveBootstrapContent — memory/bootstrap-history.md", () => {
 
     // Act
     await buildSystemPrompt(ctx);
+
+    completeBootstrap(workDir, ctx.agentConfig);
 
     // Assert: history entry contains the "Bootstrap completed:" timestamp header
     const historyCall = mockWriteFileSync.mock.calls.find(([p]) => p === historyPath);

@@ -37,6 +37,8 @@ import {
   PermissionReplied,
 } from "../bus/events.js";
 import { cacheSystemPrompt, persistSystemPromptSnapshot } from "./system-prompt-cache.js";
+import { completeBootstrap } from "./system-prompt.js";
+import { markDirty } from "./system-prompt-dirty.js";
 import { buildCoreMessages, applyCaching } from "./message-builder.js";
 import { preBudgetCheck, postBudgetCheck } from "./budget-check.js";
 import { normalizeTokenUsage } from "./usage-tracker.js";
@@ -44,6 +46,8 @@ import { buildToolSet } from "./tool-set-builder.js";
 import type { RuntimeConfig, SubagentsConfig } from "../config/index.js";
 import type { McpRegistry } from "../mcp/registry.js";
 import { getAgent } from "../agent/registry.js";
+import { findModel } from "../provider/models.js";
+import { compact, shouldCompact } from "./compaction.js";
 // message.sending hook is now wired via bus in plugin-wiring.ts (fires on MessageCreated with role=assistant)
 import type { PluginInput } from "../plugin/types.js";
 import { logger } from "../../lib/logger.js";
@@ -248,6 +252,21 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
   let lastStreamError: Error | undefined;
 
   try {
+    // Compact existing history before persisting the new user turn, so that
+    // the incoming request remains verbatim instead of being folded into a summary.
+    await watchdog.onLongWait(() =>
+      compactBeforeResponse(
+        input,
+        session,
+        bus,
+        AbortSignal.any([
+          watchdog.fullAbort,
+          AbortSignal.timeout(agentConfig.timeoutMs ?? 5 * 60 * 1000),
+        ]),
+      ),
+    );
+    watchdog.fullAbort.throwIfAborted();
+
     // 1. Create user message + permission feedback messages
     createUserMessages(input, bus, permissionFeedbackMessages);
 
@@ -299,6 +318,9 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       loopCost,
     });
 
+    if (completeBootstrap(input.workDir, agentConfig, systemPrompt)) {
+      markDirty(sessionId, "workspace");
+    }
     return result;
   } catch (err) {
     if (assistantMsgId) {
@@ -318,6 +340,62 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       ...(loopCost.costUsd !== 0 ? { costUsd: loopCost.costUsd } : {}),
     });
   }
+}
+
+/** Estimate the next request conservatively; exact token counts come from the provider afterward. */
+export function estimateRequestTokens(
+  systemPrompt: string,
+  messages: unknown,
+  userText: string,
+): number {
+  return Math.ceil((systemPrompt.length + JSON.stringify(messages).length + userText.length) / 3);
+}
+
+async function compactBeforeResponse(
+  input: PromptLoopInput,
+  session: { channel: string },
+  bus: ReturnType<typeof getBus>,
+  abortSignal: AbortSignal,
+): Promise<void> {
+  const { db, sessionId, agentConfig, resolvedModel, instanceSlug } = input;
+  const settings = input.compactionConfig ?? {
+    auto: true,
+    threshold: 0.85,
+    reservedTokens: 8_000,
+    periodicMessageCount: 0,
+  };
+  if (!settings.auto) return;
+
+  const history = listMessagesFromCompaction(db, sessionId);
+  if (history.length === 0) return;
+  const prompt = await buildAndCacheSystemPrompt(input, session, bus);
+  const messages = buildCoreMessages(db, history);
+  const currentTokens = estimateRequestTokens(prompt, messages, input.userText);
+  const modelInfo = findModel(resolvedModel.providerId, resolvedModel.modelId);
+  const contextWindow = modelInfo?.capabilities.contextWindow ?? 200_000;
+  if (
+    !shouldCompact({
+      currentTokens,
+      contextWindow,
+      threshold: settings.threshold,
+      reservedTokens: settings.reservedTokens,
+    })
+  )
+    return;
+
+  preBudgetCheck(db, instanceSlug, agentConfig.id);
+  await compact({
+    abortSignal,
+    manageSessionStatus: false,
+    db,
+    instanceSlug,
+    sessionId,
+    agentConfig,
+    resolvedModel: input.internalResolvedModel ?? resolvedModel,
+    currentTokens,
+    contextWindow,
+    ...(input.workDir !== undefined ? { workDir: input.workDir } : {}),
+  });
 }
 
 // ---------------------------------------------------------------------------

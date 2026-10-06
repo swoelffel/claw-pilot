@@ -1,22 +1,19 @@
 // src/core/agent-provisioner.ts
-import * as fs from "node:fs";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
-import { dirname } from "node:path";
 import type { ServerConnection } from "../server/connection.js";
 import type { Registry, InstanceRecord } from "./registry.js";
 import { createHash } from "node:crypto";
 import { constants } from "../lib/constants.js";
-import { loadWorkspaceTemplate, type TemplateVars } from "../lib/workspace-templates.js";
+import {
+  getTemplateDir,
+  loadWorkspaceTemplate,
+  type TemplateVars,
+} from "../lib/workspace-templates.js";
 import { exportRuntimeJsonSnapshot } from "../runtime/engine/config-loader.js";
 import { deleteSessionsByAgent } from "./repositories/runtime-session-repository.js";
 import { logger } from "../lib/logger.js";
 import { validateWorkspaceRelativePath } from "../lib/workspace-path.js";
 import { ClawPilotError } from "../lib/errors.js";
-
-// Resolve templates directory relative to this file
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const TEMPLATES_MEMORY_DIR = path.resolve(__dirname, "../../templates/workspace/memory");
 
 /** Memory template files created for primary agents during provisioning */
 const MEMORY_TEMPLATE_FILES = [
@@ -66,9 +63,6 @@ export class AgentProvisioner {
     const stateDir = path.dirname(instance.config_path);
     const workspaceDir = path.join(stateDir, "workspaces", data.agentSlug);
 
-    // 3. Create workspace directory + rich template files
-    await this.conn.mkdir(workspaceDir);
-
     // Build template vars — include existing agents + the new one for AGENTS.md completeness
     const existingAgents = this.registry
       .listAgents(instance.slug)
@@ -86,9 +80,21 @@ export class AgentProvisioner {
     const workspaceFiles: readonly string[] =
       agentKind === "subagent" ? (["AGENTS.md"] as const) : constants.TEMPLATE_FILES;
 
-    // Create workspace files from templates
+    // Read all required templates before mutating the workspace or registry.
+    const templateDir = getTemplateDir();
+    const files = await Promise.all(
+      [
+        ...workspaceFiles,
+        ...(agentKind === "primary" ? MEMORY_TEMPLATE_FILES.map((file) => `memory/${file}`) : []),
+      ].map(
+        async (filename) =>
+          [filename, await loadWorkspaceTemplate(filename, vars, templateDir, true)] as const,
+      ),
+    );
+
+    await this.conn.mkdir(workspaceDir);
     for (const filename of workspaceFiles) {
-      const content = await loadWorkspaceTemplate(filename, vars);
+      const content = files.find(([name]) => name === filename)![1];
       await this.conn.writeFile(path.join(workspaceDir, filename), content);
     }
 
@@ -97,16 +103,11 @@ export class AgentProvisioner {
       const memoryDir = path.join(workspaceDir, "memory");
       await this.conn.mkdir(memoryDir);
       for (const filename of MEMORY_TEMPLATE_FILES) {
-        const templatePath = path.join(TEMPLATES_MEMORY_DIR, filename);
         const destPath = path.join(memoryDir, filename);
-        try {
-          const content = fs.readFileSync(templatePath, "utf-8");
-          await this.conn.writeFile(destPath, content);
-        } catch (err) {
-          logger.debug("[agent-provisioner] memory template file not found", {
-            error: String(err),
-          });
-        }
+        await this.conn.writeFile(
+          destPath,
+          files.find(([name]) => name === `memory/${filename}`)![1],
+        );
       }
     }
 
@@ -119,6 +120,8 @@ export class AgentProvisioner {
       model: `${data.provider}/${data.model}`,
       permissions: [],
       thinking: { enabled: true, budgetTokens: 4000 },
+      promptMode: agentKind === "subagent" ? "subagent" : "full",
+      persistence: agentKind === "subagent" ? "ephemeral" : "permanent",
       ...(data.toolProfile ? { toolProfile: data.toolProfile } : {}),
     };
 

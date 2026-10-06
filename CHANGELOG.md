@@ -6,7 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
-## [Unreleased]
+## [0.84.5] — 2026-10-06
+
+### Fixed
+
+- **Effective session compaction** (#260) — persist the compaction boundary together with its summary so subsequent turns load only the summary and messages outside its snapshot, including notifications received during summarization and backdated task traces. Repeated compaction summarizes only the active context. Reject empty summaries and recover verifiable legacy boundaries on database upgrade without deleting conversation history. Flow briefings include compaction summaries; tied summary timestamps resolve consistently.
+- **Agent context and preflight compaction** (#259) — compact oversized history before recording the incoming request, preserving that request verbatim while respecting cancellation, timeouts, budgets, and session status. Forward configured workspace instructions to agents, consume bootstrap instructions only after a successful response, and load required provisioning templates before creating workspace files.
+- **Release Latest marker** (#258) — only mark the highest version tag as Latest, preventing an older release published afterward from replacing the version advertised to update checkers.
 
 ---
 

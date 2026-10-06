@@ -20,7 +20,12 @@ import type Database from "better-sqlite3";
 import type { SessionId, InstanceSlug } from "../types.js";
 import type { RuntimeAgentConfig } from "../config/index.js";
 import type { ResolvedModel } from "../provider/provider.js";
-import { listMessages, createAssistantMessage, updateMessageMetadata } from "./message.js";
+import {
+  listMessages,
+  listMessagesFromCompaction,
+  createAssistantMessage,
+  updateMessageMetadata,
+} from "./message.js";
 import { createPart, listParts } from "./part.js";
 import { getBus } from "../bus/index.js";
 import { SessionStatusChanged, MessageCreated, MessageUpdated } from "../bus/events.js";
@@ -111,6 +116,10 @@ Return ONLY valid JSON, no explanation:
 // ---------------------------------------------------------------------------
 
 export interface CompactionInput {
+  /** Allow the calling prompt loop to own the session lifecycle. */
+  manageSessionStatus?: boolean;
+  /** Cancel knowledge extraction and summary generation together. */
+  abortSignal?: AbortSignal;
   db: Database.Database;
   instanceSlug: InstanceSlug;
   sessionId: SessionId;
@@ -178,11 +187,19 @@ export async function compact(input: CompactionInput): Promise<CompactionResult>
   const { db, instanceSlug, sessionId, agentConfig, resolvedModel, workDir } = input;
 
   const bus = getBus(instanceSlug);
-  bus.publish(SessionStatusChanged, { sessionId, status: "busy" });
+  input.abortSignal?.throwIfAborted();
+  if (input.manageSessionStatus !== false) {
+    bus.publish(SessionStatusChanged, { sessionId, status: "busy" });
+  }
 
   try {
-    // Load all messages to build the compaction context
-    const messages = listMessages(db, sessionId);
+    // Never reintroduce history already replaced by an earlier summary.
+    const { messages, cutoff } = db.transaction(() => ({
+      messages: listMessagesFromCompaction(db, sessionId),
+      cutoff: db
+        .prepare("SELECT id FROM rt_messages WHERE session_id = ? ORDER BY rowid DESC LIMIT 1")
+        .get(sessionId) as { id: string } | undefined,
+    }))();
     if (messages.length === 0) {
       return { compacted: false, compactionMessageId: undefined };
     }
@@ -193,7 +210,14 @@ export async function compact(input: CompactionInput): Promise<CompactionResult>
       if (wsDir) {
         const currentMemory = readCurrentMemory(wsDir);
 
-        const knowledge = await extractKnowledge(db, sessionId, resolvedModel, currentMemory);
+        const knowledge = await extractKnowledge(
+          db,
+          sessionId,
+          resolvedModel,
+          currentMemory,
+          input.abortSignal,
+        );
+        input.abortSignal?.throwIfAborted();
 
         appendToMemoryFile(wsDir, "facts.md", knowledge.facts);
         appendToMemoryFile(wsDir, "decisions.md", knowledge.decisions);
@@ -244,6 +268,7 @@ export async function compact(input: CompactionInput): Promise<CompactionResult>
     const conversationText = buildConversationText(db, messages);
 
     const summaryResult = await generateText({
+      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
       model: resolvedModel.languageModel,
       messages: [
         {
@@ -253,14 +278,38 @@ export async function compact(input: CompactionInput): Promise<CompactionResult>
       ],
     });
 
+    input.abortSignal?.throwIfAborted();
     const summary = summaryResult.text;
+    if (!summary.trim()) {
+      throw new Error("Compaction returned an empty summary");
+    }
 
-    // Create a compaction assistant message
-    const compactionMsg = createAssistantMessage(db, {
-      sessionId,
-      agentId: agentConfig.id,
-      model: `${resolvedModel.providerId}/${resolvedModel.modelId}`,
-    });
+    // Commit the boundary and its summary together; failed writes must preserve history.
+    const compactionMsg = db.transaction(() => {
+      const message = createAssistantMessage(db, {
+        sessionId,
+        agentId: agentConfig.id,
+        model: `${resolvedModel.providerId}/${resolvedModel.modelId}`,
+        isCompaction: true,
+      });
+      createPart(db, {
+        messageId: message.id,
+        type: "compaction",
+        content: summary,
+        metadata: JSON.stringify({
+          compactedMessageCount: messages.length,
+          compactedAt: new Date().toISOString(),
+          cutoffMessageId: cutoff!.id,
+        }),
+      });
+      const usage = summaryResult.usage;
+      updateMessageMetadata(db, message.id, {
+        tokensIn: usage.inputTokens ?? 0,
+        tokensOut: usage.outputTokens ?? 0,
+        finishReason: summaryResult.finishReason,
+      });
+      return message;
+    })();
 
     bus.publish(MessageCreated, {
       sessionId,
@@ -269,33 +318,16 @@ export async function compact(input: CompactionInput): Promise<CompactionResult>
       agentId: agentConfig.id,
     });
 
-    // Add a compaction part with the summary
-    createPart(db, {
-      messageId: compactionMsg.id,
-      type: "compaction",
-      content: summary,
-      metadata: JSON.stringify({
-        compactedMessageCount: messages.length,
-        compactedAt: new Date().toISOString(),
-      }),
-    });
-
     // Invalidate system prompt cache — next turn will include new compaction summary
     markDirty(sessionId, "compaction");
-
-    // Update message metadata
-    const usage = summaryResult.usage;
-    updateMessageMetadata(db, compactionMsg.id, {
-      tokensIn: usage.inputTokens ?? 0,
-      tokensOut: usage.outputTokens ?? 0,
-      finishReason: summaryResult.finishReason,
-    });
 
     bus.publish(MessageUpdated, { sessionId, messageId: compactionMsg.id });
 
     return { compacted: true, compactionMessageId: compactionMsg.id };
   } finally {
-    bus.publish(SessionStatusChanged, { sessionId, status: "idle" });
+    if (input.manageSessionStatus !== false) {
+      bus.publish(SessionStatusChanged, { sessionId, status: "idle" });
+    }
   }
 }
 
@@ -337,8 +369,9 @@ async function extractKnowledge(
   sessionId: SessionId,
   resolvedModel: ResolvedModel,
   currentMemoryContent: string,
+  abortSignal?: AbortSignal,
 ): Promise<ExtractedKnowledge> {
-  const messages = listMessages(db, sessionId);
+  const messages = listMessagesFromCompaction(db, sessionId);
   if (messages.length === 0) {
     return { facts: [], decisions: [], preferences: [], timeline: [], knowledge: [] };
   }
@@ -348,6 +381,7 @@ async function extractKnowledge(
   let result;
   try {
     result = await generateText({
+      ...(abortSignal ? { abortSignal } : {}),
       model: resolvedModel.languageModel,
       messages: [
         {
