@@ -3,6 +3,7 @@ import { defineConfig } from "tsdown";
 export default defineConfig({
   entry: ["src/index.ts"],
   format: "esm",
+  // Language compatibility target; .nvmrc pins the runtime used to build and test.
   target: "node22",
   outDir: "dist",
   // Only clean CLI output at dist/ root — leave dist/ui/ (produced by `vite build ui/`) untouched.

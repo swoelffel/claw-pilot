@@ -14,17 +14,20 @@ The command exits with code 0 if all checks pass, or non-zero if any check fails
 
 | Check | What It Verifies | Minimum Requirement |
 |-------|-----------------|---------------------|
-| Node.js version | Node.js is installed and meets version requirement | >= 22.12.0 |
 | pnpm availability | pnpm is available via corepack or global install | Any supported version |
 | Service status | Dashboard system service state (systemd/launchd) | Running if installed |
 | Database integrity | SQLite database is accessible and not corrupted | Valid schema, no WAL errors |
 | Instance consistency | Running instances have live PIDs, stopped instances have no orphan processes | All instances in consistent state |
 
-### Node.js Version Check
+### Node.js Prerequisite
 
-Verifies that Node.js is installed and the version is at least 22.12.0. This is the minimum required version for ClawPilot's runtime features including native fetch, WebSocket, and module resolution.
+The development and CI reference is Node.js 22.23.3 LTS (pinned in `.nvmrc`).
+The compatibility minimum remains 22.12.0; the reference is not a patch-only restriction.
 
-If the check fails, install or update Node.js via nvm, fnm, or the official installer.
+The installer verifies that Node.js is installed and the version is at least 22.12.0.
+`claw-pilot doctor` diagnoses instance health; it does not enforce the Node.js version range.
+
+If the installer check fails, install or update Node.js via nvm, fnm, or the official installer.
 
 ### pnpm Availability
 

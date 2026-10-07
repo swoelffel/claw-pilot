@@ -13,7 +13,7 @@ GitHub: https://github.com/swoelffel/claw-pilot
 
 ## Tech stack
 
-- **Runtime**: Node.js >= 22.12.0, ESM, pnpm
+- **Runtime**: Node.js 22.23.3 LTS reference (`.nvmrc`); declared compatibility >= 22.12.0, ESM, pnpm
 - **CLI**: Commander.js + @inquirer/prompts
 - **HTTP/WS**: Hono + ws
 - **DB**: better-sqlite3 (SQLite, WAL mode, schema v41)

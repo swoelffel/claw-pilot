@@ -14,12 +14,18 @@ Please read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) (short and lightweight). We
 
 ### Prerequisites
 
-- **Node.js**: >= 22.12.0
+- **Node.js**: 22.23.3 LTS (development and CI reference, pinned in `.nvmrc`)
 - **pnpm**: 10.33.0 (pinned via `packageManager` field in `package.json`)
 - **Operating System**: Linux (Ubuntu/Debian) or macOS — systemd user services on Linux, launchd on macOS
 - **Git**: For version control
 
 ### Repository Install
+
+`engines.node` declares the compatibility floor (`>=22.12.0`), not the version used
+to validate a release. Use Node.js 22.23.3 for reproducible development and testing.
+With nvm, run `nvm install && nvm use` in the repository before installing dependencies.
+The CLI build targets the Node 22 language level, and `@types/node` stays on the
+22.x branch; its package versions do not mirror Node.js patch versions.
 
 ```sh
 git clone https://github.com/swoelffel/claw-pilot.git
