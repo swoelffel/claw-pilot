@@ -264,19 +264,19 @@ function buildUserMessage(parts: PartInfo[]): ModelMessage | undefined {
 
   if (imageParts.length > 0 && text) {
     const contentArray: Array<
-      { type: "text"; text: string } | { type: "image"; image: string; mimeType?: string }
+      { type: "text"; text: string } | { type: "file"; data: string; mediaType: string }
     > = [{ type: "text", text }];
 
     for (const imgPart of imageParts) {
       if (!imgPart.content) continue;
       const mimeType = parseImageMimeType(imgPart.metadata);
       contentArray.push({
-        type: "image",
-        image: imgPart.content,
-        ...(mimeType !== undefined ? { mimeType } : {}),
+        type: "file",
+        data: imgPart.content,
+        mediaType: mimeType,
       });
     }
-    return { role: "user", content: contentArray } as ModelMessage;
+    return { role: "user", content: contentArray };
   }
 
   if (text) return { role: "user", content: text };

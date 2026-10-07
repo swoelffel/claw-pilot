@@ -7,11 +7,17 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import type Database from "better-sqlite3";
-import type { ModelMessage } from "ai";
+import { generateText, type ModelMessage } from "ai";
+import { MockLanguageModelV3 } from "ai/test";
 import { initDatabase } from "../../../db/schema.js";
-import { loadPartsBatch, applyToolOutputPruning, applyCaching } from "../message-builder.js";
+import {
+  buildCoreMessages,
+  loadPartsBatch,
+  applyToolOutputPruning,
+  applyCaching,
+} from "../message-builder.js";
 import { createSession } from "../session.js";
-import { createUserMessage, createAssistantMessage } from "../message.js";
+import { createUserMessage, createAssistantMessage, listMessages } from "../message.js";
 import { createPart } from "../part.js";
 
 // ---------------------------------------------------------------------------
@@ -240,4 +246,36 @@ describe("applyCaching", () => {
     const msg = result.messages[0] as any;
     expect(msg.content[0].providerOptions).toBeDefined();
   });
+});
+
+it("preserves stored image MIME metadata at the SDK boundary", async () => {
+  const session = createSession(db, { instanceSlug: SLUG, agentId: "a1" });
+  const message = createUserMessage(db, { sessionId: session.id, text: "Inspect this image" });
+  createPart(db, {
+    messageId: message.id,
+    type: "image",
+    content: "dGVzdA==",
+    metadata: JSON.stringify({ mimeType: "image/png" }),
+  });
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => ({
+      content: [{ type: "text", text: "done" }],
+      warnings: [],
+      finishReason: { unified: "stop", raw: "stop" },
+      usage: {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+      },
+    }),
+  });
+  await generateText({ model, messages: buildCoreMessages(db, listMessages(db, session.id)) });
+  expect(model.doGenerateCalls[0]?.prompt).toEqual([
+    {
+      role: "user",
+      content: [
+        expect.objectContaining({ type: "text" }),
+        expect.objectContaining({ type: "file", mediaType: "image/png" }),
+      ],
+    },
+  ]);
 });

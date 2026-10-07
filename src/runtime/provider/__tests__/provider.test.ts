@@ -25,7 +25,7 @@ vi.mock("@ai-sdk/openai", () => ({
   }),
 }));
 vi.mock("@ai-sdk/google", () => ({
-  createGoogleGenerativeAI: vi.fn(() => vi.fn(() => ({ modelId: "mock-google" }))),
+  createGoogle: vi.fn(() => vi.fn(() => ({ modelId: "mock-google" }))),
 }));
 vi.mock("@openrouter/ai-sdk-provider", () => ({
   createOpenRouter: vi.fn(() => vi.fn(() => ({ modelId: "mock-openrouter" }))),
@@ -33,7 +33,7 @@ vi.mock("@openrouter/ai-sdk-provider", () => ({
 
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGoogle } from "@ai-sdk/google";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
   PROVIDER_REGISTRY,
@@ -136,7 +136,7 @@ describe("resolveLanguageModel", () => {
       },
       "gemini-2.0-flash",
     );
-    expect(createGoogleGenerativeAI).toHaveBeenCalled();
+    expect(createGoogle).toHaveBeenCalled();
   });
 
   it("creates Ollama model with default base URL", () => {
