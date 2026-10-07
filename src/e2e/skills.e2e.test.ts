@@ -69,9 +69,8 @@ async function postZip(
   zipBytes: Uint8Array,
   filename = "skill.zip",
 ): Promise<Response> {
-  // Copy into a fresh ArrayBuffer so Blob/File accept it uniformly.
-  const buf = new ArrayBuffer(zipBytes.byteLength);
-  new Uint8Array(buf).set(zipBytes);
+  // Copy to an ArrayBuffer-backed view, accepted by both Node and DOM File types.
+  const buf = new Uint8Array(zipBytes);
   const fd = new FormData();
   fd.append("file", new File([buf], filename, { type: "application/zip" }));
   return fetch(`${baseUrl}/api/instances/${slug}/skills`, {

@@ -42,7 +42,7 @@ body:
       description: OS, Node version, pnpm version, claw-pilot version or commit
       placeholder: |
         OS: Ubuntu 22.04
-        Node: v22.12.0
+        Node: v22.23.3
         pnpm: 9.15.0
         claw-pilot: v0.81.0
     validations:
