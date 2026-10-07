@@ -1,6 +1,6 @@
 {
   "name": "claw-pilot",
-  "version": "0.84.6",
+  "version": "0.84.7",
   "description": "Orchestrator for claw-runtime multi-agent instances",
   "type": "module",
   "license": "MIT",
@@ -90,7 +90,7 @@
     "@cspell/dict-fr-fr": "^2.3.2",
     "@lit/localize": "^0.12.2",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^25.6.0",
+    "@types/node": "^22.20.5",
     "@types/picomatch": "^4.0.3",
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.58.2",

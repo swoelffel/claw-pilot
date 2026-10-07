@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.84.7] — 2026-10-07
+
+### Changed
+
+- **Node.js reference runtime** (#266) — standardize development, CI and the development container on Node.js 22.23.3 LTS. Keep the declared compatibility range `>=22.12.0` and pnpm 10.33.0; align Node type definitions to the published 22.x branch and document the difference between the tested reference and the compatibility minimum. Adapt ZIP-upload test fixtures to the Node 22 File types and verify the installer version thresholds.
+
+---
+
 ## [0.84.6] — 2026-10-07
 
 ### Changed

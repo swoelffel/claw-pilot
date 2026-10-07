@@ -236,8 +236,8 @@ describe("GET /api/instances/:slug/skills", () => {
 // ===========================================================================
 
 describe("POST /api/instances/:slug/skills/upload", () => {
-  /** Build a valid ZIP and return an ArrayBuffer suitable for File constructor. */
-  async function makeZip(files: Record<string, string>): Promise<ArrayBuffer> {
+  /** Build a valid ZIP and return a byte view suitable for Node's File constructor. */
+  async function makeZip(files: Record<string, string>): Promise<Uint8Array<ArrayBuffer>> {
     const { zip } = await import("fflate");
     const entries: Record<string, Uint8Array> = {};
     for (const [name, content] of Object.entries(files)) {
@@ -249,10 +249,8 @@ describe("POST /api/instances/:slug/skills/upload", () => {
         else resolve(data);
       });
     });
-    // Copy into a fresh ArrayBuffer (not ArrayBufferLike) for BlobPart compatibility
-    const buf = new ArrayBuffer(u8.byteLength);
-    new Uint8Array(buf).set(u8);
-    return buf;
+    // Copy to an ArrayBuffer-backed view, accepted by both Node and DOM File types.
+    return new Uint8Array(u8);
   }
 
   it("returns 401 without auth", async () => {

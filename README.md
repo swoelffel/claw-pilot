@@ -29,7 +29,12 @@ Pair a primary agent with a permanent cross-channel session (web, Telegram, CLI)
 
 ## Quickstart
 
-**Requirements:** Node.js ≥ 22.12, pnpm ≥ 9, Linux (systemd) or macOS (launchd), Bash ≥ 5.
+**Requirements:** Node.js ≥ 22.12.0, pnpm 10.33.0, Linux (systemd) or macOS (launchd), Bash ≥ 5.
+
+**Reference runtime:** Node.js 22.23.3 LTS (`.nvmrc`, CI and the development container).
+The package's `engines.node` range declares compatibility; it does not pin users to
+one patch. For installation and builds, use the reference runtime and the pnpm
+version pinned in `package.json`.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/swoelffel/claw-pilot/main/install.sh | sh
