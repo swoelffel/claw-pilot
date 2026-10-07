@@ -12,7 +12,7 @@
  * - _prompt-loop-handlers.ts — chunk handlers, watchdog, system prompt cache, auto-compaction
  */
 
-import { streamText, stepCountIs, hasToolCall, InvalidToolInputError } from "ai";
+import { streamText, isStepCount, hasToolCall, InvalidToolInputError } from "ai";
 import type { ToolCallRepairFunction, ToolSet } from "ai";
 import type Database from "better-sqlite3";
 import type { SessionId, InstanceSlug } from "../types.js";
@@ -314,6 +314,8 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       assistantMsgId: assistantMsg.id,
       streamState: streamResult.streamState,
       finalResult: streamResult.finalResult,
+      streamError: streamResult.streamError,
+      completedUsage: streamResult.completedUsage,
       llmCallStart: streamResult.llmCallStart,
       loopCost,
     });
@@ -641,8 +643,9 @@ interface ExecuteStreamInput {
 
 interface ExecuteStreamResult {
   streamState: import("./_prompt-loop-handlers.js").StreamingState;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  finalResult: any;
+  finalResult: ReturnType<typeof streamText<ToolSet>>;
+  streamError: Error | undefined;
+  completedUsage: ReturnType<typeof normalizeTokenUsage>;
   llmCallStart: number;
 }
 
@@ -712,12 +715,18 @@ async function executeStream(opts: ExecuteStreamInput): Promise<ExecuteStreamRes
         ({ steps }: { steps: unknown[] }) => steps.length >= getEffectiveMaxSteps(),
         hasToolCall("complete_step"),
       ]
-    : stepCountIs(getEffectiveMaxSteps());
+    : isStepCount(getEffectiveMaxSteps());
 
+  let streamError: Error | undefined;
+  const completedUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  const recordStreamError = (error: unknown): void => {
+    streamError = error instanceof Error ? error : new Error(String(error));
+    opts.onStreamError(streamError);
+  };
   const llmCallStart = Date.now();
   const streamResult = streamText({
     model: resolvedModel.languageModel,
-    system: cachedSystem,
+    instructions: cachedSystem,
     messages: cachedMessages,
     tools: toolSet,
     stopWhen: stopConditions,
@@ -725,10 +734,15 @@ async function executeStream(opts: ExecuteStreamInput): Promise<ExecuteStreamRes
     experimental_repairToolCall: repairToolCall,
     ...(providerOptions !== undefined ? { providerOptions } : {}),
     onError: ({ error }) => {
-      if (error instanceof Error) opts.onStreamError(error);
+      recordStreamError(error);
     },
-    onStepFinish: (step) => {
+    onStepEnd: (step) => {
       completedSteps++;
+      const stepUsage = normalizeTokenUsage(step.usage);
+      completedUsage.input += stepUsage.input;
+      completedUsage.output += stepUsage.output;
+      completedUsage.cacheRead += stepUsage.cacheRead;
+      completedUsage.cacheWrite += stepUsage.cacheWrite;
       closeToolErrorParts(db, assistantMsgId, step.content);
     },
     onChunk: async ({ chunk }) => {
@@ -759,15 +773,27 @@ async function executeStream(opts: ExecuteStreamInput): Promise<ExecuteStreamRes
     },
   });
 
-  const finalResult = await streamResult;
+  // Drain callbacks before finalizing persisted parts or marking the turn complete.
+  await streamResult.consumeStream({ onError: recordStreamError });
+  if (watchdog.fullAbort.aborted) recordStreamError(watchdog.fullAbort.reason);
+  const finalResult = streamResult;
 
-  // Finalize any trailing parts
-  finalizeReasoning(db, streamState);
+  // A failed/aborted stream must retain partial parts without marking them complete.
+  if (streamError && streamState.reasoningPartId) {
+    updatePartState(db, streamState.reasoningPartId, "error", streamState.accumulatedReasoning);
+  } else {
+    finalizeReasoning(db, streamState);
+  }
   if (streamState.textPartId) {
-    updatePartState(db, streamState.textPartId, "completed", streamState.accumulatedText);
+    updatePartState(
+      db,
+      streamState.textPartId,
+      streamError ? "error" : "completed",
+      streamState.accumulatedText,
+    );
   }
 
-  return { streamState, finalResult, llmCallStart };
+  return { streamState, finalResult, llmCallStart, streamError, completedUsage };
 }
 
 // ---------------------------------------------------------------------------
@@ -779,8 +805,9 @@ interface FinalizeInput {
   bus: ReturnType<typeof getBus>;
   assistantMsgId: string;
   streamState: import("./_prompt-loop-handlers.js").StreamingState;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  finalResult: any;
+  finalResult: ReturnType<typeof streamText<ToolSet>>;
+  streamError: Error | undefined;
+  completedUsage: ReturnType<typeof normalizeTokenUsage>;
   llmCallStart: number;
   loopCost: { tokensIn: number; tokensOut: number; costUsd: number };
 }
@@ -790,9 +817,10 @@ async function finalizeAndReturn(opts: FinalizeInput): Promise<PromptLoopResult>
   const { input, bus, assistantMsgId, streamState, finalResult, loopCost } = opts;
   const { db, instanceSlug, sessionId, agentConfig, resolvedModel } = input;
 
-  const usage = await finalResult.usage;
-  const providerMetadata = await finalResult.providerMetadata;
-  const normalized = normalizeTokenUsage(usage, providerMetadata, resolvedModel.providerId);
+  // Failed continuations can expose empty aggregate usage; retain completed steps.
+  const normalized = opts.streamError
+    ? opts.completedUsage
+    : normalizeTokenUsage(await finalResult.usage);
   const { input: tokensIn, output: tokensOut, cacheRead, cacheWrite } = normalized;
 
   const costUsd = resolvedModel.costPerMillion
@@ -824,12 +852,15 @@ async function finalizeAndReturn(opts: FinalizeInput): Promise<PromptLoopResult>
     tokensIn,
     tokensOut,
     costUsd,
-    finishReason: await finalResult.finishReason,
+    finishReason: opts.streamError ? "error" : await finalResult.finishReason,
   });
   bus.publish(MessageUpdated, { sessionId, messageId: assistantMsgId });
 
   postBudgetCheck(db, instanceSlug, agentConfig.id, costUsd);
+  if (opts.streamError) throw opts.streamError;
 
+  // Spending spans every step; context occupancy belongs to the final request.
+  const contextUsage = normalizeTokenUsage((await finalResult.finalStep).usage);
   await handleAutoCompaction({
     db,
     instanceSlug,
@@ -839,8 +870,8 @@ async function finalizeAndReturn(opts: FinalizeInput): Promise<PromptLoopResult>
     ...(input.internalResolvedModel !== undefined
       ? { internalResolvedModel: input.internalResolvedModel }
       : {}),
-    tokensIn,
-    tokensOut,
+    tokensIn: contextUsage.input,
+    tokensOut: contextUsage.output,
     ...(input.compactionConfig !== undefined ? { compactionConfig: input.compactionConfig } : {}),
     workDir: input.workDir,
   });

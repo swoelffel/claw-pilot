@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.84.8] — 2026-10-07
+
+### Changed
+
+- **AI SDK 7** (#269) — upgrade the core SDK to 7.0.130, the Anthropic, Google and OpenAI providers to major 4, and OpenRouter to major 3. Adopt the current generation callbacks and instruction API while keeping the Node.js 22.23.3 reference runtime.
+
+### Fixed
+
+- **Token accounting and compaction** — retain total turn consumption for costs, budgets and message counters, while using the final request occupancy for compaction. Read standard cache-token subsets without adding them again to inclusive input totals.
+- **Streaming failures and cancellation** — drain callbacks before finalizing persisted parts, propagate terminal errors, preserve completed-step spending when a later call fails, and keep partial trailing content in an error state.
+- **Image history compatibility** — preserve stored image MIME metadata when converting existing conversation parts to the SDK file format, without rewriting the database.
+
+---
+
 ## [0.84.7] — 2026-10-07
 
 ### Changed

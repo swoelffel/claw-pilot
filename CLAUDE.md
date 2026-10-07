@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-`claw-pilot` v0.84.7 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, permanent cross-channel sessions, and extensible middleware pipeline.
+`claw-pilot` v0.84.8 — **CLI + web dashboard** that orchestrates multiple claw-runtime agent instances on a Linux or macOS server. It handles discovery, provisioning, lifecycle management, permanent cross-channel sessions, and extensible middleware pipeline.
 
 All instances use the **claw-runtime** engine — a native Node.js engine (`src/runtime/`), managed via PID file daemon.
 
@@ -21,7 +21,7 @@ GitHub: https://github.com/swoelffel/claw-pilot
 - **Build**: tsdown (CLI) + vite (UI)
 - **Tests**: Vitest
 - **Lint**: oxlint
-- **LLM SDK**: Vercel AI SDK `ai` v6.x
+- **LLM SDK**: Vercel AI SDK `ai` v7.x
 
 ## Language standard
 
@@ -226,14 +226,14 @@ Default range: **18789–18838** (50 ports, 10 instances at min step 5). Dashboa
 ### Secrets
 Dashboard tokens are auto-generated (`src/core/secrets.ts`). API keys are stored encrypted in `named_api_keys` (AES-256-GCM via `MASTER_ENCRYPTION_KEY`). Instance `.env` files only contain gateway token + optional Telegram bot token. Never commit secrets.
 
-### Vercel AI SDK v6
-Breaking changes vs v5:
-- `CoreMessage` → `ModelMessage`
-- `maxSteps` → `stopWhen: stepCountIs(n)`
-- `inputTokens`/`outputTokens` are objects: `{ total, noCache, cacheRead, cacheWrite }` / `{ total, text, reasoning }`
-- `finishReason` is an object: `{ unified, raw }` (not a string)
-- `zodSchema()` instead of `zod-to-json-schema`
-- `resolveModel(providerId, modelId)` — 2 separate args, NOT `"provider/model"`
+### Vercel AI SDK v7
+- Use `instructions`, `isStepCount(n)`, and `onStepEnd` for generation.
+- `result.usage` sums all steps: use it for spending and message counters.
+- `result.finalStep.usage` describes the final request: use it for context occupancy.
+- Input totals include cache tokens. Read cache subsets from `inputTokenDetails`;
+  never add them to `inputTokens` again.
+- Drain `streamText` with `consumeStream()` before finalizing persisted parts.
+- Keep `resolveModel(providerId, modelId)` as two separate arguments.
 
 ### exactOptionalPropertyTypes
 Use conditional spread for optional fields: `...(val !== undefined ? { key: val } : {})`
