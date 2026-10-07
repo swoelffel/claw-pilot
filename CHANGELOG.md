@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.84.6] — 2026-10-07
+
+### Changed
+
+- **Runtime and build dependencies** (#264) — update Hono to 4.13.13, @hono/node-server to 1.19.17, ws to 8.22.0, MCP SDK to 1.32.1, DOMPurify to 3.4.16, Vite to 8.3.3, nanoid to 5.1.16, fflate to 0.8.3, better-sqlite3 to 12.11.1 and AI SDK to 6.0.301. Align the Anthropic, Google and OpenAI providers within major 3 to share corrected provider utilities while retaining AI SDK 6 compatibility. Refresh their transitive dependencies; production registry audit findings drop from 63 to zero. Development-tool audit findings remain and are tracked separately.
+
+### Fixed
+
+- **Missing Node.js prerequisite diagnostics** (#263) — prevent the POSIX installer from exiting silently when Node.js is missing. Show the required version, the official installation link and a retry instruction, while preserving alternative binary discovery and non-interactive installation.
+
+---
+
 ## [0.84.5] — 2026-10-06
 
 ### Fixed

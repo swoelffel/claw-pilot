@@ -17,7 +17,9 @@ export COREPACK_ENABLE_STRICT=0
 
 REPO="swoelffel/claw-pilot"
 REPO_URL="https://github.com/${REPO}.git"
-MIN_NODE_VERSION=22
+MIN_NODE_MAJOR=22
+MIN_NODE_MINOR=12
+MIN_NODE_VERSION="$MIN_NODE_MAJOR.$MIN_NODE_MINOR.0"
 INSTALL_DIR="${CLAW_PILOT_INSTALL_DIR:-/opt/claw-pilot}"
 
 # Resolve the ref to install:
@@ -171,7 +173,7 @@ fix_npm_permissions() {
 # ── Node.js binary resolver ───────────────────────────────────────────────────
 # Resolve the absolute path of node (handles nvm, volta, fnm, etc.)
 resolve_node_bin() {
-  NODE_BIN=$(command -v node 2>/dev/null)
+  NODE_BIN=$(command -v node 2>/dev/null || true)
   if [ -z "$NODE_BIN" ]; then
     for _candidate in \
       $HOME/.nvm/versions/node/*/bin/node \
@@ -213,13 +215,16 @@ esac
 # non-interactive shells (e.g. /bin/bash -c "$(curl ...)").
 _node_bin_early=$(resolve_node_bin)
 if [ -z "$_node_bin_early" ]; then
-  error "Node.js not found. Install Node.js >= $MIN_NODE_VERSION first: https://nodejs.org"
+  error "Node.js not found. Install Node.js >= $MIN_NODE_VERSION from https://nodejs.org/en/download, then re-run the installer."
 fi
 # Prepend the resolved node's bin dir to PATH so subsequent `node` calls work.
 prepend_path_dir "$(dirname "$_node_bin_early")"
-NODE_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
-if [ "$NODE_VERSION" -lt "$MIN_NODE_VERSION" ]; then
-  error "Node.js >= $MIN_NODE_VERSION required (found $(node -v))"
+NODE_VERSION=$(node -v | sed 's/^v//')
+NODE_MAJOR=${NODE_VERSION%%.*}
+NODE_MINOR=${NODE_VERSION#*.}
+NODE_MINOR=${NODE_MINOR%%.*}
+if [ "$NODE_MAJOR" -lt "$MIN_NODE_MAJOR" ] || { [ "$NODE_MAJOR" -eq "$MIN_NODE_MAJOR" ] && [ "$NODE_MINOR" -lt "$MIN_NODE_MINOR" ]; }; then
+  error "Node.js >= $MIN_NODE_VERSION required (found v$NODE_VERSION). Install a compatible version from https://nodejs.org/en/download, then re-run the installer."
 fi
 log "Node.js $(node -v)"
 
