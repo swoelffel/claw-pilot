@@ -23,6 +23,7 @@ vi.mock("../../tool/registry.js", async (importOriginal) => {
     getToolsForAgent: (...args: Parameters<typeof mockGetTools>) => mockGetTools(...args),
   };
 });
+import { createBudget, getBudget } from "../../../core/repositories/budget-repository.js";
 import { initDatabase } from "../../../db/schema.js";
 import type Database from "better-sqlite3";
 import { createSession } from "../session.js";
@@ -1776,4 +1777,213 @@ describe("runPromptLoop — text parts split around tool calls", () => {
     expect(textParts[0]!.sortOrder).toBeLessThan(toolParts[0]!.sortOrder);
     expect(toolParts[0]!.sortOrder).toBeLessThan(textParts[1]!.sortOrder);
   });
+});
+
+describe("runPromptLoop — SDK 7 turn usage and final context", () => {
+  function twoStepModel(): MockLanguageModelV3 {
+    let step = 0;
+    return new MockLanguageModelV3({
+      doStream: async () => {
+        const first = step++ === 0;
+        return {
+          stream: simulateReadableStream({
+            chunks: [
+              { type: "stream-start", warnings: [] },
+              ...(first
+                ? [
+                    {
+                      type: "tool-call" as const,
+                      toolCallId: "usage-call",
+                      toolName: "usage_tool",
+                      input: "{}",
+                    },
+                  ]
+                : [
+                    { type: "text-start" as const, id: "usage-text" },
+                    { type: "text-delta" as const, id: "usage-text", delta: "done" },
+                    { type: "text-end" as const, id: "usage-text" },
+                  ]),
+              {
+                type: "finish",
+                finishReason: { unified: first ? "tool-calls" : "stop", raw: "stop" },
+                usage: {
+                  inputTokens: {
+                    total: first ? 60000 : 80000,
+                    noCache: undefined,
+                    cacheRead: first ? 100 : 200,
+                    cacheWrite: first ? 10 : 20,
+                  },
+                  outputTokens: { total: first ? 10 : 20, text: undefined, reasoning: undefined },
+                },
+              },
+            ],
+            initialDelayInMs: 0,
+            chunkDelayInMs: 0,
+          }),
+        };
+      },
+    });
+  }
+
+  async function run(threshold: number) {
+    const session = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
+    const tool: Tool.Info = {
+      id: "usage_tool",
+      init: async () => ({
+        description: "Usage probe",
+        parameters: z.object({}),
+        execute: async () => ({ title: "usage", output: "ok", truncated: false }),
+      }),
+    };
+    const result = await runPromptLoop({
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      sessionId: session.id,
+      userText: "Use the tool",
+      agentConfig: makeAgentConfig(),
+      resolvedModel: makeResolvedModel(twoStepModel()),
+      workDir: undefined,
+      extraTools: [tool],
+      compactionConfig: { auto: true, threshold, reservedTokens: 0, periodicMessageCount: 0 },
+    });
+    return result;
+  }
+
+  it("persists total spending without compacting when the last context fits", async () => {
+    const compactSpy = vi.spyOn(compactionModule, "compact").mockResolvedValue({
+      compacted: true,
+      compactionMessageId: undefined,
+    });
+    try {
+      const budget = createBudget(db, {
+        instanceSlug: INSTANCE_SLUG,
+        scope: "instance",
+        period: "lifetime",
+        limitUsd: 10,
+      });
+      const result = await run(0.5);
+      expect(result.tokens).toEqual({ input: 140000, output: 30, cacheRead: 300, cacheWrite: 30 });
+      expect(result.costUsd).toBeCloseTo(0.42045);
+      expect(getMessage(db, result.messageId)).toMatchObject({ tokensIn: 140000, tokensOut: 30 });
+      expect(compactSpy).not.toHaveBeenCalled();
+      expect(getBudget(db, budget.id)?.spent_usd).toBeCloseTo(0.42045);
+    } finally {
+      compactSpy.mockRestore();
+    }
+  });
+
+  it("compacts with the final request occupancy when it exceeds the threshold", async () => {
+    const compactSpy = vi.spyOn(compactionModule, "compact").mockResolvedValue({
+      compacted: true,
+      compactionMessageId: undefined,
+    });
+    try {
+      await run(0.3);
+      expect(compactSpy).toHaveBeenCalledTimes(1);
+      expect(compactSpy).toHaveBeenCalledWith(expect.objectContaining({ currentTokens: 80020 }));
+    } finally {
+      compactSpy.mockRestore();
+    }
+  });
+
+  it("finishes streamed text parts before returning the completed message", async () => {
+    const result = await run(1);
+    expect(listParts(db, result.messageId).filter((part) => part.type === "text")).toEqual([
+      expect.objectContaining({ state: "completed", content: "done" }),
+    ]);
+  });
+});
+
+it("records completed-step spending and reports a failed continuation", async () => {
+  const budget = createBudget(db, {
+    instanceSlug: INSTANCE_SLUG,
+    scope: "instance",
+    period: "lifetime",
+    limitUsd: 10,
+  });
+  const session = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doStream: async () => {
+      if (calls++ > 0) throw new Error("Continuation failed");
+      return {
+        stream: simulateReadableStream({
+          chunks: [
+            { type: "stream-start", warnings: [] },
+            {
+              type: "tool-call",
+              toolCallId: "failed-turn-tool",
+              toolName: "usage_tool",
+              input: "{}",
+            },
+            {
+              type: "finish",
+              finishReason: { unified: "tool-calls", raw: "tool-calls" },
+              usage: {
+                inputTokens: { total: 60000, noCache: 60000, cacheRead: 0, cacheWrite: 0 },
+                outputTokens: { total: 10, text: 10, reasoning: 0 },
+              },
+            },
+          ],
+          initialDelayInMs: 0,
+          chunkDelayInMs: 0,
+        }),
+      };
+    },
+  });
+  const tool: Tool.Info = {
+    id: "usage_tool",
+    init: async () => ({
+      description: "Usage probe",
+      parameters: z.object({}),
+      execute: async () => ({ title: "usage", output: "ok", truncated: false }),
+    }),
+  };
+  await expect(
+    runPromptLoop({
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      sessionId: session.id,
+      userText: "Use the tool",
+      agentConfig: makeAgentConfig(),
+      resolvedModel: makeResolvedModel(model),
+      workDir: undefined,
+      extraTools: [tool],
+      compactionConfig: { auto: false, threshold: 1, reservedTokens: 0, periodicMessageCount: 0 },
+    }),
+  ).rejects.toThrow("Continuation failed");
+  const assistant = listMessages(db, session.id).find((message) => message.role === "assistant");
+  expect(assistant).toMatchObject({ finishReason: "error", tokensIn: 60000, tokensOut: 10 });
+  expect(getBudget(db, budget.id)?.spent_usd).toBeCloseTo(0.18015);
+});
+
+it("rejects active streaming cancellation and retains an error state for partial text", async () => {
+  const session = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
+  const controller = new AbortController();
+  const statuses: string[] = [];
+  const bus = getBus(INSTANCE_SLUG);
+  bus.subscribe(SessionStatusChanged, ({ status }) => statuses.push(status));
+  bus.subscribe(MessagePartDelta, () => controller.abort(new Error("Cancel active stream")));
+  await expect(
+    runPromptLoop({
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      sessionId: session.id,
+      userText: "Reply",
+      agentConfig: makeAgentConfig(),
+      resolvedModel: makeResolvedModel(textStreamModel("partial")),
+      workDir: undefined,
+      abort: controller.signal,
+    }),
+  ).rejects.toThrow("Cancel active stream");
+  const assistant = listMessages(db, session.id).find((message) => message.role === "assistant")!;
+  expect(assistant.finishReason).toBe("error");
+  expect(listParts(db, assistant.id)).toContainEqual(
+    expect.objectContaining({
+      type: "text",
+      content: "partial",
+      state: "error",
+    }),
+  );
+  expect(statuses).toEqual(["busy", "idle"]);
 });

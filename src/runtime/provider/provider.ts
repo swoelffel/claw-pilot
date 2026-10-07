@@ -11,7 +11,7 @@
 
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGoogle } from "@ai-sdk/google";
 import { createOpenAI as createOllamaCompat } from "@ai-sdk/openai"; // Ollama uses OpenAI-compat API
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel } from "ai";
@@ -75,7 +75,7 @@ export function resolveLanguageModel(config: ProviderConfig, modelId: ModelId): 
     }
 
     case "google-generative-ai": {
-      const client = createGoogleGenerativeAI({
+      const client = createGoogle({
         ...(config.apiKey !== undefined && { apiKey: config.apiKey }),
         ...(config.baseUrl !== undefined && { baseURL: config.baseUrl }),
         ...(config.headers !== undefined && { headers: config.headers }),
