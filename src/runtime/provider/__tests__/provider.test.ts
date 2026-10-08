@@ -27,6 +27,9 @@ vi.mock("@ai-sdk/openai", () => ({
 vi.mock("@ai-sdk/google", () => ({
   createGoogle: vi.fn(() => vi.fn(() => ({ modelId: "mock-google" }))),
 }));
+vi.mock("@ai-sdk/mistral", () => ({
+  createMistral: vi.fn(() => vi.fn(() => ({ modelId: "mock-mistral" }))),
+}));
 vi.mock("@openrouter/ai-sdk-provider", () => ({
   createOpenRouter: vi.fn(() => vi.fn(() => ({ modelId: "mock-openrouter" }))),
 }));
@@ -34,6 +37,7 @@ vi.mock("@openrouter/ai-sdk-provider", () => ({
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogle } from "@ai-sdk/google";
+import { createMistral } from "@ai-sdk/mistral";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
   PROVIDER_REGISTRY,
@@ -67,6 +71,7 @@ describe("PROVIDER_REGISTRY", () => {
     expect(ids).toContain("google");
     expect(ids).toContain("ollama");
     expect(ids).toContain("openrouter");
+    expect(ids).toContain("mistral");
   });
 
   it("Ollama has a default base URL", () => {
@@ -139,6 +144,24 @@ describe("resolveLanguageModel", () => {
     expect(createGoogle).toHaveBeenCalled();
   });
 
+  it("creates Mistral model with its native provider", () => {
+    resolveLanguageModel(
+      {
+        id: "mistral",
+        api: "mistral-chat",
+        apiKey: "key",
+        baseUrl: "https://api.mistral.ai/v1",
+        headers: { "X-Test": "value" },
+      },
+      "mistral-large-latest",
+    );
+    expect(createMistral).toHaveBeenCalledWith({
+      apiKey: "key",
+      baseURL: "https://api.mistral.ai/v1",
+      headers: { "X-Test": "value" },
+    });
+  });
+
   it("creates Ollama model with default base URL", () => {
     resolveLanguageModel(
       { id: "ollama", api: "ollama", apiKey: undefined, baseUrl: undefined, headers: undefined },
@@ -200,5 +223,17 @@ describe("resolveModel", () => {
       env: { ANTHROPIC_API_KEY: "env-key" },
     });
     expect(createAnthropic).toHaveBeenCalledWith(expect.objectContaining({ apiKey: "explicit" }));
+  });
+
+  it("resolves Mistral API key and default base URL", () => {
+    resolveModel("mistral", "mistral-large-latest", {
+      env: { MISTRAL_API_KEY: "mistral-key" },
+    });
+    expect(createMistral).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: "mistral-key",
+        baseURL: "https://api.mistral.ai/v1",
+      }),
+    );
   });
 });
