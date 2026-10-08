@@ -14,6 +14,7 @@ import {
   insertRtEvent,
 } from "../../core/repositories/rt-event-repository.js";
 import { logger } from "../../lib/logger.js";
+import { appendExecutionEvent } from "../../core/repositories/execution-event-repository.js";
 
 /**
  * Wire bus event persistence for an instance.
@@ -34,6 +35,17 @@ export function wireEventPersistence(
     const summary = deriveSummary(event.type, payload);
 
     try {
+      if (typeof payload.requestId === "string") {
+        (event as typeof event & { eventId?: number }).eventId = appendExecutionEvent(db, {
+          request_id: payload.requestId,
+          execution_id: typeof payload.executionId === "string" ? payload.executionId : null,
+          trace_id: typeof payload.traceId === "string" ? payload.traceId : payload.requestId,
+          instance_slug: instanceSlug,
+          session_id: sessionId ?? null,
+          event_type: event.type,
+          payload,
+        });
+      }
       insertRtEvent(db, {
         instanceSlug,
         eventType: event.type,

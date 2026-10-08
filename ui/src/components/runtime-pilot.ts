@@ -199,6 +199,7 @@ export class RuntimePilot extends LitElement {
 
   @state() private _status: PilotStatus = "idle";
   @state() private _error = "";
+  @state() private _recoveryState: "" | "RECONNECTING" | "RESULT_READY" | "NEEDS_ATTENTION" = "";
   @state() private _messages: PilotMessage[] = [];
   @state() private _hasMore = false;
   @state() private _streamingText = "";
@@ -248,6 +249,7 @@ export class RuntimePilot extends LitElement {
   private _reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private _reconnectDelay = SSE_RECONNECT_INITIAL_MS;
   private _sseConnected = false;
+  private _lastEventId = "";
 
   // Polling fallback
   private _pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -451,8 +453,10 @@ export class RuntimePilot extends LitElement {
 
     // Stream all instance events (no sessionId filter) — we filter client-side
     const token = getToken();
-    const baseUrl = getRuntimeChatStreamUrl(this.slug);
-    const url = token ? `${baseUrl}?token=${encodeURIComponent(token)}` : baseUrl;
+    const baseUrl = getRuntimeChatStreamUrl(this.slug, undefined, this._lastEventId || undefined);
+    const url = token
+      ? `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`
+      : baseUrl;
     // withCredentials ensures cookies (session) are sent even under strict
     // SameSite policies; the ?token fallback above covers the case where no
     // cookie is available.
@@ -462,9 +466,14 @@ export class RuntimePilot extends LitElement {
     debugSse("[runtime-pilot] _openStream", baseUrl);
 
     es.onopen = () => {
+      const wasReconnecting = this._recoveryState === "RECONNECTING";
       this._sseConnected = true;
       this._reconnectDelay = SSE_RECONNECT_INITIAL_MS; // reset backoff on success
       debugSse("[runtime-pilot] sse open");
+      if (wasReconnecting)
+        void this._reloadLastMessages().then(() => {
+          this._recoveryState = this._status === "idle" ? "RESULT_READY" : "";
+        });
       // Clear any SSE error banner if the reconnect succeeds
       if (this._error.includes("Connection")) {
         this._error = "";
@@ -474,6 +483,7 @@ export class RuntimePilot extends LitElement {
 
     es.onmessage = (e: MessageEvent) => {
       this._sseConnected = true;
+      if (e.lastEventId) this._lastEventId = e.lastEventId;
       let event: PilotBusEvent;
       try {
         event = JSON.parse(e.data as string) as PilotBusEvent;
@@ -491,6 +501,8 @@ export class RuntimePilot extends LitElement {
 
     es.onerror = () => {
       this._sseConnected = false;
+      if (["sending", "thinking", "tool", "streaming"].includes(this._status))
+        this._recoveryState = "RECONNECTING";
       debugSse("[runtime-pilot] sse error, reconnecting in", this._reconnectDelay, "ms");
       this._closeStream();
       // Schedule reconnect with exponential backoff (silent — no error banner unless persistent)
@@ -750,8 +762,13 @@ export class RuntimePilot extends LitElement {
       case "provider.failover":
       case "provider.auth_failed":
       case "tool.doom_loop":
+        this._addEvent(event);
+        break;
       case "llm.chunk_timeout":
       case "agent.timeout":
+        this._recoveryState = "NEEDS_ATTENTION";
+        this._addEvent(event);
+        break;
       case "session.created":
       case "session.updated":
         this._addEvent(event);
@@ -1033,6 +1050,9 @@ export class RuntimePilot extends LitElement {
                   @load-more=${this._loadMore}
                 ></cp-pilot-messages>
 
+                ${this._recoveryState
+                  ? html`<div class="error-banner" role="status">${this._recoveryState}</div>`
+                  : nothing}
                 ${this._error ? html`<div class="error-banner">${this._error}</div>` : nothing}
 
                 <cp-pilot-input

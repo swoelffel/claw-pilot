@@ -498,6 +498,7 @@ export class ClawRuntime {
         port: deriveInternalApiPort(this.instanceSlug),
         token: await resolveInternalApiToken(this.instanceSlug),
         slug: this.instanceSlug,
+        db: this.db,
         handlers: this._buildInternalApiHandlers(),
       });
       await this._internalApi.start();
