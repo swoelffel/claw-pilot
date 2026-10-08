@@ -13,18 +13,23 @@
 //
 // Notes:
 // - The provisioner calls ensureRuntimeConfig() which uses the real fs.
-//   We point OPENCLAW_HOME to a tmpdir so it writes there, and clean up after.
+//   We isolate os.homedir() in a tmpdir so it writes there, and clean up after.
 // - The provisioner also calls conn.mkdir/writeFile — handled by MockConnection.
 // - Port is derived from slug via deriveWebChatPort (19100-19199 range).
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { startTestServer, type TestContext } from "./helpers/test-server.js";
 import { seedAdmin, seedLocalServer } from "./helpers/seed.js";
 import { NamedKeyRepository } from "../core/repositories/named-key-repository.js";
 import { deriveWebChatPort } from "../lib/platform.js";
 import type { Json } from "./helpers/types.js";
+
+vi.mock("node:os", async () => {
+  const actual = await vi.importActual<typeof import("node:os")>("node:os");
+  return { ...actual, homedir: vi.fn(actual.homedir) };
+});
 
 const FLOW_SLUG = "flow-test-inst";
 // Port depends on the OS username salt introduced in v0.72.8, so derive at runtime.
@@ -33,15 +38,13 @@ const FLOW_PORT = deriveWebChatPort(FLOW_SLUG);
 describe("Flow: create instance → create agent → delete agent → delete instance", () => {
   let ctx: TestContext;
   let tmpHome: string;
-  let originalOpenclawHome: string | undefined;
   let originalMasterKey: string | undefined;
   let namedKeyId: number;
 
   beforeAll(async () => {
-    // Point OPENCLAW_HOME to a real tmpdir so ensureRuntimeConfig() can write runtime.json
+    // Runtime paths use os.homedir(), not the legacy OPENCLAW_HOME variable.
     tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "claw-pilot-e2e-"));
-    originalOpenclawHome = process.env["OPENCLAW_HOME"];
-    process.env["OPENCLAW_HOME"] = tmpHome;
+    vi.mocked(os.homedir).mockReturnValue(tmpHome);
 
     // Set encryption key for named API keys
     originalMasterKey = process.env["MASTER_ENCRYPTION_KEY"];
@@ -64,11 +67,6 @@ describe("Flow: create instance → create agent → delete agent → delete ins
 
   afterAll(async () => {
     // Restore env
-    if (originalOpenclawHome === undefined) {
-      delete process.env["OPENCLAW_HOME"];
-    } else {
-      process.env["OPENCLAW_HOME"] = originalOpenclawHome;
-    }
     if (originalMasterKey === undefined) {
       delete process.env["MASTER_ENCRYPTION_KEY"];
     } else {
@@ -77,13 +75,6 @@ describe("Flow: create instance → create agent → delete agent → delete ins
     // Clean up tmpdir
     try {
       fs.rmSync(tmpHome, { recursive: true, force: true });
-    } catch {
-      // best-effort
-    }
-    // Clean up residual state dir that ensureRuntimeConfig may have created in ~/.claw-pilot/
-    try {
-      const residualDir = path.join(os.homedir(), ".claw-pilot", "instances", FLOW_SLUG);
-      fs.rmSync(residualDir, { recursive: true, force: true });
     } catch {
       // best-effort
     }
@@ -97,10 +88,13 @@ describe("Flow: create instance → create agent → delete agent → delete ins
       defaultModel: "anthropic/claude-3-5-haiku-20241022",
       namedKeyId,
     });
-    expect(res.status).toBe(201);
     const body = (await res.json()) as Json;
+    expect(res.status, JSON.stringify(body)).toBe(201);
     expect(body.slug).toBe(FLOW_SLUG);
     expect(body.port).toBe(FLOW_PORT);
+    expect(
+      fs.existsSync(path.join(tmpHome, ".claw-pilot", "instances", FLOW_SLUG, "runtime.json")),
+    ).toBe(true);
   });
 
   // Step 2 — GET /api/instances/:slug → 200, instance found
