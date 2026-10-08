@@ -89,6 +89,7 @@ export interface RouterInput {
    * it on every evaluation. Non-flow callers leave this `undefined`.
    */
   flowStepState?: import("../flow/step-extension-tool.js").FlowStepState;
+  request?: import("../session/prompt-loop.js").PromptLoopInput["request"];
 }
 
 export interface RouterResult {
@@ -98,6 +99,10 @@ export interface RouterResult {
   /** Token usage */
   tokens: { input: number; output: number; cacheRead: number; cacheWrite: number };
   costUsd: number;
+  requestId: string;
+  traceId: string;
+  executionId: string;
+  resultMessageId: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -201,6 +206,7 @@ export class ChannelRouter {
             ...(input.maxSteps !== undefined ? { maxSteps: input.maxSteps } : {}),
             ...(input.flowStepState !== undefined ? { flowStepState: input.flowStepState } : {}),
             ...(input.skillLoader !== undefined ? { skillLoader: input.skillLoader } : {}),
+            ...(input.request !== undefined ? { request: input.request } : {}),
           }),
       });
 
@@ -212,6 +218,9 @@ export class ChannelRouter {
           steps: 0,
           tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
           costUsd: 0,
+          requestId: input.request?.requestId ?? "",
+          traceId: input.request?.traceId ?? input.request?.requestId ?? "",
+          executionId: "",
         } satisfies PromptLoopResult;
       }
 
@@ -256,6 +265,10 @@ export class ChannelRouter {
       sessionId,
       tokens: result.tokens,
       costUsd: result.costUsd,
+      requestId: result.requestId ?? "",
+      traceId: result.traceId ?? result.requestId ?? "",
+      executionId: result.executionId ?? "",
+      resultMessageId: result.messageId,
     };
   }
 }

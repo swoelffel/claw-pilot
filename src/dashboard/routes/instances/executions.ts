@@ -18,6 +18,12 @@ import {
   recoverStaleExecutions,
 } from "../../../core/repositories/execution-repository.js";
 import type { ExecutionStatus } from "../../../core/repositories/execution-repository.js";
+import {
+  acknowledgeRequest,
+  getRequest,
+  listRequests,
+  markRequestDelivered,
+} from "../../../core/repositories/request-repository.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type HonoContext = any;
@@ -33,6 +39,50 @@ function executionResource(c: HonoContext): { slug: string; executionId?: string
 
 function registerExecutionReadRoutes(app: Hono, deps: RouteDeps): void {
   const { db } = deps;
+
+  app.get(
+    "/api/instances/:slug/requests",
+    permission({
+      action: ACTIONS.EXECUTION_LIST,
+      resource: { kind: "execution" },
+      attributes: executionResource,
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
+      const taskIdRaw = c.req.query("taskId");
+      const taskId = taskIdRaw === undefined ? undefined : Number(taskIdRaw);
+      if (taskId !== undefined && (!Number.isSafeInteger(taskId) || taskId < 1)) {
+        return apiError(c, 400, "INVALID_TASK_ID", "taskId must be a positive integer");
+      }
+      const limit = Number(c.req.query("limit") ?? 50);
+      return c.json({
+        requests: listRequests(db, slug, {
+          ...(taskId !== undefined ? { taskId } : {}),
+          limit: Number.isFinite(limit) ? limit : 50,
+        }),
+      });
+    },
+  );
+
+  app.get(
+    "/api/instances/:slug/requests/:requestId",
+    permission({
+      action: ACTIONS.EXECUTION_READ,
+      resource: { kind: "execution", id: (c) => c.req.param("requestId") },
+      attributes: executionResource,
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
+      const request = getRequest(db, c.req.param("requestId"));
+      if (!request || request.instance_slug !== slug) {
+        return apiError(c, 404, "REQUEST_NOT_FOUND", "Request not found");
+      }
+      const executions = db
+        .prepare("SELECT * FROM rt_executions WHERE request_id = ? ORDER BY accepted_at ASC")
+        .all(request.id);
+      return c.json({ request, executions });
+    },
+  );
 
   app.get(
     "/api/instances/:slug/executions",
@@ -108,6 +158,48 @@ function registerExecutionReadRoutes(app: Hono, deps: RouteDeps): void {
 
 function registerExecutionActionRoutes(app: Hono, deps: RouteDeps): void {
   const { db, registry } = deps;
+
+  app.post(
+    "/api/instances/:slug/requests/:requestId/acknowledge",
+    permission({
+      action: ACTIONS.EXECUTION_OUTCOME_UPDATE,
+      resource: { kind: "execution", id: (c) => c.req.param("requestId") },
+      attributes: executionResource,
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
+      const request = getRequest(db, c.req.param("requestId"));
+      if (!request || request.instance_slug !== slug) {
+        return apiError(c, 404, "REQUEST_NOT_FOUND", "Request not found");
+      }
+      const updated = acknowledgeRequest(db, request.id);
+      if (updated?.delivery_status !== "acknowledged") {
+        return apiError(c, 409, "RESULT_NOT_DELIVERED", "Request has not been delivered");
+      }
+      return c.json(updated);
+    },
+  );
+
+  app.post(
+    "/api/instances/:slug/requests/:requestId/recover-delivery",
+    permission({
+      action: ACTIONS.EXECUTION_RECOVER,
+      resource: { kind: "execution", id: (c) => c.req.param("requestId") },
+      attributes: executionResource,
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
+      const request = getRequest(db, c.req.param("requestId"));
+      if (!request || request.instance_slug !== slug) {
+        return apiError(c, 404, "REQUEST_NOT_FOUND", "Request not found");
+      }
+      if (!request.result_message_id) {
+        return apiError(c, 409, "RESULT_NOT_PERSISTED", "No durable result is available");
+      }
+      markRequestDelivered(db, request.id);
+      return c.json(getRequest(db, request.id));
+    },
+  );
 
   app.post(
     "/api/instances/:slug/executions/recover",

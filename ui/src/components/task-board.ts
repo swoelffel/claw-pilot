@@ -174,6 +174,19 @@ export class TaskBoard extends LitElement {
         <div class="title">${msg("Tasks", { id: "task-board-title" })} — ${this.slug}</div>
         <div class="view-toggle">
           <button
+            class="btn-toggle"
+            @click=${() =>
+              this.dispatchEvent(
+                new CustomEvent("navigate", {
+                  detail: { view: "requests", slug: this.slug },
+                  bubbles: true,
+                  composed: true,
+                }),
+              )}
+          >
+            My Requests
+          </button>
+          <button
             class="btn-toggle ${this._viewMode === "board" ? "active" : ""}"
             @click=${() => (this._viewMode = "board")}
           >

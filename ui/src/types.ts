@@ -489,6 +489,9 @@ export interface RuntimeSession {
 }
 
 export interface RuntimeChatResponse {
+  requestId: string;
+  traceId: string;
+  executionId: string;
   sessionId: string;
   messageId: string;
   text: string;
@@ -502,6 +505,29 @@ export interface RuntimeChatResponse {
    * updates while the user answers the question.
    */
   pendingQuestion?: boolean;
+}
+
+export interface RuntimeRequest {
+  id: string;
+  trace_id: string;
+  parent_request_id: string | null;
+  session_id: string | null;
+  agent_id: string | null;
+  task_id: number | null;
+  delivery_status:
+    | "pending"
+    | "result_persisted"
+    | "delivered"
+    | "acknowledged"
+    | "delivery_failed";
+  execution_status: string | null;
+  result_message_id: string | null;
+  artifact_refs_json: string | null;
+  error_message: string | null;
+  cost_usd: number;
+  input_tokens: number;
+  output_tokens: number;
+  created_at: string;
 }
 
 // --- Runtime Pilot types ---

@@ -27,7 +27,7 @@ import {
   updateMessageMetadata,
   listMessagesFromCompaction,
 } from "./message.js";
-import { createPart, updatePartState } from "./part.js";
+import { createPart, listParts, updatePartState } from "./part.js";
 import { getBus } from "../bus/index.js";
 import {
   SessionStatusChanged,
@@ -62,6 +62,12 @@ import {
   recordCircuitSuccess,
   startExecution,
 } from "../../core/repositories/execution-repository.js";
+import {
+  attachRequestContext,
+  createOrGetRequest,
+  persistRequestResult,
+} from "../../core/repositories/request-repository.js";
+import { runtimeRequestContext } from "./request-context.js";
 import {
   createStreamingState,
   finalizeReasoning,
@@ -137,6 +143,15 @@ export interface PromptLoopInput {
    * Non-flow callers leave this `undefined`.
    */
   flowStepState?: import("../flow/step-extension-tool.js").FlowStepState;
+  request?: {
+    requestId?: string;
+    traceId?: string;
+    parentRequestId?: string;
+    parentExecutionId?: string;
+    idempotencyKey?: string;
+    source?: string;
+    taskId?: number;
+  };
 }
 
 export interface PromptLoopResult {
@@ -145,6 +160,9 @@ export interface PromptLoopResult {
   tokens: { input: number; output: number; cacheRead: number; cacheWrite: number };
   costUsd: number;
   steps: number;
+  requestId?: string;
+  traceId?: string;
+  executionId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -243,6 +261,22 @@ function classifyExecutionFailure(
 }
 
 export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopResult> {
+  const parent = runtimeRequestContext.getStore();
+  const inheritedInput: PromptLoopInput = parent
+    ? {
+        ...input,
+        request: {
+          ...input.request,
+          traceId: input.request?.traceId ?? parent.traceId,
+          parentRequestId: input.request?.parentRequestId ?? parent.requestId,
+          parentExecutionId: input.request?.parentExecutionId ?? parent.executionId,
+        },
+      }
+    : input;
+  return runPromptLoopWithContext(inheritedInput);
+}
+
+async function runPromptLoopWithContext(input: PromptLoopInput): Promise<PromptLoopResult> {
   const { db, instanceSlug, sessionId, agentConfig, resolvedModel } = input;
 
   if (input.abort?.aborted) throw new Error("Aborted");
@@ -250,17 +284,57 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
   const session = getSession(db, sessionId);
   if (!session) throw new Error(`Session not found: ${sessionId}`);
 
-  const bus = getBus(instanceSlug);
   const timeoutMs = agentConfig.timeoutMs ?? 5 * 60 * 1000;
   const resourceKey = `provider:${resolvedModel.providerId}/${resolvedModel.modelId}`;
+  const { request, created: requestCreated } = createOrGetRequest(db, {
+    instanceSlug,
+    source: input.request?.source ?? session.channel,
+    ...(input.request?.requestId !== undefined ? { requestId: input.request.requestId } : {}),
+    ...(input.request?.traceId !== undefined ? { traceId: input.request.traceId } : {}),
+    ...(input.request?.parentRequestId !== undefined
+      ? { parentRequestId: input.request.parentRequestId }
+      : {}),
+    ...(input.request?.idempotencyKey !== undefined
+      ? { idempotencyKey: input.request.idempotencyKey }
+      : {}),
+    ...(input.request?.taskId !== undefined ? { taskId: input.request.taskId } : {}),
+    sessionId,
+    agentId: agentConfig.id,
+  });
+  attachRequestContext(db, request.id, { sessionId, agentId: agentConfig.id });
+  if (!requestCreated) {
+    return waitForIdempotentResult(db, request.id, timeoutMs);
+  }
   const execution = createExecution(db, {
     instanceSlug,
     sessionId,
     agentId: agentConfig.id,
     timeoutMs,
     source: session.channel,
+    requestId: request.id,
+    traceId: request.trace_id,
+    ...(input.request?.parentExecutionId !== undefined
+      ? { parentExecutionId: input.request.parentExecutionId }
+      : {}),
     metadata: { provider: resolvedModel.providerId, model: resolvedModel.modelId },
   });
+  return runtimeRequestContext.run(
+    { requestId: request.id, traceId: request.trace_id, executionId: execution.id },
+    () => executePromptLoop(input, request, execution, resourceKey),
+  );
+}
+
+async function executePromptLoop(
+  input: PromptLoopInput,
+  request: import("../../core/repositories/request-repository.js").RequestRow,
+  execution: import("../../core/repositories/execution-repository.js").ExecutionRow,
+  resourceKey: string,
+): Promise<PromptLoopResult> {
+  const { db, instanceSlug, sessionId, agentConfig, resolvedModel } = input;
+  const session = getSession(db, sessionId);
+  if (!session) throw new Error(`Session not found: ${sessionId}`);
+  const bus = getBus(instanceSlug);
+  const timeoutMs = agentConfig.timeoutMs ?? 5 * 60 * 1000;
   const circuit = inspectCircuit(db, instanceSlug, resourceKey);
   if (circuit?.state === "open") {
     const error = new Error(
@@ -368,6 +442,10 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
     if (completeBootstrap(input.workDir, agentConfig, systemPrompt)) {
       markDirty(sessionId, "workspace");
     }
+    const artifactRefs = listParts(db, result.messageId)
+      .filter((part) => part.type === "tool_call" || part.type === "tool_result")
+      .map((part) => ({ id: part.id, type: part.type }));
+    persistRequestResult(db, request.id, { messageId: result.messageId, artifactRefs });
     completeExecution(db, execution.id, {
       messageId: result.messageId,
       inputTokens: result.tokens.input,
@@ -375,7 +453,12 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       costUsd: result.costUsd,
     });
     recordCircuitSuccess(db, instanceSlug, resourceKey);
-    return result;
+    return {
+      ...result,
+      requestId: request.id,
+      traceId: request.trace_id,
+      executionId: execution.id,
+    };
   } catch (err) {
     if (assistantMsgId) {
       updateMessageMetadata(db, assistantMsgId, { finishReason: "error" });
@@ -402,6 +485,64 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       ...(loopCost.costUsd !== 0 ? { costUsd: loopCost.costUsd } : {}),
     });
   }
+}
+
+/** Replays the durable result for a duplicate submission without running tools again. */
+async function waitForIdempotentResult(
+  db: Database.Database,
+  requestId: string,
+  timeoutMs: number,
+): Promise<PromptLoopResult> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    const request = db.prepare("SELECT * FROM rt_requests WHERE id = ?").get(requestId) as
+      | { trace_id: string; result_message_id: string | null }
+      | undefined;
+    const execution = db
+      .prepare(
+        `SELECT * FROM rt_executions WHERE request_id = ? ORDER BY accepted_at DESC, rowid DESC LIMIT 1`,
+      )
+      .get(requestId) as
+      | {
+          id: string;
+          status: string;
+          input_tokens: number;
+          output_tokens: number;
+          cost_usd: number;
+          error_message: string | null;
+        }
+      | undefined;
+    if (request?.result_message_id && execution?.status === "succeeded") {
+      const text = listParts(db, request.result_message_id)
+        .filter((part) => part.type === "text")
+        .map((part) => part.content ?? "")
+        .join("");
+      return {
+        messageId: request.result_message_id,
+        text,
+        tokens: {
+          input: execution.input_tokens,
+          output: execution.output_tokens,
+          cacheRead: 0,
+          cacheWrite: 0,
+        },
+        costUsd: execution.cost_usd,
+        steps: 0,
+        requestId,
+        traceId: request.trace_id,
+        executionId: execution.id,
+      };
+    }
+    if (execution && ["failed", "timed_out", "cancelled"].includes(execution.status)) {
+      const error = new Error(execution.error_message ?? "Previous idempotent request failed");
+      Object.assign(error, { code: "IDEMPOTENT_REQUEST_FAILED" });
+      throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  const error = new Error("The original idempotent request is still in progress");
+  Object.assign(error, { code: "IDEMPOTENT_REQUEST_IN_PROGRESS" });
+  throw error;
 }
 
 /** Estimate the next request conservatively; exact token counts come from the provider afterward. */

@@ -40,6 +40,9 @@ export interface ExecutionRow {
   started_at: string | null;
   heartbeat_at: string | null;
   completed_at: string | null;
+  request_id: string | null;
+  trace_id: string | null;
+  parent_execution_id: string | null;
 }
 
 export interface CircuitBreakerRow {
@@ -67,6 +70,9 @@ export interface CreateExecutionInput {
   taskId?: number;
   maxAttempts?: number;
   metadata?: Record<string, unknown>;
+  requestId?: string;
+  traceId?: string;
+  parentExecutionId?: string;
 }
 
 export function createExecution(db: Database.Database, input: CreateExecutionInput): ExecutionRow {
@@ -74,8 +80,8 @@ export function createExecution(db: Database.Database, input: CreateExecutionInp
   db.prepare(
     `INSERT INTO rt_executions
       (id, correlation_id, instance_slug, session_id, agent_id, kind, source,
-       timeout_ms, task_id, max_attempts, metadata_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       timeout_ms, task_id, max_attempts, metadata_json, request_id, trace_id, parent_execution_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     input.correlationId ?? id,
@@ -88,6 +94,9 @@ export function createExecution(db: Database.Database, input: CreateExecutionInp
     input.taskId ?? null,
     input.maxAttempts ?? 1,
     input.metadata ? JSON.stringify(input.metadata) : null,
+    input.requestId ?? null,
+    input.traceId ?? input.correlationId ?? id,
+    input.parentExecutionId ?? null,
   );
   return getExecution(db, id)!;
 }
