@@ -684,9 +684,17 @@ export async function abortSession(slug: string, sessionId: string): Promise<{ a
   });
 }
 
-export function getRuntimeChatStreamUrl(slug: string, sessionId?: string): string {
+export function getRuntimeChatStreamUrl(
+  slug: string,
+  sessionId?: string,
+  lastEventId?: string,
+): string {
   const base = `/api/instances/${slug}/runtime/chat/stream`;
-  return sessionId ? `${base}?sessionId=${encodeURIComponent(sessionId)}` : base;
+  const params = new URLSearchParams();
+  if (sessionId) params.set("sessionId", sessionId);
+  if (lastEventId) params.set("lastEventId", lastEventId);
+  const query = params.toString();
+  return query ? `${base}?${query}` : base;
 }
 
 /**

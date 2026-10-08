@@ -324,3 +324,17 @@ guards, API calls) and guidelines for adding new call sites.
 ---
 
 *Updated: 2026-05-05 — v0.83.2: 3 SSE streams, 1 WebSocket, 43 event types (15 categories), SSE proxy with transform layer*
+# Recovery and replay
+
+Request-scoped runtime events are durably ordered in `rt_execution_events`.
+The runtime emits the database sequence as the SSE `id`, and the dashboard
+proxy preserves it. Reconnecting clients provide `Last-Event-ID` or the
+equivalent `lastEventId` query parameter; the runtime replays later events
+before subscribing the client to live bus traffic. Transport disconnection
+does not abort, restart, or otherwise mutate an execution.
+
+Side-effecting work is represented in `rt_operations` with the states
+`not_started`, `active`, `completed`, `failed_safely`, `uncertain`, and
+`requires_review`. Automatic retry is limited to read-only or explicitly
+idempotent operations that failed safely. Uncertain side effects require
+reconciliation before retry.
