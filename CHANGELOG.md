@@ -6,6 +6,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.84.9] — 2026-10-08
+
+### Added
+
+- **Native Mistral provider** (#274) — use the Mistral AI SDK provider for `mistral-chat` models, forwarding configured credentials, base URL and headers through the existing model resolution interface.
+- **Execution lifecycle and outcome tracking** (#275) — persist prompt execution acceptance, running and terminal states with correlation IDs and errors; record usage and costs on successful completion. Add instance APIs for execution history, stale-execution reconciliation, business outcomes, analytics and diagnostics; track provider circuit state to quarantine repeated provider failures.
+
+### Changed
+
+- **Dependency maintenance policy** (#276) — require manual Renovate merges, retain Node.js and its types on 22.x, preserve the declared compatibility floor, and explicitly group coupled Vitest and Commitlint major upgrades.
+- **Development dependency remediation** (#277) — update Vitest and coverage to 4.1.11 and remediate vulnerable transitive dependencies. Full and production audits report no known vulnerabilities at release validation; security audit failures now block the CI Quality job.
+
+### Fixed
+
+- **Cancellation accounting** — record user cancellations as `cancelled` without counting them as provider failures or quarantining a healthy model. Preserve real watchdog and flow-step timeouts, including races with later cancellations.
+- **Discipline gate change range** (#272) — scope frozen-path trailer checks to the actual push or pull-request changes. Isolate temporary Git fixtures from local hooks when exercising the gate.
+- **Provisioning E2E filesystem isolation** (#277) — write runtime configuration under the test's temporary home directory and remove cleanup against the real home directory. Include the response body when instance creation fails.
+
+### Upgrade notes
+
+- Schema migration **47** adds `rt_executions` and `rt_circuit_breakers`; existing application tables and history are retained. Back up the database before upgrading. Downgrading application code does not reverse this additive migration.
+- Keep Node.js 22.23.3 as the development and CI reference, the runtime compatibility floor `>=22.12.0`, and pnpm 10.33.0. Real-provider acceptance and server deployment remain separate from automated release checks.
+
+---
+
 ## [0.84.8] — 2026-10-07
 
 ### Changed
