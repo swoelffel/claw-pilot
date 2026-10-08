@@ -34,6 +34,7 @@ export type ModelApi =
   | "openai-completions"
   | "openai-responses"
   | "google-generative-ai"
+  | "mistral-chat"
   | "ollama"
   | "openrouter";
 

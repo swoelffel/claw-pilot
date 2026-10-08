@@ -24,6 +24,7 @@ vi.mock("../../tool/registry.js", async (importOriginal) => {
   };
 });
 import { createBudget, getBudget } from "../../../core/repositories/budget-repository.js";
+import { getCircuit, listExecutions } from "../../../core/repositories/execution-repository.js";
 import { initDatabase } from "../../../db/schema.js";
 import type Database from "better-sqlite3";
 import { createSession } from "../session.js";
@@ -1987,3 +1988,128 @@ it("rejects active streaming cancellation and retains an error state for partial
   );
   expect(statuses).toEqual(["busy", "idle"]);
 });
+
+it.each([false, true])(
+  "keeps the provider available after three user cancellations (default reason %s)",
+  async (defaultReason) => {
+    const bus = getBus(INSTANCE_SLUG);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const session = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
+      const controller = new AbortController();
+      const unsubscribe = bus.subscribe(MessagePartDelta, () =>
+        controller.abort(defaultReason ? undefined : new Error("Cancel active stream")),
+      );
+      try {
+        await expect(
+          runPromptLoop({
+            db,
+            instanceSlug: INSTANCE_SLUG,
+            sessionId: session.id,
+            userText: "Reply",
+            agentConfig: makeAgentConfig(),
+            resolvedModel: makeResolvedModel(textStreamModel("partial")),
+            workDir: undefined,
+            abort: controller.signal,
+          }),
+        ).rejects.toThrow(defaultReason ? /abort/i : "Cancel active stream");
+      } finally {
+        unsubscribe();
+      }
+    }
+    expect(listExecutions(db, INSTANCE_SLUG).map((execution) => execution.status)).toEqual([
+      "cancelled",
+      "cancelled",
+      "cancelled",
+    ]);
+    expect(getCircuit(db, INSTANCE_SLUG, "provider:anthropic/claude-sonnet-4-5")).toBeUndefined();
+
+    const session = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
+    await expect(
+      runPromptLoop({
+        db,
+        instanceSlug: INSTANCE_SLUG,
+        sessionId: session.id,
+        userText: "Reply",
+        agentConfig: makeAgentConfig(),
+        resolvedModel: makeResolvedModel(textStreamModel("available")),
+        workDir: undefined,
+      }),
+    ).resolves.toMatchObject({ text: "available" });
+  },
+);
+
+it("records an external flow deadline as a timeout and provider failure", async () => {
+  const session = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
+  const externalController = new AbortController();
+  const model = new MockLanguageModelV3({
+    doStream: async ({ abortSignal }) => ({
+      stream: new ReadableStream({
+        start(controller) {
+          abortSignal?.addEventListener("abort", () => controller.error(abortSignal.reason), {
+            once: true,
+          });
+          externalController.abort(new DOMException("Step timed out", "TimeoutError"));
+        },
+      }),
+    }),
+  });
+  await expect(
+    runPromptLoop({
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      sessionId: session.id,
+      userText: "Reply",
+      agentConfig: makeAgentConfig(),
+      resolvedModel: makeResolvedModel(model),
+      workDir: undefined,
+      abort: externalController.signal,
+    }),
+  ).rejects.toThrow("Step timed out");
+  expect(listExecutions(db, INSTANCE_SLUG)[0]?.status).toBe("timed_out");
+  expect(getCircuit(db, INSTANCE_SLUG, "provider:anthropic/claude-sonnet-4-5")).toMatchObject({
+    state: "closed",
+    failure_count: 1,
+  });
+});
+
+it.each([false, true])(
+  "records a watchdog timeout despite late cancellation (%s)",
+  async (cancelLate) => {
+    const session = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
+    const externalController = new AbortController();
+    const model = new MockLanguageModelV3({
+      doStream: async ({ abortSignal }) => ({
+        stream: new ReadableStream({
+          start(controller) {
+            controller.enqueue({ type: "stream-start", warnings: [] });
+            abortSignal?.addEventListener(
+              "abort",
+              () => {
+                if (cancelLate) externalController.abort(new Error("Late cancellation"));
+                controller.error(abortSignal.reason);
+              },
+              { once: true },
+            );
+          },
+        }),
+      }),
+    });
+    await expect(
+      runPromptLoop({
+        db,
+        instanceSlug: INSTANCE_SLUG,
+        sessionId: session.id,
+        userText: "Reply",
+        agentConfig: makeAgentConfig({ timeoutMs: 100 }),
+        resolvedModel: makeResolvedModel(model),
+        workDir: undefined,
+        abort: externalController.signal,
+      }),
+    ).rejects.toThrow();
+    expect(listExecutions(db, INSTANCE_SLUG)[0]?.status).toBe("timed_out");
+    expect(getCircuit(db, INSTANCE_SLUG, "provider:anthropic/claude-sonnet-4-5")).toMatchObject({
+      state: "closed",
+      failure_count: 1,
+    });
+  },
+);

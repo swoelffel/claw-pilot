@@ -54,6 +54,15 @@ import { logger } from "../../lib/logger.js";
 import { getRuntimeVersion } from "../_runtime-version.js";
 import { emitAudit, hashArgs } from "../../core/audit/index.js";
 import {
+  completeExecution,
+  createExecution,
+  failExecution,
+  inspectCircuit,
+  recordCircuitFailure,
+  recordCircuitSuccess,
+  startExecution,
+} from "../../core/repositories/execution-repository.js";
+import {
   createStreamingState,
   finalizeReasoning,
   handleTextDelta,
@@ -217,6 +226,22 @@ const repairToolCall: ToolCallRepairFunction<ToolSet> = async ({ toolCall, error
 // Main function
 // ---------------------------------------------------------------------------
 
+function classifyExecutionFailure(
+  error: unknown,
+  abort: AbortSignal,
+  externalAbort?: AbortSignal,
+): "failed" | "timed_out" | "cancelled" {
+  // The first abort source wins: a later user cancellation must not hide a
+  // watchdog timeout, and a user cancellation must not quarantine the provider.
+  const deadline = abort.reason instanceof Error && abort.reason.name === "TimeoutError";
+  if (externalAbort?.aborted && abort.reason === externalAbort.reason && !deadline)
+    return "cancelled";
+  const errorText = error instanceof Error ? error.message.toLowerCase() : "";
+  return abort.aborted || errorText.includes("timeout") || errorText.includes("timed out")
+    ? "timed_out"
+    : "failed";
+}
+
 export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopResult> {
   const { db, instanceSlug, sessionId, agentConfig, resolvedModel } = input;
 
@@ -226,13 +251,33 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
   if (!session) throw new Error(`Session not found: ${sessionId}`);
 
   const bus = getBus(instanceSlug);
+  const timeoutMs = agentConfig.timeoutMs ?? 5 * 60 * 1000;
+  const resourceKey = `provider:${resolvedModel.providerId}/${resolvedModel.modelId}`;
+  const execution = createExecution(db, {
+    instanceSlug,
+    sessionId,
+    agentId: agentConfig.id,
+    timeoutMs,
+    source: session.channel,
+    metadata: { provider: resolvedModel.providerId, model: resolvedModel.modelId },
+  });
+  const circuit = inspectCircuit(db, instanceSlug, resourceKey);
+  if (circuit?.state === "open") {
+    const error = new Error(
+      `Provider circuit is open until ${circuit.retry_at ?? "its cooldown expires"}`,
+    );
+    Object.assign(error, { code: "RESOURCE_CIRCUIT_OPEN" });
+    failExecution(db, execution.id, error);
+    throw error;
+  }
+  startExecution(db, execution.id);
 
   // Watchdog setup (agent timeout + chunk stall detection)
   const watchdog = createWatchdogManager(
     bus,
     sessionId,
     agentConfig.id,
-    agentConfig.timeoutMs ?? 5 * 60 * 1000,
+    timeoutMs,
     agentConfig.chunkTimeoutMs ?? 120_000,
     input.abort,
   );
@@ -323,13 +368,28 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
     if (completeBootstrap(input.workDir, agentConfig, systemPrompt)) {
       markDirty(sessionId, "workspace");
     }
+    completeExecution(db, execution.id, {
+      messageId: result.messageId,
+      inputTokens: result.tokens.input,
+      outputTokens: result.tokens.output,
+      costUsd: result.costUsd,
+    });
+    recordCircuitSuccess(db, instanceSlug, resourceKey);
     return result;
   } catch (err) {
     if (assistantMsgId) {
       updateMessageMetadata(db, assistantMsgId, { finishReason: "error" });
       bus.publish(MessageUpdated, { sessionId, messageId: assistantMsgId });
     }
-    throw lastStreamError ?? err;
+    const finalError = lastStreamError ?? err;
+    const status = classifyExecutionFailure(finalError, watchdog.fullAbort, input.abort);
+    failExecution(db, execution.id, finalError, status);
+    // Only provider/stream failures and stalls count against the provider
+    // circuit. Local validation or tool errors must not quarantine a healthy model.
+    if (status !== "cancelled" && (lastStreamError || status === "timed_out")) {
+      recordCircuitFailure(db, instanceSlug, resourceKey, finalError);
+    }
+    throw finalError;
   } finally {
     watchdog.cleanup();
     unsubPermission();

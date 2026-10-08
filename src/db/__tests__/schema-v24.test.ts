@@ -198,9 +198,9 @@ describe("migration v26 — rt_system_prompts", () => {
     db.close();
   });
 
-  it("schema version is 26 after initDatabase", () => {
+  it("reaches the latest schema version after initDatabase", () => {
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(46);
+    expect(schemaVersion(db)).toBe(47);
     db.close();
   });
 });

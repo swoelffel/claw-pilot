@@ -12,6 +12,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogle } from "@ai-sdk/google";
+import { createMistral } from "@ai-sdk/mistral";
 import { createOpenAI as createOllamaCompat } from "@ai-sdk/openai"; // Ollama uses OpenAI-compat API
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel } from "ai";
@@ -76,6 +77,15 @@ export function resolveLanguageModel(config: ProviderConfig, modelId: ModelId): 
 
     case "google-generative-ai": {
       const client = createGoogle({
+        ...(config.apiKey !== undefined && { apiKey: config.apiKey }),
+        ...(config.baseUrl !== undefined && { baseURL: config.baseUrl }),
+        ...(config.headers !== undefined && { headers: config.headers }),
+      });
+      return client(modelId);
+    }
+
+    case "mistral-chat": {
+      const client = createMistral({
         ...(config.apiKey !== undefined && { apiKey: config.apiKey }),
         ...(config.baseUrl !== undefined && { baseURL: config.baseUrl }),
         ...(config.headers !== undefined && { headers: config.headers }),
@@ -158,7 +168,7 @@ export const PROVIDER_REGISTRY: ProviderDescriptor[] = [
   {
     id: "mistral",
     name: "Mistral",
-    api: "openai-completions",
+    api: "mistral-chat",
     apiKeyEnvVar: "MISTRAL_API_KEY",
     defaultBaseUrl: "https://api.mistral.ai/v1",
   },

@@ -1,11 +1,10 @@
 /**
  * lint-discipline-r3-local.ts — local-only wrapper around the R3 gate.
  *
- * The CI script (`scripts/lint-core-modifications.ts`) reads `GITHUB_BASE_REF`
- * to know which ref to diff against. That env var is unset locally, so the
- * underlying tool either falls back to `origin/develop` (correct only for a
- * branch that was actually opened against `develop`) or skips the check
- * entirely. Result: a contributor can amend/push a PR that fails CI on R3
+ * The CI script (`scripts/lint-core-modifications.ts`) reads the PR base or
+ * push event's previous commit to know which ref to diff against. Those event
+ * values are unset locally, so its fallback may not match this branch's base.
+ * Result: a contributor can amend/push a PR that fails CI on R3
  * after passing every local hook — exactly what happened on
  * `feature/security-sprint-c4-hmac-canonical` during the May 2026 sprint.
  *
