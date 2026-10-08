@@ -1870,6 +1870,73 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // v47: Unified execution lifecycle and resource circuit breakers.
+    //
+    // One execution row follows an inbound request from acceptance through its
+    // terminal result. This provides a durable recovery cursor and a common
+    // attribution surface for chat, heartbeat, flow, and automation traffic.
+    version: 47,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS rt_executions (
+          id                TEXT PRIMARY KEY,
+          correlation_id    TEXT NOT NULL,
+          instance_slug     TEXT NOT NULL,
+          session_id        TEXT NOT NULL,
+          agent_id          TEXT NOT NULL,
+          kind              TEXT NOT NULL DEFAULT 'prompt',
+          source            TEXT NOT NULL DEFAULT 'runtime',
+          status            TEXT NOT NULL DEFAULT 'accepted'
+                            CHECK (status IN ('accepted','running','succeeded','failed','timed_out','cancelled')),
+          attempt           INTEGER NOT NULL DEFAULT 1 CHECK (attempt > 0),
+          max_attempts      INTEGER NOT NULL DEFAULT 1 CHECK (max_attempts > 0),
+          timeout_ms        INTEGER NOT NULL CHECK (timeout_ms > 0),
+          task_id           INTEGER,
+          result_message_id TEXT,
+          error_code        TEXT,
+          error_message     TEXT,
+          input_tokens      INTEGER NOT NULL DEFAULT 0,
+          output_tokens     INTEGER NOT NULL DEFAULT 0,
+          cost_usd          REAL NOT NULL DEFAULT 0,
+          outcome           TEXT CHECK (outcome IN ('useful','partial','not_useful')),
+          outcome_value     REAL,
+          metadata_json     TEXT,
+          org_id            TEXT NULL,
+          accepted_at       TEXT NOT NULL DEFAULT (datetime('now')),
+          started_at        TEXT,
+          heartbeat_at      TEXT,
+          completed_at      TEXT,
+          FOREIGN KEY (task_id) REFERENCES rt_tasks(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rt_executions_instance_time
+          ON rt_executions(instance_slug, accepted_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_rt_executions_session
+          ON rt_executions(session_id, accepted_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_rt_executions_status_heartbeat
+          ON rt_executions(status, heartbeat_at);
+        CREATE INDEX IF NOT EXISTS idx_rt_executions_correlation
+          ON rt_executions(correlation_id);
+
+        CREATE TABLE IF NOT EXISTS rt_circuit_breakers (
+          instance_slug TEXT NOT NULL,
+          resource_key  TEXT NOT NULL,
+          state         TEXT NOT NULL DEFAULT 'closed'
+                        CHECK (state IN ('closed','open','half_open')),
+          failure_count INTEGER NOT NULL DEFAULT 0,
+          threshold     INTEGER NOT NULL DEFAULT 3 CHECK (threshold > 0),
+          cooldown_ms   INTEGER NOT NULL DEFAULT 60000 CHECK (cooldown_ms > 0),
+          opened_at     TEXT,
+          retry_at      TEXT,
+          last_error    TEXT,
+          org_id        TEXT NULL,
+          updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (instance_slug, resource_key)
+        );
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

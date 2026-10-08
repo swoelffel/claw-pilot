@@ -235,4 +235,12 @@ export const ACTIONS = {
   RUNTIME_CHAT_STREAM: "runtime.chat-stream",
   RUNTIME_TOOLS_READ: "runtime.tools-read",
   RUNTIME_QUESTION_ANSWER: "runtime.question-answer",
+
+  // durable execution lifecycle, diagnostics, and business outcomes
+  EXECUTION_LIST: "execution.list",
+  EXECUTION_READ: "execution.read",
+  EXECUTION_RECOVER: "execution.recover",
+  EXECUTION_PREFLIGHT: "execution.preflight",
+  EXECUTION_ANALYTICS: "execution.analytics",
+  EXECUTION_OUTCOME_UPDATE: "execution.outcome-update",
 } as const;
