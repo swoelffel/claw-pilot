@@ -10,7 +10,7 @@
  * CI-only (needs full git log + gh CLI for the PR label). Not wired into the
  * lefthook pre-commit/pre-push chain.
  */
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -34,24 +34,39 @@ export function commitsCarryExtensionPoint(commitBodies: string[]): boolean {
 }
 
 function resolveBaseRef(): string {
-  if (process.env.GITHUB_BASE_REF) return `origin/${process.env.GITHUB_BASE_REF}`;
   if (process.env.LINT_BASE_REF) return process.env.LINT_BASE_REF;
-  return "origin/develop";
+  if (process.env.GITHUB_EVENT_NAME === "push") {
+    const before = process.env.GITHUB_EVENT_BEFORE;
+    if (!before || /^0+$/.test(before)) {
+      throw new Error("R3 cannot evaluate push: previous commit SHA is missing or zero.");
+    }
+    return before;
+  }
+  const baseBranch = process.env.GITHUB_BASE_REF || "develop";
+  return execFileSync("git", ["merge-base", `origin/${baseBranch}`, "HEAD"], {
+    encoding: "utf8",
+  }).trim();
 }
 
 function getChangedFiles(baseRef: string): string[] {
-  const out = execSync(`git diff --name-only ${baseRef}..HEAD`, {
+  const out = execFileSync("git", ["diff", "--name-only", `${baseRef}..HEAD`], {
     encoding: "utf8",
   });
-  return out.split("\n").map((s) => s.trim()).filter(Boolean);
+  return out
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 function getCommitBodies(baseRef: string): string[] {
   // `%B` = subject + body; use NUL delimiter to survive multi-line bodies.
-  const out = execSync(`git log --format=%B%x00 ${baseRef}..HEAD`, {
+  const out = execFileSync("git", ["log", "--format=%B%x00", `${baseRef}..HEAD`], {
     encoding: "utf8",
   });
-  return out.split("\0").map((s) => s.trim()).filter(Boolean);
+  return out
+    .split("\0")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 function hasBypassLabel(): boolean {
@@ -61,7 +76,10 @@ function hasBypassLabel(): boolean {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
-    const labels = out.split("\n").map((s) => s.trim()).filter(Boolean);
+    const labels = out
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
     return labels.includes(BYPASS_LABEL);
   } catch {
     // Not inside a PR context, or gh CLI unavailable — fail-closed (no bypass).
