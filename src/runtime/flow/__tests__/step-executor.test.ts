@@ -16,7 +16,8 @@ const routeSpy = vi.fn();
 vi.mock("../../channel/router.js", () => ({
   ChannelRouter: {
     route: (input: unknown) => {
-      routeSpy(input);
+      const result = routeSpy(input);
+      if (result) return result;
       return Promise.resolve({
         response: { channelType: "web", peerId: "flow-engine", text: "ok" },
         sessionId: "sess-1",
@@ -63,7 +64,26 @@ function makeCtx(mcpRegistry?: McpRegistry): FlowEngineContext {
   };
 }
 
-describe("executeStep — mcpRegistry propagation", () => {
+describe("executeStep — routing and deadlines", () => {
+  it("propagates the step deadline with a typed timeout reason", async () => {
+    routeSpy.mockImplementationOnce(
+      ({ abort }: { abort: AbortSignal }) =>
+        new Promise((_, reject) => {
+          abort.addEventListener("abort", () => reject(abort.reason), { once: true });
+        }),
+    );
+    await expect(
+      executeStep(makeCtx(), {
+        agentId: "a1",
+        briefingText: "briefing",
+        flowName: "f",
+        stepId: "s1",
+        stepRunId: 1,
+        timeoutMs: 1,
+      }),
+    ).rejects.toMatchObject({ name: "TimeoutError", message: 'Step "s1" timed out after 1ms' });
+  });
+
   it("forwards mcpRegistry from ctx to ChannelRouter.route", async () => {
     const fakeRegistry = { __tag: "mcp" } as unknown as McpRegistry;
     await executeStep(makeCtx(fakeRegistry), {
