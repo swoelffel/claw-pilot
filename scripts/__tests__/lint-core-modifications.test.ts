@@ -13,12 +13,25 @@ import {
 const gateScript = fileURLToPath(new URL("../lint-core-modifications.ts", import.meta.url));
 const tempRepos: string[] = [];
 
+function isolatedGitEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  // Git hooks can export GIT_DIR/GIT_WORK_TREE; fixture commands must stay in their temp repo.
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("GIT_")) delete env[key];
+  }
+  return env;
+}
+
 afterEach(() => {
   for (const repo of tempRepos.splice(0)) rmSync(repo, { recursive: true, force: true });
 });
 
 function git(repo: string, ...args: string[]): string {
-  return execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
+  return execFileSync("git", ["-c", "core.hooksPath=/dev/null", ...args], {
+    cwd: repo,
+    encoding: "utf8",
+    env: isolatedGitEnv(),
+  }).trim();
 }
 
 function createRepo(): { path: string; base: string } {
@@ -45,7 +58,7 @@ function runGate(repo: string, env: Record<string, string>) {
     cwd: repo,
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...isolatedGitEnv(),
       GITHUB_TOKEN: "",
       GITHUB_BASE_REF: "",
       GITHUB_EVENT_NAME: "",
@@ -120,6 +133,29 @@ describe("commitsCarryExtensionPoint", () => {
 });
 
 describe("R3 gate against Git history", () => {
+  it("keeps fixture Git commands isolated from inherited hook variables", () => {
+    const previousGitDir = process.env.GIT_DIR;
+    const previousWorkTree = process.env.GIT_WORK_TREE;
+    process.env.GIT_DIR = join(tmpdir(), "nonexistent-r3-hook-git-dir");
+    process.env.GIT_WORK_TREE = join(tmpdir(), "nonexistent-r3-hook-work-tree");
+    try {
+      const repo = createRepo();
+      git(repo.path, "update-ref", "refs/remotes/origin/develop", repo.base);
+      commitFile(repo.path, "docs/guide.md", "guide\n", "docs: add guide");
+      const result = runGate(repo.path, {
+        GITHUB_EVENT_NAME: "push",
+        GITHUB_EVENT_BEFORE: repo.base,
+      });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("no frozen path touched");
+    } finally {
+      if (previousGitDir === undefined) delete process.env.GIT_DIR;
+      else process.env.GIT_DIR = previousGitDir;
+      if (previousWorkTree === undefined) delete process.env.GIT_WORK_TREE;
+      else process.env.GIT_WORK_TREE = previousWorkTree;
+    }
+  });
+
   it("ignores develop-only frozen changes on a main push", () => {
     const repo = createRepo();
     git(repo.path, "checkout", "-q", "-b", "develop");
