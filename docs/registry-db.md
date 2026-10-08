@@ -826,6 +826,37 @@ Source of truth for DB-backed skill assignment per agent (used by the runtime `S
 
 ---
 
+## Request lifecycle (`rt_requests`)
+
+Durable identity and delivery state for inbound work. A request is distinct from
+its model execution rows: retries may create multiple `rt_executions`, while the
+stable `request_id`, trace lineage, persisted result, and delivery state remain
+attached to one request.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | TEXT PK | Stable request ID |
+| `trace_id` | TEXT | Shared across parent and child agent work |
+| `parent_request_id` | TEXT FK | Optional parent request lineage |
+| `instance_slug` | TEXT | Owning runtime instance |
+| `session_id` | TEXT | Runtime session once resolved |
+| `agent_id` | TEXT | Executing agent once resolved |
+| `task_id` | INTEGER FK | Optional business-task grouping |
+| `source` | TEXT | Submission channel/origin |
+| `idempotency_key` | TEXT | Unique per instance and source when present |
+| `delivery_status` | TEXT | `pending`, `result_persisted`, `delivered`, `acknowledged`, or `delivery_failed` |
+| `result_message_id` | TEXT | Durable assistant-message reference |
+| `artifact_refs_json` | TEXT | JSON array of persisted artifact part references |
+| `error_code`, `error_message` | TEXT | Recoverable delivery failure details |
+| `org_id` | TEXT NULL | Enterprise tenancy slot (R2) |
+| timestamps | TEXT | Created, updated, result persistence, delivery, acknowledgement |
+
+`rt_executions.request_id`, `trace_id`, and `parent_execution_id` connect model
+work to the request and distributed lineage without coupling execution success
+to final delivery.
+
+---
+
 ## Migration history
 
 | Version | Changes |
@@ -874,6 +905,8 @@ Source of truth for DB-backed skill assignment per agent (used by the runtime `S
 | 44 | SKILLS-002 — added `skills`, `skill_files`, `agent_skills` tables for structured per-instance skills (SKILL.md manifest + referenced files). `skills.org_id NULL` slot from day one (R2). Indexes `idx_skills_instance` and `idx_skill_files_skill`. |
 | 45 | SKILLS-002 — one-shot, idempotent, non-destructive migration of legacy `.opencode/skill/%` rows from `agent_files` into the v44 tables. Extension-Point: `schema-skills-migration`. |
 | 46 | Repair missing `is_compaction` markers on assistant messages with nonempty compaction summaries and a recoverable snapshot count. Add `cutoffMessageId` to the summary metadata to retain notifications inserted during summarization, including backdated traces. Preserve all message and part content; leave unverifiable boundaries unmarked. Extension-Point: `session-compaction-boundary`. |
+| 47 | Added `rt_executions` for unified model execution tracking and `rt_circuit_breakers` for resource failure isolation. Both include `org_id NULL` tenancy slots. |
+| 48 | Added `rt_requests` with stable request/trace identity, parent lineage, submission idempotency, durable result/artifact references, and delivery lifecycle. Linked executions to requests and parent executions. `rt_requests.org_id NULL` is present from creation (R2). Extension-Point: `request-lifecycle`. |
 
 ---
 

@@ -28,6 +28,7 @@ export type Route =
   | { view: "heartbeat"; slug: string }
   | { view: "session-logs"; slug: string }
   | { view: "tasks"; slug: string }
+  | { view: "requests"; slug: string }
   | { view: "flows"; slug: string }
   | { view: "flow-run"; slug: string; runId: number }
   | { view: "instance-dashboard"; slug: string }
@@ -66,6 +67,8 @@ export function routeToPath(route: Route): string {
       return `/instances/${route.slug}/session-logs`;
     case "tasks":
       return `/instances/${route.slug}/tasks`;
+    case "requests":
+      return `/instances/${route.slug}/requests`;
     case "flows":
       return `/instances/${route.slug}/flows`;
     case "flow-run":
@@ -154,6 +157,9 @@ export function pathToRoute(pathname: string): Route {
   // /instances/:slug/tasks
   const tasksMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/tasks$/);
   if (tasksMatch) return { view: "tasks", slug: tasksMatch[1]! };
+
+  const requestsMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/requests$/);
+  if (requestsMatch) return { view: "requests", slug: requestsMatch[1]! };
 
   // /instances/:slug/triggers (TRIGGER-001b)
   const triggersMatch = path.match(/^instances\/([a-z][a-z0-9-]*)\/triggers$/);

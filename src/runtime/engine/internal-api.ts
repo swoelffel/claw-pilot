@@ -40,6 +40,11 @@ export interface ChatRequest {
   sessionId?: string;
   model?: string;
   files?: Array<{ name: string; mimeType: string; data: string }>;
+  requestId?: string;
+  traceId?: string;
+  parentRequestId?: string;
+  idempotencyKey?: string;
+  taskId?: number;
 }
 
 export interface ChatResponse {
@@ -49,6 +54,9 @@ export interface ChatResponse {
   tokens: { input: number; output: number; cacheRead: number; cacheWrite: number };
   costUsd: number;
   steps: number;
+  requestId: string;
+  traceId: string;
+  executionId: string;
   /**
    * True when the prompt loop is suspended on a pending `question` tool call.
    * The UI should not clear its "busy" status on this response — the loop

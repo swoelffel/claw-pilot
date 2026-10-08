@@ -200,7 +200,7 @@ describe("migration v26 — rt_system_prompts", () => {
 
   it("reaches the latest schema version after initDatabase", () => {
     const db = initDatabase(dbPath);
-    expect(schemaVersion(db)).toBe(47);
+    expect(schemaVersion(db)).toBe(48);
     db.close();
   });
 });

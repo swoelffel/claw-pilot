@@ -1937,6 +1937,77 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v48: First-class requests and a delivery lifecycle independent from
+    // model execution. A request may be retried/re-executed while retaining
+    // one stable identity and one externally visible result.
+    version: 48,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS rt_requests (
+          id                  TEXT PRIMARY KEY,
+          trace_id            TEXT NOT NULL,
+          parent_request_id   TEXT,
+          instance_slug       TEXT NOT NULL,
+          session_id          TEXT,
+          agent_id            TEXT,
+          task_id             INTEGER,
+          source              TEXT NOT NULL DEFAULT 'runtime',
+          idempotency_key     TEXT,
+          delivery_status     TEXT NOT NULL DEFAULT 'pending'
+                              CHECK (delivery_status IN
+                                ('pending','result_persisted','delivered','acknowledged','delivery_failed')),
+          result_message_id   TEXT,
+          artifact_refs_json  TEXT,
+          error_code          TEXT,
+          error_message       TEXT,
+          org_id              TEXT NULL,
+          created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+          result_persisted_at TEXT,
+          delivered_at        TEXT,
+          acknowledged_at     TEXT,
+          updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (parent_request_id) REFERENCES rt_requests(id) ON DELETE SET NULL,
+          FOREIGN KEY (task_id) REFERENCES rt_tasks(id) ON DELETE SET NULL
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_rt_requests_idempotency
+          ON rt_requests(instance_slug, source, idempotency_key)
+          WHERE idempotency_key IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_rt_requests_instance_time
+          ON rt_requests(instance_slug, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_rt_requests_task_time
+          ON rt_requests(task_id, created_at ASC) WHERE task_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_rt_requests_trace
+          ON rt_requests(trace_id);
+
+      `);
+      const executionColumns = new Set(
+        (db.pragma("table_info(rt_executions)") as Array<{ name: string }>).map(
+          (column) => column.name,
+        ),
+      );
+      if (!executionColumns.has("request_id")) {
+        db.exec(
+          "ALTER TABLE rt_executions ADD COLUMN request_id TEXT REFERENCES rt_requests(id) ON DELETE SET NULL",
+        );
+      }
+      if (!executionColumns.has("trace_id")) {
+        db.exec("ALTER TABLE rt_executions ADD COLUMN trace_id TEXT");
+      }
+      if (!executionColumns.has("parent_execution_id")) {
+        db.exec(
+          "ALTER TABLE rt_executions ADD COLUMN parent_execution_id TEXT REFERENCES rt_executions(id) ON DELETE SET NULL",
+        );
+      }
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_rt_executions_request
+          ON rt_executions(request_id, accepted_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_rt_executions_trace
+          ON rt_executions(trace_id);
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

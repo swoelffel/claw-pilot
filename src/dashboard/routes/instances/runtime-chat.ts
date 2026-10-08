@@ -11,6 +11,8 @@ import { runtimeGuard } from "../_runtime-guard.js";
 import { proxyRuntimeSSE } from "../_sse-proxy.js";
 import { permission } from "../../middleware/permission.js";
 import { ACTIONS } from "../../middleware/permission-actions.js";
+import { randomUUID } from "node:crypto";
+import { markRequestDelivered } from "../../../core/repositories/request-repository.js";
 
 // ---------------------------------------------------------------------------
 // AI SDK error extraction
@@ -100,7 +102,7 @@ function parseResponseBodyMessage(body: string | undefined): string | undefined 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type HonoContext = any;
 
-export function registerRuntimeChatRoutes(app: Hono, _deps: RouteDeps): void {
+export function registerRuntimeChatRoutes(app: Hono, deps: RouteDeps): void {
   const attr = (c: HonoContext) => ({ slug: c.req.param("slug") });
 
   // ---------------------------------------------------------------------------
@@ -120,6 +122,10 @@ export function registerRuntimeChatRoutes(app: Hono, _deps: RouteDeps): void {
         sessionId?: string;
         model?: string;
         files?: Array<{ name: string; mimeType: string; data: string }>;
+        requestId?: string;
+        traceId?: string;
+        parentRequestId?: string;
+        taskId?: number;
       };
       try {
         body = await c.req.json();
@@ -136,10 +142,32 @@ export function registerRuntimeChatRoutes(app: Hono, _deps: RouteDeps): void {
       const rtGuard = runtimeGuard(c, slug);
       if (rtGuard) return rtGuard;
 
+      const idempotencyKey = c.req.header("idempotency-key")?.trim();
+      if (idempotencyKey && idempotencyKey.length > 200) {
+        return apiError(c, 400, "INVALID_IDEMPOTENCY_KEY", "Idempotency key is too long");
+      }
+      const requestId = body.requestId ?? randomUUID();
+      const traceId = body.traceId ?? c.req.header("x-trace-id")?.trim() ?? requestId;
+
       try {
-        const result = await callRuntimeApi<Record<string, unknown>>(slug, "/internal/chat", body);
+        const result = await callRuntimeApi<Record<string, unknown> & { requestId?: string }>(
+          slug,
+          "/internal/chat",
+          { ...body, requestId, traceId, ...(idempotencyKey ? { idempotencyKey } : {}) },
+        );
+        markRequestDelivered(deps.db, result.requestId ?? requestId);
+        c.header("X-Request-Id", result.requestId ?? requestId);
+        c.header("X-Trace-Id", traceId);
         return c.json(result);
       } catch (err) {
+        const persisted = deps.db
+          .prepare("SELECT result_message_id FROM rt_requests WHERE id = ?")
+          .get(requestId) as { result_message_id: string | null } | undefined;
+        if (persisted?.result_message_id) {
+          const { markRequestDeliveryFailed } =
+            await import("../../../core/repositories/request-repository.js");
+          markRequestDeliveryFailed(deps.db, requestId, err);
+        }
         const detail = extractApiErrorDetail(err);
         logger.error(`[POST /runtime/chat] proxy failed: ${detail.logMessage}`);
         return apiError(c, detail.httpStatus, "PROMPT_LOOP_FAILED", detail.userMessage);

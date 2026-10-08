@@ -55,6 +55,7 @@ import type {
   EpicInfo,
   SearchResult,
   NotificationsPage,
+  RuntimeRequest,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 import { getToken } from "./services/auth-state.js";
@@ -622,13 +623,38 @@ export async function postRuntimeChat(
     files?: Array<{ name: string; mimeType: string; data: string }>;
   },
 ): Promise<RuntimeChatResponse> {
+  const requestId = crypto.randomUUID();
   return apiFetch<RuntimeChatResponse>(`/instances/${slug}/runtime/chat`, {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, requestId, traceId: requestId }),
     // X-Device-Id: stable browser identity for permanent session routing.
     // Ensures the same browser always maps to the same permanent session,
     // even across page reloads, reconnections, or channel changes.
-    headers: { "X-Device-Id": getDeviceId() },
+    headers: { "X-Device-Id": getDeviceId(), "Idempotency-Key": requestId },
+  });
+}
+
+export async function fetchRuntimeRequests(
+  slug: string,
+  options: { taskId?: number; limit?: number } = {},
+): Promise<RuntimeRequest[]> {
+  const params = new URLSearchParams();
+  if (options.taskId !== undefined) params.set("taskId", String(options.taskId));
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  const query = params.toString();
+  const result = await apiFetch<{ requests: RuntimeRequest[] }>(
+    `/instances/${slug}/requests${query ? `?${query}` : ""}`,
+  );
+  return result.requests;
+}
+
+export async function recoverRequestDelivery(
+  slug: string,
+  requestId: string,
+): Promise<RuntimeRequest> {
+  return apiFetch<RuntimeRequest>(`/instances/${slug}/requests/${requestId}/recover-delivery`, {
+    method: "POST",
+    body: "{}",
   });
 }
 

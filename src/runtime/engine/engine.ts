@@ -83,6 +83,23 @@ import { resolveModelForAgent } from "../channel/router.js";
 import { startFlowRun } from "../flow/engine.js";
 import { resolveQuestion as resolveQuestionFn } from "../tool/built-in/question.js";
 import type { ProfileResolver } from "../profile/types.js";
+import {
+  markRequestDelivered,
+  markRequestDeliveryFailed,
+} from "../../core/repositories/request-repository.js";
+
+function requestIdentity(
+  body: ChatRequest,
+): NonNullable<import("../session/prompt-loop.js").PromptLoopInput["request"]> {
+  return {
+    ...(body.requestId !== undefined ? { requestId: body.requestId } : {}),
+    ...(body.traceId !== undefined ? { traceId: body.traceId } : {}),
+    ...(body.parentRequestId !== undefined ? { parentRequestId: body.parentRequestId } : {}),
+    ...(body.idempotencyKey !== undefined ? { idempotencyKey: body.idempotencyKey } : {}),
+    ...(body.taskId !== undefined ? { taskId: body.taskId } : {}),
+    source: "web",
+  };
+}
 
 // ---------------------------------------------------------------------------
 // ClawRuntime
@@ -554,7 +571,13 @@ export class ClawRuntime {
         // Send response back through the originating channel
         const channel = this._channels.find((c) => c.type === message.channelType);
         if (channel) {
-          await channel.send(result.response);
+          try {
+            await channel.send(result.response);
+            markRequestDelivered(this.db, result.requestId);
+          } catch (error) {
+            markRequestDeliveryFailed(this.db, result.requestId, error);
+            throw error;
+          }
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -605,6 +628,7 @@ export class ClawRuntime {
           ...(this._mcpRegistry !== undefined ? { mcpRegistry: this._mcpRegistry } : {}),
           ...(this.profileResolver !== undefined ? { profileResolver: this.profileResolver } : {}),
           ...(this._skillLoader !== undefined ? { skillLoader: this._skillLoader } : {}),
+          request: requestIdentity(body),
         });
 
         // Keep the route running in the background if a question wins the race.
@@ -631,17 +655,23 @@ export class ClawRuntime {
             costUsd: 0,
             steps: 0,
             pendingQuestion: true,
+            requestId: body.requestId ?? "",
+            traceId: body.traceId ?? body.requestId ?? "",
+            executionId: "",
           };
         }
 
         const { result } = winner;
         return {
           sessionId: result.sessionId,
-          messageId: result.response.text ? result.sessionId : "",
+          messageId: result.resultMessageId,
           text: result.response.text,
           tokens: result.tokens,
           costUsd: result.costUsd,
           steps: 1,
+          requestId: result.requestId,
+          traceId: result.traceId,
+          executionId: result.executionId,
         };
       },
 
