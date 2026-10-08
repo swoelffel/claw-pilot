@@ -217,6 +217,7 @@ describe("MistralAdapter", () => {
     const models = await adapter.discover("key", undefined);
     expect(models).toHaveLength(1);
     expect(models[0]!.id).toBe("mistral-large");
+    expect(models[0]!.api).toBe("mistral-chat");
     expect(models[0]!.capabilities.vision).toBe(true);
     expect(models[0]!.capabilities.contextWindow).toBe(128000);
   });

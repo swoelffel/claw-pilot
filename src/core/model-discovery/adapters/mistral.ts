@@ -59,8 +59,7 @@ export class MistralAdapter implements ProviderAdapter {
       .filter((m) => m.capabilities?.function_calling && !m.deprecation)
       .map((m) =>
         makeDiscoveredModel(this.providerId, m.id, {
-          // Mistral uses OpenAI-compatible API
-          api: "openai-completions",
+          api: "mistral-chat",
           capabilities: {
             streaming: true,
             toolCalling: true,

@@ -62,6 +62,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.74",
     "@ai-sdk/google": "^4.0.90",
+    "@ai-sdk/mistral": "^4.0.61",
     "@ai-sdk/openai": "^4.0.86",
     "@hono/node-server": "^1.19.17",
     "@inquirer/prompts": "^8.4.2",
