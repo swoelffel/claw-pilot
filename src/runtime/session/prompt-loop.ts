@@ -226,6 +226,22 @@ const repairToolCall: ToolCallRepairFunction<ToolSet> = async ({ toolCall, error
 // Main function
 // ---------------------------------------------------------------------------
 
+function classifyExecutionFailure(
+  error: unknown,
+  abort: AbortSignal,
+  externalAbort?: AbortSignal,
+): "failed" | "timed_out" | "cancelled" {
+  // The first abort source wins: a later user cancellation must not hide a
+  // watchdog timeout, and a user cancellation must not quarantine the provider.
+  const deadline = abort.reason instanceof Error && abort.reason.name === "TimeoutError";
+  if (externalAbort?.aborted && abort.reason === externalAbort.reason && !deadline)
+    return "cancelled";
+  const errorText = error instanceof Error ? error.message.toLowerCase() : "";
+  return abort.aborted || errorText.includes("timeout") || errorText.includes("timed out")
+    ? "timed_out"
+    : "failed";
+}
+
 export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopResult> {
   const { db, instanceSlug, sessionId, agentConfig, resolvedModel } = input;
 
@@ -366,15 +382,11 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
       bus.publish(MessageUpdated, { sessionId, messageId: assistantMsgId });
     }
     const finalError = lastStreamError ?? err;
-    const errorText = finalError instanceof Error ? finalError.message.toLowerCase() : "";
-    const timedOut =
-      watchdog.fullAbort.aborted ||
-      errorText.includes("timeout") ||
-      errorText.includes("timed out");
-    failExecution(db, execution.id, finalError, timedOut ? "timed_out" : "failed");
+    const status = classifyExecutionFailure(finalError, watchdog.fullAbort, input.abort);
+    failExecution(db, execution.id, finalError, status);
     // Only provider/stream failures and stalls count against the provider
     // circuit. Local validation or tool errors must not quarantine a healthy model.
-    if (lastStreamError || timedOut) {
+    if (status !== "cancelled" && (lastStreamError || status === "timed_out")) {
       recordCircuitFailure(db, instanceSlug, resourceKey, finalError);
     }
     throw finalError;

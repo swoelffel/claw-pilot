@@ -66,7 +66,9 @@ export async function executeStep(
   const timeoutMs = input.timeoutMs ?? 300_000;
   const abortController = new AbortController();
   const timeoutId = setTimeout(() => {
-    abortController.abort(new Error(`Step "${stepId}" timed out after ${timeoutMs}ms`));
+    abortController.abort(
+      new DOMException(`Step "${stepId}" timed out after ${timeoutMs}ms`, "TimeoutError"),
+    );
   }, timeoutMs);
 
   if (input.abort) {
