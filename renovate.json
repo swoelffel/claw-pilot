@@ -14,6 +14,8 @@
   "semanticCommitScope": "deps",
   "prConcurrentLimit": 5,
   "prHourlyLimit": 2,
+  "automerge": false,
+  "platformAutomerge": false,
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": ["before 6am on monday"]
@@ -53,30 +55,41 @@
       "groupName": "lint-format"
     },
     {
-      "description": "Auto-merge devDependencies on patch + CI green",
-      "matchDepTypes": ["devDependencies"],
-      "matchUpdateTypes": ["patch", "pin", "digest"],
-      "automerge": true,
-      "platformAutomerge": true
-    },
-    {
-      "description": "Auto-merge @types/* (any non-major update)",
-      "matchPackageNames": ["/^@types\\//"],
-      "matchUpdateTypes": ["patch", "minor", "pin", "digest"],
-      "automerge": true,
-      "platformAutomerge": true
-    },
-    {
-      "description": "Major bumps — never grouped, never auto-merged",
+      "description": "Major bumps require manual review and are separate unless explicitly coupled below",
       "matchUpdateTypes": ["major"],
       "addLabels": ["breaking-change"],
+      "groupName": null,
       "automerge": false
+    },
+    {
+      "description": "Keep Vitest and its coverage provider on the same major version",
+      "matchPackageNames": ["/^vitest$/", "/^@vitest\\//"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "vitest"
+    },
+    {
+      "description": "Upgrade Commitlint CLI and conventional config together",
+      "matchPackageNames": ["@commitlint/cli", "@commitlint/config-conventional"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "commitlint"
     },
     {
       "description": "Pin Node major to 22 (LTS) — skip v24 until conscious decision",
       "matchPackageNames": ["node"],
       "matchManagers": ["nvm", "npm", "github-actions", "dockerfile"],
       "allowedVersions": "<23.0.0"
+    },
+    {
+      "description": "Keep Node.js types aligned with the Node 22 runtime",
+      "matchPackageNames": ["@types/node"],
+      "allowedVersions": "<23.0.0"
+    },
+    {
+      "description": "The Node compatibility floor is a maintainer decision, not the reference runtime patch",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["engines"],
+      "matchPackageNames": ["node"],
+      "enabled": false
     },
     {
       "description": "pnpm — patches OK, minors require manual review",
