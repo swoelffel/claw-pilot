@@ -134,5 +134,6 @@ jobs:
       - name: Discipline gates (R1 + R2 + R3 + R5)
         run: pnpm lint:discipline:ci
         env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
           GITHUB_BASE_REF: ${{ github.base_ref }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
