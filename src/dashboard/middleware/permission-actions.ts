@@ -14,6 +14,7 @@ export const ACTIONS = {
   AUTH_LOGIN: "auth.login",
   AUTH_LOGOUT: "auth.logout",
   AUTH_ME: "auth.me",
+  AUTH_PERMISSION_INSPECT: "auth.permission.inspect",
 
   // profile
   PROFILE_READ: "profile.read",

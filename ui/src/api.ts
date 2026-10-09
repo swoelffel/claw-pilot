@@ -58,7 +58,7 @@ import type {
   RuntimeRequest,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
-import { getToken } from "./services/auth-state.js";
+import { getToken, setToken } from "./services/auth-state.js";
 
 /**
  * Returns a stable device ID for this browser, stored in localStorage.
@@ -81,20 +81,45 @@ function getDeviceId(): string {
 }
 
 function authHeaders(): HeadersInit {
+  const token = getToken().trim();
   return {
-    Authorization: `Bearer ${getToken()}`,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     "Content-Type": "application/json",
   };
 }
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    ...init,
-    headers: {
-      ...authHeaders(),
-      ...init?.headers,
-    },
-  });
+async function refreshAuthToken(): Promise<boolean> {
+  const res = await fetch("/api/auth/me", { credentials: "same-origin" });
+  if (!res.ok) return false;
+  const body = (await res.json()) as { authenticated?: boolean; token?: string };
+  if (!body.authenticated || !body.token?.trim()) return false;
+  setToken(body.token.trim());
+  return true;
+}
+
+async function apiFetch<T>(path: string, init?: RequestInit, refreshed = false): Promise<T> {
+  const request = (): Promise<Response> =>
+    fetch(`/api${path}`, {
+      ...init,
+      headers: {
+        ...authHeaders(),
+        ...init?.headers,
+      },
+    });
+  let res = await request();
+  // A rejected request has not reached the route handler, so it is safe to
+  // retry exactly once after refreshing the dashboard token from the session.
+  // 403 is intentionally never retried: it is a permanent authorization result.
+  if (
+    res.status === 401 &&
+    !refreshed &&
+    path !== "/auth/login" &&
+    path !== "/auth/me" &&
+    (await refreshAuthToken())
+  ) {
+    res = await request();
+    refreshed = true;
+  }
   if (!res.ok) {
     // Global 401 handler — session expired, redirect to login
     if (res.status === 401 && path !== "/auth/login" && path !== "/auth/me") {
@@ -113,6 +138,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return res.json() as Promise<T>;
 }
+
+export const __testing = { apiFetch, authHeaders };
 
 export async function fetchInstances(): Promise<InstanceInfo[]> {
   return apiFetch<InstanceInfo[]>("/instances");
