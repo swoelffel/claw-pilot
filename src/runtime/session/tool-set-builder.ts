@@ -42,6 +42,7 @@ import { TOOL_PROFILES } from "../tool/registry.js";
 import { invalidateWorkspaceCache } from "./workspace-cache.js";
 import { markDirty } from "./system-prompt-dirty.js";
 import { buildResolvedEnv } from "../../lib/env-reader.js";
+import { executeWithResourceGuard } from "../tool/resource-guard.js";
 
 // ---------------------------------------------------------------------------
 // Part helpers
@@ -151,7 +152,17 @@ async function wireDynamicTool(
         args,
       );
       try {
-        const result = await def.execute(args as never, wireCtx.ctx);
+        const result = await executeWithResourceGuard({
+          db: wireCtx.db,
+          instanceSlug: wireCtx.ctx.instanceSlug ?? "unknown",
+          agentId: wireCtx.ctx.agentId,
+          identity:
+            wireCtx.ctx.executionIdentity ??
+            `${wireCtx.ctx.channel ?? "runtime"}:${wireCtx.ctx.agentId}`,
+          toolName,
+          args,
+          execute: () => def.execute(args as never, wireCtx.ctx),
+        });
         updatePartState(wireCtx.db, part.id, "completed", result.output);
         wireCtx.bus.publish(MessageUpdated, {
           sessionId: wireCtx.sessionId,
@@ -370,7 +381,15 @@ async function wireBuiltInTools(
         const callStart = Date.now();
         try {
           const callCtx = { ...ctx, toolCallId: options.toolCallId };
-          const result = await def.execute(execArgs as never, callCtx);
+          const result = await executeWithResourceGuard({
+            db,
+            instanceSlug,
+            agentId: ctx.agentId,
+            identity: ctx.executionIdentity ?? `${ctx.channel ?? "runtime"}:${ctx.agentId}`,
+            toolName: toolInfo.id,
+            args: execArgs,
+            execute: () => def.execute(execArgs as never, callCtx),
+          });
           const durationMs = Date.now() - callStart;
           updatePartState(db, part.id, "completed", result.output);
           db.prepare("UPDATE rt_parts SET metadata = ?, updated_at = ? WHERE id = ?").run(
