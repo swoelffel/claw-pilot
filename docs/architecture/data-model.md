@@ -49,8 +49,8 @@
 | `notifications` | v37 | Persistent notification inbox — severity (info/warning/error/success), dedup_key, is_read, link_route, auto-prune 30 days |
 | `instance_shared_files` | v38 | Files shared across all agents of an instance — content + content_hash, FK CASCADE on instance delete |
 | `rt_audit_events` | v39 | H6 audit event bus persistence — kind, timestamp, server_id, org_id, user_id, JSON payload |
-| `rt_observability_events` | v49 | Privacy-minimized trace spans, standardized errors, latency/cost metrics, and human/child/workflow attribution |
-| `rt_observability_retention` | v49 | Independent retention policies for logs, metrics, traces, conversations, and outcomes |
+| `rt_observability_events` | v50 | Privacy-minimized trace spans, standardized errors, latency/cost metrics, and human/child/workflow attribution |
+| `rt_observability_retention` | v50 | Independent retention policies for logs, metrics, traces, conversations, and outcomes |
 | `rt_flow_triggers` | v40 → v41 | Cron + webhook triggers for flows — kind (cron/webhook), cron_expr, webhook_slug + secret_ref, ip_allowlist, input_mapping (v41 drops UNIQUE on webhook_slug to allow per-org reuse) |
 | `rt_flow_trigger_runs` | v40 | Trigger firing log — trigger_id, fired_at, run_id, source (scheduler/http), error |
 

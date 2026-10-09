@@ -271,11 +271,13 @@ export function registerRuntimeChatRoutes(app: Hono, deps: RouteDeps): void {
     (c) => {
       const { slug } = getInstanceContext(c);
       const sessionId = c.req.query("sessionId") || undefined;
+      const lastEventId = c.req.header("last-event-id") || c.req.query("lastEventId") || undefined;
 
       return streamSSE(c, async (stream) => {
         await proxyRuntimeSSE(stream, slug, {
           ...(sessionId !== undefined ? { sessionId } : {}),
           types: CHAT_RELEVANT_TYPES,
+          ...(lastEventId !== undefined ? { lastEventId } : {}),
         });
       });
     },

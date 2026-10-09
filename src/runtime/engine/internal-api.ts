@@ -15,6 +15,8 @@ import {
   WorkspaceFileChanged,
 } from "../bus/index.js";
 import type { EventDef } from "../bus/index.js";
+import type Database from "better-sqlite3";
+import { listExecutionEventsAfter } from "../../core/repositories/execution-event-repository.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -108,6 +110,7 @@ export class InternalApiServer {
   private readonly _tokenBuffer: Buffer;
   private readonly _handlers: InternalApiHandlers;
   private readonly _slug: InstanceSlug;
+  private readonly _db: Database.Database;
   private _boundPort: number | undefined;
 
   constructor(options: {
@@ -115,11 +118,13 @@ export class InternalApiServer {
     token: string;
     slug: InstanceSlug;
     handlers: InternalApiHandlers;
+    db: Database.Database;
   }) {
     this._port = options.port;
     this._tokenBuffer = Buffer.from(options.token, "utf8");
     this._handlers = options.handlers;
     this._slug = options.slug;
+    this._db = options.db;
   }
 
   /** Actual port after start(). May differ from constructor port if a retry was needed. */
@@ -318,6 +323,8 @@ export class InternalApiServer {
             .filter(Boolean),
         )
       : null;
+    const cursorValue = req.headers["last-event-id"] ?? parsedUrl.searchParams.get("lastEventId");
+    const lastEventId = Number(Array.isArray(cursorValue) ? cursorValue[0] : cursorValue);
 
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -327,6 +334,16 @@ export class InternalApiServer {
     });
     // Hint browser reconnect delay
     res.write("retry: 3000\n\n");
+    if (Number.isSafeInteger(lastEventId) && lastEventId >= 0) {
+      for (const event of listExecutionEventsAfter(this._db, this._slug, lastEventId, {
+        ...(sessionId ? { sessionId } : {}),
+        ...(typesFilter ? { types: typesFilter } : {}),
+      })) {
+        res.write(
+          `id: ${event.id}\ndata: ${JSON.stringify({ type: event.event_type, payload: JSON.parse(event.payload_json) as unknown, timestamp: event.created_at, eventId: event.id, replayed: true })}\n\n`,
+        );
+      }
+    }
 
     const bus = getBus(this._slug);
     let cleaned = false;
@@ -343,7 +360,8 @@ export class InternalApiServer {
         if (payload.sessionId && payload.sessionId !== sessionId) return;
       }
 
-      const line = `data: ${JSON.stringify({ ...event, timestamp: new Date().toISOString() })}\n\n`;
+      const eventId = (event as typeof event & { eventId?: number }).eventId;
+      const line = `${eventId ? `id: ${eventId}\n` : ""}data: ${JSON.stringify({ ...event, timestamp: new Date().toISOString() })}\n\n`;
       res.write(line);
     });
 

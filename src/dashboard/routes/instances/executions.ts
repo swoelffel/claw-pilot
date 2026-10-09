@@ -7,12 +7,9 @@ import { ACTIONS } from "../../middleware/permission-actions.js";
 import { getInstanceContext } from "../_instance-middleware.js";
 import { loadMergedConfigDbFirst } from "../_config-helpers.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
-import { checkBudgets } from "../../../core/repositories/budget-repository.js";
 import {
-  getCircuit,
   getExecution,
   getExecutionAnalytics,
-  inspectCircuit,
   listExecutions,
   recordBusinessOutcome,
   recoverStaleExecutions,
@@ -24,6 +21,7 @@ import {
   listRequests,
   markRequestDelivered,
 } from "../../../core/repositories/request-repository.js";
+import { buildExecutionPreflight } from "./execution-preflight.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type HonoContext = any;
@@ -245,6 +243,7 @@ function registerExecutionActionRoutes(app: Hono, deps: RouteDeps): void {
     }),
     (c) => {
       const { slug } = getInstanceContext(c);
+      const user = c.get("user");
       const config = loadMergedConfigDbFirst(registry, slug, getRuntimeStateDir(slug));
       if (!config) return apiError(c, 404, "RUNTIME_CONFIG_NOT_FOUND", "Runtime config not found");
       const agentId = c.req.query("agentId") ?? config.agents[0]?.id;
@@ -252,52 +251,21 @@ function registerExecutionActionRoutes(app: Hono, deps: RouteDeps): void {
       if (!agentId || !agent) {
         return apiError(c, 404, "AGENT_NOT_FOUND", `Agent ${agentId ?? "(default)"} not found`);
       }
-      const model = agent.model ?? config.defaultModel ?? "";
-      const circuit = inspectCircuit(db, slug, `provider:${model}`);
-      const budgets = checkBudgets(db, slug, agentId);
-      const key = db
-        .prepare(
-          `SELECT k.id, k.name, k.provider_id FROM instances i
-           LEFT JOIN agents a ON a.instance_id = i.id AND a.agent_id = ?
-           LEFT JOIN named_api_keys k ON k.id = COALESCE(a.named_key_id, i.default_named_key_id)
-           WHERE i.slug = ?`,
-        )
-        .get(agentId, slug) as
-        | { id: number | null; name: string | null; provider_id: string | null }
-        | undefined;
-      const checks = [
-        { id: "agent", status: "pass", detail: agentId },
-        {
-          id: "model",
-          status: model ? "pass" : "fail",
-          detail: model || "No model configured",
-        },
-        {
-          id: "authentication",
-          status: key?.id ? "pass" : "warn",
-          detail: key?.id
-            ? `Named key ${key.name ?? key.id} (${key.provider_id})`
-            : "No named key assigned; runtime environment fallback will be used",
-        },
-        {
-          id: "provider-circuit",
-          status: circuit?.state === "open" ? "fail" : "pass",
-          detail: circuit?.state ?? "closed",
-        },
-        {
-          id: "budget",
-          status: budgets.some((budget) => budget.status === "exceeded") ? "fail" : "pass",
-          detail:
-            budgets.length === 0 ? "No enforced budget" : `${budgets.length} budget(s) checked`,
-        },
-      ];
-      return c.json({
-        ready: !checks.some((check) => check.status === "fail"),
-        agentId,
-        model,
-        checks,
-        circuit: getCircuit(db, slug, `provider:${model}`) ?? null,
-      });
+      const workDir = getRuntimeStateDir(slug);
+      const requestedTool = c.req.query("tool");
+      const requestedResource = c.req.query("resource");
+      return c.json(
+        buildExecutionPreflight({
+          db,
+          slug,
+          config,
+          agent,
+          user,
+          workDir,
+          ...(requestedTool !== undefined ? { requestedTool } : {}),
+          ...(requestedResource !== undefined ? { requestedResource } : {}),
+        }),
+      );
     },
   );
 }

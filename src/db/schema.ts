@@ -2009,10 +2009,24 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
-    // v49: Structured observability records. These deliberately contain only
+    // v49: Durable replay events and explicit side-effect operation state.
+    version: 49,
+    up(db) {
+      db.exec(`
+    CREATE TABLE IF NOT EXISTS rt_execution_events (id INTEGER PRIMARY KEY AUTOINCREMENT,request_id TEXT NOT NULL,execution_id TEXT,trace_id TEXT NOT NULL,instance_slug TEXT NOT NULL,session_id TEXT,event_type TEXT NOT NULL,payload_json TEXT NOT NULL,org_id TEXT NULL,created_at TEXT NOT NULL DEFAULT (datetime('now')),FOREIGN KEY(request_id) REFERENCES rt_requests(id) ON DELETE CASCADE,FOREIGN KEY(execution_id) REFERENCES rt_executions(id) ON DELETE SET NULL);
+    CREATE INDEX IF NOT EXISTS idx_rt_execution_events_request_id ON rt_execution_events(request_id,id);
+    CREATE INDEX IF NOT EXISTS idx_rt_execution_events_instance_id ON rt_execution_events(instance_slug,id);
+    CREATE TABLE IF NOT EXISTS rt_operations (id TEXT PRIMARY KEY,request_id TEXT NOT NULL,execution_id TEXT,operation_type TEXT NOT NULL,resource TEXT,state TEXT NOT NULL DEFAULT 'not_started' CHECK(state IN ('not_started','active','completed','failed_safely','uncertain','requires_review')),idempotency_mode TEXT NOT NULL DEFAULT 'unsafe' CHECK(idempotency_mode IN ('read_only','idempotent','unsafe')),attempt INTEGER NOT NULL DEFAULT 0 CHECK(attempt>=0),error_code TEXT,error_message TEXT,org_id TEXT NULL,started_at TEXT,completed_at TEXT,updated_at TEXT NOT NULL DEFAULT(datetime('now')),FOREIGN KEY(request_id) REFERENCES rt_requests(id) ON DELETE CASCADE,FOREIGN KEY(execution_id) REFERENCES rt_executions(id) ON DELETE SET NULL);
+    CREATE INDEX IF NOT EXISTS idx_rt_operations_request ON rt_operations(request_id,updated_at);
+    CREATE INDEX IF NOT EXISTS idx_rt_operations_recovery ON rt_operations(state,idempotency_mode);
+  `);
+    },
+  },
+  {
+    // v50: Structured observability records. These deliberately contain only
     // identifiers and operational metadata; prompts, conversation text and
     // tool arguments remain in their independently governed stores.
-    version: 49,
+    version: 50,
     up(db) {
       db.exec(`
         CREATE TABLE IF NOT EXISTS rt_observability_events (

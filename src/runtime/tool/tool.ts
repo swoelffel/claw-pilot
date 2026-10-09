@@ -21,6 +21,8 @@ export namespace Tool {
     sessionId: SessionId;
     messageId: MessageId;
     agentId: string;
+    /** Stable identity used for permission diagnostics and resource failure grouping. */
+    executionIdentity?: string;
     /** Instance slug — used by tools that need to access the instance bus. */
     instanceSlug?: string;
     /** Vercel AI SDK tool call ID — unique per tool invocation. */

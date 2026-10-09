@@ -45,9 +45,22 @@ export interface PermissionContext {
   attributes?: Record<string, unknown>;
 }
 
+export interface MatchedGrant {
+  id?: string;
+  role?: string;
+  action?: string;
+  resource?: string;
+  effect: "allow" | "deny";
+}
+
 export type PermissionDecision =
-  | { allow: true }
-  | { allow: false; reason: string; requiresApproval?: boolean };
+  | { allow: true; matchedGrant?: MatchedGrant }
+  | {
+      allow: false;
+      reason: string;
+      requiresApproval?: boolean;
+      matchedGrant?: MatchedGrant;
+    };
 
 export interface PermissionChecker {
   check(ctx: PermissionContext): Promise<PermissionDecision>;
