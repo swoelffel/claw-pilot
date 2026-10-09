@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
+import { recordObservabilityEvent } from "./observability-repository.js";
 
 export type DeliveryStatus =
   | "pending"
@@ -117,14 +118,48 @@ export function persistRequestResult(
     artifact_refs_json = ?, error_code = NULL, error_message = NULL,
     result_persisted_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
   ).run(result.messageId, JSON.stringify(result.artifactRefs ?? []), id);
+  const request = getRequest(db, id);
+  if (request)
+    recordObservabilityEvent(db, {
+      instanceSlug: request.instance_slug,
+      eventName: "delivery.result_persisted",
+      eventKind: "span",
+      traceId: request.trace_id,
+      requestId: id,
+      sessionId: request.session_id ?? undefined,
+      agentId: request.agent_id ?? undefined,
+      phase: "delivery",
+      success: true,
+    });
 }
 
 export function markRequestDelivered(db: Database.Database, id: string): void {
-  db.prepare(
-    `UPDATE rt_requests SET delivery_status = 'delivered', delivered_at = datetime('now'),
+  const result = db
+    .prepare(
+      `UPDATE rt_requests SET delivery_status = 'delivered', delivered_at = datetime('now'),
     error_code = NULL, error_message = NULL, updated_at = datetime('now')
-    WHERE id = ? AND delivery_status IN ('result_persisted','delivery_failed','delivered')`,
-  ).run(id);
+    WHERE id = ? AND delivery_status IN ('result_persisted','delivery_failed')`,
+    )
+    .run(id);
+  const request = result.changes === 1 ? getRequest(db, id) : undefined;
+  if (request)
+    recordObservabilityEvent(db, {
+      instanceSlug: request.instance_slug,
+      eventName: "delivery.succeeded",
+      eventKind: "span",
+      traceId: request.trace_id,
+      requestId: id,
+      sessionId: request.session_id ?? undefined,
+      agentId: request.agent_id ?? undefined,
+      phase: "delivery",
+      success: true,
+      durationMs: request.result_persisted_at
+        ? Math.max(
+            0,
+            Date.now() - new Date(`${request.result_persisted_at.replace(" ", "T")}Z`).getTime(),
+          )
+        : undefined,
+    });
 }
 
 export function acknowledgeRequest(db: Database.Database, id: string): RequestRow | undefined {
@@ -144,6 +179,21 @@ export function markRequestDeliveryFailed(db: Database.Database, id: string, err
     error_message = ?, updated_at = datetime('now')
     WHERE id = ? AND delivery_status IN ('result_persisted','delivered','delivery_failed')`,
   ).run(code, message.slice(0, 2000), id);
+  const request = getRequest(db, id);
+  if (request)
+    recordObservabilityEvent(db, {
+      instanceSlug: request.instance_slug,
+      eventName: "delivery.failed",
+      eventKind: "error",
+      traceId: request.trace_id,
+      requestId: id,
+      sessionId: request.session_id ?? undefined,
+      agentId: request.agent_id ?? undefined,
+      phase: "delivery",
+      errorCode: code,
+      retryable: true,
+      success: false,
+    });
 }
 
 export function listRequests(

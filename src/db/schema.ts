@@ -2008,6 +2008,58 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v49: Structured observability records. These deliberately contain only
+    // identifiers and operational metadata; prompts, conversation text and
+    // tool arguments remain in their independently governed stores.
+    version: 49,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS rt_observability_events (
+          id             INTEGER PRIMARY KEY AUTOINCREMENT,
+          instance_slug  TEXT NOT NULL,
+          event_name     TEXT NOT NULL,
+          event_kind     TEXT NOT NULL CHECK (event_kind IN ('span','error','metric')),
+          trace_id       TEXT NOT NULL,
+          request_id     TEXT,
+          execution_id   TEXT,
+          session_id     TEXT,
+          agent_id       TEXT,
+          activity_kind  TEXT NOT NULL DEFAULT 'human_request'
+                         CHECK (activity_kind IN ('human_request','child_agent','workflow','system')),
+          phase          TEXT,
+          tool_name      TEXT,
+          resource       TEXT,
+          error_code     TEXT,
+          attempt        INTEGER NOT NULL DEFAULT 1 CHECK (attempt > 0),
+          retryable      INTEGER,
+          success        INTEGER,
+          duration_ms    REAL,
+          cost_usd       REAL,
+          attributes_json TEXT,
+          org_id         TEXT NULL,
+          created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_rt_observability_trace
+          ON rt_observability_events(instance_slug, trace_id, id);
+        CREATE INDEX IF NOT EXISTS idx_rt_observability_name_time
+          ON rt_observability_events(instance_slug, event_name, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_rt_observability_error_time
+          ON rt_observability_events(instance_slug, error_code, created_at DESC)
+          WHERE event_kind = 'error';
+
+        CREATE TABLE IF NOT EXISTS rt_observability_retention (
+          instance_slug TEXT NOT NULL,
+          data_class    TEXT NOT NULL CHECK (data_class IN
+                        ('logs','metrics','traces','conversations','outcomes')),
+          retention_days INTEGER NOT NULL CHECK (retention_days BETWEEN 1 AND 3650),
+          updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+          org_id        TEXT NULL,
+          PRIMARY KEY (instance_slug, data_class)
+        );
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

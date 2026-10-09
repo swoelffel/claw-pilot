@@ -87,11 +87,19 @@ function authHeaders(): HeadersInit {
   };
 }
 
+function randomHex(byteLength: number): string {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const traceId = randomHex(16);
   const res = await fetch(`/api${path}`, {
     ...init,
     headers: {
       ...authHeaders(),
+      traceparent: `00-${traceId}-${randomHex(8)}-01`,
       ...init?.headers,
     },
   });
@@ -624,13 +632,18 @@ export async function postRuntimeChat(
   },
 ): Promise<RuntimeChatResponse> {
   const requestId = crypto.randomUUID();
+  const traceId = randomHex(16);
   return apiFetch<RuntimeChatResponse>(`/instances/${slug}/runtime/chat`, {
     method: "POST",
-    body: JSON.stringify({ ...body, requestId, traceId: requestId }),
+    body: JSON.stringify({ ...body, requestId, traceId }),
     // X-Device-Id: stable browser identity for permanent session routing.
     // Ensures the same browser always maps to the same permanent session,
     // even across page reloads, reconnections, or channel changes.
-    headers: { "X-Device-Id": getDeviceId(), "Idempotency-Key": requestId },
+    headers: {
+      "X-Device-Id": getDeviceId(),
+      "Idempotency-Key": requestId,
+      traceparent: `00-${traceId}-${randomHex(8)}-01`,
+    },
   });
 }
 

@@ -335,6 +335,7 @@
     "tids",
     "tkey",
     "tlnp",
+    "traceparent",
     "TOCTOU",
     "todoread",
     "todowrite",
