@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
+import { recordObservabilityEvent } from "./observability-repository.js";
 
 // cspell:ignore julianday
 
@@ -127,6 +128,30 @@ export function completeExecution(
        input_tokens = ?, output_tokens = ?, cost_usd = ?, heartbeat_at = datetime('now'),
        completed_at = datetime('now') WHERE id = ? AND status IN ('accepted','running')`,
   ).run(result.messageId, result.inputTokens, result.outputTokens, result.costUsd, id);
+  const execution = getExecution(db, id);
+  if (execution)
+    recordObservabilityEvent(db, {
+      instanceSlug: execution.instance_slug,
+      eventName: "execution.completed",
+      eventKind: "span",
+      traceId: execution.trace_id ?? execution.correlation_id,
+      requestId: execution.request_id ?? undefined,
+      executionId: id,
+      sessionId: execution.session_id,
+      agentId: execution.agent_id,
+      activityKind: execution.parent_execution_id
+        ? "child_agent"
+        : execution.source === "flow"
+          ? "workflow"
+          : "human_request",
+      phase: "execution",
+      attempt: execution.attempt,
+      success: true,
+      costUsd: result.costUsd,
+      durationMs: execution.started_at
+        ? Math.max(0, Date.now() - new Date(`${execution.started_at.replace(" ", "T")}Z`).getTime())
+        : undefined,
+    });
 }
 
 export function failExecution(
@@ -142,6 +167,28 @@ export function failExecution(
        heartbeat_at = datetime('now'), completed_at = datetime('now')
      WHERE id = ? AND status IN ('accepted','running')`,
   ).run(status, code, message.slice(0, 2000), id);
+  const execution = getExecution(db, id);
+  if (execution)
+    recordObservabilityEvent(db, {
+      instanceSlug: execution.instance_slug,
+      eventName: status === "timed_out" ? "execution.timeout" : "execution.failed",
+      eventKind: "error",
+      traceId: execution.trace_id ?? execution.correlation_id,
+      requestId: execution.request_id ?? undefined,
+      executionId: id,
+      sessionId: execution.session_id,
+      agentId: execution.agent_id,
+      activityKind: execution.parent_execution_id
+        ? "child_agent"
+        : execution.source === "flow"
+          ? "workflow"
+          : "human_request",
+      phase: "execution",
+      attempt: execution.attempt,
+      errorCode: code ?? "EXECUTION_FAILED",
+      retryable: execution.attempt < execution.max_attempts,
+      success: false,
+    });
 }
 
 export function listExecutions(

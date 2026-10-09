@@ -151,6 +151,10 @@
 | Method | Route | Role |
 |---|---|---|
 | `GET` | `/api/instances/:slug/costs` | Cost aggregations per agent/session |
+| `GET` | `/api/instances/:slug/observability/metrics` | Percentile latency and attributed operational metrics; filter by activity kind |
+| `GET` | `/api/instances/:slug/observability/traces/:traceId` | Ordered end-to-end trace timeline |
+| `GET` | `/api/instances/:slug/observability/alerts` | Active delivery, timeout, denial, tool, workflow, and budget alerts |
+| `GET/PUT` | `/api/instances/:slug/observability/retention` | Per-data-class retention and privacy controls |
 | `GET` | `/api/instances/:slug/events` | Runtime bus events (activity console) |
 | `GET` | `/api/instances/:slug/events/stream` | SSE instance-wide event stream (see [SSE Architecture](../sse-architecture.md)) |
 | `GET` | `/api/instances/:slug/heartbeat/history` | Heartbeat history and analytics |

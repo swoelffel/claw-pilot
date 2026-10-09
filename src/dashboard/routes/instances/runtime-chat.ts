@@ -147,7 +147,7 @@ export function registerRuntimeChatRoutes(app: Hono, deps: RouteDeps): void {
         return apiError(c, 400, "INVALID_IDEMPOTENCY_KEY", "Idempotency key is too long");
       }
       const requestId = body.requestId ?? randomUUID();
-      const traceId = body.traceId ?? c.req.header("x-trace-id")?.trim() ?? requestId;
+      const traceId = body.traceId ?? ((c as HonoContext).get("traceId") as string) ?? requestId;
 
       try {
         const result = await callRuntimeApi<Record<string, unknown> & { requestId?: string }>(

@@ -88,6 +88,12 @@ function authHeaders(): HeadersInit {
   };
 }
 
+function randomHex(byteLength: number): string {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 async function refreshAuthToken(): Promise<boolean> {
   const res = await fetch("/api/auth/me", { credentials: "same-origin" });
   if (!res.ok) return false;
@@ -98,11 +104,13 @@ async function refreshAuthToken(): Promise<boolean> {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit, refreshed = false): Promise<T> {
+  const traceparent = `00-${randomHex(16)}-${randomHex(8)}-01`;
   const request = (): Promise<Response> =>
     fetch(`/api${path}`, {
       ...init,
       headers: {
         ...authHeaders(),
+        traceparent,
         ...init?.headers,
       },
     });
@@ -650,13 +658,18 @@ export async function postRuntimeChat(
   },
 ): Promise<RuntimeChatResponse> {
   const requestId = crypto.randomUUID();
+  const traceId = randomHex(16);
   return apiFetch<RuntimeChatResponse>(`/instances/${slug}/runtime/chat`, {
     method: "POST",
-    body: JSON.stringify({ ...body, requestId, traceId: requestId }),
+    body: JSON.stringify({ ...body, requestId, traceId }),
     // X-Device-Id: stable browser identity for permanent session routing.
     // Ensures the same browser always maps to the same permanent session,
     // even across page reloads, reconnections, or channel changes.
-    headers: { "X-Device-Id": getDeviceId(), "Idempotency-Key": requestId },
+    headers: {
+      "X-Device-Id": getDeviceId(),
+      "Idempotency-Key": requestId,
+      traceparent: `00-${traceId}-${randomHex(8)}-01`,
+    },
   });
 }
 
