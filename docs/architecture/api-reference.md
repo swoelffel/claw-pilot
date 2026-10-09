@@ -38,6 +38,7 @@
 | `POST` | `/api/auth/login` | Authenticate, create session |
 | `POST` | `/api/auth/logout` | Invalidate session |
 | `GET` | `/api/auth/me` | Current user info + WS token |
+| `POST` | `/api/auth/permissions/inspect` | Inspect the caller's effective permission for an action and resource |
 
 ### System
 
