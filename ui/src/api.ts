@@ -118,7 +118,6 @@ async function apiFetch<T>(path: string, init?: RequestInit, refreshed = false):
     (await refreshAuthToken())
   ) {
     res = await request();
-    refreshed = true;
   }
   if (!res.ok) {
     // Global 401 handler — session expired, redirect to login
