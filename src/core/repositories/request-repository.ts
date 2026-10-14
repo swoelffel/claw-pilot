@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
+import { ClawPilotError } from "../../lib/errors.js";
 import { recordObservabilityEvent } from "./observability-repository.js";
 
 export type DeliveryStatus =
@@ -50,11 +51,59 @@ export interface CreateRequestInput {
   businessTaskId?: string;
 }
 
+/** Context resolved by the caller, independently of client correlation IDs. */
+export interface RequestScope {
+  instanceSlug: string;
+  source?: string;
+  sessionId?: string | null;
+  agentId?: string | null;
+  parentRequestId?: string | null;
+  taskId?: number | null;
+  businessTaskId?: string | null;
+}
+
+export class RequestContextConflictError extends ClawPilotError {
+  constructor() {
+    super("Request identity is incompatible with this context", "REQUEST_CONTEXT_CONFLICT");
+  }
+}
+
+/** Check ownership before exposing a result or changing durable delivery state. */
+export function assertRequestScope(request: RequestRow | undefined, scope: RequestScope): void {
+  if (
+    !request ||
+    request.instance_slug !== scope.instanceSlug ||
+    (scope.source !== undefined && request.source !== scope.source) ||
+    (scope.sessionId !== undefined && request.session_id !== scope.sessionId) ||
+    (scope.agentId !== undefined && request.agent_id !== scope.agentId) ||
+    (scope.parentRequestId !== undefined && request.parent_request_id !== scope.parentRequestId) ||
+    (scope.taskId !== undefined && request.task_id !== scope.taskId) ||
+    (scope.businessTaskId !== undefined && request.business_task_id !== scope.businessTaskId)
+  ) {
+    throw new RequestContextConflictError();
+  }
+}
+
+function requestScope(input: CreateRequestInput): RequestScope {
+  return {
+    instanceSlug: input.instanceSlug,
+    source: input.source,
+    sessionId: input.sessionId ?? null,
+    agentId: input.agentId ?? null,
+    parentRequestId: input.parentRequestId ?? null,
+    taskId: input.taskId ?? null,
+    businessTaskId: input.businessTaskId ?? null,
+  };
+}
+
 /** Atomically create a request or return the prior request for an idempotency key. */
 export function createOrGetRequest(
   db: Database.Database,
   input: CreateRequestInput,
 ): { request: RequestRow; created: boolean } {
+  if (input.parentRequestId) {
+    assertRequestScope(getRequest(db, input.parentRequestId), { instanceSlug: input.instanceSlug });
+  }
   const id = input.requestId ?? randomUUID();
   const traceId = input.traceId ?? id;
   const insert = db.prepare(`INSERT INTO rt_requests
@@ -80,6 +129,10 @@ export function createOrGetRequest(
       ? findRequestByIdempotencyKey(db, input.instanceSlug, input.source, input.idempotencyKey)
       : undefined);
   if (!request) throw new Error("Failed to create or recover request identity");
+  assertRequestScope(request, requestScope(input));
+  if (input.idempotencyKey !== undefined && request.idempotency_key !== input.idempotencyKey) {
+    throw new RequestContextConflictError();
+  }
   return { request, created: result.changes === 1 };
 }
 
@@ -104,7 +157,17 @@ export function attachRequestContext(
   db: Database.Database,
   id: string,
   context: { sessionId: string; agentId: string },
+  scope?: RequestScope,
 ): void {
+  const request = getRequest(db, id);
+  if (scope) assertRequestScope(request, scope);
+  if (
+    !request ||
+    (request.session_id !== null && request.session_id !== context.sessionId) ||
+    (request.agent_id !== null && request.agent_id !== context.agentId)
+  ) {
+    throw new RequestContextConflictError();
+  }
   db.prepare(
     `UPDATE rt_requests SET session_id = COALESCE(session_id, ?),
     agent_id = COALESCE(agent_id, ?), updated_at = datetime('now') WHERE id = ?`,
@@ -115,7 +178,9 @@ export function persistRequestResult(
   db: Database.Database,
   id: string,
   result: { messageId: string; artifactRefs?: unknown[] },
+  scope?: RequestScope,
 ): void {
+  if (scope) assertRequestScope(getRequest(db, id), scope);
   db.prepare(
     `UPDATE rt_requests SET delivery_status = 'result_persisted', result_message_id = ?,
     artifact_refs_json = ?, error_code = NULL, error_message = NULL,
@@ -136,7 +201,12 @@ export function persistRequestResult(
     });
 }
 
-export function markRequestDelivered(db: Database.Database, id: string): void {
+export function markRequestDelivered(
+  db: Database.Database,
+  id: string,
+  scope?: RequestScope,
+): void {
+  if (scope) assertRequestScope(getRequest(db, id), scope);
   const result = db
     .prepare(
       `UPDATE rt_requests SET delivery_status = 'delivered', delivered_at = datetime('now'),
@@ -174,7 +244,13 @@ export function acknowledgeRequest(db: Database.Database, id: string): RequestRo
   return getRequest(db, id);
 }
 
-export function markRequestDeliveryFailed(db: Database.Database, id: string, error: unknown): void {
+export function markRequestDeliveryFailed(
+  db: Database.Database,
+  id: string,
+  error: unknown,
+  scope?: RequestScope,
+): void {
+  if (scope) assertRequestScope(getRequest(db, id), scope);
   const message = error instanceof Error ? error.message : String(error);
   const code = error instanceof Error && "code" in error ? String(error.code) : "DELIVERY_FAILED";
   db.prepare(

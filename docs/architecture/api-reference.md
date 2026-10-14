@@ -103,6 +103,13 @@
 | `GET` | `/api/instances/:slug/runtime/chat/stream` | SSE real-time streaming (see [SSE Architecture](../sse-architecture.md)) |
 | `GET` | `/api/instances/:slug/runtime/tools` | Available tools for instance |
 
+Chat retries may supply a `requestId` and an `Idempotency-Key` header. Durable
+replay requires the same instance, source, resolved session, agent, parent request,
+and task (including business task) context. A conflicting identity returns `409 REQUEST_CONTEXT_CONFLICT`
+without returning the prior result. When supplied, `sessionId` selects the chat
+session and must belong to the target instance and agent. A successful key retry
+returns the canonical request ID in `X-Request-Id`.
+
 ### Instances — Budgets (8 endpoints)
 
 | Method | Route | Role |

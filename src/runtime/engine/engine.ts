@@ -638,6 +638,7 @@ export class ClawRuntime {
             text: body.message,
           },
           ...(body.agentId !== undefined ? { agentId: body.agentId } : {}),
+          ...(body.sessionId !== undefined ? { sessionId: body.sessionId } : {}),
           ...(this.workDir !== undefined ? { workDir: this.workDir } : {}),
           ...(this._mcpRegistry !== undefined ? { mcpRegistry: this._mcpRegistry } : {}),
           ...(this.profileResolver !== undefined ? { profileResolver: this.profileResolver } : {}),

@@ -11,6 +11,20 @@ import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 // Mock ALL subsystem imports BEFORE importing ClawRuntime
 // ---------------------------------------------------------------------------
 
+const internalApiState = vi.hoisted(() => ({
+  handlers: undefined as import("../internal-api.js").InternalApiHandlers | undefined,
+}));
+vi.mock("../internal-api.js", () => ({
+  InternalApiServer: class {
+    constructor(options: { handlers: import("../internal-api.js").InternalApiHandlers }) {
+      internalApiState.handlers = options.handlers;
+    }
+    start = vi.fn().mockResolvedValue(undefined);
+    stop = vi.fn().mockResolvedValue(undefined);
+    boundPort = 19000;
+  },
+}));
+
 const mockBus = {
   publish: vi.fn(),
   subscribeAll: vi.fn(() => vi.fn()),
@@ -133,6 +147,7 @@ vi.mock("../../../core/repositories/budget-repository.js", () => ({
 // ---------------------------------------------------------------------------
 
 import { initDatabase } from "../../../db/schema.js";
+import { ChannelRouter } from "../../channel/router.js";
 import { ClawRuntime } from "../engine.js";
 import type { InstanceSlug } from "../../types.js";
 import { RuntimeStarted, RuntimeStopped } from "../../bus/events.js";
@@ -240,6 +255,29 @@ describe("ClawRuntime", () => {
   // -------------------------------------------------------------------------
 
   describe("start()", () => {
+    it("routes chat through the explicitly requested session before resolving request identity", async () => {
+      const rt = new ClawRuntime(minimalConfig, db, SLUG);
+      await rt.start();
+      try {
+        await internalApiState.handlers!.handleChat({
+          message: "Hello",
+          agentId: "main",
+          sessionId: "requested-session",
+          requestId: "request-1",
+        });
+        expect(ChannelRouter.route).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            instanceSlug: SLUG,
+            sessionId: "requested-session",
+            agentId: "main",
+            request: expect.objectContaining({ requestId: "request-1", source: "web" }),
+          }),
+        );
+      } finally {
+        await rt.stop();
+      }
+    });
+
     it("transitions to 'running'", async () => {
       const rt = new ClawRuntime(minimalConfig, db, SLUG);
       await rt.start();
