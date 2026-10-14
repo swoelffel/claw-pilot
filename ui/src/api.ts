@@ -55,9 +55,11 @@ import type {
   EpicInfo,
   SearchResult,
   NotificationsPage,
+  RuntimeRequest,
+  RequestRecoveryResponse,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
-import { getToken } from "./services/auth-state.js";
+import { getToken, setToken } from "./services/auth-state.js";
 
 /**
  * Returns a stable device ID for this browser, stored in localStorage.
@@ -80,20 +82,52 @@ function getDeviceId(): string {
 }
 
 function authHeaders(): HeadersInit {
+  const token = getToken().trim();
   return {
-    Authorization: `Bearer ${getToken()}`,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     "Content-Type": "application/json",
   };
 }
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    ...init,
-    headers: {
-      ...authHeaders(),
-      ...init?.headers,
-    },
-  });
+function randomHex(byteLength: number): string {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function refreshAuthToken(): Promise<boolean> {
+  const res = await fetch("/api/auth/me", { credentials: "same-origin" });
+  if (!res.ok) return false;
+  const body = (await res.json()) as { authenticated?: boolean; token?: string };
+  if (!body.authenticated || !body.token?.trim()) return false;
+  setToken(body.token.trim());
+  return true;
+}
+
+async function apiFetch<T>(path: string, init?: RequestInit, refreshed = false): Promise<T> {
+  const traceparent = `00-${randomHex(16)}-${randomHex(8)}-01`;
+  const request = (): Promise<Response> =>
+    fetch(`/api${path}`, {
+      ...init,
+      headers: {
+        ...authHeaders(),
+        traceparent,
+        ...init?.headers,
+      },
+    });
+  let res = await request();
+  // A rejected request has not reached the route handler, so it is safe to
+  // retry exactly once after refreshing the dashboard token from the session.
+  // 403 is intentionally never retried: it is a permanent authorization result.
+  if (
+    res.status === 401 &&
+    !refreshed &&
+    path !== "/auth/login" &&
+    path !== "/auth/me" &&
+    (await refreshAuthToken())
+  ) {
+    res = await request();
+  }
   if (!res.ok) {
     // Global 401 handler — session expired, redirect to login
     if (res.status === 401 && path !== "/auth/login" && path !== "/auth/me") {
@@ -112,6 +146,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return res.json() as Promise<T>;
 }
+
+export const __testing = { apiFetch, authHeaders };
 
 export async function fetchInstances(): Promise<InstanceInfo[]> {
   return apiFetch<InstanceInfo[]>("/instances");
@@ -622,14 +658,47 @@ export async function postRuntimeChat(
     files?: Array<{ name: string; mimeType: string; data: string }>;
   },
 ): Promise<RuntimeChatResponse> {
+  const requestId = crypto.randomUUID();
+  const traceId = randomHex(16);
   return apiFetch<RuntimeChatResponse>(`/instances/${slug}/runtime/chat`, {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, requestId, traceId }),
     // X-Device-Id: stable browser identity for permanent session routing.
     // Ensures the same browser always maps to the same permanent session,
     // even across page reloads, reconnections, or channel changes.
-    headers: { "X-Device-Id": getDeviceId() },
+    headers: {
+      "X-Device-Id": getDeviceId(),
+      "Idempotency-Key": requestId,
+      traceparent: `00-${traceId}-${randomHex(8)}-01`,
+    },
   });
+}
+
+export async function fetchRuntimeRequests(
+  slug: string,
+  options: { taskId?: number; limit?: number } = {},
+): Promise<RuntimeRequest[]> {
+  const params = new URLSearchParams();
+  if (options.taskId !== undefined) params.set("taskId", String(options.taskId));
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  const query = params.toString();
+  const result = await apiFetch<{ requests: RuntimeRequest[] }>(
+    `/instances/${slug}/requests${query ? `?${query}` : ""}`,
+  );
+  return result.requests;
+}
+
+export async function recoverRequestDelivery(
+  slug: string,
+  requestId: string,
+): Promise<RequestRecoveryResponse> {
+  return apiFetch<RequestRecoveryResponse>(
+    `/instances/${slug}/requests/${requestId}/recover-delivery`,
+    {
+      method: "POST",
+      body: "{}",
+    },
+  );
 }
 
 export interface AgentKickoffResponse {
@@ -658,9 +727,17 @@ export async function abortSession(slug: string, sessionId: string): Promise<{ a
   });
 }
 
-export function getRuntimeChatStreamUrl(slug: string, sessionId?: string): string {
+export function getRuntimeChatStreamUrl(
+  slug: string,
+  sessionId?: string,
+  lastEventId?: string,
+): string {
   const base = `/api/instances/${slug}/runtime/chat/stream`;
-  return sessionId ? `${base}?sessionId=${encodeURIComponent(sessionId)}` : base;
+  const params = new URLSearchParams();
+  if (sessionId) params.set("sessionId", sessionId);
+  if (lastEventId) params.set("lastEventId", lastEventId);
+  const query = params.toString();
+  return query ? `${base}?${query}` : base;
 }
 
 /**

@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
+import { recordObservabilityEvent } from "./observability-repository.js";
+import { attributeExecutionCost } from "./cost-governance-repository.js";
+import { syncBusinessTaskCost } from "./business-task-repository.js";
 
 // cspell:ignore julianday
 
@@ -40,6 +43,10 @@ export interface ExecutionRow {
   started_at: string | null;
   heartbeat_at: string | null;
   completed_at: string | null;
+  request_id: string | null;
+  trace_id: string | null;
+  parent_execution_id: string | null;
+  business_task_id: string | null;
 }
 
 export interface CircuitBreakerRow {
@@ -67,6 +74,10 @@ export interface CreateExecutionInput {
   taskId?: number;
   maxAttempts?: number;
   metadata?: Record<string, unknown>;
+  requestId?: string;
+  traceId?: string;
+  parentExecutionId?: string;
+  businessTaskId?: string;
 }
 
 export function createExecution(db: Database.Database, input: CreateExecutionInput): ExecutionRow {
@@ -74,8 +85,9 @@ export function createExecution(db: Database.Database, input: CreateExecutionInp
   db.prepare(
     `INSERT INTO rt_executions
       (id, correlation_id, instance_slug, session_id, agent_id, kind, source,
-       timeout_ms, task_id, max_attempts, metadata_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       timeout_ms, task_id, max_attempts, metadata_json, request_id, trace_id, parent_execution_id,
+       business_task_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     input.correlationId ?? id,
@@ -88,6 +100,10 @@ export function createExecution(db: Database.Database, input: CreateExecutionInp
     input.taskId ?? null,
     input.maxAttempts ?? 1,
     input.metadata ? JSON.stringify(input.metadata) : null,
+    input.requestId ?? null,
+    input.traceId ?? input.correlationId ?? id,
+    input.parentExecutionId ?? null,
+    input.businessTaskId ?? null,
   );
   return getExecution(db, id)!;
 }
@@ -97,10 +113,17 @@ export function getExecution(db: Database.Database, id: string): ExecutionRow | 
 }
 
 export function startExecution(db: Database.Database, id: string): void {
-  db.prepare(
-    `UPDATE rt_executions SET status = 'running', started_at = datetime('now'),
+  db.transaction(() => {
+    db.prepare(
+      `UPDATE rt_executions SET status = 'running', started_at = datetime('now'),
        heartbeat_at = datetime('now') WHERE id = ? AND status = 'accepted'`,
-  ).run(id);
+    ).run(id);
+    db.prepare(
+      `UPDATE agents SET last_used_at = datetime('now') WHERE agent_id =
+       (SELECT agent_id FROM rt_executions WHERE id = ?) AND instance_id =
+       (SELECT id FROM instances WHERE slug = (SELECT instance_slug FROM rt_executions WHERE id = ?))`,
+    ).run(id, id);
+  })();
 }
 
 export function completeExecution(
@@ -118,6 +141,41 @@ export function completeExecution(
        input_tokens = ?, output_tokens = ?, cost_usd = ?, heartbeat_at = datetime('now'),
        completed_at = datetime('now') WHERE id = ? AND status IN ('accepted','running')`,
   ).run(result.messageId, result.inputTokens, result.outputTokens, result.costUsd, id);
+  const execution = getExecution(db, id);
+  if (execution) {
+    attributeExecutionCost(db, id);
+    if (execution.business_task_id) syncBusinessTaskCost(db, execution.business_task_id);
+    db.prepare(
+      `UPDATE agents SET last_successful_run_at = datetime('now'), last_used_at = datetime('now')
+       WHERE agent_id = ? AND instance_id = (SELECT id FROM instances WHERE slug = ?)`,
+    ).run(execution.agent_id, execution.instance_slug);
+    db.prepare(
+      `UPDATE instances SET last_successful_run_at = datetime('now'), last_used_at = datetime('now')
+       WHERE slug = ?`,
+    ).run(execution.instance_slug);
+    recordObservabilityEvent(db, {
+      instanceSlug: execution.instance_slug,
+      eventName: "execution.completed",
+      eventKind: "span",
+      traceId: execution.trace_id ?? execution.correlation_id,
+      requestId: execution.request_id ?? undefined,
+      executionId: id,
+      sessionId: execution.session_id,
+      agentId: execution.agent_id,
+      activityKind: execution.parent_execution_id
+        ? "child_agent"
+        : execution.source === "flow"
+          ? "workflow"
+          : "human_request",
+      phase: "execution",
+      attempt: execution.attempt,
+      success: true,
+      costUsd: result.costUsd,
+      durationMs: execution.started_at
+        ? Math.max(0, Date.now() - new Date(`${execution.started_at.replace(" ", "T")}Z`).getTime())
+        : undefined,
+    });
+  }
 }
 
 export function failExecution(
@@ -133,6 +191,28 @@ export function failExecution(
        heartbeat_at = datetime('now'), completed_at = datetime('now')
      WHERE id = ? AND status IN ('accepted','running')`,
   ).run(status, code, message.slice(0, 2000), id);
+  const execution = getExecution(db, id);
+  if (execution)
+    recordObservabilityEvent(db, {
+      instanceSlug: execution.instance_slug,
+      eventName: status === "timed_out" ? "execution.timeout" : "execution.failed",
+      eventKind: "error",
+      traceId: execution.trace_id ?? execution.correlation_id,
+      requestId: execution.request_id ?? undefined,
+      executionId: id,
+      sessionId: execution.session_id,
+      agentId: execution.agent_id,
+      activityKind: execution.parent_execution_id
+        ? "child_agent"
+        : execution.source === "flow"
+          ? "workflow"
+          : "human_request",
+      phase: "execution",
+      attempt: execution.attempt,
+      errorCode: code ?? "EXECUTION_FAILED",
+      retryable: execution.attempt < execution.max_attempts,
+      success: false,
+    });
 }
 
 export function listExecutions(

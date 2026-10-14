@@ -21,6 +21,7 @@ import { registerBudgetRoutes } from "./budgets.js";
 import { registerTaskRoutes } from "./tasks.js";
 import { registerSharedFilesRoutes } from "./shared-files.js";
 import { registerExecutionRoutes } from "./executions.js";
+import { registerObservabilityRoutes } from "./observability.js";
 
 export function registerInstanceRoutes(app: Hono, deps: RouteDeps): void {
   // /discover must be registered before /:slug to avoid Hono route collision
@@ -45,4 +46,5 @@ export function registerInstanceRoutes(app: Hono, deps: RouteDeps): void {
   registerWorkspaceDownloadRoutes(app, deps);
   registerSharedFilesRoutes(app, deps);
   registerExecutionRoutes(app, deps);
+  registerObservabilityRoutes(app, deps);
 }

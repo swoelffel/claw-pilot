@@ -34,6 +34,8 @@ import { registerBlueprintRoutes } from "./routes/blueprints.js";
 import { registerTeamRoutes } from "./routes/teams.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerAuthRoutes } from "./routes/auth.js";
+import { registerPermissionDiagnosticsRoutes } from "./routes/permission-diagnostics.js";
+import { registerGovernanceRoutes } from "./routes/governance.js";
 import {
   PasswordProvider,
   registerAuthProvider,
@@ -310,7 +312,10 @@ export async function buildDashboardApp(options: DashboardOptions): Promise<Dash
   // Auth middleware for API routes — see registerAuthMiddleware above
   registerAuthMiddleware(app, token, sessionStore, db);
 
+  registerPermissionDiagnosticsRoutes(app);
+
   registerInstanceRoutes(app, deps);
+  registerGovernanceRoutes(app, deps);
   registerBlueprintRoutes(app, deps);
   registerAgentBlueprintRoutes(app, deps);
   registerTeamRoutes(app, deps);

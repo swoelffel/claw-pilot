@@ -82,7 +82,26 @@ import { runMiddlewarePipeline } from "../middleware/pipeline.js";
 import { resolveModelForAgent } from "../channel/router.js";
 import { startFlowRun } from "../flow/engine.js";
 import { resolveQuestion as resolveQuestionFn } from "../tool/built-in/question.js";
+import { expireOrphanedQuestions } from "../session/question-recovery.js";
 import type { ProfileResolver } from "../profile/types.js";
+import {
+  markRequestDelivered,
+  markRequestDeliveryFailed,
+} from "../../core/repositories/request-repository.js";
+
+function requestIdentity(
+  body: ChatRequest,
+): NonNullable<import("../session/prompt-loop.js").PromptLoopInput["request"]> {
+  return {
+    ...(body.requestId !== undefined ? { requestId: body.requestId } : {}),
+    ...(body.traceId !== undefined ? { traceId: body.traceId } : {}),
+    ...(body.parentRequestId !== undefined ? { parentRequestId: body.parentRequestId } : {}),
+    ...(body.idempotencyKey !== undefined ? { idempotencyKey: body.idempotencyKey } : {}),
+    ...(body.taskId !== undefined ? { taskId: body.taskId } : {}),
+    ...(body.businessTaskId !== undefined ? { businessTaskId: body.businessTaskId } : {}),
+    source: "web",
+  };
+}
 
 // ---------------------------------------------------------------------------
 // ClawRuntime
@@ -140,6 +159,17 @@ export class ClawRuntime {
     try {
       // 0. Clear workspace file cache — fresh start after daemon restart
       clearWorkspaceCache();
+
+      // The question tool waits on an in-memory Promise. A fresh runtime
+      // process cannot resume questions persisted by its predecessor, so mark
+      // those tool calls as expired before the UI loads them as actionable.
+      const expiredQuestions = expireOrphanedQuestions(this.db, this.instanceSlug);
+      if (expiredQuestions > 0) {
+        this.log.warn("orphaned_questions_expired", {
+          event: "orphaned_questions_expired",
+          count: expiredQuestions,
+        });
+      }
 
       // 1. Init agents, permanent sessions, and middlewares
       this._initAgentsAndSessions();
@@ -481,6 +511,7 @@ export class ClawRuntime {
         port: deriveInternalApiPort(this.instanceSlug),
         token: await resolveInternalApiToken(this.instanceSlug),
         slug: this.instanceSlug,
+        db: this.db,
         handlers: this._buildInternalApiHandlers(),
       });
       await this._internalApi.start();
@@ -554,7 +585,13 @@ export class ClawRuntime {
         // Send response back through the originating channel
         const channel = this._channels.find((c) => c.type === message.channelType);
         if (channel) {
-          await channel.send(result.response);
+          try {
+            await channel.send(result.response);
+            markRequestDelivered(this.db, result.requestId);
+          } catch (error) {
+            markRequestDeliveryFailed(this.db, result.requestId, error);
+            throw error;
+          }
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -601,10 +638,12 @@ export class ClawRuntime {
             text: body.message,
           },
           ...(body.agentId !== undefined ? { agentId: body.agentId } : {}),
+          ...(body.sessionId !== undefined ? { sessionId: body.sessionId } : {}),
           ...(this.workDir !== undefined ? { workDir: this.workDir } : {}),
           ...(this._mcpRegistry !== undefined ? { mcpRegistry: this._mcpRegistry } : {}),
           ...(this.profileResolver !== undefined ? { profileResolver: this.profileResolver } : {}),
           ...(this._skillLoader !== undefined ? { skillLoader: this._skillLoader } : {}),
+          request: requestIdentity(body),
         });
 
         // Keep the route running in the background if a question wins the race.
@@ -631,17 +670,23 @@ export class ClawRuntime {
             costUsd: 0,
             steps: 0,
             pendingQuestion: true,
+            requestId: body.requestId ?? "",
+            traceId: body.traceId ?? body.requestId ?? "",
+            executionId: "",
           };
         }
 
         const { result } = winner;
         return {
           sessionId: result.sessionId,
-          messageId: result.response.text ? result.sessionId : "",
+          messageId: result.resultMessageId,
           text: result.response.text,
           tokens: result.tokens,
           costUsd: result.costUsd,
           steps: 1,
+          requestId: result.requestId,
+          traceId: result.traceId,
+          executionId: result.executionId,
         };
       },
 

@@ -38,6 +38,7 @@ import { runMiddlewarePipeline } from "../middleware/pipeline.js";
 import { createUserMessage } from "../session/message.js";
 import { listParts } from "../session/part.js";
 import type { OutboundArtifact, OutboundFileDelivery } from "../types.js";
+import { RequestContextConflictError } from "../../core/repositories/request-repository.js";
 import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -89,6 +90,7 @@ export interface RouterInput {
    * it on every evaluation. Non-flow callers leave this `undefined`.
    */
   flowStepState?: import("../flow/step-extension-tool.js").FlowStepState;
+  request?: import("../session/prompt-loop.js").PromptLoopInput["request"];
 }
 
 export interface RouterResult {
@@ -98,11 +100,27 @@ export interface RouterResult {
   /** Token usage */
   tokens: { input: number; output: number; cacheRead: number; cacheWrite: number };
   costUsd: number;
+  requestId: string;
+  traceId: string;
+  executionId: string;
+  resultMessageId: string;
 }
 
 // ---------------------------------------------------------------------------
 // ChannelRouter
 // ---------------------------------------------------------------------------
+
+function assertExplicitSessionContext(
+  db: Database.Database,
+  instanceSlug: string,
+  sessionId: string,
+  agentId: string,
+): void {
+  const session = getSession(db, sessionId);
+  if (!session || session.instanceSlug !== instanceSlug || session.agentId !== agentId) {
+    throw new RequestContextConflictError();
+  }
+}
 
 export class ChannelRouter {
   /**
@@ -150,6 +168,8 @@ export class ChannelRouter {
     // 3. Find or create session for this peer (or use forced sessionId)
     const sessionId =
       input.sessionId ?? findOrCreateSession(db, instanceSlug, message, agentId, config);
+    if (input.sessionId !== undefined)
+      assertExplicitSessionContext(db, instanceSlug, sessionId, agentId);
 
     // 4. Run middleware pipeline + prompt loop — serialized per session via queue
     // Resolve the agent's workspace directory to show to the agent (env block).
@@ -201,6 +221,7 @@ export class ChannelRouter {
             ...(input.maxSteps !== undefined ? { maxSteps: input.maxSteps } : {}),
             ...(input.flowStepState !== undefined ? { flowStepState: input.flowStepState } : {}),
             ...(input.skillLoader !== undefined ? { skillLoader: input.skillLoader } : {}),
+            ...(input.request !== undefined ? { request: input.request } : {}),
           }),
       });
 
@@ -212,6 +233,9 @@ export class ChannelRouter {
           steps: 0,
           tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
           costUsd: 0,
+          requestId: input.request?.requestId ?? "",
+          traceId: input.request?.traceId ?? input.request?.requestId ?? "",
+          executionId: "",
         } satisfies PromptLoopResult;
       }
 
@@ -256,6 +280,10 @@ export class ChannelRouter {
       sessionId,
       tokens: result.tokens,
       costUsd: result.costUsd,
+      requestId: result.requestId ?? "",
+      traceId: result.traceId ?? result.requestId ?? "",
+      executionId: result.executionId ?? "",
+      resultMessageId: result.messageId,
     };
   }
 }

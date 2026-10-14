@@ -107,6 +107,13 @@ import {
 } from "../../core/repositories/runtime-session-repository.js";
 import { listMessages, listParts } from "../../runtime/index.js";
 
+import { createSession } from "../../runtime/session/session.js";
+import { isRuntimeRunning } from "../../lib/platform.js";
+import {
+  createOrGetRequest,
+  getRequest,
+  persistRequestResult,
+} from "../../core/repositories/request-repository.js";
 import { callRuntimeApi } from "../routes/_internal-api-client.js";
 import { injectAdminUser } from "./_helpers/inject-admin-user.js";
 
@@ -141,6 +148,7 @@ let tmpDir: string;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(isRuntimeRunning).mockReturnValue(false);
 
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-pilot-runtime-routes-"));
   db = initDatabase(path.join(tmpDir, "test.db"));
@@ -485,6 +493,43 @@ describe("POST /api/instances/:slug/runtime/questions/:questionId/answer", () =>
     expect(data.code).toBe("QUESTION_NOT_FOUND");
   });
 
+  it("expires a persisted question when its runtime resolver was lost", async () => {
+    db.prepare(
+      `INSERT INTO rt_sessions (id, instance_slug, agent_id, channel)
+       VALUES ('stale-session', 'test-inst', 'main', 'web')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO rt_messages (id, session_id, role, agent_id)
+       VALUES ('stale-message', 'stale-session', 'assistant', 'main')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO rt_parts (id, message_id, type, metadata)
+       VALUES ('stale-question', 'stale-message', 'tool_call', ?)`,
+    ).run(
+      JSON.stringify({
+        toolCallId: "q-stale",
+        toolName: "question",
+        args: { question: "Still there?" },
+      }),
+    );
+    vi.mocked(callRuntimeApi).mockResolvedValue({ ok: true, resolved: false });
+
+    const res = await app.request("/api/instances/test-inst/runtime/questions/q-stale/answer", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ answer: "yes" }),
+    });
+
+    expect(res.status).toBe(410);
+    expect(await json(res)).toMatchObject({ code: "QUESTION_EXPIRED" });
+    expect(
+      db.prepare("SELECT state, content FROM rt_parts WHERE id = 'stale-question'").get(),
+    ).toMatchObject({
+      state: "error",
+      content: expect.stringContaining("runtime restarted"),
+    });
+  });
+
   it("returns ok when question is resolved", async () => {
     vi.mocked(callRuntimeApi).mockResolvedValue({ ok: true, resolved: true });
     const res = await app.request("/api/instances/test-inst/runtime/questions/q-1/answer", {
@@ -593,6 +638,187 @@ describe("GET /api/instances/:slug/runtime/heartbeat/history", () => {
 });
 
 describe("POST /api/instances/:slug/runtime/chat", () => {
+  it.each([
+    { instanceSlug: "other-instance", source: "web" },
+    { instanceSlug: "test-inst", source: "agent" },
+    { instanceSlug: "test-inst", source: "web", sessionId: "other-session" },
+    { instanceSlug: "test-inst", source: "web", agentId: "other-agent" },
+  ])("refuses incompatible request IDs without changing durable delivery: %j", async (owner) => {
+    vi.mocked(isRuntimeRunning).mockReturnValue(true);
+    const original = createOrGetRequest(db, { ...owner, requestId: "prior-request" }).request;
+    persistRequestResult(db, original.id, { messageId: "prior-result" });
+    const before = getRequest(db, original.id);
+    vi.mocked(callRuntimeApi).mockRejectedValue(new Error("Rejected submission"));
+    const res = await app.request("/api/instances/test-inst/runtime/chat", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        message: "Hello",
+        requestId: original.id,
+        sessionId: "session",
+        agentId: "main",
+      }),
+    });
+    expect(res.status).toBe(409);
+    expect(await json(res)).toMatchObject({ code: "REQUEST_CONTEXT_CONFLICT" });
+    expect(getRequest(db, original.id)).toEqual(before);
+    expect(callRuntimeApi).not.toHaveBeenCalled();
+  });
+
+  it("does not alter a same-instance request on a network failure with omitted context", async () => {
+    vi.mocked(isRuntimeRunning).mockReturnValue(true);
+    const session = createSession(db, { instanceSlug: "test-inst", agentId: "other-agent" });
+    const original = createOrGetRequest(db, {
+      instanceSlug: "test-inst",
+      source: "web",
+      sessionId: session.id,
+      agentId: "other-agent",
+    }).request;
+    persistRequestResult(db, original.id, { messageId: "prior-result" });
+    const before = getRequest(db, original.id);
+    vi.mocked(callRuntimeApi).mockRejectedValue(new Error("Connection closed"));
+    const res = await app.request("/api/instances/test-inst/runtime/chat", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ message: "Hello", requestId: original.id }),
+    });
+    expect(res.status).toBe(500);
+    expect(getRequest(db, original.id)).toEqual(before);
+  });
+
+  it("delivers a legitimate response with omitted context using the resolved runtime session", async () => {
+    vi.mocked(isRuntimeRunning).mockReturnValue(true);
+    const session = createSession(db, { instanceSlug: "test-inst", agentId: "main" });
+    const original = createOrGetRequest(db, {
+      instanceSlug: "test-inst",
+      source: "web",
+      sessionId: session.id,
+      agentId: "main",
+    }).request;
+    persistRequestResult(db, original.id, { messageId: "result" });
+    vi.mocked(callRuntimeApi).mockResolvedValue({
+      requestId: original.id,
+      sessionId: session.id,
+      text: "Done",
+    });
+    const res = await app.request("/api/instances/test-inst/runtime/chat", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ message: "Hello", requestId: original.id }),
+    });
+    expect(res.status).toBe(200);
+    expect(getRequest(db, original.id)?.delivery_status).toBe("delivered");
+  });
+
+  it("preserves delivery state when the runtime refuses the resolved context", async () => {
+    vi.mocked(isRuntimeRunning).mockReturnValue(true);
+    const original = createOrGetRequest(db, { instanceSlug: "test-inst", source: "web" }).request;
+    persistRequestResult(db, original.id, { messageId: "prior-result" });
+    const before = getRequest(db, original.id);
+    vi.mocked(callRuntimeApi).mockRejectedValue(
+      Object.assign(new Error("Context conflict"), {
+        code: "REQUEST_CONTEXT_CONFLICT",
+        status: 409,
+      }),
+    );
+    const res = await app.request("/api/instances/test-inst/runtime/chat", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ message: "Hello", requestId: original.id }),
+    });
+    expect(res.status).toBe(409);
+    expect(getRequest(db, original.id)).toEqual(before);
+  });
+
+  it("delivers a legitimate same-context retry using the canonical key result ID", async () => {
+    vi.mocked(isRuntimeRunning).mockReturnValue(true);
+    const session = createSession(db, { instanceSlug: "test-inst", agentId: "main" });
+    const original = createOrGetRequest(db, {
+      instanceSlug: "test-inst",
+      source: "web",
+      sessionId: session.id,
+      agentId: "main",
+      idempotencyKey: "retry-key",
+    }).request;
+    persistRequestResult(db, original.id, { messageId: "result" });
+    vi.mocked(callRuntimeApi).mockResolvedValue({ requestId: original.id, text: "Done" });
+    const res = await app.request("/api/instances/test-inst/runtime/chat", {
+      method: "POST",
+      headers: { ...jsonHeaders(), "Idempotency-Key": "retry-key" },
+      body: JSON.stringify({
+        message: "Hello",
+        requestId: "new-id",
+        sessionId: session.id,
+        agentId: "main",
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Request-Id")).toBe(original.id);
+    expect(await json(res)).toMatchObject({ requestId: original.id, text: "Done" });
+    expect(getRequest(db, original.id)?.delivery_status).toBe("delivered");
+  });
+
+  it("accepts the canonical retry ID when another submission creates the key during the proxy call", async () => {
+    vi.mocked(isRuntimeRunning).mockReturnValue(true);
+    const session = createSession(db, { instanceSlug: "test-inst", agentId: "main" });
+    vi.mocked(callRuntimeApi).mockImplementationOnce(async () => {
+      const original = createOrGetRequest(db, {
+        instanceSlug: "test-inst",
+        source: "web",
+        requestId: "concurrent-request",
+        sessionId: session.id,
+        agentId: "main",
+        idempotencyKey: "concurrent-key",
+      }).request;
+      persistRequestResult(db, original.id, { messageId: "result" });
+      return { requestId: original.id, sessionId: session.id, text: "Done" };
+    });
+    const res = await app.request("/api/instances/test-inst/runtime/chat", {
+      method: "POST",
+      headers: { ...jsonHeaders(), "Idempotency-Key": "concurrent-key" },
+      body: JSON.stringify({ message: "Hello", requestId: "later-request" }),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Request-Id")).toBe("concurrent-request");
+    expect(getRequest(db, "concurrent-request")?.delivery_status).toBe("delivered");
+  });
+
+  it("preserves a middleware rejection before any durable request exists", async () => {
+    vi.mocked(isRuntimeRunning).mockReturnValue(true);
+    const session = createSession(db, { instanceSlug: "test-inst", agentId: "main" });
+    vi.mocked(callRuntimeApi).mockResolvedValue({
+      requestId: "blocked-request",
+      sessionId: session.id,
+      messageId: "",
+      executionId: "",
+      text: "Message blocked by guardrail",
+    });
+    const res = await app.request("/api/instances/test-inst/runtime/chat", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ message: "Hello", requestId: "blocked-request" }),
+    });
+    expect(res.status).toBe(200);
+    expect(await json(res)).toMatchObject({ text: "Message blocked by guardrail" });
+    expect(getRequest(db, "blocked-request")).toBeUndefined();
+  });
+
+  it("does not mark a foreign result ID delivered when returned by the proxy", async () => {
+    vi.mocked(isRuntimeRunning).mockReturnValue(true);
+    const original = createOrGetRequest(db, { instanceSlug: "other", source: "web" }).request;
+    persistRequestResult(db, original.id, { messageId: "prior-result" });
+    const before = getRequest(db, original.id);
+    vi.mocked(callRuntimeApi).mockResolvedValue({ requestId: original.id, text: "Done" });
+    const res = await app.request("/api/instances/test-inst/runtime/chat", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ message: "Hello" }),
+    });
+    expect(res.status).toBe(409);
+    expect(getRequest(db, original.id)).toEqual(before);
+    expect(JSON.stringify(await json(res))).not.toContain("Done");
+  });
+
   it("returns 400 for invalid JSON body", async () => {
     const res = await app.request("/api/instances/test-inst/runtime/chat", {
       method: "POST",

@@ -42,6 +42,7 @@ import "./components/memory-browser.js";
 import "./components/heartbeat-heatmap.js";
 import "./components/session-logs.js";
 import "./components/task-board.js";
+import "./components/request-list.js";
 import "./components/flow-list.js";
 import "./components/flow-editor.js";
 import "./components/flow-run-detail.js";
@@ -775,6 +776,8 @@ export class CpApp extends LitElement {
       navigateTo({ view: "session-logs", slug: detail.slug });
     } else if (detail.view === "tasks" && detail.slug) {
       navigateTo({ view: "tasks", slug: detail.slug });
+    } else if (detail.view === "requests" && detail.slug) {
+      navigateTo({ view: "requests", slug: detail.slug });
     } else if (detail.view === "flows" && detail.slug) {
       navigateTo({ view: "flows", slug: detail.slug });
     } else if (detail.view === "flow-run" && detail.slug && detail.runId !== undefined) {
@@ -1024,6 +1027,9 @@ export class CpApp extends LitElement {
         <cp-task-board .slug=${this._route.slug} @navigate=${this._navigate}></cp-task-board>
       `;
     }
+    if (this._route.view === "requests") {
+      return html`<cp-request-list .slug=${this._route.slug}></cp-request-list>`;
+    }
     if (this._route.view === "flows") {
       return html`
         <cp-budget-alert-banner
@@ -1107,6 +1113,7 @@ export class CpApp extends LitElement {
               this._route.view === "heartbeat" ||
               this._route.view === "session-logs" ||
               this._route.view === "tasks" ||
+              this._route.view === "requests" ||
               this._route.view === "flows" ||
               this._route.view === "flow-run"
                 ? "active"

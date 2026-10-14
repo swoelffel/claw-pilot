@@ -14,6 +14,7 @@
 import type { InstanceSlug } from "../types.js";
 import type { EventDef, AnyEvent } from "./events.js";
 import { logger } from "../../lib/logger.js";
+import { runtimeRequestContext } from "../session/request-context.js";
 
 export type { EventDef, AnyEvent };
 export * from "./events.js";
@@ -53,11 +54,22 @@ export class Bus {
   publish<T extends string, P>(def: EventDef<T, P>, payload: P): void {
     if (this._disposed) return;
 
+    const context = runtimeRequestContext.getStore();
+    const enrichedPayload =
+      context && payload && typeof payload === "object"
+        ? ({
+            ...payload,
+            requestId: context.requestId,
+            traceId: context.traceId,
+            executionId: context.executionId,
+          } as P)
+        : payload;
+
     const handlers = this._subs.get(def.type);
     if (handlers) {
       for (const handler of handlers) {
         try {
-          handler(payload);
+          handler(enrichedPayload);
         } catch (err) {
           // Handlers must not throw — log and continue
           logger.error(`[Bus:${this._slug}] Handler error for "${def.type}": ${err}`);
@@ -67,7 +79,7 @@ export class Bus {
 
     // Wildcard subscribers receive all events
     if (this._wildcards.size > 0) {
-      const event = { type: def.type, payload } as AnyEvent;
+      const event = { type: def.type, payload: enrichedPayload } as AnyEvent;
       for (const handler of this._wildcards) {
         try {
           handler(event);

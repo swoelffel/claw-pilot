@@ -7,17 +7,25 @@ import { ACTIONS } from "../../middleware/permission-actions.js";
 import { getInstanceContext } from "../_instance-middleware.js";
 import { loadMergedConfigDbFirst } from "../_config-helpers.js";
 import { getRuntimeStateDir } from "../../../lib/platform.js";
-import { checkBudgets } from "../../../core/repositories/budget-repository.js";
 import {
-  getCircuit,
   getExecution,
   getExecutionAnalytics,
-  inspectCircuit,
   listExecutions,
   recordBusinessOutcome,
   recoverStaleExecutions,
 } from "../../../core/repositories/execution-repository.js";
 import type { ExecutionStatus } from "../../../core/repositories/execution-repository.js";
+import {
+  acknowledgeRequest,
+  getRequest,
+  listRequests,
+  markRequestDelivered,
+} from "../../../core/repositories/request-repository.js";
+import type { RequestRow } from "../../../core/repositories/request-repository.js";
+import { getMessage } from "../../../runtime/session/message.js";
+import { listParts } from "../../../runtime/session/part.js";
+import { getSession } from "../../../runtime/session/session.js";
+import { buildExecutionPreflight } from "./execution-preflight.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type HonoContext = any;
@@ -33,6 +41,50 @@ function executionResource(c: HonoContext): { slug: string; executionId?: string
 
 function registerExecutionReadRoutes(app: Hono, deps: RouteDeps): void {
   const { db } = deps;
+
+  app.get(
+    "/api/instances/:slug/requests",
+    permission({
+      action: ACTIONS.EXECUTION_LIST,
+      resource: { kind: "execution" },
+      attributes: executionResource,
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
+      const taskIdRaw = c.req.query("taskId");
+      const taskId = taskIdRaw === undefined ? undefined : Number(taskIdRaw);
+      if (taskId !== undefined && (!Number.isSafeInteger(taskId) || taskId < 1)) {
+        return apiError(c, 400, "INVALID_TASK_ID", "taskId must be a positive integer");
+      }
+      const limit = Number(c.req.query("limit") ?? 50);
+      return c.json({
+        requests: listRequests(db, slug, {
+          ...(taskId !== undefined ? { taskId } : {}),
+          limit: Number.isFinite(limit) ? limit : 50,
+        }),
+      });
+    },
+  );
+
+  app.get(
+    "/api/instances/:slug/requests/:requestId",
+    permission({
+      action: ACTIONS.EXECUTION_READ,
+      resource: { kind: "execution", id: (c) => c.req.param("requestId") },
+      attributes: executionResource,
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
+      const request = getRequest(db, c.req.param("requestId"));
+      if (!request || request.instance_slug !== slug) {
+        return apiError(c, 404, "REQUEST_NOT_FOUND", "Request not found");
+      }
+      const executions = db
+        .prepare("SELECT * FROM rt_executions WHERE request_id = ? ORDER BY accepted_at ASC")
+        .all(request.id);
+      return c.json({ request, executions });
+    },
+  );
 
   app.get(
     "/api/instances/:slug/executions",
@@ -106,8 +158,82 @@ function registerExecutionReadRoutes(app: Hono, deps: RouteDeps): void {
   );
 }
 
+/** Load the durable message without running tools or retrying the originating channel. */
+function readRequestResult(db: RouteDeps["db"], request: RequestRow, slug: string) {
+  if (!request.result_message_id || request.delivery_status === "pending") return undefined;
+  const message = getMessage(db, request.result_message_id);
+  if (!message || message.role !== "assistant" || message.sessionId !== request.session_id) {
+    return undefined;
+  }
+  if (getSession(db, message.sessionId)?.instanceSlug !== slug) return undefined;
+  const parts = listParts(db, message.id);
+  if (
+    !parts.some(
+      (part) =>
+        ["text", "image", "tool_call", "tool_result"].includes(part.type) && part.content?.trim(),
+    )
+  )
+    return undefined;
+  const text = parts
+    .filter((part) => part.type === "text")
+    .map((part) => part.content ?? "")
+    .join("\n\n");
+  const partial =
+    !message.finishReason ||
+    ["error", "length", "content-filter"].includes(message.finishReason) ||
+    parts.some(
+      (part) => part.state === "pending" || part.state === "running" || part.state === "error",
+    );
+  return { message: { ...message, parts }, text, partial };
+}
+
 function registerExecutionActionRoutes(app: Hono, deps: RouteDeps): void {
   const { db, registry } = deps;
+
+  app.post(
+    "/api/instances/:slug/requests/:requestId/acknowledge",
+    permission({
+      action: ACTIONS.EXECUTION_OUTCOME_UPDATE,
+      resource: { kind: "execution", id: (c) => c.req.param("requestId") },
+      attributes: executionResource,
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
+      const request = getRequest(db, c.req.param("requestId"));
+      if (!request || request.instance_slug !== slug) {
+        return apiError(c, 404, "REQUEST_NOT_FOUND", "Request not found");
+      }
+      const updated = acknowledgeRequest(db, request.id);
+      if (updated?.delivery_status !== "acknowledged") {
+        return apiError(c, 409, "RESULT_NOT_DELIVERED", "Request has not been delivered");
+      }
+      return c.json(updated);
+    },
+  );
+
+  app.post(
+    "/api/instances/:slug/requests/:requestId/recover-delivery",
+    permission({
+      action: ACTIONS.EXECUTION_RECOVER,
+      resource: { kind: "execution", id: (c) => c.req.param("requestId") },
+      attributes: executionResource,
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
+      const request = getRequest(db, c.req.param("requestId"));
+      if (!request || request.instance_slug !== slug) {
+        return apiError(c, 404, "REQUEST_NOT_FOUND", "Request not found");
+      }
+      const result = readRequestResult(db, request, slug);
+      if (!result) {
+        return apiError(c, 409, "RESULT_NOT_PERSISTED", "No durable result is available");
+      }
+      // Delivered means returned through this dashboard API, not resent to the source channel.
+      // Partial results remain recoverable and retain the original delivery diagnostics.
+      if (!result.partial) markRequestDelivered(db, request.id);
+      return c.json({ ...getRequest(db, request.id), result });
+    },
+  );
 
   app.post(
     "/api/instances/:slug/executions/recover",
@@ -153,6 +279,7 @@ function registerExecutionActionRoutes(app: Hono, deps: RouteDeps): void {
     }),
     (c) => {
       const { slug } = getInstanceContext(c);
+      const user = c.get("user");
       const config = loadMergedConfigDbFirst(registry, slug, getRuntimeStateDir(slug));
       if (!config) return apiError(c, 404, "RUNTIME_CONFIG_NOT_FOUND", "Runtime config not found");
       const agentId = c.req.query("agentId") ?? config.agents[0]?.id;
@@ -160,52 +287,21 @@ function registerExecutionActionRoutes(app: Hono, deps: RouteDeps): void {
       if (!agentId || !agent) {
         return apiError(c, 404, "AGENT_NOT_FOUND", `Agent ${agentId ?? "(default)"} not found`);
       }
-      const model = agent.model ?? config.defaultModel ?? "";
-      const circuit = inspectCircuit(db, slug, `provider:${model}`);
-      const budgets = checkBudgets(db, slug, agentId);
-      const key = db
-        .prepare(
-          `SELECT k.id, k.name, k.provider_id FROM instances i
-           LEFT JOIN agents a ON a.instance_id = i.id AND a.agent_id = ?
-           LEFT JOIN named_api_keys k ON k.id = COALESCE(a.named_key_id, i.default_named_key_id)
-           WHERE i.slug = ?`,
-        )
-        .get(agentId, slug) as
-        | { id: number | null; name: string | null; provider_id: string | null }
-        | undefined;
-      const checks = [
-        { id: "agent", status: "pass", detail: agentId },
-        {
-          id: "model",
-          status: model ? "pass" : "fail",
-          detail: model || "No model configured",
-        },
-        {
-          id: "authentication",
-          status: key?.id ? "pass" : "warn",
-          detail: key?.id
-            ? `Named key ${key.name ?? key.id} (${key.provider_id})`
-            : "No named key assigned; runtime environment fallback will be used",
-        },
-        {
-          id: "provider-circuit",
-          status: circuit?.state === "open" ? "fail" : "pass",
-          detail: circuit?.state ?? "closed",
-        },
-        {
-          id: "budget",
-          status: budgets.some((budget) => budget.status === "exceeded") ? "fail" : "pass",
-          detail:
-            budgets.length === 0 ? "No enforced budget" : `${budgets.length} budget(s) checked`,
-        },
-      ];
-      return c.json({
-        ready: !checks.some((check) => check.status === "fail"),
-        agentId,
-        model,
-        checks,
-        circuit: getCircuit(db, slug, `provider:${model}`) ?? null,
-      });
+      const workDir = getRuntimeStateDir(slug);
+      const requestedTool = c.req.query("tool");
+      const requestedResource = c.req.query("resource");
+      return c.json(
+        buildExecutionPreflight({
+          db,
+          slug,
+          config,
+          agent,
+          user,
+          workDir,
+          ...(requestedTool !== undefined ? { requestedTool } : {}),
+          ...(requestedResource !== undefined ? { requestedResource } : {}),
+        }),
+      );
     },
   );
 }

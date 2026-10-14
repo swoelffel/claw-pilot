@@ -18,6 +18,7 @@ export interface ProxySSEParams {
   sessionId?: string;
   /** Comma-separated event types to subscribe to (daemon-side filter). */
   types?: string;
+  lastEventId?: string;
   /**
    * Optional dashboard-side transform applied to each parsed event.
    * Return the (possibly reshaped) event object, or `null` to skip it.
@@ -34,7 +35,7 @@ export interface ProxySSEParams {
  * Yields the `data` field content for each event block (delimited by blank lines).
  * Comment-only blocks (`:ping`) are skipped.
  */
-function* parseSSEChunks(buffer: string): Generator<string, string> {
+function* parseSSEChunks(buffer: string): Generator<{ data: string; id?: string }, string> {
   let rest = buffer;
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -45,13 +46,15 @@ function* parseSSEChunks(buffer: string): Generator<string, string> {
 
     // Extract data lines (ignore event/id/retry/comments)
     const dataLines: string[] = [];
+    let id: string | undefined;
     for (const line of block.split("\n")) {
       if (line.startsWith("data:")) {
         dataLines.push(line.slice(5).trimStart());
       }
+      if (line.startsWith("id:")) id = line.slice(3).trim();
     }
     if (dataLines.length > 0) {
-      yield dataLines.join("\n");
+      yield { data: dataLines.join("\n"), ...(id ? { id } : {}) };
     }
   }
 }
@@ -80,12 +83,15 @@ async function _pipeUpstream(
     const gen = parseSSEChunks(sseBuffer);
     let result = gen.next();
     while (!result.done) {
-      const dataStr = result.value as string;
+      const event = result.value as { data: string; id?: string };
       try {
-        const parsed = JSON.parse(dataStr) as Record<string, unknown>;
+        const parsed = JSON.parse(event.data) as Record<string, unknown>;
         const output = transform ? transform(parsed) : parsed;
         if (output !== null) {
-          await stream.writeSSE({ data: JSON.stringify(output) });
+          await stream.writeSSE({
+            data: JSON.stringify(output),
+            ...(event.id ? { id: event.id } : {}),
+          });
         }
       } catch (err) {
         logger.debug("[sse-proxy] failed to parse SSE data", { error: String(err) });
@@ -109,6 +115,7 @@ function _buildUpstreamUrl(slug: string, params?: ProxySSEParams): string {
   const qs = new URLSearchParams();
   if (params?.sessionId) qs.set("sessionId", params.sessionId);
   if (params?.types) qs.set("types", params.types);
+  if (params?.lastEventId) qs.set("lastEventId", params.lastEventId);
   const qsStr = qs.toString();
   return `http://127.0.0.1:${port}/internal/events/stream${qsStr ? `?${qsStr}` : ""}`;
 }

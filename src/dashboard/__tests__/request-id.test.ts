@@ -12,7 +12,9 @@ function createApp(): Hono {
   const app = new Hono();
   app.use("*", requestIdMiddleware());
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  app.get("/test", (c) => c.json({ id: (c as any).get("requestId") }));
+  app.get("/test", (c) =>
+    c.json({ id: (c as any).get("requestId"), traceId: (c as any).get("traceId") }),
+  );
   return app;
 }
 
@@ -52,5 +54,17 @@ describe("requestIdMiddleware", () => {
     const app = createApp();
     const res = await app.request("/test");
     expect(res.status).toBe(200);
+  });
+
+  it("continues a W3C trace and exposes it to downstream handlers", async () => {
+    const app = createApp();
+    const traceId = "0123456789abcdef0123456789abcdef";
+    const res = await app.request("/test", {
+      headers: { traceparent: `00-${traceId}-0123456789abcdef-01` },
+    });
+    const body = (await res.json()) as { traceId: string };
+    expect(body.traceId).toBe(traceId);
+    expect(res.headers.get("X-Trace-Id")).toBe(traceId);
+    expect(res.headers.get("traceparent")).toMatch(new RegExp(`^00-${traceId}-[0-9a-f]{16}-01$`));
   });
 });

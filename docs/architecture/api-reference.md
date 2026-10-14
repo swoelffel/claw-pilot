@@ -38,6 +38,7 @@
 | `POST` | `/api/auth/login` | Authenticate, create session |
 | `POST` | `/api/auth/logout` | Invalidate session |
 | `GET` | `/api/auth/me` | Current user info + WS token |
+| `POST` | `/api/auth/permissions/inspect` | Inspect the caller's effective permission for an action and resource |
 
 ### System
 
@@ -102,6 +103,13 @@
 | `GET` | `/api/instances/:slug/runtime/chat/stream` | SSE real-time streaming (see [SSE Architecture](../sse-architecture.md)) |
 | `GET` | `/api/instances/:slug/runtime/tools` | Available tools for instance |
 
+Chat retries may supply a `requestId` and an `Idempotency-Key` header. Durable
+replay requires the same instance, source, resolved session, agent, parent request,
+and task (including business task) context. A conflicting identity returns `409 REQUEST_CONTEXT_CONFLICT`
+without returning the prior result. When supplied, `sessionId` selects the chat
+session and must belong to the target instance and agent. A successful key retry
+returns the canonical request ID in `X-Request-Id`.
+
 ### Instances — Budgets (8 endpoints)
 
 | Method | Route | Role |
@@ -150,6 +158,10 @@
 | Method | Route | Role |
 |---|---|---|
 | `GET` | `/api/instances/:slug/costs` | Cost aggregations per agent/session |
+| `GET` | `/api/instances/:slug/observability/metrics` | Percentile latency and attributed operational metrics; filter by activity kind |
+| `GET` | `/api/instances/:slug/observability/traces/:traceId` | Ordered end-to-end trace timeline |
+| `GET` | `/api/instances/:slug/observability/alerts` | Active delivery, timeout, denial, tool, workflow, and budget alerts |
+| `GET/PUT` | `/api/instances/:slug/observability/retention` | Per-data-class retention and privacy controls |
 | `GET` | `/api/instances/:slug/events` | Runtime bus events (activity console) |
 | `GET` | `/api/instances/:slug/events/stream` | SSE instance-wide event stream (see [SSE Architecture](../sse-architecture.md)) |
 | `GET` | `/api/instances/:slug/heartbeat/history` | Heartbeat history and analytics |

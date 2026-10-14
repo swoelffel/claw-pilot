@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 
 // --- Mocks: same pattern as server-app.test.ts ---
 
@@ -91,10 +91,15 @@ vi.mock("../../core/repositories/notification-repository.js", () => ({
 // wildcard, AFTER the auth middleware, so c.get("user") is populated.
 vi.mock("../routes/search.js", () => ({
   registerSearchRoutes: vi.fn((app: Hono) => {
-    app.get("/api/_probe", (c) => {
+    const probe = (c: Context) => {
       const user = c.get("user") ?? null;
       return c.json({ user });
-    });
+    };
+    app.get("/api/_probe", probe);
+    app.get("/api/_probe/rest", probe);
+    app.get("/api/_probe/chat", probe);
+    app.get("/api/_probe/session", probe);
+    app.get("/api/_probe/events/stream", probe);
   }),
 }));
 
@@ -242,6 +247,44 @@ describe("auth middleware — AuthenticatedUser on context", () => {
         role: "admin",
         source: "bearer",
       });
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("rejects the malformed literal bearer credential", async () => {
+    const { app, cleanup } = await buildDashboardApp(options);
+    try {
+      const res = await app.request("/api/_probe", {
+        headers: { Authorization: "Bearer" },
+      });
+      expect(res.status).toBe(401);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("propagates one normalized SSO session identity across endpoint classes", async () => {
+    const { app, cleanup } = await buildDashboardApp(options);
+    try {
+      const loginRes = await app.request("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: constants.ADMIN_USERNAME, password: TEST_PASSWORD }),
+      });
+      const sid = getCookieValue(loginRes, constants.SESSION_COOKIE_NAME);
+      const paths = ["rest", "chat", "session", "events/stream"];
+      for (const endpoint of paths) {
+        const res = await app.request(`/api/_probe/${endpoint}`, {
+          headers: { Cookie: `${constants.SESSION_COOKIE_NAME}=${sid}` },
+        });
+        expect(res.status).toBe(200);
+        expect((await json(res)).user).toMatchObject({
+          username: constants.ADMIN_USERNAME,
+          role: "admin",
+          source: "session",
+        });
+      }
     } finally {
       cleanup();
     }

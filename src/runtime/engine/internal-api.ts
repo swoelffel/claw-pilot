@@ -15,6 +15,9 @@ import {
   WorkspaceFileChanged,
 } from "../bus/index.js";
 import type { EventDef } from "../bus/index.js";
+import type Database from "better-sqlite3";
+import { RequestContextConflictError } from "../../core/repositories/request-repository.js";
+import { streamRuntimeEvents } from "./event-stream.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,6 +43,12 @@ export interface ChatRequest {
   sessionId?: string;
   model?: string;
   files?: Array<{ name: string; mimeType: string; data: string }>;
+  requestId?: string;
+  traceId?: string;
+  parentRequestId?: string;
+  idempotencyKey?: string;
+  taskId?: number;
+  businessTaskId?: string;
 }
 
 export interface ChatResponse {
@@ -49,6 +58,9 @@ export interface ChatResponse {
   tokens: { input: number; output: number; cacheRead: number; cacheWrite: number };
   costUsd: number;
   steps: number;
+  requestId: string;
+  traceId: string;
+  executionId: string;
   /**
    * True when the prompt loop is suspended on a pending `question` tool call.
    * The UI should not clear its "busy" status on this response — the loop
@@ -85,12 +97,6 @@ const PUBLISHABLE_EVENTS: Record<string, EventDef<string, any>> = {
 };
 
 // ---------------------------------------------------------------------------
-// SSE constants
-// ---------------------------------------------------------------------------
-
-const SSE_PING_INTERVAL_MS = 15_000;
-
-// ---------------------------------------------------------------------------
 // InternalApiServer
 // ---------------------------------------------------------------------------
 
@@ -100,6 +106,7 @@ export class InternalApiServer {
   private readonly _tokenBuffer: Buffer;
   private readonly _handlers: InternalApiHandlers;
   private readonly _slug: InstanceSlug;
+  private readonly _db: Database.Database;
   private _boundPort: number | undefined;
 
   constructor(options: {
@@ -107,11 +114,13 @@ export class InternalApiServer {
     token: string;
     slug: InstanceSlug;
     handlers: InternalApiHandlers;
+    db: Database.Database;
   }) {
     this._port = options.port;
     this._tokenBuffer = Buffer.from(options.token, "utf8");
     this._handlers = options.handlers;
     this._slug = options.slug;
+    this._db = options.db;
   }
 
   /** Actual port after start(). May differ from constructor port if a retry was needed. */
@@ -290,6 +299,10 @@ export class InternalApiServer {
         url: pathname,
         error: msg,
       });
+      if (err instanceof RequestContextConflictError) {
+        this._json(res, 409, { error: err.message, code: err.code });
+        return;
+      }
       this._json(res, 500, { error: msg, code: "INTERNAL_ERROR" });
     }
   }
@@ -310,48 +323,16 @@ export class InternalApiServer {
             .filter(Boolean),
         )
       : null;
+    const cursorValue = req.headers["last-event-id"] ?? parsedUrl.searchParams.get("lastEventId");
+    const lastEventId = Number(Array.isArray(cursorValue) ? cursorValue[0] : cursorValue);
 
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
+    streamRuntimeEvents(req, res, {
+      db: this._db,
+      slug: this._slug,
+      cursor: lastEventId,
+      ...(sessionId ? { sessionId } : {}),
+      ...(typesFilter ? { types: typesFilter } : {}),
     });
-    // Hint browser reconnect delay
-    res.write("retry: 3000\n\n");
-
-    const bus = getBus(this._slug);
-    let cleaned = false;
-
-    const unsub = bus.subscribeAll((event) => {
-      if (cleaned) return;
-
-      // Optional type filter
-      if (typesFilter && !typesFilter.has(event.type)) return;
-
-      // Optional sessionId filter (skip for instance-scoped events without sessionId)
-      if (sessionId) {
-        const payload = event.payload as Record<string, unknown>;
-        if (payload.sessionId && payload.sessionId !== sessionId) return;
-      }
-
-      const line = `data: ${JSON.stringify({ ...event, timestamp: new Date().toISOString() })}\n\n`;
-      res.write(line);
-    });
-
-    const pingInterval = setInterval(() => {
-      if (!cleaned) res.write(":ping\n\n");
-    }, SSE_PING_INTERVAL_MS);
-
-    const cleanup = (): void => {
-      if (cleaned) return;
-      cleaned = true;
-      clearInterval(pingInterval);
-      unsub();
-    };
-
-    req.on("close", cleanup);
-    res.on("close", cleanup);
   }
 
   // ---------------------------------------------------------------------------

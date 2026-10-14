@@ -14,6 +14,7 @@ export const ACTIONS = {
   AUTH_LOGIN: "auth.login",
   AUTH_LOGOUT: "auth.logout",
   AUTH_ME: "auth.me",
+  AUTH_PERMISSION_INSPECT: "auth.permission.inspect",
 
   // profile
   PROFILE_READ: "profile.read",
@@ -243,4 +244,30 @@ export const ACTIONS = {
   EXECUTION_PREFLIGHT: "execution.preflight",
   EXECUTION_ANALYTICS: "execution.analytics",
   EXECUTION_OUTCOME_UPDATE: "execution.outcome-update",
+
+  // enterprise governance (EP-06 through EP-12)
+  BUSINESS_TASK_LIST: "business-task.list",
+  BUSINESS_TASK_READ: "business-task.read",
+  BUSINESS_TASK_CREATE: "business-task.create",
+  BUSINESS_TASK_UPDATE: "business-task.update",
+  BUSINESS_TASK_REVIEW: "business-task.review",
+  ARTIFACT_LIST: "artifact.list",
+  ARTIFACT_CREATE: "artifact.create",
+  ARTIFACT_TRANSITION: "artifact.transition",
+  GOVERNANCE_TEAM_LIST: "team.list",
+  GOVERNANCE_TEAM_CREATE: "team.create",
+  GOVERNANCE_TEAM_MEMBERS: "team.members",
+  GOVERNANCE_GRANT_PREVIEW: "team.grant-preview",
+  GOVERNANCE_SSO_PREVIEW: "team.sso-preview",
+  USE_CASE_LIST: "use-case.list",
+  USE_CASE_MANAGE: "use-case.manage",
+  USE_CASE_LAUNCH: "use-case.launch",
+  WORKFLOW_VALIDATE: "flow.validate",
+  WORKFLOW_LIFECYCLE: "flow.lifecycle",
+  AGENT_VERSION: "agent.version",
+  AGENT_PROMOTE: "agent.promote",
+  AGENT_COMPARE: "agent.compare",
+  COST_POLICY_MANAGE: "cost-policy.manage",
+  COST_RECONCILE: "cost-policy.reconcile",
+  ADOPTION_ANALYTICS: "adoption.analytics",
 } as const;

@@ -1,6 +1,15 @@
 // Italian translations for claw-pilot UI
 
 export const templates = {
+  // Request result recovery
+  "request-list-result-title": "Risultato salvato",
+  "request-list-result-channel":
+    "Recuperato qui dall’output salvato. Il canale originale non è stato ritentato.",
+  "request-list-result-partial":
+    "Risultato salvato parziale. Lo stato di consegna rimane invariato.",
+  "request-list-result-message": "Visualizza messaggio salvato",
+  "request-list-result-recover": "Recupera risultato",
+
   // app.ts
   "ws-live": "In diretta",
   "ws-offline": "Non in linea",
