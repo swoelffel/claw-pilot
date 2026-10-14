@@ -16,7 +16,7 @@ import {
 } from "../bus/index.js";
 import type { EventDef } from "../bus/index.js";
 import type Database from "better-sqlite3";
-import { listExecutionEventsAfter } from "../../core/repositories/execution-event-repository.js";
+import { streamRuntimeEvents } from "./event-stream.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -93,12 +93,6 @@ const PUBLISHABLE_EVENTS: Record<string, EventDef<string, any>> = {
   "system.state.changed": SystemStateChanged,
   "workspace.file.changed": WorkspaceFileChanged,
 };
-
-// ---------------------------------------------------------------------------
-// SSE constants
-// ---------------------------------------------------------------------------
-
-const SSE_PING_INTERVAL_MS = 15_000;
 
 // ---------------------------------------------------------------------------
 // InternalApiServer
@@ -326,58 +320,13 @@ export class InternalApiServer {
     const cursorValue = req.headers["last-event-id"] ?? parsedUrl.searchParams.get("lastEventId");
     const lastEventId = Number(Array.isArray(cursorValue) ? cursorValue[0] : cursorValue);
 
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
+    streamRuntimeEvents(req, res, {
+      db: this._db,
+      slug: this._slug,
+      cursor: lastEventId,
+      ...(sessionId ? { sessionId } : {}),
+      ...(typesFilter ? { types: typesFilter } : {}),
     });
-    // Hint browser reconnect delay
-    res.write("retry: 3000\n\n");
-    if (Number.isSafeInteger(lastEventId) && lastEventId >= 0) {
-      for (const event of listExecutionEventsAfter(this._db, this._slug, lastEventId, {
-        ...(sessionId ? { sessionId } : {}),
-        ...(typesFilter ? { types: typesFilter } : {}),
-      })) {
-        res.write(
-          `id: ${event.id}\ndata: ${JSON.stringify({ type: event.event_type, payload: JSON.parse(event.payload_json) as unknown, timestamp: event.created_at, eventId: event.id, replayed: true })}\n\n`,
-        );
-      }
-    }
-
-    const bus = getBus(this._slug);
-    let cleaned = false;
-
-    const unsub = bus.subscribeAll((event) => {
-      if (cleaned) return;
-
-      // Optional type filter
-      if (typesFilter && !typesFilter.has(event.type)) return;
-
-      // Optional sessionId filter (skip for instance-scoped events without sessionId)
-      if (sessionId) {
-        const payload = event.payload as Record<string, unknown>;
-        if (payload.sessionId && payload.sessionId !== sessionId) return;
-      }
-
-      const eventId = (event as typeof event & { eventId?: number }).eventId;
-      const line = `${eventId ? `id: ${eventId}\n` : ""}data: ${JSON.stringify({ ...event, timestamp: new Date().toISOString() })}\n\n`;
-      res.write(line);
-    });
-
-    const pingInterval = setInterval(() => {
-      if (!cleaned) res.write(":ping\n\n");
-    }, SSE_PING_INTERVAL_MS);
-
-    const cleanup = (): void => {
-      if (cleaned) return;
-      cleaned = true;
-      clearInterval(pingInterval);
-      unsub();
-    };
-
-    req.on("close", cleanup);
-    res.on("close", cleanup);
   }
 
   // ---------------------------------------------------------------------------

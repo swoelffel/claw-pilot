@@ -34,10 +34,14 @@ export function listExecutionEventsAfter(
   db: Database.Database,
   slug: string,
   id: number,
-  f: { sessionId?: string; types?: Set<string>; limit?: number } = {},
+  f: { sessionId?: string; types?: Set<string>; limit?: number; throughId?: number } = {},
 ): ExecutionEventRow[] {
   const w = ["instance_slug=?", "id>?"];
   const a: unknown[] = [slug, id];
+  if (f.throughId !== undefined) {
+    w.push("id<=?");
+    a.push(f.throughId);
+  }
   if (f.sessionId) {
     w.push("(session_id IS NULL OR session_id=?)");
     a.push(f.sessionId);
@@ -50,4 +54,12 @@ export function listExecutionEventsAfter(
   return db
     .prepare(`SELECT * FROM rt_execution_events WHERE ${w.join(" AND ")} ORDER BY id LIMIT ?`)
     .all(...a) as ExecutionEventRow[];
+}
+
+/** Capture the replay/live boundary without loading the instance's backlog. */
+export function latestExecutionEventId(db: Database.Database, slug: string): number {
+  const row = db
+    .prepare("SELECT id FROM rt_execution_events WHERE instance_slug=? ORDER BY id DESC LIMIT 1")
+    .get(slug) as { id: number } | undefined;
+  return row?.id ?? 0;
 }
