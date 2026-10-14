@@ -22,6 +22,7 @@ import type { Tool } from "../tool/tool.js";
 import { getToolsForAgent } from "../tool/registry.js";
 import { getSession } from "./session.js";
 import {
+  getMessage,
   createUserMessage,
   createAssistantMessage,
   updateMessageMetadata,
@@ -63,11 +64,15 @@ import {
   startExecution,
 } from "../../core/repositories/execution-repository.js";
 import {
-  attachRequestContext,
+  assertRequestScope,
+  getRequest,
+  RequestContextConflictError,
+  type RequestScope,
   createOrGetRequest,
   persistRequestResult,
 } from "../../core/repositories/request-repository.js";
 import { runtimeRequestContext } from "./request-context.js";
+import { persistMessageArtifacts } from "../../core/repositories/business-task-repository.js";
 import {
   createStreamingState,
   finalizeReasoning,
@@ -151,6 +156,7 @@ export interface PromptLoopInput {
     idempotencyKey?: string;
     source?: string;
     taskId?: number;
+    businessTaskId?: string | undefined;
   };
 }
 
@@ -270,6 +276,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
           traceId: input.request?.traceId ?? parent.traceId,
           parentRequestId: input.request?.parentRequestId ?? parent.requestId,
           parentExecutionId: input.request?.parentExecutionId ?? parent.executionId,
+          businessTaskId: input.request?.businessTaskId ?? parent.businessTaskId,
         },
       }
     : input;
@@ -283,6 +290,9 @@ async function runPromptLoopWithContext(input: PromptLoopInput): Promise<PromptL
 
   const session = getSession(db, sessionId);
   if (!session) throw new Error(`Session not found: ${sessionId}`);
+  if (session.instanceSlug !== instanceSlug || session.agentId !== agentConfig.id) {
+    throw new RequestContextConflictError();
+  }
 
   const timeoutMs = agentConfig.timeoutMs ?? 5 * 60 * 1000;
   const resourceKey = `provider:${resolvedModel.providerId}/${resolvedModel.modelId}`;
@@ -298,12 +308,23 @@ async function runPromptLoopWithContext(input: PromptLoopInput): Promise<PromptL
       ? { idempotencyKey: input.request.idempotencyKey }
       : {}),
     ...(input.request?.taskId !== undefined ? { taskId: input.request.taskId } : {}),
+    ...(input.request?.businessTaskId !== undefined
+      ? { businessTaskId: input.request.businessTaskId }
+      : {}),
     sessionId,
     agentId: agentConfig.id,
   });
-  attachRequestContext(db, request.id, { sessionId, agentId: agentConfig.id });
+  const scope: RequestScope = {
+    instanceSlug,
+    source: input.request?.source ?? session.channel,
+    sessionId,
+    agentId: agentConfig.id,
+    parentRequestId: input.request?.parentRequestId ?? null,
+    taskId: input.request?.taskId ?? null,
+    businessTaskId: input.request?.businessTaskId ?? null,
+  };
   if (!requestCreated) {
-    return waitForIdempotentResult(db, request.id, timeoutMs);
+    return waitForIdempotentResult(db, request.id, timeoutMs, scope);
   }
   const execution = createExecution(db, {
     instanceSlug,
@@ -316,10 +337,18 @@ async function runPromptLoopWithContext(input: PromptLoopInput): Promise<PromptL
     ...(input.request?.parentExecutionId !== undefined
       ? { parentExecutionId: input.request.parentExecutionId }
       : {}),
+    ...(input.request?.businessTaskId !== undefined
+      ? { businessTaskId: input.request.businessTaskId }
+      : {}),
     metadata: { provider: resolvedModel.providerId, model: resolvedModel.modelId },
   });
   return runtimeRequestContext.run(
-    { requestId: request.id, traceId: request.trace_id, executionId: execution.id },
+    {
+      requestId: request.id,
+      traceId: request.trace_id,
+      executionId: execution.id,
+      ...(request.business_task_id ? { businessTaskId: request.business_task_id } : {}),
+    },
     () => executePromptLoop(input, request, execution, resourceKey),
   );
 }
@@ -442,10 +471,22 @@ async function executePromptLoop(
     if (completeBootstrap(input.workDir, agentConfig, systemPrompt)) {
       markDirty(sessionId, "workspace");
     }
-    const artifactRefs = listParts(db, result.messageId)
-      .filter((part) => part.type === "tool_call" || part.type === "tool_result")
-      .map((part) => ({ id: part.id, type: part.type }));
-    persistRequestResult(db, request.id, { messageId: result.messageId, artifactRefs });
+    const governedArtifacts = persistMessageArtifacts(db, {
+      instanceSlug,
+      messageId: result.messageId,
+      requestId: request.id,
+      ...(request.business_task_id ? { businessTaskId: request.business_task_id } : {}),
+      agentId: agentConfig.id,
+    });
+    const artifactRefs: Array<{ id: string; type: string }> = [
+      ...listParts(db, result.messageId)
+        .filter((part) => part.type === "tool_call" || part.type === "tool_result")
+        .map((part) => ({ id: part.id, type: part.type })),
+      ...governedArtifacts.map((artifact) => ({ id: artifact.id, type: "artifact" })),
+    ];
+    const resultScope: RequestScope = { instanceSlug, sessionId, agentId: agentConfig.id };
+    const persistedResult = { messageId: result.messageId, artifactRefs };
+    persistRequestResult(db, request.id, persistedResult, resultScope);
     completeExecution(db, execution.id, {
       messageId: result.messageId,
       inputTokens: result.tokens.input,
@@ -492,12 +533,12 @@ async function waitForIdempotentResult(
   db: Database.Database,
   requestId: string,
   timeoutMs: number,
+  scope: RequestScope,
 ): Promise<PromptLoopResult> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() <= deadline) {
-    const request = db.prepare("SELECT * FROM rt_requests WHERE id = ?").get(requestId) as
-      | { trace_id: string; result_message_id: string | null }
-      | undefined;
+    const request = getRequest(db, requestId);
+    assertRequestScope(request, scope);
     const execution = db
       .prepare(
         `SELECT * FROM rt_executions WHERE request_id = ? ORDER BY accepted_at DESC, rowid DESC LIMIT 1`,
@@ -505,6 +546,9 @@ async function waitForIdempotentResult(
       .get(requestId) as
       | {
           id: string;
+          instance_slug: string;
+          session_id: string;
+          agent_id: string;
           status: string;
           input_tokens: number;
           output_tokens: number;
@@ -513,6 +557,15 @@ async function waitForIdempotentResult(
         }
       | undefined;
     if (request?.result_message_id && execution?.status === "succeeded") {
+      const message = getMessage(db, request.result_message_id);
+      if (
+        execution.instance_slug !== scope.instanceSlug ||
+        execution.session_id !== scope.sessionId ||
+        execution.agent_id !== scope.agentId ||
+        message?.sessionId !== scope.sessionId
+      ) {
+        throw new RequestContextConflictError();
+      }
       const text = listParts(db, request.result_message_id)
         .filter((part) => part.type === "text")
         .map((part) => part.content ?? "")

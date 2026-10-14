@@ -16,6 +16,7 @@ import {
 } from "../bus/index.js";
 import type { EventDef } from "../bus/index.js";
 import type Database from "better-sqlite3";
+import { RequestContextConflictError } from "../../core/repositories/request-repository.js";
 import { streamRuntimeEvents } from "./event-stream.js";
 
 // ---------------------------------------------------------------------------
@@ -47,6 +48,7 @@ export interface ChatRequest {
   parentRequestId?: string;
   idempotencyKey?: string;
   taskId?: number;
+  businessTaskId?: string;
 }
 
 export interface ChatResponse {
@@ -297,6 +299,10 @@ export class InternalApiServer {
         url: pathname,
         error: msg,
       });
+      if (err instanceof RequestContextConflictError) {
+        this._json(res, 409, { error: err.message, code: err.code });
+        return;
+      }
       this._json(res, 500, { error: msg, code: "INTERNAL_ERROR" });
     }
   }

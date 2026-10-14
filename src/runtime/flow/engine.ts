@@ -25,6 +25,10 @@ import { collectFlowContext } from "./context-providers.js";
 import { extractSitrep, injectSitrep } from "./sitrep.js";
 import { executeStep } from "./step-executor.js";
 import { logger } from "../../lib/logger.js";
+import {
+  completeBusinessTask,
+  createBusinessTask,
+} from "../../core/repositories/business-task-repository.js";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -52,12 +56,21 @@ export function startFlowRun(
   const inputVarsJson =
     vars !== undefined && Object.keys(vars).length > 0 ? JSON.stringify(vars) : undefined;
 
+  const businessTask = createBusinessTask(ctx.db, {
+    instanceSlug: ctx.instanceSlug,
+    objective: `Run workflow: ${flow.name}`,
+    origin: triggerType === "manual" ? "HUMAN_REQUEST" : "SCHEDULED_WORKFLOW",
+    initiatorDisplay: triggerType === "manual" ? "UNKNOWN" : `workflow:${flowId}`,
+    ...(flow.team_id ? { teamId: flow.team_id } : {}),
+  });
   const run = createFlowRun(ctx.db, {
     flowId,
     instanceSlug: ctx.instanceSlug,
     triggerType,
     ...(triggerDetail !== undefined ? { triggerDetail } : {}),
     ...(inputVarsJson !== undefined ? { inputVarsJson } : {}),
+    triggerIdentity: triggerDetail ?? triggerType,
+    businessTaskId: businessTask.id,
   });
 
   // Fire-and-forget the DAG execution
@@ -170,10 +183,47 @@ async function executeFlowDag(
   //    outcome=success AND no step threw an exception. Any failure,
   //    partial outcome, or malformed sitrep marks the run as failed,
   //    even if dependent steps executed under `continueOnFailure`.
-  if (hasFailedSteps(ctx.db, runId) || hasUnsuccessfulSteps(ctx.db, runId)) {
-    updateFlowRunStatus(ctx.db, runId, "failed", "One or more steps did not succeed");
-  } else {
-    updateFlowRunStatus(ctx.db, runId, "completed");
+  persistFlowOutput(ctx.db, runId);
+  finalizeFlowRun(ctx.db, runId);
+}
+
+function parseOutputSitrep(raw: string | null, stepId: string): unknown {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    logger.debug("flow_output_sitrep_parse_failed", { stepId, error: String(err) });
+    return { malformed: true };
+  }
+}
+
+function persistFlowOutput(db: Database.Database, runId: number): void {
+  const outputs = getStepRunsForRun(db, runId).map((step) => ({
+    stepId: step.step_id,
+    status: step.status,
+    sitrep: parseOutputSitrep(step.sitrep_json, step.step_id),
+  }));
+  db.prepare("UPDATE rt_flow_runs SET output_json = ? WHERE id = ?").run(
+    JSON.stringify(outputs),
+    runId,
+  );
+}
+
+function finalizeFlowRun(db: Database.Database, runId: number): void {
+  const failed = hasFailedSteps(db, runId) || hasUnsuccessfulSteps(db, runId);
+  updateFlowRunStatus(
+    db,
+    runId,
+    failed ? "failed" : "completed",
+    failed ? "One or more steps did not succeed" : undefined,
+  );
+  const run = getFlowRun(db, runId);
+  if (run?.business_task_id) {
+    completeBusinessTask(
+      db,
+      run.business_task_id,
+      failed ? "Workflow failed" : "Workflow completed",
+    );
   }
 }
 
@@ -227,6 +277,9 @@ async function runStep(
     ...(stepDef.maxSteps !== undefined ? { maxSteps: stepDef.maxSteps } : {}),
     ...(stepDef.timeoutMs !== undefined ? { timeoutMs: stepDef.timeoutMs } : {}),
     ...(ctx.abort ? { abort: ctx.abort.signal } : {}),
+    ...(getFlowRun(ctx.db, runId)?.business_task_id
+      ? { businessTaskId: getFlowRun(ctx.db, runId)!.business_task_id! }
+      : {}),
   });
 
   // 4. Read back the step run to see whether `complete_step` was invoked.

@@ -29,6 +29,7 @@ import {
 } from "../../core/repositories/flow-trigger-repository.js";
 import { emitAudit } from "../../core/audit/emitter.js";
 import { logger } from "../../lib/logger.js";
+import { canRunWorkflowUnattended } from "../../core/repositories/workflow-governance-repository.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -174,6 +175,27 @@ export class TriggerScheduler {
     }
     if (row.enabled !== 1) {
       logger.debug("trigger_fire_disabled", { event: "trigger_fire_disabled", triggerId });
+      return;
+    }
+
+    const governance = canRunWorkflowUnattended(this.db, row.flow_id);
+    if (!governance.allowed) {
+      const failed = createTriggerRun(this.db, {
+        triggerId,
+        status: "failed",
+        payload: JSON.stringify({ kind: "cron", firedAt: new Date().toISOString() }),
+      });
+      updateTriggerRun(this.db, failed.id, {
+        error: governance.reason ?? "Workflow is not approved for unattended execution",
+        finishedAt: new Date().toISOString(),
+      });
+      emitAudit({
+        kind: "trigger.failed",
+        triggerId,
+        flowId: row.flow_id,
+        reason: governance.reason ?? "workflow_governance_denied",
+        source: "cron",
+      });
       return;
     }
 

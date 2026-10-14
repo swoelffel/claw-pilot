@@ -1,7 +1,7 @@
 # claw-pilot — Registry Database (`registry.db`)
 
 SQLite database at `~/.claw-pilot/registry.db`. WAL mode, foreign keys enforced.  
-Current schema version: **46**. Source of truth: `src/db/schema.ts`.
+Current schema version: **57**. Source of truth: `src/db/schema.ts`.
 
 ---
 
@@ -907,6 +907,15 @@ to final delivery.
 | 46 | Repair missing `is_compaction` markers on assistant messages with nonempty compaction summaries and a recoverable snapshot count. Add `cutoffMessageId` to the summary metadata to retain notifications inserted during summarization, including backdated traces. Preserve all message and part content; leave unverifiable boundaries unmarked. Extension-Point: `session-compaction-boundary`. |
 | 47 | Added `rt_executions` for unified model execution tracking and `rt_circuit_breakers` for resource failure isolation. Both include `org_id NULL` tenancy slots. |
 | 48 | Added `rt_requests` with stable request/trace identity, parent lineage, submission idempotency, durable result/artifact references, and delivery lifecycle. Linked executions to requests and parent executions. `rt_requests.org_id NULL` is present from creation (R2). Extension-Point: `request-lifecycle`. |
+| 49 | Added ordered `rt_execution_events` for replay/reconciliation and `rt_operations` for explicit side-effect recovery state. |
+| 50 | Added structured observability events and per-data-class retention policies for logs, metrics, traces, conversations, and outcomes. |
+| 51 | Added first-class business tasks, outcome reviews, governed artifact lifecycle, and execution/request business-task attribution. |
+| 52 | Added organizational teams, scoped memberships and roles, explicit grants, membership audit history, SSO group mappings, and team ownership slots. |
+| 53 | Added validated use-case catalog entries, immutable prompt/output-rule versions, guided launches, and funnel events. |
+| 54 | Added workflow lifecycle/validation history, run identity/version/output/cost attribution, idempotency keys, failure auto-pause, and rate limits. |
+| 55 | Added agent and instance ownership/lifecycle metadata, immutable agent configuration versions, promotion approvals, and rollback support. |
+| 56 | Added normalized cost attribution, owned policy modes (`MONITOR`, `WARN`, `ENFORCE`), anomaly records, and provider-billing reconciliation. |
+| 57 | Added adoption events and documented metric definitions for active humans, completion/returning behavior, automation, accepted outcomes, and cost efficiency. |
 
 ---
 
@@ -990,4 +999,4 @@ All DB access goes through `src/core/registry.ts` facade (23 repositories) — n
 
 ---
 
-*Updated: 2026-05-05 — v0.83.1: schema v41, 23 repositories, migration history v1–v41*
+*Updated: 2026-10-14 — v0.84.9: schema v57, migration history v1–v57*

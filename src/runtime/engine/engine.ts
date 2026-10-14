@@ -98,6 +98,7 @@ function requestIdentity(
     ...(body.parentRequestId !== undefined ? { parentRequestId: body.parentRequestId } : {}),
     ...(body.idempotencyKey !== undefined ? { idempotencyKey: body.idempotencyKey } : {}),
     ...(body.taskId !== undefined ? { taskId: body.taskId } : {}),
+    ...(body.businessTaskId !== undefined ? { businessTaskId: body.businessTaskId } : {}),
     source: "web",
   };
 }
@@ -637,6 +638,7 @@ export class ClawRuntime {
             text: body.message,
           },
           ...(body.agentId !== undefined ? { agentId: body.agentId } : {}),
+          ...(body.sessionId !== undefined ? { sessionId: body.sessionId } : {}),
           ...(this.workDir !== undefined ? { workDir: this.workDir } : {}),
           ...(this._mcpRegistry !== undefined ? { mcpRegistry: this._mcpRegistry } : {}),
           ...(this.profileResolver !== undefined ? { profileResolver: this.profileResolver } : {}),

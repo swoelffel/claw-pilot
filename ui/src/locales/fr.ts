@@ -2,6 +2,14 @@
 // Generated: 2026-02-24
 
 export const templates = {
+  // Request result recovery
+  "request-list-result-title": "Résultat enregistré",
+  "request-list-result-channel":
+    "Résultat récupéré ici depuis les données enregistrées. Le canal initial n’a pas été réessayé.",
+  "request-list-result-partial": "Résultat enregistré partiel. L’état de livraison reste inchangé.",
+  "request-list-result-message": "Voir le message enregistré",
+  "request-list-result-recover": "Récupérer le résultat",
+
   // app.ts
   "ws-live": "En direct",
   "ws-offline": "Hors ligne",
