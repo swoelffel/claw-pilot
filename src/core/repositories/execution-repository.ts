@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { recordObservabilityEvent } from "./observability-repository.js";
+import { attributeExecutionCost } from "./cost-governance-repository.js";
+import { syncBusinessTaskCost } from "./business-task-repository.js";
 
 // cspell:ignore julianday
 
@@ -44,6 +46,7 @@ export interface ExecutionRow {
   request_id: string | null;
   trace_id: string | null;
   parent_execution_id: string | null;
+  business_task_id: string | null;
 }
 
 export interface CircuitBreakerRow {
@@ -74,6 +77,7 @@ export interface CreateExecutionInput {
   requestId?: string;
   traceId?: string;
   parentExecutionId?: string;
+  businessTaskId?: string;
 }
 
 export function createExecution(db: Database.Database, input: CreateExecutionInput): ExecutionRow {
@@ -81,8 +85,9 @@ export function createExecution(db: Database.Database, input: CreateExecutionInp
   db.prepare(
     `INSERT INTO rt_executions
       (id, correlation_id, instance_slug, session_id, agent_id, kind, source,
-       timeout_ms, task_id, max_attempts, metadata_json, request_id, trace_id, parent_execution_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       timeout_ms, task_id, max_attempts, metadata_json, request_id, trace_id, parent_execution_id,
+       business_task_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     input.correlationId ?? id,
@@ -98,6 +103,7 @@ export function createExecution(db: Database.Database, input: CreateExecutionInp
     input.requestId ?? null,
     input.traceId ?? input.correlationId ?? id,
     input.parentExecutionId ?? null,
+    input.businessTaskId ?? null,
   );
   return getExecution(db, id)!;
 }
@@ -107,10 +113,17 @@ export function getExecution(db: Database.Database, id: string): ExecutionRow | 
 }
 
 export function startExecution(db: Database.Database, id: string): void {
-  db.prepare(
-    `UPDATE rt_executions SET status = 'running', started_at = datetime('now'),
+  db.transaction(() => {
+    db.prepare(
+      `UPDATE rt_executions SET status = 'running', started_at = datetime('now'),
        heartbeat_at = datetime('now') WHERE id = ? AND status = 'accepted'`,
-  ).run(id);
+    ).run(id);
+    db.prepare(
+      `UPDATE agents SET last_used_at = datetime('now') WHERE agent_id =
+       (SELECT agent_id FROM rt_executions WHERE id = ?) AND instance_id =
+       (SELECT id FROM instances WHERE slug = (SELECT instance_slug FROM rt_executions WHERE id = ?))`,
+    ).run(id, id);
+  })();
 }
 
 export function completeExecution(
@@ -129,7 +142,17 @@ export function completeExecution(
        completed_at = datetime('now') WHERE id = ? AND status IN ('accepted','running')`,
   ).run(result.messageId, result.inputTokens, result.outputTokens, result.costUsd, id);
   const execution = getExecution(db, id);
-  if (execution)
+  if (execution) {
+    attributeExecutionCost(db, id);
+    if (execution.business_task_id) syncBusinessTaskCost(db, execution.business_task_id);
+    db.prepare(
+      `UPDATE agents SET last_successful_run_at = datetime('now'), last_used_at = datetime('now')
+       WHERE agent_id = ? AND instance_id = (SELECT id FROM instances WHERE slug = ?)`,
+    ).run(execution.agent_id, execution.instance_slug);
+    db.prepare(
+      `UPDATE instances SET last_successful_run_at = datetime('now'), last_used_at = datetime('now')
+       WHERE slug = ?`,
+    ).run(execution.instance_slug);
     recordObservabilityEvent(db, {
       instanceSlug: execution.instance_slug,
       eventName: "execution.completed",
@@ -152,6 +175,7 @@ export function completeExecution(
         ? Math.max(0, Date.now() - new Date(`${execution.started_at.replace(" ", "T")}Z`).getTime())
         : undefined,
     });
+  }
 }
 
 export function failExecution(

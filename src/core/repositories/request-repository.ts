@@ -30,6 +30,7 @@ export interface RequestRow {
   delivered_at: string | null;
   acknowledged_at: string | null;
   updated_at: string;
+  business_task_id: string | null;
   execution_status?: string | null;
   cost_usd?: number;
   input_tokens?: number;
@@ -46,6 +47,7 @@ export interface CreateRequestInput {
   sessionId?: string;
   agentId?: string;
   taskId?: number;
+  businessTaskId?: string;
 }
 
 /** Atomically create a request or return the prior request for an idempotency key. */
@@ -57,8 +59,8 @@ export function createOrGetRequest(
   const traceId = input.traceId ?? id;
   const insert = db.prepare(`INSERT INTO rt_requests
     (id, trace_id, parent_request_id, instance_slug, session_id, agent_id, task_id, source,
-     idempotency_key)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     idempotency_key, business_task_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT DO NOTHING`);
   const result = insert.run(
     id,
@@ -70,6 +72,7 @@ export function createOrGetRequest(
     input.taskId ?? null,
     input.source,
     input.idempotencyKey ?? null,
+    input.businessTaskId ?? null,
   );
   const request =
     getRequest(db, id) ??

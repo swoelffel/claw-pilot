@@ -2074,6 +2074,517 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v51 / EP-06: business tasks, reviews, and durable artifact governance.
+    version: 51,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS rt_business_tasks (
+          id                    TEXT PRIMARY KEY,
+          instance_slug         TEXT NOT NULL REFERENCES instances(slug) ON DELETE CASCADE,
+          initiator_user_id      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          initiator_display      TEXT NOT NULL DEFAULT 'UNKNOWN',
+          team_id                TEXT,
+          use_case_id            TEXT,
+          objective              TEXT NOT NULL,
+          origin                 TEXT NOT NULL CHECK (origin IN
+                                ('HUMAN_REQUEST','SCHEDULED_WORKFLOW','API_REQUEST',
+                                 'AGENT_DELEGATION','SYSTEM_OPERATION')),
+          parent_business_task_id TEXT REFERENCES rt_business_tasks(id) ON DELETE SET NULL,
+          outcome                TEXT,
+          review_status          TEXT NOT NULL DEFAULT 'NOT_EVALUATED' CHECK (review_status IN
+                                ('ACCEPTED','NEEDS_REVISION','REJECTED','NOT_EVALUATED')),
+          cost_usd               REAL NOT NULL DEFAULT 0,
+          time_saved_minutes     REAL,
+          review_effort_minutes  REAL,
+          feedback               TEXT,
+          org_id                 TEXT NULL,
+          created_at             TEXT NOT NULL DEFAULT (datetime('now')),
+          completed_at           TEXT,
+          updated_at             TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_rt_business_tasks_instance_time
+          ON rt_business_tasks(instance_slug, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_rt_business_tasks_team_time
+          ON rt_business_tasks(team_id, created_at DESC) WHERE team_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_rt_business_tasks_parent
+          ON rt_business_tasks(parent_business_task_id);
+
+        CREATE TABLE IF NOT EXISTS rt_business_task_reviews (
+          id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+          business_task_id      TEXT NOT NULL REFERENCES rt_business_tasks(id) ON DELETE CASCADE,
+          reviewer_user_id      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          status                TEXT NOT NULL CHECK (status IN
+                                ('ACCEPTED','NEEDS_REVISION','REJECTED','NOT_EVALUATED')),
+          feedback              TEXT,
+          time_saved_minutes    REAL,
+          review_effort_minutes REAL,
+          org_id                 TEXT NULL,
+          created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_rt_business_task_reviews_task
+          ON rt_business_task_reviews(business_task_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS rt_artifacts (
+          id                    TEXT PRIMARY KEY,
+          instance_slug         TEXT NOT NULL REFERENCES instances(slug) ON DELETE CASCADE,
+          business_task_id      TEXT REFERENCES rt_business_tasks(id) ON DELETE SET NULL,
+          request_id            TEXT REFERENCES rt_requests(id) ON DELETE SET NULL,
+          message_id            TEXT REFERENCES rt_messages(id) ON DELETE SET NULL,
+          title                 TEXT NOT NULL,
+          artifact_type         TEXT NOT NULL,
+          content_ref           TEXT,
+          state                 TEXT NOT NULL DEFAULT 'DRAFT' CHECK (state IN
+                                ('DRAFT','READY_FOR_REVIEW','ACCEPTED','REJECTED','SUPERSEDED')),
+          superseded_by_id      TEXT REFERENCES rt_artifacts(id) ON DELETE SET NULL,
+          owner_user_id         INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          team_id               TEXT,
+          metadata_json         TEXT,
+          org_id                TEXT NULL,
+          created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_rt_artifacts_task
+          ON rt_artifacts(business_task_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_rt_artifacts_team_state
+          ON rt_artifacts(team_id, state) WHERE team_id IS NOT NULL;
+      `);
+
+      const executionColumns = new Set(
+        (db.pragma("table_info(rt_executions)") as Array<{ name: string }>).map((c) => c.name),
+      );
+      if (!executionColumns.has("business_task_id")) {
+        db.exec(
+          "ALTER TABLE rt_executions ADD COLUMN business_task_id TEXT REFERENCES rt_business_tasks(id) ON DELETE SET NULL",
+        );
+      }
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_rt_executions_business_task
+        ON rt_executions(business_task_id, accepted_at DESC)`);
+      const requestColumns = new Set(
+        (db.pragma("table_info(rt_requests)") as Array<{ name: string }>).map((c) => c.name),
+      );
+      if (!requestColumns.has("business_task_id")) {
+        db.exec(
+          "ALTER TABLE rt_requests ADD COLUMN business_task_id TEXT REFERENCES rt_business_tasks(id) ON DELETE SET NULL",
+        );
+      }
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_rt_requests_business_task
+        ON rt_requests(business_task_id, created_at DESC)`);
+    },
+  },
+  {
+    // v52 / EP-07: enterprise teams, scoped roles, grant previews, and audit history.
+    version: 52,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS org_teams (
+          id              TEXT PRIMARY KEY,
+          name            TEXT NOT NULL UNIQUE,
+          description     TEXT,
+          owner_user_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          org_id          TEXT NULL,
+          created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS org_team_memberships (
+          team_id         TEXT NOT NULL REFERENCES org_teams(id) ON DELETE CASCADE,
+          user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          role            TEXT NOT NULL CHECK (role IN
+                          ('PLATFORM_ADMIN','TEAM_ADMIN','WORKFLOW_MAINTAINER',
+                           'OPERATOR','MEMBER','VIEWER')),
+          source          TEXT NOT NULL DEFAULT 'MANUAL' CHECK (source IN ('MANUAL','SSO_GROUP')),
+          org_id          TEXT NULL,
+          created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (team_id, user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_org_team_memberships_user
+          ON org_team_memberships(user_id, team_id);
+
+        CREATE TABLE IF NOT EXISTS org_role_grants (
+          id              TEXT PRIMARY KEY,
+          team_id         TEXT REFERENCES org_teams(id) ON DELETE CASCADE,
+          role            TEXT NOT NULL,
+          action_pattern  TEXT NOT NULL,
+          resource_kind   TEXT NOT NULL DEFAULT '*',
+          effect          TEXT NOT NULL CHECK (effect IN ('ALLOW','DENY')),
+          org_id          TEXT NULL,
+          created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_org_role_grants_role
+          ON org_role_grants(role, team_id);
+
+        CREATE TABLE IF NOT EXISTS org_membership_audit (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          team_id         TEXT NOT NULL,
+          user_id         INTEGER NOT NULL,
+          actor_user_id   INTEGER,
+          old_role        TEXT,
+          new_role        TEXT,
+          action          TEXT NOT NULL CHECK (action IN ('ADDED','ROLE_CHANGED','REMOVED','OWNER_CHANGED')),
+          source          TEXT NOT NULL DEFAULT 'MANUAL',
+          org_id          TEXT NULL,
+          created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_org_membership_audit_team
+          ON org_membership_audit(team_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS org_sso_group_mappings (
+          id              TEXT PRIMARY KEY,
+          provider_id     TEXT NOT NULL,
+          group_key       TEXT NOT NULL,
+          team_id         TEXT NOT NULL REFERENCES org_teams(id) ON DELETE CASCADE,
+          role            TEXT NOT NULL,
+          enabled         INTEGER NOT NULL DEFAULT 0,
+          dry_run         INTEGER NOT NULL DEFAULT 1,
+          last_sync_at    TEXT,
+          org_id          TEXT NULL,
+          created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(provider_id, group_key, team_id)
+        );
+      `);
+
+      for (const table of [
+        "instances",
+        "agents",
+        "rt_flow_definitions",
+        "rt_flow_triggers",
+        "rt_budgets",
+        "rt_tasks",
+      ]) {
+        const columns = new Set(
+          (db.pragma(`table_info(${table})`) as Array<{ name: string }>).map((c) => c.name),
+        );
+        if (!columns.has("team_id")) db.exec(`ALTER TABLE ${table} ADD COLUMN team_id TEXT`);
+      }
+    },
+  },
+  {
+    // v53 / EP-08: validated use-case catalog, versioned guidance, and funnel events.
+    version: 53,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS rt_use_cases (
+          id                    TEXT PRIMARY KEY,
+          name                  TEXT NOT NULL UNIQUE,
+          description           TEXT NOT NULL,
+          owner_user_id         INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          team_id               TEXT REFERENCES org_teams(id) ON DELETE SET NULL,
+          lifecycle             TEXT NOT NULL DEFAULT 'DRAFT' CHECK (lifecycle IN
+                                ('DRAFT','VALIDATING','VALIDATED','DEPRECATED','ARCHIVED')),
+          current_version       INTEGER NOT NULL DEFAULT 1,
+          limitations           TEXT,
+          troubleshooting       TEXT,
+          quality_rubric_json   TEXT,
+          org_id                TEXT NULL,
+          created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS rt_use_case_versions (
+          use_case_id            TEXT NOT NULL REFERENCES rt_use_cases(id) ON DELETE CASCADE,
+          version                INTEGER NOT NULL,
+          prompt_template        TEXT NOT NULL,
+          output_validation_json TEXT NOT NULL DEFAULT '{}',
+          guidance_json          TEXT NOT NULL DEFAULT '{}',
+          prerequisites_json     TEXT NOT NULL DEFAULT '[]',
+          examples_json          TEXT NOT NULL DEFAULT '[]',
+          created_by_user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          org_id                 TEXT NULL,
+          created_at             TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (use_case_id, version)
+        );
+
+        CREATE TABLE IF NOT EXISTS rt_use_case_launches (
+          id                     TEXT PRIMARY KEY,
+          use_case_id            TEXT NOT NULL REFERENCES rt_use_cases(id) ON DELETE CASCADE,
+          version                INTEGER NOT NULL,
+          business_task_id       TEXT REFERENCES rt_business_tasks(id) ON DELETE SET NULL,
+          user_id                INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          team_id                TEXT REFERENCES org_teams(id) ON DELETE SET NULL,
+          scope_json             TEXT NOT NULL DEFAULT '{}',
+          reporting_period_json  TEXT,
+          output_config_json     TEXT NOT NULL DEFAULT '{}',
+          prerequisites_json     TEXT NOT NULL DEFAULT '{}',
+          status                 TEXT NOT NULL DEFAULT 'STARTED' CHECK (status IN
+                                 ('STARTED','PREREQUISITES_PASSED','EXECUTED','COMPLETED','ABANDONED')),
+          created_at             TEXT NOT NULL DEFAULT (datetime('now')),
+          completed_at           TEXT,
+          org_id                 TEXT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS rt_use_case_events (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          launch_id       TEXT NOT NULL REFERENCES rt_use_case_launches(id) ON DELETE CASCADE,
+          event_name      TEXT NOT NULL CHECK (event_name IN
+                          ('CATALOG_VIEWED','LAUNCH_STARTED','SCOPE_DEFINED','PREREQUISITES_PASSED',
+                           'EXECUTION_STARTED','RESULT_COMPLETED','OUTCOME_ACCEPTED','REPEAT_USE')),
+          metadata_json   TEXT,
+          org_id          TEXT NULL,
+          created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_rt_use_case_events_launch
+          ON rt_use_case_events(launch_id, id);
+      `);
+    },
+  },
+  {
+    // v54 / EP-09: governed workflow lifecycle, validation, attribution, and retries.
+    version: 54,
+    up(db) {
+      const definitionColumns = new Set(
+        (db.pragma("table_info(rt_flow_definitions)") as Array<{ name: string }>).map(
+          (c) => c.name,
+        ),
+      );
+      const addDefinition = (name: string, sql: string) => {
+        if (!definitionColumns.has(name))
+          db.exec(`ALTER TABLE rt_flow_definitions ADD COLUMN ${sql}`);
+      };
+      // Existing flows remain ACTIVE for backwards compatibility. New dashboard flows explicitly start DRAFT.
+      addDefinition("lifecycle", "lifecycle TEXT NOT NULL DEFAULT 'ACTIVE'");
+      addDefinition("version", "version INTEGER NOT NULL DEFAULT 1");
+      addDefinition("owner_user_id", "owner_user_id INTEGER");
+      addDefinition("validation_status", "validation_status TEXT NOT NULL DEFAULT 'LEGACY_VALID'");
+      addDefinition("validation_report_json", "validation_report_json TEXT");
+      addDefinition("failure_streak", "failure_streak INTEGER NOT NULL DEFAULT 0");
+      addDefinition("auto_pause_threshold", "auto_pause_threshold INTEGER NOT NULL DEFAULT 3");
+      addDefinition("rate_limit_per_hour", "rate_limit_per_hour INTEGER NOT NULL DEFAULT 60");
+
+      const runColumns = new Set(
+        (db.pragma("table_info(rt_flow_runs)") as Array<{ name: string }>).map((c) => c.name),
+      );
+      const addRun = (name: string, sql: string) => {
+        if (!runColumns.has(name)) db.exec(`ALTER TABLE rt_flow_runs ADD COLUMN ${sql}`);
+      };
+      addRun("trigger_identity", "trigger_identity TEXT");
+      addRun("workflow_version", "workflow_version INTEGER NOT NULL DEFAULT 1");
+      addRun("output_json", "output_json TEXT");
+      addRun("cost_usd", "cost_usd REAL NOT NULL DEFAULT 0");
+      addRun("business_task_id", "business_task_id TEXT");
+      addRun("idempotency_key", "idempotency_key TEXT");
+      db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_rt_flow_runs_idempotency
+          ON rt_flow_runs(flow_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+        CREATE TABLE IF NOT EXISTS rt_flow_validation_history (
+          id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+          flow_id               INTEGER NOT NULL REFERENCES rt_flow_definitions(id) ON DELETE CASCADE,
+          version               INTEGER NOT NULL,
+          validator_user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          status                TEXT NOT NULL CHECK (status IN ('VALID','INVALID')),
+          report_json           TEXT NOT NULL,
+          org_id                TEXT NULL,
+          created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS rt_flow_lifecycle_history (
+          id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+          flow_id               INTEGER NOT NULL REFERENCES rt_flow_definitions(id) ON DELETE CASCADE,
+          from_state            TEXT,
+          to_state              TEXT NOT NULL,
+          actor_user_id         INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          reason                TEXT,
+          org_id                TEXT NULL,
+          created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+      `);
+    },
+  },
+  {
+    // v55 / EP-10: governed agent lifecycle, immutable versions, approvals, and rollback.
+    version: 55,
+    up(db) {
+      const columns = new Set(
+        (db.pragma("table_info(agents)") as Array<{ name: string }>).map((c) => c.name),
+      );
+      const add = (name: string, sql: string) => {
+        if (!columns.has(name)) db.exec(`ALTER TABLE agents ADD COLUMN ${sql}`);
+      };
+      add("owner_user_id", "owner_user_id INTEGER");
+      add("lifecycle", "lifecycle TEXT NOT NULL DEFAULT 'DEVELOPMENT'");
+      add("version", "version INTEGER NOT NULL DEFAULT 1");
+      add("dependencies_json", "dependencies_json TEXT NOT NULL DEFAULT '[]'");
+      add("last_successful_run_at", "last_successful_run_at TEXT");
+      add("last_used_at", "last_used_at TEXT");
+
+      const instanceColumns = new Set(
+        (db.pragma("table_info(instances)") as Array<{ name: string }>).map((c) => c.name),
+      );
+      const addInstance = (name: string, sql: string) => {
+        if (!instanceColumns.has(name)) db.exec(`ALTER TABLE instances ADD COLUMN ${sql}`);
+      };
+      addInstance("owner_user_id", "owner_user_id INTEGER");
+      addInstance("lifecycle", "lifecycle TEXT NOT NULL DEFAULT 'PRODUCTION'");
+      addInstance("version", "version INTEGER NOT NULL DEFAULT 1");
+      addInstance("dependencies_json", "dependencies_json TEXT NOT NULL DEFAULT '[]'");
+      addInstance("last_successful_run_at", "last_successful_run_at TEXT");
+      addInstance("last_used_at", "last_used_at TEXT");
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS rt_agent_versions (
+          id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+          instance_slug         TEXT NOT NULL,
+          agent_id              TEXT NOT NULL,
+          version               INTEGER NOT NULL,
+          lifecycle             TEXT NOT NULL,
+          config_json           TEXT NOT NULL,
+          prompt_snapshot_json  TEXT NOT NULL DEFAULT '{}',
+          tools_json            TEXT NOT NULL DEFAULT '[]',
+          permissions_json      TEXT NOT NULL DEFAULT '[]',
+          dependencies_json     TEXT NOT NULL DEFAULT '[]',
+          created_by_user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          org_id                TEXT NULL,
+          created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(instance_slug, agent_id, version)
+        );
+        CREATE TABLE IF NOT EXISTS rt_agent_promotion_approvals (
+          id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+          instance_slug         TEXT NOT NULL,
+          agent_id              TEXT NOT NULL,
+          version               INTEGER NOT NULL,
+          from_state            TEXT NOT NULL,
+          to_state              TEXT NOT NULL,
+          requested_by_user_id  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          decided_by_user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          status                TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN
+                                ('PENDING','APPROVED','REJECTED')),
+          reason                TEXT,
+          org_id                TEXT NULL,
+          created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+          decided_at            TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_rt_agent_approvals_agent
+          ON rt_agent_promotion_approvals(instance_slug, agent_id, created_at DESC);
+      `);
+    },
+  },
+  {
+    // v56 / EP-11: normalized cost attribution, owned budgets, anomalies, and reconciliation.
+    version: 56,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS rt_cost_attributions (
+          id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+          request_id            TEXT REFERENCES rt_requests(id) ON DELETE SET NULL,
+          business_task_id      TEXT REFERENCES rt_business_tasks(id) ON DELETE SET NULL,
+          execution_id          TEXT REFERENCES rt_executions(id) ON DELETE SET NULL,
+          agent_id              TEXT,
+          instance_slug         TEXT,
+          workflow_id           INTEGER,
+          team_id               TEXT REFERENCES org_teams(id) ON DELETE SET NULL,
+          category              TEXT NOT NULL DEFAULT 'UNATTRIBUTED' CHECK (category IN
+                                ('ATTRIBUTED','UNATTRIBUTED')),
+          amount_usd            REAL NOT NULL CHECK (amount_usd >= 0),
+          is_estimate           INTEGER NOT NULL DEFAULT 1,
+          provider_id           TEXT,
+          provider_usage_id     TEXT,
+          incurred_at           TEXT NOT NULL DEFAULT (datetime('now')),
+          metadata_json         TEXT,
+          org_id                TEXT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_rt_cost_attributions_execution
+          ON rt_cost_attributions(execution_id) WHERE execution_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_rt_cost_attributions_team_time
+          ON rt_cost_attributions(team_id, incurred_at DESC);
+
+        CREATE TABLE IF NOT EXISTS rt_cost_policies (
+          id                    TEXT PRIMARY KEY,
+          scope                 TEXT NOT NULL CHECK (scope IN
+                                ('PLATFORM','TEAM','INSTANCE','WORKFLOW')),
+          scope_id              TEXT,
+          owner_user_id         INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          mode                  TEXT NOT NULL DEFAULT 'MONITOR' CHECK (mode IN
+                                ('MONITOR','WARN','ENFORCE')),
+          period               TEXT NOT NULL DEFAULT 'MONTHLY' CHECK (period IN
+                                ('DAILY','MONTHLY','LIFETIME')),
+          limit_usd             REAL NOT NULL CHECK (limit_usd > 0),
+          warning_threshold     REAL NOT NULL DEFAULT 0.8 CHECK
+                                (warning_threshold > 0 AND warning_threshold <= 1),
+          enabled               INTEGER NOT NULL DEFAULT 1,
+          org_id                TEXT NULL,
+          created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at            TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(scope, scope_id, period)
+        );
+
+        CREATE TABLE IF NOT EXISTS rt_cost_anomalies (
+          id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+          anomaly_type          TEXT NOT NULL CHECK (anomaly_type IN
+                                ('COST_SPIKE','LOOP','REPEATED_FAILURES','COST_WITHOUT_ACCEPTED_OUTCOME')),
+          severity              TEXT NOT NULL CHECK (severity IN ('INFO','WARNING','CRITICAL')),
+          scope                 TEXT NOT NULL,
+          scope_id              TEXT,
+          amount_usd            REAL,
+          details_json          TEXT NOT NULL DEFAULT '{}',
+          org_id                TEXT NULL,
+          detected_at           TEXT NOT NULL DEFAULT (datetime('now')),
+          resolved_at           TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS rt_provider_billing_imports (
+          id                    TEXT PRIMARY KEY,
+          provider_id           TEXT NOT NULL,
+          period_start          TEXT NOT NULL,
+          period_end            TEXT NOT NULL,
+          billed_usd            REAL NOT NULL,
+          application_usd       REAL NOT NULL,
+          variance_usd          REAL NOT NULL,
+          source_ref            TEXT,
+          imported_by_user_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          org_id                TEXT NULL,
+          imported_at           TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+      `);
+    },
+  },
+  {
+    // v57 / EP-12: adoption events, metric definitions, and data-quality coverage.
+    version: 57,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS rt_adoption_events (
+          id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id               INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          team_id               TEXT REFERENCES org_teams(id) ON DELETE SET NULL,
+          use_case_id           TEXT REFERENCES rt_use_cases(id) ON DELETE SET NULL,
+          workflow_id           INTEGER,
+          business_task_id      TEXT REFERENCES rt_business_tasks(id) ON DELETE SET NULL,
+          origin                TEXT NOT NULL,
+          event_name            TEXT NOT NULL CHECK (event_name IN
+                                ('FIRST_COMPLETION','TASK_COMPLETED','OUTCOME_ACCEPTED','RETURNED','AUTOMATION_COMPLETED')),
+          manual_effort_minutes REAL,
+          assisted_effort_minutes REAL,
+          revision_count        INTEGER,
+          reported_time_saved_minutes REAL,
+          org_id                TEXT NULL,
+          created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_rt_adoption_events_user_time
+          ON rt_adoption_events(user_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_rt_adoption_events_team_time
+          ON rt_adoption_events(team_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS rt_metric_definitions (
+          metric_key            TEXT PRIMARY KEY,
+          display_name          TEXT NOT NULL,
+          definition            TEXT NOT NULL,
+          numerator_definition  TEXT,
+          denominator_definition TEXT,
+          excludes              TEXT,
+          org_id                TEXT NULL,
+          updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT OR IGNORE INTO rt_metric_definitions
+          (metric_key, display_name, definition, excludes) VALUES
+          ('active_human_users','Active human users','Distinct human initiators with completed work in the period','Agent delegation and system traffic'),
+          ('first_completions','First completions','Users reaching their first completed business task','Unknown initiators'),
+          ('returning_users','Returning users','Human users active on two or more distinct days','Agent delegation and system traffic'),
+          ('accepted_results','Accepted results','Business tasks whose latest review is ACCEPTED','NOT_EVALUATED tasks'),
+          ('automation_rate','Automation rate','Completed scheduled-workflow tasks divided by all completed tasks','Child-agent activity'),
+          ('cost_per_accepted_task','Cost per accepted task','Attributed cost divided by accepted business tasks','Unattributed costs from numerator');
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

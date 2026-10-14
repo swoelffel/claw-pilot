@@ -37,6 +37,7 @@ interface StepExecutionInput {
   maxSteps?: number;
   timeoutMs?: number;
   abort?: AbortSignal;
+  businessTaskId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +121,10 @@ export async function executeStep(
       extraTools: [completeStepTool, extensionTool],
       maxSteps: softCap,
       flowStepState,
+      request: {
+        source: "flow",
+        ...(input.businessTaskId ? { businessTaskId: input.businessTaskId } : {}),
+      },
     });
 
     return {

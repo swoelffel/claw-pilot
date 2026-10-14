@@ -98,6 +98,7 @@ function requestIdentity(
     ...(body.parentRequestId !== undefined ? { parentRequestId: body.parentRequestId } : {}),
     ...(body.idempotencyKey !== undefined ? { idempotencyKey: body.idempotencyKey } : {}),
     ...(body.taskId !== undefined ? { taskId: body.taskId } : {}),
+    ...(body.businessTaskId !== undefined ? { businessTaskId: body.businessTaskId } : {}),
     source: "web",
   };
 }
