@@ -402,6 +402,25 @@ describe("QuestionTool", () => {
   // -----------------------------------------------------------------------
 
   describe("execute", () => {
+    it("registers the resolver before publishing the question", async () => {
+      const { getBus } = await import("../../bus/index.js");
+      let resolvedDuringPublish = false;
+      const mockPublish = vi.fn(() => {
+        resolvedDuringPublish = resolveQuestion("test-question-id", "immediate answer");
+        // Keep the test from hanging on the old publish-before-register order.
+        if (!resolvedDuringPublish) {
+          queueMicrotask(() => resolveQuestion("test-question-id", "delayed answer"));
+        }
+      });
+      vi.mocked(getBus).mockReturnValue({ publish: mockPublish } as never);
+
+      const def = await QuestionTool.init();
+      const result = await def.execute({ question: "Continue?" }, makeCtx());
+
+      expect(resolvedDuringPublish).toBe(true);
+      expect(result.output).toContain("immediate answer");
+    });
+
     it("publishes QuestionAsked event and resolves when answered", async () => {
       const { getBus } = await import("../../bus/index.js");
       const mockPublish = vi.fn();

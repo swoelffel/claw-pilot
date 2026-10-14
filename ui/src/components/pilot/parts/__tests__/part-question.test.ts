@@ -53,6 +53,7 @@ vi.mock("../../../../api.js", () => ({
 // --- Import after mocks ------------------------------------------------------
 
 import { answerQuestion } from "../../../../api.js";
+import { ApiError } from "../../../../lib/api-error.js";
 import { PilotPartQuestion } from "../part-question.js";
 
 const mockAnswerQuestion = vi.mocked(answerQuestion);
@@ -65,6 +66,8 @@ interface PartQuestionInternal {
   _fallbackText: string;
   _submitting: boolean;
   _answered: boolean;
+  _expired: boolean;
+  _submitError: string;
   _submitFallback: () => Promise<void>;
   dispatchEvent: (evt: Event) => boolean;
 }
@@ -76,6 +79,8 @@ function makeEl(metadata: unknown, slug = "my-team"): PartQuestionInternal {
   el._fallbackText = "";
   el._submitting = false;
   el._answered = false;
+  el._expired = false;
+  el._submitError = "";
   return el;
 }
 
@@ -170,6 +175,27 @@ describe("PilotPartQuestion — fallback submission", () => {
     expect(mockAnswerQuestion).toHaveBeenCalledTimes(1);
     expect(el._answered).toBe(false);
     expect(el._submitting).toBe(false);
+  });
+
+  it("expires the card and notifies its parent when the runtime lost the question", async () => {
+    mockAnswerQuestion.mockRejectedValue(
+      new ApiError(410, "QUESTION_EXPIRED", "This question expired because the runtime restarted."),
+    );
+    const el = makeEl({ toolCallId: "call-expired", toolName: "question", args: {} });
+    el._fallbackText = "hello";
+    const dispatched: CustomEvent[] = [];
+    vi.spyOn(el, "dispatchEvent").mockImplementation((evt: Event) => {
+      dispatched.push(evt as CustomEvent);
+      return true;
+    });
+
+    await el._submitFallback();
+
+    expect(el._expired).toBe(true);
+    expect(el._submitError).toContain("runtime restarted");
+    expect(dispatched.find((event) => event.type === "question-expired")?.detail).toEqual({
+      questionId: "call-expired",
+    });
   });
 
   it("dispatches question-answered event on successful fallback submission", async () => {

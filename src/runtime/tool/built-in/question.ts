@@ -303,6 +303,24 @@ export const QuestionTool = Tool.define("question", {
     // submit answers.
     const questionId = ctx.toolCallId ?? (await import("nanoid")).nanoid();
 
+    // Register before publishing. A fast channel subscriber can answer
+    // synchronously, so publishing first leaves a race where the answer is
+    // reported as unknown even though the question was just emitted.
+    const waitForAnswer = (): Promise<string> =>
+      new Promise<string>((resolve, reject) => {
+        _pending.set(questionId, { resolve, reject });
+
+        ctx.abort.addEventListener(
+          "abort",
+          () => {
+            _pending.delete(questionId);
+            reject(new Error("Question aborted"));
+          },
+          { once: true },
+        );
+      });
+    const answerPromise = ctx.onLongWait ? ctx.onLongWait(waitForAnswer) : waitForAnswer();
+
     const bus = getBus(ctx.instanceSlug ?? "default");
 
     // Emit event so the channel layer can display the question(s).
@@ -318,23 +336,7 @@ export const QuestionTool = Tool.define("question", {
       ...(firstItem.options !== undefined ? { options: firstItem.options } : {}),
     });
 
-    // Wait for answer (or abort). Wrap in onLongWait so the prompt-loop
-    // watchdogs don't fire while we wait for the human to respond.
-    const waitForAnswer = (): Promise<string> =>
-      new Promise<string>((resolve, reject) => {
-        _pending.set(questionId, { resolve, reject });
-
-        ctx.abort.addEventListener(
-          "abort",
-          () => {
-            _pending.delete(questionId);
-            reject(new Error("Question aborted"));
-          },
-          { once: true },
-        );
-      });
-
-    const rawAnswer = ctx.onLongWait ? await ctx.onLongWait(waitForAnswer) : await waitForAnswer();
+    const rawAnswer = await answerPromise;
 
     // Parse the payload. The UI / Telegram layers send a JSON array of
     // per-item answers. For single-legacy callers we fall back to treating
