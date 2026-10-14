@@ -21,6 +21,10 @@ import {
   listRequests,
   markRequestDelivered,
 } from "../../../core/repositories/request-repository.js";
+import type { RequestRow } from "../../../core/repositories/request-repository.js";
+import { getMessage } from "../../../runtime/session/message.js";
+import { listParts } from "../../../runtime/session/part.js";
+import { getSession } from "../../../runtime/session/session.js";
 import { buildExecutionPreflight } from "./execution-preflight.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -154,6 +158,35 @@ function registerExecutionReadRoutes(app: Hono, deps: RouteDeps): void {
   );
 }
 
+/** Load the durable message without running tools or retrying the originating channel. */
+function readRequestResult(db: RouteDeps["db"], request: RequestRow, slug: string) {
+  if (!request.result_message_id || request.delivery_status === "pending") return undefined;
+  const message = getMessage(db, request.result_message_id);
+  if (!message || message.role !== "assistant" || message.sessionId !== request.session_id) {
+    return undefined;
+  }
+  if (getSession(db, message.sessionId)?.instanceSlug !== slug) return undefined;
+  const parts = listParts(db, message.id);
+  if (
+    !parts.some(
+      (part) =>
+        ["text", "image", "tool_call", "tool_result"].includes(part.type) && part.content?.trim(),
+    )
+  )
+    return undefined;
+  const text = parts
+    .filter((part) => part.type === "text")
+    .map((part) => part.content ?? "")
+    .join("\n\n");
+  const partial =
+    !message.finishReason ||
+    ["error", "length", "content-filter"].includes(message.finishReason) ||
+    parts.some(
+      (part) => part.state === "pending" || part.state === "running" || part.state === "error",
+    );
+  return { message: { ...message, parts }, text, partial };
+}
+
 function registerExecutionActionRoutes(app: Hono, deps: RouteDeps): void {
   const { db, registry } = deps;
 
@@ -191,11 +224,14 @@ function registerExecutionActionRoutes(app: Hono, deps: RouteDeps): void {
       if (!request || request.instance_slug !== slug) {
         return apiError(c, 404, "REQUEST_NOT_FOUND", "Request not found");
       }
-      if (!request.result_message_id) {
+      const result = readRequestResult(db, request, slug);
+      if (!result) {
         return apiError(c, 409, "RESULT_NOT_PERSISTED", "No durable result is available");
       }
-      markRequestDelivered(db, request.id);
-      return c.json(getRequest(db, request.id));
+      // Delivered means returned through this dashboard API, not resent to the source channel.
+      // Partial results remain recoverable and retain the original delivery diagnostics.
+      if (!result.partial) markRequestDelivered(db, request.id);
+      return c.json({ ...getRequest(db, request.id), result });
     },
   );
 

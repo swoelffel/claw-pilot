@@ -530,6 +530,19 @@ export interface RuntimeRequest {
   created_at: string;
 }
 
+/** Recovery returns existing request metadata plus the saved message, without re-execution. */
+export interface RequestRecoveryResponse extends Omit<
+  RuntimeRequest,
+  "execution_status" | "cost_usd" | "input_tokens" | "output_tokens"
+> {
+  result: {
+    message: PilotMessage;
+    text: string;
+    /** Incomplete or failed saved output does not clear the delivery failure. */
+    partial: boolean;
+  };
+}
+
 // --- Runtime Pilot types ---
 
 export type PilotPartType =

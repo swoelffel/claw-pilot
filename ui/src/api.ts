@@ -56,6 +56,7 @@ import type {
   SearchResult,
   NotificationsPage,
   RuntimeRequest,
+  RequestRecoveryResponse,
 } from "./types.js";
 import { ApiError } from "./lib/api-error.js";
 import { getToken, setToken } from "./services/auth-state.js";
@@ -690,11 +691,14 @@ export async function fetchRuntimeRequests(
 export async function recoverRequestDelivery(
   slug: string,
   requestId: string,
-): Promise<RuntimeRequest> {
-  return apiFetch<RuntimeRequest>(`/instances/${slug}/requests/${requestId}/recover-delivery`, {
-    method: "POST",
-    body: "{}",
-  });
+): Promise<RequestRecoveryResponse> {
+  return apiFetch<RequestRecoveryResponse>(
+    `/instances/${slug}/requests/${requestId}/recover-delivery`,
+    {
+      method: "POST",
+      body: "{}",
+    },
+  );
 }
 
 export interface AgentKickoffResponse {
