@@ -38,6 +38,7 @@ import { runMiddlewarePipeline } from "../middleware/pipeline.js";
 import { createUserMessage } from "../session/message.js";
 import { listParts } from "../session/part.js";
 import type { OutboundArtifact, OutboundFileDelivery } from "../types.js";
+import { RequestContextConflictError } from "../../core/repositories/request-repository.js";
 import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -109,6 +110,18 @@ export interface RouterResult {
 // ChannelRouter
 // ---------------------------------------------------------------------------
 
+function assertExplicitSessionContext(
+  db: Database.Database,
+  instanceSlug: string,
+  sessionId: string,
+  agentId: string,
+): void {
+  const session = getSession(db, sessionId);
+  if (!session || session.instanceSlug !== instanceSlug || session.agentId !== agentId) {
+    throw new RequestContextConflictError();
+  }
+}
+
 export class ChannelRouter {
   /**
    * Route an inbound message through the agent loop and return the response.
@@ -155,6 +168,8 @@ export class ChannelRouter {
     // 3. Find or create session for this peer (or use forced sessionId)
     const sessionId =
       input.sessionId ?? findOrCreateSession(db, instanceSlug, message, agentId, config);
+    if (input.sessionId !== undefined)
+      assertExplicitSessionContext(db, instanceSlug, sessionId, agentId);
 
     // 4. Run middleware pipeline + prompt loop — serialized per session via queue
     // Resolve the agent's workspace directory to show to the agent (env block).

@@ -1,6 +1,10 @@
 // src/dashboard/routes/instances/runtime-chat.ts
 // Routes: POST runtime/chat, POST sessions/:sessionId/abort, GET runtime/chat/stream
-import type { Hono } from "hono";
+import { randomUUID } from "node:crypto";
+import type Database from "better-sqlite3";
+import { getBusinessTask } from "../../../core/repositories/business-task-repository.js";
+import { getSession } from "../../../runtime/session/session.js";
+import type { Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
@@ -11,9 +15,15 @@ import { runtimeGuard } from "../_runtime-guard.js";
 import { proxyRuntimeSSE } from "../_sse-proxy.js";
 import { permission } from "../../middleware/permission.js";
 import { ACTIONS } from "../../middleware/permission-actions.js";
-import { randomUUID } from "node:crypto";
-import { markRequestDelivered } from "../../../core/repositories/request-repository.js";
-import { getBusinessTask } from "../../../core/repositories/business-task-repository.js";
+import {
+  assertRequestScope,
+  findRequestByIdempotencyKey,
+  getRequest,
+  markRequestDelivered,
+  markRequestDeliveryFailed,
+  RequestContextConflictError,
+  type RequestScope,
+} from "../../../core/repositories/request-repository.js";
 
 // ---------------------------------------------------------------------------
 // AI SDK error extraction
@@ -120,9 +130,73 @@ function validateBusinessTaskReference(
   );
 }
 
-export function registerRuntimeChatRoutes(app: Hono, deps: RouteDeps): void {
-  const attr = (c: HonoContext) => ({ slug: c.req.param("slug") });
+/** Bind delivery mutations to an explicit session or a successful daemon response. */
+function resolveDeliveryScope(
+  db: Database.Database,
+  scope: RequestScope,
+  sessionId: string | undefined,
+): RequestScope | undefined {
+  if (!sessionId || (scope.sessionId !== undefined && scope.sessionId !== sessionId))
+    return undefined;
+  const session = getSession(db, sessionId);
+  if (
+    !session ||
+    session.instanceSlug !== scope.instanceSlug ||
+    (scope.agentId !== undefined && scope.agentId !== session.agentId)
+  )
+    return undefined;
+  return { ...scope, sessionId, agentId: session.agentId };
+}
 
+function chatErrorResponse(
+  c: Context,
+  deps: RouteDeps,
+  requestId: string,
+  scope: RequestScope,
+  err: unknown,
+): Response {
+  if (
+    err instanceof RequestContextConflictError ||
+    (err instanceof Error && "code" in err && err.code === "REQUEST_CONTEXT_CONFLICT")
+  ) {
+    return apiError(
+      c,
+      409,
+      "REQUEST_CONTEXT_CONFLICT",
+      "Request identity is incompatible with this context",
+    );
+  }
+  const persisted = getRequest(deps.db, requestId);
+  const deliveryScope = resolveDeliveryScope(
+    deps.db,
+    scope,
+    typeof scope.sessionId === "string" ? scope.sessionId : undefined,
+  );
+  if (persisted?.result_message_id && deliveryScope) {
+    markRequestDeliveryFailed(deps.db, requestId, err, deliveryScope);
+  }
+  const detail = extractApiErrorDetail(err);
+  logger.error(`[POST /runtime/chat] proxy failed: ${detail.logMessage}`);
+  return apiError(c, detail.httpStatus, "PROMPT_LOOP_FAILED", detail.userMessage);
+}
+
+function recordChatDelivery(
+  db: Database.Database,
+  submittedId: string,
+  resultId: string,
+  result: Record<string, unknown>,
+  scope: RequestScope,
+): void {
+  const interrupted =
+    result.messageId === "" && result.executionId === "" && result.pendingQuestion !== true;
+  const request = getRequest(db, resultId);
+  if (request) assertRequestScope(request, scope);
+  else if (!interrupted || resultId !== submittedId) throw new RequestContextConflictError();
+  if (!interrupted) markRequestDelivered(db, resultId, scope);
+}
+
+function registerRuntimeChatPostRoutes(app: Hono, deps: RouteDeps): void {
+  const attr = (c: HonoContext) => ({ slug: c.req.param("slug") });
   // ---------------------------------------------------------------------------
   // POST /api/instances/:slug/runtime/chat
   // Send a message to a runtime agent and get a response
@@ -156,6 +230,7 @@ export function registerRuntimeChatRoutes(app: Hono, deps: RouteDeps): void {
       if (!body.message || typeof body.message !== "string" || !body.message.trim()) {
         return apiError(c, 400, "MISSING_MESSAGE", "Field 'message' is required");
       }
+
       const taskError = validateBusinessTaskReference(c, deps, slug, body.businessTaskId);
       if (taskError) return taskError;
 
@@ -170,31 +245,57 @@ export function registerRuntimeChatRoutes(app: Hono, deps: RouteDeps): void {
       const requestId = body.requestId ?? randomUUID();
       const traceId = body.traceId ?? ((c as HonoContext).get("traceId") as string) ?? requestId;
 
+      const scope: RequestScope = {
+        instanceSlug: slug,
+        source: "web",
+        ...(body.sessionId !== undefined ? { sessionId: body.sessionId } : {}),
+        ...(body.agentId !== undefined ? { agentId: body.agentId } : {}),
+        parentRequestId: body.parentRequestId ?? null,
+        taskId: body.taskId ?? null,
+        businessTaskId: body.businessTaskId ?? null,
+      };
       try {
-        const result = await callRuntimeApi<Record<string, unknown> & { requestId?: string }>(
-          slug,
-          "/internal/chat",
-          { ...body, requestId, traceId, ...(idempotencyKey ? { idempotencyKey } : {}) },
+        const prior = getRequest(deps.db, requestId);
+        if (prior) assertRequestScope(prior, scope);
+        const keyed = idempotencyKey
+          ? findRequestByIdempotencyKey(deps.db, slug, "web", idempotencyKey)
+          : undefined;
+        if (keyed) assertRequestScope(keyed, scope);
+        const result = await callRuntimeApi<
+          Record<string, unknown> & { requestId?: string; sessionId?: string }
+        >(slug, "/internal/chat", {
+          ...body,
+          requestId,
+          traceId,
+          ...(idempotencyKey ? { idempotencyKey } : {}),
+        });
+        const resultId = result.requestId ?? requestId;
+        const canonical = idempotencyKey
+          ? findRequestByIdempotencyKey(deps.db, slug, "web", idempotencyKey)
+          : undefined;
+        if (resultId !== requestId && resultId !== canonical?.id)
+          throw new RequestContextConflictError();
+        const deliveryScope = resolveDeliveryScope(
+          deps.db,
+          scope,
+          result.sessionId ?? body.sessionId,
         );
-        markRequestDelivered(deps.db, result.requestId ?? requestId);
+        if (!deliveryScope) throw new RequestContextConflictError();
+        recordChatDelivery(deps.db, requestId, resultId, result, deliveryScope);
         c.header("X-Request-Id", result.requestId ?? requestId);
         c.header("X-Trace-Id", traceId);
         return c.json(result);
       } catch (err) {
-        const persisted = deps.db
-          .prepare("SELECT result_message_id FROM rt_requests WHERE id = ?")
-          .get(requestId) as { result_message_id: string | null } | undefined;
-        if (persisted?.result_message_id) {
-          const { markRequestDeliveryFailed } =
-            await import("../../../core/repositories/request-repository.js");
-          markRequestDeliveryFailed(deps.db, requestId, err);
-        }
-        const detail = extractApiErrorDetail(err);
-        logger.error(`[POST /runtime/chat] proxy failed: ${detail.logMessage}`);
-        return apiError(c, detail.httpStatus, "PROMPT_LOOP_FAILED", detail.userMessage);
+        return chatErrorResponse(c, deps, requestId, scope, err);
       }
     },
   );
+}
+
+export function registerRuntimeChatRoutes(app: Hono, deps: RouteDeps): void {
+  const attr = (c: HonoContext) => ({ slug: c.req.param("slug") });
+
+  registerRuntimeChatPostRoutes(app, deps);
 
   // ---------------------------------------------------------------------------
   // POST /api/instances/:slug/runtime/sessions/:sessionId/abort

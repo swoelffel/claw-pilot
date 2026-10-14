@@ -46,6 +46,9 @@ import { runPromptLoop, estimateRequestTokens } from "../prompt-loop.js";
 import * as compactionModule from "../compaction.js";
 import type { ResolvedModel } from "../../provider/provider.js";
 import type { RuntimeAgentConfig } from "../../config/index.js";
+import { createBusinessTask } from "../../../core/repositories/business-task-repository.js";
+import { getRequest } from "../../../core/repositories/request-repository.js";
+import { runtimeRequestContext } from "../request-context.js";
 import { getTools } from "../../tool/registry.js";
 import { Tool } from "../../tool/tool.js";
 
@@ -156,6 +159,120 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 // Happy path
 // ---------------------------------------------------------------------------
+
+describe("runPromptLoop — request ownership", () => {
+  function setup() {
+    const session = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
+    return {
+      workDir: undefined,
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      sessionId: session.id,
+      userText: "Hello",
+      agentConfig: makeAgentConfig(),
+      resolvedModel: makeResolvedModel(textStreamModel("Done")),
+      request: { requestId: "owned-request", source: "web", idempotencyKey: "retry" },
+    };
+  }
+
+  it("replays same-context retries by ID and key without creating another execution", async () => {
+    const input = setup();
+    const first = await runPromptLoop(input);
+    const byId = await runPromptLoop(input);
+    const byKey = await runPromptLoop({
+      ...input,
+      request: { ...input.request, requestId: "new-id" },
+    });
+    expect(byId).toMatchObject({ messageId: first.messageId, text: "Done", steps: 0 });
+    expect(byKey).toMatchObject({
+      requestId: first.requestId,
+      messageId: first.messageId,
+      text: "Done",
+    });
+    expect(listExecutions(db, INSTANCE_SLUG)).toHaveLength(1);
+  });
+
+  it("rejects a retry that drops the business task context", async () => {
+    const input = setup();
+    const task = createBusinessTask(db, {
+      instanceSlug: INSTANCE_SLUG,
+      objective: "Work",
+      origin: "HUMAN_REQUEST",
+    });
+    await runPromptLoop({ ...input, request: { ...input.request, businessTaskId: task.id } });
+    const original = getRequest(db, "owned-request");
+    await expect(runPromptLoop(input)).rejects.toMatchObject({ code: "REQUEST_CONTEXT_CONFLICT" });
+    expect(getRequest(db, "owned-request")).toEqual(original);
+    expect(listExecutions(db, INSTANCE_SLUG)).toHaveLength(1);
+  });
+
+  it("preserves inherited parent context and replays a child under the same parent", async () => {
+    const input = setup();
+    const parent = await runPromptLoop(input);
+    const childInput = {
+      ...input,
+      sessionId: createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "child" }).id,
+      agentConfig: makeAgentConfig({ id: "child" }),
+      request: { requestId: "child-request", source: "agent", idempotencyKey: "child-retry" },
+    };
+    const context = {
+      requestId: "owned-request",
+      traceId: "owned-request",
+      executionId: parent.executionId!,
+    };
+    const child = await runtimeRequestContext.run(context, () => runPromptLoop(childInput));
+    const retry = await runtimeRequestContext.run(context, () => runPromptLoop(childInput));
+    expect(retry).toMatchObject({ messageId: child.messageId, text: "Done", steps: 0 });
+    expect(getRequest(db, "child-request")).toMatchObject({
+      parent_request_id: "owned-request",
+      trace_id: "owned-request",
+      source: "agent",
+    });
+    expect(listExecutions(db, INSTANCE_SLUG)).toHaveLength(2);
+  });
+
+  it.each(["instance", "source", "session", "agent", "parent"])(
+    "rejects a duplicate from a different %s without persisting a turn or altering the result",
+    async (boundary) => {
+      const input = setup();
+      await runPromptLoop(input);
+      const original = getRequest(db, "owned-request");
+      const messages = listMessages(db, input.sessionId);
+      const changed = { ...input, request: { ...input.request } };
+      if (boundary === "instance") {
+        db.prepare(
+          `INSERT INTO instances (server_id, slug, port, config_path, state_dir, systemd_unit)
+          VALUES (1, 'other-instance', 19002, '/tmp/config', '/tmp/state', 'other.service')`,
+        ).run();
+        changed.instanceSlug = "other-instance";
+        changed.sessionId = createSession(db, {
+          instanceSlug: "other-instance",
+          agentId: "main",
+        }).id;
+      }
+      if (boundary === "source") changed.request.source = "agent";
+      if (boundary === "session")
+        changed.sessionId = createSession(db, {
+          instanceSlug: INSTANCE_SLUG,
+          agentId: "main",
+        }).id;
+      if (boundary === "agent") changed.agentConfig = makeAgentConfig({ id: "other" });
+      const targetMessages = listMessages(db, changed.sessionId);
+      const retry =
+        boundary === "parent"
+          ? runtimeRequestContext.run(
+              { requestId: "other-parent", traceId: "trace", executionId: "exec" },
+              () => runPromptLoop(changed),
+            )
+          : runPromptLoop(changed);
+      await expect(retry).rejects.toMatchObject({ code: "REQUEST_CONTEXT_CONFLICT" });
+      expect(getRequest(db, "owned-request")).toEqual(original);
+      expect(listMessages(db, input.sessionId)).toEqual(messages);
+      expect(listMessages(db, changed.sessionId)).toEqual(targetMessages);
+      expect(listExecutions(db, INSTANCE_SLUG)).toHaveLength(1);
+    },
+  );
+});
 
 describe("runPromptLoop — preflight compaction", () => {
   function setup() {

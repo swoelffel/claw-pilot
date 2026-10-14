@@ -115,6 +115,7 @@ import { ChannelRouter, resolveModelForAgent } from "../router.js";
 import type { RouterInput } from "../router.js";
 import type { InboundMessage, InstanceSlug } from "../../types.js";
 import type { RuntimeConfig } from "../../config/index.js";
+import { getSession, type SessionInfo } from "../../session/session.js";
 import { getAgent, defaultAgentName, resolveEffectivePersistence } from "../../agent/registry.js";
 import { runPromptLoop } from "../../session/prompt-loop.js";
 import { runMiddlewarePipeline } from "../../middleware/pipeline.js";
@@ -248,6 +249,44 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("ChannelRouter.route()", () => {
+  const selectedSession: SessionInfo = {
+    id: "selected-session",
+    instanceSlug: INSTANCE_SLUG,
+    agentId: "main",
+    channel: "web",
+    parentId: undefined,
+    peerId: "user-42",
+    title: undefined,
+    state: "active",
+    permissions: undefined,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+    sessionKey: undefined,
+    spawnDepth: 0,
+    label: undefined,
+    metadata: undefined,
+    persistent: false,
+  };
+
+  it.each([{ instanceSlug: "other-instance" }, { agentId: "other-agent" }])(
+    "rejects incompatible explicit sessions before middleware: %j",
+    async (change) => {
+      vi.mocked(getSession).mockReturnValue({ ...selectedSession, ...change });
+      await expect(
+        ChannelRouter.route(makeRouterInput({ sessionId: selectedSession.id })),
+      ).rejects.toMatchObject({ code: "REQUEST_CONTEXT_CONFLICT" });
+      expect(runMiddlewarePipeline).not.toHaveBeenCalled();
+      expect(runPromptLoop).not.toHaveBeenCalled();
+    },
+  );
+
+  it("allows an explicit session owned by the resolved instance and agent", async () => {
+    vi.mocked(getSession).mockReturnValue(selectedSession);
+    const result = await ChannelRouter.route(makeRouterInput({ sessionId: selectedSession.id }));
+    expect(result.sessionId).toBe(selectedSession.id);
+    expect(result.response.text).toBe("Hello from the agent!");
+  });
+
   it("publishes ChannelMessageReceived event", async () => {
     const input = makeRouterInput();
     await ChannelRouter.route(input);
