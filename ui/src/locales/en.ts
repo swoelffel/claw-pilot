@@ -2,6 +2,14 @@
 // These match the msg() calls in the components.
 
 export const templates = {
+  // Request result recovery
+  "request-list-result-title": "Saved result",
+  "request-list-result-channel":
+    "Retrieved here from saved output. The original channel has not been retried.",
+  "request-list-result-partial": "Partial saved result. Delivery status is unchanged.",
+  "request-list-result-message": "View saved message",
+  "request-list-result-recover": "Recover result",
+
   // app.ts
   "ws-live": "Live",
   "ws-offline": "Offline",
