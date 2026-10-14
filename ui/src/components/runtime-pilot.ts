@@ -901,6 +901,12 @@ export class RuntimePilot extends LitElement {
     }
   }
 
+  private _onQuestionExpired(): void {
+    this._status = "idle";
+    this._currentToolName = null;
+    void this._reloadLastMessages();
+  }
+
   // ── Stats computed from messages ──────────────────────────────────────────
 
   private get _totalTokens(): number {
@@ -1020,6 +1026,7 @@ export class RuntimePilot extends LitElement {
           class="pilot-main"
           @suggestion-click=${this._onSuggestionClick}
           @question-answered=${this._onQuestionAnswered}
+          @question-expired=${this._onQuestionExpired}
         >
           <cp-pilot-filter-bar
             .filters=${this._filters}

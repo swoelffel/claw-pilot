@@ -11,6 +11,7 @@ import { localized, msg } from "@lit/localize";
 import type { PilotPart } from "../../../types.js";
 import { tokenStyles } from "../../../styles/tokens.js";
 import { answerQuestion } from "../../../api.js";
+import { ApiError } from "../../../lib/api-error.js";
 
 // ---------------------------------------------------------------------------
 // Types — mirror the runtime QuestionItem / QuestionAnswerPayload shapes
@@ -330,6 +331,16 @@ export class PilotPartQuestion extends LitElement {
         border-top: 1px solid var(--bg-border);
         white-space: pre-wrap;
       }
+
+      .question-error {
+        padding: 10px 12px;
+        font-size: 12px;
+        line-height: 1.5;
+        color: var(--state-error);
+        background: color-mix(in srgb, var(--state-error) 8%, transparent);
+        border-top: 1px solid var(--bg-border);
+        white-space: pre-wrap;
+      }
     `,
   ];
 
@@ -342,6 +353,8 @@ export class PilotPartQuestion extends LitElement {
   @state() private _submitting = false;
   @state() private _answered = false;
   @state() private _fallbackText = "";
+  @state() private _submitError = "";
+  @state() private _expired = false;
 
   private _initialized = false;
 
@@ -366,6 +379,8 @@ export class PilotPartQuestion extends LitElement {
         this._submitting = false;
         this._answered = false;
         this._fallbackText = "";
+        this._submitError = "";
+        this._expired = false;
         this._initialized = false;
       }
     }
@@ -408,6 +423,26 @@ export class PilotPartQuestion extends LitElement {
     this._tabStates = updated;
   }
 
+  private _handleSubmitError(error: unknown, questionId: string): void {
+    this._submitError =
+      error instanceof Error
+        ? error.message
+        : msg("The answer could not be submitted. Please try again.", {
+            id: "part-question-submit-error",
+          });
+
+    if (error instanceof ApiError && error.code === "QUESTION_EXPIRED") {
+      this._expired = true;
+      this.dispatchEvent(
+        new CustomEvent("question-expired", {
+          bubbles: true,
+          composed: true,
+          detail: { questionId },
+        }),
+      );
+    }
+  }
+
   private async _submit(): Promise<void> {
     if (this._submitting || this._answered) return;
     const items = this._items();
@@ -432,6 +467,7 @@ export class PilotPartQuestion extends LitElement {
     });
 
     this._submitting = true;
+    this._submitError = "";
     try {
       await answerQuestion(this.slug, questionId, JSON.stringify(payload));
       this._answered = true;
@@ -442,8 +478,8 @@ export class PilotPartQuestion extends LitElement {
           detail: { questionId },
         }),
       );
-    } catch {
-      // Allow retry on error
+    } catch (error) {
+      this._handleSubmitError(error, questionId);
     } finally {
       this._submitting = false;
     }
@@ -463,6 +499,7 @@ export class PilotPartQuestion extends LitElement {
     if (!questionId || !this.slug) return;
 
     this._submitting = true;
+    this._submitError = "";
     try {
       await answerQuestion(this.slug, questionId, text);
       this._answered = true;
@@ -473,8 +510,8 @@ export class PilotPartQuestion extends LitElement {
           detail: { questionId },
         }),
       );
-    } catch {
-      // Allow retry on error
+    } catch (error) {
+      this._handleSubmitError(error, questionId);
     } finally {
       this._submitting = false;
     }
@@ -493,6 +530,7 @@ export class PilotPartQuestion extends LitElement {
   private _renderFallback(): unknown {
     const meta = this._meta();
     const isCompleted = this.call.state === "completed";
+    const isExpired = this.call.state === "error" || this._expired;
     const answeredText = this.call.content ?? "";
     const isAnswered = isCompleted || this._answered;
 
@@ -516,36 +554,47 @@ export class PilotPartQuestion extends LitElement {
             { id: "part-question-fallback-hint" },
           )}
         </div>
-        ${!isAnswered
-          ? html`
-              <div class="free-input">
-                <textarea
-                  rows="2"
-                  placeholder=${msg("Type your answer…", {
-                    id: "part-question-placeholder-free",
-                  })}
-                  .value=${this._fallbackText}
-                  ?disabled=${this._submitting}
-                  @input=${(e: InputEvent) => {
-                    this._fallbackText = (e.target as HTMLTextAreaElement).value;
-                  }}
-                ></textarea>
-              </div>
-              <div class="footer">
-                <button
-                  class="submit-btn"
-                  ?disabled=${this._submitting || this._fallbackText.trim().length === 0}
-                  @click=${() => void this._submitFallback()}
-                >
-                  ${msg("Send", { id: "part-question-send-one" })}
-                </button>
-              </div>
-            `
-          : html`
-              <div class="answered-badge">
-                ✓ ${answeredText || msg("Submitted", { id: "part-question-submitted" })}
-              </div>
-            `}
+        ${isExpired
+          ? html`<div class="question-error">
+              ${this.call.content ||
+              this._submitError ||
+              msg("This question is no longer active. Ask the agent to continue.", {
+                id: "part-question-expired",
+              })}
+            </div>`
+          : !isAnswered
+            ? html`
+                <div class="free-input">
+                  <textarea
+                    rows="2"
+                    placeholder=${msg("Type your answer…", {
+                      id: "part-question-placeholder-free",
+                    })}
+                    .value=${this._fallbackText}
+                    ?disabled=${this._submitting}
+                    @input=${(e: InputEvent) => {
+                      this._fallbackText = (e.target as HTMLTextAreaElement).value;
+                    }}
+                  ></textarea>
+                </div>
+                <div class="footer">
+                  <button
+                    class="submit-btn"
+                    ?disabled=${this._submitting || this._fallbackText.trim().length === 0}
+                    @click=${() => void this._submitFallback()}
+                  >
+                    ${msg("Send", { id: "part-question-send-one" })}
+                  </button>
+                </div>
+              `
+            : html`
+                <div class="answered-badge">
+                  ✓ ${answeredText || msg("Submitted", { id: "part-question-submitted" })}
+                </div>
+              `}
+        ${this._submitError && !isExpired
+          ? html`<div class="question-error">${this._submitError}</div>`
+          : nothing}
       </div>
     `;
   }
@@ -626,6 +675,7 @@ export class PilotPartQuestion extends LitElement {
     this._ensureInit(items);
 
     const isCompleted = this.call.state === "completed" || this.result?.state === "completed";
+    const isExpired = this.call.state === "error" || this._expired;
     const answeredText = this.call.content ?? this.result?.content ?? "";
     const isAnswered = isCompleted || this._answered;
 
@@ -652,25 +702,36 @@ export class PilotPartQuestion extends LitElement {
 
         <div class="question-text">${activeItem.question}</div>
 
-        ${!isAnswered
-          ? html`
-              ${this._renderOptions(activeItem, activeIdx)}
-              ${this._renderFreeOrOther(activeItem, activeIdx)}
-              <div class="footer">
-                <button
-                  class="submit-btn"
-                  ?disabled=${this._submitting || !allValid}
-                  @click=${() => void this._submit()}
-                >
-                  ${submitLabel}
-                </button>
-              </div>
-            `
-          : html`
-              <div class="answered-badge">
-                ✓ ${answeredText || msg("Submitted", { id: "part-question-submitted" })}
-              </div>
-            `}
+        ${isExpired
+          ? html`<div class="question-error">
+              ${this.call.content ||
+              this._submitError ||
+              msg("This question is no longer active. Ask the agent to continue.", {
+                id: "part-question-expired",
+              })}
+            </div>`
+          : !isAnswered
+            ? html`
+                ${this._renderOptions(activeItem, activeIdx)}
+                ${this._renderFreeOrOther(activeItem, activeIdx)}
+                <div class="footer">
+                  <button
+                    class="submit-btn"
+                    ?disabled=${this._submitting || !allValid}
+                    @click=${() => void this._submit()}
+                  >
+                    ${submitLabel}
+                  </button>
+                </div>
+              `
+            : html`
+                <div class="answered-badge">
+                  ✓ ${answeredText || msg("Submitted", { id: "part-question-submitted" })}
+                </div>
+              `}
+        ${this._submitError && !isExpired
+          ? html`<div class="question-error">${this._submitError}</div>`
+          : nothing}
       </div>
     `;
   }

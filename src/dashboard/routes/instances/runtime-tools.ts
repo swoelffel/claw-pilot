@@ -8,6 +8,7 @@ import { getInstanceContext } from "../_instance-middleware.js";
 import { callRuntimeApi } from "../_internal-api-client.js";
 import { permission } from "../../middleware/permission.js";
 import { ACTIONS } from "../../middleware/permission-actions.js";
+import { expireOrphanedQuestion } from "../../../runtime/session/question-recovery.js";
 
 /** Fallback keyword matching for historical messages without structured metadata. */
 function detectHeartbeatStatusFallback(text: string): "ok" | "alert" {
@@ -21,6 +22,29 @@ function detectHeartbeatStatusFallback(text: string): "ok" | "alert" {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type HonoContext = any;
+
+/** Build the response for a question whose process-local resolver is gone. */
+function missingQuestionResponse(
+  c: HonoContext,
+  db: RouteDeps["db"],
+  slug: string,
+  questionId: string,
+): Response {
+  if (expireOrphanedQuestion(db, slug, questionId)) {
+    return apiError(
+      c,
+      410,
+      "QUESTION_EXPIRED",
+      "This question expired because the runtime restarted. Ask the agent to continue.",
+    );
+  }
+  return apiError(
+    c,
+    404,
+    "QUESTION_NOT_FOUND",
+    `No pending question with ID "${questionId}" — it may have expired or already been answered.`,
+  );
+}
 
 export function registerRuntimeToolRoutes(app: Hono, deps: RouteDeps): void {
   const { db } = deps;
@@ -61,7 +85,6 @@ export function registerRuntimeToolRoutes(app: Hono, deps: RouteDeps): void {
     async (c) => {
       const { slug } = getInstanceContext(c);
       const questionId = c.req.param("questionId");
-
       let body: { answer?: string };
       try {
         body = await c.req.json();
@@ -73,7 +96,6 @@ export function registerRuntimeToolRoutes(app: Hono, deps: RouteDeps): void {
       if (!body.answer || typeof body.answer !== "string") {
         return apiError(c, 400, "MISSING_ANSWER", "Field 'answer' is required");
       }
-
       // Forward to the runtime process via internal API (dashboard and runtime are separate processes)
       try {
         const result = await callRuntimeApi<{ ok: boolean; resolved: boolean }>(
@@ -83,14 +105,7 @@ export function registerRuntimeToolRoutes(app: Hono, deps: RouteDeps): void {
           { timeoutMs: 10_000 },
         );
 
-        if (!result.resolved) {
-          return apiError(
-            c,
-            404,
-            "QUESTION_NOT_FOUND",
-            `No pending question with ID "${questionId}" — it may have expired or already been answered.`,
-          );
-        }
+        if (!result.resolved) return missingQuestionResponse(c, db, slug, questionId);
 
         return c.json({ ok: true, questionId, answer: body.answer });
       } catch (err) {

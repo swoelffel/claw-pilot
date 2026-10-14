@@ -485,6 +485,43 @@ describe("POST /api/instances/:slug/runtime/questions/:questionId/answer", () =>
     expect(data.code).toBe("QUESTION_NOT_FOUND");
   });
 
+  it("expires a persisted question when its runtime resolver was lost", async () => {
+    db.prepare(
+      `INSERT INTO rt_sessions (id, instance_slug, agent_id, channel)
+       VALUES ('stale-session', 'test-inst', 'main', 'web')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO rt_messages (id, session_id, role, agent_id)
+       VALUES ('stale-message', 'stale-session', 'assistant', 'main')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO rt_parts (id, message_id, type, metadata)
+       VALUES ('stale-question', 'stale-message', 'tool_call', ?)`,
+    ).run(
+      JSON.stringify({
+        toolCallId: "q-stale",
+        toolName: "question",
+        args: { question: "Still there?" },
+      }),
+    );
+    vi.mocked(callRuntimeApi).mockResolvedValue({ ok: true, resolved: false });
+
+    const res = await app.request("/api/instances/test-inst/runtime/questions/q-stale/answer", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ answer: "yes" }),
+    });
+
+    expect(res.status).toBe(410);
+    expect(await json(res)).toMatchObject({ code: "QUESTION_EXPIRED" });
+    expect(
+      db.prepare("SELECT state, content FROM rt_parts WHERE id = 'stale-question'").get(),
+    ).toMatchObject({
+      state: "error",
+      content: expect.stringContaining("runtime restarted"),
+    });
+  });
+
   it("returns ok when question is resolved", async () => {
     vi.mocked(callRuntimeApi).mockResolvedValue({ ok: true, resolved: true });
     const res = await app.request("/api/instances/test-inst/runtime/questions/q-1/answer", {

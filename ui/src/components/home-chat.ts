@@ -592,6 +592,12 @@ export class HomeChat extends LitElement {
     }
   }
 
+  private _onQuestionExpired(): void {
+    this._status = "idle";
+    this._currentToolName = null;
+    void this._reloadLastMessages();
+  }
+
   /**
    * True when the latest assistant message has an unresolved `question`
    * tool_call — while pending, the chat input must be locked to prevent the
@@ -668,6 +674,7 @@ export class HomeChat extends LitElement {
         class="chat-body"
         @suggestion-click=${this._onSuggestionClick}
         @question-answered=${this._onQuestionAnswered}
+        @question-expired=${this._onQuestionExpired}
       >
         ${this._messages.length === 0 && this._status !== "loading"
           ? html`<cp-start-cta

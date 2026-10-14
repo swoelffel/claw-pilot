@@ -82,6 +82,7 @@ import { runMiddlewarePipeline } from "../middleware/pipeline.js";
 import { resolveModelForAgent } from "../channel/router.js";
 import { startFlowRun } from "../flow/engine.js";
 import { resolveQuestion as resolveQuestionFn } from "../tool/built-in/question.js";
+import { expireOrphanedQuestions } from "../session/question-recovery.js";
 import type { ProfileResolver } from "../profile/types.js";
 import {
   markRequestDelivered,
@@ -157,6 +158,17 @@ export class ClawRuntime {
     try {
       // 0. Clear workspace file cache — fresh start after daemon restart
       clearWorkspaceCache();
+
+      // The question tool waits on an in-memory Promise. A fresh runtime
+      // process cannot resume questions persisted by its predecessor, so mark
+      // those tool calls as expired before the UI loads them as actionable.
+      const expiredQuestions = expireOrphanedQuestions(this.db, this.instanceSlug);
+      if (expiredQuestions > 0) {
+        this.log.warn("orphaned_questions_expired", {
+          event: "orphaned_questions_expired",
+          count: expiredQuestions,
+        });
+      }
 
       // 1. Init agents, permanent sessions, and middlewares
       this._initAgentsAndSessions();
