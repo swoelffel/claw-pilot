@@ -329,9 +329,21 @@ guards, API calls) and guidelines for adding new call sites.
 Request-scoped runtime events are durably ordered in `rt_execution_events`.
 The runtime emits the database sequence as the SSE `id`, and the dashboard
 proxy preserves it. Reconnecting clients provide `Last-Event-ID` or the
-equivalent `lastEventId` query parameter; the runtime replays later events
-before subscribing the client to live bus traffic. Transport disconnection
-does not abort, restart, or otherwise mutate an execution.
+equivalent `lastEventId` query parameter. The runtime subscribes before reading
+the backlog, then drains the durable log in ascending ID order in pages of
+1,000 matching events. Live durable notifications wake the same reader, so
+events arriving during replay are fetched after the backlog without duplicate
+IDs. The initial database boundary distinguishes replayed events from live
+events. Instance, session and type filters apply to every page.
+
+The writer pauses on socket backpressure and yields between pages. Durable
+backlogs remain in SQLite rather than an in-memory live queue. Transient events
+without durable IDs retain their position relative to durable events in a queue
+capped at 1 MiB; overflow disconnects the slow consumer so it can reconnect
+and recover durable events. Transient events
+cannot be recovered from the durable log. Closing or aborting the transport
+removes the bus subscription, ping timer and pending drain listener. Transport
+disconnection does not abort, restart, or otherwise mutate an execution.
 
 Side-effecting work is represented in `rt_operations` with the states
 `not_started`, `active`, `completed`, `failed_safely`, `uncertain`, and
