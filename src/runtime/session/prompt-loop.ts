@@ -68,6 +68,7 @@ import {
   persistRequestResult,
 } from "../../core/repositories/request-repository.js";
 import { runtimeRequestContext } from "./request-context.js";
+import { persistMessageArtifacts } from "../../core/repositories/business-task-repository.js";
 import {
   createStreamingState,
   finalizeReasoning,
@@ -151,6 +152,7 @@ export interface PromptLoopInput {
     idempotencyKey?: string;
     source?: string;
     taskId?: number;
+    businessTaskId?: string | undefined;
   };
 }
 
@@ -270,6 +272,7 @@ export async function runPromptLoop(input: PromptLoopInput): Promise<PromptLoopR
           traceId: input.request?.traceId ?? parent.traceId,
           parentRequestId: input.request?.parentRequestId ?? parent.requestId,
           parentExecutionId: input.request?.parentExecutionId ?? parent.executionId,
+          businessTaskId: input.request?.businessTaskId ?? parent.businessTaskId,
         },
       }
     : input;
@@ -298,6 +301,9 @@ async function runPromptLoopWithContext(input: PromptLoopInput): Promise<PromptL
       ? { idempotencyKey: input.request.idempotencyKey }
       : {}),
     ...(input.request?.taskId !== undefined ? { taskId: input.request.taskId } : {}),
+    ...(input.request?.businessTaskId !== undefined
+      ? { businessTaskId: input.request.businessTaskId }
+      : {}),
     sessionId,
     agentId: agentConfig.id,
   });
@@ -316,10 +322,18 @@ async function runPromptLoopWithContext(input: PromptLoopInput): Promise<PromptL
     ...(input.request?.parentExecutionId !== undefined
       ? { parentExecutionId: input.request.parentExecutionId }
       : {}),
+    ...(input.request?.businessTaskId !== undefined
+      ? { businessTaskId: input.request.businessTaskId }
+      : {}),
     metadata: { provider: resolvedModel.providerId, model: resolvedModel.modelId },
   });
   return runtimeRequestContext.run(
-    { requestId: request.id, traceId: request.trace_id, executionId: execution.id },
+    {
+      requestId: request.id,
+      traceId: request.trace_id,
+      executionId: execution.id,
+      ...(request.business_task_id ? { businessTaskId: request.business_task_id } : {}),
+    },
     () => executePromptLoop(input, request, execution, resourceKey),
   );
 }
@@ -442,9 +456,19 @@ async function executePromptLoop(
     if (completeBootstrap(input.workDir, agentConfig, systemPrompt)) {
       markDirty(sessionId, "workspace");
     }
-    const artifactRefs = listParts(db, result.messageId)
-      .filter((part) => part.type === "tool_call" || part.type === "tool_result")
-      .map((part) => ({ id: part.id, type: part.type }));
+    const governedArtifacts = persistMessageArtifacts(db, {
+      instanceSlug,
+      messageId: result.messageId,
+      requestId: request.id,
+      ...(request.business_task_id ? { businessTaskId: request.business_task_id } : {}),
+      agentId: agentConfig.id,
+    });
+    const artifactRefs: Array<{ id: string; type: string }> = [
+      ...listParts(db, result.messageId)
+        .filter((part) => part.type === "tool_call" || part.type === "tool_result")
+        .map((part) => ({ id: part.id, type: part.type })),
+      ...governedArtifacts.map((artifact) => ({ id: artifact.id, type: "artifact" })),
+    ];
     persistRequestResult(db, request.id, { messageId: result.messageId, artifactRefs });
     completeExecution(db, execution.id, {
       messageId: result.messageId,

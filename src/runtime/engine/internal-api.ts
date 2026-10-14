@@ -47,6 +47,7 @@ export interface ChatRequest {
   parentRequestId?: string;
   idempotencyKey?: string;
   taskId?: number;
+  businessTaskId?: string;
 }
 
 export interface ChatResponse {

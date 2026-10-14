@@ -21,6 +21,15 @@ export interface FlowDefinitionRow {
   steps_json: string;
   trigger_json: string;
   enabled: number;
+  team_id: string | null;
+  lifecycle: string;
+  version: number;
+  owner_user_id: number | null;
+  validation_status: string;
+  validation_report_json: string | null;
+  failure_streak: number;
+  auto_pause_threshold: number;
+  rate_limit_per_hour: number;
   created_at: string;
   updated_at: string;
 }
@@ -37,6 +46,12 @@ export interface FlowRunRow {
   finished_at: string | null;
   created_at: string;
   error: string | null;
+  trigger_identity: string | null;
+  workflow_version: number;
+  output_json: string | null;
+  cost_usd: number;
+  business_task_id: string | null;
+  idempotency_key: string | null;
 }
 
 export interface FlowStepRunRow {
@@ -64,6 +79,9 @@ export interface CreateFlowDefinitionInput {
   stepsJson: string;
   triggerJson?: string;
   enabled?: boolean;
+  lifecycle?: string;
+  teamId?: string;
+  ownerUserId?: number;
 }
 
 export interface UpdateFlowDefinitionInput {
@@ -81,6 +99,9 @@ export interface CreateFlowRunInput {
   triggerDetail?: string;
   /** JSON-serialized input variables (`{{varName}}` templating source). */
   inputVarsJson?: string;
+  triggerIdentity?: string;
+  businessTaskId?: string;
+  idempotencyKey?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,8 +115,9 @@ export function createFlowDefinition(
 ): FlowDefinitionRow {
   const result = db
     .prepare(
-      `INSERT INTO rt_flow_definitions (instance_slug, name, description, steps_json, trigger_json, enabled)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO rt_flow_definitions
+       (instance_slug, name, description, steps_json, trigger_json, enabled, lifecycle, team_id, owner_user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       input.instanceSlug,
@@ -104,6 +126,9 @@ export function createFlowDefinition(
       input.stepsJson,
       input.triggerJson ?? '{"type":"manual"}',
       input.enabled === false ? 0 : 1,
+      input.lifecycle ?? "ACTIVE",
+      input.teamId ?? null,
+      input.ownerUserId ?? null,
     );
   return getFlowDefinition(db, Number(result.lastInsertRowid))!;
 }
@@ -178,8 +203,10 @@ export function deleteFlowDefinition(db: Database.Database, id: number): boolean
 export function createFlowRun(db: Database.Database, input: CreateFlowRunInput): FlowRunRow {
   const result = db
     .prepare(
-      `INSERT INTO rt_flow_runs (flow_id, instance_slug, trigger_type, trigger_detail, input_vars_json)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO rt_flow_runs
+       (flow_id, instance_slug, trigger_type, trigger_detail, input_vars_json, trigger_identity,
+        workflow_version, business_task_id, idempotency_key)
+       VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT version FROM rt_flow_definitions WHERE id = ?), 1), ?, ?)`,
     )
     .run(
       input.flowId,
@@ -187,6 +214,10 @@ export function createFlowRun(db: Database.Database, input: CreateFlowRunInput):
       input.triggerType,
       input.triggerDetail ?? null,
       input.inputVarsJson ?? null,
+      input.triggerIdentity ?? null,
+      input.flowId,
+      input.businessTaskId ?? null,
+      input.idempotencyKey ?? null,
     );
   return getFlowRun(db, Number(result.lastInsertRowid))!;
 }
@@ -247,7 +278,23 @@ export function updateFlowRunStatus(
   }
 
   params.push(id);
-  db.prepare(`UPDATE rt_flow_runs SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+  db.transaction(() => {
+    db.prepare(`UPDATE rt_flow_runs SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+    const run = getFlowRun(db, id);
+    if (!run) return;
+    if (status === "failed") {
+      db.prepare(
+        `UPDATE rt_flow_definitions SET failure_streak = failure_streak + 1,
+         lifecycle = CASE WHEN failure_streak + 1 >= auto_pause_threshold THEN 'PAUSED' ELSE lifecycle END,
+         enabled = CASE WHEN failure_streak + 1 >= auto_pause_threshold THEN 0 ELSE enabled END,
+         updated_at = datetime('now') WHERE id = ?`,
+      ).run(run.flow_id);
+    } else if (status === "completed") {
+      db.prepare(
+        `UPDATE rt_flow_definitions SET failure_streak = 0, updated_at = datetime('now') WHERE id = ?`,
+      ).run(run.flow_id);
+    }
+  })();
   return getFlowRun(db, id);
 }
 
@@ -337,7 +384,19 @@ export function updateStepRun(
   if (sets.length === 0) return undefined;
 
   params.push(id);
-  db.prepare(`UPDATE rt_flow_step_runs SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+  db.transaction(() => {
+    db.prepare(`UPDATE rt_flow_step_runs SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+    const step = db.prepare("SELECT run_id FROM rt_flow_step_runs WHERE id = ?").get(id) as
+      | { run_id: number }
+      | undefined;
+    if (step && updates.costUsd !== undefined) {
+      db.prepare(
+        `UPDATE rt_flow_runs SET cost_usd = COALESCE(
+          (SELECT SUM(cost_usd) FROM rt_flow_step_runs WHERE run_id = ?), 0)
+         WHERE id = ?`,
+      ).run(step.run_id, step.run_id);
+    }
+  })();
   return db.prepare("SELECT * FROM rt_flow_step_runs WHERE id = ?").get(id) as
     | FlowStepRunRow
     | undefined;

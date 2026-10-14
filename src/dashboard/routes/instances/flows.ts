@@ -197,6 +197,7 @@ async function handleCreateFlow(
     stepsJson: JSON.stringify(data.steps),
     ...(data.trigger !== undefined ? { triggerJson: JSON.stringify(data.trigger) } : {}),
     ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
+    lifecycle: "DRAFT",
   });
 
   upsertSearchEntry(db, {

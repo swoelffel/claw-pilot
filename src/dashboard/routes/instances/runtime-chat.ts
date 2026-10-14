@@ -13,6 +13,7 @@ import { permission } from "../../middleware/permission.js";
 import { ACTIONS } from "../../middleware/permission-actions.js";
 import { randomUUID } from "node:crypto";
 import { markRequestDelivered } from "../../../core/repositories/request-repository.js";
+import { getBusinessTask } from "../../../core/repositories/business-task-repository.js";
 
 // ---------------------------------------------------------------------------
 // AI SDK error extraction
@@ -102,6 +103,23 @@ function parseResponseBodyMessage(body: string | undefined): string | undefined 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type HonoContext = any;
 
+function validateBusinessTaskReference(
+  c: HonoContext,
+  deps: RouteDeps,
+  slug: string,
+  businessTaskId?: string,
+): Response | undefined {
+  if (!businessTaskId) return undefined;
+  const task = getBusinessTask(deps.db, businessTaskId);
+  if (task?.instance_slug === slug) return undefined;
+  return apiError(
+    c,
+    400,
+    "INVALID_BUSINESS_TASK",
+    "Business task does not belong to this instance",
+  );
+}
+
 export function registerRuntimeChatRoutes(app: Hono, deps: RouteDeps): void {
   const attr = (c: HonoContext) => ({ slug: c.req.param("slug") });
 
@@ -126,6 +144,7 @@ export function registerRuntimeChatRoutes(app: Hono, deps: RouteDeps): void {
         traceId?: string;
         parentRequestId?: string;
         taskId?: number;
+        businessTaskId?: string;
       };
       try {
         body = await c.req.json();
@@ -137,6 +156,8 @@ export function registerRuntimeChatRoutes(app: Hono, deps: RouteDeps): void {
       if (!body.message || typeof body.message !== "string" || !body.message.trim()) {
         return apiError(c, 400, "MISSING_MESSAGE", "Field 'message' is required");
       }
+      const taskError = validateBusinessTaskReference(c, deps, slug, body.businessTaskId);
+      if (taskError) return taskError;
 
       // Runtime must be running for chat
       const rtGuard = runtimeGuard(c, slug);
