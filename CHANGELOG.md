@@ -6,6 +6,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.84.10] — 2026-10-14
+
+### Added
+
+- **Request lifecycle and delivery tracking** (#281) — persist first-class requests with trace/parent lineage, task attribution, source-scoped idempotency keys and delivery status independent of model execution. Show request history and its durable results in the dashboard.
+- **Recovery, resource preflight and permission diagnostics** (#282–#284) — persist replay events and side-effect operation states, classify safe/uncertain recovery, suspend execution deadlines during human waits, inspect resource health and quarantine repeated failures, and report effective permission decisions with bounded credential refresh.
+- **Operational observability** (#285) — record structured traces, errors and delivery metrics with retention policies, analytics and alerts.
+- **Governance foundations** (#288) — add shared repositories and APIs for teams, use cases, agent lifecycle, workflow governance, adoption, business tasks and cost attribution. Preserve downstream extension contracts and nullable organization slots.
+
+### Fixed
+
+- **Question restart recovery** (#287) — expire orphaned questions after runtime restarts, return a recoverable HTTP 410 response, display their expired state, and register answer resolvers before publishing prompts.
+- **Request context isolation** (#290) — reject reused identities belonging to a different instance/source/session/agent or task lineage before replay or delivery mutation, while preserving legitimate retries and child requests.
+- **Durable result recovery** (#291) — return and display persisted assistant text and artifacts instead of only changing delivery status; preserve diagnostics for partial results.
+- **Complete SSE replay** (#289) — drain every durable page in database order, preserve live/transient event ordering at the handoff, honor backpressure and clean up on disconnect. Transient events remain non-durable.
+
+### Upgrade notes
+
+- Schema migrations **48–57** are additive. Back up application state before activation and validate the migration on the deployment target; downgrading code does not reverse the database changes.
+- Keep Node.js **22.23.3** and pnpm **10.33.0** as the build/CI reference, with declared runtime compatibility `>=22.12.0`.
+- Real-provider, browser/proxy and sustained-load acceptance remain separate from automated release checks. Release preparation does not deploy services.
+
+---
+
 ## [0.84.9] — 2026-10-08
 
 ### Added
