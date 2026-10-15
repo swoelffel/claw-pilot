@@ -24,6 +24,7 @@ import {
 import { tokenStyles } from "../styles/tokens.js";
 import { errorBannerStyles } from "../styles/shared.js";
 import { getToken } from "../services/auth-state.js";
+import { permissionMessage } from "../lib/error-messages.js";
 import { debugSse, debugChat, debugRender, debugApi } from "../services/debug.js";
 import "./pilot/pilot-header.js";
 import "./pilot/pilot-messages.js";
@@ -89,6 +90,7 @@ export class HomeChat extends LitElement {
 
   @state() private _status: HomeChatStatus = "idle";
   @state() private _error = "";
+  @state() private _sessionLoadError = false;
   @state() private _messages: PilotMessage[] = [];
   @state() private _hasMore = false;
   @state() private _streamingText = "";
@@ -107,6 +109,7 @@ export class HomeChat extends LitElement {
   @state() private _tokensOut = 0;
   @state() private _costUsd = 0;
 
+  private _scopeVersion = 0;
   private _eventSource: EventSource | null = null;
   private _activeSessionId = "";
   private _reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -146,8 +149,10 @@ export class HomeChat extends LitElement {
 
   private async _init(): Promise<void> {
     this._teardown();
+    const version = this._scopeVersion;
     this._status = "loading";
     this._error = "";
+    this._sessionLoadError = false;
     this._messages = [];
     this._hasMore = false;
     this._streamingText = "";
@@ -156,9 +161,11 @@ export class HomeChat extends LitElement {
     this._reconnectDelay = SSE_RECONNECT_INITIAL_MS;
 
     const sessionId = await this._detectPermanentSession();
+    if (version !== this._scopeVersion || this._sessionLoadError) return;
     if (sessionId) {
       this._activeSessionId = sessionId;
       await this._loadMessages();
+      if (version !== this._scopeVersion || this._sessionLoadError) return;
       this._openStream();
       this._startPolling();
     } else {
@@ -170,8 +177,10 @@ export class HomeChat extends LitElement {
 
   /** Find the primary persistent session for this instance (system-pilot). */
   private async _detectPermanentSession(): Promise<string | undefined> {
+    const isCurrent = this._captureScope();
     try {
       const sessions = await fetchRuntimeSessions(this.slug, { includeInternal: true });
+      if (!isCurrent()) return undefined;
       const sorted = sessions
         .filter((s) => s.persistent && s.state === "active")
         .sort((a, b) => {
@@ -179,7 +188,12 @@ export class HomeChat extends LitElement {
           return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
         });
       return sorted[0]?.id;
-    } catch {
+    } catch (err) {
+      if (!isCurrent()) return undefined;
+      this._sessionLoadError = true;
+      this._status = "error";
+      this._error =
+        permissionMessage(err) ?? (err instanceof Error ? err.message : "Failed to load sessions");
       return undefined;
     }
   }
@@ -188,6 +202,7 @@ export class HomeChat extends LitElement {
 
   private async _loadMessages(before?: string): Promise<void> {
     if (!this._activeSessionId) return;
+    const isCurrent = this._captureScope();
     debugApi("home-chat fetchSessionMessages loadMessages", {
       sessionId: this._activeSessionId,
       before,
@@ -197,13 +212,17 @@ export class HomeChat extends LitElement {
         limit: 50,
         ...(before ? { before } : {}),
       });
+      if (!isCurrent()) return;
       this._messages = before ? [...messages, ...this._messages] : messages;
       this._hasMore = hasMore;
       this._updateCumulativeStats();
       if (this._status === "loading") this._status = "idle";
     } catch (err) {
+      if (!isCurrent()) return;
+      if (!before) this._sessionLoadError = true;
       this._status = "error";
-      this._error = err instanceof Error ? err.message : "Failed to load messages";
+      this._error =
+        permissionMessage(err) ?? (err instanceof Error ? err.message : "Failed to load messages");
     }
   }
 
@@ -366,7 +385,16 @@ export class HomeChat extends LitElement {
     }
   }
 
+  private _captureScope(): () => boolean {
+    const version = this._scopeVersion;
+    const slug = this.slug;
+    const sessionId = this._activeSessionId;
+    return () =>
+      version === this._scopeVersion && slug === this.slug && sessionId === this._activeSessionId;
+  }
+
   private _teardown(): void {
+    this._scopeVersion++;
     this._closeStream();
     this._stopPolling();
   }
@@ -561,7 +589,8 @@ export class HomeChat extends LitElement {
       }
     } catch (err) {
       this._status = "error";
-      this._error = err instanceof Error ? err.message : "Failed to send message";
+      this._error =
+        permissionMessage(err) ?? (err instanceof Error ? err.message : "Failed to send message");
     }
   }
 
@@ -676,7 +705,7 @@ export class HomeChat extends LitElement {
         @question-answered=${this._onQuestionAnswered}
         @question-expired=${this._onQuestionExpired}
       >
-        ${this._messages.length === 0 && this._status !== "loading"
+        ${!this._sessionLoadError && this._messages.length === 0 && this._status === "idle"
           ? html`<cp-start-cta
               .slug=${this.slug}
               .agentId=${"system-pilot"}

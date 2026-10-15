@@ -2,6 +2,8 @@
 // Generated: 2026-02-24
 
 export const templates = {
+  "err-permission-denied":
+    "Vous n’avez pas les droits nécessaires pour effectuer cette action. Contactez un administrateur.",
   // Pilot execution recovery
   "pilot-recovery-reconnecting": "Connexion interrompue. Vérification de l’exécution enregistrée…",
   "pilot-recovery-ready": "Réponse enregistrée récupérée.",

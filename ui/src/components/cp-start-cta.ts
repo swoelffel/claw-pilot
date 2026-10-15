@@ -8,6 +8,7 @@ import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { msg } from "@lit/localize";
 import { postAgentKickoff } from "../api.js";
+import { permissionMessage } from "../lib/error-messages.js";
 
 @customElement("cp-start-cta")
 export class StartCta extends LitElement {
@@ -103,7 +104,7 @@ export class StartCta extends LitElement {
         }),
       );
     } catch (err) {
-      this._error = String((err as Error).message ?? err);
+      this._error = permissionMessage(err) ?? String((err as Error).message ?? err);
       this._loading = false;
     }
   }
