@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "lit";
+import { fetchRuntimeChatActivity } from "../../api.js";
 import { RuntimePilot } from "../runtime-pilot.js";
 import type { PilotBusEvent, PilotMessage, RuntimeRequest } from "../../types.js";
 
@@ -132,7 +133,7 @@ beforeEach(() => {
       return finishPost.promise;
     }
     reads.push(url);
-    if (url.pathname.endsWith("/requests"))
+    if (url.pathname.endsWith("/runtime/chat/activity"))
       return Response.json({
         requests: url.searchParams.has("requestId")
           ? activeRequests.filter((row) => row.id === url.searchParams.get("requestId"))
@@ -175,9 +176,11 @@ describe("Pilot canonical execution recovery", () => {
       expect(el._streamingMessageId).toBeNull();
       expect(el._streamingText).toBe("");
       expect(el._currentToolName).toBeNull();
-      expect(reads.find((url) => url.pathname.endsWith("/requests"))?.searchParams.toString()).toBe(
-        "sessionId=session-1&limit=1",
-      );
+      expect(
+        reads
+          .find((url) => url.pathname.endsWith("/runtime/chat/activity"))
+          ?.searchParams.toString(),
+      ).toBe("sessionId=session-1&limit=1");
       expect(posts).toHaveLength(0);
     },
   );
@@ -206,6 +209,60 @@ describe("Pilot canonical execution recovery", () => {
     latest = [request("succeeded", requestId)];
     await el._refreshMessages();
     expect(el._status).toBe("idle");
+  });
+
+  it("recovers chat activity when the user has chat permissions without execution listing", async () => {
+    const el = pilot();
+    el._status = "tool";
+    const fetch = globalThis.fetch;
+    vi.stubGlobal("fetch", (input: string, init?: RequestInit) => {
+      const url = new URL(input, "http://localhost");
+      if (url.pathname.endsWith("/requests")) {
+        return Promise.resolve(
+          Response.json({ error: "Forbidden", code: "PERMISSION_DENIED" }, { status: 403 }),
+        );
+      }
+      if (url.pathname.endsWith("/runtime/chat/activity")) {
+        reads.push(url);
+        return Promise.resolve(
+          Response.json({
+            requests: [{ id: "request-1", session_id: "session-1", execution_status: "succeeded" }],
+          }),
+        );
+      }
+      return fetch(input, init);
+    });
+    await el._refreshMessages();
+    expect(el._status).toBe("idle");
+    expect(el._messages).toEqual([saved]);
+    expect(reads.some((url) => url.pathname.endsWith("/runtime/chat/activity"))).toBe(true);
+  });
+
+  it("reads exact scoped chat activity through the Pilot API instead of the execution list", async () => {
+    const projection = { id: "request & 1", session_id: "session/1", execution_status: "running" };
+    const calls: Array<{ path: string; query: Record<string, string>; method: string }> = [];
+    vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+      const url = new URL(input, "http://localhost");
+      calls.push({
+        path: url.pathname,
+        query: Object.fromEntries(url.searchParams),
+        method: init?.method ?? "GET",
+      });
+      return Response.json({ requests: [projection] });
+    });
+    const result = await fetchRuntimeChatActivity("demo", {
+      sessionId: "session/1",
+      requestId: "request & 1",
+      limit: 1,
+    });
+    expect(result).toEqual([projection]);
+    expect(calls).toEqual([
+      {
+        path: "/api/instances/demo/runtime/chat/activity",
+        query: { sessionId: "session/1", requestId: "request & 1", limit: "1" },
+        method: "GET",
+      },
+    ]);
   });
 
   it("keeps an active execution with a pending question busy", async () => {
@@ -271,7 +328,7 @@ describe("Pilot canonical execution recovery", () => {
     const read = deferred<Response>();
     const fetch = globalThis.fetch;
     vi.stubGlobal("fetch", (input: string, init?: RequestInit) =>
-      input.includes("/requests") ? read.promise : fetch(input, init),
+      input.includes("/runtime/chat/activity") ? read.promise : fetch(input, init),
     );
     const refreshing = el._refreshMessages();
     const sending = send(el);
@@ -359,7 +416,7 @@ describe("Pilot canonical execution recovery", () => {
     const fetch = globalThis.fetch;
     vi.stubGlobal("fetch", (input: string, init?: RequestInit) => {
       const url = new URL(input, "http://localhost");
-      if (url.pathname.endsWith("/requests")) {
+      if (url.pathname.endsWith("/runtime/chat/activity")) {
         return Promise.resolve(
           Response.json({
             requests: url.searchParams.get("source") === "web" ? [request()] : [incoming],
@@ -450,7 +507,7 @@ describe("Pilot canonical execution recovery", () => {
     const read = deferred<Response>();
     const fetch = globalThis.fetch;
     vi.stubGlobal("fetch", (input: string, init?: RequestInit) =>
-      input.includes("/requests") ? read.promise : fetch(input, init),
+      input.includes("/runtime/chat/activity") ? read.promise : fetch(input, init),
     );
     const refreshing = el._refreshMessages();
     el._handleBusEvent(event("session.status", { sessionId: "session-1", status: "busy" }));

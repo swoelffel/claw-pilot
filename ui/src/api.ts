@@ -674,6 +674,20 @@ export async function postRuntimeChat(
   });
 }
 
+/** Read the session execution projection using the Pilot stream permission. */
+export async function fetchRuntimeChatActivity(
+  slug: string,
+  options: { sessionId: string; requestId?: string; limit?: number },
+): Promise<Array<Pick<RuntimeRequest, "id" | "session_id" | "execution_status">>> {
+  const params = new URLSearchParams({ sessionId: options.sessionId });
+  if (options.requestId !== undefined) params.set("requestId", options.requestId);
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  const result = await apiFetch<{
+    requests: Array<Pick<RuntimeRequest, "id" | "session_id" | "execution_status">>;
+  }>(`/instances/${slug}/runtime/chat/activity?${params.toString()}`);
+  return result.requests;
+}
+
 export async function fetchRuntimeRequests(
   slug: string,
   options: {

@@ -24,7 +24,7 @@ import {
   fetchSessionMessages,
   fetchSessionContext,
   fetchRuntimeSessions,
-  fetchRuntimeRequests,
+  fetchRuntimeChatActivity,
 } from "../api.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { errorBannerStyles } from "../styles/shared.js";
@@ -445,7 +445,7 @@ export class RuntimePilot extends LitElement {
     const stillCurrent = () => isCurrent() && activity === this._activityVersion;
     try {
       const [requests, { messages }] = await Promise.all([
-        fetchRuntimeRequests(this.slug, {
+        fetchRuntimeChatActivity(this.slug, {
           sessionId: this._activeSessionId,
           limit: 1,
         }),
@@ -462,7 +462,7 @@ export class RuntimePilot extends LitElement {
         latest?.id !== this._activeRequestId
       ) {
         const requestId = this._activeRequestId;
-        const [active] = await fetchRuntimeRequests(this.slug, {
+        const [active] = await fetchRuntimeChatActivity(this.slug, {
           sessionId: this._activeSessionId,
           requestId,
           limit: 1,

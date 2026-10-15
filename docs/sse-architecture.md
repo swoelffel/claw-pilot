@@ -196,7 +196,10 @@ Both public endpoints set `X-Accel-Buffering: no`. The proxy sends an immediate
 Reverse proxies must honor the buffering header for prompt delivery.
 
 Pilot reconciles a busy or reconnected chat with persisted messages and the
-session's requests across channels, including their latest execution status. A terminal
+session's requests across channels, including their latest execution status.
+`GET /runtime/chat/activity` requires the same permission as the chat stream,
+validates session ownership, and exposes only request/session IDs and execution
+status; it does not require access to the execution console. A terminal
 execution clears the busy indicator; failures require user attention. Reading
 this state does not resubmit a request, rerun a tool, or mark a failed execution
 as a delivered result. Request identity and session guards prevent an older

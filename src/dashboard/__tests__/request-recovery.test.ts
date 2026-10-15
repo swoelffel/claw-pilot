@@ -18,6 +18,7 @@ import { createPart } from "../../runtime/session/part.js";
 import { disposeBus } from "../../runtime/bus/index.js";
 import { instanceMiddleware } from "../routes/_instance-middleware.js";
 import { registerExecutionRoutes } from "../routes/instances/executions.js";
+import { registerRuntimeChatRoutes } from "../routes/instances/runtime-chat.js";
 import type { RouteDeps } from "../route-deps.js";
 import { registerPermissionChecker, resetPermissionChecker } from "../middleware/permission.js";
 import { injectAdminUser } from "./_helpers/inject-admin-user.js";
@@ -46,6 +47,7 @@ describe("request result recovery HTTP contract", () => {
     app.use("*", injectAdminUser());
     app.use("/api/instances/:slug/*", instanceMiddleware(registry));
     registerExecutionRoutes(app, { db } as RouteDeps);
+    registerRuntimeChatRoutes(app, { db } as RouteDeps);
   });
 
   afterEach(() => {
@@ -134,6 +136,43 @@ describe("request result recovery HTTP contract", () => {
     expect(await otherSession.json()).toEqual({ requests: [] });
     const otherInstance = await app.request(`/api/instances/other/requests?${query}`);
     expect(await otherInstance.json()).toEqual({ requests: [] });
+  });
+
+  it("recovers chat activity with chat-stream permission without listing executions", async () => {
+    const { request, session } = seedResult();
+    registerPermissionChecker({
+      check: async (ctx) =>
+        ctx.action === "runtime.chat-stream" ? { allow: true } : { allow: false, reason: "Denied" },
+    });
+    expect((await app.request("/api/instances/demo/requests")).status).toBe(403);
+    const response = await app.request(
+      `/api/instances/demo/runtime/chat/activity?sessionId=${session.id}&requestId=${request.id}`,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      requests: [{ id: request.id, session_id: session.id, execution_status: null }],
+    });
+  });
+
+  it("requires an instance-owned session for chat activity and preserves permission checks", async () => {
+    const { request, session } = seedResult();
+    const query = `sessionId=${session.id}&requestId=${request.id}`;
+    expect((await app.request("/api/instances/demo/runtime/chat/activity")).status).toBe(400);
+    expect((await app.request(`/api/instances/other/runtime/chat/activity?${query}`)).status).toBe(
+      404,
+    );
+    expect(
+      (await app.request("/api/instances/demo/runtime/chat/activity?sessionId=missing")).status,
+    ).toBe(404);
+    const other = createSession(db, { instanceSlug: "demo", agentId: "assistant" });
+    const mismatched = await app.request(
+      `/api/instances/demo/runtime/chat/activity?sessionId=${other.id}&requestId=${request.id}`,
+    );
+    expect(await mismatched.json()).toEqual({ requests: [] });
+    registerPermissionChecker({ check: async () => ({ allow: false, reason: "Denied" }) });
+    expect((await app.request(`/api/instances/demo/runtime/chat/activity?${query}`)).status).toBe(
+      403,
+    );
   });
 
   it("returns durable text and message parts before clearing the delivery failure", async () => {

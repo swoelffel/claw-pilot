@@ -19,6 +19,7 @@ import {
   assertRequestScope,
   findRequestByIdempotencyKey,
   getRequest,
+  listRequests,
   markRequestDelivered,
   markRequestDeliveryFailed,
   RequestContextConflictError,
@@ -348,6 +349,39 @@ export function registerRuntimeChatRoutes(app: Hono, deps: RouteDeps): void {
   // ---------------------------------------------------------------------------
 
   /** Event types relevant for the chat/pilot UI. */
+  // Recovery is part of the chat stream, not access to the execution console.
+  app.get(
+    "/api/instances/:slug/runtime/chat/activity",
+    permission({
+      action: ACTIONS.RUNTIME_CHAT_STREAM,
+      resource: { kind: "runtime" },
+      attributes: attr,
+    }),
+    (c) => {
+      const { slug } = getInstanceContext(c);
+      const sessionId = c.req.query("sessionId");
+      if (!sessionId) return apiError(c, 400, "MISSING_SESSION_ID", "sessionId is required");
+      const session = getSession(deps.db, sessionId);
+      if (!session || session.instanceSlug !== slug) {
+        return apiError(c, 404, "SESSION_NOT_FOUND", "Session not found");
+      }
+      const requestId = c.req.query("requestId");
+      const limit = Number(c.req.query("limit") ?? 1);
+      const requests = listRequests(deps.db, slug, {
+        sessionId,
+        ...(requestId !== undefined ? { requestId } : {}),
+        limit: Number.isFinite(limit) ? limit : 1,
+      });
+      return c.json({
+        requests: requests.map(({ id, session_id, execution_status }) => ({
+          id,
+          session_id,
+          execution_status: execution_status ?? null,
+        })),
+      });
+    },
+  );
+
   const CHAT_RELEVANT_TYPES = [
     // Message streaming
     "message.part.delta",
