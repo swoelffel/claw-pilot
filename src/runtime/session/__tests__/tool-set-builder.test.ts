@@ -273,6 +273,39 @@ function callBuild(
 // Tests
 // ---------------------------------------------------------------------------
 
+describe("tool execution watchdog wiring", () => {
+  it("runs built-in tools inside the execution guard and releases it on failure", async () => {
+    let active = false;
+    const tool: Tool.Info = {
+      id: "guarded",
+      init: () => ({
+        description: "guarded operation",
+        parameters: z.object({}),
+        execute: async () => {
+          expect(active).toBe(true);
+          throw new Error("operation failed");
+        },
+      }),
+    };
+    const set = await callBuild([tool], {
+      ctx: {
+        onToolExecution: async (fn) => {
+          active = true;
+          try {
+            return await fn();
+          } finally {
+            active = false;
+          }
+        },
+      },
+    });
+    await expect(
+      set["guarded"]!.execute!({}, { toolCallId: "guard-1", messages: [], context: undefined }),
+    ).rejects.toThrow("operation failed");
+    expect(active).toBe(false);
+  });
+});
+
 describe("buildToolSet", () => {
   beforeEach(() => {
     vi.clearAllMocks();

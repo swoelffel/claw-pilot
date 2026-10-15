@@ -82,6 +82,7 @@ import {
   handleToolResultChunk,
   findToolPartByCallId,
   createWatchdogManager,
+  type WatchdogManager,
   buildSystemPromptWithCache,
   handleAutoCompaction,
 } from "./_prompt-loop-handlers.js";
@@ -439,7 +440,7 @@ async function executePromptLoop(
     });
 
     // 5. Build tool set
-    const toolSet = await buildToolSetForLoop(input, session, assistantMsg.id, watchdog.onLongWait);
+    const toolSet = await buildToolSetForLoop(input, session, assistantMsg.id, watchdog);
 
     // 6. Stream the response
     const streamResult = await executeStream({
@@ -752,7 +753,7 @@ async function buildToolSetForLoop(
   input: PromptLoopInput,
   session: { channel: string },
   assistantMsgId: string,
-  onLongWait: <T>(fn: () => Promise<T>) => Promise<T>,
+  watchdog: WatchdogManager,
 ): Promise<ReturnType<typeof buildToolSet>> {
   const {
     db,
@@ -800,9 +801,10 @@ async function buildToolSetForLoop(
     agentId: agentConfig.id,
     instanceSlug,
     channel: session.channel,
-    abort: input.abort ?? new AbortController().signal,
+    abort: watchdog.fullAbort,
     senderIsOwner: session.channel !== "internal",
-    onLongWait,
+    onLongWait: watchdog.onLongWait,
+    onToolExecution: watchdog.onToolExecution,
     ...(workDir !== undefined ? { workDir } : {}),
     agentConfig,
     ...(input.skillLoader !== undefined ? { skillLoader: input.skillLoader } : {}),

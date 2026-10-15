@@ -1,6 +1,12 @@
 // Spanish translations for claw-pilot UI
 
 export const templates = {
+  // Pilot execution recovery
+  "pilot-recovery-reconnecting": "Conexión interrumpida. Comprobando la ejecución guardada…",
+  "pilot-recovery-ready": "Respuesta guardada recuperada.",
+  "pilot-recovery-attention":
+    "La ejecución se detuvo antes de completarse. Revise los mensajes guardados antes de volver a intentarlo.",
+
   // Request result recovery
   "request-list-result-title": "Resultado guardado",
   "request-list-result-channel":

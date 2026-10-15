@@ -183,6 +183,28 @@ Implementation: manual `onerror` handler with `_scheduleReconnect()`. The native
 
 ---
 
+### Durable replay and Pilot recovery
+
+The chat and events endpoints forward `Last-Event-ID` (preferred) or `lastEventId`
+to the daemon. A new subscription without a cursor starts at the current log
+boundary; an explicit `0` requests all retained history. Durable frames preserve
+SSE IDs through the dashboard proxy. Reconnecting after an ID replays subsequent
+persisted events before live traffic, within the instance/session/type filters.
+
+Both public endpoints set `X-Accel-Buffering: no`. The proxy sends an immediate
+`ping` frame and continues its 15-second heartbeat during silent runtime periods.
+Reverse proxies must honor the buffering header for prompt delivery.
+
+Pilot reconciles a busy or reconnected chat with persisted messages and the
+session's requests across channels, including their latest execution status.
+`GET /runtime/chat/activity` requires the same permission as the chat stream,
+validates session ownership, and exposes only request/session IDs and execution
+status; it does not require access to the execution console. A terminal
+execution clears the busy indicator; failures require user attention. Reading
+this state does not resubmit a request, rerun a tool, or mark a failed execution
+as a delivered result. Request identity and session guards prevent an older
+refresh or replay from completing a newer submission.
+
 ## Event Types Reference (43 types in AnyEventDef union)
 
 All events are defined in `src/runtime/bus/events.ts` with typed payloads via `EventDef<T, P>`.

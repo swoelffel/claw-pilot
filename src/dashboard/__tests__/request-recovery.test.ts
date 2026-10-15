@@ -18,6 +18,7 @@ import { createPart } from "../../runtime/session/part.js";
 import { disposeBus } from "../../runtime/bus/index.js";
 import { instanceMiddleware } from "../routes/_instance-middleware.js";
 import { registerExecutionRoutes } from "../routes/instances/executions.js";
+import { registerRuntimeChatRoutes } from "../routes/instances/runtime-chat.js";
 import type { RouteDeps } from "../route-deps.js";
 import { registerPermissionChecker, resetPermissionChecker } from "../middleware/permission.js";
 import { injectAdminUser } from "./_helpers/inject-admin-user.js";
@@ -46,6 +47,7 @@ describe("request result recovery HTTP contract", () => {
     app.use("*", injectAdminUser());
     app.use("/api/instances/:slug/*", instanceMiddleware(registry));
     registerExecutionRoutes(app, { db } as RouteDeps);
+    registerRuntimeChatRoutes(app, { db } as RouteDeps);
   });
 
   afterEach(() => {
@@ -84,6 +86,94 @@ describe("request result recovery HTTP contract", () => {
       method: "POST",
     });
   }
+
+  it("scopes latest terminal activity by session and source before limiting", async () => {
+    const session = createSession(db, { instanceSlug: "demo", agentId: "assistant" });
+    const request = createOrGetRequest(db, {
+      instanceSlug: "demo",
+      source: "web",
+      sessionId: session.id,
+    }).request;
+    db.prepare(
+      `INSERT INTO rt_executions
+      (id,correlation_id,instance_slug,session_id,agent_id,timeout_ms,request_id,status)
+      VALUES ('failed-run','trace','demo',?,'assistant',300000,?,'timed_out')`,
+    ).run(session.id, request.id);
+    createOrGetRequest(db, { instanceSlug: "demo", source: "web", sessionId: "another" });
+    createOrGetRequest(db, { instanceSlug: "demo", source: "agent", sessionId: session.id });
+    createOrGetRequest(db, { instanceSlug: "other", source: "web", sessionId: session.id });
+    const response = await app.request(
+      `/api/instances/demo/requests?sessionId=${session.id}&source=web&limit=1`,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      requests: [
+        {
+          id: request.id,
+          execution_status: "timed_out",
+          delivery_status: "pending",
+          result_message_id: null,
+        },
+      ],
+    });
+    expect(getRequest(db, request.id)?.delivery_status).toBe("pending");
+    expect(db.prepare("SELECT COUNT(*) AS n FROM rt_executions").get()).toEqual({ n: 1 });
+  });
+
+  it("finds an older pending HTTP request without crossing its session scope", async () => {
+    const first = createOrGetRequest(db, {
+      instanceSlug: "demo",
+      source: "web",
+      sessionId: "s1",
+    }).request;
+    createOrGetRequest(db, { instanceSlug: "demo", source: "telegram", sessionId: "s1" });
+    const query = `requestId=${first.id}&sessionId=s1&limit=1`;
+    const response = await app.request(`/api/instances/demo/requests?${query}`);
+    expect(await response.json()).toMatchObject({ requests: [{ id: first.id }] });
+    const otherSession = await app.request(
+      `/api/instances/demo/requests?requestId=${first.id}&sessionId=s2`,
+    );
+    expect(await otherSession.json()).toEqual({ requests: [] });
+    const otherInstance = await app.request(`/api/instances/other/requests?${query}`);
+    expect(await otherInstance.json()).toEqual({ requests: [] });
+  });
+
+  it("recovers chat activity with chat-stream permission without listing executions", async () => {
+    const { request, session } = seedResult();
+    registerPermissionChecker({
+      check: async (ctx) =>
+        ctx.action === "runtime.chat-stream" ? { allow: true } : { allow: false, reason: "Denied" },
+    });
+    expect((await app.request("/api/instances/demo/requests")).status).toBe(403);
+    const response = await app.request(
+      `/api/instances/demo/runtime/chat/activity?sessionId=${session.id}&requestId=${request.id}`,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      requests: [{ id: request.id, session_id: session.id, execution_status: null }],
+    });
+  });
+
+  it("requires an instance-owned session for chat activity and preserves permission checks", async () => {
+    const { request, session } = seedResult();
+    const query = `sessionId=${session.id}&requestId=${request.id}`;
+    expect((await app.request("/api/instances/demo/runtime/chat/activity")).status).toBe(400);
+    expect((await app.request(`/api/instances/other/runtime/chat/activity?${query}`)).status).toBe(
+      404,
+    );
+    expect(
+      (await app.request("/api/instances/demo/runtime/chat/activity?sessionId=missing")).status,
+    ).toBe(404);
+    const other = createSession(db, { instanceSlug: "demo", agentId: "assistant" });
+    const mismatched = await app.request(
+      `/api/instances/demo/runtime/chat/activity?sessionId=${other.id}&requestId=${request.id}`,
+    );
+    expect(await mismatched.json()).toEqual({ requests: [] });
+    registerPermissionChecker({ check: async () => ({ allow: false, reason: "Denied" }) });
+    expect((await app.request(`/api/instances/demo/runtime/chat/activity?${query}`)).status).toBe(
+      403,
+    );
+  });
 
   it("returns durable text and message parts before clearing the delivery failure", async () => {
     const { request, message, artifact } = seedResult();

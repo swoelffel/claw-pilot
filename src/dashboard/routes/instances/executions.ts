@@ -57,9 +57,15 @@ function registerExecutionReadRoutes(app: Hono, deps: RouteDeps): void {
         return apiError(c, 400, "INVALID_TASK_ID", "taskId must be a positive integer");
       }
       const limit = Number(c.req.query("limit") ?? 50);
+      const sessionId = c.req.query("sessionId");
+      const requestId = c.req.query("requestId");
+      const source = c.req.query("source");
       return c.json({
         requests: listRequests(db, slug, {
           ...(taskId !== undefined ? { taskId } : {}),
+          ...(sessionId !== undefined ? { sessionId } : {}),
+          ...(requestId !== undefined ? { requestId } : {}),
+          ...(source !== undefined ? { source } : {}),
           limit: Number.isFinite(limit) ? limit : 50,
         }),
       });
