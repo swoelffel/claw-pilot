@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.84.12] — 2026-10-15
+
+### Fixed
+
+- **Permission explanations** (#297) — explain denied chat, history and kickoff actions in the selected interface language (English, French, German, Spanish, Italian and Portuguese). Retain other error diagnostics.
+- **Session loading errors** (#297) — preserve failed session/history reads as errors, avoid offering Start for an unreadable existing conversation, and ignore late responses after switching instances.
+
+### Upgrade notes
+
+- UI-only correction: no database migration, role grant, authorization-policy or schema change; schema remains **57**.
+
+---
+
 ## [0.84.11] — 2026-10-15
 
 ### Fixed
