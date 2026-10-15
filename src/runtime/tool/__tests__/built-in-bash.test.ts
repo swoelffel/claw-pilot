@@ -106,6 +106,7 @@ describe("BashTool", () => {
     setTimeout(() => {
       proc.stdout.emit("data", Buffer.from(stdout));
       proc.emit("exit", exitCode, null);
+      proc.emit("close", exitCode, null);
     }, 5);
     return proc;
   }
@@ -122,7 +123,10 @@ describe("BashTool", () => {
     proc.stderr = new EventEmitter();
     proc.pid = 12345;
     proc.kill = vi.fn(() => {
-      setTimeout(() => proc.emit("exit", null, "SIGTERM"), 5);
+      setTimeout(() => {
+        proc.emit("exit", null, "SIGTERM");
+        proc.emit("close", null, "SIGTERM");
+      }, 5);
     });
     // The source code calls process.kill(-proc.pid, "SIGTERM") on non-win32
     const origProcessKill = process.kill;
@@ -130,7 +134,10 @@ describe("BashTool", () => {
       const sig = args[0] as number;
       // Negative PID = process group kill used by bash tool
       if (sig === -12345) {
-        setTimeout(() => proc.emit("exit", null, "SIGTERM"), 5);
+        setTimeout(() => {
+          proc.emit("exit", null, "SIGTERM");
+          proc.emit("close", null, "SIGTERM");
+        }, 5);
         return true;
       }
       return origProcessKill.call(process, ...(args as Parameters<typeof origProcessKill>));

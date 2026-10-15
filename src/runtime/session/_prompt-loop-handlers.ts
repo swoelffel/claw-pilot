@@ -258,6 +258,8 @@ export interface WatchdogManager {
   fullAbort: AbortSignal;
   /** Suspend both watchdogs while an async function runs (e.g. permission prompt). */
   onLongWait: <T>(fn: () => Promise<T>) => Promise<T>;
+  /** Exclude tool execution from chunk inactivity; the overall deadline keeps running. */
+  onToolExecution: <T>(fn: () => Promise<T>) => Promise<T>;
   /** Clean up all timers. Must be called in a finally block. */
   cleanup: () => void;
   /** Update the last-chunk timestamp (call on every chunk). */
@@ -285,9 +287,10 @@ export function createWatchdogManager(
 
   let lastChunkTime = Date.now();
   let watchdogsPaused = 0;
+  let activeTools = 0;
   const chunkWatchdogController = new AbortController();
   const chunkWatchdogTimer = setInterval(() => {
-    if (watchdogsPaused > 0) {
+    if (watchdogsPaused > 0 || activeTools > 0) {
       lastChunkTime = Date.now();
       return;
     }
@@ -324,6 +327,15 @@ export function createWatchdogManager(
   return {
     fullAbort,
     onLongWait,
+    onToolExecution: async <T>(fn: () => Promise<T>): Promise<T> => {
+      activeTools++;
+      try {
+        return await fn();
+      } finally {
+        activeTools--;
+        if (activeTools === 0) lastChunkTime = Date.now();
+      }
+    },
     touchChunk: () => {
       lastChunkTime = Date.now();
     },

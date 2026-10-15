@@ -44,6 +44,12 @@ import { markDirty } from "./system-prompt-dirty.js";
 import { buildResolvedEnv } from "../../lib/env-reader.js";
 import { executeWithResourceGuard } from "../tool/resource-guard.js";
 
+/** Guard actual tool execution, including dynamically injected and MCP tools. */
+function executeTool<T>(ctx: Tool.Context, execute: () => Promise<T>): Promise<T> {
+  ctx.abort.throwIfAborted();
+  return ctx.onToolExecution ? ctx.onToolExecution(execute) : execute();
+}
+
 // ---------------------------------------------------------------------------
 // Part helpers
 // ---------------------------------------------------------------------------
@@ -161,7 +167,7 @@ async function wireDynamicTool(
             `${wireCtx.ctx.channel ?? "runtime"}:${wireCtx.ctx.agentId}`,
           toolName,
           args,
-          execute: () => def.execute(args as never, wireCtx.ctx),
+          execute: () => executeTool(wireCtx.ctx, () => def.execute(args as never, wireCtx.ctx)),
         });
         updatePartState(wireCtx.db, part.id, "completed", result.output);
         wireCtx.bus.publish(MessageUpdated, {
@@ -388,7 +394,7 @@ async function wireBuiltInTools(
             identity: ctx.executionIdentity ?? `${ctx.channel ?? "runtime"}:${ctx.agentId}`,
             toolName: toolInfo.id,
             args: execArgs,
-            execute: () => def.execute(execArgs as never, callCtx),
+            execute: () => executeTool(callCtx, () => def.execute(execArgs as never, callCtx)),
           });
           const durationMs = Date.now() - callStart;
           updatePartState(db, part.id, "completed", result.output);

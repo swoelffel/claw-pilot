@@ -24,6 +24,7 @@ import {
   fetchSessionMessages,
   fetchSessionContext,
   fetchRuntimeSessions,
+  fetchRuntimeRequests,
 } from "../api.js";
 import { tokenStyles } from "../styles/tokens.js";
 import { errorBannerStyles } from "../styles/shared.js";
@@ -98,6 +99,12 @@ export class RuntimePilot extends LitElement {
       .error-banner {
         margin: 0 12px 8px;
         flex-shrink: 0;
+      }
+
+      .recovery-info {
+        color: var(--state-info);
+        border-color: color-mix(in srgb, var(--state-info) 25%, transparent);
+        background: color-mix(in srgb, var(--state-info) 8%, transparent);
       }
 
       /* Top navigation bar: back button + slug + agent tabs */
@@ -244,6 +251,29 @@ export class RuntimePilot extends LitElement {
 
   private _eventSource: EventSource | null = null;
   private _activeSessionId = "";
+  private _scopeVersion = 0;
+  private _activityVersion = 0;
+  private _activeRequestId = "";
+  private _settledRequestId = "";
+
+  /** Ignore work started for an old instance, session, or component attachment. */
+  private _captureScope(): () => boolean {
+    const version = this._scopeVersion;
+    const slug = this.slug;
+    const sessionId = this._activeSessionId;
+    return () =>
+      version === this._scopeVersion && slug === this.slug && sessionId === this._activeSessionId;
+  }
+
+  private _finishActivity(): void {
+    this._activityVersion += 1;
+    this._streamingText = "";
+    this._streamingReasoning = "";
+    this._streamingReasoningPartId = null;
+    this._currentToolName = null;
+    this._streamingMessageId = null;
+    this._status = "idle";
+  }
 
   // SSE reconnect state
   private _reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -298,12 +328,22 @@ export class RuntimePilot extends LitElement {
 
   private async _init(): Promise<void> {
     this._teardown();
+    const version = this._scopeVersion;
     this._status = "loading";
     this._error = "";
+    this._lastEventId = "";
+    this._recoveryState = "";
+    this._activeRequestId = "";
+    this._settledRequestId = "";
     this._messages = [];
     this._hasMore = false;
     this._streamingText = "";
+    this._streamingReasoning = "";
+    this._streamingReasoningPartId = null;
+    this._currentToolName = null;
+    this._streamingAgentId = "";
     this._streamingMessageId = null;
+    this._subagentResults = {};
     this._events = [];
     this._context = null;
     this._activeSessionId = "";
@@ -311,10 +351,12 @@ export class RuntimePilot extends LitElement {
 
     // 1. Resolve the session ID — prop takes priority, otherwise auto-detect
     const resolvedId = this.sessionId || (await this._detectPermanentSession());
+    if (version !== this._scopeVersion) return;
 
     if (resolvedId) {
       this._activeSessionId = resolvedId;
       await Promise.all([this._loadMessages(), this._loadContext()]);
+      if (version !== this._scopeVersion) return;
       this._openStream();
       this._startPolling();
     } else {
@@ -330,10 +372,12 @@ export class RuntimePilot extends LitElement {
    * Returns the session ID if found, otherwise undefined.
    */
   private async _detectPermanentSession(): Promise<string | undefined> {
+    const isCurrent = this._captureScope();
     try {
       const sessions: RuntimeSession[] = await fetchRuntimeSessions(this.slug, {
         includeInternal: true,
       });
+      if (!isCurrent()) return undefined;
       const sorted = sessions
         .filter((s) => s.persistent && s.state === "active")
         .sort((a, b) => {
@@ -357,6 +401,7 @@ export class RuntimePilot extends LitElement {
 
   private async _loadMessages(before?: string): Promise<void> {
     if (!this._activeSessionId) return;
+    const isCurrent = this._captureScope();
     debugApi("runtime-pilot fetchSessionMessages loadMessages", {
       sessionId: this._activeSessionId,
       before,
@@ -367,6 +412,7 @@ export class RuntimePilot extends LitElement {
         ...(before ? { before } : {}),
       });
 
+      if (!isCurrent()) return;
       if (before) {
         // Prepend older messages
         this._messages = [...messages, ...this._messages];
@@ -379,6 +425,7 @@ export class RuntimePilot extends LitElement {
         this._status = "idle";
       }
     } catch (err) {
+      if (!isCurrent()) return;
       this._status = "error";
       this._error = err instanceof Error ? err.message : "Failed to load messages";
     }
@@ -390,30 +437,67 @@ export class RuntimePilot extends LitElement {
     await this._loadMessages(firstId);
   }
 
-  /**
-   * Light refresh: fetch the latest messages and merge without resetting the list.
-   * Used by polling and visibilitychange. Does not change _status.
-   */
+  /** Reconcile durable execution state after missed events, using reads only. */
   private async _refreshMessages(): Promise<void> {
-    if (
-      !this._activeSessionId ||
-      this._status === "streaming" ||
-      this._status === "sending" ||
-      this._status === "thinking" ||
-      this._status === "tool"
-    ) {
-      return;
-    }
-    debugApi("runtime-pilot fetchSessionMessages refresh", {
-      sessionId: this._activeSessionId,
-    });
+    if (!this._activeSessionId) return;
+    const isCurrent = this._captureScope();
+    const activity = this._activityVersion;
+    const stillCurrent = () => isCurrent() && activity === this._activityVersion;
     try {
-      const { messages } = await fetchSessionMessages(this.slug, this._activeSessionId, {
-        limit: 20,
-      });
+      const [requests, { messages }] = await Promise.all([
+        fetchRuntimeRequests(this.slug, {
+          sessionId: this._activeSessionId,
+          limit: 1,
+        }),
+        fetchSessionMessages(this.slug, this._activeSessionId, { limit: 20 }),
+      ]);
+      if (!stillCurrent()) return;
+      const latest = requests[0];
       this._mergeMessages(messages);
+      // A previous execution can already be terminal while the current POST is
+      // still being accepted. Only its preassigned request ID may settle it.
+      if (
+        this._activeRequestId &&
+        this._settledRequestId !== this._activeRequestId &&
+        latest?.id !== this._activeRequestId
+      ) {
+        const requestId = this._activeRequestId;
+        const [active] = await fetchRuntimeRequests(this.slug, {
+          sessionId: this._activeSessionId,
+          requestId,
+          limit: 1,
+        });
+        if (!stillCurrent() || this._activeRequestId !== requestId) return;
+        if (
+          active?.id !== requestId ||
+          active.session_id !== this._activeSessionId ||
+          !["succeeded", "failed", "timed_out", "cancelled"].includes(active.execution_status ?? "")
+        )
+          return;
+        // Its HTTP response can remain pending after execution has finished and
+        // another channel has started a newer turn in this shared session.
+        this._activeRequestId = "";
+        this._settledRequestId = requestId;
+        await this._refreshMessages();
+        return;
+      }
+      if (!latest || latest.session_id !== this._activeSessionId) return;
+      const terminal = latest.execution_status;
+      if (terminal === "accepted" || terminal === "running") {
+        if (this._status === "idle") this._status = this._hasPendingQuestion ? "tool" : "sending";
+        return;
+      }
+      if (!["succeeded", "failed", "timed_out", "cancelled"].includes(terminal ?? "")) return;
+      const wasBusy = ["sending", "thinking", "tool", "streaming", "error"].includes(this._status);
+      const wasReconnecting = this._recoveryState === "RECONNECTING";
+      this._settledRequestId = latest.id;
+      if (this._activeRequestId === latest.id) this._activeRequestId = "";
+      this._finishActivity();
+      this._error = "";
+      if (terminal !== "succeeded") this._recoveryState = "NEEDS_ATTENTION";
+      else if (wasBusy || wasReconnecting) this._recoveryState = "RESULT_READY";
     } catch {
-      // Non-fatal — polling will retry
+      // Non-fatal — polling will retry without re-executing the request.
     }
   }
 
@@ -438,8 +522,10 @@ export class RuntimePilot extends LitElement {
 
   private async _loadContext(): Promise<void> {
     if (!this._activeSessionId) return;
+    const isCurrent = this._captureScope();
     try {
-      this._context = await fetchSessionContext(this.slug, this._activeSessionId);
+      const context = await fetchSessionContext(this.slug, this._activeSessionId);
+      if (isCurrent()) this._context = context;
     } catch {
       // Non-fatal — context panel shows empty state
     }
@@ -466,14 +552,11 @@ export class RuntimePilot extends LitElement {
     debugSse("[runtime-pilot] _openStream", baseUrl);
 
     es.onopen = () => {
-      const wasReconnecting = this._recoveryState === "RECONNECTING";
+      if (this._eventSource !== es) return;
       this._sseConnected = true;
       this._reconnectDelay = SSE_RECONNECT_INITIAL_MS; // reset backoff on success
       debugSse("[runtime-pilot] sse open");
-      if (wasReconnecting)
-        void this._reloadLastMessages().then(() => {
-          this._recoveryState = this._status === "idle" ? "RESULT_READY" : "";
-        });
+      void this._refreshMessages();
       // Clear any SSE error banner if the reconnect succeeds
       if (this._error.includes("Connection")) {
         this._error = "";
@@ -482,6 +565,7 @@ export class RuntimePilot extends LitElement {
     };
 
     es.onmessage = (e: MessageEvent) => {
+      if (this._eventSource !== es) return;
       this._sseConnected = true;
       if (e.lastEventId) this._lastEventId = e.lastEventId;
       let event: PilotBusEvent;
@@ -495,11 +579,13 @@ export class RuntimePilot extends LitElement {
     };
 
     es.addEventListener("ping", () => {
+      if (this._eventSource !== es) return;
       this._sseConnected = true;
       // Keep-alive — ignore
     });
 
     es.onerror = () => {
+      if (this._eventSource !== es) return;
       this._sseConnected = false;
       if (["sending", "thinking", "tool", "streaming"].includes(this._status))
         this._recoveryState = "RECONNECTING";
@@ -559,6 +645,7 @@ export class RuntimePilot extends LitElement {
   // ── Full teardown ─────────────────────────────────────────────────────────
 
   private _teardown(): void {
+    this._scopeVersion += 1;
     this._closeStream();
     this._stopPolling();
   }
@@ -614,6 +701,8 @@ export class RuntimePilot extends LitElement {
       case "message.created": {
         if (eventSessionId && eventSessionId !== this._activeSessionId) break;
         if (p.role === "assistant") {
+          this._activityVersion += 1;
+          this._recoveryState = "";
           this._streamingText = "";
           this._streamingReasoning = "";
           this._streamingReasoningPartId = null;
@@ -662,6 +751,10 @@ export class RuntimePilot extends LitElement {
       case "session.status": {
         if (eventSessionId && eventSessionId !== this._activeSessionId) break;
         const status = p.status as string;
+        if (status === "busy") {
+          this._activityVersion += 1;
+          this._recoveryState = "";
+        }
         if (
           status === "busy" &&
           this._status !== "streaming" &&
@@ -669,7 +762,15 @@ export class RuntimePilot extends LitElement {
           this._status !== "tool"
         ) {
           this._status = "sending";
-        } else if (status === "idle" && this._status !== "sending") {
+        } else if (
+          status === "idle" &&
+          (this._status === "sending" ||
+            (this._activeRequestId && this._activeRequestId !== this._settledRequestId))
+        ) {
+          // Replayed assistant creation has no delta to move us out of sending.
+          // Durable request identity also protects an in-flight new HTTP send.
+          void this._refreshMessages();
+        } else if (status === "idle") {
           this._streamingText = "";
           this._streamingReasoning = "";
           this._streamingReasoningPartId = null;
@@ -725,9 +826,8 @@ export class RuntimePilot extends LitElement {
       // ── Question asked — reload so the question card renders immediately ─
       // Fired when a question tool call suspends the prompt loop. Without this
       // handler, subagent-initiated questions only appear after a manual F5.
-      // Must use _reloadLastMessages (no status guard) instead of
-      // _refreshMessages — the latter bails out when _status is "tool",
-      // which is always the case here because tool.call.started fires first.
+      // Reload directly so the question card does not wait for a request-state
+      // reconciliation; tool.call.started has already marked the session busy.
       case "question.asked": {
         if (eventSessionId && eventSessionId !== this._activeSessionId) break;
         void this._reloadLastMessages();
@@ -766,7 +866,9 @@ export class RuntimePilot extends LitElement {
         break;
       case "llm.chunk_timeout":
       case "agent.timeout":
+        if (!eventSessionId || eventSessionId !== this._activeSessionId) break;
         this._recoveryState = "NEEDS_ATTENTION";
+        void this._refreshMessages();
         this._addEvent(event);
         break;
       case "session.created":
@@ -791,6 +893,8 @@ export class RuntimePilot extends LitElement {
 
   private async _reloadLastMessages(messageId?: string): Promise<void> {
     if (!this._activeSessionId) return;
+    const isCurrent = this._captureScope();
+    const activity = this._activityVersion;
     debugApi("runtime-pilot fetchSessionMessages reloadLast", {
       sessionId: this._activeSessionId,
       triggerMessageId: messageId,
@@ -801,7 +905,7 @@ export class RuntimePilot extends LitElement {
       const { messages } = await fetchSessionMessages(this.slug, this._activeSessionId, {
         limit: 5,
       });
-      this._mergeMessages(messages);
+      if (isCurrent() && activity === this._activityVersion) this._mergeMessages(messages);
     } catch {
       // Non-fatal
     }
@@ -831,14 +935,30 @@ export class RuntimePilot extends LitElement {
 
     this._status = "sending";
     this._error = "";
+    this._recoveryState = "";
+    this._activityVersion += 1;
+    const version = this._scopeVersion;
+    const slug = this.slug;
+    const requestId = crypto.randomUUID();
+    this._activeRequestId = requestId;
+    const isCurrent = () =>
+      version === this._scopeVersion &&
+      slug === this.slug &&
+      this._activeRequestId === requestId &&
+      this._settledRequestId !== requestId;
 
     try {
-      const result = await postRuntimeChat(this.slug, {
-        message: text,
-        ...(this._activeSessionId ? { sessionId: this._activeSessionId } : {}),
-        ...(this._context?.agent.id ? { agentId: this._context.agent.id } : {}),
-        ...(files !== undefined && files.length > 0 ? { files } : {}),
-      });
+      const result = await postRuntimeChat(
+        this.slug,
+        {
+          message: text,
+          ...(this._activeSessionId ? { sessionId: this._activeSessionId } : {}),
+          ...(this._context?.agent.id ? { agentId: this._context.agent.id } : {}),
+          ...(files !== undefined && files.length > 0 ? { files } : {}),
+        },
+        requestId,
+      );
+      if (!isCurrent()) return;
 
       // If this is the first message, we now have a sessionId — load context + start polling
       if (!this._activeSessionId && result.sessionId) {
@@ -849,6 +969,7 @@ export class RuntimePilot extends LitElement {
 
       // Reload messages to show the complete exchange
       await this._reloadLastMessages(result.messageId);
+      if (!isCurrent()) return;
 
       // If the backend returned early because the loop is suspended on a
       // pending question, keep the UI in its current busy state — SSE will
@@ -856,13 +977,18 @@ export class RuntimePilot extends LitElement {
       // interaction from here.
       if (result.pendingQuestion) {
         debugSse("[runtime-pilot] pendingQuestion=true — UI stays busy, SSE drives updates");
-        // Transition away from "sending" so that session.status=idle from SSE
-        // is not ignored by the guard in _handleBusEvent.
+        // Keep the pending question visibly active until canonical execution
+        // state or subsequent stream events report completion.
         if (this._status === "sending") this._status = "thinking";
-      } else if (this._status === "sending") {
-        this._status = "idle";
+      } else {
+        this._settledRequestId = requestId;
+        this._activeRequestId = "";
+        // A newer cross-channel turn may already be running by the time this
+        // response arrives. Follow the current session projection before idle.
+        await this._refreshMessages();
       }
     } catch (err) {
+      if (!isCurrent()) return;
       this._status = "error";
       this._error = err instanceof Error ? err.message : "Failed to send message";
     }
@@ -1058,7 +1184,23 @@ export class RuntimePilot extends LitElement {
                 ></cp-pilot-messages>
 
                 ${this._recoveryState
-                  ? html`<div class="error-banner" role="status">${this._recoveryState}</div>`
+                  ? html`<div
+                      class="error-banner ${this._recoveryState === "NEEDS_ATTENTION"
+                        ? ""
+                        : "recovery-info"}"
+                      role="status"
+                    >
+                      ${this._recoveryState === "RECONNECTING"
+                        ? msg("Connection lost. Checking the saved execution…", {
+                            id: "pilot-recovery-reconnecting",
+                          })
+                        : this._recoveryState === "RESULT_READY"
+                          ? msg("Saved response recovered.", { id: "pilot-recovery-ready" })
+                          : msg(
+                              "The execution stopped before completing. Review the saved messages before retrying.",
+                              { id: "pilot-recovery-attention" },
+                            )}
+                    </div>`
                   : nothing}
                 ${this._error ? html`<div class="error-banner">${this._error}</div>` : nothing}
 

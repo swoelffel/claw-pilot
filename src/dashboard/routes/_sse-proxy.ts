@@ -132,7 +132,6 @@ export async function proxyRuntimeSSE(
   params?: ProxySSEParams,
 ): Promise<void> {
   const url = _buildUpstreamUrl(slug, params);
-  const token = await resolveInternalApiToken(slug);
 
   // AbortController wired to browser disconnect
   const ac = new AbortController();
@@ -144,6 +143,9 @@ export async function proxyRuntimeSSE(
   }, PING_INTERVAL_MS);
 
   try {
+    // Flush the dashboard stream immediately, even while the daemon is silent.
+    await stream.writeSSE({ event: "ping", data: "" });
+    const token = await resolveInternalApiToken(slug);
     const response = await fetch(url, {
       method: "GET",
       headers: { Authorization: `Bearer ${token}` },

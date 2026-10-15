@@ -2,6 +2,12 @@
 // These match the msg() calls in the components.
 
 export const templates = {
+  // Pilot execution recovery
+  "pilot-recovery-reconnecting": "Connection lost. Checking the saved execution…",
+  "pilot-recovery-ready": "Saved response recovered.",
+  "pilot-recovery-attention":
+    "The execution stopped before completing. Review the saved messages before retrying.",
+
   // Request result recovery
   "request-list-result-title": "Saved result",
   "request-list-result-channel":

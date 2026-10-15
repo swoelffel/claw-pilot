@@ -85,6 +85,57 @@ describe("request result recovery HTTP contract", () => {
     });
   }
 
+  it("scopes latest terminal activity by session and source before limiting", async () => {
+    const session = createSession(db, { instanceSlug: "demo", agentId: "assistant" });
+    const request = createOrGetRequest(db, {
+      instanceSlug: "demo",
+      source: "web",
+      sessionId: session.id,
+    }).request;
+    db.prepare(
+      `INSERT INTO rt_executions
+      (id,correlation_id,instance_slug,session_id,agent_id,timeout_ms,request_id,status)
+      VALUES ('failed-run','trace','demo',?,'assistant',300000,?,'timed_out')`,
+    ).run(session.id, request.id);
+    createOrGetRequest(db, { instanceSlug: "demo", source: "web", sessionId: "another" });
+    createOrGetRequest(db, { instanceSlug: "demo", source: "agent", sessionId: session.id });
+    createOrGetRequest(db, { instanceSlug: "other", source: "web", sessionId: session.id });
+    const response = await app.request(
+      `/api/instances/demo/requests?sessionId=${session.id}&source=web&limit=1`,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      requests: [
+        {
+          id: request.id,
+          execution_status: "timed_out",
+          delivery_status: "pending",
+          result_message_id: null,
+        },
+      ],
+    });
+    expect(getRequest(db, request.id)?.delivery_status).toBe("pending");
+    expect(db.prepare("SELECT COUNT(*) AS n FROM rt_executions").get()).toEqual({ n: 1 });
+  });
+
+  it("finds an older pending HTTP request without crossing its session scope", async () => {
+    const first = createOrGetRequest(db, {
+      instanceSlug: "demo",
+      source: "web",
+      sessionId: "s1",
+    }).request;
+    createOrGetRequest(db, { instanceSlug: "demo", source: "telegram", sessionId: "s1" });
+    const query = `requestId=${first.id}&sessionId=s1&limit=1`;
+    const response = await app.request(`/api/instances/demo/requests?${query}`);
+    expect(await response.json()).toMatchObject({ requests: [{ id: first.id }] });
+    const otherSession = await app.request(
+      `/api/instances/demo/requests?requestId=${first.id}&sessionId=s2`,
+    );
+    expect(await otherSession.json()).toEqual({ requests: [] });
+    const otherInstance = await app.request(`/api/instances/other/requests?${query}`);
+    expect(await otherInstance.json()).toEqual({ requests: [] });
+  });
+
   it("returns durable text and message parts before clearing the delivery failure", async () => {
     const { request, message, artifact } = seedResult();
     const res = await recover(request.id);

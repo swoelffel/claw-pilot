@@ -278,22 +278,32 @@ export function markRequestDeliveryFailed(
 export function listRequests(
   db: Database.Database,
   instanceSlug: string,
-  options: { taskId?: number; limit?: number } = {},
+  options: {
+    taskId?: number;
+    sessionId?: string;
+    source?: string;
+    requestId?: string;
+    limit?: number;
+  } = {},
 ): RequestRow[] {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+  const conditions = ["r.instance_slug = ?"];
+  const values: (string | number)[] = [instanceSlug];
   if (options.taskId !== undefined) {
-    return db
-      .prepare(
-        `SELECT r.*,
-          (SELECT e.status FROM rt_executions e WHERE e.request_id = r.id
-           ORDER BY e.accepted_at DESC, e.rowid DESC LIMIT 1) AS execution_status,
-          COALESCE((SELECT SUM(e.cost_usd) FROM rt_executions e WHERE e.request_id = r.id), 0) AS cost_usd,
-          COALESCE((SELECT SUM(e.input_tokens) FROM rt_executions e WHERE e.request_id = r.id), 0) AS input_tokens,
-          COALESCE((SELECT SUM(e.output_tokens) FROM rt_executions e WHERE e.request_id = r.id), 0) AS output_tokens
-        FROM rt_requests r WHERE r.instance_slug = ? AND r.task_id = ?
-        ORDER BY r.created_at DESC, r.rowid DESC LIMIT ?`,
-      )
-      .all(instanceSlug, options.taskId, limit) as RequestRow[];
+    conditions.push("r.task_id = ?");
+    values.push(options.taskId);
+  }
+  if (options.sessionId !== undefined) {
+    conditions.push("r.session_id = ?");
+    values.push(options.sessionId);
+  }
+  if (options.requestId !== undefined) {
+    conditions.push("r.id = ?");
+    values.push(options.requestId);
+  }
+  if (options.source !== undefined) {
+    conditions.push("r.source = ?");
+    values.push(options.source);
   }
   return db
     .prepare(
@@ -303,8 +313,8 @@ export function listRequests(
         COALESCE((SELECT SUM(e.cost_usd) FROM rt_executions e WHERE e.request_id = r.id), 0) AS cost_usd,
         COALESCE((SELECT SUM(e.input_tokens) FROM rt_executions e WHERE e.request_id = r.id), 0) AS input_tokens,
         COALESCE((SELECT SUM(e.output_tokens) FROM rt_executions e WHERE e.request_id = r.id), 0) AS output_tokens
-      FROM rt_requests r WHERE r.instance_slug = ?
+      FROM rt_requests r WHERE ${conditions.join(" AND ")}
       ORDER BY r.created_at DESC, r.rowid DESC LIMIT ?`,
     )
-    .all(instanceSlug, limit) as RequestRow[];
+    .all(...values, limit) as RequestRow[];
 }

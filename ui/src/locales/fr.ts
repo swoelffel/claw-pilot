@@ -2,6 +2,12 @@
 // Generated: 2026-02-24
 
 export const templates = {
+  // Pilot execution recovery
+  "pilot-recovery-reconnecting": "Connexion interrompue. Vérification de l’exécution enregistrée…",
+  "pilot-recovery-ready": "Réponse enregistrée récupérée.",
+  "pilot-recovery-attention":
+    "L’exécution s’est arrêtée avant son terme. Consultez les messages enregistrés avant de réessayer.",
+
   // Request result recovery
   "request-list-result-title": "Résultat enregistré",
   "request-list-result-channel":

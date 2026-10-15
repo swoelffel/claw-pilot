@@ -395,6 +395,7 @@ export function registerRuntimeChatRoutes(app: Hono, deps: RouteDeps): void {
       const sessionId = c.req.query("sessionId") || undefined;
       const lastEventId = c.req.header("last-event-id") || c.req.query("lastEventId") || undefined;
 
+      c.header("X-Accel-Buffering", "no");
       return streamSSE(c, async (stream) => {
         await proxyRuntimeSSE(stream, slug, {
           ...(sessionId !== undefined ? { sessionId } : {}),

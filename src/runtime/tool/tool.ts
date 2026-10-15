@@ -36,6 +36,8 @@ export namespace Tool {
      * that would otherwise trip the stall-detection timeouts.
      */
     onLongWait?<T>(fn: () => Promise<T>): Promise<T>;
+    /** Exclude ordinary execution from LLM chunk inactivity without suspending the run deadline. */
+    onToolExecution?<T>(fn: () => Promise<T>): Promise<T>;
     abort: AbortSignal;
     /** True if the sender is an owner channel (web, telegram) — false for internal sub-agents */
     senderIsOwner?: boolean;

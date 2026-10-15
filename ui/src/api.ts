@@ -657,8 +657,8 @@ export async function postRuntimeChat(
     model?: string;
     files?: Array<{ name: string; mimeType: string; data: string }>;
   },
+  requestId = crypto.randomUUID(),
 ): Promise<RuntimeChatResponse> {
-  const requestId = crypto.randomUUID();
   const traceId = randomHex(16);
   return apiFetch<RuntimeChatResponse>(`/instances/${slug}/runtime/chat`, {
     method: "POST",
@@ -676,10 +676,19 @@ export async function postRuntimeChat(
 
 export async function fetchRuntimeRequests(
   slug: string,
-  options: { taskId?: number; limit?: number } = {},
+  options: {
+    taskId?: number;
+    sessionId?: string;
+    source?: string;
+    requestId?: string;
+    limit?: number;
+  } = {},
 ): Promise<RuntimeRequest[]> {
   const params = new URLSearchParams();
   if (options.taskId !== undefined) params.set("taskId", String(options.taskId));
+  if (options.sessionId !== undefined) params.set("sessionId", options.sessionId);
+  if (options.source !== undefined) params.set("source", options.source);
+  if (options.requestId !== undefined) params.set("requestId", options.requestId);
   if (options.limit !== undefined) params.set("limit", String(options.limit));
   const query = params.toString();
   const result = await apiFetch<{ requests: RuntimeRequest[] }>(
