@@ -6,6 +6,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.84.11] — 2026-10-15
+
+### Fixed
+
+- **Pilot recovery after replay and reconnect** (#294) — reconcile saved session messages and terminal execution status without resubmitting requests or tools. Ignore stale events, late HTTP responses and activity from another session while preserving newer turns in shared sessions.
+- **SSE delivery and resume** (#294) — start new subscriptions live unless a cursor explicitly requests replay, retain resume IDs through both dashboard proxies, flush an immediate heartbeat and disable reverse-proxy buffering for these streams.
+- **Long-running tools and cancellation** (#294) — exclude actual tool execution from LLM chunk inactivity while retaining the overall deadline and propagating cancellation to tools. Stop Unix shell descendants on timeout/abort, including TERM-resistant children, and avoid spawning already-cancelled commands.
+- **Recovery permissions** (#294) — expose a minimal session-scoped activity projection under the existing chat-stream permission, preserving execution-console restrictions for custom chat roles.
+
+### Upgrade notes
+
+- No new database migration: schema remains **57**.
+- Node.js **22.23.3** and pnpm **10.33.0** remain the build/CI reference. Unix process-tree cancellation is covered by real-process tests; Windows process trees and remote MCP operation cancellation are outside this qualification.
+
+---
+
 ## [0.84.10] — 2026-10-14
 
 ### Added
