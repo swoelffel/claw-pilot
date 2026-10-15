@@ -1,6 +1,12 @@
 // German translations for claw-pilot UI
 
 export const templates = {
+  // Pilot execution recovery
+  "pilot-recovery-reconnecting": "Verbindung unterbrochen. Gespeicherte Ausführung wird geprüft…",
+  "pilot-recovery-ready": "Gespeicherte Antwort wiederhergestellt.",
+  "pilot-recovery-attention":
+    "Die Ausführung wurde vorzeitig beendet. Prüfen Sie die gespeicherten Nachrichten vor einem neuen Versuch.",
+
   // Request result recovery
   "request-list-result-title": "Gespeichertes Ergebnis",
   "request-list-result-channel":

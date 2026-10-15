@@ -324,7 +324,9 @@ export class InternalApiServer {
         )
       : null;
     const cursorValue = req.headers["last-event-id"] ?? parsedUrl.searchParams.get("lastEventId");
-    const lastEventId = Number(Array.isArray(cursorValue) ? cursorValue[0] : cursorValue);
+    const cursor = Array.isArray(cursorValue) ? cursorValue[0] : cursorValue;
+    // Absence is a new live subscription; only an explicit cursor opts into replay.
+    const lastEventId = cursor?.trim() ? Number(cursor) : Number.NaN;
 
     streamRuntimeEvents(req, res, {
       db: this._db,

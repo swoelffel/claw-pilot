@@ -1713,6 +1713,76 @@ describe("buildCoreMessages — orphan tool-call resilience", () => {
 // ---------------------------------------------------------------------------
 
 describe("runPromptLoop — watchdog timeout", () => {
+  it("passes the overall deadline to an executing tool's abort signal", async () => {
+    let toolStarted = false;
+    let toolObservedAbort = false;
+    const waitingTool: Tool.Info = {
+      id: "wait_for_cancellation",
+      init: () => ({
+        description: "Wait for run cancellation",
+        parameters: z.object({}),
+        execute: async (_args, ctx) => {
+          toolStarted = true;
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, 500);
+            const stopped = () => {
+              toolObservedAbort = true;
+              clearTimeout(timer);
+              resolve();
+            };
+            ctx.abort.addEventListener("abort", stopped, { once: true });
+            if (ctx.abort.aborted) stopped();
+          });
+          return { title: "wait", output: "stopped", truncated: false };
+        },
+      }),
+    };
+    vi.mocked(getTools).mockResolvedValueOnce([waitingTool]);
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({
+        stream: simulateReadableStream({
+          chunks: [
+            { type: "stream-start", warnings: [] },
+            {
+              type: "tool-call",
+              toolCallId: "waiting-call",
+              toolName: "wait_for_cancellation",
+              input: "{}",
+            },
+            {
+              type: "finish",
+              finishReason: { unified: "tool-calls", raw: "tool-calls" },
+              usage: {
+                inputTokens: {
+                  total: 5,
+                  noCache: undefined,
+                  cacheRead: undefined,
+                  cacheWrite: undefined,
+                },
+                outputTokens: { total: 2, text: undefined, reasoning: undefined },
+              },
+            },
+          ],
+          initialDelayInMs: 0,
+          chunkDelayInMs: 0,
+        }),
+      }),
+    });
+    const session = createSession(db, { instanceSlug: INSTANCE_SLUG, agentId: "main" });
+    const outcome = await runPromptLoop({
+      db,
+      instanceSlug: INSTANCE_SLUG,
+      sessionId: session.id,
+      userText: "wait",
+      agentConfig: makeAgentConfig({ timeoutMs: 150, maxSteps: 1 }),
+      resolvedModel: makeResolvedModel(model),
+      workDir: undefined,
+    }).catch((error: unknown) => error);
+    expect(toolStarted).toBe(true);
+    expect(toolObservedAbort).toBe(true);
+    expect(outcome).toBeInstanceOf(Error);
+  });
+
   /**
    * Objective: clearTimeout is called in the finally block after normal completion.
    * We spy on clearTimeout (real timers) and verify it is called after the loop completes.

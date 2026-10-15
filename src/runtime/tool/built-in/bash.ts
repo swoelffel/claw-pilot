@@ -72,8 +72,18 @@ export const BashTool = Tool.define("bash", {
       }
     }
 
+    if (ctx.abort.aborted) {
+      return {
+        title: params.description,
+        output: "<bash_metadata>\nUser aborted the command\n</bash_metadata>",
+        truncated: false,
+      };
+    }
+
     const proc = spawn(params.command, {
       shell: true,
+      // A dedicated process group lets cancellation reach shell descendants.
+      detached: process.platform !== "win32",
       cwd,
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
@@ -82,19 +92,32 @@ export const BashTool = Tool.define("bash", {
     let output = "";
     let timedOut = false;
     let aborted = false;
-    let exited = false;
+    let termination: Promise<void> | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
-    const kill = () => {
+    const signalTree = (signal: NodeJS.Signals) => {
       try {
         if (process.platform !== "win32" && proc.pid) {
-          process.kill(-proc.pid, "SIGTERM");
+          process.kill(-proc.pid, signal);
         } else {
-          proc.kill("SIGTERM");
+          proc.kill(signal);
         }
       } catch (err) {
-        logger.debug("[tool:bash] kill failed", { error: String(err) });
-        // ignore kill errors
+        logger.debug("[tool:bash] process group signal failed", { error: String(err) });
       }
+    };
+
+    const terminate = () => {
+      if (termination) return;
+      // Keep the escalation alive even if the shell exits immediately: a
+      // descendant may ignore TERM and may have closed its inherited pipes.
+      termination = new Promise<void>((resolve) => {
+        signalTree("SIGTERM");
+        setTimeout(() => {
+          signalTree("SIGKILL");
+          resolve();
+        }, 500);
+      });
     };
 
     proc.stdout?.on("data", (chunk: Buffer) => {
@@ -104,41 +127,31 @@ export const BashTool = Tool.define("bash", {
       output += chunk.toString();
     });
 
-    // Abort handler
     const abortHandler = () => {
       aborted = true;
-      kill();
+      terminate();
     };
-    if (ctx.abort.aborted) {
-      aborted = true;
-      kill();
-    } else {
-      ctx.abort.addEventListener("abort", abortHandler, { once: true });
-    }
 
-    // Timeout
-    const timer = setTimeout(() => {
+    // Register process listeners before cancellation can terminate the command.
+    const completion = new Promise<void>((resolve, reject) => {
+      proc.once("close", () => resolve());
+      proc.once("error", reject);
+    });
+    ctx.abort.addEventListener("abort", abortHandler, { once: true });
+    // Close the check/listener race (including aborts during spawn).
+    if (ctx.abort.aborted) abortHandler();
+    timer = setTimeout(() => {
       timedOut = true;
-      kill();
+      terminate();
     }, timeout);
 
-    await new Promise<void>((resolve, reject) => {
-      proc.once("exit", () => {
-        exited = true;
-        clearTimeout(timer);
-        ctx.abort.removeEventListener("abort", abortHandler);
-        resolve();
-      });
-      proc.once("error", (err) => {
-        exited = true;
-        clearTimeout(timer);
-        ctx.abort.removeEventListener("abort", abortHandler);
-        reject(err);
-      });
-    });
-
-    // Suppress unused variable warning
-    void exited;
+    try {
+      await completion;
+      await termination;
+    } finally {
+      clearTimeout(timer);
+      ctx.abort.removeEventListener("abort", abortHandler);
+    }
 
     const meta: string[] = [];
     if (timedOut) meta.push(`Command terminated after exceeding timeout ${timeout} ms`);

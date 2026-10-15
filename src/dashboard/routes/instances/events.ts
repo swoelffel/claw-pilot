@@ -104,10 +104,13 @@ export function registerEventsRoutes(app: Hono, deps: RouteDeps): void {
       const filterTypes = c.req.query("type") || undefined;
       const filterAgentId = c.req.query("agentId") || undefined;
       const filterLevel = parseLevel(c.req.query("level"));
+      const lastEventId = c.req.header("last-event-id") || c.req.query("lastEventId") || undefined;
 
+      c.header("X-Accel-Buffering", "no");
       return streamSSE(c, async (stream) => {
         await proxyRuntimeSSE(stream, slug, {
           ...(filterTypes !== undefined ? { types: filterTypes } : {}),
+          ...(lastEventId !== undefined ? { lastEventId } : {}),
           transform: (raw) => {
             const eventType = raw.type as string;
             if (isExcluded(eventType)) return null;

@@ -164,6 +164,18 @@ describe("internal API durable SSE replay", () => {
     },
   );
 
+  it.each(["", "lastEventId=", "lastEventId=invalid"])(
+    "starts live-only without a usable explicit cursor: %s",
+    async (query) => {
+      append(1);
+      const stream = await connect(query);
+      publish(2);
+      await stream.waitFor(1);
+      expect(stream.frames.map((frame) => frame.data.payload.index)).toEqual([2]);
+      expect(stream.frames[0]?.data.replayed).toBeUndefined();
+    },
+  );
+
   it("delivers an event published during replay exactly once after the backlog", async () => {
     for (let index = 1; index <= 1001; index++) append(index);
     const write = http.ServerResponse.prototype.write;
