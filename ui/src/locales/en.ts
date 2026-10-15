@@ -2,6 +2,8 @@
 // These match the msg() calls in the components.
 
 export const templates = {
+  "err-permission-denied":
+    "You do not have the permissions required for this action. Contact an administrator.",
   // Pilot execution recovery
   "pilot-recovery-reconnecting": "Connection lost. Checking the saved execution…",
   "pilot-recovery-ready": "Saved response recovered.",

@@ -1,6 +1,8 @@
 // Italian translations for claw-pilot UI
 
 export const templates = {
+  "err-permission-denied":
+    "Non disponi delle autorizzazioni necessarie per questa azione. Contatta un amministratore.",
   // Pilot execution recovery
   "pilot-recovery-reconnecting": "Connessione interrotta. Verifica dell’esecuzione salvata…",
   "pilot-recovery-ready": "Risposta salvata recuperata.",
