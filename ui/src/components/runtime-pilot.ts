@@ -206,6 +206,7 @@ export class RuntimePilot extends LitElement {
 
   @state() private _status: PilotStatus = "idle";
   @state() private _error = "";
+  @state() private _sessionLoadError = false;
   @state() private _recoveryState: "" | "RECONNECTING" | "RESULT_READY" | "NEEDS_ATTENTION" = "";
   @state() private _messages: PilotMessage[] = [];
   @state() private _hasMore = false;
@@ -331,6 +332,7 @@ export class RuntimePilot extends LitElement {
     const version = this._scopeVersion;
     this._status = "loading";
     this._error = "";
+    this._sessionLoadError = false;
     this._lastEventId = "";
     this._recoveryState = "";
     this._activeRequestId = "";
@@ -351,12 +353,12 @@ export class RuntimePilot extends LitElement {
 
     // 1. Resolve the session ID — prop takes priority, otherwise auto-detect
     const resolvedId = this.sessionId || (await this._detectPermanentSession());
-    if (version !== this._scopeVersion) return;
+    if (version !== this._scopeVersion || this._sessionLoadError) return;
 
     if (resolvedId) {
       this._activeSessionId = resolvedId;
       await Promise.all([this._loadMessages(), this._loadContext()]);
-      if (version !== this._scopeVersion) return;
+      if (version !== this._scopeVersion || this._sessionLoadError) return;
       this._openStream();
       this._startPolling();
     } else {
@@ -386,7 +388,11 @@ export class RuntimePilot extends LitElement {
         });
       this._permanentSessions = sorted;
       return sorted[0]?.id;
-    } catch {
+    } catch (err) {
+      if (!isCurrent()) return undefined;
+      this._sessionLoadError = true;
+      this._status = "error";
+      this._error = err instanceof Error ? err.message : "Failed to load sessions";
       return undefined;
     }
   }
@@ -426,6 +432,7 @@ export class RuntimePilot extends LitElement {
       }
     } catch (err) {
       if (!isCurrent()) return;
+      if (!before) this._sessionLoadError = true;
       this._status = "error";
       this._error = err instanceof Error ? err.message : "Failed to load messages";
     }
@@ -1159,7 +1166,10 @@ export class RuntimePilot extends LitElement {
             @filter-change=${this._onFilterChange}
           ></cp-pilot-filter-bar>
 
-          ${this._messages.length === 0 && this._status !== "loading" && agentId
+          ${!this._sessionLoadError &&
+          this._messages.length === 0 &&
+          this._status === "idle" &&
+          agentId
             ? html`<cp-start-cta
                 .slug=${this.slug}
                 .agentId=${agentId}
