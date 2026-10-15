@@ -29,6 +29,7 @@ import {
 import { tokenStyles } from "../styles/tokens.js";
 import { errorBannerStyles } from "../styles/shared.js";
 import { getToken } from "../services/auth-state.js";
+import { permissionMessage } from "../lib/error-messages.js";
 import { debugSse, debugChat, debugRender, debugApi } from "../services/debug.js";
 import "./pilot/pilot-header.js";
 import "./pilot/pilot-messages.js";
@@ -392,7 +393,8 @@ export class RuntimePilot extends LitElement {
       if (!isCurrent()) return undefined;
       this._sessionLoadError = true;
       this._status = "error";
-      this._error = err instanceof Error ? err.message : "Failed to load sessions";
+      this._error =
+        permissionMessage(err) ?? (err instanceof Error ? err.message : "Failed to load sessions");
       return undefined;
     }
   }
@@ -434,7 +436,8 @@ export class RuntimePilot extends LitElement {
       if (!isCurrent()) return;
       if (!before) this._sessionLoadError = true;
       this._status = "error";
-      this._error = err instanceof Error ? err.message : "Failed to load messages";
+      this._error =
+        permissionMessage(err) ?? (err instanceof Error ? err.message : "Failed to load messages");
     }
   }
 
@@ -997,7 +1000,8 @@ export class RuntimePilot extends LitElement {
     } catch (err) {
       if (!isCurrent()) return;
       this._status = "error";
-      this._error = err instanceof Error ? err.message : "Failed to send message";
+      this._error =
+        permissionMessage(err) ?? (err instanceof Error ? err.message : "Failed to send message");
     }
   }
 

@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "lit";
+import { setLocale } from "../../localization.js";
+import { StartCta } from "../cp-start-cta.js";
 import { HomeChat } from "../home-chat.js";
 import { RuntimePilot } from "../runtime-pilot.js";
 
@@ -11,6 +13,7 @@ interface ChatState {
   _error: string;
   _context: unknown;
   _messages: unknown[];
+  _onSendMessage(event: CustomEvent<{ text: string }>): Promise<void>;
   _init(): Promise<void>;
   _teardown(): void;
   render(): unknown;
@@ -27,6 +30,8 @@ let chats: ChatState[];
 let failure: "sessions" | "messages" | null;
 let calls: string[];
 const denied = "Action runtime.sessions-list not permitted on runtime";
+const friendly =
+  "You do not have the permissions required for this action. Contact an administrator.";
 beforeEach(() => {
   chats = [];
   calls = [];
@@ -66,7 +71,8 @@ beforeEach(() => {
     throw new Error(`Unexpected request ${url.pathname}`);
   });
 });
-afterEach(() => {
+afterEach(async () => {
+  await setLocale("en");
   for (const chat of chats) chat._teardown();
   vi.unstubAllGlobals();
 });
@@ -89,9 +95,9 @@ describe.each([
     const el = chat(ctor);
     await el._init();
     expect(el._status).toBe("error");
-    expect(el._error).toBe(denied);
+    expect(el._error).toBe(friendly);
     expect(view(el).querySelector("cp-start-cta")).toBeNull();
-    expect(view(el).textContent).toContain(denied);
+    expect(view(el).textContent).toContain(friendly);
     expect(TestStream.count).toBe(0);
     expect(calls).toHaveLength(1);
     el._status = "idle";
@@ -103,7 +109,7 @@ describe.each([
     await el._init();
     expect(el._status).toBe("error");
     expect(view(el).querySelector("cp-start-cta")).toBeNull();
-    expect(view(el).textContent).toContain(denied);
+    expect(view(el).textContent).toContain(friendly);
     expect(TestStream.count).toBe(0);
   });
   it.each(["sessions", "messages"])(
@@ -152,6 +158,20 @@ describe.each([
       expect(TestStream.count).toBe(1);
     },
   );
+  it("explains missing rights when sending without retrying the request", async () => {
+    const post = vi.fn(async () =>
+      Response.json(
+        { code: "PERMISSION_DENIED", error: "Action runtime.chat not permitted on runtime" },
+        { status: 403 },
+      ),
+    );
+    vi.stubGlobal("fetch", post);
+    const el = chat(ctor);
+    await el._onSendMessage(new CustomEvent("send-message", { detail: { text: "Hello" } }));
+    expect(el._error).toBe(friendly);
+    expect(view(el).textContent).toContain(friendly);
+    expect(post).toHaveBeenCalledTimes(1);
+  });
 });
 it("still offers Home kickoff for a successfully read empty session list", async () => {
   failure = null;
@@ -159,4 +179,35 @@ it("still offers Home kickoff for a successfully read empty session list", async
   await el._init();
   expect(el._status).toBe("idle");
   expect(view(el).querySelector("cp-start-cta")).not.toBeNull();
+});
+
+it("shows the permission explanation in French", async () => {
+  await setLocale("fr");
+  const el = chat(HomeChat);
+  await el._init();
+  expect(view(el).textContent).toContain(
+    "Vous n’avez pas les droits nécessaires pour effectuer cette action. Contactez un administrateur.",
+  );
+});
+it("explains a denied kickoff without exposing the internal action name", async () => {
+  vi.stubGlobal("fetch", async () =>
+    Response.json(
+      { code: "PERMISSION_DENIED", error: "Action agent.kickoff not permitted on agent:pilot" },
+      { status: 403 },
+    ),
+  );
+  const el = new StartCta() as unknown as {
+    slug: string;
+    agentId: string;
+    _error: string;
+    _onClick(): Promise<void>;
+    render(): unknown;
+  };
+  el.slug = "demo";
+  el.agentId = "pilot";
+  await el._onClick();
+  expect(el._error).toBe(friendly);
+  const host = document.createElement("div");
+  render(el.render(), host);
+  expect(host.textContent).toContain(friendly);
 });

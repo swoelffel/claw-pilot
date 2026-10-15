@@ -25,8 +25,22 @@ export function userMessage(err: unknown): string {
   return msg("An unexpected error occurred.", { id: "err-unknown" });
 }
 
+/** Localize authorization refusals while letting callers retain other diagnostics. */
+export function permissionMessage(err: unknown): string | undefined {
+  return err instanceof ApiError && err.code === "PERMISSION_DENIED"
+    ? resolveCode(err.code)
+    : undefined;
+}
+
 function resolveCode(code: string): string {
   switch (code) {
+    case "PERMISSION_DENIED":
+      return msg(
+        "You do not have the permissions required for this action. Contact an administrator.",
+        {
+          id: "err-permission-denied",
+        },
+      );
     case "UNAUTHORIZED":
       return msg("Session expired. Please refresh the page.", { id: "err-unauthorized" });
     case "NOT_FOUND":
