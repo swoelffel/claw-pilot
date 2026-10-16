@@ -38,6 +38,13 @@ export type AuditEvent =
       reason: string;
     }
   | {
+      kind: "trigger.secret_mutation";
+      triggerId: number;
+      instanceSlug: string;
+      action: "rotate" | "revoke";
+      by: string;
+    }
+  | {
       kind: "secret.access";
       name: string;
       /** `userId` of the caller, or `system:<context>` when emitted outside a request. */

@@ -72,3 +72,20 @@ describe("EnvSecretProvider", () => {
     await expect(provider.rotate(TEST_KEY)).rejects.toThrow(/vault-secrets/);
   });
 });
+
+describe("concurrent webhook secret persistence", () => {
+  it("preserves every reference after concurrent writes and a provider restart", async () => {
+    const keys = Array.from({ length: 12 }, (_, i) => `TRIGGER_WEBHOOK_SECRET:fixture-${i}`);
+    try {
+      await Promise.all(
+        keys.map((key, i) => new EnvSecretProvider(stateDir).set(key, `value-${i}`)),
+      );
+      for (const key of keys) delete process.env[key];
+      const restarted = new EnvSecretProvider(stateDir);
+      for (const [i, key] of keys.entries())
+        await expect(restarted.get(key)).resolves.toBe(`value-${i}`);
+    } finally {
+      for (const key of keys) delete process.env[key];
+    }
+  });
+});

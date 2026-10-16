@@ -4,6 +4,7 @@
 import * as fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
+import { randomUUID } from "node:crypto";
 import { logger } from "./logger.js";
 
 /**
@@ -29,7 +30,45 @@ export function readEnvVar(envPath: string, varName: string): string | null {
  * Creates the file and parent directories if they don't exist.
  * Preserves other variables and comments. File written with mode 0o600.
  */
+const pendingWrites = new Map<string, Promise<void>>();
+
+/** Serialize dashboard read-modify-write operations, including across provider instances. */
+async function serializeEnvUpdate(envPath: string, update: () => Promise<void>): Promise<void> {
+  const key = path.resolve(envPath);
+  const previous = pendingWrites.get(key) ?? Promise.resolve();
+  const write = previous
+    .catch((err) => {
+      logger.debug("previous_env_write_failed", { error: String(err) });
+    })
+    .then(update);
+  pendingWrites.set(key, write);
+  try {
+    await write;
+  } finally {
+    if (pendingWrites.get(key) === write) pendingWrites.delete(key);
+  }
+}
+
+async function atomicWrite(envPath: string, contents: string): Promise<void> {
+  const temporary = `${envPath}.${randomUUID()}.tmp`;
+  try {
+    await fs.writeFile(temporary, contents, { mode: 0o600, flag: "wx" });
+    await fs.rename(temporary, envPath);
+  } finally {
+    try {
+      await fs.unlink(temporary);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT")
+        logger.warn("env_temporary_cleanup_failed", { error: String(err) });
+    }
+  }
+}
+
 export async function writeEnvVar(envPath: string, varName: string, value: string): Promise<void> {
+  return serializeEnvUpdate(envPath, () => writeEnvVarUnlocked(envPath, varName, value));
+}
+
+async function writeEnvVarUnlocked(envPath: string, varName: string, value: string): Promise<void> {
   // Ensure parent directory exists
   const dir = path.dirname(envPath);
   await fs.mkdir(dir, { recursive: true });
@@ -67,7 +106,7 @@ export async function writeEnvVar(envPath: string, varName: string, value: strin
 
   // Write back with mode 0o600 (read/write owner only)
   const newContent = newLines.join("\n");
-  await fs.writeFile(envPath, newContent, { mode: 0o600 });
+  await atomicWrite(envPath, newContent);
 }
 
 /**
@@ -75,13 +114,15 @@ export async function writeEnvVar(envPath: string, varName: string, value: strin
  * No-op if the variable or file doesn't exist.
  */
 export async function removeEnvVar(envPath: string, varName: string): Promise<void> {
+  return serializeEnvUpdate(envPath, () => removeEnvVarUnlocked(envPath, varName));
+}
+
+async function removeEnvVarUnlocked(envPath: string, varName: string): Promise<void> {
   try {
     const content = await fs.readFile(envPath, "utf-8");
     const varPattern = new RegExp(`^${varName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=.*$`, "m");
     const newContent = content.replace(varPattern, "").replace(/\n\n+/g, "\n");
-    await fs.writeFile(envPath, newContent.trim() + (newContent.trim() ? "\n" : ""), {
-      mode: 0o600,
-    });
+    await atomicWrite(envPath, newContent.trim() + (newContent.trim() ? "\n" : ""));
   } catch (err) {
     logger.debug("[dotenv] env file remove failed", { error: String(err) });
     // File doesn't exist or can't be read — no-op

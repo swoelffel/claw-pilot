@@ -15,6 +15,7 @@ import {
   listTriggerRuns,
   revealTriggerSecret,
   rotateTriggerSecret,
+  revokeTriggerSecret,
   type FlowTriggerDetail,
   type FlowTriggerRun,
 } from "../../api.js";
@@ -245,9 +246,33 @@ export class CpTriggerDetail extends LitElement {
     try {
       const result = await rotateTriggerSecret(this.instanceSlug, this.triggerId);
       this._revealedSecret = result.secret;
-      this._rotateMessage = msg("Secret rotated. Copy it now — it will not be shown again.", {
-        id: "trigger-detail-rotate-ok",
+      await this._load();
+      this._rotateMessage = msg("Secret rotated. Update the sending service.", {
+        id: "webhook-rotated",
       });
+    } catch (err) {
+      this._error = userMessage(err);
+    } finally {
+      this._busy = false;
+    }
+  }
+
+  private async _onRevoke(): Promise<void> {
+    if (
+      !window.confirm(
+        msg(
+          "Revoke this secret? External calls will fail until an administrator rotates it and updates the sending service.",
+          { id: "webhook-revoke-confirm" },
+        ),
+      )
+    )
+      return;
+    this._busy = true;
+    this._revealedSecret = "";
+    try {
+      await revokeTriggerSecret(this.instanceSlug, this.triggerId);
+      await this._load();
+      this._rotateMessage = msg("Webhook secret revoked", { id: "webhook-revoked" });
     } catch (err) {
       this._error = userMessage(err);
     } finally {
@@ -313,10 +338,9 @@ export class CpTriggerDetail extends LitElement {
     if (!this._detail) return html`<p>${msg("Loading...", { id: "trigger-detail-loading" })}</p>`;
     const d = this._detail;
     const baseUrl = `${window.location.protocol}//${window.location.host}`;
-    const curl =
-      d.kind === "webhook"
-        ? `curl -X POST -H 'X-ClawPilot-Signature: sha256=<hex>' -H 'Content-Type: application/json' --data-raw '{}' ${baseUrl}/webhooks/triggers/${d.instanceSlug}/${d.webhookSlug ?? ""}`
-        : "";
+    const url = `${baseUrl}/webhooks/triggers/${d.instanceSlug}/${d.webhookSlug ?? ""}`;
+    const curl = webhookExample(url, d.signatureVersion ?? 1);
+    const permissions = d.secretPermissions;
     return html`
       <div class="test-actions">
         <button
@@ -332,27 +356,52 @@ export class CpTriggerDetail extends LitElement {
       ${d.kind === "webhook"
         ? html`
             <h3>${msg("Webhook secret", { id: "trigger-detail-webhook-secret" })}</h3>
+            ${d.secretRevoked
+              ? html`<p role="status">
+                  ${msg("Webhook secret revoked", { id: "webhook-revoked" })}
+                </p>`
+              : ""}
             <div class="test-actions">
-              <button
-                class="btn btn-ghost"
-                type="button"
-                ?disabled=${this._busy}
-                @click=${this._onReveal}
-              >
-                ${msg("Reveal once", { id: "trigger-detail-reveal" })}
-              </button>
-              <button
-                class="btn btn-danger"
-                type="button"
-                ?disabled=${this._busy}
-                @click=${this._onRotate}
-              >
-                ${msg("Rotate", { id: "trigger-detail-rotate" })}
-              </button>
+              ${permissions?.reveal
+                ? html`<button
+                    class="btn btn-ghost"
+                    type="button"
+                    ?disabled=${this._busy || d.secretRevoked}
+                    @click=${this._onReveal}
+                  >
+                    ${msg("Reveal secret", { id: "webhook-reveal" })}
+                  </button>`
+                : ""}
+              ${permissions?.rotate
+                ? html`<button
+                    class="btn btn-danger"
+                    type="button"
+                    ?disabled=${this._busy}
+                    @click=${this._onRotate}
+                  >
+                    ${msg("Rotate", { id: "trigger-detail-rotate" })}
+                  </button>`
+                : ""}
+              ${permissions?.revoke
+                ? html`<button
+                    class="btn btn-danger"
+                    type="button"
+                    ?disabled=${this._busy || d.secretRevoked}
+                    @click=${this._onRevoke}
+                  >
+                    ${msg("Revoke secret", { id: "webhook-revoke" })}
+                  </button>`
+                : ""}
             </div>
             ${this._revealedSecret
               ? html`<pre>${this._revealedSecret}</pre>`
               : html`<pre>${"*".repeat(32)}</pre>`}
+            <p>
+              ${msg(
+                "Fire now tests the flow directly. Use the signed HTTP example to test authentication and payload delivery.",
+                { id: "webhook-manual-test-help" },
+              )}
+            </p>
             <h3>${msg("curl example", { id: "trigger-detail-curl" })}</h3>
             <pre>${curl}</pre>
           `
@@ -455,6 +504,25 @@ export class CpTriggerDetail extends LitElement {
       </div>
     `;
   }
+}
+
+/** Signing example keeps plaintext out of the generated command and process arguments. */
+function webhookExample(url: string, version: number): string {
+  const signed =
+    version === 2
+      ? "`${process.env.TIMESTAMP}.${process.env.EVENT_ID}.${process.env.BODY}`"
+      : "process.env.BODY";
+  const headers =
+    version === 2
+      ? '\n  -H "X-ClawPilot-Timestamp: $TIMESTAMP" \\\n  -H "Idempotency-Key: $EVENT_ID" \\'
+      : "";
+  return `# Bash + Node.js. Set WEBHOOK_SECRET securely in this shell first.
+export BODY='{"example":"value"}'
+export TIMESTAMP=$(date +%s)
+export EVENT_ID=$(node -e 'console.log(require("node:crypto").randomUUID())')
+SIGNATURE=$(node -e 'process.stdout.write(require("node:crypto").createHmac("sha256",process.env.WEBHOOK_SECRET).update(${signed}).digest("hex"))')
+curl -X POST '${url}' \\\n  -H 'Content-Type: application/json' \\\n  -H "X-ClawPilot-Signature: ${version === 2 ? "v2" : "sha256"}=$SIGNATURE" \\${headers}
+  --data-raw "$BODY"`;
 }
 
 declare global {

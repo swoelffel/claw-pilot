@@ -10,6 +10,7 @@ import { initDatabase } from "../../../db/schema.js";
 import {
   createFlowTrigger,
   listTriggerRuns,
+  updateFlowTrigger,
 } from "../../../core/repositories/flow-trigger-repository.js";
 import { createFlowDefinition } from "../../../core/repositories/flow-repository.js";
 import { registerWebhookRoutes } from "../webhooks.js";
@@ -107,6 +108,9 @@ function makeFlow(slug = "demo"): number {
     name: "f-" + Math.random().toString(36).slice(2, 8),
     stepsJson: JSON.stringify([{ id: "a", agentId: "p", prompt: "x" }]),
   });
+  db.prepare(
+    "UPDATE rt_flow_definitions SET lifecycle = 'ACTIVE', validation_status = 'VALID' WHERE id = ?",
+  ).run(f.id);
   return f.id;
 }
 
@@ -193,7 +197,7 @@ describe("POST /webhooks/triggers/:instanceSlug/:slug", () => {
     expect(calls[0]).toBe("demo");
     expect(calls[1]).toBe(trig.flow_id);
     const runs = listTriggerRuns(db, trig.id);
-    expect(runs[0]!.status).toBe("succeeded");
+    expect(runs[0]!.status).toBe("running");
     await flushAudit();
     expect(auditEvents.some((e) => e.kind === "trigger.fired")).toBe(true);
   });
@@ -224,7 +228,7 @@ describe("POST /webhooks/triggers/:instanceSlug/:slug", () => {
     // Only one starter call (the first one); the second was deduped.
     expect(starter).toHaveBeenCalledOnce();
     const runs = listTriggerRuns(db, trig.id);
-    expect(runs.some((r) => r.status === "deduped")).toBe(true);
+    expect(runs).toHaveLength(1);
   });
 
   it("dedupes by payload hash within window when no Idempotency-Key", async () => {
@@ -255,9 +259,97 @@ describe("POST /webhooks/triggers/:instanceSlug/:slug", () => {
     );
     const body = '{"y":3}';
     const res = await post("hook7", body, { "x-clawpilot-signature": sign(body) });
-    expect(res.status).toBe(202);
+    expect(res.status).toBe(409);
     const j = (await res.json()) as { skipped?: boolean };
     expect(j.skipped).toBe(true);
     expect(starter).not.toHaveBeenCalled();
+  });
+});
+
+function v2Headers(
+  body: string,
+  key = "event-42",
+  timestamp = String(Math.floor(Date.now() / 1000)),
+) {
+  return {
+    "x-clawpilot-timestamp": timestamp,
+    "idempotency-key": key,
+    "x-clawpilot-signature": `v2=${createHmac("sha256", SECRET).update(`${timestamp}.${key}.${body}`).digest("hex")}`,
+  };
+}
+function makeV2(slug: string) {
+  const trigger = makeWebhookTrigger(slug);
+  db.prepare("UPDATE rt_flow_triggers SET webhook_signature_version = 2 WHERE id = ?").run(
+    trigger.id,
+  );
+  return trigger;
+}
+
+describe("v2 webhook admission", () => {
+  it("accepts a fresh signed JSON event and keeps the flow concurrency lock", async () => {
+    const t = makeV2("fresh");
+    starter.mockImplementation(async () => makeFlowRun(t.flow_id));
+    expect((await post("fresh", '{"value":42}', v2Headers('{"value":42}'))).status).toBe(202);
+    expect(listTriggerRuns(db, t.id)[0]!.status).toBe("running");
+    expect((await post("fresh", '{"value":43}', v2Headers('{"value":43}', "next"))).status).toBe(
+      409,
+    );
+  });
+  it("rejects stale timestamps and a changed event key", async () => {
+    makeV2("signed");
+    expect((await post("signed", "{}", v2Headers("{}", "old", "1"))).status).toBe(401);
+    expect(
+      (await post("signed", "{}", { ...v2Headers("{}"), "idempotency-key": "tampered" })).status,
+    ).toBe(401);
+  });
+  it("rejects legacy signatures on new webhooks", async () => {
+    makeV2("new-hook");
+    expect((await post("new-hook", "{}", { "x-clawpilot-signature": sign("{}") })).status).toBe(
+      401,
+    );
+  });
+  it("rejects invalid JSON and oversized bodies without starting a flow", async () => {
+    const t = makeV2("bounded");
+    expect((await post("bounded", "{", v2Headers("{"))).status).toBe(400);
+    const large = JSON.stringify({ text: "x".repeat(65536) });
+    expect((await post("bounded", large, v2Headers(large))).status).toBe(413);
+    expect(listTriggerRuns(db, t.id)).toHaveLength(0);
+  });
+  it("rejects revoked webhooks even when enabled", async () => {
+    const t = makeWebhookTrigger("revoked");
+    updateFlowTrigger(db, t.id, { revokedAt: new Date().toISOString() });
+    expect((await post("revoked", "{}", { "x-clawpilot-signature": sign("{}") })).status).toBe(403);
+    expect(listTriggerRuns(db, t.id)).toHaveLength(0);
+  });
+  it("applies unattended governance before admission", async () => {
+    const t = makeWebhookTrigger("draft");
+    db.prepare("UPDATE rt_flow_definitions SET lifecycle = 'DRAFT' WHERE id = ?").run(t.flow_id);
+    expect((await post("draft", "{}", { "x-clawpilot-signature": sign("{}") })).status).toBe(403);
+    expect(listTriggerRuns(db, t.id)).toHaveLength(0);
+  });
+  it("returns the original run for a duplicate and rejects a conflicting body", async () => {
+    const t = makeV2("dedup-v2");
+    starter.mockImplementation(async () => makeFlowRun(t.flow_id));
+    const first = (await (await post("dedup-v2", "{}", v2Headers("{}"))).json()) as {
+      runId: number;
+    };
+    const duplicate = await post("dedup-v2", "{}", v2Headers("{}"));
+    expect(duplicate.status).toBe(200);
+    expect(await duplicate.json()).toMatchObject({ deduped: true, priorRunId: first.runId });
+    expect(
+      (await post("dedup-v2", '{"different":true}', v2Headers('{"different":true}'))).status,
+    ).toBe(409);
+  });
+  it("does not trust spoofed forwarding headers for an IP allowlist", async () => {
+    const t = makeWebhookTrigger("ip-guard");
+    updateFlowTrigger(db, t.id, { ipAllowlist: '["203.0.113.42"]' });
+    expect(
+      (
+        await post("ip-guard", "{}", {
+          "x-clawpilot-signature": sign("{}"),
+          "x-forwarded-for": "203.0.113.42",
+        })
+      ).status,
+    ).toBe(403);
   });
 });

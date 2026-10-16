@@ -1000,3 +1000,8 @@ All DB access goes through `src/core/registry.ts` facade (23 repositories) — n
 ---
 
 *Updated: 2026-10-14 — v0.84.9: schema v57, migration history v1–v57*
+
+
+### Webhook trigger admission additions (v58)
+
+`rt_flow_triggers.webhook_signature_version INTEGER NOT NULL DEFAULT 1` preserves the legacy body-only HMAC contract for existing rows; new dashboard-created webhook rows use version 2. `webhook_revoked_at TEXT NULL` is an independent, persistent admission gate. Toggling `enabled` does not clear it; authorized rotation clears it and installs a new secret reference. Both additions preserve existing data and the table's `org_id` slot.

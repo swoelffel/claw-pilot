@@ -38,6 +38,10 @@ import { createFlowTrigger } from "../../../../core/repositories/flow-trigger-re
 import type { TriggerScheduler } from "../../../../runtime/triggers/scheduler.js";
 import { instanceMiddleware } from "../../_instance-middleware.js";
 import { registerTriggerRoutes } from "../triggers.js";
+import {
+  registerPermissionChecker,
+  resetPermissionChecker,
+} from "../../../middleware/permission.js";
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -76,11 +80,13 @@ function makeStubSecretProvider(): {
     kind: "stub",
     has: async (n) => store.has(n) && (store.get(n) ?? "") !== "",
     get: async (n) => {
+      await beforeSecretRead?.();
       const v = store.get(n);
       if (v === undefined) throw new Error(`missing secret: ${n}`);
       return v;
     },
     set: async (n, v) => {
+      await beforeSecretWrite?.();
       store.set(n, v);
     },
   };
@@ -123,6 +129,8 @@ let app: Hono;
 let db: ReturnType<typeof initDatabase>;
 let tmpDir: string;
 let secretStore: Map<string, string>;
+let beforeSecretRead: (() => Promise<void>) | undefined;
+let beforeSecretWrite: (() => Promise<void>) | undefined;
 let auditEvents: AuditEventEnvelope[];
 let scheduler: TriggerScheduler;
 let reloadCalls: number[];
@@ -130,8 +138,13 @@ let fireCalls: number[];
 let flowId: number;
 
 beforeEach(() => {
+  beforeSecretRead = undefined;
+  beforeSecretWrite = undefined;
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-pilot-trigger-routes-"));
   db = initDatabase(path.join(tmpDir, "test.db"));
+  db.prepare(
+    "INSERT INTO users (id, username, password_hash) VALUES (1, 'admin', 'test-only')",
+  ).run();
   const registry = new Registry(db);
   const conn = new MockConnection();
   const tokenCache = new TokenCache(conn);
@@ -193,7 +206,7 @@ beforeEach(() => {
     if (auth !== expectedBearer) {
       return apiError(c, 401, "UNAUTHORIZED", "Unauthorized");
     }
-    c.set("user", { ...TEST_ADMIN });
+    c.set("user", { ...TEST_ADMIN, id: "1" });
     await next();
   });
   app.use("/api/instances/:slug/*", instanceMiddleware(registry));
@@ -229,6 +242,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetPermissionChecker();
   db.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
   resetSecretProvider();
@@ -346,10 +360,9 @@ describe("POST /api/instances/:slug/triggers", () => {
     );
     expect(res.status).toBe(201);
     const body = await jsonOf(res);
-    expect(body.webhookSecretRef).toBe("TRIGGER_WEBHOOK_SECRET:github-pr");
-    expect(secretStore.get("TRIGGER_WEBHOOK_SECRET:github-pr")).toBe(
-      "very-strong-shared-secret-256",
-    );
+    expect(body.webhookSecretRef).toMatch(/^TRIGGER_WEBHOOK_SECRET:/);
+    expect(body.webhookSecret).toBeUndefined();
+    expect(secretStore.get(body.webhookSecretRef)).toBe("very-strong-shared-secret-256");
   });
 
   it("rejects invalid cron expression", async () => {
@@ -552,6 +565,7 @@ describe("POST /api/instances/:slug/triggers/:id/rotate-secret", () => {
       }),
     );
     expect(r1.status).toBe(200);
+    expect(r1.headers.get("cache-control")).toBe("no-store");
     const b1 = await jsonOf(r1);
     expect(b1.secret).toMatch(/^[0-9a-f]{64}$/);
 
@@ -564,7 +578,7 @@ describe("POST /api/instances/:slug/triggers/:id/rotate-secret", () => {
     const b2 = await jsonOf(r2);
     expect(b2.secret).toMatch(/^[0-9a-f]{64}$/);
     expect(b2.secret).not.toBe(b1.secret);
-    expect(secretStore.get("TRIGGER_WEBHOOK_SECRET:wh-rot")).toBe(b2.secret);
+    expect(secretStore.get(b2.secretRef)).toBe(b2.secret);
   });
 
   it("rejects rotation on cron triggers", async () => {
@@ -688,3 +702,177 @@ describe("GET /api/instances/:slug/triggers/:id/runs", () => {
     expect(body.limit).toBe(2);
   });
 });
+
+async function createWebhook(slug: string, secret = "initial-secret-long-enough") {
+  return app.request(`/api/instances/demo/triggers`, {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({
+      flowId,
+      kind: "webhook",
+      name: slug,
+      webhookSlug: slug,
+      webhookSecret: secret,
+    }),
+  });
+}
+
+describe("webhook secret lifecycle", () => {
+  it("does not overwrite a secret when duplicate creation fails", async () => {
+    const first = await jsonOf(await createWebhook("same-slug"));
+    expect((await createWebhook("same-slug", "different-secret-long-enough")).status).toBe(400);
+    expect(secretStore.get(first.webhookSecretRef)).toBe("initial-secret-long-enough");
+  });
+
+  it("isolates new secrets from legacy references with the same slug", async () => {
+    secretStore.set("TRIGGER_WEBHOOK_SECRET:same-slug", "another-instance-secret");
+    const created = await jsonOf(await createWebhook("same-slug"));
+    expect(secretStore.get("TRIGGER_WEBHOOK_SECRET:same-slug")).toBe("another-instance-secret");
+    expect(created.signatureVersion).toBe(2);
+    expect(created.ownerUserId).toBe(1);
+  });
+
+  it("revokes persistently, blocks reveal, and restores only with a fresh rotation", async () => {
+    const created = await jsonOf(await createWebhook("revoke-me"));
+    const base = `/api/instances/demo/triggers/${created.id}`;
+    expect(
+      (await app.request(`${base}/revoke-secret`, { method: "POST", headers: authHeaders() }))
+        .status,
+    ).toBe(200);
+    await app.request(base, {
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect((await jsonOf(await app.request(base, { headers: authHeaders() }))).secretRevoked).toBe(
+      true,
+    );
+    expect((await app.request(`${base}/secret-reveal`, { headers: authHeaders() })).status).toBe(
+      409,
+    );
+    const rotated = await jsonOf(
+      await app.request(`${base}/rotate-secret`, { method: "POST", headers: authHeaders() }),
+    );
+    expect(rotated.secretRef).not.toBe(created.webhookSecretRef);
+    expect((await jsonOf(await app.request(base, { headers: authHeaders() }))).secretRevoked).toBe(
+      false,
+    );
+    await flushAudit();
+    expect(
+      auditEvents
+        .filter((e) => e.kind === "trigger.secret_mutation")
+        .map((e) => (e.kind === "trigger.secret_mutation" ? e.action : "")),
+    ).toEqual(["revoke", "rotate"]);
+    expect(JSON.stringify(auditEvents)).not.toContain(rotated.secret);
+  });
+
+  it("allows management without allowing secret operations", async () => {
+    registerPermissionChecker({
+      check: async ({ action }) =>
+        action.includes("secret") ? { allow: false, reason: "admin required" } : { allow: true },
+    });
+    const created = await jsonOf(await createWebhook("managed"));
+    const base = `/api/instances/demo/triggers/${created.id}`;
+    for (const [suffix, method] of [
+      ["secret-reveal", "GET"],
+      ["rotate-secret", "POST"],
+      ["revoke-secret", "POST"],
+    ] as const) {
+      expect(
+        (await app.request(`${base}/${suffix}`, { method, headers: authHeaders() })).status,
+      ).toBe(403);
+    }
+    const detail = await jsonOf(await app.request(base, { headers: authHeaders() }));
+    expect(detail.secretPermissions).toEqual({ reveal: false, rotate: false, revoke: false });
+  });
+
+  it("rejects a flow belonging to another instance before persisting a secret", async () => {
+    const foreign = createFlowDefinition(db, {
+      instanceSlug: "other",
+      name: "foreign",
+      stepsJson: "[]",
+    });
+    const res = await app.request(`/api/instances/demo/triggers`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        flowId: foreign.id,
+        kind: "webhook",
+        name: "bad",
+        webhookSlug: "bad-flow",
+        webhookSecret: "initial-secret-long-enough",
+      }),
+    });
+    expect(res.status).toBe(404);
+    expect(secretStore.size).toBe(0);
+  });
+});
+
+describe("secret lifecycle races", () => {
+  it("does not reveal a secret revoked while storage was being read", async () => {
+    const created = await jsonOf(await createWebhook("race-reveal"));
+    const base = `/api/instances/demo/triggers/${created.id}`;
+    let release!: () => void, started!: () => void;
+    const readStarted = new Promise<void>((r) => {
+      started = r;
+    });
+    beforeSecretRead = async () => {
+      started();
+      await new Promise<void>((r) => {
+        release = r;
+      });
+    };
+    const reveal = app.request(`${base}/secret-reveal`, { headers: authHeaders() });
+    await readStarted;
+    await app.request(`${base}/revoke-secret`, { method: "POST", headers: authHeaders() });
+    release();
+    expect((await reveal).status).toBe(409);
+  });
+  it("does not undo a revocation with an older in-flight rotation", async () => {
+    const created = await jsonOf(await createWebhook("race-rotate"));
+    const base = `/api/instances/demo/triggers/${created.id}`;
+    let release!: () => void, started!: () => void;
+    const writeStarted = new Promise<void>((r) => {
+      started = r;
+    });
+    beforeSecretWrite = async () => {
+      started();
+      await new Promise<void>((r) => {
+        release = r;
+      });
+    };
+    const rotate = app.request(`${base}/rotate-secret`, { method: "POST", headers: authHeaders() });
+    await writeStarted;
+    await app.request(`${base}/revoke-secret`, { method: "POST", headers: authHeaders() });
+    beforeSecretWrite = undefined;
+    release();
+    expect((await rotate).status).toBe(409);
+    expect((await jsonOf(await app.request(base, { headers: authHeaders() }))).secretRevoked).toBe(
+      true,
+    );
+  });
+  it("rejects newline injection in a creator-supplied secret", async () => {
+    expect((await createWebhook("newline", "long-secret-value\nOTHER_KEY=overwrite")).status).toBe(
+      400,
+    );
+    expect(secretStore.size).toBe(0);
+  });
+});
+
+it("rejects malformed IP restrictions at the configuration boundary", async () => {
+  const created = await jsonOf(await createWebhook("restricted"));
+  const res = await app.request(`/api/instances/demo/triggers/${created.id}`, {
+    method: "PUT",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ ipAllowlist: ["203.0.113.1/999"] }),
+  });
+  expect(res.status).toBe(400);
+});
+
+it.each([" padded-secret-value ", "long-secret-value\u0000rest", "long-secret-value\u2028rest"])(
+  "rejects a secret that cannot round-trip through environment storage",
+  async (secret) => {
+    expect((await createWebhook("round-trip", secret)).status).toBe(400);
+    expect(secretStore.size).toBe(0);
+  },
+);
