@@ -6,6 +6,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.84.13] — 2026-10-16
+
+### Added
+
+- **Inbound webhook triggers** (#300) — enable signed JSON calls to instance flows, with timestamp/event-key HMAC-SHA256, payload mapping, deduplication, IP restrictions and run history.
+- **Administrator secret controls** (#300) — let creators provide initial secrets and reserve reveal, rotation and persistent revocation for dedicated administrator permissions. Re-enabling a trigger does not restore a revoked secret.
+
+### Fixed
+
+- **Trigger isolation and execution lifecycle** (#300) — use independent secret references, preserve existing values on rejected creation, link payloads before the daemon's first flow step and hold concurrency until real flow completion. Recover interrupted trigger flows without automatic replay.
+- **Secret persistence** (#300) — serialize environment-provider writes, replace storage atomically and reject secrets that cannot survive reload. Detect revocation during in-flight secret reads or rotations and prevent caching of returned secrets.
+
+### Upgrade notes
+
+- Additive schema **57 → 58** introduces webhook signature version and revocation timestamp; existing webhook rows retain their legacy signature protocol.
+- New webhooks require v2 signatures over timestamp, event key and the exact JSON body. Configure trusted proxy addresses explicitly before relying on forwarded client IPs. One management writer per state directory remains the supported deployment model.
+- Revocation blocks new external admission without cancelling already-admitted runs; Fire now remains a direct authenticated flow test.
+
+---
+
 ## [0.84.12] — 2026-10-15
 
 ### Fixed
