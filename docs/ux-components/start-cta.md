@@ -18,13 +18,22 @@ and never reappears.
 1. UI POSTs `/api/instances/:slug/agents/:agentId/kickoff`.
 2. Backend validates emptiness (409 otherwise).
 3. Backend picks a localized greeting (`src/runtime/session/bootstrap-fallback.ts`).
-4. Backend forwards to the runtime chat endpoint via `callRuntimeApi`.
+4. Backend forwards the greeting and agent ID to the runtime chat endpoint via
+   `callRuntimeApi`. The daemon resolves or creates the permanent session using
+   its canonical `rt_sessions.id`; the `<slug>:<agentId>` business key is never
+   sent as a session ID. An empty archived permanent session is reactivated and
+   reused, preserving the daemon's session lifecycle events.
 5. Runtime starts a normal prompt-loop turn. The existing `BOOTSTRAP.md`
    discovery logic in `src/runtime/session/system-prompt.ts` injects the
    agent's first-contact instructions on this first call (one-shot, tracked via
    `bootstrapDone` in the workspace state).
 6. Frontend receives streaming parts via the existing WS/SSE channel.
 7. CTA unmounts, composer takes its place.
+
+Runtime HTTP rejections retain their status and error code with a generic message.
+Internal runtime authentication failures use `502 RUNTIME_AUTH_FAILED`, so they
+do not expire the dashboard login. Connection failures and timeouts use
+`502 RUNTIME_UNREACHABLE`.
 
 ## `BOOTSTRAP.md` convention
 
