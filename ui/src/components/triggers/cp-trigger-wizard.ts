@@ -261,6 +261,7 @@ export class CpTriggerWizard extends LitElement {
   @state() private _cronTz = "Europe/Paris";
   @state() private _webhookSlug = "";
   @state() private _webhookSecret = "";
+  @state() private _ipAllowlist = "";
   @state() private _mapping: InputMappingEntry[] = [];
   @state() private _saving = false;
   @state() private _error = "";
@@ -293,6 +294,7 @@ export class CpTriggerWizard extends LitElement {
     this._cronExpr = t.cronExpr ?? "0 9 * * *";
     this._cronTz = t.cronTz ?? "Europe/Paris";
     this._webhookSlug = t.webhookSlug ?? "";
+    this._ipAllowlist = (t.ipAllowlist ?? []).join("\n");
     this._mapping = t.inputMapping ?? [];
     this._step = 2;
   }
@@ -322,7 +324,7 @@ export class CpTriggerWizard extends LitElement {
   }
 
   private async _submit(): Promise<void> {
-    if (!this._kind) return;
+    if (!this._kind || !this._canSubmit()) return;
     this._saving = true;
     this._error = "";
     try {
@@ -339,8 +341,9 @@ export class CpTriggerWizard extends LitElement {
           if (this._cronTz) patch.cronTz = this._cronTz;
         } else {
           patch.webhookSlug = this._webhookSlug;
+          patch.ipAllowlist = this._ipAllowlist.split(/[,\s]+/).filter(Boolean);
         }
-        if (this._mapping.length > 0) patch.inputMapping = this._mapping;
+        if (this._kind === "webhook") patch.inputMapping = this._mapping;
         const updated = await updateTrigger(this.instanceSlug, this.existingTrigger.id, patch);
         this.dispatchEvent(
           new CustomEvent("updated", { detail: updated, bubbles: true, composed: true }),
@@ -361,10 +364,9 @@ export class CpTriggerWizard extends LitElement {
         input.cronExpr = this._cronExpr;
         if (this._cronTz) input.cronTz = this._cronTz;
       } else {
-        // Webhook branch is unreachable while step 1 forces cron, but the
-        // payload is preserved for forward-compat once webhook is re-enabled.
         input.webhookSlug = this._webhookSlug;
         input.webhookSecret = this._webhookSecret;
+        input.ipAllowlist = this._ipAllowlist.split(/[,\s]+/).filter(Boolean);
       }
       if (this._mapping.length > 0) input.inputMapping = this._mapping;
 
@@ -389,10 +391,6 @@ export class CpTriggerWizard extends LitElement {
   // ---------------------------------------------------------------------------
 
   private _renderStep1() {
-    const webhookTooltip = msg(
-      "Webhook triggers will land in a future release — use Cron for now.",
-      { id: "trigger-wiz-webhook-tooltip" },
-    );
     return html`
       <p>${msg("Pick the trigger kind:", { id: "trigger-wiz-step1-prompt" })}</p>
       <div class="kind-pick">
@@ -407,12 +405,22 @@ export class CpTriggerWizard extends LitElement {
             })}
           </div>
         </div>
-        <div class="kind-card disabled" aria-disabled="true" title=${webhookTooltip}>
+        <div
+          class="kind-card ${this._kind === "webhook" ? "selected" : ""}"
+          role="button"
+          tabindex="0"
+          @click=${() => (this._kind = "webhook")}
+          @keydown=${(e: KeyboardEvent) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              this._kind = "webhook";
+            }
+          }}
+        >
           <div class="label">${msg("Webhook", { id: "trigger-wiz-kind-webhook" })}</div>
           <div class="desc">
             ${msg("HMAC-signed external HTTP call", { id: "trigger-wiz-kind-webhook-desc" })}
           </div>
-          <div class="pill">${msg("Coming soon", { id: "trigger-wiz-coming-soon" })}</div>
         </div>
       </div>
     `;
@@ -497,25 +505,45 @@ export class CpTriggerWizard extends LitElement {
             </div>
           `
         : html`
-            <!--
-              Webhook branch — unreachable in v1 (step 1 forces cron). Kept
-              identical to the v1 layout so it lights up automatically once
-              webhook is re-enabled.
-            -->
             <label>${msg("Webhook slug (a-z 0-9 -)", { id: "trigger-wiz-webhook-slug" })}</label>
             <input
               type="text"
               .value=${this._webhookSlug}
               @input=${(e: Event) => (this._webhookSlug = (e.target as HTMLInputElement).value)}
             />
-            <label>
-              ${msg("Webhook shared secret (HMAC)", { id: "trigger-wiz-webhook-secret" })}
-            </label>
-            <input
-              type="text"
-              .value=${this._webhookSecret}
-              @input=${(e: Event) => (this._webhookSecret = (e.target as HTMLInputElement).value)}
-            />
+            ${!this._isEditMode
+              ? html`
+                  <label
+                    >${msg("Webhook shared secret (HMAC)", {
+                      id: "trigger-wiz-webhook-secret",
+                    })}</label
+                  >
+                  <input
+                    type="password"
+                    autocomplete="new-password"
+                    minlength="16"
+                    maxlength="256"
+                    .value=${this._webhookSecret}
+                    @input=${(e: Event) =>
+                      (this._webhookSecret = (e.target as HTMLInputElement).value)}
+                  />
+                  <p>
+                    ${msg(
+                      "Configure the same secret on the sending service. Later access, rotation and revocation require administrator permissions.",
+                      { id: "webhook-initial-secret-help" },
+                    )}
+                  </p>
+                `
+              : ""}
+            <label
+              >${msg("Allowed IP addresses or CIDRs (optional)", {
+                id: "webhook-allowed-ips",
+              })}</label
+            >
+            <textarea
+              .value=${this._ipAllowlist}
+              @input=${(e: Event) => (this._ipAllowlist = (e.target as HTMLTextAreaElement).value)}
+            ></textarea>
             <label>${msg("Input mapping (optional)", { id: "trigger-wiz-mapping" })}</label>
             <cp-input-mapping-editor
               .value=${this._mapping}
@@ -545,9 +573,22 @@ export class CpTriggerWizard extends LitElement {
   }
 
   private _canAdvance(): boolean {
-    if (this._step === 1) return this._kind === "cron";
+    if (this._step === 1) return this._kind === "cron" || this._kind === "webhook";
     if (this._step === 2) return this._flowId !== "";
     return false;
+  }
+
+  private _canSubmit(): boolean {
+    if (!this._name.trim() || !this._flowId) return false;
+    if (this._kind !== "webhook") return this._kind === "cron";
+    return (
+      /^[a-z0-9-]{3,64}$/.test(this._webhookSlug) &&
+      (this._isEditMode ||
+        (this._webhookSecret.length >= 16 &&
+          this._webhookSecret.length <= 256 &&
+          !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(this._webhookSecret) &&
+          this._webhookSecret.trim() === this._webhookSecret))
+    );
   }
 
   /** Lower bound on `_back()` — Step 1 is hidden in edit mode. */
@@ -616,7 +657,7 @@ export class CpTriggerWizard extends LitElement {
               : html`<button
                   class="btn btn-primary"
                   type="button"
-                  ?disabled=${this._saving || !this._name || !this._flowId}
+                  ?disabled=${this._saving || !this._canSubmit()}
                   @click=${this._submit}
                 >
                   ${submitLabel}

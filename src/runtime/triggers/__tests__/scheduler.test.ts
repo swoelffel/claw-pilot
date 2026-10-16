@@ -113,10 +113,16 @@ describe("TriggerScheduler.fire", () => {
 
     await scheduler.fire(trig.id);
 
-    expect(starter).toHaveBeenCalledWith("demo", flowId, "cron", `trigger:${trig.id}`);
+    expect(starter).toHaveBeenCalledWith(
+      "demo",
+      flowId,
+      "cron",
+      `trigger:${trig.id}`,
+      expect.any(Number),
+    );
     const runs = listTriggerRuns(db, trig.id);
     expect(runs).toHaveLength(1);
-    expect(runs[0]!.status).toBe("succeeded");
+    expect(runs[0]!.status).toBe("running");
     expect(runs[0]!.flow_run_id).toBe(flowRunId);
 
     // Flush audit buffer
@@ -172,7 +178,7 @@ describe("TriggerScheduler.fire", () => {
     await scheduler.fire(trig.id);
 
     expect(starter).toHaveBeenCalledOnce();
-    expect(listTriggerRuns(db, trig.id)[0]!.status).toBe("succeeded");
+    expect(listTriggerRuns(db, trig.id)[0]!.status).toBe("running");
   });
 
   it("skips when concurrent run is active and lock holds", async () => {
@@ -236,7 +242,7 @@ describe("TriggerScheduler.fire", () => {
     expect(listTriggerRuns(db, trig.id)).toHaveLength(0);
   });
 
-  it("records failure when starter throws", async () => {
+  it("records an unconfirmed admission when starter throws", async () => {
     const flowId = makeFlow();
     const trig = createFlowTrigger(db, {
       instanceSlug: "demo",
@@ -252,7 +258,7 @@ describe("TriggerScheduler.fire", () => {
     await scheduler.fire(trig.id);
     const runs = listTriggerRuns(db, trig.id);
     const last = runs[0]!;
-    expect(last.status).toBe("failed");
+    expect(last.status).toBe("pending");
     expect(last.error).toContain("boom");
 
     const { flushAudit } = await import("../../../core/audit/emitter.js");
@@ -323,3 +329,26 @@ describe("TriggerScheduler lifecycle", () => {
 
 // Touch unused getTriggerRun to keep imports honest if added later.
 void getTriggerRun;
+
+it("does not release a daemon-linked flow after an ambiguous IPC failure", async () => {
+  const flowId = makeFlow();
+  const trigger = createFlowTrigger(db, {
+    instanceSlug: "demo",
+    flowId,
+    kind: "cron",
+    name: "ipc-error",
+    cronExpr: "* * * * *",
+  });
+  const scheduler = new TriggerScheduler({
+    db,
+    runtimeStarter: async (_slug, _flow, _kind, _detail, admissionId) => {
+      const flowRunId = makeFlowRun(flowId);
+      db.prepare(
+        "UPDATE rt_flow_trigger_runs SET flow_run_id = ?, status = 'running' WHERE id = ?",
+      ).run(flowRunId, admissionId);
+      throw new Error("IPC response lost");
+    },
+  });
+  await scheduler.fire(trigger.id);
+  expect(listTriggerRuns(db, trigger.id)[0]!.status).toBe("running");
+});

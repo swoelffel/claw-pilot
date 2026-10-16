@@ -30,21 +30,7 @@ Empty state: `<p>No triggers yet.</p>` (i18n id `trigger-list-empty`).
 
 ### Step 1 — Pick kind
 
-Webhook is intentionally disabled in v1 (TRIGGER-001b ships cron only end-to-end; webhook public path exists but secret/HMAC UX is deferred). Only **Cron** is selectable.
-
-```
-+-- Step 1: Pick kind --------------------------------+
-|  o  o  o                                            |
-|  +-----------+ +-----------------------+            |
-|  | Cron      | | Webhook               |            |
-|  | Periodic  | | HMAC HTTP             |            |
-|  |           | | [coming soon]         |  (dimmed)  |
-|  +-----------+ +-----------------------+            |
-|  [Cancel]                            [Next]         |
-+-----------------------------------------------------+
-```
-
-Webhook card: `aria-disabled="true"`, `pointer-events: none`, opacity 0.5, "Coming soon" pill (`--state-info` background, white text). Tooltip on hover: "Webhook triggers will land in a future release — use Cron for now."
+Both Cron and Webhook are selectable. See [Trigger wizard](../ux-components/comp-trigger-wizard.md) for the current field and validation contract.
 
 ### Step 2 — Flow + owner
 
@@ -182,12 +168,12 @@ Day-of-month grid: 7-column calendar-style chips, multi-select. Days 29/30/31 vi
 
 Validation via `croner` paused dry-run; invalid expressions surface a red banner under the input ("Invalid cron expression: <reason>"). Next-3-runs preview computed client-side using `croner`.
 
-#### Step 3 — body — Webhook kind (deferred)
+#### Step 3 — body — Webhook kind
 
-While webhook is disabled at Step 1, the wizard never reaches this branch. The component still ships the webhook fields so they light up automatically when the kind is re-enabled.
+Webhook creation accepts a masked initial secret, optional IP/CIDR restrictions and input mapping. Editing never reloads or replaces the stored secret.
 
 ```
-+-- body (webhook — currently unreachable) -----------+
++-- body (webhook) -----------+
 |  Webhook slug      [ sentry-incoming        ]       |
 |  Shared secret     [ ********               ]       |
 |  Input mapping (cp-input-mapping-editor)            |
@@ -254,12 +240,12 @@ The wizard always sends the compiled cron expression on POST — the backend rec
 
 ## Wizard validation rules
 
-- Step 1: only `cron` is selectable in v1 — Webhook card is `aria-disabled` and the "Next" button is enabled as soon as Cron is picked.
+- Step 1: select `cron` or `webhook`.
 - Step 2: `flowId` must resolve in the instance's flow list; `ownerUserId` defaults to current user.
 - Step 3 — common: `name` required; `timezone` required (defaults from profile or `Europe/Paris`).
 - Step 3 — Set Interval: at least one day chip must be active for Week / Month modes; minute offset (Hour mode) bounded `0..59`; HH:MM bounded `00:00..23:59`; "Repeat Every" bounded `1..99`, locked to 1 for Week.
 - Step 3 — Cron Expression: validated client-side via `croner` paused dry-run before "Create" enables.
-- Step 3 — Webhook (currently unreachable): `slug` lower-kebab (`a-z 0-9 -`), `secret` shared with caller for HMAC. Mapping rows: JSONPath `from` ➜ flow variable name `to`.
+- Step 3 — Webhook: `slug` lower-kebab (`a-z 0-9 -`), `secret` shared with caller for HMAC. Mapping rows: JSONPath `from` ➜ flow variable name `to`.
 - `Allow concurrent` defaults off — scheduler skips fires while a prior run is in flight.
 
 ## Detail drawer behavior
@@ -267,10 +253,10 @@ The wizard always sends the compiled cron expression on POST — the backend rec
 - Loads `getTrigger(slug, id)` on mount; tabs share that one fetch (Runs hydrated from `_detail.runs`).
 - "Fire now" calls `fireTrigger`; result toast lives in `_rotateMessage`.
 - Webhook tab actions:
-  - **Reveal once** — `revealTriggerSecret` (server allows a one-shot reveal window).
-  - **Rotate** — `rotateTriggerSecret`; new value displayed once with the warning "Copy it now — it will not be shown again."
+  - **Reveal secret** — `revealTriggerSecret`, with dedicated permission, audit and rate limit.
+  - **Rotate** — `rotateTriggerSecret`; generates a new secret and clears revocation. **Revoke secret** invalidates external admission until an administrator rotates it.
   - The `pre` block defaults to `********` (32 stars) when no secret revealed.
-- curl example always uses `${origin}/webhooks/triggers/${instanceSlug}/${webhookSlug}` and an `X-ClawPilot-Signature: sha256=<hex>` header placeholder.
+- curl example always uses `${origin}/webhooks/triggers/${instanceSlug}/${webhookSlug}` and a version-aware signing script; new webhooks sign timestamp, event key and body.
 
 ## API surface
 
@@ -278,13 +264,13 @@ The wizard always sends the compiled cron expression on POST — the backend rec
 |---|---|
 | `GET /api/instances/:slug/triggers` | `cp-triggers-view` mount |
 | `POST /api/instances/:slug/triggers` | Wizard "Create" |
-| `PATCH /api/instances/:slug/triggers/:id` | Enable/disable toggle |
+| `PUT /api/instances/:slug/triggers/:id` | Enable/disable toggle |
 | `DELETE /api/instances/:slug/triggers/:id` | Delete row |
 | `POST /api/instances/:slug/triggers/:id/fire` | "Fire" button + Detail "Fire now" |
 | `GET /api/instances/:slug/triggers/:id` | Detail drawer mount |
 | `GET /api/instances/:slug/triggers/:id/runs?limit=N` | Detail "Runs" refresh |
-| `POST /api/instances/:slug/triggers/:id/secret/reveal` | Webhook "Reveal once" |
-| `POST /api/instances/:slug/triggers/:id/secret/rotate` | Webhook "Rotate" |
+| `GET /api/instances/:slug/triggers/:id/secret-reveal` | Webhook "Reveal once" |
+| `POST /api/instances/:slug/triggers/:id/rotate-secret` | Webhook "Rotate" |
 | `POST /webhooks/triggers/:instanceSlug/:slug` | Public webhook endpoint (HMAC-signed) |
 
 ## Cross-references

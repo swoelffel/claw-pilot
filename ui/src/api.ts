@@ -1696,6 +1696,8 @@ export interface FlowTrigger {
   cronTz: string | null;
   webhookSlug: string | null;
   webhookSecretRef: string | null;
+  signatureVersion?: number;
+  secretRevoked?: boolean;
   ipAllowlist: string[] | null;
   inputMapping: InputMappingEntry[] | null;
   defaultInput: Record<string, unknown> | null;
@@ -1719,6 +1721,7 @@ export interface FlowTriggerRun {
 }
 
 export interface FlowTriggerDetail extends FlowTrigger {
+  secretPermissions?: { reveal: boolean; rotate: boolean; revoke: boolean };
   runs: FlowTriggerRun[];
 }
 
@@ -1804,6 +1807,14 @@ export async function rotateTriggerSecret(
   id: number,
 ): Promise<{ secret: string }> {
   return apiFetch(`/instances/${instanceSlug}/triggers/${id}/rotate-secret`, { method: "POST" });
+}
+
+/** Revoke external admission until an authorized administrator rotates the secret. */
+export async function revokeTriggerSecret(
+  instanceSlug: string,
+  id: number,
+): Promise<{ revoked: boolean }> {
+  return apiFetch(`/instances/${instanceSlug}/triggers/${id}/revoke-secret`, { method: "POST" });
 }
 
 export async function revealTriggerSecret(

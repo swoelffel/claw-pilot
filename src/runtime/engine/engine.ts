@@ -80,6 +80,7 @@ import { createUserMessage } from "../session/message.js";
 import { runPromptLoop } from "../session/prompt-loop.js";
 import { runMiddlewarePipeline } from "../middleware/pipeline.js";
 import { resolveModelForAgent } from "../channel/router.js";
+import { recoverInterruptedTriggerFlows } from "../../core/repositories/flow-repository.js";
 import { startFlowRun } from "../flow/engine.js";
 import { resolveQuestion as resolveQuestionFn } from "../tool/built-in/question.js";
 import { expireOrphanedQuestions } from "../session/question-recovery.js";
@@ -170,6 +171,8 @@ export class ClawRuntime {
           count: expiredQuestions,
         });
       }
+
+      recoverInterruptedTriggerFlows(this.db, this.instanceSlug);
 
       // 1. Init agents, permanent sessions, and middlewares
       this._initAgentsAndSessions();
@@ -764,6 +767,7 @@ export class ClawRuntime {
           body.triggerType ?? "manual",
           body.triggerDetail,
           body.vars,
+          body.triggerRunId,
         );
       },
 

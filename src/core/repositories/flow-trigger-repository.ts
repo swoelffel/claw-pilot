@@ -38,6 +38,8 @@ export interface FlowTriggerRow {
   cron_tz: string | null;
   webhook_slug: string | null;
   webhook_secret_ref: string | null;
+  webhook_signature_version: number;
+  webhook_revoked_at: string | null;
   ip_allowlist: string | null;
   input_mapping: string | null;
   default_input: string | null;
@@ -73,6 +75,8 @@ export interface CreateFlowTriggerInput {
   cronTz?: string | null;
   webhookSlug?: string | null;
   webhookSecretRef?: string | null;
+  signatureVersion?: number;
+  revokedAt?: string | null;
   ipAllowlist?: string | null;
   inputMapping?: string | null;
   defaultInput?: string | null;
@@ -86,6 +90,8 @@ export interface UpdateFlowTriggerInput {
   cronTz?: string | null;
   webhookSlug?: string | null;
   webhookSecretRef?: string | null;
+  signatureVersion?: number;
+  revokedAt?: string | null;
   ipAllowlist?: string | null;
   inputMapping?: string | null;
   defaultInput?: string | null;
@@ -123,8 +129,8 @@ export function createFlowTrigger(
          enabled, allow_concurrent,
          cron_expr, cron_tz,
          webhook_slug, webhook_secret_ref, ip_allowlist,
-         input_mapping, default_input
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         input_mapping, default_input, webhook_signature_version
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       input.instanceSlug,
@@ -141,6 +147,7 @@ export function createFlowTrigger(
       input.ipAllowlist ?? null,
       input.inputMapping ?? null,
       input.defaultInput ?? null,
+      input.signatureVersion ?? 1,
     );
 
   const row = getFlowTrigger(db, Number(result.lastInsertRowid));
@@ -256,6 +263,10 @@ export function updateFlowTrigger(
     sets.push("default_input = ?");
     args.push(input.defaultInput);
   }
+  if (input.revokedAt !== undefined) {
+    sets.push("webhook_revoked_at = ?");
+    args.push(input.revokedAt);
+  }
   if (input.ownerUserId !== undefined) {
     sets.push("owner_user_id = ?");
     args.push(input.ownerUserId);
@@ -365,8 +376,23 @@ export function listTriggerRuns(
     .all(triggerId, limit, offset) as FlowTriggerRunRow[];
 }
 
+/** Reconcile durable flow state after dashboard/daemon restarts. */
+export function reconcileTriggerRuns(db: Database.Database): void {
+  db.prepare(
+    `UPDATE rt_flow_trigger_runs SET
+    status = CASE WHEN (SELECT status FROM rt_flow_runs WHERE id = flow_run_id) = 'completed' THEN 'succeeded' ELSE 'failed' END,
+    finished_at = COALESCE((SELECT finished_at FROM rt_flow_runs WHERE id = flow_run_id), datetime('now'))
+    WHERE status IN ('pending','running') AND flow_run_id IN (SELECT id FROM rt_flow_runs WHERE status IN ('completed','failed','cancelled'))`,
+  ).run();
+  db.prepare(
+    `UPDATE rt_flow_trigger_runs SET status = 'failed', finished_at = datetime('now'), error = 'Admission unconfirmed after restart; inspect flow history before resending'
+    WHERE status = 'pending' AND flow_run_id IS NULL AND fired_at < datetime('now', '-5 minutes')`,
+  ).run();
+}
+
 /** True iff at least one run is in 'pending' or 'running' for the trigger. */
 export function hasActiveTriggerRun(db: Database.Database, triggerId: number): boolean {
+  reconcileTriggerRuns(db);
   const row = db
     .prepare(
       "SELECT 1 FROM rt_flow_trigger_runs WHERE trigger_id = ? AND status IN ('pending','running') LIMIT 1",

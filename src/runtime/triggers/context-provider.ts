@@ -38,11 +38,11 @@ export function registerTriggerContextProvider(db: Database.Database): void {
           `SELECT r.payload, r.fired_at, t.kind, t.input_mapping
            FROM rt_flow_trigger_runs r
            JOIN rt_flow_triggers t ON t.id = r.trigger_id
-           WHERE r.flow_run_id = ?
+           WHERE r.flow_run_id = ? AND t.instance_slug = ?
            ORDER BY r.id DESC
            LIMIT 1`,
         )
-        .get(args.runId) as JoinedRow | undefined;
+        .get(args.runId, args.instanceSlug) as JoinedRow | undefined;
 
       if (!row) return {};
 

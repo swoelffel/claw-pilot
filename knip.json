@@ -1,5 +1,5 @@
 {
-  "entry": ["ui/src/app.ts"],
+  "entry": ["ui/src/app.ts", "src/e2e/helpers/webhook-daemon.ts"],
   "project": ["src/**/*.ts", "ui/src/**/*.ts"],
   "ignore": [
     "ui/src/locales/**",
