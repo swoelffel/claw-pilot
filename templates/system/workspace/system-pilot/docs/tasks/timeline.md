@@ -78,3 +78,7 @@ Field update activities capture modifications to task title, description, and ot
 Timeline entries are append-only in the `rt_task_activities` table. They are never modified or deleted. This ensures a tamper-proof audit trail for all task mutations.
 
 *ClawPilot v0.74.1*
+
+## Live activity (0.84.13)
+
+Task cards/details can show current session activity before final completion. Distinguish this live indication from a persisted terminal result and a human-accepted outcome. Reconnect/replay does not imply that an interrupted side effect should be repeated. See [Request recovery](../monitoring/recovery-and-timeouts.md).

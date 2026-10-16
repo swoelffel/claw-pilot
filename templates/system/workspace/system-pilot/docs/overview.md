@@ -70,3 +70,9 @@ The dashboard UI supports 6 languages: English, French, German, Spanish, Italian
 | `~/.claw-pilot/instances/<slug>/workspace/` | Agent workspace files (SOUL.md, docs, etc.) |
 
 *ClawPilot v0.74.1*
+
+## Automation and reliable results (0.84.13)
+
+Start with [Flow triggers](flows/triggers.md), [Incoming webhooks](flows/webhooks.md), [Requests and executions](monitoring/requests-and-executions.md) and [Access diagnosis](security/authentication.md). Agent setup now includes [Structured skills](agents/skills.md) and [MCP servers](instances/mcp-servers.md). Use [Navigation](ui/navigation.md) for current pathname links.
+
+The pilot is read-only for system management and delegates authorized changes to ops, analysis to analyst. Technical completion, delivery and useful business outcome are separate facts. Inspect built-in flow definitions before suggesting them; historical references can outlive the agents they name.

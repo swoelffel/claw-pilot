@@ -333,3 +333,27 @@ describe("POST /api/instances/:slug/budgets/:id/reconcile", () => {
     expect(data.drift).toBe(0);
   });
 });
+
+describe("packaged budget API examples", () => {
+  for (const guide of ["create-budget.md", "overview.md"]) {
+    it(`accepts the creation example from ${guide}`, async () => {
+      const doc = fs.readFileSync(
+        path.join(
+          import.meta.dirname,
+          "../../../templates/system/workspace/system-pilot/docs/budgets",
+          guide,
+        ),
+        "utf8",
+      );
+      const body = doc.match(/\n\{\n[\s\S]*?\n\}/)?.[0];
+      expect(body, "Guide must include a runnable JSON creation example").toBeDefined();
+      if (!body) throw new Error("Missing budget creation example");
+      const response = await app.request("/api/instances/demo/budgets", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body,
+      });
+      expect(response.status, await response.text()).toBe(201);
+    });
+  }
+});

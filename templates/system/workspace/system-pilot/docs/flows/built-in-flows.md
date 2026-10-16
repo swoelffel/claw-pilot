@@ -1,6 +1,14 @@
+<!-- cspell:ignore executability -->
+
 # Built-in Flows
 
 The cp-system instance ships with 6 pre-configured flows that cover common platform operations. These flows are auto-provisioned from `templates/system/cp-system.flows.json` on first launch and provide ready-to-use workflows for health monitoring, onboarding, cost management, configuration backup, and team design.
+
+## Inspect the installed definitions first
+
+The historical built-in templates include references to legacy agents such as architect and admin-exec. Current cp-system teams use system-pilot, ops and analyst. On an upgraded installation, inspect the actual definition and referenced agents before suggesting or running one of these flows. Four historical workflows (Onboarding, Config Backup, Team Builder and Team Optimizer) require particular attention. An ACTIVE flag alone is not proof that all agent references resolve.
+
+A separate functional repair is tracked for those definitions. This guide does not repair them or authorize a run. The table below describes historical intent, not verified executability. Never claim a configuration report is a restorable full data/secret backup.
 
 ## Available Flows
 
@@ -78,4 +86,4 @@ Some flows (like Onboarding and Team Builder) require user interaction during ex
 
 Built-in flows are defined in `cp-system.flows.json` using the standard flow definition schema. Each entry specifies the flow name, description, steps array with agent IDs, prompts, and dependencies. The template file is read once during provisioning and is not monitored for changes at runtime.
 
-*ClawPilot v0.74.1*
+Reviewed against Community 0.84.13; historical workflow descriptions retained as context, subject to the warning above.

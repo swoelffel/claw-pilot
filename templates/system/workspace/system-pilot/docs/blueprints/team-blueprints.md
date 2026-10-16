@@ -79,7 +79,7 @@ Built-in blueprints cannot be deleted but can be cloned and customized.
 
 ## Blueprint Builder
 
-The blueprint builder uses the same canvas component as the instance agent builder. Route: `#/blueprints/:id/builder`.
+The blueprint builder uses the same canvas component as the instance agent builder. Route: `/blueprints/:id/builder`.
 
 | Feature | Description |
 |---|---|
@@ -107,3 +107,7 @@ The blueprint builder uses the same canvas component as the instance agent build
 5. **Delete** when the blueprint is no longer needed
 
 *ClawPilot v0.74.1*
+
+## Import and instance creation (0.84.13)
+
+Builtin blueprints can be imported lazily when deploying from the catalog. Verify the resulting instance and agents rather than assuming a catalog card is already a registered resource. Prefer existing IDs returned by the UI/query tools. See [Team design](../workflows/team-design.md) for review before provisioning.

@@ -1,3 +1,5 @@
+<!-- cspell:ignore frontmatter -->
+
 # claw-runtime Engine
 
 > Part of [claw-pilot Functional Architecture](README.md)
@@ -202,3 +204,7 @@ Anthropic prefix caching is applied transparently via `applyCaching()` in `messa
 ---
 
 *Updated: 2026-04-16 — v0.73.5: 8 providers, 12+3 tools (flow-step-only: complete_step, request_step_extension; plugin: ws_*), 43+ bus events, system-tools + workspace-knowledge plugins, outcome-driven flow control, tool repair, prompt caching*
+
+## Operational changes through 0.84.13
+
+The historical summary above is not a complete inventory of the current event or recovery surface. Current request/execution tracking, durable delivery, expired-question recovery, resource preflight and circuit-breaker behavior are described in the packaged system-pilot guides under `templates/system/workspace/system-pilot/docs/monitoring/`. Workflow validation/activation and incoming webhook contracts are described in `docs/architecture/flow-triggers.md` and the packaged flow guides. Do not infer unrestricted retries, full telemetry persistence or human acceptance from a technical terminal status.

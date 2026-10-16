@@ -1,104 +1,23 @@
-# CLI Command Reference
+# CLI Operations Reference
 
-Complete reference for the `claw-pilot` command-line interface. All instance management, service administration, and runtime operations are available through the CLI.
+Reviewed against Community 0.84.13. Use the installed executable's --help for exact options; do not infer a command from an API path. Commands can read sensitive data or mutate the platform, so identify the target installation and authorization before invoking them.
 
-## Instance Management
+| Entry point | Purpose |
+|---|---|
+| claw-pilot list / status <slug> | Inspect instances |
+| claw-pilot doctor | Diagnose installation prerequisites and consistency |
+| claw-pilot service status | Inspect the dashboard service |
+| claw-pilot create | Interactive provisioning |
+| claw-pilot start / stop / restart <slug> | Instance lifecycle operations |
+| claw-pilot destroy <slug> | Destructive instance removal |
+| claw-pilot service install / uninstall / restart | Dashboard service lifecycle; can interrupt users |
+| claw-pilot runtime status <slug> | Inspect runtime state |
+| claw-pilot runtime chat <slug> | Interactive chat; may call tools and incur provider cost |
+| claw-pilot runtime config --help | Inspect supported configuration subcommands |
+| claw-pilot update --check | Check release information without applying an update |
 
-| Command | Description |
-|---------|-------------|
-| `claw-pilot init` | First-run setup: creates `~/.claw-pilot/`, initializes database, generates dashboard token, creates admin user |
-| `claw-pilot create` | Interactive wizard to create a new instance (prompts for name, slug, agents, provider) |
-| `claw-pilot start <slug>` | Start an instance runtime daemon |
-| `claw-pilot stop <slug>` | Stop an instance (sends SIGTERM, polls for shutdown) |
-| `claw-pilot restart <slug>` | Stop and start an instance |
-| `claw-pilot destroy <slug>` | Delete an instance completely (removes ports, database records, workspace files) |
-| `claw-pilot list` | List all instances with their current state (running, stopped, error) |
-| `claw-pilot status <slug>` | Detailed instance state: PID, uptime, agents, active sessions, memory usage |
-| `claw-pilot token <slug>` | Show or open the dashboard access token for an instance |
+The runtime chat command supports selecting an agent/session and a single-message mode; inspect its help before use. Multiline terminal paste is handled as one input. Configured named credentials can be resolved for CLI chat; do not print keys or require the user to export a plaintext key as a diagnostic workaround.
 
-## Team Management
+A configuration export is not a full runtime/secret backup. Use [Managed updates](self-update.md) and [Dashboard service](dashboard-service.md) for maintenance boundaries. The updater may restart runtimes and the dashboard; do not present it as a harmless git pull. Managed production follows its owner's approved package/deployment procedure.
 
-| Command | Description |
-|---------|-------------|
-| `claw-pilot team export` | Export the full agent team configuration to YAML |
-| `claw-pilot team import` | Import an agent team from a YAML file |
-
-Team export/import enables backup, migration, and sharing of agent configurations between instances or environments.
-
-## Diagnostics
-
-| Command | Description |
-|---------|-------------|
-| `claw-pilot doctor` | Run system health diagnostics (Node.js version, DB integrity, service status, instance consistency) |
-
-## Service Management
-
-| Command | Description |
-|---------|-------------|
-| `claw-pilot service install` | Install the dashboard as a system service (systemd on Linux, launchd on macOS) |
-| `claw-pilot service uninstall` | Remove the dashboard system service |
-| `claw-pilot service status` | Check if the dashboard service is running |
-
-## Self-Update
-
-| Command | Description |
-|---------|-------------|
-| `claw-pilot update` | Self-update from GitHub: `git pull` + `pnpm install` + `pnpm build` |
-
-## Runtime Subcommands
-
-The `claw-pilot runtime` command group provides direct runtime control:
-
-| Command | Description |
-|---------|-------------|
-| `claw-pilot runtime start <slug>` | Start the runtime for an instance |
-| `claw-pilot runtime stop <slug>` | Stop the runtime for an instance |
-| `claw-pilot runtime restart <slug>` | Restart the runtime |
-| `claw-pilot runtime status <slug>` | Show runtime status (PID, uptime, sessions) |
-| `claw-pilot runtime chat <slug>` | Interactive CLI chat with an instance agent |
-| `claw-pilot runtime config <slug>` | View or modify runtime configuration |
-| `claw-pilot runtime mcp <slug>` | Manage MCP server connections for an instance |
-
-### Runtime Chat
-
-`claw-pilot runtime chat <slug>` opens an interactive terminal session with the primary agent of an instance. Messages are sent directly to the agent, bypassing channels. Useful for testing and quick interactions.
-
-### Runtime MCP
-
-`claw-pilot runtime mcp <slug>` manages Model Context Protocol server connections. Use it to add, remove, or list MCP servers that provide additional tools and resources to the instance agents.
-
-## Authentication
-
-| Command | Description |
-|---------|-------------|
-| `claw-pilot auth` | Manage provider authentication profiles (API key configuration, default model selection) |
-
-Provider auth profiles configure how ClawPilot authenticates with LLM providers (Anthropic, OpenAI, Google, Mistral, xAI, OpenRouter, Ollama). See Named API Keys for centralized key management through the dashboard.
-
-## Common Workflows
-
-### First Installation
-
-```
-claw-pilot init
-claw-pilot service install
-claw-pilot create
-claw-pilot start <slug>
-```
-
-### Checking System Health
-
-```
-claw-pilot doctor
-claw-pilot list
-claw-pilot status <slug>
-```
-
-### Updating ClawPilot
-
-```
-claw-pilot update
-claw-pilot service status
-```
-
-*ClawPilot v0.74.1*
+Platform-specific process-tree and service behavior must be qualified independently. Windows support fixes do not prove Unix shell cancellation or launchd/systemd procedures apply to Windows.

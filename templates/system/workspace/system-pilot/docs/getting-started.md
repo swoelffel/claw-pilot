@@ -107,3 +107,7 @@ This checks:
 | `claw-pilot doctor` | Run diagnostics |
 
 *ClawPilot v0.74.1*
+
+## Before automation (0.84.13)
+
+Verify the actual instance agents, configured provider/credentials by metadata and required permissions. For recurring/external launches, follow [Triggers](flows/triggers.md) and [Workflow governance](flows/governance.md). Do not include secret values in pilot chat. Check results through [Requests and executions](monitoring/requests-and-executions.md), not merely a running badge.

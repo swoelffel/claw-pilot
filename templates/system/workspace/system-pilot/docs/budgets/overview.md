@@ -1,117 +1,26 @@
-# Budget Enforcement
+# Budget Enforcement and Recorded Spending
 
-Budget enforcement controls AI spending with configurable soft and hard limits. Budgets can be scoped to an entire instance (all agents) or a specific agent. The system monitors token costs in real time and takes action when thresholds are reached — sending alerts at the soft limit and blocking LLM calls at the hard limit.
+Reviewed against Community 0.84.13. Budgets apply to an instance or an agent. They check applicable spending before model work and record actual cost afterward. In-flight/partial work can incur costs; a threshold is not a guarantee of an exact maximum final invoice.
 
-## Budget Fields
+The API uses camelCase. Example POST /api/instances/:slug/budgets body:
 
-| Field | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `name` | string | yes | — | Human-readable budget name |
-| `scope` | enum | yes | — | `instance` or `agent` |
-| `scope_id` | string | yes | — | Instance slug or agent ID |
-| `limit_usd` | number | yes | — | Maximum spending amount in USD |
-| `period` | enum | yes | — | `daily`, `weekly`, `monthly`, or `total` |
-| `soft_threshold_pct` | number | no | `80` | Percentage of limit that triggers a soft alert |
-
-## Scope Types
-
-| Scope | Applies To | Example |
-|---|---|---|
-| `instance` | All agents within the instance | Limit the entire "dev-team" instance to $50/month |
-| `agent` | A single agent | Limit "code-reviewer" to $10/day |
-
-Agent-scoped budgets are checked in addition to instance-scoped budgets. Both must have remaining capacity for an LLM call to proceed.
-
-## Budget Periods
-
-| Period | Reset Behavior |
-|---|---|
-| `daily` | Resets at midnight UTC each day |
-| `weekly` | Resets at midnight UTC each Monday |
-| `monthly` | Resets at midnight UTC on the first of each month |
-| `total` | Never resets — cumulative lifetime limit |
-
-## Soft Alerts
-
-When spending reaches the `soft_threshold_pct` (default 80%) of `limit_usd`, the system generates a notification. Soft alerts are informational — they do not block agent execution. Alerts are delivered through:
-
-- Dashboard notification inbox
-- Telegram channel (if configured for the instance)
-
-For example, a budget with `limit_usd: 100` and `soft_threshold_pct: 80` triggers a soft alert at $80 spent.
-
-## Hard Stop
-
-When spending reaches 100% of `limit_usd`, the budget enforcement module blocks all LLM calls for the affected scope. Agents receive an error indicating the budget is exhausted. The hard stop prevents cost overruns.
-
-Blocked agents remain in their current state — sessions are not terminated. Once the budget is reset, extended, or the period rolls over, agents resume normal operation.
-
-## Budget Check Module
-
-Budget enforcement runs in the session middleware pipeline. The `budget-check` module executes at two points:
-
-| Phase | Action |
-|---|---|
-| **Pre-LLM call** | Checks remaining budget before sending the request. Blocks if exhausted. |
-| **Post-LLM call** | Records actual token cost against the budget. May trigger soft alert. |
-
-This dual-phase approach ensures no LLM call starts when the budget is already exhausted and accurately tracks spending after each call.
-
-## Temporary Override
-
-Grant a temporary +20% budget extension when the hard limit is reached but work must continue:
-
-```
-POST /api/instances/:slug/budgets/:id/override
-```
-
-The override increases the effective limit by 20% of the original `limit_usd`. Only one override can be active per budget. Overrides persist until the next period reset.
-
-## Manual Reset
-
-Reset the spent amount to zero without waiting for the period to roll over:
-
-```
-POST /api/instances/:slug/budgets/:id/reset
-```
-
-This is useful when a runaway agent consumed budget on a failed task and you want to reclaim the spent amount.
-
-## Audit Events
-
-All budget-related events are tracked in the `rt_budget_events` table:
-
-| Event Type | Description |
-|---|---|
-| `budget_created` | New budget was configured |
-| `soft_alert` | Spending reached the soft threshold |
-| `hard_stop` | Spending reached the limit, LLM calls blocked |
-| `override_granted` | Temporary +20% extension applied |
-| `budget_reset` | Spent amount manually reset to zero |
-| `period_reset` | Automatic reset at period boundary |
-
-## Creating a Budget
-
-```
-POST /api/instances/:slug/budgets
-Content-Type: application/json
-
+```json
 {
-  "name": "Monthly dev-team limit",
   "scope": "instance",
-  "scope_id": "dev-team",
-  "limit_usd": 100,
+  "limitUsd": 100,
   "period": "monthly",
-  "soft_threshold_pct": 75
+  "softAlertPct": 0.8,
+  "hardStopPct": 1,
+  "overridePct": 0.2
 }
 ```
 
-## Listing Budgets
+scope is instance or agent. scopeId is optional/nullable in the API; use the intended actual agent ID for agent scope. limitUsd is required and positive. Supported periods are monthly (default) and lifetime, not daily/weekly/total. Ratio fields use fractions: 0.8 means 80%, not 80.
 
-```
-GET /api/instances/:slug/budgets
-```
+Monthly spending is reset at a month boundary when the budget is checked/read through the applicable repository path. Lifetime budgets do not reset monthly. A reset does not undo provider spending or restore the previous limit after an override.
 
-Returns all budgets for the instance, including current `spent_usd`, remaining amount, and whether a soft alert or hard stop is active.
+GET /api/instances/:slug/budgets lists current values such as spentUsd and limitUsd. PUT /api/instances/:slug/budgets/:id updates supported settings. Use the actual instance/action permissions; management is not a secret or tool grant.
 
-*ClawPilot v0.74.1*
+Overrides mutate the current limit, and repeated overrides compound. See [Alerts and overrides](alerts-override.md) before approving additional spending. [Creation](create-budget.md) gives the current API field names.
+
+Total model usage across steps drives spending; final-request context occupancy drives compaction. These are different metrics. See [Cost accounting](../costs/cost-tracking.md) and [Business outcomes](../admin/governance.md).
