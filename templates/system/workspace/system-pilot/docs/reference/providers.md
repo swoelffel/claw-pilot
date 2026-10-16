@@ -1,6 +1,6 @@
 # AI Provider Catalog
 
-ClawPilot supports 8 AI providers out of the box. Each provider connects to one or more large language models and is configured through Named API Keys in the dashboard or CLI. Providers are dynamically discovered and their model lists refreshed every 24 hours.
+The installed catalog supports Anthropic, OpenAI, Google, Ollama, OpenRouter, Mistral, xAI and OpenAI-compatible endpoints. Each provider connects to one or more large language models and is configured through Named API Keys in the dashboard or CLI. Inspect the current catalog and configured discovery results rather than relying on dated model examples.
 
 ## Supported Providers
 
@@ -34,16 +34,7 @@ Endpoints used for discovery:
 
 ## Named API Keys
 
-API keys are stored in the `named_api_keys` table, encrypted at rest with AES-256-GCM. Each key has a label, provider ID, and optional model filter. Keys are assigned to instances via `default_named_key_id` or overridden per agent via `named_key_id`.
-
-| Field | Description |
-|---|---|
-| `id` | Unique identifier (UUID) |
-| `label` | Human-readable label (e.g., "Production Anthropic") |
-| `provider` | Provider ID from the table above |
-| `api_key` | Encrypted API key value |
-| `base_url` | Custom endpoint URL (opencode provider only) |
-| `created_at` | Timestamp of creation |
+Use the supported named-key UI and metadata tools for the actual id/name/provider/default model and assignment. Named-key identifiers are numeric registry IDs; do not assume UUIDs or raw database/API field spellings. Credential values are encrypted at rest and should not be requested in conversation or included in provider troubleshooting output. Per-instance defaults and per-agent overrides are separate bindings.
 
 ## Auth Profiles and Key Rotation
 
@@ -85,3 +76,9 @@ Users can define model aliases in the `user_model_aliases` table, mapping a shor
 Provider connectivity is monitored at runtime. When all keys for a provider fail, the runtime emits a `provider.auth_failed` bus event and the dashboard displays a warning badge on affected instances. Recovery is automatic once a key exits its cooldown window or a new valid key is added.
 
 *ClawPilot v0.74.1*
+
+## Current provider and accounting behavior (0.84.13)
+
+Mistral has a native provider integration; inspect the exact configured model, base URL and credential binding before troubleshooting. Thinking/effort support varies by provider/model, including adaptive-thinking models: a generic thinking toggle is not a guarantee every model accepts the same options. Use the supported settings and returned diagnostics rather than copying SDK internals into config.
+
+The SDK 7 runtime preserves turn consumption separately from final-request context occupancy. Compaction retains a persisted boundary and summary without deleting the full history. A smaller active context does not imply zero spend or prove the model read every document. Real-provider acceptance remains separate from configuration/loader tests.

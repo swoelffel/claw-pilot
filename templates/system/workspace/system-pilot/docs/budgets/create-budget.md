@@ -1,116 +1,30 @@
 # Creating and Managing Budgets
 
-Budgets enforce spending limits on AI usage within a ClawPilot instance. Each budget
-targets either the entire instance or a specific agent, preventing runaway costs by
-capping LLM expenditure in US dollars. Budgets take effect immediately after creation.
+Reviewed against Community 0.84.13. Use the instance budget settings UI or the permission-checked API. Inspect the intended scope and remaining allowance before changing limits.
 
-## Budget Scope
+## Create
 
-| Scope | Description | scope_id required |
-|------------|------------------------------------------------------|-------------------|
-| `instance` | Caps total spending across all agents in the instance | No |
-| `agent` | Caps spending for a single agent | Yes (agent ID) |
-
-## Required and Optional Fields
-
-| Field | Type | Required | Default | Description |
-|----------------------|---------|----------|---------|----------------------------------------------|
-| `name` | string | Yes | -- | Human-readable budget label |
-| `scope` | string | Yes | -- | `"instance"` or `"agent"` |
-| `limit_usd` | decimal | Yes | -- | Maximum spend in US dollars |
-| `scope_id` | string | No* | -- | Agent ID when scope is `agent` |
-| `period` | string | No | `total` | `daily`, `weekly`, `monthly`, or `total` |
-| `soft_threshold_pct` | integer | No | `80` | Alert threshold percentage (0-100) |
-
-*Required when `scope` is `"agent"`.
-
-## Creating a Budget via Dashboard
-
-1. Open the instance in the dashboard.
-2. Navigate to **Settings > Budget Settings**.
-3. Click **Add Budget**.
-4. Fill in the budget name, scope, limit, period, and optional alert threshold.
-5. Save. The budget activates immediately.
-
-## Creating a Budget via API
-
-Send a POST request with the budget definition:
-
-```
 POST /api/instances/:slug/budgets
-Content-Type: application/json
 
+```json
 {
-  "name": "Monthly agent cap",
-  "scope": "agent",
-  "scope_id": "research-agent",
-  "limit_usd": 25.00,
+  "scope": "instance",
+  "limitUsd": 25,
   "period": "monthly",
-  "soft_threshold_pct": 75
+  "softAlertPct": 0.75,
+  "hardStopPct": 1,
+  "overridePct": 0.2
 }
 ```
 
-A successful response returns the created budget object with its generated `id`.
+scope and positive limitUsd are required. scopeId is the optional/nullable agent binding for agent scope. period defaults to monthly; lifetime is the other supported value. The ratios are fractions, not integer percentages. There is no required name field; do not copy database snake_case columns into API requests.
 
-## Listing Budgets
+The response returns the created budget with a numeric id and camelCase metadata. GET /api/instances/:slug/budgets lists the instance's budgets. Do not assume a GET-by-ID or reset endpoint exists in this release.
 
-```
-GET /api/instances/:slug/budgets
-```
+## Update and remove
 
-Returns an array of all budgets configured for the instance, including both
-instance-scoped and agent-scoped budgets.
+PUT /api/instances/:slug/budgets/:id updates limitUsd, softAlertPct, hardStopPct, overridePct or enabled. Read the actual returned state. Scope/period changes are not supported by that update schema; do not infer patch fields from a SQL row.
 
-## Retrieving a Single Budget
+DELETE /api/instances/:slug/budgets/:id removes enforcement for that budget. It does not reverse spending already incurred. Both update and removal need the concrete authorization and effective resource permission.
 
-```
-GET /api/instances/:slug/budgets/:id
-```
-
-Returns the full budget object including current `spent_usd`, status, and
-configuration fields.
-
-## Updating a Budget
-
-```
-PATCH /api/instances/:slug/budgets/:id
-Content-Type: application/json
-
-{
-  "limit_usd": 50.00,
-  "soft_threshold_pct": 90
-}
-```
-
-Only the fields included in the request body are modified. The budget ID, scope,
-and scope_id cannot be changed after creation.
-
-## Deleting a Budget
-
-```
-DELETE /api/instances/:slug/budgets/:id
-```
-
-Removes the budget. Any spending already tracked remains in cost history, but
-enforcement stops immediately.
-
-## Budget Periods
-
-| Period | Behavior |
-|-----------|--------------------------------------------------------------|
-| `total` | Lifetime cap; spending accumulates without automatic reset |
-| `daily` | Resets spent amount at midnight UTC each day |
-| `weekly` | Resets spent amount at midnight UTC each Monday |
-| `monthly` | Resets spent amount at midnight UTC on the 1st of each month |
-
-## Notes
-
-- Budgets are validated on creation: `limit_usd` must be positive, `scope` must
-  be a recognized value, and `scope_id` must reference an existing agent when
-  scope is `agent`.
-- Multiple budgets can coexist for the same scope. The most restrictive limit
-  applies first.
-- Budget enforcement is real-time: each LLM call checks applicable budgets
-  before execution.
-
-*ClawPilot v0.74.1*
+See [Enforcement](overview.md) and [Overrides](alerts-override.md). An override is a durable increase of the current limit, not a temporary one-time allowance.

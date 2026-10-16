@@ -1,114 +1,21 @@
-# Budget Alerts and Overrides
+# Budget Alerts, Overrides and Reconciliation
 
-ClawPilot budgets emit alerts at configurable thresholds and enforce hard stops
-when spending limits are reached. Overrides allow temporary extension of a budget,
-and manual resets zero out accumulated spending.
-
-## Soft Alert
-
-When spending reaches the `soft_threshold_pct` percentage of the budget limit, a
-`budget.soft_alert` event is emitted. This serves as an early warning before
-the hard stop kicks in.
-
-| Notification channel | Behavior |
-|----------------------|-------------------------------------------------------|
-| Dashboard | Banner notification in the instance Budget panel |
-| Telegram | Message sent to paired Telegram users (if configured) |
-
-The soft alert fires once per threshold crossing. If spending drops (e.g., after
-a period reset) and then rises again past the threshold, the alert fires again.
-
-## Hard Stop
-
-When spending reaches 100% of `limit_usd`, a `budget.hard_stop` event is emitted.
-All further LLM calls for the affected scope are blocked until one of:
-
-- An override is granted.
-- The budget is reset.
-- The budget period rolls over (for daily, weekly, or monthly budgets).
-- The budget is deleted or its limit is increased.
-
-Blocked LLM calls return an error indicating budget exhaustion, including the
-budget name and scope for diagnosis.
+Reviewed against Community 0.84.13. Inspect the current limitUsd, spentUsd and applicable thresholds before suggesting a spending decision. Soft warnings and hard blocking are different states; use returned events/errors rather than assuming a notification was delivered to every channel.
 
 ## Override
 
-An override temporarily extends the budget ceiling by 20% above the original
-limit, allowing work to continue while the operator reviews spending.
-
-```
 POST /api/instances/:slug/budgets/:id/override
-```
 
-| Detail | Value |
-|--------------------|---------------------------------------------|
-| Extension amount | +20% of `limit_usd` |
-| Duration | Until next period reset or manual reset |
-| Audit event type | `override` |
-| Repeated overrides | Allowed; each adds +20% of original limit |
+The endpoint multiplies the **current** stored limit by 1 + overridePct. With the default 0.2, a $100 limit becomes $120, then $144 after another override. It is not limited to one active override and does not automatically revert to the original limit at period reset.
 
-The override is recorded as an audit event with metadata including the original
-limit, the new effective limit, and the requesting user.
+Obtain explicit authorization for the resulting limit and explain that repeated requests compound. Do not retry an uncertain override blindly. If the owner wants the previous limit restored, use an explicitly authorized supported budget update with that concrete value; do not assume reset/reconcile restores it.
 
-## Manual Reset
+## Period changes and reconciliation
 
-A manual reset sets the `spent_usd` counter back to zero, effectively
-restarting the budget cycle.
+Monthly reset zeroes recorded period spending and advances periodStart; it does not refund provider costs or undo an increased limit. There is no public budgets/:id/reset endpoint in this release.
 
-```
-POST /api/instances/:slug/budgets/:id/reset
-```
+POST /api/instances/:slug/budgets/:id/reconcile compares and can correct recorded spending against its source records. This is a mutation, not a harmless refresh or an authorization to erase costs. Review the reported drift/corrected result and preserve evidence.
 
-This action is manual only and is not triggered automatically. It produces a
-`reset` audit event. After a reset, the budget resumes enforcement from zero
-spend against the original limit (overrides are cleared).
+GET /api/instances/:slug/budgets/:id/events and GET /api/instances/:slug/budgets/events provide authorized event histories. A recorded event and a delivered alert are separate facts.
 
-## Audit Events
-
-Every budget mutation is recorded in the `rt_budget_events` table and
-retrievable via the API.
-
-```
-GET /api/instances/:slug/budgets/:id/events
-```
-
-### Event Types
-
-| Event type | Trigger |
-|---------------|-------------------------------------------------------------|
-| `create` | Budget created |
-| `update` | Budget configuration changed (limit, threshold, period) |
-| `soft_alert` | Spending crossed soft threshold percentage |
-| `hard_stop` | Spending reached budget limit; LLM calls blocked |
-| `override` | Temporary +20% extension granted |
-| `reset` | Spent amount manually zeroed |
-
-### Event Record Structure
-
-| Column | Type | Description |
-|--------------|----------|---------------------------------------------|
-| `id` | integer | Auto-incremented primary key |
-| `budget_id` | integer | Foreign key to the budget |
-| `event_type` | string | One of the event types listed above |
-| `metadata` | JSON | Context-specific payload (amounts, user, etc)|
-| `timestamp` | datetime | UTC timestamp of the event |
-
-## Telegram Alert Configuration
-
-Budget alerts are sent to Telegram when:
-
-1. The instance has a Telegram bot token configured.
-2. At least one user is paired with the bot.
-3. The budget event is `soft_alert` or `hard_stop`.
-
-Alert messages include the budget name, current spending, limit, and scope
-details formatted in MarkdownV2 for Telegram rendering.
-
-## Monitoring Recommendations
-
-- Set `soft_threshold_pct` to 70-80% for early visibility into spending trends.
-- Review audit events periodically to detect agents with abnormal cost patterns.
-- Use overrides sparingly; prefer adjusting the budget limit for sustained
-  increases in expected usage.
-
-*ClawPilot v0.74.1*
+Budget changes do not grant tool/secret access or bypass workflow governance. See [Enforcement](overview.md) and [Cost accounting](../costs/cost-tracking.md).

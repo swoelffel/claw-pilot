@@ -123,3 +123,9 @@ ensuring the cost dashboard reflects near-real-time spending.
   costs are recorded even when no budget is configured.
 
 *ClawPilot v0.74.1*
+
+## Usage, context occupancy and outcomes (0.84.13)
+
+Total consumption across model steps drives costs/budgets/message counters. Context occupancy for compaction comes from the final request, not the sum of every step. Cache token subsets are already included in inclusive input totals and must not be added again. Partial completed work may incur cost even if a later call fails.
+
+A low spend or technical success rate does not prove business usefulness. See [Governance and outcomes](../admin/governance.md). cp_instance_costs takes one slug and returns a 30-day summary; use authorized analytics/analyst queries for other windows, not invented tool parameters.

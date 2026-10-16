@@ -6,8 +6,8 @@ The Agent Builder is a visual editor for configuring agents within an instance o
 
 | Route | Context |
 |---|---|
-| `#/instances/:slug/builder` | Instance agent builder — edit agents in a running or stopped instance |
-| `#/blueprints/:id/builder` | Blueprint builder — edit agents in a reusable team template |
+| `/instances/:slug/builder` | Instance agent builder — edit agents in a running or stopped instance |
+| `/blueprints/:id/builder` | Blueprint builder — edit agents in a reusable team template |
 
 Both routes render the same canvas component (`cp-builder-canvas`) with the same features.
 
@@ -72,7 +72,7 @@ Editing configuration fields in the detail panel updates the agent record in rea
 
 ## Blueprint Builder
 
-The blueprint builder (`#/blueprints/:id/builder`) uses the same canvas component. Differences from the instance builder:
+The blueprint builder (`/blueprints/:id/builder`) uses the same canvas component. Differences from the instance builder:
 
 | Aspect | Instance Builder | Blueprint Builder |
 |---|---|---|

@@ -1,3 +1,4 @@
+import { createFlowRun } from "../../core/repositories/flow-repository.js";
 // src/dashboard/__tests__/flow-routes.test.ts
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Hono } from "hono";
@@ -457,5 +458,45 @@ describe("auth", () => {
   it("returns 401 without auth", async () => {
     const res = await app.request("/api/instances/demo/flows");
     expect(res.status).toBe(401);
+  });
+});
+
+describe("packaged flow run endpoints", () => {
+  it("reads and cancels a seeded run through the documented API paths", async () => {
+    const response = await app.request("/api/instances/demo/flows", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ name: "Doc example", steps: VALID_STEPS }),
+    });
+    const created = await json(response);
+    const run = createFlowRun(db, {
+      flowId: created.flow.id,
+      instanceSlug: "demo",
+      triggerType: "manual",
+    });
+    const guide = fs.readFileSync(
+      path.join(
+        import.meta.dirname,
+        "../../../templates/system/workspace/system-pilot/docs/flows/run-flow.md",
+      ),
+      "utf8",
+    );
+    const getPath = guide.match(/GET (\/api\/[^\s`]+:runId)/)?.[1];
+    const cancelPath = guide.match(/POST (\/api\/[^\s`]+:runId\/cancel)/)?.[1];
+    expect(getPath).toBeDefined();
+    expect(cancelPath).toBeDefined();
+    const detail = await app.request(
+      getPath!.replace(":slug", "demo").replace(":runId", String(run.id)),
+      { headers: authHeaders() },
+    );
+    expect(detail.status).toBe(200);
+    const body = await json(detail);
+    expect(body.run.id).toBe(run.id);
+    expect(body.steps).toEqual([]);
+    const cancel = await app.request(
+      cancelPath!.replace(":slug", "demo").replace(":runId", String(run.id)),
+      { method: "POST", headers: authHeaders() },
+    );
+    expect(cancel.status).toBe(200);
   });
 });

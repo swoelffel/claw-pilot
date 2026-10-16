@@ -17,7 +17,7 @@ Events can be filtered by three dimensions:
 
 | Filter | Values | Description |
 |--------|--------|-------------|
-| Event type | Any of the 43 event types | Filter to specific event names |
+| Event type | Supported event type names | Filter to specific event names |
 | Agent ID | Agent identifier string | Show events from a single agent |
 | Level | `info`, `warn`, `error` | Filter by severity level |
 
@@ -25,7 +25,7 @@ Filters can be combined to narrow the event stream to exactly the events relevan
 
 ## Event Categories
 
-The system defines 43 event types organized into 11 categories:
+The event families below are examples, not a fixed inventory of every event type:
 
 | Category | Description | Example Events |
 |----------|-------------|----------------|
@@ -85,8 +85,8 @@ Each event record includes the following fields:
 
 ## Troubleshooting
 
-If the SSE stream disconnects, the widget automatically reconnects. Events emitted during the disconnection gap are not replayed; use the paginated endpoint to retrieve any missed events.
+If the SSE stream disconnects, the widget automatically reconnects. Durable execution replay and the event-history endpoint are different contracts. Inspect the appropriate persisted record; transient events are not guaranteed replay. See [Recovery and timeouts](recovery-and-timeouts.md).
 
 If no events appear, verify the instance runtime is running with `claw-pilot status <slug>`.
 
-*ClawPilot v0.74.1*
+Reviewed against Community 0.84.13. Use [Resource health](resource-health.md) for preflight, circuit breakers, trace/alert access and permission diagnosis.

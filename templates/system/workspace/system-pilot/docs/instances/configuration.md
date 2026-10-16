@@ -2,8 +2,7 @@
 
 All instance settings are stored in the `instances.runtime_config_json` column
 in the database. Configuration is managed entirely through the database and API,
-not through files on disk. Most configuration changes are hot-reloaded without
-requiring an instance restart.
+not through files on disk. Configuration routes and management tools can restart a running instance; inspect the returned restart/hot-reload result and confirm interruption before applying changes.
 
 ## Configuration Storage
 
@@ -37,19 +36,9 @@ Only the fields included in the PATCH body are updated; all other fields
 remain unchanged. The request body is validated against Zod schemas before
 being applied. Invalid patches are rejected with descriptive error messages.
 
-### Hot Reload
+### Applying changes
 
-Most configuration changes take effect immediately without restarting the
-instance. The runtime detects config patches and reloads affected subsystems
-dynamically.
-
-| Change type | Restart required |
-|----------------------------|------------------|
-| Model or provider change | No |
-| Agent parameter update | No |
-| MCP server addition/removal| No |
-| Permission rule change | No |
-| Telegram token change | Yes |
+Do not assume model, agent, MCP or permission edits are universally hot-reloaded. The config API reports restart/hot-reload behavior, and cp_update_instance_config can restart a running instance. A persisted config change is distinct from runtime activation; verify the effective state and resulting health.
 
 ## Configuration Sections
 
@@ -100,57 +89,7 @@ configuration with a valid bot token.
 
 ### MCP Servers
 
-MCP (Model Context Protocol) servers extend agent capabilities by providing
-additional tools and resources.
-
-| Field | Type | Description |
-|-----------|--------|-----------------------------------------------|
-| `name` | string | Server display name |
-| `type` | string | Transport type: `stdio` or `http` |
-| `command` | string | Executable command (stdio only) |
-| `args` | array | Command arguments (stdio only) |
-| `url` | string | Server URL (http only) |
-| `env` | object | Environment variables passed to the server |
-
-Example MCP server configuration:
-
-```json
-{
-  "mcpServers": [
-    {
-      "name": "filesystem",
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@anthropic/mcp-fs"],
-      "env": { "ROOT_DIR": "/data/workspace" }
-    },
-    {
-      "name": "remote-tools",
-      "type": "http",
-      "url": "https://tools.example.com/mcp"
-    }
-  ]
-}
-```
-
-### Permissions
-
-Permission rules control which operations agents can perform without
-explicit user approval.
-
-| Field | Type | Description |
-|-----------|--------|-----------------------------------------------|
-| `pattern` | string | Glob pattern matching tool or resource names |
-| `action` | string | `allow`, `deny`, or `ask` |
-
-| Action | Behavior |
-|---------|-------------------------------------------------------------|
-| `allow` | Tool call proceeds automatically |
-| `deny` | Tool call is blocked; agent receives denial message |
-| `ask` | Tool call is paused; user prompted to approve or reject |
-
-Permission rules are evaluated in order; the first matching rule wins. If
-no rule matches, the default action applies (configurable, typically `ask`).
+Use the dedicated [MCP settings guide](mcp-servers.md), supported editor and current API schema. Runtime server entries use id and local/remote types, not a name plus stdio/http discriminator. Do not paste an obsolete inline config example; connection and secret-preservation behavior must be verified through the supported surface.
 
 ## Dashboard Settings View
 
@@ -181,3 +120,7 @@ and benefit from the same Zod validation and hot reload behavior.
   budget audit events or instance logs for change tracking.
 
 *ClawPilot v0.74.1*
+
+## Current settings surfaces (0.84.13)
+
+Skills and MCP have dedicated sections in Instance Settings. See [MCP servers](mcp-servers.md) and [Structured skills](../agents/skills.md). Changes require the actual action/resource permissions; do not infer grant from a displayed role. A configuration patch may restart a running instance; confirm interruption and scope before applying it.

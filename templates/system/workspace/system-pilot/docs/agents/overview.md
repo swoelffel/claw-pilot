@@ -94,6 +94,10 @@ Each agent has access to workspace files that shape its behavior:
 | `USER.md` | Context about the user (preferences, role, project) |
 | `docs/` | Knowledge base files indexed by FTS5 for ws_search_files |
 
-These files live in `~/.claw-pilot/instances/<slug>/workspace/<agent-id>/` and are injected into the agent prompt when `promptMode` is `full`.
+These files live in `~/.claw-pilot/instances/<slug>/workspaces/<agent-id>/` and are injected into the agent prompt when `promptMode` is `full`.
 
 *ClawPilot v0.74.1*
+
+## Current knowledge and tools (0.84.13)
+
+See [Workspace boundaries](workspace-files.md) and [Structured skills](skills.md). Private documents belong to their agent; shared references use @shared/docs. The cp-system pilot coordinates with ops for authorized changes and analyst for read-only analysis. Agent teams are distinct from user-access teams.
