@@ -6,6 +6,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.84.14] — 2026-10-16
+
+### Fixed
+
+- **Built-in system flows** (#303) — replace removed agent references with the current pilot and analyst roles. Team design flows produce proposals from explicit inputs; Config Backup produces a metadata report.
+- **Conversation startup** (#305) — resolve canonical permanent sessions in the daemon and distinguish HTTP, authentication and transport failures. Read current heartbeat and lifecycle configuration from the database instead of requiring a runtime snapshot.
+
+### Changed
+
+- **System Pilot knowledge** (#304) — refresh operational guides for flows, webhooks, secret revocation, budgets, governance, recovery, skills and administration. Share canonical tool and data-source references with all three system agents.
+
+### Upgrade notes
+
+- Schema remains **58**. Existing flow definitions are preserved: follow `docs/cp-system-flow-repair.md` to prepare disabled replacement drafts and obtain approval before changing live activation or trigger routing.
+- The system workspace synchronizes managed documentation on upgrade. Administrators must check for local edits or collisions before deployment and preserve user content.
+
+---
+
 ## [0.84.13] — 2026-10-16
 
 ### Added
