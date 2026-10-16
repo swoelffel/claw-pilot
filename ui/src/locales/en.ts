@@ -2,6 +2,19 @@
 // These match the msg() calls in the components.
 
 export const templates = {
+  // Inbound webhook secret lifecycle
+  "webhook-initial-secret-help":
+    "Configure the same secret on the sending service. Later access, rotation and revocation require administrator permissions.",
+  "webhook-revoke-confirm":
+    "Revoke this secret? External calls will fail until an administrator rotates it and updates the sending service.",
+  "webhook-revoked": "Webhook secret revoked",
+  "webhook-reveal": "Reveal secret",
+  "webhook-revoke": "Revoke secret",
+  "webhook-manual-test-help":
+    "Fire now tests the flow directly. Use the signed HTTP example to test authentication and payload delivery.",
+  "webhook-allowed-ips": "Allowed IP addresses or CIDRs (optional)",
+  "webhook-rotated": "Secret rotated. Update the sending service.",
+
   "err-permission-denied":
     "You do not have the permissions required for this action. Contact an administrator.",
   // Pilot execution recovery

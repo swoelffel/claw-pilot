@@ -2585,6 +2585,21 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v58: webhook protocol version and persistent administrator revocation.
+    version: 58,
+    up(db) {
+      const columns = new Set(
+        (db.pragma("table_info(rt_flow_triggers)") as Array<{ name: string }>).map((c) => c.name),
+      );
+      if (!columns.has("webhook_signature_version"))
+        db.exec(
+          "ALTER TABLE rt_flow_triggers ADD COLUMN webhook_signature_version INTEGER NOT NULL DEFAULT 1",
+        );
+      if (!columns.has("webhook_revoked_at"))
+        db.exec("ALTER TABLE rt_flow_triggers ADD COLUMN webhook_revoked_at TEXT NULL");
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

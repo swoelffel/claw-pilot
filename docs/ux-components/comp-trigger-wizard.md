@@ -1,63 +1,11 @@
 # Component — Trigger wizard (`cp-trigger-wizard`)
 
-> **Source**: `ui/src/components/triggers/cp-trigger-wizard.ts`
-> **Used by**: `cp-triggers-view`
-> **Screen**: [screen-triggers.md](../ux-screens/screen-triggers.md)
+The instance-scoped wizard creates cron and inbound webhook triggers. Edit mode locks the kind and target flow and updates the existing trigger.
 
-3-step modal wizard to create a new trigger on an instance flow.
+1. Select Cron or Webhook.
+2. Select an enabled flow from the current instance. The server attributes creation to the authenticated user; the owner field does not delegate execution privileges.
+3. Enter the name and kind-specific settings. Cron uses the interval/cron picker and timezone. Webhook uses a lower-case slug (3–64 letters, digits or hyphens), a masked initial shared secret (16–256 characters, no newlines), optional IP/CIDR restrictions and JSONPath input mapping. Enabled defaults on; concurrency defaults off.
 
-## Properties
+Creation sends `POST /api/instances/:slug/triggers`; editing uses `PUT /api/instances/:slug/triggers/:id`. Clearing the mapping or IP list removes the restriction. The initial secret is supplied only on creation, persisted through SecretProvider, and never returned. Reveal, rotation and revocation are separate administrator actions in the detail drawer.
 
-| Property | Type | Description |
-|---|---|---|
-| `instanceSlug` | `string` | Instance the trigger belongs to (passed by parent, not user-editable) |
-| `currentUsername` | `string` | Optional username to display in the read-only owner row |
-
-## Events
-
-| Event | Detail | When |
-|---|---|---|
-| `created` | `FlowTrigger` | Trigger successfully created |
-| `cancelled` | `void` | User cancelled the wizard |
-
-## Steps
-
-### Step 1 — Pick kind
-Two cards: **Cron** (selectable) and **Webhook** (disabled with a "Coming soon" pill,
-`aria-disabled="true"`, `pointer-events: none`, opacity 0.5, tooltip
-"Webhook triggers will land in a future release — use Cron for now.").
-Webhook is intentionally deferred until secret/HMAC UX is ready.
-
-### Step 2 — Flow + owner
-- **Flow** — dropdown sourced from `GET /api/instances/:slug/flows`, sorted by name,
-  showing `name (#id)`. Disabled flows are greyed with a `(disabled)` suffix and the
-  `<option>` is not selectable. Empty state shows an inline link to `#/instances/:slug/flows`.
-- **Owner** — auto-bound to the current session user (read-only line "Owner: {username} (you)").
-  No multi-user picker in v1: the backend already falls back to the current user when
-  `ownerUserId` is omitted from the create payload.
-
-### Step 3 — Schedule + name + flags (cron)
-- **Trigger name** — required, free text.
-- **Schedule** — delegates to [`cp-cron-picker`](comp-cron-picker.md), which exposes a
-  mode switcher between visual "Set Interval" and raw "Cron Expression".
-- **Timezone** — IANA string, default `Europe/Paris`.
-- **Live preview** — human-readable summary + compiled cron expression, recomputed on
-  every `change` event from the picker.
-- **Enabled** (default on) and **Allow concurrent** (default off) checkboxes.
-
-The webhook branch in step 3 is unreachable while step 1 forces cron, but the markup is
-preserved so it lights up automatically once webhook is re-enabled (the existing
-`cp-input-mapping-editor` is still wired in).
-
-## Validation
-
-- Step 1 → Next: requires `_kind === "cron"`.
-- Step 2 → Next: requires a flow selection.
-- Step 3 → Create: requires non-empty `name` and a flow selection. Cron validation
-  is delegated to the picker (croner paused dry-run).
-
-## Submission
-
-The wizard always posts the **compiled cron expression** to
-`POST /api/instances/:slug/triggers` — never the structured "Set Interval" payload.
-The backend stores a single canonical `cronExpr`, so both modes converge.
+New webhooks use the versioned signature contract in [Flow triggers](../architecture/flow-triggers.md). A flow must pass unattended-execution governance when invoked, even if it was selectable at creation time.

@@ -1,6 +1,19 @@
 // German translations for claw-pilot UI
 
 export const templates = {
+  // Inbound webhook secret lifecycle
+  "webhook-initial-secret-help":
+    "Konfigurieren Sie dasselbe Geheimnis beim sendenden Dienst. Späterer Zugriff, Rotation und Widerruf erfordern Administratorrechte.",
+  "webhook-revoke-confirm":
+    "Dieses Geheimnis widerrufen? Externe Aufrufe schlagen fehl, bis ein Administrator es erneuert und den sendenden Dienst aktualisiert.",
+  "webhook-revoked": "Webhook-Geheimnis widerrufen",
+  "webhook-reveal": "Geheimnis anzeigen",
+  "webhook-revoke": "Geheimnis widerrufen",
+  "webhook-manual-test-help":
+    "Jetzt ausführen testet den Flow direkt. Verwenden Sie das signierte HTTP-Beispiel, um Authentifizierung und Datenübertragung zu testen.",
+  "webhook-allowed-ips": "Erlaubte IP-Adressen oder CIDR-Netze (optional)",
+  "webhook-rotated": "Geheimnis erneuert. Aktualisieren Sie den sendenden Dienst.",
+
   "err-permission-denied":
     "Sie haben nicht die erforderlichen Berechtigungen für diese Aktion. Wenden Sie sich an einen Administrator.",
   // Pilot execution recovery

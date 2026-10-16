@@ -1,95 +1,17 @@
-# Component — Trigger Detail (`cp-trigger-detail`)
+# Component — Trigger detail (`cp-trigger-detail`)
 
-> **Source**: `ui/src/components/triggers/cp-trigger-detail.ts`
-> **Used in**: `cp-triggers-view` (mounted when a row is opened)
+The right-side drawer loads the trigger and its recent runs. It has Runs and Test tabs; editing settings uses the wizard.
 
-Right-side drawer (`width: min(560px, 100vw)`, full viewport height, `border-left`) with three tabs: **Settings**, **Runs**, **Test**. Loads the trigger detail (`getTrigger`) on mount.
+The run history separates admission (`pending`), execution (`running`) and the actual terminal flow result (`succeeded` or `failed`). Refresh reloads the last 50 entries.
 
-## Mockup
+Fire now tests the flow directly and does not validate the external sender's HMAC or replay protection. For webhook authentication and payload delivery, use the generated Bash/Node.js signing example against the displayed instance-scoped URL. Supply the shared secret securely through the shell environment; the example never embeds a stored value.
 
-```
-+-- header --------------------------- [Close] +
-| <name>                                       |
-+-- tabs --------------------------------------+
-| [Settings]  [Runs]  [Test]                    |
-+-- body --------------------------------------+
-| (per-tab content)                             |
-+----------------------------------------------+
-```
+Secret controls are shown only when the detail API's permission decisions allow them:
 
-## Props
+- Reveal secret: read the current, non-revoked value; access is audited and rate-limited. This is repeatable, not a one-shot guarantee.
+- Rotate: generate a fresh secret and independent storage reference, clear revocation and display the new value. Update the sending service to resume calls.
+- Revoke secret: confirm invalidation of external calls. Re-enabling the trigger does not restore the old secret. Existing admitted flow runs continue.
 
-| Property | Type | Description |
-|---|---|---|
-| `instanceSlug` | `string` | Used in every API call below. |
-| `triggerId` | `number` | Required. |
+Revealed values live only in component memory. Rotation and revocation are audited without plaintext. The drawer visibly reports revoked state. The backend enforces every permission independently of button visibility.
 
-## Tabs
-
-### Settings
-
-Read-only key/value rows from `FlowTriggerDetail`:
-
-- Name, Kind, Instance, Flow, Enabled (`yes/no`), Last fired.
-- If cron: cron expression + timezone.
-- If webhook: webhook slug.
-
-### Runs
-
-Table of recent fires (`fired_at`, `status` colored badge, `flow_run_id`, `error`).
-
-| Status | Badge tint |
-|---|---|
-| `succeeded` | `--state-success` |
-| `failed` | `--state-error` |
-| `running` | `--accent` |
-
-`[Refresh]` button calls `listTriggerRuns(slug, id, { limit: 50 })`. Empty list shows "No runs yet".
-
-### Test
-
-- **Fire now** — primary button, `fireTrigger(slug, id)`. Toast message "Fire requested" on success (lives in `_rotateMessage` field — same channel as rotate confirmation).
-- **Webhook secret** (webhook only):
-  - **Reveal once** — `revealTriggerSecret`; payload printed in a `pre`. Server-side enforces "one-shot" semantics.
-  - **Rotate** — `rotateTriggerSecret`; replaces the displayed secret with the warning "Secret rotated. Copy it now — it will not be shown again."
-  - Default placeholder: 32 `*` characters.
-- **curl example** (webhook only): one-line `pre` block of the form
-  ```
-  curl -X POST -H 'X-ClawPilot-Signature: sha256=<hex>' \
-       -H 'Content-Type: application/json' \
-       --data-raw '{}' \
-       <origin>/webhooks/triggers/<instanceSlug>/<webhookSlug>
-  ```
-
-## State
-
-| Field | Purpose |
-|---|---|
-| `_detail` | `FlowTriggerDetail` from initial fetch |
-| `_runs` | Hydrated from `_detail.runs`, replaced by Refresh |
-| `_tab` | `"settings" \| "runs" \| "test"` (default `settings`) |
-| `_revealedSecret` | Set by reveal/rotate; never persisted |
-| `_rotateMessage` | Confirmation banner shown on Test tab |
-| `_error`, `_busy` | UX guards |
-
-## Events emitted
-
-| Event | When |
-|---|---|
-| `close` | "Close" button — parent unmounts the drawer |
-
-## API
-
-`getTrigger`, `listTriggerRuns`, `fireTrigger`, `revealTriggerSecret`, `rotateTriggerSecret` (all from `ui/src/api.ts`).
-
-## Accessibility
-
-The drawer has no internal focus trap today — focus stays in the document. Future improvement candidate.
-
-## Related
-
-- Parent: [comp-triggers-view.md](comp-triggers-view.md)
-
----
-
-*Since v0.81.0 (TRIGGER-001a)*
+API: `getTrigger`, `listTriggerRuns`, `fireTrigger`, `revealTriggerSecret`, `rotateTriggerSecret`, `revokeTriggerSecret` in `ui/src/api.ts`.

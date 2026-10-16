@@ -20,6 +20,7 @@ import { Cron } from "croner";
 import type Database from "better-sqlite3";
 import {
   createTriggerRun,
+  reconcileTriggerRuns,
   getFlowTrigger,
   hasActiveTriggerRun,
   listFlowTriggers,
@@ -45,6 +46,7 @@ export type RuntimeStarter = (
   flowId: number,
   triggerType: "cron" | "webhook",
   triggerDetail: string,
+  triggerRunId?: number,
 ) => number | Promise<number>;
 
 /** Minimal interface a scheduler-internal job must implement. */
@@ -107,6 +109,7 @@ export class TriggerScheduler {
   start(): void {
     if (this.started) return;
     this.started = true;
+    reconcileTriggerRuns(this.db);
     const rows = listFlowTriggers(this.db, { kind: "cron", enabledOnly: true });
     for (const row of rows) {
       this.scheduleRow(row);
@@ -183,7 +186,7 @@ export class TriggerScheduler {
       const failed = createTriggerRun(this.db, {
         triggerId,
         status: "failed",
-        payload: JSON.stringify({ kind: "cron", firedAt: new Date().toISOString() }),
+        payload: JSON.stringify({ kind: row.kind, firedAt: new Date().toISOString() }),
       });
       updateTriggerRun(this.db, failed.id, {
         error: governance.reason ?? "Workflow is not approved for unattended execution",
@@ -194,7 +197,7 @@ export class TriggerScheduler {
         triggerId,
         flowId: row.flow_id,
         reason: governance.reason ?? "workflow_governance_denied",
-        source: "cron",
+        source: row.kind,
       });
       return;
     }
@@ -209,7 +212,7 @@ export class TriggerScheduler {
         const failed = createTriggerRun(this.db, {
           triggerId,
           status: "failed",
-          payload: JSON.stringify({ kind: "cron", firedAt: new Date().toISOString() }),
+          payload: JSON.stringify({ kind: row.kind, firedAt: new Date().toISOString() }),
         });
         updateTriggerRun(this.db, failed.id, {
           error: reason,
@@ -220,7 +223,7 @@ export class TriggerScheduler {
           triggerId,
           flowId: row.flow_id,
           reason,
-          source: "cron",
+          source: row.kind,
         });
         logger.warn("trigger_fire_instance_not_running", {
           event: "trigger_fire_instance_not_running",
@@ -244,12 +247,12 @@ export class TriggerScheduler {
         triggerId,
         flowId: row.flow_id,
         reason: "skipped_concurrent",
-        source: "cron",
+        source: row.kind,
       });
       return;
     }
 
-    const payload = JSON.stringify({ kind: "cron", firedAt: new Date().toISOString() });
+    const payload = JSON.stringify({ kind: row.kind, firedAt: new Date().toISOString() });
     const run = createTriggerRun(this.db, {
       triggerId,
       status: "pending",
@@ -260,21 +263,23 @@ export class TriggerScheduler {
       const flowRunId = await this.runtimeStarter(
         row.instance_slug,
         row.flow_id,
-        "cron",
+        row.kind,
         `trigger:${triggerId}`,
+        run.id,
       );
-      updateTriggerRun(this.db, run.id, {
-        status: "succeeded",
-        flowRunId,
-        finishedAt: new Date().toISOString(),
-      });
+      updateTriggerRun(this.db, run.id, { flowRunId });
+      this.db
+        .prepare(
+          "UPDATE rt_flow_trigger_runs SET status = 'running' WHERE id = ? AND status = 'pending'",
+        )
+        .run(run.id);
       touchTriggerLastFired(this.db, triggerId);
       emitAudit({
         kind: "trigger.fired",
         triggerId,
         flowId: row.flow_id,
         instanceSlug: row.instance_slug,
-        source: "cron",
+        source: row.kind,
       });
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
@@ -283,17 +288,14 @@ export class TriggerScheduler {
         triggerId,
         error: reason,
       });
-      updateTriggerRun(this.db, run.id, {
-        status: "failed",
-        error: reason,
-        finishedAt: new Date().toISOString(),
-      });
+      // IPC may fail after the daemon has already admitted the flow. Preserve its lock.
+      updateTriggerRun(this.db, run.id, { error: reason });
       emitAudit({
         kind: "trigger.failed",
         triggerId,
         flowId: row.flow_id,
         reason,
-        source: "cron",
+        source: row.kind,
       });
     }
   }

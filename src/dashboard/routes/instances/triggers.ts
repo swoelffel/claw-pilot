@@ -21,14 +21,15 @@
 // Cross-instance access is rejected with 404 — a trigger that belongs to
 // another instance must not leak its existence.
 
-import { randomBytes } from "node:crypto";
+import { isIP } from "node:net";
+import { randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { Cron } from "croner";
 import type { Context, Hono } from "hono";
 import type { RouteDeps } from "../../route-deps.js";
 import { apiError } from "../../route-deps.js";
 import { logger } from "../../../lib/logger.js";
-import { permission } from "../../middleware/permission.js";
+import { getPermissionChecker, permission } from "../../middleware/permission.js";
 import { ACTIONS } from "../../middleware/permission-actions.js";
 import { getSecretProvider, secretProvider } from "../../../core/secrets/index.js";
 import {
@@ -41,6 +42,8 @@ import {
   type FlowTriggerKind,
   type FlowTriggerRow,
 } from "../../../core/repositories/flow-trigger-repository.js";
+import { emitAudit } from "../../../core/audit/emitter.js";
+import { getFlowDefinition } from "../../../core/repositories/flow-repository.js";
 import { getInstanceContext } from "../_instance-middleware.js";
 
 // ---------------------------------------------------------------------------
@@ -66,6 +69,19 @@ const InputMappingEntry = z.object({
 
 const InputMappingArray = z.array(InputMappingEntry).max(64);
 
+function validNetwork(value: string): boolean {
+  const [address, prefix, extra] = value.split("/");
+  if (extra !== undefined || !address) return false;
+  const family = isIP(address);
+  return (
+    family !== 0 &&
+    (prefix === undefined || (/^\d+$/.test(prefix) && Number(prefix) <= (family === 4 ? 32 : 128)))
+  );
+}
+const IpAllowlist = z
+  .array(z.string().min(1).max(64).refine(validNetwork, "Invalid IP address or CIDR"))
+  .max(32);
+
 const KindSchema = z.enum(["cron", "webhook"]);
 
 // `instanceSlug` is supplied by the path; if a body still includes it (legacy
@@ -82,8 +98,13 @@ const CreateBaseSchema = z.object({
   cronTz: z.string().min(1).max(64).optional(),
   // webhook-only
   webhookSlug: z.string().regex(WEBHOOK_SLUG_RE).optional(),
-  webhookSecret: z.string().min(16).max(256).optional(),
-  ipAllowlist: z.array(z.string().min(1).max(64)).max(32).optional(),
+  webhookSecret: z
+    .string()
+    .min(16)
+    .max(256)
+    .regex(/^[^\r\n]+$/)
+    .optional(),
+  ipAllowlist: IpAllowlist.optional(),
   // mapping
   inputMapping: InputMappingArray.optional(),
   defaultInput: z.record(z.string(), z.unknown()).optional(),
@@ -96,10 +117,9 @@ const UpdateSchema = z.object({
   cronExpr: z.string().min(1).max(128).optional(),
   cronTz: z.string().min(1).max(64).nullable().optional(),
   webhookSlug: z.string().regex(WEBHOOK_SLUG_RE).optional(),
-  ipAllowlist: z.array(z.string().min(1).max(64)).max(32).nullable().optional(),
+  ipAllowlist: IpAllowlist.nullable().optional(),
   inputMapping: InputMappingArray.nullable().optional(),
   defaultInput: z.record(z.string(), z.unknown()).nullable().optional(),
-  ownerUserId: z.number().int().positive().nullable().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -125,8 +145,8 @@ function generateSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
-function secretKeyFor(slug: string): string {
-  return `${SECRET_KEY_PREFIX}${slug}`;
+function newSecretKey(): string {
+  return `${SECRET_KEY_PREFIX}${randomUUID()}`;
 }
 
 function parseIdParam(c: HonoContext): number | null {
@@ -165,6 +185,8 @@ function serializeRow(row: FlowTriggerRow): Record<string, unknown> {
     cronTz: row.cron_tz,
     webhookSlug: row.webhook_slug,
     webhookSecretRef: row.webhook_secret_ref,
+    signatureVersion: row.webhook_signature_version,
+    secretRevoked: row.webhook_revoked_at !== null,
     ipAllowlist: row.ip_allowlist ? safeParseJson(row.ip_allowlist) : null,
     inputMapping: row.input_mapping ? safeParseJson(row.input_mapping) : null,
     defaultInput: row.default_input ? safeParseJson(row.default_input) : null,
@@ -260,6 +282,7 @@ function buildCreateInput(
     instanceSlug,
     flowId: data.flowId,
     ...(data.ownerUserId !== undefined ? { ownerUserId: data.ownerUserId } : {}),
+    signatureVersion: data.kind === "webhook" ? 2 : 1,
     kind: data.kind,
     name: data.name,
     ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
@@ -277,7 +300,7 @@ function buildCreateInput(
 /** Persist the webhook secret if needed. Returns the ref or null. Throws on failure. */
 async function persistWebhookSecret(data: CreateData): Promise<string | null> {
   if (data.kind !== "webhook" || !data.webhookSlug || !data.webhookSecret) return null;
-  const ref = secretKeyFor(data.webhookSlug);
+  const ref = newSecretKey();
   await getSecretProvider().set!(ref, data.webhookSecret);
   return ref;
 }
@@ -302,6 +325,14 @@ async function handleCreate(c: HonoContext, deps: RouteDeps): Promise<Response> 
     return apiError(c, 400, "INVALID_BODY", validationError);
   }
 
+  const flow = getFlowDefinition(deps.db, data.flowId);
+  if (!flow || flow.instance_slug !== instanceSlug) {
+    return apiError(c, 404, "NOT_FOUND", "Flow not found in this instance");
+  }
+  // Ownership is attribution to the authenticated creator, never caller-selected delegation.
+  const creatorId = Number(c.get("user")?.id);
+  data.ownerUserId = Number.isInteger(creatorId) && creatorId > 0 ? creatorId : undefined;
+
   let webhookSecretRef: string | null;
   try {
     webhookSecretRef = await persistWebhookSecret(data);
@@ -319,7 +350,8 @@ async function handleCreate(c: HonoContext, deps: RouteDeps): Promise<Response> 
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     logger.warn("trigger_create_failed", { event: "trigger_create_failed", error: reason });
-    return apiError(c, 400, "CREATE_FAILED", reason);
+    if (webhookSecretRef) await clearUnusedSecret(deps, webhookSecretRef);
+    return apiError(c, 400, "CREATE_FAILED", "Could not create trigger");
   }
 
   deps.triggerScheduler?.reload(row.id);
@@ -327,14 +359,37 @@ async function handleCreate(c: HonoContext, deps: RouteDeps): Promise<Response> 
   return c.json(serializeRow(row), 201);
 }
 
-function handleDetail(c: HonoContext, deps: RouteDeps): Response {
+async function handleDetail(c: HonoContext, deps: RouteDeps): Promise<Response> {
   const { slug: instanceSlug } = getInstanceContext(c);
   const id = parseIdParam(c);
   if (id === null) return apiError(c, 400, "INVALID_ID", "Invalid trigger id");
   const row = getScopedTrigger(deps.db, id, instanceSlug);
   if (!row) return apiError(c, 404, "NOT_FOUND", `Trigger not found: ${id}`);
   const runs = listTriggerRuns(deps.db, id, { limit: 10 });
-  return c.json({ ...serializeRow(row), runs });
+  const checker = getPermissionChecker();
+  const decisions = await Promise.all(
+    [
+      ACTIONS.TRIGGER_REVEAL_SECRET,
+      ACTIONS.TRIGGER_ROTATE_SECRET,
+      ACTIONS.TRIGGER_REVOKE_SECRET,
+    ].map((action) =>
+      checker.check({
+        user: c.get("user"),
+        action,
+        resource: { kind: "trigger", id: String(id) },
+        attributes: { slug: instanceSlug },
+      }),
+    ),
+  );
+  return c.json({
+    ...serializeRow(row),
+    runs,
+    secretPermissions: {
+      reveal: decisions[0]!.allow,
+      rotate: decisions[1]!.allow,
+      revoke: decisions[2]!.allow,
+    },
+  });
 }
 
 type UpdateData = z.infer<typeof UpdateSchema>;
@@ -357,7 +412,7 @@ function buildUpdatePatch(d: UpdateData): Parameters<typeof updateFlowTrigger>[2
   if (d.defaultInput !== undefined) {
     patch.defaultInput = d.defaultInput === null ? null : JSON.stringify(d.defaultInput);
   }
-  if (d.ownerUserId !== undefined) patch.ownerUserId = d.ownerUserId;
+
   return patch;
 }
 
@@ -409,7 +464,7 @@ async function handleDelete(c: HonoContext, deps: RouteDeps): Promise<Response> 
   if (existing.kind === "webhook" && existing.webhook_secret_ref) {
     try {
       const provider = getSecretProvider();
-      if (provider.set) await provider.set(existing.webhook_secret_ref, "");
+      if (provider.set) await clearUnusedSecret(deps, existing.webhook_secret_ref, id);
     } catch (err) {
       logger.warn("trigger_secret_cleanup_failed", {
         event: "trigger_secret_cleanup_failed",
@@ -425,6 +480,43 @@ async function handleDelete(c: HonoContext, deps: RouteDeps): Promise<Response> 
   return new Response(null, { status: 204 });
 }
 
+/** Erase only unreferenced material; legacy references may be shared across instances. */
+async function clearUnusedSecret(deps: RouteDeps, ref: string, excludingId = -1): Promise<void> {
+  const inUse = deps.db
+    .prepare("SELECT 1 FROM rt_flow_triggers WHERE webhook_secret_ref = ? AND id != ? LIMIT 1")
+    .get(ref, excludingId);
+  if (inUse) return;
+  try {
+    await getSecretProvider().set?.(ref, "");
+  } catch (err) {
+    logger.warn("trigger_secret_cleanup_failed", { error: String(err) });
+  }
+}
+
+async function handleRevokeSecret(c: HonoContext, deps: RouteDeps): Promise<Response> {
+  const { slug: instanceSlug } = getInstanceContext(c);
+  const id = parseIdParam(c);
+  if (id === null) return apiError(c, 400, "INVALID_ID", "Invalid trigger id");
+  const row = getScopedTrigger(deps.db, id, instanceSlug);
+  if (!row) return apiError(c, 404, "NOT_FOUND", "Trigger not found");
+  if (row.kind !== "webhook")
+    return apiError(c, 400, "NOT_WEBHOOK", "Only webhook triggers have secrets");
+  // Persist the admission gate before any asynchronous provider access.
+  const previousTime = row.webhook_revoked_at ? Date.parse(row.webhook_revoked_at) : 0;
+  const revokedAt = new Date(
+    Math.max(Date.now(), Number.isFinite(previousTime) ? previousTime + 1 : 0),
+  ).toISOString();
+  updateFlowTrigger(deps.db, id, { revokedAt });
+  emitAudit({
+    kind: "trigger.secret_mutation",
+    action: "revoke",
+    triggerId: id,
+    instanceSlug,
+    by: c.get("user").id,
+  });
+  return c.json({ revoked: true });
+}
+
 async function handleRotateSecret(c: HonoContext, deps: RouteDeps): Promise<Response> {
   const { slug: instanceSlug } = getInstanceContext(c);
   const id = parseIdParam(c);
@@ -435,7 +527,7 @@ async function handleRotateSecret(c: HonoContext, deps: RouteDeps): Promise<Resp
     return apiError(c, 400, "NOT_WEBHOOK", "Only webhook triggers have secrets");
   }
   const newSecret = generateSecret();
-  const ref = row.webhook_secret_ref ?? secretKeyFor(row.webhook_slug);
+  const ref = newSecretKey();
   try {
     await getSecretProvider().set!(ref, newSecret);
   } catch (err) {
@@ -446,10 +538,34 @@ async function handleRotateSecret(c: HonoContext, deps: RouteDeps): Promise<Resp
     });
     return apiError(c, 500, "ROTATE_FAILED", "Failed to rotate secret");
   }
-  if (!row.webhook_secret_ref) {
-    updateFlowTrigger(deps.db, id, { webhookSecretRef: ref });
+  const stillExists = getScopedTrigger(deps.db, id, instanceSlug);
+  if (!stillExists) {
+    await clearUnusedSecret(deps, ref);
+    return apiError(c, 404, "NOT_FOUND", "Trigger deleted during rotation");
   }
+  if (
+    stillExists.webhook_secret_ref !== row.webhook_secret_ref ||
+    stillExists.webhook_revoked_at !== row.webhook_revoked_at
+  ) {
+    await clearUnusedSecret(deps, ref);
+    return apiError(
+      c,
+      409,
+      "SECRET_CHANGED",
+      "Secret changed during rotation; retry from current state",
+    );
+  }
+  updateFlowTrigger(deps.db, id, { webhookSecretRef: ref, revokedAt: null });
+  if (row.webhook_secret_ref) await clearUnusedSecret(deps, row.webhook_secret_ref);
+  emitAudit({
+    kind: "trigger.secret_mutation",
+    action: "rotate",
+    triggerId: id,
+    instanceSlug,
+    by: c.get("user").id,
+  });
   logger.info("trigger_secret_rotated", { event: "trigger_secret_rotated", triggerId: id });
+  c.header("Cache-Control", "no-store");
   return c.json({ secret: newSecret, secretRef: ref });
 }
 
@@ -463,6 +579,7 @@ function makeRevealHandler(buckets: Map<string, RateBucket>) {
     if (row.kind !== "webhook" || !row.webhook_secret_ref) {
       return apiError(c, 400, "NOT_WEBHOOK", "Only webhook triggers have secrets");
     }
+    if (row.webhook_revoked_at) return apiError(c, 409, "SECRET_REVOKED", "Webhook secret revoked");
     const ip = getClientIp(c);
     if (!checkReveal(buckets, ip)) {
       return apiError(c, 429, "RATE_LIMITED", "Too many reveal attempts");
@@ -483,6 +600,14 @@ function makeRevealHandler(buckets: Map<string, RateBucket>) {
       });
       return apiError(c, 500, "REVEAL_FAILED", "Failed to read secret");
     }
+    const latest = getScopedTrigger(deps.db, id, instanceSlug);
+    if (
+      !latest ||
+      latest.webhook_revoked_at ||
+      latest.webhook_secret_ref !== row.webhook_secret_ref
+    )
+      return apiError(c, 409, "SECRET_CHANGED", "Secret changed while reading");
+    c.header("Cache-Control", "no-store");
     return c.json({ secret });
   };
 }
@@ -558,6 +683,11 @@ export function registerTriggerRoutes(app: Hono, deps: RouteDeps): void {
     "/api/instances/:slug/triggers/:id",
     permission({ action: ACTIONS.TRIGGER_DELETE, resource: triggerId, attributes: attr }),
     async (c) => handleDelete(c, deps),
+  );
+  app.post(
+    "/api/instances/:slug/triggers/:id/revoke-secret",
+    permission({ action: ACTIONS.TRIGGER_REVOKE_SECRET, resource: triggerId, attributes: attr }),
+    async (c) => handleRevokeSecret(c, deps),
   );
   app.post(
     "/api/instances/:slug/triggers/:id/rotate-secret",

@@ -76,6 +76,7 @@ export interface WakeRequest {
 }
 
 export interface FlowRunRequest {
+  triggerRunId?: number;
   triggerType?: string;
   triggerDetail?: string;
   /**

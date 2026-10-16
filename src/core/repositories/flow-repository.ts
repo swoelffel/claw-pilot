@@ -282,6 +282,16 @@ export function updateFlowRunStatus(
     db.prepare(`UPDATE rt_flow_runs SET ${sets.join(", ")} WHERE id = ?`).run(...params);
     const run = getFlowRun(db, id);
     if (!run) return;
+    if (status === "completed" || status === "failed" || status === "cancelled") {
+      db.prepare(
+        `UPDATE rt_flow_trigger_runs SET status = ?, finished_at = datetime('now'), error = ?
+        WHERE flow_run_id = ? AND status IN ('pending', 'running')`,
+      ).run(
+        status === "completed" ? "succeeded" : "failed",
+        error ?? (status === "cancelled" ? "Flow cancelled" : null),
+        id,
+      );
+    }
     if (status === "failed") {
       db.prepare(
         `UPDATE rt_flow_definitions SET failure_streak = failure_streak + 1,
@@ -656,4 +666,27 @@ export function hasUnsuccessfulSteps(db: Database.Database, runId: number): bool
     if (outcome !== "success" && outcome !== "stopped") return true;
   }
   return false;
+}
+
+/** A fresh daemon cannot resume the old process's in-memory trigger DAGs. Never replay them automatically. */
+export function recoverInterruptedTriggerFlows(db: Database.Database, instanceSlug: string): void {
+  db.transaction(() => {
+    const interrupted = db
+      .prepare(
+        `SELECT DISTINCT f.id FROM rt_flow_runs f JOIN rt_flow_trigger_runs t ON t.flow_run_id = f.id
+      WHERE f.instance_slug = ? AND f.status IN ('pending','running')`,
+      )
+      .all(instanceSlug) as Array<{ id: number }>;
+    for (const { id } of interrupted) {
+      db.prepare(
+        "UPDATE rt_flow_step_runs SET status = 'failed', error = 'Runtime restarted during execution' WHERE run_id = ? AND status IN ('pending','running')",
+      ).run(id);
+      updateFlowRunStatus(
+        db,
+        id,
+        "failed",
+        "Runtime restarted during execution; automatic replay disabled",
+      );
+    }
+  }).immediate();
 }

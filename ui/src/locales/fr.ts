@@ -2,6 +2,19 @@
 // Generated: 2026-02-24
 
 export const templates = {
+  // Inbound webhook secret lifecycle
+  "webhook-initial-secret-help":
+    "Configurez le même secret sur le service émetteur. Sa consultation, sa rotation et sa révocation nécessitent ensuite les droits administrateur.",
+  "webhook-revoke-confirm":
+    "Révoquer ce secret ? Les appels externes échoueront jusqu’à sa rotation par un administrateur et la mise à jour du service émetteur.",
+  "webhook-revoked": "Secret du webhook révoqué",
+  "webhook-reveal": "Afficher le secret",
+  "webhook-revoke": "Révoquer le secret",
+  "webhook-manual-test-help":
+    "Lancer maintenant teste directement le flow. Utilisez l’exemple HTTP signé pour tester l’authentification et la transmission des données.",
+  "webhook-allowed-ips": "Adresses IP ou réseaux CIDR autorisés (facultatif)",
+  "webhook-rotated": "Secret renouvelé. Mettez à jour le service émetteur.",
+
   "err-permission-denied":
     "Vous n’avez pas les droits nécessaires pour effectuer cette action. Contactez un administrateur.",
   // Pilot execution recovery

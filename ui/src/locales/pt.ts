@@ -1,6 +1,19 @@
 // Portuguese translations for claw-pilot UI
 
 export const templates = {
+  // Inbound webhook secret lifecycle
+  "webhook-initial-secret-help":
+    "Configure o mesmo segredo no serviço emissor. O acesso posterior, a rotação e a revogação exigem permissões de administrador.",
+  "webhook-revoke-confirm":
+    "Revogar este segredo? As chamadas externas falharão até que um administrador o renove e atualize o serviço emissor.",
+  "webhook-revoked": "Segredo do webhook revogado",
+  "webhook-reveal": "Mostrar segredo",
+  "webhook-revoke": "Revogar segredo",
+  "webhook-manual-test-help":
+    "Executar agora testa o fluxo diretamente. Use o exemplo HTTP assinado para testar a autenticação e a entrega dos dados.",
+  "webhook-allowed-ips": "Endereços IP ou redes CIDR permitidos (opcional)",
+  "webhook-rotated": "Segredo renovado. Atualize o serviço emissor.",
+
   "err-permission-denied":
     "Não tem as permissões necessárias para realizar esta ação. Contacte um administrador.",
   // Pilot execution recovery

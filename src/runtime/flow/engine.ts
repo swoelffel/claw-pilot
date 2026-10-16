@@ -4,6 +4,12 @@
 // Executes flow steps in parallel where possible, respecting dependency edges.
 // Uses the wakeup-agent pattern for step execution (config loading, prompt loop).
 
+import {
+  getFlowTrigger,
+  getTriggerRun,
+  updateTriggerRun,
+} from "../../core/repositories/flow-trigger-repository.js";
+import { registerTriggerContextProvider } from "../triggers/context-provider.js";
 import type Database from "better-sqlite3";
 import {
   createFlowRun,
@@ -49,30 +55,57 @@ export function startFlowRun(
   triggerType: string,
   triggerDetail?: string,
   vars?: Record<string, unknown>,
+  triggerRunId?: number,
 ): number {
   const flow = getFlowDefinition(ctx.db, flowId);
-  if (!flow) throw new Error(`Flow definition #${flowId} not found`);
-
+  if (!flow || flow.instance_slug !== ctx.instanceSlug)
+    throw new Error(`Flow definition #${flowId} not found in instance`);
   const inputVarsJson =
     vars !== undefined && Object.keys(vars).length > 0 ? JSON.stringify(vars) : undefined;
 
-  const businessTask = createBusinessTask(ctx.db, {
-    instanceSlug: ctx.instanceSlug,
-    objective: `Run workflow: ${flow.name}`,
-    origin: triggerType === "manual" ? "HUMAN_REQUEST" : "SCHEDULED_WORKFLOW",
-    initiatorDisplay: triggerType === "manual" ? "UNKNOWN" : `workflow:${flowId}`,
-    ...(flow.team_id ? { teamId: flow.team_id } : {}),
-  });
-  const run = createFlowRun(ctx.db, {
-    flowId,
-    instanceSlug: ctx.instanceSlug,
-    triggerType,
-    ...(triggerDetail !== undefined ? { triggerDetail } : {}),
-    ...(inputVarsJson !== undefined ? { inputVarsJson } : {}),
-    triggerIdentity: triggerDetail ?? triggerType,
-    businessTaskId: businessTask.id,
-  });
+  let created = false;
+  const run = ctx.db
+    .transaction(() => {
+      if (triggerRunId !== undefined) {
+        const admission = getTriggerRun(ctx.db, triggerRunId);
+        const trigger = admission && getFlowTrigger(ctx.db, admission.trigger_id);
+        if (
+          !admission ||
+          !trigger ||
+          trigger.flow_id !== flowId ||
+          trigger.instance_slug !== ctx.instanceSlug
+        )
+          throw new Error("Invalid trigger admission");
+        if (admission.flow_run_id !== null) return getFlowRun(ctx.db, admission.flow_run_id)!;
+        if (admission.status !== "pending") throw new Error("Trigger admission is not pending");
+        registerTriggerContextProvider(ctx.db);
+      }
 
+      created = true;
+      const businessTask = createBusinessTask(ctx.db, {
+        instanceSlug: ctx.instanceSlug,
+        objective: `Run workflow: ${flow.name}`,
+        origin: triggerType === "manual" ? "HUMAN_REQUEST" : "SCHEDULED_WORKFLOW",
+        initiatorDisplay: triggerType === "manual" ? "UNKNOWN" : `workflow:${flowId}`,
+        ...(flow.team_id ? { teamId: flow.team_id } : {}),
+      });
+      const run = createFlowRun(ctx.db, {
+        flowId,
+        instanceSlug: ctx.instanceSlug,
+        triggerType,
+        ...(triggerDetail !== undefined ? { triggerDetail } : {}),
+        ...(inputVarsJson !== undefined ? { inputVarsJson } : {}),
+        triggerIdentity: triggerDetail ?? triggerType,
+        businessTaskId: businessTask.id,
+      });
+
+      if (triggerRunId !== undefined)
+        updateTriggerRun(ctx.db, triggerRunId, { flowRunId: run.id, status: "running" });
+      return run;
+    })
+    .immediate();
+
+  if (!created) return run.id;
   // Fire-and-forget the DAG execution
   void executeFlowDag(ctx, run.id, flow.name, flow.steps_json).catch((err: unknown) => {
     logger.error("flow_run_failed", {

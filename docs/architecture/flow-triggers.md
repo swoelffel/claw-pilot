@@ -75,6 +75,7 @@ See [`docs/registry-db.md`](../registry-db.md) for column-level details.
 | DELETE | `/api/instances/:slug/triggers/:id`                      | `trigger.delete`           |
 | POST   | `/api/instances/:slug/triggers/:id/fire`                 | `trigger.fire`             |
 | POST   | `/api/instances/:slug/triggers/:id/rotate-secret`        | `trigger.rotate-secret`    |
+| POST   | `/api/instances/:slug/triggers/:id/revoke-secret`          | `trigger.revoke-secret`    |
 | GET    | `/api/instances/:slug/triggers/:id/secret-reveal`        | `trigger.reveal-secret`    |
 | GET    | `/api/instances/:slug/triggers/:id/runs`                 | `trigger.runs-list`        |
 
@@ -85,24 +86,37 @@ The webhook endpoint never modifies the schedule — it just fires a flow.
 Cross-instance access on any of the `:id` routes returns 404 (existence is
 not exposed across scopes).
 
+## Webhook protocol
+
+New dashboard-created webhooks use signature version 2. Existing rows retain version 1, preserving their `X-ClawPilot-Signature: sha256=<hex>` over the raw body.
+
+For version 2, POST a UTF-8 JSON body of at most 64 KiB with:
+
+- `X-ClawPilot-Timestamp`: Unix seconds, at most five minutes from server time.
+- `Idempotency-Key`: 1–128 visible ASCII characters, identifying the event.
+- `X-ClawPilot-Signature: v2=<hex>`: HMAC-SHA256 of `<timestamp>.<idempotency-key>.<raw body>` with the shared secret.
+
+Sign the exact transmitted JSON text. Re-sign delivery retries with a fresh timestamp and the same event key and body. A valid duplicate within 24 hours returns HTTP 200 with the original admission; a conflicting body under the same key returns 409. Legacy requests without an event key deduplicate identical bodies over five minutes. HTTP 202 means admitted, not completed; inspect the linked flow run. Invalid signature or stale timestamp returns 401; a revoked webhook, disallowed IP or unapproved workflow returns 403; concurrency conflict returns 409; oversized input returns 413; rate limit returns 429. A disabled webhook returns 503.
+
+Admission rechecks current configuration after secret reads, then reserves under a SQLite writer transaction. Flow/instance association and unattended workflow governance apply to both cron and webhooks. No automatic delivery retry is performed by ClawPilot.
+
 ## Secret handling (R5)
 
-Webhook HMAC secrets are stored exclusively through the `SecretProvider`
-contract under the key `TRIGGER_WEBHOOK_SECRET:<webhook_slug>`. Three flows
-touch the plaintext:
+The creator supplies the initial secret. Storage uses SecretProvider with a random reference independent of instance and mutable slug. Creation returns metadata only. A failed duplicate creation cannot change the original secret. Schema v58 adds the signature version and revocation timestamp without rewriting existing secrets.
 
-1. **Create** — the user supplies the plaintext on
-   `POST /api/instances/:slug/triggers`; the route persists it via
-   `secretProvider.set()` and the row keeps only the `webhook_secret_ref` key,
-   never the plaintext.
-2. **Rotate** — `POST /api/instances/:slug/triggers/:id/rotate-secret`
-   generates 32 random bytes, persists, and returns the plaintext **once**.
-3. **Reveal** — `GET /api/instances/:slug/triggers/:id/secret-reveal`
-   re-reads the secret from the provider, emits a `secret.access` audit
-   event, and returns the plaintext. Rate-limited to 3 reveals per minute
-   per IP (in-memory).
+Administrators with dedicated permissions can reveal, rotate or revoke. `trigger.create` and other management actions do not grant these permissions. Rotation creates a new reference and random secret, returns its value, and clears revocation. Existing shared legacy references are never erased while another trigger uses them.
 
-No code path stores the plaintext anywhere outside the provider.
+Revocation persists an admission gate immediately. Re-enabling does not undo it; rotation is required to restore access. Already-admitted runs continue. Concurrent reads and rotations detect revocation before returning or publishing a new value. Reveal is rate-limited and audited as `secret.access`; rotation and revocation emit `trigger.secret_mutation` with actor identity, never plaintext. The default environment provider serializes writes within the dashboard process and atomically replaces its file; operate one management writer per state directory.
+
+## Runtime and recovery
+
+The daemon links the trigger admission to its flow run transactionally before building the first briefing. Repeated internal admission returns the existing flow run. The runtime registers its own trigger context provider, exposing `{{trigger.payload.field}}` and `{{trigger.mapped.variable}}` independently of dashboard memory.
+
+Concurrency remains locked while the flow is pending/running. Terminal status updates release the lock. IPC errors preserve unconfirmed reservations because the daemon may already have accepted them. Unlinked pending admissions expire after five minutes; inspect history before resending with a new event key. On daemon startup, interrupted linked trigger flows are marked failed without replay, releasing their locks. This assumes one daemon per instance.
+
+## Reverse proxy and IP restrictions
+
+Forwarding headers are ignored by default. Set `CLAW_PILOT_TRUSTED_PROXY_IPS` to the comma-separated transport peer addresses explicitly trusted to sanitize forwarding headers (for example the local reverse proxy). The address chain is evaluated from the trusted end. Restrict direct dashboard-port access; configuring a trusted proxy does not establish the network boundary by itself. Invalid allowlist configuration is rejected or fails closed. The application limits known endpoints to 60 requests per minute per instance/slug; apply proxy-level traffic controls for broader ingress protection.
 
 ## Scheduler
 
@@ -113,8 +127,7 @@ creates a `croner.Cron` per row, and on each tick:
 1. Re-reads the row defensively (handles stale references after `reload`).
 2. Honours the per-trigger concurrency lock unless `allow_concurrent`.
 3. Inserts a `rt_flow_trigger_runs` row in `pending`.
-4. Awaits `runtimeStarter()` and updates the run status to `succeeded` or
-   `failed` accordingly.
+4. Awaits `runtimeStarter()`; admission remains `running` until the linked flow terminates.
 
 Hot reload is invoked from the CRUD routes through the optional
 `triggerScheduler` field on `RouteDeps`.
@@ -134,7 +147,7 @@ The Lit page lives at `ui/src/components/triggers/cp-triggers-view.ts` and
 groups four supporting components:
 
 - `cp-trigger-list` — row cards with kind badge, enabled toggle, fire/edit/delete actions.
-- `cp-trigger-wizard` — 3-step modal (kind → flow + owner → params + mapping + name).
+- `cp-trigger-wizard` — 3-step modal (kind → flow + creator attribution → params + mapping + name).
 - `cp-trigger-detail` — drawer with three tabs (Settings, Runs, Test).
 - `cp-input-mapping-editor` — array editor for `{ from: <JSONPath>, to: <flowVar> }` rows.
 

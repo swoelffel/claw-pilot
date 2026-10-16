@@ -221,6 +221,7 @@ export const ACTIONS = {
   TRIGGER_UPDATE: "trigger.update",
   TRIGGER_DELETE: "trigger.delete",
   TRIGGER_FIRE: "trigger.fire",
+  TRIGGER_REVOKE_SECRET: "trigger.revoke-secret",
   TRIGGER_ROTATE_SECRET: "trigger.rotate-secret",
   TRIGGER_REVEAL_SECRET: "trigger.reveal-secret",
   TRIGGER_RUNS_LIST: "trigger.runs-list",
