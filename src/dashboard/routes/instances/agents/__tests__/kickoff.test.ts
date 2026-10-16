@@ -17,6 +17,38 @@ vi.mock("../../../../../lib/platform.js", () => ({
   resolveInternalApiToken: vi.fn(() => "test-token"),
 }));
 
+vi.mock("../../../../../runtime/provider/provider.js", () => ({
+  resolveModel: () => ({
+    languageModel: {},
+    providerId: "anthropic",
+    modelId: "test",
+    costPerMillion: { input: 0, output: 0 },
+  }),
+}));
+vi.mock("../../../../../lib/crypto.js", async (original) => ({
+  ...(await original<typeof import("../../../../../lib/crypto.js")>()),
+  isCryptoAvailable: () => false,
+}));
+vi.mock("../../../../../runtime/session/prompt-loop.js", () => ({
+  runPromptLoop: async (input: {
+    db: ReturnType<typeof initDatabase>;
+    sessionId: string;
+    userText: string;
+  }) => {
+    const message = createUserMessage(input.db, {
+      sessionId: input.sessionId,
+      text: input.userText,
+    });
+    return {
+      messageId: message.id,
+      text: "Test introduction",
+      steps: 1,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      costUsd: 0,
+    };
+  },
+}));
+
 // ---------------------------------------------------------------------------
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
@@ -31,6 +63,12 @@ import type { RouteDeps } from "../../../../route-deps.js";
 import { instanceMiddleware } from "../../../_instance-middleware.js";
 import { registerAgentKickoffRoutes } from "../kickoff.js";
 import { injectAdminUser } from "../../../../__tests__/_helpers/inject-admin-user.js";
+import { getSession } from "../../../../../runtime/session/session.js";
+import { createUserMessage } from "../../../../../runtime/session/message.js";
+import { createDefaultRuntimeConfig } from "../../../../../runtime/config/index.js";
+import { initAgentRegistry, resetAgentRegistry } from "../../../../../runtime/agent/registry.js";
+import { ChannelRouter } from "../../../../../runtime/channel/router.js";
+import { getBus, disposeBus, SessionCreated } from "../../../../../runtime/bus/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -136,6 +174,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetAgentRegistry();
+  disposeBus(SLUG);
   db.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
   vi.unstubAllGlobals();
@@ -146,13 +186,120 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("POST /api/instances/:slug/agents/:agentId/kickoff", () => {
+  it.each(["missing", "active", "archived"])(
+    "routes kickoff to a canonical permanent session when it is %s",
+    async (state) => {
+      if (state !== "missing") {
+        db.prepare(
+          `INSERT INTO rt_sessions (id, instance_slug, agent_id, channel, state, session_key, persistent)
+           VALUES ('canonical-session', ?, ?, 'web', ?, 'test-inst:main', 1)`,
+        ).run(SLUG, AGENT_ID, state);
+      }
+      const config = createDefaultRuntimeConfig({});
+      config.agents[0]!.id = AGENT_ID;
+      initAgentRegistry(config.agents);
+      let insideRuntime = false;
+      let runtimeSessionStarts = 0;
+      getBus(SLUG).subscribe(SessionCreated, () => {
+        if (insideRuntime) runtimeSessionStarts++;
+      });
+      // Keep session resolution, context validation and middleware real;
+      // only transport and provider work are simulated.
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string, init: RequestInit) => {
+          const sent = JSON.parse(init.body as string) as { sessionId?: string; message: string };
+          insideRuntime = true;
+          try {
+            const result = await ChannelRouter.route({
+              db,
+              instanceSlug: SLUG,
+              config,
+              agentId: AGENT_ID,
+              ...(sent.sessionId !== undefined ? { sessionId: sent.sessionId } : {}),
+              message: { channelType: "web", peerId: "dashboard", text: sent.message },
+            });
+            return { ok: true, json: async () => ({ sessionId: result.sessionId }) };
+          } finally {
+            insideRuntime = false;
+          }
+        }),
+      );
+
+      const res = await app.request(`/api/instances/${SLUG}/agents/${AGENT_ID}/kickoff`, {
+        method: "POST",
+        headers: jsonHeaders(),
+        body: "{}",
+      });
+
+      expect(res.status).toBe(202);
+      const body = await json(res);
+      const session = getSession(db, body.sessionId);
+      expect(session).toMatchObject({
+        instanceSlug: SLUG,
+        agentId: AGENT_ID,
+        persistent: true,
+        state: "active",
+      });
+      expect(body.sessionId).not.toBe("test-inst:main");
+      if (state !== "missing") expect(body.sessionId).toBe("canonical-session");
+      expect(
+        db
+          .prepare("SELECT count(*) AS n FROM rt_sessions WHERE session_key = 'test-inst:main'")
+          .get(),
+      ).toEqual({ n: 1 });
+      expect(runtimeSessionStarts).toBe(state === "active" ? 0 : 1);
+      const repeated = await app.request(`/api/instances/${SLUG}/agents/${AGENT_ID}/kickoff`, {
+        method: "POST",
+        headers: jsonHeaders(),
+        body: "{}",
+      });
+      expect(repeated.status).toBe(409);
+      expect(await json(repeated)).toMatchObject({ code: "KICKOFF_ALREADY_DONE" });
+    },
+  );
+
+  it.each([
+    {
+      status: 409,
+      code: "REQUEST_CONTEXT_CONFLICT",
+      expectedStatus: 409,
+      expectedCode: "REQUEST_CONTEXT_CONFLICT",
+    },
+    { status: 500, code: "INTERNAL_ERROR", expectedStatus: 500, expectedCode: "INTERNAL_ERROR" },
+    { status: 401, code: "UNAUTHORIZED", expectedStatus: 502, expectedCode: "RUNTIME_AUTH_FAILED" },
+    { status: 403, code: "FORBIDDEN", expectedStatus: 502, expectedCode: "RUNTIME_AUTH_FAILED" },
+  ])(
+    "classifies a runtime HTTP rejection ($status) without exposing internal details",
+    async ({ status, code, expectedStatus, expectedCode }) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: false,
+          status,
+          json: async () => ({ code, error: "private runtime detail" }),
+        }),
+      );
+      const res = await app.request(`/api/instances/${SLUG}/agents/${AGENT_ID}/kickoff`, {
+        method: "POST",
+        headers: jsonHeaders(),
+        body: "{}",
+      });
+      expect(res.status).toBe(expectedStatus);
+      const body = await json(res);
+      expect(body.code).toBe(expectedCode);
+      expect(body.error).not.toContain("private runtime detail");
+      expect(body.error).not.toContain("reach");
+    },
+  );
+
   it("returns 202 with greeting and sessionId when session is empty", async () => {
     // Stub fetch to simulate a successful runtime response
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ sessionId: "test-inst:main", ok: true }),
+        json: async () => ({ sessionId: "runtime-session-id", ok: true }),
       }),
     );
 
@@ -164,7 +311,7 @@ describe("POST /api/instances/:slug/agents/:agentId/kickoff", () => {
 
     expect(res.status).toBe(202);
     const body = await json(res);
-    expect(body.sessionId).toBe("test-inst:main");
+    expect(body.sessionId).toBe("runtime-session-id");
     expect(typeof body.greeting).toBe("string");
     expect(body.greeting.length).toBeGreaterThan(0);
   });

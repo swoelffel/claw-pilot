@@ -1,3 +1,5 @@
+<!-- cspell:ignore keepalive -->
+
 # Home Chat
 
 Home Chat is the simplified chat interface on the ClawPilot dashboard home screen.
@@ -105,3 +107,9 @@ retained automatically.
   indicator and connection retry controls.
 
 *ClawPilot v0.74.1*
+
+## Request recovery and access failures (0.84.13)
+
+See [Requests and executions](../monitoring/requests-and-executions.md) and [Recovery and timeouts](../monitoring/recovery-and-timeouts.md). Reconnect reconciles saved messages and terminal state without resubmitting the original tools. Only durable replay events are retained; transient events are not a complete execution record. A disconnected stream is not evidence that an external action failed.
+
+An expired question returns HTTP 410; do not repeat its old answer indefinitely. A failed history read is an error, not an empty session: resolve the account/permission error before starting another conversation. Minimal session activity available under chat-stream permission is different from full execution-console access.

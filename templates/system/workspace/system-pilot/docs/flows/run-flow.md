@@ -1,119 +1,35 @@
-# Running a Flow
+# Running and Inspecting a Flow
 
-Flow execution is asynchronous. Starting a run returns immediately with a run ID while the flow engine processes steps in the background. Steps are executed in topological order with parallel execution for independent steps.
+Reviewed against Community 0.84.13. A flow run is asynchronous; starting it returns a numeric runId, not a completed business outcome.
 
-## Starting a Run
+## Start and inputs
 
-```
 POST /api/instances/:slug/flows/:id/run
-```
 
-Returns:
+An optional JSON body can contain `{ "vars": { "ticket_id": "EXAMPLE-42" } }`. The successful start response is `{ "runId": 123 }`, with the real numeric ID supplied by the service. The cp_run_flow tool instead accepts only slug/flowId and cannot carry vars in this release.
 
-```json
-{
-  "runId": "run-abc123",
-  "status": "pending",
-  "flowId": "flow-xyz",
-  "createdAt": "2026-04-17T10:00:00Z"
-}
-```
+Briefings resolve `{{vars.ticket_id}}` and upstream outputs such as `{{steps.investigate.summary}}` at dispatch time. Unknown paths stay verbatim. Tool arguments are not templated by this feature. Configured MCP tools are passed through the runtime registry, subject to actual settings and permission.
 
-The run transitions from `pending` to `running` as the first step begins execution.
+## Inspect and cancel
 
-## Execution Engine
+GET /api/instances/:slug/flow-runs/:runId
 
-The flow engine processes steps using these stages:
+The detail response is `{ "run": { ... }, "steps": [ ... ] }`. Inspect persisted step status, SITREP, text, token and cost fields; do not expect a fabricated flat response. The UI path /instances/:slug/flows/runs/:runId is different from this API path.
 
-1. **Topological sort** — steps are ordered respecting all `dependsOn` constraints
-2. **Parallel dispatch** — independent steps (no unfinished dependencies) launch concurrently via `Promise.race`
-3. **Step execution** — for each step, the engine creates an agent session, injects the briefing, and runs the agent
-4. **SITREP collection** — when the agent calls `complete_step`, the SITREP is recorded
-5. **Downstream evaluation** — after a step completes, the engine evaluates which downstream steps are now unblocked
-6. **Outcome gating** — if a step failed and `continueOnFailure` is false, dependent steps are skipped
+POST /api/instances/:slug/flow-runs/:runId/cancel
 
-## Step Execution Detail
+This endpoint marks pending steps skipped and changes the run to cancelled. It does **not** propagate abort to already-running steps in this release. A cancelled database status does not guarantee execution has stopped, and external side effects may continue. Inspect active steps and the external target before repeating work or assuming a safe maintenance window.
 
-When a step begins, the flow engine:
+## Outcomes and dependencies
 
-1. Creates an ephemeral agent session for the target agent
-2. Injects a **briefing** containing:
-   - The step's mission prompt
-   - SITREPs from all upstream (completed) steps
-   - Flow context (flow name, step ID, run ID)
-3. Starts the agent's prompt loop with the configured `maxSteps`
-4. Waits for the agent to call the `complete_step` tool with a SITREP
+Each step calls complete_step with an outcome, summary and keyFindings. success permits normal downstream execution. failure or partial can skip ordinary dependents; a downstream step whose persisted definition has continueOnFailure true can run after unsuccessful dependencies. The flag belongs to that downstream step, not to the failed ancestor.
 
-### SITREP Schema
+The run is failed when a step fails or returns partial/malformed completion. A partial result can remain useful, but is not a completed technical run. stopped is an intentional gate and does not by itself make the run fail. See [Flow concepts](overview.md) and [Creation](create-flow.md) for the current API limitation on continueOnFailure.
 
-The agent must call `complete_step` with the following structure:
+## Limits, timeouts and retries
 
-| Field | Type | Description |
-|---|---|---|
-| `outcome` | enum | `success`, `failure`, or `partial` |
-| `summary` | string | What was accomplished or why it failed |
-| `keyFindings` | string[] | Notable observations, results, or data points |
+Step maxSteps defaults to 50. request_step_extension can request increments of 20 up to the effective hard cap min(maxSteps × 2, 200), which is 100 with the default soft cap. An extension is a tool decision, not an unconditional promise to reach 200.
 
-If the agent exhausts its `maxSteps` without calling `complete_step`, the step is marked as failed with an auto-generated SITREP.
+The step definition field is timeoutMs (1,000–600,000 milliseconds in the API); execution defaults to 300,000 ms when absent. Do not use a field named timeout. Although retries can be accepted/stored, the current flow engine does not consume it in an automatic retry loop. Do not promise that setting retries re-executes failed steps.
 
-## maxSteps and Dynamic Extension
-
-Each step has a `maxSteps` limit (default 50) controlling how many LLM interaction rounds the agent can perform. If the agent needs more steps during execution, it can call the `request_step_extension` tool to request an additional +20 steps. The hard cap is 200 steps per step execution — no extensions are granted beyond that limit.
-
-| Parameter | Value |
-|---|---|
-| Default maxSteps | 50 |
-| Extension increment | +20 per request |
-| Hard cap | 200 |
-
-## Step Timeout and Retry
-
-| Setting | Range | Default | Description |
-|---|---|---|---|
-| `timeout` | 1s to 10min | — | Maximum wall-clock time for a step |
-| `retries` | 0 to 5 | 0 | Number of retry attempts on failure |
-
-When a step times out, it is treated as a failure. If retries are configured, the engine re-executes the step up to the specified number of times before marking it as permanently failed.
-
-## Run Statuses
-
-| Status | Meaning |
-|---|---|
-| `pending` | Run created, no steps started yet |
-| `running` | At least one step is currently executing |
-| `completed` | All steps finished with `success` or `partial` outcome |
-| `failed` | One or more steps failed and blocked downstream completion |
-| `cancelled` | Run was manually cancelled |
-
-## Cancelling a Run
-
-```
-POST /api/instances/:slug/flows/runs/:runId/cancel
-```
-
-Cancellation stops all currently executing steps and prevents pending steps from starting. Steps already completed retain their SITREPs. The run status changes to `cancelled`.
-
-## Viewing Run Results
-
-```
-GET /api/instances/:slug/flows/runs/:runId
-```
-
-Returns the full run record including:
-
-| Field | Description |
-|---|---|
-| `status` | Current run status |
-| `steps` | Array of step run records with their SITREPs |
-| `tokens` | Total token usage across all steps |
-| `cost` | Total cost in USD across all steps |
-| `startedAt` | When the run began executing |
-| `completedAt` | When the run finished (or was cancelled) |
-
-Each step run record includes the agent session ID, SITREP JSON, result text, individual token counts, and cost.
-
-## Monitoring Active Runs
-
-Active flow runs appear in the instance's Flows tab with a real-time status indicator. The dashboard polls for status updates and displays step progress as each step completes. Completed steps show their SITREP outcome badge (success/failure/partial).
-
-*ClawPilot v0.74.1*
+A provider/tool timeout, flow cancellation, UI disconnect and unknown side-effect outcome are different conditions. See [Recovery and timeouts](../monitoring/recovery-and-timeouts.md) before resubmission. For cron/webhooks, also inspect [Workflow governance](governance.md) and [Trigger history](triggers.md).

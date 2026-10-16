@@ -14,6 +14,12 @@ import type { RouteDeps } from "../route-deps.js";
 import { registerFlowRoutes } from "../routes/instances/flows.js";
 import { instanceMiddleware } from "../routes/_instance-middleware.js";
 import { injectAdminUser } from "./_helpers/inject-admin-user.js";
+import {
+  createFlowDefinition,
+  createFlowRun,
+  getFlowDefinition,
+  getFlowRun,
+} from "../../core/repositories/flow-repository.js";
 
 const TEST_TOKEN = "test-flow-token-64chars-hex-0123456789abcdef0123456789abcdef012";
 
@@ -112,6 +118,62 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("POST /api/instances/:slug/flows", () => {
+  it("creates repaired built-ins as disabled drafts without changing customized originals or history", async () => {
+    const templates = JSON.parse(
+      fs.readFileSync(
+        new URL("../../../templates/system/cp-system.flows.json", import.meta.url),
+        "utf8",
+      ),
+    ) as Array<{ name: string; description: string; steps: unknown[] }>;
+    // The test instance has the same three agents as a current system instance.
+    const registry = new Registry(db);
+    const instance = registry.getInstance("demo")!;
+    for (const agentId of ["system-pilot", "ops", "analyst"]) {
+      registry.createAgent(instance.id, {
+        agentId,
+        name: agentId,
+        model: "test-model",
+        workspacePath: `/tmp/ws/${agentId}`,
+      });
+    }
+    for (const name of ["Onboarding", "Config Backup", "Team Builder", "Team Optimizer"]) {
+      const original = createFlowDefinition(db, {
+        instanceSlug: "demo",
+        name,
+        description: "Operator customization to retain",
+        stepsJson: JSON.stringify([
+          { id: "custom", agentId: "admin-exec", prompt: "Keep my custom instructions" },
+        ]),
+        triggerJson: JSON.stringify({ type: "bus", event: "custom.event" }),
+        enabled: true,
+      });
+      const run = createFlowRun(db, {
+        instanceSlug: "demo",
+        flowId: original.id,
+        triggerType: "manual",
+      });
+      const template = templates.find((flow) => flow.name === name)!;
+      const response = await app.request("/api/instances/demo/flows", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          ...template,
+          name: `${name} (repaired)`,
+          enabled: false,
+          trigger: { type: "manual" },
+        }),
+      });
+      expect(response.status).toBe(201);
+      const { flow } = await json(response);
+      expect(flow.id).not.toBe(original.id);
+      expect(flow.lifecycle).toBe("DRAFT");
+      expect(flow.enabled).toBe(false);
+      expect(flow.trigger_json).toBe('{"type":"manual"}');
+      expect(getFlowDefinition(db, original.id)).toEqual(original);
+      expect(getFlowRun(db, run.id)).toEqual(run);
+    }
+  });
+
   it("creates a flow and returns 201", async () => {
     const res = await app.request("/api/instances/demo/flows", {
       method: "POST",
@@ -457,5 +519,45 @@ describe("auth", () => {
   it("returns 401 without auth", async () => {
     const res = await app.request("/api/instances/demo/flows");
     expect(res.status).toBe(401);
+  });
+});
+
+describe("packaged flow run endpoints", () => {
+  it("reads and cancels a seeded run through the documented API paths", async () => {
+    const response = await app.request("/api/instances/demo/flows", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ name: "Doc example", steps: VALID_STEPS }),
+    });
+    const created = await json(response);
+    const run = createFlowRun(db, {
+      flowId: created.flow.id,
+      instanceSlug: "demo",
+      triggerType: "manual",
+    });
+    const guide = fs.readFileSync(
+      path.join(
+        import.meta.dirname,
+        "../../../templates/system/workspace/system-pilot/docs/flows/run-flow.md",
+      ),
+      "utf8",
+    );
+    const getPath = guide.match(/GET (\/api\/[^\s`]+:runId)/)?.[1];
+    const cancelPath = guide.match(/POST (\/api\/[^\s`]+:runId\/cancel)/)?.[1];
+    expect(getPath).toBeDefined();
+    expect(cancelPath).toBeDefined();
+    const detail = await app.request(
+      getPath!.replace(":slug", "demo").replace(":runId", String(run.id)),
+      { headers: authHeaders() },
+    );
+    expect(detail.status).toBe(200);
+    const body = await json(detail);
+    expect(body.run.id).toBe(run.id);
+    expect(body.steps).toEqual([]);
+    const cancel = await app.request(
+      cancelPath!.replace(":slug", "demo").replace(":runId", String(run.id)),
+      { method: "POST", headers: authHeaders() },
+    );
+    expect(cancel.status).toBe(200);
   });
 });

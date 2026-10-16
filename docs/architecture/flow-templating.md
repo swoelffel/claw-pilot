@@ -101,6 +101,6 @@ extracted from the dep SITREP.
 
 ## Security
 
-The route is admin-only (`flow.run` permission). Vars flow straight into
+The route requires the effective `flow.run` permission for its resource; do not infer access solely from an admin/operator/viewer label. Vars flow straight into
 agent prompts — treat them as trusted operator input. Do **not** expose
 the route to untrusted clients without an upstream sanitization layer.

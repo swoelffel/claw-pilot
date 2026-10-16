@@ -4,8 +4,7 @@ import type Database from "better-sqlite3";
 import type { HealthChecker, HealthStatus } from "../core/health.js";
 import { constants } from "../lib/constants.js";
 import { logger } from "../lib/logger.js";
-import { getRuntimeStateDir } from "../lib/platform.js";
-import { runtimeConfigExists, loadRuntimeConfig } from "../runtime/index.js";
+import { RuntimeConfigRepository } from "../core/repositories/runtime-config-repository.js";
 import { setNotificationBroadcaster as setNotificationBroadcasterBridge } from "../lib/notification-bridge.js";
 
 interface WSMessage {
@@ -72,10 +71,9 @@ export class Monitor {
    */
   private countHeartbeatAgents(slug: string): number {
     try {
-      const stateDir = getRuntimeStateDir(slug);
-      if (!runtimeConfigExists(stateDir)) return 0;
-      const config = loadRuntimeConfig(stateDir);
-      return config.agents.filter((a) => a.heartbeat?.every !== undefined).length;
+      if (!this.db) return 0;
+      const config = new RuntimeConfigRepository(this.db).getRuntimeConfig(slug);
+      return config?.agents.filter((a) => a.heartbeat?.every !== undefined).length ?? 0;
     } catch (err) {
       logger.debug("[monitor] countHeartbeatAgents failed", { error: String(err) });
       return 0;

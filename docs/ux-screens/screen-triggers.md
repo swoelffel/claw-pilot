@@ -1,3 +1,5 @@
+<!-- cspell:ignore HMAC -->
+
 # Screen — Triggers (`cp-triggers-view`)
 
 > **Source**: `ui/src/components/triggers/cp-triggers-view.ts` (+ `cp-trigger-list`, `cp-trigger-wizard`, `cp-trigger-detail`, `cp-input-mapping-editor`)
@@ -269,8 +271,9 @@ The wizard always sends the compiled cron expression on POST — the backend rec
 | `POST /api/instances/:slug/triggers/:id/fire` | "Fire" button + Detail "Fire now" |
 | `GET /api/instances/:slug/triggers/:id` | Detail drawer mount |
 | `GET /api/instances/:slug/triggers/:id/runs?limit=N` | Detail "Runs" refresh |
-| `GET /api/instances/:slug/triggers/:id/secret-reveal` | Webhook "Reveal once" |
+| `GET /api/instances/:slug/triggers/:id/secret-reveal` | Webhook "Reveal secret" |
 | `POST /api/instances/:slug/triggers/:id/rotate-secret` | Webhook "Rotate" |
+| `POST /api/instances/:slug/triggers/:id/revoke-secret` | Webhook "Revoke secret" |
 | `POST /webhooks/triggers/:instanceSlug/:slug` | Public webhook endpoint (HMAC-signed) |
 
 ## Cross-references

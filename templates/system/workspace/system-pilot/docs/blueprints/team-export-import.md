@@ -168,3 +168,7 @@ claw-pilot team import my-instance --file team.yaml --dry-run
 | Create blueprint from file | Create empty blueprint, `import` the team YAML |
 
 *ClawPilot v0.74.1*
+
+## Verification boundary (0.84.13)
+
+A team export describes configuration; do not claim it is a complete restorable backup of messages, runtime state or secret values. After an authorized import, inspect resulting agents, links and key references before starting business workflows. Resolve identifier collisions and preserved customizations explicitly.

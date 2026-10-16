@@ -124,7 +124,7 @@ Clone a template into an existing instance as a new agent. The template's config
 
 ## Templates Gallery
 
-The dashboard provides a gallery view at `#/agent-templates` for browsing and managing templates.
+The dashboard provides a gallery view at `/agent-templates` for browsing and managing templates.
 
 | Feature | Description |
 |---|---|

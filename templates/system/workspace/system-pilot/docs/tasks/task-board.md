@@ -104,3 +104,7 @@ Returns an object like `{ pending: 5, in_progress: 2, completed: 12, blocked: 1,
 Every task mutation is recorded in the `rt_task_activities` table. This includes status changes, field updates, comments, assignment changes, and priority changes. See the timeline documentation for the full list of activity types.
 
 *ClawPilot v0.74.1*
+
+## Live activity (0.84.13)
+
+Task cards/details can show current session activity before final completion. Distinguish this live indication from a persisted terminal result and a human-accepted outcome. Reconnect/replay does not imply that an interrupted side effect should be repeated. See [Request recovery](../monitoring/recovery-and-timeouts.md).
