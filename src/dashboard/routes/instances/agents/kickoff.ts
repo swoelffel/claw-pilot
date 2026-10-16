@@ -26,6 +26,26 @@ import type { ChatResponse } from "../../../../runtime/engine/internal-api.js";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type HonoContext = any;
 
+/** Keep daemon HTTP rejections distinct from transport failures and dashboard authentication. */
+function kickoffErrorResponse(c: HonoContext, error: unknown): Response {
+  const err = error as { status?: number; code?: string } | null;
+  const status = err?.status;
+  if (typeof status === "number" && status >= 400 && status < 600) {
+    logger.warn(`[route:kickoff] runtime rejected request (HTTP ${status})`);
+    if (status === 401 || status === 403) {
+      return apiError(c, 502, "RUNTIME_AUTH_FAILED", "Runtime authentication failed");
+    }
+    return apiError(
+      c,
+      status,
+      err?.code ?? "RUNTIME_ERROR",
+      "Runtime rejected the agent kickoff request",
+    );
+  }
+  logger.warn("[route:kickoff] runtime transport failed", { error: String(error) });
+  return apiError(c, 502, "RUNTIME_UNREACHABLE", "Could not reach the runtime daemon");
+}
+
 export function registerAgentKickoffRoutes(app: Hono, deps: RouteDeps): void {
   const { registry, db } = deps;
   const attr = (c: HonoContext) => ({ slug: c.req.param("slug") });
@@ -38,7 +58,8 @@ export function registerAgentKickoffRoutes(app: Hono, deps: RouteDeps): void {
   // Response 202: { greeting: string, sessionId: string }
   // Error 404 AGENT_NOT_FOUND   — agent not found on this instance
   // Error 409 KICKOFF_ALREADY_DONE — permanent session already has messages
-  // Error 502 RUNTIME_UNREACHABLE  — runtime call failed
+  // Runtime HTTP rejections keep their status/code; IPC auth failures become 502.
+  // Error 502 RUNTIME_UNREACHABLE — runtime transport failed
   // -------------------------------------------------------------------------
   app.post(
     "/api/instances/:slug/agents/:agentId/kickoff",
@@ -80,20 +101,20 @@ export function registerAgentKickoffRoutes(app: Hono, deps: RouteDeps): void {
       const greeting = getKickoffGreeting(profile?.language);
 
       // 4. Forward greeting to the runtime chat endpoint
+      // Let the daemon resolve the permanent session and emit its lifecycle events.
+      // The business session_key must never be passed as a canonical session ID.
       let result: ChatResponse;
       try {
         result = await callRuntimeApi<ChatResponse>(slug, "/internal/chat", {
           message: greeting,
           agentId,
-          sessionId: sessionKey,
         });
       } catch (err) {
-        logger.warn("[route:kickoff] runtime call failed", { error: String(err), slug, agentId });
-        return apiError(c, 502, "RUNTIME_UNREACHABLE", "Could not reach the runtime daemon");
+        return kickoffErrorResponse(c, err);
       }
 
       // 5. Return 202 — the prompt loop is now running asynchronously
-      return c.json({ greeting, sessionId: result.sessionId ?? sessionKey }, 202);
+      return c.json({ greeting, sessionId: result.sessionId }, 202);
     },
   );
 }

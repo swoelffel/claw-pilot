@@ -100,9 +100,9 @@ export class Lifecycle {
       return;
     }
 
-    // Ensure runtime.json exists before spawning — creates it with defaults if absent.
-    // Without this, the daemon exits immediately (silently) and the PID file never appears.
-    ensureRuntimeConfig(stateDir);
+    // The daemon reads DB configuration first. Only legacy instances without
+    // stored configuration need a file bootstrap before spawning.
+    if (!this.registry.getRuntimeConfig(slug)) ensureRuntimeConfig(stateDir);
 
     logger.dim(`[lifecycle] Starting claw-runtime daemon for "${slug}"...`);
 

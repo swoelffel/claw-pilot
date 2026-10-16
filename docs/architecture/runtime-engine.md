@@ -10,6 +10,11 @@
 > The source of truth is the database: `agents.config_json` (per-agent) and
 > `instances.runtime_config_json` (global). Do not edit runtime.json directly.
 
+Lifecycle startup uses the stored database configuration without requiring a
+readable snapshot. File bootstrap remains available for legacy instances without
+database configuration. Dashboard monitoring reads heartbeat settings from the
+database agent rows, so missing or stale snapshots do not affect the count.
+
 Zod schema `RuntimeConfig`:
 
 ```typescript
