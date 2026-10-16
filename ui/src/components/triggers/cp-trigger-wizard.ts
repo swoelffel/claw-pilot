@@ -586,7 +586,8 @@ export class CpTriggerWizard extends LitElement {
       (this._isEditMode ||
         (this._webhookSecret.length >= 16 &&
           this._webhookSecret.length <= 256 &&
-          !/[\r\n]/.test(this._webhookSecret)))
+          !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(this._webhookSecret) &&
+          this._webhookSecret.trim() === this._webhookSecret))
     );
   }
 

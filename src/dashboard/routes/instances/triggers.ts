@@ -102,7 +102,8 @@ const CreateBaseSchema = z.object({
     .string()
     .min(16)
     .max(256)
-    .regex(/^[^\r\n]+$/)
+    .regex(/^[^\p{Cc}\p{Zl}\p{Zp}]+$/u)
+    .refine((value) => value.trim() === value, "Secret must not have surrounding whitespace")
     .optional(),
   ipAllowlist: IpAllowlist.optional(),
   // mapping

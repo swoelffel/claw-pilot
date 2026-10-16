@@ -868,3 +868,11 @@ it("rejects malformed IP restrictions at the configuration boundary", async () =
   });
   expect(res.status).toBe(400);
 });
+
+it.each([" padded-secret-value ", "long-secret-value\u0000rest", "long-secret-value\u2028rest"])(
+  "rejects a secret that cannot round-trip through environment storage",
+  async (secret) => {
+    expect((await createWebhook("round-trip", secret)).status).toBe(400);
+    expect(secretStore.size).toBe(0);
+  },
+);
