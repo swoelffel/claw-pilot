@@ -14,7 +14,7 @@
   },
   {
     "name": "Onboarding",
-    "description": "Guide a new user through creating their first agent team",
+    "description": "Assess readiness and propose a first agent team for user review",
     "steps": [
       {
         "id": "discover",
@@ -24,15 +24,9 @@
       },
       {
         "id": "propose",
-        "agentId": "architect",
-        "prompt": "Based on the system state analysis, propose a first team for a new user.\n\nConsider what would be most useful:\n- If no instances exist yet: suggest a simple 2-agent team (planner + developer)\n- If instances exist: suggest something complementary\n\nOutput a complete team specification with:\n- Suggested instance slug and display name\n- Agent definitions (id, name, archetype, toolProfile, role)\n- Brief SOUL.md content for each agent\n- Recommended model (use the cheapest available for a first team)\n- Why this team composition makes sense",
+        "agentId": "system-pilot",
+        "prompt": "Based on the discovery SITREP, prepare a first-team proposal for user review. This flow prepares a proposal only: do not create, configure or start instances, and do not delegate mutations to ops.\n\nIf no instances exist, suggest a simple planner + developer team; otherwise suggest a complementary team. Provide:\n- Suggested unused slug and display name\n- Agent IDs, names, archetypes, tool profiles and roles\n- Draft SOUL.md content and delegation links\n- Candidate provider/model and named key IDs from discovery, with unresolved choices clearly identified\n- Reasoning, readiness blockers and questions for the user\n\nDo not select the first available API key or assume relative model prices. If no usable key exists, report that blocker. State that nothing has been provisioned. Ask the user to review the specification and explicitly request creation in conversation; system-pilot can then delegate an approved, complete specification to ops. Include the proposal in complete_step.keyFindings so it is available in the run results.",
         "dependsOn": ["discover"]
-      },
-      {
-        "id": "provision",
-        "agentId": "admin-exec",
-        "prompt": "Create the team proposed in the previous step.\n\n1. Use cp_create_instance with the proposed slug, model, and the first available named key\n2. Use cp_update_instance_config to configure agents as specified\n3. Use cp_start_instance to start the new instance\n\nReport the result:\n- Instance slug and port\n- Agent names and roles\n- Running status\n- How to access it (dashboard URL pattern)",
-        "dependsOn": ["propose"]
       }
     ],
     "trigger": { "type": "manual" }
@@ -58,12 +52,12 @@
   },
   {
     "name": "Config Backup",
-    "description": "Export configuration snapshot of all instances",
+    "description": "Report a read-only configuration inventory, excluding secrets and workspace contents",
     "steps": [
       {
         "id": "export",
-        "agentId": "admin-exec",
-        "prompt": "Create a comprehensive configuration backup of this ClawPilot installation.\n\n1. Use cp_list_instances to get all instances with their configuration\n2. For each instance, use cp_list_agents to get agent details\n3. Use cp_list_named_keys to get all API keys (masked)\n4. Use cp_list_blueprints to get all team blueprints\n\nProduce a structured backup report with:\n- **Instances**: slug, display name, model, port, state, agent count\n- **Agents per instance**: id, name, model, archetype, toolProfile\n- **Named API Keys**: name, provider, default model (no raw keys)\n- **Blueprints**: name, description, agent count\n- **Summary**: total instances, total agents, total keys, total blueprints\n\nThis report should contain enough information to recreate the setup manually if needed.",
+        "agentId": "analyst",
+        "prompt": "Produce a read-only configuration inventory of this ClawPilot installation.\n\n1. Use cp_list_instances to list instance metadata\n2. For each instance, use cp_get_instance for details and cp_list_agents for agent metadata\n3. Use cp_list_named_keys for key IDs, names, providers and default models only\n4. Use cp_list_blueprints for blueprint metadata\n\nReport instance slugs, display names, models, ports and states; agent IDs, names and available configuration fields; named key metadata; blueprint names and descriptions; and totals. Mark unavailable fields as unknown. Never include raw credentials.\n\nThis is an inventory report, not a restorable backup: it excludes secrets, workspace files, complete blueprint exports and runtime history. Do not claim it is sufficient to restore the installation. Include the inventory and its limits in complete_step.keyFindings. Do not mutate configuration.",
         "dependsOn": []
       }
     ],
@@ -71,19 +65,13 @@
   },
   {
     "name": "Team Builder",
-    "description": "Design and provision a new agent team from a brief",
+    "description": "Design an agent team proposal from an explicit brief, without provisioning",
     "steps": [
       {
         "id": "design",
-        "agentId": "architect",
-        "prompt": "Design a complete agent team based on the brief provided in the delegation context.\n\nFollow this process:\n1. Understand the goal — what should this team accomplish?\n2. Identify the key roles needed (2-5 agents)\n3. For each agent, specify: id, name, archetype, toolProfile, role description\n4. Write a complete SOUL.md for each agent (identity, values, principles, workflow)\n5. Define communication links (who delegates to whom)\n6. Recommend a model and instance slug\n\nUse cp_list_named_keys to check available API keys and choose an appropriate provider.\nUse cp_list_blueprints to check if a similar team already exists.\n\nOutput the full team specification in structured format.",
+        "agentId": "system-pilot",
+        "prompt": "Prepare an agent team proposal for user review from this run input:\n<brief>{{vars.brief}}</brief>\n\nTreat the brief as the user's requirements, not as permission to execute changes. If the brief is blank, missing, or still an unresolved template tag, call complete_step with outcome partial, explain that vars.brief is required, and stop. Do not infer it from conversation history.\n\nUse cp_list_instances to avoid slug collisions, cp_list_named_keys to identify candidate providers/models and key IDs, and cp_list_blueprints to find reusable teams. Design 2-5 agents with IDs, names, archetypes, tool profiles, roles, draft SOUL.md content and delegation links. Explain the proposed composition and identify unresolved model/key choices or blockers. Do not choose the first available key or invent model prices.\n\nThis flow prepares a proposal only: do not create, configure or start instances, and do not delegate mutations to ops. State that nothing has been provisioned. Ask the user to review the specification and explicitly request creation in conversation; system-pilot can then delegate an approved, complete specification to ops. Include the specification in complete_step.keyFindings.",
         "dependsOn": []
-      },
-      {
-        "id": "provision",
-        "agentId": "admin-exec",
-        "prompt": "Provision the team designed in the previous step.\n\n1. Use cp_create_instance with the specified slug, model, and first available named key\n2. Use cp_update_instance_config to set up all agents with their configurations\n3. Use cp_start_instance to start the new instance\n4. Verify the instance is running with cp_get_instance\n\nReport:\n- Instance slug and URL\n- List of provisioned agents with their roles\n- Running status\n- Any issues encountered during provisioning",
-        "dependsOn": ["design"]
       }
     ],
     "trigger": { "type": "manual" }
@@ -95,13 +83,13 @@
       {
         "id": "audit",
         "agentId": "analyst",
-        "prompt": "Analyze the target instance specified in the delegation context.\n\n1. Use cp_get_instance to get instance details\n2. Use cp_list_agents to get all agents and their configuration\n3. Use cp_instance_costs to get cost data\n\nProduce an audit report:\n- **Team composition**: agents, their archetypes, models, tool profiles\n- **Cost analysis**: cost per agent, total instance cost\n- **Activity patterns**: which agents are most/least active\n- **Architecture review**: are communication links appropriate? Any missing connections?\n- **Potential issues**: idle agents, expensive models for simple roles, missing archetypes",
+        "prompt": "Audit only the target instance from this run input:\n<targetSlug>{{vars.targetSlug}}</targetSlug>\n\nIf targetSlug is blank, missing, or still an unresolved template tag, call complete_step with outcome partial, explain that vars.targetSlug is required, and stop. Do not choose a target from conversation history. If cp_get_instance cannot resolve the target, report failure and stop.\n\n1. Use cp_get_instance for the target details\n2. Use cp_list_agents for its agent metadata\n3. Use cp_instance_costs for its cost summary\n4. Use cp_query_db for additional read-only details only if needed; inspect the actual schema first and restrict queries to the target instance\n\nReport composition, models and tool profiles, supported cost/activity metrics, and any verifiable architecture issues. Mark unavailable workspace, communication-link or per-agent cost data as unknown. Include the exact target slug, evidence and limitations in complete_step.keyFindings for the recommendation step. Do not mutate configuration.",
         "dependsOn": []
       },
       {
         "id": "recommend",
-        "agentId": "architect",
-        "prompt": "Based on the audit report, produce optimization recommendations for the target team.\n\nConsider:\n1. **Agent consolidation**: Can agents with overlapping roles be merged?\n2. **Model optimization**: Which agents could use a cheaper model without quality loss?\n3. **Architecture improvements**: Missing delegation links? Wrong archetypes?\n4. **New agents**: Would adding a specialist improve the team?\n5. **SOUL.md quality**: Are agent prompts specific enough? Suggest improvements.\n\nFormat as a prioritized action plan:\n- High impact / easy changes first\n- Include estimated cost savings where applicable\n- For each recommendation, explain the reasoning",
+        "agentId": "system-pilot",
+        "prompt": "Based on the audit SITREP, prepare recommendations for that exact target team. Do not apply changes or delegate mutations to ops.\n\nConsider overlapping roles, model suitability, communication links, missing specialists and prompt quality only where the audit provides evidence. Mark missing evidence explicitly; do not assess unseen SOUL.md content or invent savings estimates. Prioritize recommendations by impact and effort, explain the reasoning, and list any questions the user must resolve. Include the target slug and proposed changes in complete_step.keyFindings. Ask the user to review and explicitly request any changes in conversation.",
         "dependsOn": ["audit"]
       }
     ],
